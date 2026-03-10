@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.PgVector</RootNamespace>
+    <PackageId>Rag.NET.PgVector</PackageId>
+    <Description>pgvector vector store for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Npgsql" Version="9.*" />
+    <PackageReference Include="Pgvector" Version="0.*" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Parsers.Pdf</RootNamespace>
+    <PackageId>Rag.NET.Parsers.Pdf</PackageId>
+    <Description>PDF document parser for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="PdfPig" Version="0.*" />
+  </ItemGroup>
+
+</Project>

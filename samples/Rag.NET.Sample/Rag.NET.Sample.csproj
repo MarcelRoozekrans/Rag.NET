@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.PgVector\Rag.NET.PgVector.csproj" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.*" />
+  </ItemGroup>
+
+</Project>
