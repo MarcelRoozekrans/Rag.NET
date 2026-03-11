@@ -49,7 +49,7 @@ public class RagPipelineTests
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello world"));
 
-        var result = await _sut.IngestAsync(stream, metadata, TestContext.Current.CancellationToken);
+        var result = await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("doc-1", result.DocumentId);
         Assert.Equal(1, result.ChunksStored);
@@ -191,7 +191,7 @@ public class RagPipelineTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello world"));
-        await _sut.IngestAsync(stream, metadata, TestContext.Current.CancellationToken);
+        await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
 
         await _vectorStore.Received(1).StoreAsync(
             Arg.Is<IReadOnlyList<EmbeddedChunk>>(chunks =>
@@ -307,6 +307,28 @@ public class RagPipelineTests
         Assert.Equal(ChatRole.Assistant, list[2].Role);
         Assert.Equal("Previous answer", list[2].Text);
         Assert.Equal(ChatRole.User, list[3].Role);
+    }
+
+    [Fact]
+    public async Task IngestAsync_WithNullOptions_SkipsDeleteAndStoresChunks()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "Hello", DocumentId = "doc-1", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "Hello", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello"));
+        var result = await _sut.IngestAsync(stream, metadata, options: null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.ChunksStored);
+        await _vectorStore.DidNotReceive().DeleteByDocumentIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)

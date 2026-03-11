@@ -8,6 +8,7 @@ public interface IRagPipeline
     Task<IngestionResult> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
+        IngestionOptions? options = null,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<SearchResult>> RetrieveAsync(

@@ -23,6 +23,7 @@ public sealed class RagPipeline(
     public async Task<IngestionResult> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
+        IngestionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         var parser = parsers.FirstOrDefault(p => p.CanParse(metadata.ContentType ?? "text/plain"))
