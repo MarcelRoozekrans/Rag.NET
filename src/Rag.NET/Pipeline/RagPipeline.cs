@@ -40,6 +40,11 @@ public sealed class RagPipeline(
             ?? throw new InvalidOperationException(
                 $"No parser registered for content type '{metadata.ContentType}'.");
 
+        if (options?.Overwrite == true)
+        {
+            await vectorStore.DeleteByDocumentIdAsync(metadata.DocumentId, cancellationToken).ConfigureAwait(false);
+        }
+
         var chunks = new List<TextChunk>();
 
         await foreach (var section in parser.ParseAsync(document, metadata, cancellationToken).ConfigureAwait(false))

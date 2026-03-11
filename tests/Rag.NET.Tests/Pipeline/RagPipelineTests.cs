@@ -331,6 +331,49 @@ public class RagPipelineTests
         await _vectorStore.DidNotReceive().DeleteByDocumentIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task IngestAsync_WithOverwriteTrue_DeletesBeforeStoring()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "Hello", DocumentId = "doc-1", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "Hello", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello"));
+        await _sut.IngestAsync(stream, metadata, new IngestionOptions { Overwrite = true }, TestContext.Current.CancellationToken);
+
+        await _vectorStore.Received(1).DeleteByDocumentIdAsync("doc-1", Arg.Any<CancellationToken>());
+        await _vectorStore.Received(1).StoreAsync(Arg.Any<IReadOnlyList<EmbeddedChunk>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task IngestAsync_WithOverwriteFalse_SkipsDelete()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "Hello", DocumentId = "doc-1", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "Hello", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello"));
+        await _sut.IngestAsync(stream, metadata, new IngestionOptions { Overwrite = false }, TestContext.Current.CancellationToken);
+
+        await _vectorStore.DidNotReceive().DeleteByDocumentIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)
