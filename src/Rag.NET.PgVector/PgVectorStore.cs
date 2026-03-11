@@ -32,6 +32,8 @@ public sealed class PgVectorStore : IVectorStore, IDisposable
                 await enableExt.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
 
+            await conn.ReloadTypesAsync().ConfigureAwait(false);
+
             var createTableSql = $$"""
                 CREATE TABLE IF NOT EXISTS rag_chunks (
                     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
