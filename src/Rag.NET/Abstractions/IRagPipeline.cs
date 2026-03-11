@@ -19,4 +19,9 @@ public interface IRagPipeline
         string query,
         RagOptions? options = null,
         CancellationToken cancellationToken = default);
+
+    IAsyncEnumerable<RagStreamingUpdate> AskStreamingAsync(
+        string query,
+        RagOptions? options = null,
+        CancellationToken cancellationToken = default);
 }

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
@@ -116,5 +117,58 @@ public sealed class RagPipeline(
             Answer = response.Text ?? string.Empty,
             Sources = sources,
         };
+    }
+
+    public async IAsyncEnumerable<RagStreamingUpdate> AskStreamingAsync(
+        string query,
+        RagOptions? options = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (chatClient is null)
+        {
+            throw new InvalidOperationException(
+                "IChatClient is not registered. Register an IChatClient in DI to use AskStreamingAsync.");
+        }
+
+        var opts = options ?? new RagOptions();
+        var retrievalOptions = new RetrievalOptions { TopK = opts.TopK, MinScore = opts.MinScore };
+        var sources = await RetrieveAsync(query, retrievalOptions, cancellationToken).ConfigureAwait(false);
+
+        yield return new RagStreamingUpdate { Sources = sources };
+
+        var (messages, chatOptions) = BuildRagMessages(sources, query, opts);
+
+        await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false))
+        {
+            if (update.Text is not null)
+            {
+                yield return new RagStreamingUpdate { TextDelta = update.Text };
+            }
+        }
+    }
+
+    private static (List<ChatMessage> Messages, ChatOptions Options) BuildRagMessages(
+        IReadOnlyList<SearchResult> sources,
+        string query,
+        RagOptions opts)
+    {
+        var context = string.Join("\n\n---\n\n",
+            sources.Select((s, i) => $"[Source {i + 1}]\n{s.Chunk.Text}"));
+
+        var systemPrompt = opts.SystemPrompt ?? DefaultSystemPrompt;
+
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, systemPrompt),
+            new(ChatRole.User, $"Context:\n{context}\n\nQuestion: {query}"),
+        };
+
+        var chatOptions = new ChatOptions();
+        if (opts.Temperature.HasValue)
+        {
+            chatOptions.Temperature = opts.Temperature.Value;
+        }
+
+        return (messages, chatOptions);
     }
 }
