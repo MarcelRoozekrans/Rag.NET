@@ -93,6 +93,77 @@ public class RagPipelineTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => _sut.AskAsync("question", cancellationToken: TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task AskStreamingAsync_WithoutChatClient_ThrowsInvalidOperation()
+    {
+        var queryEmbedding = new Embedding<float>(new float[] { 0.1f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in _sut.AskStreamingAsync("question", cancellationToken: TestContext.Current.CancellationToken))
+            {
+            }
+        });
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_YieldsSourcesFirst_ThenTextDeltas()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        var sut = new RagPipeline(
+            [_parser],
+            _chunker,
+            _vectorStore,
+            _embedder,
+            chatClient,
+            new ChunkingOptions());
+
+        var queryEmbedding = new Embedding<float>(new float[] { 0.1f });
+        var searchResult = new SearchResult
+        {
+            Chunk = new TextChunk { Text = "relevant context", DocumentId = "doc-1", ChunkIndex = 0 },
+            Score = 0.9
+        };
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { searchResult });
+
+        chatClient.GetStreamingResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
+                Arg.Any<ChatOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(
+                new ChatResponseUpdate { Contents = [new TextContent("Hello")] },
+                new ChatResponseUpdate { Contents = [new TextContent(" World")] }));
+
+        var updates = new List<RagStreamingUpdate>();
+        await foreach (var update in sut.AskStreamingAsync("test question", cancellationToken: TestContext.Current.CancellationToken))
+        {
+            updates.Add(update);
+        }
+
+        // First update has sources, no text
+        Assert.NotNull(updates[0].Sources);
+        Assert.Single(updates[0].Sources!);
+        Assert.Null(updates[0].TextDelta);
+
+        // Subsequent updates have text, no sources
+        Assert.Equal("Hello", updates[1].TextDelta);
+        Assert.Null(updates[1].Sources);
+        Assert.Equal(" World", updates[2].TextDelta);
+        Assert.Null(updates[2].Sources);
+
+        Assert.Equal(3, updates.Count);
+    }
+
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)
