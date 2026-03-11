@@ -19,19 +19,50 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
             yield break;
         }
 
+        var sourceText = section.Text;
         int chunkIndex = 0;
-        foreach (var text in SplitRecursively(section.Text, options.MaxChunkSize, 0))
+        int cursor = 0;
+        string? previousChunkText = null;
+
+        foreach (var text in SplitRecursively(sourceText, options.MaxChunkSize, 0))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
+            // Find where this chunk appears in the source text, starting from the cursor
+            int pos = sourceText.IndexOf(text, cursor, StringComparison.Ordinal);
+            if (pos < 0)
+            {
+                // Fallback: trimmed text may not match exactly; search from cursor
+                pos = cursor;
+            }
+
+            int startPosition = pos;
+            int endPosition = pos + text.Length;
+
+            // Apply overlap: prepend characters from the end of the previous chunk
+            string chunkText;
+            if (options.Overlap > 0 && previousChunkText != null)
+            {
+                int overlapLength = Math.Min(options.Overlap, previousChunkText.Length);
+                string overlapText = previousChunkText[^overlapLength..];
+                chunkText = overlapText + text;
+            }
+            else
+            {
+                chunkText = text;
+            }
+
             yield return new TextChunk
             {
-                Text = text,
+                Text = chunkText,
                 DocumentId = section.DocumentId,
                 ChunkIndex = chunkIndex++,
-                StartPosition = 0,
-                EndPosition = text.Length,
+                StartPosition = startPosition,
+                EndPosition = endPosition,
             };
+
+            cursor = endPosition;
+            previousChunkText = text;
         }
 
         await Task.CompletedTask.ConfigureAwait(false);
