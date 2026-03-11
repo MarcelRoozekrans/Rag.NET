@@ -261,6 +261,54 @@ public class RagPipelineTests
         await _vectorStore.Received(1).DeleteByDocumentIdAsync("doc-1", Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task AskAsync_WithConversationHistory_IncludesHistoryInMessages()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        var sut = new RagPipeline(
+            [_parser],
+            _chunker,
+            _vectorStore,
+            _embedder,
+            chatClient,
+            new ChunkingOptions());
+
+        var queryEmbedding = new Embedding<float>(new float[] { 0.1f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>());
+
+        var response = new ChatResponse(new ChatMessage(ChatRole.Assistant, "answer"));
+        chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(response);
+
+        var history = new List<ChatMessage>
+        {
+            new(ChatRole.User, "Previous question"),
+            new(ChatRole.Assistant, "Previous answer"),
+        };
+
+        await sut.AskAsync(
+            "follow-up question",
+            new RagOptions { ConversationHistory = history },
+            TestContext.Current.CancellationToken);
+
+        var capturedMessages = chatClient.ReceivedCalls()
+            .First(c => string.Equals(c.GetMethodInfo().Name, nameof(IChatClient.GetResponseAsync), StringComparison.Ordinal))
+            .GetArguments()[0] as IEnumerable<ChatMessage>;
+
+        var list = capturedMessages!.ToList();
+        Assert.Equal(4, list.Count);
+        Assert.Equal(ChatRole.System, list[0].Role);
+        Assert.Equal(ChatRole.User, list[1].Role);
+        Assert.Equal("Previous question", list[1].Text);
+        Assert.Equal(ChatRole.Assistant, list[2].Role);
+        Assert.Equal("Previous answer", list[2].Text);
+        Assert.Equal(ChatRole.User, list[3].Role);
+    }
+
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)

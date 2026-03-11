@@ -1,3 +1,5 @@
+using Microsoft.Extensions.AI;
+
 namespace Rag.NET.Models.Options;
 
 public sealed class RagOptions
@@ -8,4 +10,5 @@ public sealed class RagOptions
     public IDictionary<string, string>? MetadataFilter { get; set; }
     public string? SystemPrompt { get; set; }
     public float? Temperature { get; set; }
+    public IList<ChatMessage>? ConversationHistory { get; set; }
 }

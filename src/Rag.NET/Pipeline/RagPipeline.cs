@@ -132,8 +132,14 @@ public sealed class RagPipeline(
         var messages = new List<ChatMessage>
         {
             new(ChatRole.System, systemPrompt),
-            new(ChatRole.User, $"Context:\n{context}\n\nQuestion: {query}"),
         };
+
+        if (opts.ConversationHistory is { Count: > 0 })
+        {
+            messages.AddRange(opts.ConversationHistory);
+        }
+
+        messages.Add(new ChatMessage(ChatRole.User, $"Context:\n{context}\n\nQuestion: {query}"));
 
         var chatOptions = new ChatOptions();
         if (opts.Temperature.HasValue)
@@ -202,8 +208,14 @@ public sealed class RagPipeline(
         var messages = new List<ChatMessage>
         {
             new(ChatRole.System, systemPrompt),
-            new(ChatRole.User, $"Context:\n{context}\n\nQuestion: {query}"),
         };
+
+        if (opts.ConversationHistory is { Count: > 0 })
+        {
+            messages.AddRange(opts.ConversationHistory);
+        }
+
+        messages.Add(new ChatMessage(ChatRole.User, $"Context:\n{context}\n\nQuestion: {query}"));
 
         var chatOptions = new ChatOptions();
         if (opts.Temperature.HasValue)
