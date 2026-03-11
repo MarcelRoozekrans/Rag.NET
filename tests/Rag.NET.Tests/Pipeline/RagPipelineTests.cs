@@ -205,6 +205,56 @@ public class RagPipelineTests
     }
 
     [Fact]
+    public async Task RetrieveAsync_WithHybridSearch_CallsHybridSearchable()
+    {
+        var hybridStore = Substitute.For<IVectorStore, IHybridSearchable>();
+        var sut = new RagPipeline(
+            [_parser],
+            _chunker,
+            hybridStore,
+            _embedder,
+            chatClient: null,
+            new ChunkingOptions());
+
+        var queryEmbedding = new Embedding<float>(new float[] { 0.1f, 0.2f });
+        var searchResult = new SearchResult
+        {
+            Chunk = new TextChunk { Text = "result", DocumentId = "doc-1", ChunkIndex = 0 },
+            Score = 0.95,
+        };
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
+
+        ((IHybridSearchable)hybridStore).HybridSearchAsync(
+                Arg.Any<string>(), Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { searchResult });
+
+        var results = await sut.RetrieveAsync(
+            "test query",
+            new RetrievalOptions { UseHybridSearch = true },
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        await ((IHybridSearchable)hybridStore).Received(1).HybridSearchAsync(
+            "test query", Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WithHybridSearch_ThrowsWhenStoreNotHybrid()
+    {
+        var queryEmbedding = new Embedding<float>(new float[] { 0.1f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            _sut.RetrieveAsync(
+                "test query",
+                new RetrievalOptions { UseHybridSearch = true },
+                TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task DeleteAsync_DelegatesToVectorStore()
     {
         await _sut.DeleteAsync("doc-1", TestContext.Current.CancellationToken);

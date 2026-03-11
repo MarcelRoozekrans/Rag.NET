@@ -84,7 +84,21 @@ public sealed class RagPipeline(
             TopK = opts.TopK,
             MinScore = opts.MinScore,
             MetadataFilter = opts.MetadataFilter,
+            UseHybridSearch = opts.UseHybridSearch,
         };
+
+        if (opts.UseHybridSearch)
+        {
+            if (vectorStore is not IHybridSearchable hybrid)
+            {
+                throw new InvalidOperationException(
+                    "The registered IVectorStore does not implement IHybridSearchable. " +
+                    "Use a vector store that supports hybrid search, such as AzureAISearchVectorStore.");
+            }
+
+            return await hybrid.HybridSearchAsync(query, queryEmbeddings[0].Vector, searchOptions, cancellationToken)
+                .ConfigureAwait(false);
+        }
 
         return await vectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, cancellationToken).ConfigureAwait(false);
     }
@@ -101,7 +115,13 @@ public sealed class RagPipeline(
         }
 
         var opts = options ?? new RagOptions();
-        var retrievalOptions = new RetrievalOptions { TopK = opts.TopK, MinScore = opts.MinScore };
+        var retrievalOptions = new RetrievalOptions
+        {
+            TopK = opts.TopK,
+            MinScore = opts.MinScore,
+            MetadataFilter = opts.MetadataFilter,
+            UseHybridSearch = opts.UseHybridSearch,
+        };
         var sources = await RetrieveAsync(query, retrievalOptions, cancellationToken).ConfigureAwait(false);
 
         var context = string.Join("\n\n---\n\n",
@@ -142,7 +162,13 @@ public sealed class RagPipeline(
         }
 
         var opts = options ?? new RagOptions();
-        var retrievalOptions = new RetrievalOptions { TopK = opts.TopK, MinScore = opts.MinScore };
+        var retrievalOptions = new RetrievalOptions
+        {
+            TopK = opts.TopK,
+            MinScore = opts.MinScore,
+            MetadataFilter = opts.MetadataFilter,
+            UseHybridSearch = opts.UseHybridSearch,
+        };
         var sources = await RetrieveAsync(query, retrievalOptions, cancellationToken).ConfigureAwait(false);
 
         yield return new RagStreamingUpdate { Sources = sources };
