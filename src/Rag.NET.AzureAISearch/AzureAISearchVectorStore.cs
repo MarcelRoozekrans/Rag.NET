@@ -102,6 +102,14 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable
             },
         };
 
+        if (options.MetadataFilter is { Count: > 0 })
+        {
+            var filterClauses = options.MetadataFilter
+                .Select(kvp => $"search.ismatch('\"{kvp.Key}\":\"{kvp.Value}\"', 'metadata')")
+                .ToList();
+            searchOptions.Filter = string.Join(" and ", filterClauses);
+        }
+
         return await ExecuteSearchAsync(null, searchOptions, options.MinScore, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -129,6 +137,14 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable
             QueryType = SearchQueryType.Simple,
             SearchMode = SearchMode.Any,
         };
+
+        if (options.MetadataFilter is { Count: > 0 })
+        {
+            var filterClauses = options.MetadataFilter
+                .Select(kvp => $"search.ismatch('\"{kvp.Key}\":\"{kvp.Value}\"', 'metadata')")
+                .ToList();
+            searchOptions.Filter = string.Join(" and ", filterClauses);
+        }
 
         return await ExecuteSearchAsync(textQuery, searchOptions, options.MinScore, cancellationToken)
             .ConfigureAwait(false);
