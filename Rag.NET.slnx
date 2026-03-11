@@ -7,6 +7,7 @@
     <Project Path="src/Rag.NET.AzureAISearch/Rag.NET.AzureAISearch.csproj" />
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
     <Project Path="src/Rag.NET.Parsers.Word/Rag.NET.Parsers.Word.csproj" />
+    <Project Path="src/Rag.NET.Parsers.Excel/Rag.NET.Parsers.Excel.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -15,6 +16,7 @@
     <Project Path="tests/Rag.NET.AzureAISearch.Tests/Rag.NET.AzureAISearch.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Html.Tests/Rag.NET.Parsers.Html.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Word.Tests/Rag.NET.Parsers.Word.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Parsers.Excel.Tests/Rag.NET.Parsers.Excel.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
