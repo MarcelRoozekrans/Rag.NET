@@ -97,20 +97,34 @@ public sealed class PgVectorStore : IVectorStore, IDisposable
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
         {
-            var cmd = new NpgsqlCommand(
-                """
+            var hasFilter = options.MetadataFilter is { Count: > 0 };
+
+            var sql = """
                 SELECT document_id, chunk_index, text, metadata,
                        1 - (embedding <=> $1) AS score
                 FROM rag_chunks
                 WHERE 1 - (embedding <=> $1) >= $2
-                ORDER BY embedding <=> $1
-                LIMIT $3
-                """, conn);
+                """;
+
+            if (hasFilter)
+            {
+                sql += "\n  AND metadata @> $4::jsonb";
+            }
+
+            sql += "\nORDER BY embedding <=> $1\nLIMIT $3";
+
+            var cmd = new NpgsqlCommand(sql, conn);
             await using (cmd.ConfigureAwait(false))
             {
                 cmd.Parameters.AddWithValue(new Vector(queryEmbedding.ToArray()));
                 cmd.Parameters.AddWithValue(options.MinScore);
                 cmd.Parameters.AddWithValue(options.TopK);
+
+                if (hasFilter)
+                {
+                    cmd.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Jsonb,
+                        JsonSerializer.Serialize(options.MetadataFilter));
+                }
 
                 var results = new List<SearchResult>();
 

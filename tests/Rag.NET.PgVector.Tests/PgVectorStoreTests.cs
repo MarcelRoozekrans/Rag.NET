@@ -77,6 +77,46 @@ public class PgVectorStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Search_WithMetadataFilter_FiltersResults()
+    {
+        var chunks = new List<EmbeddedChunk>
+        {
+            new()
+            {
+                Chunk = new TextChunk
+                {
+                    Text = "engineering doc", DocumentId = "doc-1", ChunkIndex = 0,
+                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                },
+                Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk
+                {
+                    Text = "marketing doc", DocumentId = "doc-2", ChunkIndex = 0,
+                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "marketing" },
+                },
+                Embedding = new float[] { 0.9f, 0.1f, 0.0f },
+            },
+        };
+
+        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+
+        var results = await _sut.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions
+            {
+                TopK = 10,
+                MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("engineering doc", results[0].Chunk.Text);
+    }
+
+    [Fact]
     public async Task Search_RespectsMinScore()
     {
         var chunks = new List<EmbeddedChunk>
