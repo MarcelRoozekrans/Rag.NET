@@ -77,7 +77,7 @@ public sealed class PgVectorStore : IVectorStore, IDisposable
                 await using (cmd.ConfigureAwait(false))
                 {
                     cmd.Parameters.AddWithValue(chunk.Chunk.DocumentId);
-                    cmd.Parameters.AddWithValue(chunk.Chunk.ChunkIndex);
+                    cmd.Parameters.Add(new NpgsqlParameter<int> { TypedValue = chunk.Chunk.ChunkIndex });
                     cmd.Parameters.AddWithValue(chunk.Chunk.Text);
                     cmd.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Jsonb,
                         JsonSerializer.Serialize(chunk.Chunk.Metadata));

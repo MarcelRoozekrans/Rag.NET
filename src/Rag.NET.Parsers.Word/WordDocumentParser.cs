@@ -86,12 +86,12 @@ public sealed class WordDocumentParser : IDocumentParser
         int? currentHeadingLevel = null;
         var currentContent = new StringBuilder();
 
-        foreach (var paragraph in paragraphs)
+        for (int i = 0; i < paragraphs.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var headingLevel = GetHeadingLevel(paragraph);
-            var text = paragraph.InnerText.Trim();
+            var headingLevel = GetHeadingLevel(paragraphs[i]);
+            var text = paragraphs[i].InnerText.Trim();
 
             if (headingLevel is not null)
             {
@@ -164,9 +164,9 @@ public sealed class WordDocumentParser : IDocumentParser
     private static string GetAllText(List<Paragraph> paragraphs)
     {
         var sb = new StringBuilder();
-        foreach (var p in paragraphs)
+        for (int i = 0; i < paragraphs.Count; i++)
         {
-            var text = p.InnerText.Trim();
+            var text = paragraphs[i].InnerText.Trim();
             if (!string.IsNullOrWhiteSpace(text))
             {
                 sb.AppendLine(text);

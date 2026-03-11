@@ -9,8 +9,12 @@ namespace Rag.NET.Parsers.Html;
 
 public sealed class HtmlDocumentParser : IDocumentParser
 {
-    private static readonly string[] s_headingTags = ["h1", "h2", "h3", "h4", "h5", "h6"];
-    private static readonly string[] s_removeTags = ["script", "style", "nav", "footer", "header"];
+    private static readonly HashSet<string> s_headingTags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "h1", "h2", "h3", "h4", "h5", "h6",
+    };
+
+    private static readonly string s_removeSelector = string.Join(", ", "script", "style", "nav", "footer", "header");
 
     public bool CanParse(string contentType) =>
         contentType.Equals("text/html", StringComparison.OrdinalIgnoreCase);
@@ -32,7 +36,7 @@ public sealed class HtmlDocumentParser : IDocumentParser
             yield break;
         }
 
-        var headings = body.QuerySelectorAll(string.Join(", ", s_headingTags)).ToList();
+        var headings = body.QuerySelectorAll("h1, h2, h3, h4, h5, h6").ToList();
 
         if (headings.Count == 0)
         {
@@ -59,19 +63,19 @@ public sealed class HtmlDocumentParser : IDocumentParser
 
     private static void RemoveNonContentElements(IDocument document)
     {
-        foreach (var tag in s_removeTags)
+        var elements = document.QuerySelectorAll(s_removeSelector).ToList();
+        for (int i = 0; i < elements.Count; i++)
         {
-            foreach (var element in document.QuerySelectorAll(tag).ToList())
-            {
-                element.Remove();
-            }
+            elements[i].Remove();
         }
     }
 
     private static void ConvertLinksToTextUrl(IDocument document)
     {
-        foreach (var link in document.QuerySelectorAll("a[href]").ToList())
+        var links = document.QuerySelectorAll("a[href]").ToList();
+        for (int i = 0; i < links.Count; i++)
         {
+            var link = links[i];
             var href = link.GetAttribute("href");
             var text = link.TextContent.Trim();
             if (!string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(href))
@@ -88,7 +92,7 @@ public sealed class HtmlDocumentParser : IDocumentParser
         sectionContent.AppendLine(headingText);
 
         var sibling = heading.NextElementSibling;
-        while (sibling is not null && !s_headingTags.Contains(sibling.TagName, StringComparer.OrdinalIgnoreCase))
+        while (sibling is not null && !s_headingTags.Contains(sibling.TagName))
         {
             var siblingText = GetCleanText(sibling);
             if (!string.IsNullOrWhiteSpace(siblingText))

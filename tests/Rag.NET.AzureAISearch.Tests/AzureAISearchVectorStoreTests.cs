@@ -40,9 +40,9 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
             {
                 await indexClient.DeleteIndexAsync(_indexName, TestContext.Current.CancellationToken);
             }
-            catch
+            catch (Azure.RequestFailedException)
             {
-                // Best effort cleanup
+                // Best effort cleanup — index may not exist
             }
         }
     }
