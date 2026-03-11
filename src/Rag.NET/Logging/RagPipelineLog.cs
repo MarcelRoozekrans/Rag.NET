@@ -1,0 +1,24 @@
+using Microsoft.Extensions.Logging;
+
+namespace Rag.NET.Logging;
+
+internal static partial class RagPipelineLog
+{
+    [LoggerMessage(Level = LogLevel.Information, Message = "Ingesting document {DocumentId} ({ContentType})")]
+    internal static partial void IngestStarted(ILogger logger, string documentId, string? contentType);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Ingested document {DocumentId}: {ChunksStored} chunk(s) stored")]
+    internal static partial void IngestCompleted(ILogger logger, string documentId, int chunksStored);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to ingest document {DocumentId}")]
+    internal static partial void IngestFailed(ILogger logger, string documentId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Retrieving chunks (TopK={TopK})")]
+    internal static partial void RetrieveStarted(ILogger logger, int topK);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Retrieved {ResultCount} chunk(s)")]
+    internal static partial void RetrieveCompleted(ILogger logger, int resultCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Asking with query (TopK={TopK})")]
+    internal static partial void AskStarted(ILogger logger, int topK);
+}
