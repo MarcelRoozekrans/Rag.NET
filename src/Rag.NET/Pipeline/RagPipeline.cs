@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
@@ -36,6 +37,16 @@ public sealed class RagPipeline(
             {
                 chunks.Add(chunk);
             }
+        }
+
+        foreach (ref var chunk in CollectionsMarshal.AsSpan(chunks))
+        {
+            foreach (var tag in metadata.Tags)
+            {
+                chunk.Metadata.TryAdd(tag.Key, tag.Value);
+            }
+            chunk.Metadata.TryAdd("document_id", metadata.DocumentId);
+            chunk.Metadata.TryAdd("file_name", metadata.FileName);
         }
 
         if (chunks.Count == 0)

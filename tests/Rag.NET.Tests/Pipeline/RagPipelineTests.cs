@@ -164,6 +164,46 @@ public class RagPipelineTests
         Assert.Equal(3, updates.Count);
     }
 
+    [Fact]
+    public async Task IngestAsync_PropagatesMetadataTagsToChunks()
+    {
+        var metadata = new DocumentMetadata
+        {
+            DocumentId = "doc-1",
+            FileName = "test.txt",
+            ContentType = "text/plain",
+            Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["department"] = "engineering",
+                ["year"] = "2026",
+            },
+        };
+
+        var section = new DocumentSection { Text = "Hello world", DocumentId = "doc-1", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "Hello world", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f, 0.2f, 0.3f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello world"));
+        await _sut.IngestAsync(stream, metadata, TestContext.Current.CancellationToken);
+
+        await _vectorStore.Received(1).StoreAsync(
+            Arg.Is<IReadOnlyList<EmbeddedChunk>>(chunks =>
+                chunks[0].Chunk.Metadata.ContainsKey("department") &&
+                chunks[0].Chunk.Metadata["department"] == "engineering" &&
+                chunks[0].Chunk.Metadata.ContainsKey("document_id") &&
+                chunks[0].Chunk.Metadata["document_id"] == "doc-1" &&
+                chunks[0].Chunk.Metadata.ContainsKey("file_name") &&
+                chunks[0].Chunk.Metadata["file_name"] == "test.txt"),
+            Arg.Any<CancellationToken>());
+    }
+
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)
