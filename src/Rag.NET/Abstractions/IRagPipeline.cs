@@ -24,4 +24,6 @@ public interface IRagPipeline
         string query,
         RagOptions? options = null,
         CancellationToken cancellationToken = default);
+
+    Task DeleteAsync(string documentId, CancellationToken cancellationToken = default);
 }

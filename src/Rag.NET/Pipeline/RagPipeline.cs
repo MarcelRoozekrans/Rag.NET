@@ -158,6 +158,11 @@ public sealed class RagPipeline(
         }
     }
 
+    public Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        return vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
+    }
+
     private static (List<ChatMessage> Messages, ChatOptions Options) BuildRagMessages(
         IReadOnlyList<SearchResult> sources,
         string query,

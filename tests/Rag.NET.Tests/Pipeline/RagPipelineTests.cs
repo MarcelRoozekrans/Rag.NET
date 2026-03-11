@@ -204,6 +204,13 @@ public class RagPipelineTests
             Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task DeleteAsync_DelegatesToVectorStore()
+    {
+        await _sut.DeleteAsync("doc-1", TestContext.Current.CancellationToken);
+        await _vectorStore.Received(1).DeleteByDocumentIdAsync("doc-1", Arg.Any<CancellationToken>());
+    }
+
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)
