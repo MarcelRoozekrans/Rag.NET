@@ -23,4 +23,7 @@
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/Rag.NET.Benchmarks/Rag.NET.Benchmarks.csproj" />
+  </Folder>
 </Solution>
