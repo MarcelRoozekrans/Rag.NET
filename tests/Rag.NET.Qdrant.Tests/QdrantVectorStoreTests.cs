@@ -1,0 +1,123 @@
+using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Containers;
+using Rag.NET.Abstractions;
+using Rag.NET.Models;
+using Rag.NET.Models.Options;
+using Xunit;
+
+namespace Rag.NET.Qdrant.Tests;
+
+public class QdrantVectorStoreTests : IAsyncLifetime
+{
+    private readonly IContainer _qdrant = new ContainerBuilder("qdrant/qdrant:latest")
+        .WithPortBinding(6334, true)
+        .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Actix runtime found"))
+        .Build();
+
+    private QdrantVectorStore _sut = null!;
+
+    public async ValueTask InitializeAsync()
+    {
+        await _qdrant.StartAsync(TestContext.Current.CancellationToken);
+        var port = _qdrant.GetMappedPublicPort(6334);
+        _sut = new QdrantVectorStore("localhost", port, "test-collection", vectorDimensions: 3);
+        await _sut.InitializeAsync(TestContext.Current.CancellationToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _sut.Dispose();
+        await _qdrant.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task StoreAndSearch_ReturnsRelevantResults()
+    {
+        var chunks = new List<EmbeddedChunk>
+        {
+            new()
+            {
+                Chunk = new TextChunk { Text = "cats are great", DocumentId = "doc-1", ChunkIndex = 0 },
+                Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk { Text = "dogs are great", DocumentId = "doc-1", ChunkIndex = 1 },
+                Embedding = new float[] { 0.0f, 1.0f, 0.0f },
+            },
+        };
+
+        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+
+        var results = await _sut.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 1 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("cats are great", results[0].Chunk.Text);
+    }
+
+    [Fact]
+    public async Task DeleteByDocumentId_RemovesAllChunksForDocument()
+    {
+        var chunks = new List<EmbeddedChunk>
+        {
+            new()
+            {
+                Chunk = new TextChunk { Text = "text1", DocumentId = "doc-to-delete", ChunkIndex = 0 },
+                Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+            },
+        };
+
+        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+        await _sut.DeleteByDocumentIdAsync("doc-to-delete", TestContext.Current.CancellationToken);
+
+        var results = await _sut.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 10 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task Search_RespectsMinScore()
+    {
+        var chunks = new List<EmbeddedChunk>
+        {
+            new()
+            {
+                Chunk = new TextChunk { Text = "close match", DocumentId = "doc-1", ChunkIndex = 0 },
+                Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk { Text = "far match", DocumentId = "doc-1", ChunkIndex = 1 },
+                Embedding = new float[] { 0.0f, 0.0f, 1.0f },
+            },
+        };
+
+        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+
+        var results = await _sut.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 10, MinScore = 0.9 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("close match", results[0].Chunk.Text);
+    }
+
+    [Fact]
+    public async Task CollectionManageable_CreateAndDeleteCollection()
+    {
+        ICollectionManageable manageable = _sut;
+
+        await manageable.CreateCollectionAsync("temp-collection", 3, TestContext.Current.CancellationToken);
+        Assert.True(await manageable.CollectionExistsAsync("temp-collection", TestContext.Current.CancellationToken));
+
+        await manageable.DeleteCollectionAsync("temp-collection", TestContext.Current.CancellationToken);
+        Assert.False(await manageable.CollectionExistsAsync("temp-collection", TestContext.Current.CancellationToken));
+    }
+}
