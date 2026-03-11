@@ -13,6 +13,7 @@ public static class PgVectorBuilderExtensions
     {
         var store = new PgVectorStore(connectionString, vectorDimensions);
         builder.Services.AddSingleton<IVectorStore>(store);
+        builder.Services.AddSingleton<ICollectionManageable>(store);
         return builder;
     }
 }

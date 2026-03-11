@@ -8,7 +8,7 @@ using Rag.NET.Models.Options;
 
 namespace Rag.NET.PgVector;
 
-public sealed class PgVectorStore : IVectorStore, IDisposable
+public sealed class PgVectorStore : IVectorStore, ICollectionManageable, IDisposable
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly int _vectorDimensions;
@@ -168,6 +168,70 @@ public sealed class PgVectorStore : IVectorStore, IDisposable
             {
                 cmd.Parameters.AddWithValue(documentId);
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    public async Task CreateCollectionAsync(string name, int vectorDimensions, CancellationToken cancellationToken = default)
+    {
+        var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using (conn.ConfigureAwait(false))
+        {
+            var enableExt = new NpgsqlCommand("CREATE EXTENSION IF NOT EXISTS vector", conn);
+            await using (enableExt.ConfigureAwait(false))
+            {
+                await enableExt.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            await conn.ReloadTypesAsync().ConfigureAwait(false);
+
+            var sql = $$"""
+                CREATE TABLE IF NOT EXISTS {{name}} (
+                    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                    document_id TEXT NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    metadata JSONB NOT NULL DEFAULT '{}',
+                    embedding vector({{vectorDimensions}}) NOT NULL
+                )
+                """;
+            var cmd = new NpgsqlCommand(sql, conn);
+            await using (cmd.ConfigureAwait(false))
+            {
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            var indexCmd = new NpgsqlCommand($"CREATE INDEX IF NOT EXISTS idx_{name}_document_id ON {name} (document_id)", conn);
+            await using (indexCmd.ConfigureAwait(false))
+            {
+                await indexCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    public async Task DeleteCollectionAsync(string name, CancellationToken cancellationToken = default)
+    {
+        var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using (conn.ConfigureAwait(false))
+        {
+            var cmd = new NpgsqlCommand($"DROP TABLE IF EXISTS {name}", conn);
+            await using (cmd.ConfigureAwait(false))
+            {
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    public async Task<bool> CollectionExistsAsync(string name, CancellationToken cancellationToken = default)
+    {
+        var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using (conn.ConfigureAwait(false))
+        {
+            var cmd = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = $1)", conn);
+            await using (cmd.ConfigureAwait(false))
+            {
+                cmd.Parameters.AddWithValue(name);
+                var result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                return result is true;
             }
         }
     }

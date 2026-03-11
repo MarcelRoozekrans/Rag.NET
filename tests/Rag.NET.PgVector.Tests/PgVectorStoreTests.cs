@@ -1,3 +1,4 @@
+using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Testcontainers.PostgreSql;
@@ -142,5 +143,17 @@ public class PgVectorStoreTests : IAsyncLifetime
 
         Assert.Single(results);
         Assert.Equal("close match", results[0].Chunk.Text);
+    }
+
+    [Fact]
+    public async Task CollectionManageable_CreateAndDeleteCollection()
+    {
+        ICollectionManageable manageable = _sut;
+
+        await manageable.CreateCollectionAsync("temp_collection", 3, TestContext.Current.CancellationToken);
+        Assert.True(await manageable.CollectionExistsAsync("temp_collection", TestContext.Current.CancellationToken));
+
+        await manageable.DeleteCollectionAsync("temp_collection", TestContext.Current.CancellationToken);
+        Assert.False(await manageable.CollectionExistsAsync("temp_collection", TestContext.Current.CancellationToken));
     }
 }
