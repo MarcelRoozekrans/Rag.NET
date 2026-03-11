@@ -1,4 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Resilience;
+using Polly;
+using Polly.Retry;
 using Rag.NET.Abstractions;
 using Rag.NET.Models.Options;
 
@@ -26,6 +29,29 @@ public sealed class RagBuilder(IServiceCollection services)
     public RagBuilder AddParser<TParser>() where TParser : class, IDocumentParser
     {
         Services.AddSingleton<IDocumentParser, TParser>();
+        return this;
+    }
+
+    public RagBuilder ConfigureResilience(Action<ResiliencePipelineBuilder>? configure = null)
+    {
+        Services.AddResiliencePipeline("rag-net", builder =>
+        {
+            if (configure is not null)
+            {
+                configure(builder);
+            }
+            else
+            {
+                builder.AddRetry(new RetryStrategyOptions
+                {
+                    MaxRetryAttempts = 3,
+                    Delay = TimeSpan.FromSeconds(1),
+                    BackoffType = DelayBackoffType.Exponential,
+                    UseJitter = true,
+                });
+            }
+        });
+
         return this;
     }
 }

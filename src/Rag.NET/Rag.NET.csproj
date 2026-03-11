@@ -10,6 +10,7 @@
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="9.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Resilience" Version="9.*" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,10 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Resilience;
+using Polly;
+using Polly.Registry;
 using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
 using Rag.NET.Models.Options;
@@ -15,7 +19,6 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         Action<RagBuilder>? configure = null)
     {
-        // Register defaults
         services.AddSingleton<IDocumentParser, TextDocumentParser>();
         services.AddSingleton<IDocumentParser, MarkdownDocumentParser>();
 
@@ -30,8 +33,11 @@ public static class ServiceCollectionExtensions
             var embedder = sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
             var chatClient = sp.GetService<IChatClient>();
             var options = sp.GetRequiredService<ChunkingOptions>();
+            var logger = sp.GetService<ILogger<RagPipeline>>();
+            var resilienceProvider = sp.GetService<ResiliencePipelineProvider<string>>();
+            var resilience = resilienceProvider?.GetPipeline("rag-net");
 
-            return new RagPipeline(parsers, chunker, store, embedder, chatClient, options);
+            return new RagPipeline(parsers, chunker, store, embedder, chatClient, options, logger, resilience);
         });
 
         var builder = new RagBuilder(services);

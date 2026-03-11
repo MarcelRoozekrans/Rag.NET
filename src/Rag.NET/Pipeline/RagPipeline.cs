@@ -1,9 +1,14 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Polly;
 using Rag.NET.Abstractions;
+using Rag.NET.Logging;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Pipeline;
 
@@ -13,8 +18,13 @@ public sealed class RagPipeline(
     IVectorStore vectorStore,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     IChatClient? chatClient,
-    ChunkingOptions chunkingOptions) : IRagPipeline
+    ChunkingOptions chunkingOptions,
+    ILogger<RagPipeline>? logger = null,
+    ResiliencePipeline? resiliencePipeline = null) : IRagPipeline
 {
+    private readonly ILogger _logger = (ILogger?)logger ?? NullLogger.Instance;
+    private readonly ResiliencePipeline? _resiliencePipeline = resiliencePipeline;
+
     private const string DefaultSystemPrompt =
         "Answer the user's question based only on the provided context. " +
         "If the context doesn't contain enough information, say so. " +
