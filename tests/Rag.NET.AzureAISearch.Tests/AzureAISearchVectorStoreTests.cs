@@ -1,4 +1,5 @@
 using Azure;
+using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
@@ -151,5 +152,21 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
 
         Assert.Single(results);
         Assert.Equal("engineering doc", results[0].Chunk.Text);
+    }
+
+    [Fact]
+    public async Task CollectionManageable_CreateAndDeleteCollection()
+    {
+        Assert.SkipWhen(_sut is null, "AZURE_SEARCH_ENDPOINT and AZURE_SEARCH_API_KEY not set");
+
+        ICollectionManageable manageable = (ICollectionManageable)_sut!;
+        var tempIndex = $"temp-{Guid.NewGuid():N}"[..24];
+
+        await manageable.CreateCollectionAsync(tempIndex, 3, TestContext.Current.CancellationToken);
+        Assert.True(await manageable.CollectionExistsAsync(tempIndex, TestContext.Current.CancellationToken));
+
+        await manageable.DeleteCollectionAsync(tempIndex, TestContext.Current.CancellationToken);
+        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        Assert.False(await manageable.CollectionExistsAsync(tempIndex, TestContext.Current.CancellationToken));
     }
 }

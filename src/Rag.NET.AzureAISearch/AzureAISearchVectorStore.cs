@@ -10,7 +10,7 @@ using RagSearchOptions = Rag.NET.Models.Options.SearchOptions;
 
 namespace Rag.NET.AzureAISearch;
 
-public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable
+public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable
 {
     private readonly SearchIndexClient _indexClient;
     private readonly SearchClient _searchClient;
@@ -175,6 +175,56 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable
             var batch = IndexDocumentsBatch.Delete("id", idsToDelete);
             await _searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
+        }
+    }
+
+    public async Task CreateCollectionAsync(string name, int vectorDimensions, CancellationToken cancellationToken = default)
+    {
+        var fields = new List<SearchField>
+        {
+            new SimpleField("id", SearchFieldDataType.String) { IsKey = true, IsFilterable = true },
+            new SimpleField("document_id", SearchFieldDataType.String) { IsFilterable = true },
+            new SimpleField("chunk_index", SearchFieldDataType.Int32),
+            new SearchableField("text"),
+            new SimpleField("metadata", SearchFieldDataType.String),
+            new SearchField("embedding", SearchFieldDataType.Collection(SearchFieldDataType.Single))
+            {
+                VectorSearchDimensions = vectorDimensions,
+                VectorSearchProfileName = "default-profile",
+            },
+        };
+
+        var vectorSearch = new VectorSearch();
+        vectorSearch.Algorithms.Add(new HnswAlgorithmConfiguration("default-algorithm"));
+        vectorSearch.Profiles.Add(new VectorSearchProfile("default-profile", "default-algorithm"));
+
+        var index = new SearchIndex(name)
+        {
+            Fields = fields,
+            VectorSearch = vectorSearch,
+        };
+
+        await _indexClient.CreateOrUpdateIndexAsync(index, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task DeleteCollectionAsync(string name, CancellationToken cancellationToken = default)
+    {
+        await _indexClient.DeleteIndexAsync(name, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<bool> CollectionExistsAsync(string name, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _indexClient.GetIndexAsync(name, cancellationToken)
+                .ConfigureAwait(false);
+            return true;
+        }
+        catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+        {
+            return false;
         }
     }
 

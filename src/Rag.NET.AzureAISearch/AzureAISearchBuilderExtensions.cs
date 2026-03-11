@@ -17,6 +17,7 @@ public static class AzureAISearchBuilderExtensions
         var store = new AzureAISearchVectorStore(endpoint, indexName, credential, vectorDimensions);
         builder.Services.AddSingleton<IVectorStore>(store);
         builder.Services.AddSingleton<IHybridSearchable>(store);
+        builder.Services.AddSingleton<ICollectionManageable>(store);
         return builder;
     }
 }
