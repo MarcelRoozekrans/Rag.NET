@@ -1,67 +1,145 @@
+using System.ClientModel;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
+using Rag.NET.Parsers.Pdf;
 using Rag.NET.PgVector;
+using OpenAI;
+using Testcontainers.PostgreSql;
 
-var builder = WebApplication.CreateBuilder(args);
+// --- Start PostgreSQL container ---
+Console.WriteLine("Starting PostgreSQL container...");
+var postgres = new PostgreSqlBuilder("pgvector/pgvector:pg17").Build();
+await postgres.StartAsync();
+var connectionString = postgres.GetConnectionString();
+Console.WriteLine("PostgreSQL ready.");
 
-var connectionString = builder.Configuration.GetConnectionString("PostgreSQL")!;
-var apiKey = builder.Configuration["OpenAI:ApiKey"]!;
-var embeddingModel = builder.Configuration["OpenAI:EmbeddingModel"] ?? "text-embedding-3-small";
-var chatModel = builder.Configuration["OpenAI:ChatModel"] ?? "gpt-4o-mini";
-
-builder.Services.AddEmbeddingGenerator(
-    new OpenAI.Embeddings.EmbeddingClient(embeddingModel, apiKey).AsIEmbeddingGenerator());
-
-builder.Services.AddChatClient(
-    new OpenAI.Chat.ChatClient(chatModel, apiKey).AsIChatClient());
-
-builder.Services.AddRagNet(rag => rag
-    .UsePgVector(connectionString));
-
-var app = builder.Build();
-
-// Initialize pgvector schema
-var vectorStore = app.Services.GetRequiredService<IVectorStore>() as PgVectorStore;
-if (vectorStore is not null)
+try
 {
-    await vectorStore.InitializeAsync().ConfigureAwait(false);
-}
+    // --- Configure services ---
+    var provider = Environment.GetEnvironmentVariable("RAG_PROVIDER") ?? "ollama";
+    var services = new ServiceCollection();
 
-app.MapPost("/ingest", async (IRagPipeline pipeline, HttpRequest request) =>
-{
-    var form = await request.ReadFormAsync();
-    var file = form.Files.GetFile("file")
-        ?? throw new BadHttpRequestException("No file provided.");
-
-    var metadata = new DocumentMetadata
+    if (provider.Equals("openai", StringComparison.OrdinalIgnoreCase))
     {
-        DocumentId = Guid.NewGuid().ToString(),
-        FileName = file.FileName,
-        ContentType = file.ContentType,
-    };
+        var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+            ?? throw new InvalidOperationException("Set OPENAI_API_KEY environment variable.");
 
-    using var stream = file.OpenReadStream();
-    var result = await pipeline.IngestAsync(stream, metadata);
+        var chatModel = Environment.GetEnvironmentVariable("OPENAI_CHAT_MODEL") ?? "gpt-4o-mini";
+        var embeddingModel = Environment.GetEnvironmentVariable("OPENAI_EMBEDDING_MODEL") ?? "text-embedding-3-small";
+        var vectorDimensions = 1536;
 
-    return Results.Ok(result);
-});
+        services.AddChatClient(
+            new OpenAI.Chat.ChatClient(chatModel, apiKey).AsIChatClient());
+        services.AddEmbeddingGenerator(
+            new OpenAI.Embeddings.EmbeddingClient(embeddingModel, apiKey).AsIEmbeddingGenerator());
 
-app.MapPost("/ask", async (IRagPipeline pipeline, AskRequest request) =>
+        services.AddRagNet(rag => rag
+            .UsePgVector(connectionString, vectorDimensions)
+            .AddPdfParser());
+
+        Console.WriteLine($"Using OpenAI (chat: {chatModel}, embeddings: {embeddingModel})");
+    }
+    else
+    {
+        var ollamaEndpoint = Environment.GetEnvironmentVariable("OLLAMA_ENDPOINT") ?? "http://localhost:11434/v1";
+        var chatModel = Environment.GetEnvironmentVariable("OLLAMA_CHAT_MODEL") ?? "llama3.2";
+        var embeddingModel = Environment.GetEnvironmentVariable("OLLAMA_EMBEDDING_MODEL") ?? "all-minilm";
+        var vectorDimensions = 384;
+
+        var ollamaOptions = new OpenAIClientOptions { Endpoint = new Uri(ollamaEndpoint) };
+        var ollamaCredential = new ApiKeyCredential("ollama");
+
+        services.AddChatClient(
+            new OpenAI.Chat.ChatClient(chatModel, ollamaCredential, ollamaOptions).AsIChatClient());
+        services.AddEmbeddingGenerator(
+            new OpenAI.Embeddings.EmbeddingClient(embeddingModel, ollamaCredential, ollamaOptions).AsIEmbeddingGenerator());
+
+        services.AddRagNet(rag => rag
+            .UsePgVector(connectionString, vectorDimensions)
+            .AddPdfParser());
+
+        Console.WriteLine($"Using Ollama at {ollamaEndpoint} (chat: {chatModel}, embeddings: {embeddingModel})");
+    }
+
+    var serviceProvider = services.BuildServiceProvider();
+
+    // --- Initialize vector store ---
+    var vectorStore = serviceProvider.GetRequiredService<IVectorStore>() as PgVectorStore;
+    if (vectorStore is not null)
+    {
+        await vectorStore.InitializeAsync();
+    }
+
+    // --- Ingest documents ---
+    var pipeline = serviceProvider.GetRequiredService<IRagPipeline>();
+    var documentsPath = Path.Combine(AppContext.BaseDirectory, "documents");
+
+    if (Directory.Exists(documentsPath))
+    {
+        var files = Directory.GetFiles(documentsPath);
+        Console.WriteLine($"\nIngesting {files.Length} documents...");
+
+        foreach (var file in files)
+        {
+            var fileName = Path.GetFileName(file);
+            var contentType = Path.GetExtension(file).ToLowerInvariant() switch
+            {
+                ".md" => "text/markdown",
+                ".txt" => "text/plain",
+                ".pdf" => "application/pdf",
+                ".csv" => "text/csv",
+                ".json" => "application/json",
+                ".html" => "text/html",
+                _ => "text/plain",
+            };
+
+            var metadata = new DocumentMetadata
+            {
+                DocumentId = fileName,
+                FileName = fileName,
+                ContentType = contentType,
+            };
+
+            using var stream = File.OpenRead(file);
+            var result = await pipeline.IngestAsync(stream, metadata);
+            Console.WriteLine($"  {fileName}: {result.ChunksStored} chunks stored");
+        }
+    }
+
+    // --- Interactive Q&A loop ---
+    Console.WriteLine("\nReady! Ask a question (or 'quit' to exit):\n");
+
+    while (true)
+    {
+        Console.Write("> ");
+        var input = Console.ReadLine();
+
+        if (string.IsNullOrWhiteSpace(input) || input.Equals("quit", StringComparison.OrdinalIgnoreCase))
+        {
+            break;
+        }
+
+        await foreach (var update in pipeline.AskStreamingAsync(input))
+        {
+            if (update.Sources is { Count: > 0 })
+            {
+                Console.WriteLine($"\n[Found {update.Sources.Count} source(s)]");
+            }
+
+            if (update.TextDelta is not null)
+            {
+                Console.Write(update.TextDelta);
+            }
+        }
+
+        Console.WriteLine("\n");
+    }
+}
+finally
 {
-    var response = await pipeline.AskAsync(request.Question);
-    return Results.Ok(response);
-});
-
-app.MapPost("/search", async (IRagPipeline pipeline, SearchRequest request) =>
-{
-    var results = await pipeline.RetrieveAsync(request.Query);
-    return Results.Ok(results);
-});
-
-app.Run();
-
-internal sealed record AskRequest(string Question);
-
-internal sealed record SearchRequest(string Query);
+    Console.WriteLine("Stopping PostgreSQL container...");
+    await postgres.DisposeAsync();
+}
