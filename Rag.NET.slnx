@@ -8,6 +8,7 @@
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
     <Project Path="src/Rag.NET.Parsers.Word/Rag.NET.Parsers.Word.csproj" />
     <Project Path="src/Rag.NET.Parsers.Excel/Rag.NET.Parsers.Excel.csproj" />
+    <Project Path="src/Rag.NET.Parsers.PowerPoint/Rag.NET.Parsers.PowerPoint.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -17,6 +18,7 @@
     <Project Path="tests/Rag.NET.Parsers.Html.Tests/Rag.NET.Parsers.Html.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Word.Tests/Rag.NET.Parsers.Word.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Excel.Tests/Rag.NET.Parsers.Excel.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Parsers.PowerPoint.Tests/Rag.NET.Parsers.PowerPoint.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
