@@ -57,6 +57,11 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
                     ["metadata"] = JsonSerializer.Serialize(chunk.Chunk.Metadata),
                 },
             });
+
+            foreach (var kvp in chunk.Chunk.Metadata)
+            {
+                points[^1].Payload[$"meta_{kvp.Key}"] = kvp.Value;
+            }
         }
 
         await _client.UpsertAsync(_collectionName, points, cancellationToken: cancellationToken)
@@ -68,9 +73,20 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
         SearchOptions options,
         CancellationToken cancellationToken = default)
     {
+        Filter? filter = null;
+        if (options.MetadataFilter is { Count: > 0 })
+        {
+            filter = new Filter();
+            foreach (var kvp in options.MetadataFilter)
+            {
+                filter.Must.Add(MatchKeyword($"meta_{kvp.Key}", kvp.Value));
+            }
+        }
+
         var results = await _client.SearchAsync(
             _collectionName,
             queryEmbedding.ToArray(),
+            filter: filter,
             limit: (ulong)options.TopK,
             scoreThreshold: (float)options.MinScore,
             cancellationToken: cancellationToken).ConfigureAwait(false);
