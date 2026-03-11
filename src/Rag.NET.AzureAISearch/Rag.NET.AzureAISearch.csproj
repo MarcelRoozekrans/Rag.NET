@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.AzureAISearch</RootNamespace>
+    <PackageId>Rag.NET.AzureAISearch</PackageId>
+    <Description>Azure AI Search vector store for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Azure.Search.Documents" Version="11.*" />
+  </ItemGroup>
+
+</Project>

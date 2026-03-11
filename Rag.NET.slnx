@@ -4,11 +4,13 @@
     <Project Path="src/Rag.NET.PgVector/Rag.NET.PgVector.csproj" />
     <Project Path="src/Rag.NET.Parsers.Pdf/Rag.NET.Parsers.Pdf.csproj" />
     <Project Path="src/Rag.NET.Qdrant/Rag.NET.Qdrant.csproj" />
+    <Project Path="src/Rag.NET.AzureAISearch/Rag.NET.AzureAISearch.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
     <Project Path="tests/Rag.NET.PgVector.Tests/Rag.NET.PgVector.Tests.csproj" />
     <Project Path="tests/Rag.NET.Qdrant.Tests/Rag.NET.Qdrant.Tests.csproj" />
+    <Project Path="tests/Rag.NET.AzureAISearch.Tests/Rag.NET.AzureAISearch.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
