@@ -10,11 +10,22 @@ public static class LostInTheMiddleReorderer
     /// (Liu et al. 2023) where LLMs attend less to content in the middle of long contexts.
     /// </summary>
     /// <param name="results">Results sorted by descending relevance score (best first).</param>
+    /// <remarks>
+    /// The precondition that <paramref name="results"/> must be pre-sorted in descending order
+    /// is not validated — unsorted input produces meaningless output.
+    /// </remarks>
     public static IReadOnlyList<SearchResult> Reorder(IReadOnlyList<SearchResult> results)
     {
+        ArgumentNullException.ThrowIfNull(results);
+
+        if (results.Count == 0)
+        {
+            return Array.Empty<SearchResult>();
+        }
+
         if (results.Count <= 2)
         {
-            return results;
+            return results.ToArray();
         }
 
         var reordered = new SearchResult[results.Count];

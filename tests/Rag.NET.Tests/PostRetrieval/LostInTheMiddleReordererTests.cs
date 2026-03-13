@@ -13,6 +13,12 @@ public class LostInTheMiddleReordererTests
     };
 
     [Fact]
+    public void Reorder_NullList_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() => LostInTheMiddleReorderer.Reorder(null!));
+    }
+
+    [Fact]
     public void Reorder_EmptyList_ReturnsEmpty()
     {
         var result = LostInTheMiddleReorderer.Reorder([]);
@@ -31,6 +37,7 @@ public class LostInTheMiddleReordererTests
     [Fact]
     public void Reorder_TwoItems_ReturnsBestFirstSecondBestLast()
     {
+        // Two items: early-return path, order is unchanged
         var items = new[] { MakeResult(0.9), MakeResult(0.8) };
         var result = LostInTheMiddleReorderer.Reorder(items);
         Assert.Equal(0.9, result[0].Score);
@@ -43,6 +50,7 @@ public class LostInTheMiddleReordererTests
         // Input: [0.9, 0.8, 0.7] → Output: [0.9, 0.7, 0.8]
         var items = new[] { MakeResult(0.9), MakeResult(0.8), MakeResult(0.7) };
         var result = LostInTheMiddleReorderer.Reorder(items);
+        Assert.Equal(3, result.Count);
         Assert.Equal(0.9, result[0].Score);
         Assert.Equal(0.7, result[1].Score);
         Assert.Equal(0.8, result[2].Score);
@@ -54,6 +62,7 @@ public class LostInTheMiddleReordererTests
         // Input: [0.9, 0.8, 0.7, 0.6] → Output: [0.9, 0.7, 0.6, 0.8]
         var items = new[] { MakeResult(0.9), MakeResult(0.8), MakeResult(0.7), MakeResult(0.6) };
         var result = LostInTheMiddleReorderer.Reorder(items);
+        Assert.Equal(4, result.Count);
         Assert.Equal(0.9, result[0].Score);
         Assert.Equal(0.7, result[1].Score);
         Assert.Equal(0.6, result[2].Score);
@@ -66,6 +75,7 @@ public class LostInTheMiddleReordererTests
         // Input: [0.9, 0.8, 0.7, 0.6, 0.5] → Output: [0.9, 0.7, 0.5, 0.6, 0.8]
         var items = new[] { MakeResult(0.9), MakeResult(0.8), MakeResult(0.7), MakeResult(0.6), MakeResult(0.5) };
         var result = LostInTheMiddleReorderer.Reorder(items);
+        Assert.Equal(5, result.Count);
         Assert.Equal(0.9, result[0].Score);
         Assert.Equal(0.7, result[1].Score);
         Assert.Equal(0.5, result[2].Score);
