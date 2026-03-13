@@ -327,7 +327,7 @@ public class RagPipelineTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello"));
-        var result = await _sut.IngestAsync(stream, metadata, options: null, TestContext.Current.CancellationToken);
+        var result = await _sut.IngestAsync(stream, metadata, options: null, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, result.ChunksStored);
         await _vectorStore.DidNotReceive().DeleteByDocumentIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
@@ -349,7 +349,7 @@ public class RagPipelineTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello"));
-        await _sut.IngestAsync(stream, metadata, new IngestionOptions { Overwrite = true }, TestContext.Current.CancellationToken);
+        await _sut.IngestAsync(stream, metadata, new IngestionOptions { Overwrite = true }, cancellationToken: TestContext.Current.CancellationToken);
 
         await _vectorStore.Received(1).DeleteByDocumentIdAsync("doc-1", Arg.Any<CancellationToken>());
         await _vectorStore.Received(1).StoreAsync(Arg.Any<IReadOnlyList<EmbeddedChunk>>(), Arg.Any<CancellationToken>());
@@ -371,7 +371,7 @@ public class RagPipelineTests
             .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello"));
-        await _sut.IngestAsync(stream, metadata, new IngestionOptions { Overwrite = false }, TestContext.Current.CancellationToken);
+        await _sut.IngestAsync(stream, metadata, new IngestionOptions { Overwrite = false }, cancellationToken: TestContext.Current.CancellationToken);
 
         await _vectorStore.DidNotReceive().DeleteByDocumentIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }

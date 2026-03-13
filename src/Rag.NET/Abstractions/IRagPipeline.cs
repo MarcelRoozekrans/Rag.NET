@@ -9,6 +9,7 @@ public interface IRagPipeline
         Stream document,
         DocumentMetadata metadata,
         IngestionOptions? options = null,
+        IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<SearchResult>> RetrieveAsync(
