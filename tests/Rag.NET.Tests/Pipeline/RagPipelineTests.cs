@@ -1375,6 +1375,31 @@ public class RagPipelineTests
     }
 
     [Fact]
+    public async Task RetrieveAsync_WhenExpanderReturnsEmptyList_FallsBackToOriginalQuery()
+    {
+        var expander = Substitute.For<IQueryExpander>();
+        expander.ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<string>());
+
+        var chunk = new TextChunk { Text = "result", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns([new SearchResult { Chunk = chunk, Score = 0.9 }]);
+
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder, chatClient: null, new ChunkingOptions(), queryExpander: expander);
+
+        var results = await sut.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Empty variants → only original query runs → 1 SearchAsync call, 1 result
+        Assert.Single(results);
+        await _vectorStore.Received(1).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RetrieveAsync_OriginalQueryAlwaysIncludedInFanOut()
     {
         var expander = Substitute.For<IQueryExpander>();

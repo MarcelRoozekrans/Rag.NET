@@ -197,6 +197,10 @@ public sealed class RagPipeline(
                 variants = await _queryExpander.ExpandAsync(query, _multiQueryOptions.VariantCount, cancellationToken)
                     .ConfigureAwait(false);
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 RagPipelineLog.QueryExpansionFailed(_logger, query, ex);
@@ -206,7 +210,7 @@ public sealed class RagPipeline(
             var allQueries = new List<string>(variants.Count + 1) { query };
             allQueries.AddRange(variants);
 
-            var tasks = allQueries.Select(q => SearchSingleQueryAsync(q, searchOptions, opts.UseHybridSearch, cancellationToken));
+            var tasks = allQueries.Select(q => SearchSingleQueryAsync(q, searchOptions, opts.UseHybridSearch, cancellationToken)).ToArray();
             var allResults = await Task.WhenAll(tasks).ConfigureAwait(false);
 
             searchResults = allResults
