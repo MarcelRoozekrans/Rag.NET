@@ -113,10 +113,10 @@ public class InMemoryBm25IndexTests
         index.Add(0, new TextChunk { Text = "quick brown fox", DocumentId = "doc1", ChunkIndex = 0 });
         index.Add(1, new TextChunk { Text = "quick lazy dog", DocumentId = "doc2", ChunkIndex = 0 });
 
-        // doc0 has both "quick" and "fox"; doc1 only has "quick"
+        // "doc1" (quick brown fox) has both "quick" and "fox"; "doc2" only has "quick"
         var results = index.Search("quick fox", topK: 5);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("doc1", results[0].chunk.DocumentId); // doc0 should rank higher (matches both terms)
+        Assert.Equal("doc1", results[0].chunk.DocumentId); // "doc1" ranks higher — matches both terms
     }
 }

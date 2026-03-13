@@ -22,7 +22,7 @@ public sealed class RagPipeline(
     IChatClient? chatClient,
     ChunkingOptions chunkingOptions,
     ILogger<RagPipeline>? logger = null,
-    ResiliencePipeline? resiliencePipeline = null) : IRagPipeline
+    ResiliencePipeline? resiliencePipeline = null) : IRagPipeline, IDisposable
 {
     private readonly ILogger _logger = (ILogger?)logger ?? NullLogger.Instance;
     private readonly ResiliencePipeline? _resiliencePipeline = resiliencePipeline;
@@ -346,4 +346,6 @@ public sealed class RagPipeline(
 
         return (messages, chatOptions);
     }
+
+    public void Dispose() => _bm25Index.Dispose();
 }
