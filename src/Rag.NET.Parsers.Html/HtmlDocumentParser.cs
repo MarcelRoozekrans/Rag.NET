@@ -14,7 +14,7 @@ public sealed class HtmlDocumentParser : IDocumentParser
         "h1", "h2", "h3", "h4", "h5", "h6",
     };
 
-    private static readonly string s_removeSelector = string.Join(", ", "script", "style", "nav", "footer", "header");
+    private static readonly string s_removeSelector = string.Join(", ", new[] { "script", "style", "nav", "footer", "header" });
 
     public bool CanParse(string contentType) =>
         contentType.Equals("text/html", StringComparison.OrdinalIgnoreCase);

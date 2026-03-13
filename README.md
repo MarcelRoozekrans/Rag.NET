@@ -217,48 +217,18 @@ OPENAI_API_KEY=sk-... RAG_PROVIDER=openai dotnet run --project samples/Rag.NET.S
 
 ## Benchmarks
 
-Measured with [BenchmarkDotNet](https://benchmarkdotnet.org/) on .NET 10, Intel Core i9-12900HK.
+Full results with methodology and analysis: [docs/benchmarks.md](docs/benchmarks.md)
 
-### Chunking
+Quick reference (i9-12900HK, .NET 10, 50-token chunks):
 
-| Method | Text Size | Mean | Allocated |
-|--------|-----------|-----:|----------:|
-| Recursive | 500 chars | 745 ns | 1.76 KB |
-| Recursive | 5 KB | 6.6 us | 15.12 KB |
-| Recursive | 50 KB | 61.4 us | 145.55 KB |
-| Fixed | 500 chars | 373 ns | 1.70 KB |
-| Fixed | 5 KB | 3.6 us | 16.74 KB |
-| Fixed | 50 KB | 31.1 us | 158.37 KB |
-| TokenAware | 500 chars | — | — |
-| TokenAware | 5 KB | — | — |
-| TokenAware | 50 KB | — | — |
+| Strategy | 50 KB input | Allocated |
+|----------|------------:|----------:|
+| Fixed | 29 us | 158 KB |
+| Recursive | 94 us | 316 KB |
+| TokenAware | 1,750 us | 389 KB |
+| IngestAsync (pipeline, 50 KB) | 378 us | 629 KB |
 
-### Parsers
-
-| Parser | Input Size | Mean | Allocated |
-|--------|-----------|-----:|----------:|
-| Text | 1 KB | 2.3 us | 9.81 KB |
-| Text | 100 KB | 230 us | 403.72 KB |
-| Markdown | 1 KB | 3.6 us | 11.95 KB |
-| Markdown | 100 KB | 426 us | 599.17 KB |
-| HTML | 5 sections | 112 us | 81.71 KB |
-| HTML | 100 sections | 1,067 us | 615.26 KB |
-| CSV | 500 rows | 297 us | 468.55 KB |
-| JSON | 100 elements | 84 us | 49.42 KB |
-
-### Pipeline (end-to-end ingestion, 50 KB document)
-
-| Method | Mean | Allocated |
-|--------|-----:|----------:|
-| IngestAsync | 218 us | 419.71 KB |
-
-Pipeline benchmark uses a mocked embedder and no-op vector store to isolate parse + chunk overhead.
-
-Run benchmarks yourself:
-
-```bash
-dotnet run --project benchmarks/Rag.NET.Benchmarks -c Release -- --filter "*"
-```
+`TokenAware` carries 20–60× chunking overhead from tiktoken encoding — negligible relative to embedding API latency in production.
 
 ## Requirements
 
