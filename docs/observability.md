@@ -138,6 +138,21 @@ The `ResiliencePipeline` instance is available to `RagPipeline` for wrapping emb
 
 ## Combining all three
 
+```mermaid
+flowchart LR
+    PIPE["RagPipeline"]
+    LOG["ILogger\nstructured log lines"]
+    OTEL["ActivitySource\ndistributed traces"]
+    POLLY["Polly ResiliencePipeline\nexponential back-off retry"]
+
+    PIPE --> LOG
+    PIPE --> OTEL
+    PIPE --> POLLY
+
+    style POLLY fill:#e8f4fd,stroke:#4a90d9
+    style OTEL fill:#e8f4fd,stroke:#4a90d9
+```
+
 A production-ready observability setup:
 
 ```csharp

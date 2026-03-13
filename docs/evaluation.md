@@ -23,6 +23,15 @@ public interface IRagEvaluator
 
 The only built-in implementation. It:
 
+```mermaid
+flowchart TD
+    A["EvaluationSample[ ]"] --> B["Embed predicted answers\n(single batch call)"]
+    A --> C["Embed reference answers\n(single batch call)"]
+    B --> D["Compute cosine similarity\nfor each pair"]
+    C --> D
+    D --> E["EvaluationResult\nMeanScore + Scores[ ]"]
+```
+
 1. Embeds all predicted answers in a single batch call.
 2. Embeds all reference answers in a single batch call.
 3. Computes cosine similarity for each pair.

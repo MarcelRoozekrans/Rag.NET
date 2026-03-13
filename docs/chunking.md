@@ -63,11 +63,17 @@ services.AddRagNet(rag => rag
 
 Attempts to split on natural text boundaries using a priority list of separators tried in order:
 
-1. `"\n\n"` — paragraph breaks
-2. `"\n"` — line breaks
-3. `". "` — sentence boundaries
-4. `" "` — word boundaries
-5. Hard character split (fallback when no separator fits)
+```mermaid
+flowchart TD
+    A["Candidate piece"] --> B{Fits in MaxChunkSize?}
+    B -- yes --> OUT["Emit chunk"]
+    B -- no --> C{"Try next\nseparator"}
+    C -- "1. paragraph break \\n\\n" --> A
+    C -- "2. line break \\n" --> A
+    C -- "3. sentence boundary '. '" --> A
+    C -- "4. word boundary ' '" --> A
+    C -- "5. hard character split (fallback)" --> OUT
+```
 
 For each candidate piece, if it is still larger than `MaxChunkSize`, the strategy recurses with the next separator in the list. Overlap is prepended from the trailing characters of the previous chunk.
 

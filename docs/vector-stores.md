@@ -15,6 +15,38 @@ The vector store is the persistence layer for embedded chunks. Rag.NET ships thr
 | Index algorithm | IVFFlat / HNSW (pgvector) | HNSW | HNSW |
 | Persistence | PostgreSQL | Qdrant server | Azure managed |
 
+## Interface hierarchy
+
+```mermaid
+classDiagram
+    class IVectorStore {
+        +StoreAsync(chunks)
+        +SearchAsync(queryEmbedding, options)
+        +DeleteByDocumentIdAsync(documentId)
+    }
+    class IHybridSearchable {
+        +HybridSearchAsync(textQuery, queryEmbedding, options)
+    }
+    class ICollectionManageable {
+        +CreateCollectionAsync(name, vectorDimensions)
+        +DeleteCollectionAsync(name)
+        +CollectionExistsAsync(name)
+    }
+    class PgVectorStore {
+    }
+    class QdrantVectorStore {
+    }
+    class AzureAISearchVectorStore {
+    }
+    IVectorStore <|.. PgVectorStore
+    ICollectionManageable <|.. PgVectorStore
+    IVectorStore <|.. QdrantVectorStore
+    ICollectionManageable <|.. QdrantVectorStore
+    IVectorStore <|.. AzureAISearchVectorStore
+    IHybridSearchable <|.. AzureAISearchVectorStore
+    ICollectionManageable <|.. AzureAISearchVectorStore
+```
+
 ## Shared interface
 
 All three implement `IVectorStore`:

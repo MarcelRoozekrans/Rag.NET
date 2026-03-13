@@ -2,6 +2,16 @@
 
 This page walks through a complete end-to-end setup: installing packages, wiring up DI, ingesting a document, and running your first question-answer call. All code assumes .NET 10 and the `Microsoft.Extensions.AI` ecosystem.
 
+```mermaid
+flowchart LR
+    PKG["1. Install packages"] --> DI["2–4. Register AI services\n& build DI container"]
+    DI --> INGEST["5. IngestAsync\nparse → chunk → embed → store"]
+    INGEST --> ASK["6. AskAsync\nretrieve → prompt → LLM"]
+    ASK --> RESP["RagResponse\nAnswer + Sources"]
+
+    style INGEST fill:#e8f4fd,stroke:#4a90d9
+```
+
 ## 1. Install packages
 
 ```bash

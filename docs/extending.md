@@ -110,6 +110,28 @@ Parsers are tried in registration order. Built-in parsers (Text, Markdown) are r
 
 Use this to support a vector store backend not covered by the built-in packages (pgvector, Qdrant, Azure AI Search), or to write a test double.
 
+```mermaid
+classDiagram
+    class IVectorStore {
+        +StoreAsync(chunks)
+        +SearchAsync(queryEmbedding, options)
+        +DeleteByDocumentIdAsync(documentId)
+    }
+    class IHybridSearchable {
+        +HybridSearchAsync(textQuery, queryEmbedding, options)
+    }
+    class ICollectionManageable {
+        +CreateCollectionAsync(name, vectorDimensions)
+        +DeleteCollectionAsync(name)
+        +CollectionExistsAsync(name)
+    }
+    class YourCustomStore {
+    }
+    IVectorStore <|.. YourCustomStore
+    IHybridSearchable <|.. YourCustomStore
+    ICollectionManageable <|.. YourCustomStore
+```
+
 ### Interface
 
 ```csharp

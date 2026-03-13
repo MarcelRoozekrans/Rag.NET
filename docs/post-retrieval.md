@@ -15,6 +15,17 @@ Input (rank 1 = best):  [1, 2, 3, 4, 5, 6]
 Output (positions):      [1, 3, 5, 6, 4, 2]
 ```
 
+```mermaid
+flowchart LR
+    subgraph Input["Input — sorted by relevance (best first)"]
+        R1["Rank 1"] --- R2["Rank 2"] --- R3["Rank 3"] --- R4["Rank 4"] --- R5["Rank 5"] --- R6["Rank 6"]
+    end
+    subgraph Output["Output — outside-in placement"]
+        P0["Pos 0\nRank 1"] --- P1["Pos 1\nRank 3"] --- P2["Pos 2\nRank 5"] --- P3["Pos 3\nRank 6"] --- P4["Pos 4\nRank 4"] --- P5["Pos 5\nRank 2"]
+    end
+    Input --> Output
+```
+
 Even-indexed input items (0, 2, 4, ...) fill from the left; odd-indexed items (1, 3, 5, ...) fill from the right. The result places rank-1 at position 0, rank-3 at position 1, rank-5 at position 2, rank-6 at position 3, rank-4 at position 4, rank-2 at position 5.
 
 The `Score` values on the returned `SearchResult` objects are unchanged. Only the list ordering is modified.
@@ -57,6 +68,19 @@ Input must be sorted in descending relevance order. Unsorted input produces mean
 Redundant retrieved chunks waste context window space. When multiple chunks contain near-identical content (e.g., the same paragraph duplicated across documents, or overlapping chunks from the same source), sending all of them to the LLM dilutes the effective context. The redundancy filter removes near-duplicates before the context is assembled.
 
 ### How it works
+
+```mermaid
+flowchart TD
+    A["TopK chunks (score-sorted)"] --> B["Re-embed all chunks\n(single batch call)"]
+    B --> C["Iterate chunks in relevance order"]
+    C --> D{Cosine similarity to any\naccepted chunk >= threshold?}
+    D -- yes --> E["Drop chunk"]
+    D -- no --> F["Accept chunk"]
+    E --> G{More chunks?}
+    F --> G
+    G -- yes --> C
+    G -- no --> H["Return accepted list\n(order preserved)"]
+```
 
 1. All `TopK` retrieved chunk texts are re-embedded in a single batch call to `IEmbeddingGenerator`.
 2. The filter iterates through the chunks in order (by relevance score, descending). Each chunk is accepted if its cosine similarity to every previously accepted chunk is below `RedundancyThreshold`.
@@ -116,6 +140,19 @@ public static class RedundancyFilter
 ## Execution order
 
 When both options are enabled on the same call, the order is:
+
+```mermaid
+flowchart TD
+    VS["Vector store search\n(dense or hybrid)"]
+    LITM["LostInTheMiddleReorderer.Reorder()\noperates on score-sorted results"]
+    REDUN["RedundancyFilter.FilterAsync()\noperates on the reordered list"]
+    OUT["Final IReadOnlyList&lt;SearchResult&gt;"]
+
+    VS --> LITM --> REDUN --> OUT
+
+    style LITM fill:#e8f4fd,stroke:#4a90d9
+    style REDUN fill:#e8f4fd,stroke:#4a90d9
+```
 
 1. Vector store search (dense, or hybrid)
 2. `LostInTheMiddleReorderer.Reorder()` — operates on score-sorted results

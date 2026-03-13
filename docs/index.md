@@ -27,6 +27,28 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 
 ## Package layout
 
+```mermaid
+flowchart TD
+    CORE["Rag.NET\nCore pipeline · Text/Markdown/CSV/JSON parsers · Recursive chunking"]
+
+    CORE --> PG["Rag.NET.PgVector\nPostgreSQL + pgvector"]
+    CORE --> QD["Rag.NET.Qdrant\nQdrant"]
+    CORE --> AZ["Rag.NET.AzureAISearch\nAzure AI Search (native hybrid)"]
+
+    CORE --> PDF["Rag.NET.Parsers.Pdf"]
+    CORE --> HTML["Rag.NET.Parsers.Html"]
+    CORE --> WORD["Rag.NET.Parsers.Word"]
+    CORE --> XL["Rag.NET.Parsers.Excel"]
+    CORE --> PPT["Rag.NET.Parsers.PowerPoint"]
+
+    CORE --> EVAL["Rag.NET.Evaluation\nEmbedding-based answer quality"]
+
+    style PG fill:#e8f4fd,stroke:#4a90d9
+    style QD fill:#e8f4fd,stroke:#4a90d9
+    style AZ fill:#e8f4fd,stroke:#4a90d9
+    style EVAL fill:#e8f4fd,stroke:#4a90d9
+```
+
 | NuGet package | Contents |
 |--------------|----------|
 | `Rag.NET` | Core pipeline, abstractions, Text/Markdown/CSV/JSON parsers, Recursive chunking |

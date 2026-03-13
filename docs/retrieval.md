@@ -86,6 +86,17 @@ var results = await pipeline.RetrieveAsync("ISO 27001 compliance checklist", new
 
 The pipeline inspects the registered `IVectorStore` at retrieval time:
 
+```mermaid
+flowchart TD
+    Q["UseHybridSearch = true"] --> CHECK{IVectorStore implements\nIHybridSearchable?}
+    CHECK -- yes --> NATIVE["HybridSearchAsync()\nbackend handles fusion natively\ne.g. Azure AI Search"]
+    CHECK -- no --> FALLBACK["Dense search + in-memory BM25\nrun concurrently"]
+    FALLBACK --> RRF["RRF merge\nReciprocal Rank Fusion"]
+
+    style FALLBACK fill:#e8f4fd,stroke:#4a90d9
+    style RRF fill:#e8f4fd,stroke:#4a90d9
+```
+
 | Condition | Behaviour |
 |-----------|-----------|
 | `IVectorStore` also implements `IHybridSearchable` | Calls `HybridSearchAsync` — the backend handles fusion natively |

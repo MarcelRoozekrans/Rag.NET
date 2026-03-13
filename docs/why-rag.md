@@ -2,6 +2,20 @@
 
 Large Language Models have strong language understanding but a fixed knowledge cutoff and no access to your private data. Retrieval-Augmented Generation (RAG) bridges this gap by retrieving relevant passages from a document corpus at query time and injecting them into the model's context window before generation. The model then answers using evidence, not just its weights — reducing hallucinations and making answers auditable by pointing to source chunks.
 
+```mermaid
+flowchart LR
+    DOCS["Your documents\nPDFs, Word, wikis…"] --> IDX["Vector index\n(pre-ingested)"]
+    USER["User query"] --> EMBED["Embed query"]
+    EMBED --> SEARCH["Retrieve relevant chunks\nfrom index"]
+    IDX --> SEARCH
+    SEARCH --> PROMPT["Inject context\ninto prompt"]
+    USER --> PROMPT
+    PROMPT --> LLM["LLM"]
+    LLM --> ANS["Answer + Sources"]
+
+    style IDX fill:#e8f4fd,stroke:#4a90d9
+```
+
 ## The problem RAG solves
 
 | Problem | Without RAG | With RAG |
