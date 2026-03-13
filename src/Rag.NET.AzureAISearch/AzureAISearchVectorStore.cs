@@ -22,9 +22,23 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         string indexName,
         AzureKeyCredential credential,
         int vectorDimensions = 1536)
+        : this(endpoint, indexName, credential, vectorDimensions, clientOptions: null)
     {
-        _indexClient = new SearchIndexClient(endpoint, credential);
-        _searchClient = new SearchClient(endpoint, indexName, credential);
+    }
+
+    public AzureAISearchVectorStore(
+        Uri endpoint,
+        string indexName,
+        AzureKeyCredential credential,
+        int vectorDimensions,
+        SearchClientOptions? clientOptions)
+    {
+        _indexClient = clientOptions is null
+            ? new SearchIndexClient(endpoint, credential)
+            : new SearchIndexClient(endpoint, credential, clientOptions);
+        _searchClient = clientOptions is null
+            ? new SearchClient(endpoint, indexName, credential)
+            : new SearchClient(endpoint, indexName, credential, clientOptions);
         _indexName = indexName;
         _vectorDimensions = vectorDimensions;
     }
