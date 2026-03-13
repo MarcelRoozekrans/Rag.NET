@@ -1206,6 +1206,85 @@ public class RagPipelineTests
         Assert.NotEmpty(elephantResults);
     }
 
+    // Gap 5 — TopK propagation in hybrid fallback
+    [Fact]
+    public async Task RetrieveAsync_HybridFallback_RespectsTopK()
+    {
+        // Ingest 5 documents so BM25 has entries for "hello"
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([]));
+
+        for (int i = 0; i < 5; i++)
+        {
+            var meta = new DocumentMetadata { DocumentId = $"doc-topk-{i}", FileName = "t.txt", ContentType = "text/plain" };
+            var sec = new DocumentSection { Text = "hello world", DocumentId = $"doc-topk-{i}", SectionIndex = 0 };
+            var chk = new TextChunk { Text = "hello world", DocumentId = $"doc-topk-{i}", ChunkIndex = 0 };
+            _parser.ParseAsync(Arg.Any<Stream>(), meta, Arg.Any<CancellationToken>())
+                .Returns(ToAsyncEnumerable(sec));
+            _chunker.ChunkAsync(sec, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+                .Returns(ToAsyncEnumerable(chk));
+            await _sut.IngestAsync(new MemoryStream(), meta, cancellationToken: TestContext.Current.CancellationToken);
+        }
+
+        // Reset embedder for the query call
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        var results = await _sut.RetrieveAsync(
+            "hello",
+            new RetrievalOptions { UseHybridSearch = true, TopK = 2 },
+            TestContext.Current.CancellationToken);
+
+        Assert.True(results.Count <= 2, $"Expected ≤ 2 results but got {results.Count}");
+    }
+
+    // Gap 6 — hybrid search where only BM25 returns results (dense returns empty)
+    [Fact]
+    public async Task RetrieveAsync_HybridFallback_WhenDenseEmpty_BM25SurfacesResults()
+    {
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+        // Dense always returns empty
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([]));
+
+        var meta = new DocumentMetadata { DocumentId = "doc-bm25-only", FileName = "t.txt", ContentType = "text/plain" };
+        var sec = new DocumentSection { Text = "unique keyword jaguar", DocumentId = "doc-bm25-only", SectionIndex = 0 };
+        var chk = new TextChunk { Text = "unique keyword jaguar", DocumentId = "doc-bm25-only", ChunkIndex = 0 };
+        _parser.ParseAsync(Arg.Any<Stream>(), meta, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(sec));
+        _chunker.ChunkAsync(sec, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chk));
+
+        await _sut.IngestAsync(new MemoryStream(), meta, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Reset embedder for query call
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        var results = await _sut.RetrieveAsync(
+            "jaguar",
+            new RetrievalOptions { UseHybridSearch = true },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(results);
+    }
+
+    // Gap 7 — DeleteAsync on never-ingested document does not throw
+    [Fact]
+    public async Task DeleteAsync_OnNonExistentDocument_DoesNotThrow()
+    {
+        // No ingestion — calling delete should not throw
+        var exception = await Record.ExceptionAsync(() =>
+            _sut.DeleteAsync("nonexistent-id", TestContext.Current.CancellationToken));
+
+        Assert.Null(exception);
+    }
+
     private sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
     {
         public void Report(T value) => callback(value);

@@ -157,4 +157,29 @@ public class RrfMergerTests
 
         Assert.Equal(2, result.Count); // capped at available, not padded
     }
+
+    // Gap 4 — very unbalanced lists: 100 dense + 1 BM25
+    [Fact]
+    public void Merge_VeryUnbalancedLists_Bm25TopResultAppears()
+    {
+        // 100 dense results
+        var denseChunks = new List<SearchResult>(100);
+        for (int i = 0; i < 100; i++)
+            denseChunks.Add(Result(Chunk("dense", i), score: 1.0 - i * 0.001));
+
+        // 1 BM25 result that is NOT in the dense list
+        var bm25Chunk = Chunk("bm25", 0, "unique bm25 content");
+        var bm25 = new List<(TextChunk chunk, double score)> { (bm25Chunk, 42.0) };
+
+        var result = RrfMerger.Merge(denseChunks, bm25, topK: 5);
+
+        // TopK must be respected
+        Assert.Equal(5, result.Count);
+
+        // The BM25 chunk (rank 1 in its list → score = 1/61) should appear in the merged output
+        var bm25Result = result.FirstOrDefault(r =>
+            string.Equals(r.Chunk.DocumentId, "bm25", StringComparison.Ordinal));
+        Assert.NotNull(bm25Result);
+        Assert.Equal(1.0 / 61.0, bm25Result!.Score, precision: 10);
+    }
 }

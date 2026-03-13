@@ -119,4 +119,57 @@ public class InMemoryBm25IndexTests
         Assert.Equal(2, results.Count);
         Assert.Equal("doc1", results[0].chunk.DocumentId); // "doc1" ranks higher — matches both terms
     }
+
+    // Gap 1 — empty/whitespace query returns empty results
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Search_EmptyOrWhitespaceQuery_ReturnsEmpty(string query)
+    {
+        var index = new InMemoryBm25Index();
+        index.Add(0, new TextChunk { Text = "hello world", DocumentId = "doc1", ChunkIndex = 0 });
+        index.Add(1, new TextChunk { Text = "quick brown fox", DocumentId = "doc1", ChunkIndex = 1 });
+
+        var results = index.Search(query, topK: 5);
+
+        Assert.Empty(results);
+    }
+
+    // Gap 2 — duplicate docId is idempotent
+    [Fact]
+    public void Add_DuplicateDocId_IsIdempotent()
+    {
+        var index = new InMemoryBm25Index();
+        var chunk = new TextChunk { Text = "hello world", DocumentId = "doc1", ChunkIndex = 0 };
+
+        // Add the same docId twice
+        index.Add(42, chunk);
+        index.Add(42, chunk);
+
+        // Add another doc so we can compare ranking — it should not be demoted by double-counting
+        index.Add(99, new TextChunk { Text = "hello universe", DocumentId = "doc2", ChunkIndex = 0 });
+
+        var results = index.Search("hello", topK: 5);
+
+        // The duplicated doc should appear exactly once
+        Assert.Equal(2, results.Count);
+        Assert.Single(results, r => string.Equals(r.chunk.DocumentId, "doc1", StringComparison.Ordinal));
+        Assert.Single(results, r => string.Equals(r.chunk.DocumentId, "doc2", StringComparison.Ordinal));
+    }
+
+    // Gap 3 — IDF boundary when df == N: score must still be positive
+    [Fact]
+    public void Search_AllDocsContainTerm_ScoreIsPositive()
+    {
+        var index = new InMemoryBm25Index();
+        // All 3 documents contain "common" → df == N == 3
+        index.Add(0, new TextChunk { Text = "common ground", DocumentId = "doc1", ChunkIndex = 0 });
+        index.Add(1, new TextChunk { Text = "common sense", DocumentId = "doc2", ChunkIndex = 0 });
+        index.Add(2, new TextChunk { Text = "common people", DocumentId = "doc3", ChunkIndex = 0 });
+
+        var results = index.Search("common", topK: 5);
+
+        Assert.Equal(3, results.Count);
+        Assert.All(results, r => Assert.True(r.score > 0, "Score must be positive even when df == N"));
+    }
 }
