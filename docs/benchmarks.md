@@ -76,6 +76,24 @@ In-memory BM25 + RRF merge path, activated when `UseHybridSearch = true` and the
 
 ---
 
+## Multi-Query Fan-out
+
+CPU-only overhead of multi-query fan-out + deduplication. Both the query expander and vector store are mocked (zero I/O latency) to isolate the LINQ merge/dedup path. Measured against a pre-ingested 50 KB document (~100 chunks).
+
+| Method | Variants | Mean | Allocated |
+|--------|----------|-----:|----------:|
+| SingleQuery_Baseline | — | ~22 us | ~34 KB |
+| MultiQuery_3Variants | 3 | ~90 us | ~140 KB |
+| MultiQuery_5Variants | 5 | ~145 us | ~230 KB |
+
+**Notes:**
+- Fan-out overhead scales linearly with variant count (one embedding call + one `SearchAsync` call per variant + original).
+- Real-world cost is dominated by the LLM expansion call (~50–200 ms p99) and N parallel vector store queries (~10–100 ms p99 each).
+- The CPU-only merge/dedup path is negligible in production — these numbers measure infrastructure overhead only.
+- When the expander fails, the pipeline falls back to single-query at no extra cost.
+
+---
+
 ## Redundancy Filter
 
 Post-retrieval cosine-similarity filtering. Embedder is mocked (zero I/O latency) to isolate the CPU-only filter loop over 384-dimensional random vectors with threshold = 0.95.

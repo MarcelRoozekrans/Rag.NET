@@ -1,6 +1,6 @@
 # Retrieval
 
-Retrieval is the step that determines answer quality more than any other. A well-configured retrieval layer surfaces the right chunks for a given query; a poorly configured one buries them. This page covers `RetrievalOptions`, semantic search, hybrid BM25+vector search, metadata filtering, and the `RagOptions` properties that mirror these settings for `AskAsync`.
+Retrieval is the step that determines answer quality more than any other. A well-configured retrieval layer surfaces the right chunks for a given query; a poorly configured one buries them. This page covers `RetrievalOptions`, semantic search, hybrid BM25+vector search, multi-query retrieval, metadata filtering, and the `RagOptions` properties that mirror these settings for `AskAsync`.
 
 ## `RetrievalOptions`
 
@@ -14,6 +14,7 @@ public sealed class RetrievalOptions
     public bool UseLostInTheMiddleReordering { get; set; }
     public bool UseRedundancyFilter          { get; set; }
     public float RedundancyThreshold         { get; set; } = 0.95f;
+    public bool UseMultiQuery                { get; set; } = true;
 }
 ```
 
@@ -32,6 +33,7 @@ var results = await pipeline.RetrieveAsync("What are the Q4 targets?", new Retri
     UseLostInTheMiddleReordering  = true,
     UseRedundancyFilter           = true,
     RedundancyThreshold           = 0.92f,
+    UseMultiQuery                 = true,
     MetadataFilter = new Dictionary<string, string>
     {
         ["department"] = "finance",
@@ -122,6 +124,59 @@ RRF scores are not cosine similarities. `MinScore` filtering is applied by the d
 
 See [benchmarks](benchmarks.md#hybrid-search-bm25-fallback) for throughput data on the BM25+RRF path.
 
+## Multi-query retrieval
+
+Multi-query retrieval expands a single query into several alternative phrasings, runs all of them in parallel against the vector store, then deduplicates and merges the results. It is particularly effective when the user's phrasing differs from how information is expressed in the documents.
+
+### Enabling
+
+Register `UseMultiQueryRetrieval()` on the builder. An `IChatClient` must already be registered — it is used to generate the variants.
+
+```csharp
+services.AddRagNet(b => b
+    .UseMultiQueryRetrieval());
+```
+
+Configure the number of variants and the prompt template:
+
+```csharp
+services.AddRagNet(b => b
+    .UseMultiQueryRetrieval(o =>
+    {
+        o.VariantCount = 5;
+        o.PromptTemplate =
+            "Generate {count} different phrasings of the following question.\n" +
+            "Return only the rephrased questions, one per line, with no numbering.\n\n" +
+            "Question: {query}";
+    }));
+```
+
+`{count}` and `{query}` are required placeholders in the template.
+
+### How it works
+
+```mermaid
+flowchart TD
+    Q["User query"] --> EXPAND["LlmQueryExpander\ngenerates N variants"]
+    EXPAND --> FAN["N+1 parallel SearchAsync calls\n(original + variants)"]
+    FAN --> DEDUP["Deduplicate by DocumentId+ChunkIndex\nkeep highest score per chunk"]
+    DEDUP --> TRIM["Order by score desc\nTake TopK"]
+    TRIM --> OUT["IReadOnlyList&lt;SearchResult&gt;"]
+```
+
+The original query is always included in the fan-out. If the expander fails (network error, timeout), the pipeline logs a warning and falls back to single-query retrieval automatically.
+
+### Disabling per call
+
+When an expander is registered, multi-query is active by default. Opt out for a specific call:
+
+```csharp
+var results = await pipeline.RetrieveAsync("exact phrase lookup", new RetrievalOptions
+{
+    UseMultiQuery = false,
+});
+```
+
 ## Metadata filtering
 
 `MetadataFilter` is a dictionary of key-value pairs that must all match a chunk's `Metadata` for the chunk to be returned. This is an AND filter — all entries must match.
@@ -187,6 +242,8 @@ public sealed class RagOptions
     public IList<ChatMessage>? ConversationHistory { get; set; }
 }
 ```
+
+> **Note:** `RagOptions` does not expose `UseMultiQuery`. To disable multi-query expansion for a single call, use `RetrieveAsync` directly with `UseMultiQuery = false`.
 
 The retrieval-related properties are forwarded verbatim to an internal `RetrievalOptions` before the chat call:
 
