@@ -490,43 +490,43 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 
 ## Priority / Dependencies
 
-| Feature | Complexity | Dependencies |
-|---------|------------|--------------|
-| Progress Reporting | Low | None |
-| Token-Aware Splitting | Low | `Microsoft.ML.Tokenizers` |
-| Header-Aware Markdown/HTML Splitting | Low | Existing Markdown parser |
-| Lost-in-the-Middle Reordering | Low | None |
-| Redundancy Filter | Low | Embedding access |
-| Embedding Distance Evaluation | Low | `IEmbeddingGenerator` |
-| Cohere Rerank | Low | Cohere API key |
-| Search Result Caching | Medium | None |
-| BM25 Keyword Retrieval | Medium | None |
-| BM25 Synonym Expansion | Medium | BM25 retriever |
-| MMR Retrieval | Medium | Embedding access |
-| Hierarchical Merger | Medium | None |
-| Multi-Language Code Splitting | Medium | None (regex) |
-| Data Provider Abstraction | Medium | Existing `IDocumentParser` |
-| Data Management API | Medium | `IVectorStore` extension |
-| Multi-Query Retrieval | Medium | `IChatClient` |
-| HyDE | Medium | `IChatClient` |
-| Content-Hash Record Manager | Medium | Persistence store |
-| Map-Reduce / Refine Synthesis | Medium | `IChatClient` |
-| Cross-Encoder Reranking | Medium | Model or API |
-| Tag-Based Retrieval | Medium | Hybrid search |
-| LLM-as-Judge Evaluation | Medium | `IChatClient` |
-| Web Crawler / Sitemap / RSS | Medium | HTTP client |
-| MCP Server | Medium | MCP SDK |
-| Audio Transcription | Medium | `Whisper.net` |
-| SaaS Connectors | Medium | Per-platform SDK |
-| C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
-| Domain-Specific Chunking Templates | High | Per-domain logic |
-| Parent-Document Retrieval | High | Dual index |
-| Ensemble / RRF | High | Multiple retrievers |
-| Self-Query Filtering | High | `IChatClient` + schema |
-| Deep Research Loop | High | `IChatClient` |
-| RAPTOR | High | UMAP + GMM + `IChatClient` |
-| Long-Term Conversational Memory | High | Vector store + `IChatClient` |
-| LLM Metadata Extraction at Ingest | High | `IChatClient` |
-| Image / Video Description | High | Vision LLM |
-| GraphRAG | Very High | Graph DB + `IChatClient` |
-| Azure AI Search Tests via Simulator | Low | `Testcontainers` + simulator Docker image |
+| Done | Feature | Complexity | Dependencies |
+|------|---------|------------|--------------|
+| [ ] | Cohere Rerank | Low | Cohere API key |
+| [ ] | Embedding Distance Evaluation | Low | `IEmbeddingGenerator` |
+| [ ] | Header-Aware Markdown/HTML Splitting | Low | Existing Markdown parser |
+| [x] | Lost-in-the-Middle Reordering | Low | None |
+| [x] | Progress Reporting | Low | None |
+| [ ] | Redundancy Filter | Low | Embedding access |
+| [x] | Token-Aware Splitting | Low | `Microsoft.ML.Tokenizers` |
+| [ ] | Audio Transcription | Medium | `Whisper.net` |
+| [ ] | BM25 Keyword Retrieval | Medium | None |
+| [ ] | BM25 Synonym Expansion | Medium | BM25 retriever |
+| [ ] | Content-Hash Record Manager | Medium | Persistence store |
+| [ ] | Cross-Encoder Reranking | Medium | Model or API |
+| [ ] | Data Management API | Medium | `IVectorStore` extension |
+| [ ] | Data Provider Abstraction | Medium | Existing `IDocumentParser` |
+| [ ] | Hierarchical Merger | Medium | None |
+| [ ] | HyDE | Medium | `IChatClient` |
+| [ ] | LLM-as-Judge Evaluation | Medium | `IChatClient` |
+| [ ] | Map-Reduce / Refine Synthesis | Medium | `IChatClient` |
+| [ ] | MCP Server | Medium | MCP SDK |
+| [ ] | MMR Retrieval | Medium | Embedding access |
+| [ ] | Multi-Language Code Splitting | Medium | None (regex) |
+| [ ] | Multi-Query Retrieval | Medium | `IChatClient` |
+| [ ] | SaaS Connectors | Medium | Per-platform SDK |
+| [ ] | Search Result Caching | Medium | None |
+| [ ] | Tag-Based Retrieval | Medium | Hybrid search |
+| [ ] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
+| [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
+| [ ] | Deep Research Loop | High | `IChatClient` |
+| [ ] | Domain-Specific Chunking Templates | High | Per-domain logic |
+| [ ] | Ensemble / RRF | High | Multiple retrievers |
+| [ ] | Image / Video Description | High | Vision LLM |
+| [ ] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
+| [ ] | Long-Term Conversational Memory | High | Vector store + `IChatClient` |
+| [ ] | Parent-Document Retrieval | High | Dual index |
+| [ ] | RAPTOR | High | UMAP + GMM + `IChatClient` |
+| [ ] | Self-Query Filtering | High | `IChatClient` + schema |
+| [ ] | GraphRAG | Very High | Graph DB + `IChatClient` |
+| [x] | Azure AI Search Tests via Simulator | Low | `Testcontainers` + simulator Docker image |
