@@ -27,13 +27,18 @@ public sealed class RagPipeline(
     private readonly ILogger _logger = (ILogger?)logger ?? NullLogger.Instance;
     private readonly ResiliencePipeline? _resiliencePipeline = resiliencePipeline;
     private readonly InMemoryBm25Index _bm25Index = new();
-    private int _bm25ChunkCounter;
+    private int _nextBm25DocId;
 
     private const string DefaultSystemPrompt =
         "Answer the user's question based only on the provided context. " +
         "If the context doesn't contain enough information, say so. " +
         "Cite which sources you used.";
 
+    /// <remarks>
+    /// Concurrent ingests of the same <paramref name="documentId"/> are not supported.
+    /// Callers must ensure sequential ingestion per document; the BM25 index update and
+    /// the vector store write are not transactional.
+    /// </remarks>
     public async Task<IngestionResult> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
@@ -73,7 +78,7 @@ public sealed class RagPipeline(
 
         foreach (ref readonly var ec in CollectionsMarshal.AsSpan(embeddedChunks))
         {
-            var id = System.Threading.Interlocked.Increment(ref _bm25ChunkCounter);
+            var id = System.Threading.Interlocked.Increment(ref _nextBm25DocId);
             _bm25Index.Add(id, ec.Chunk);
         }
 
@@ -307,8 +312,8 @@ public sealed class RagPipeline(
 
     public async Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
     {
-        _bm25Index.Remove(documentId);
         await vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken).ConfigureAwait(false);
+        _bm25Index.Remove(documentId);
     }
 
     private static (List<ChatMessage> Messages, ChatOptions Options) BuildRagMessages(

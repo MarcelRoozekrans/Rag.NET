@@ -1200,6 +1200,10 @@ public class RagPipelineTests
         // "tiger" from V1 should be gone
         var results = await _sut.RetrieveAsync("tiger", new RetrievalOptions { UseHybridSearch = true }, TestContext.Current.CancellationToken);
         Assert.Empty(results);
+
+        // V2's "elephant" term should now be in the index
+        var elephantResults = await _sut.RetrieveAsync("elephant", new RetrievalOptions { UseHybridSearch = true }, TestContext.Current.CancellationToken);
+        Assert.NotEmpty(elephantResults);
     }
 
     private sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
