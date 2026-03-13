@@ -5,6 +5,7 @@ using Polly.Retry;
 using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
 using Rag.NET.Models.Options;
+using Rag.NET.MultiQuery;
 
 namespace Rag.NET.DependencyInjection;
 
@@ -62,6 +63,26 @@ public sealed class RagBuilder(IServiceCollection services)
     public RagBuilder AddParser<TParser>() where TParser : class, IDocumentParser
     {
         Services.AddSingleton<IDocumentParser, TParser>();
+        return this;
+    }
+
+    /// <summary>
+    /// Registers <see cref="LlmQueryExpander"/> as the <see cref="IQueryExpander"/>.
+    /// When registered, <see cref="RagPipeline"/> expands each query into
+    /// <see cref="MultiQueryOptions.VariantCount"/> alternatives, fans out to the vector store
+    /// in parallel, and merges deduplicated results.
+    /// </summary>
+    /// <remarks>
+    /// Requires <c>IChatClient</c> to be registered in DI.
+    /// Per-call opt-out: pass <c>new RetrievalOptions { UseMultiQuery = false }</c>.
+    /// </remarks>
+    /// <param name="configure">Optional delegate to configure <see cref="MultiQueryOptions"/>.</param>
+    public RagBuilder UseMultiQueryRetrieval(Action<MultiQueryOptions>? configure = null)
+    {
+        var options = new MultiQueryOptions();
+        configure?.Invoke(options);
+        Services.AddSingleton(options);
+        Services.AddSingleton<IQueryExpander, LlmQueryExpander>();
         return this;
     }
 

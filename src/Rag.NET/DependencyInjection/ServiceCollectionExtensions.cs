@@ -8,6 +8,7 @@ using Polly.Registry;
 using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
 using Rag.NET.Models.Options;
+using Rag.NET.MultiQuery;
 using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
 
@@ -36,8 +37,10 @@ public static class ServiceCollectionExtensions
             var logger = sp.GetService<ILogger<RagPipeline>>();
             var resilienceProvider = sp.GetService<ResiliencePipelineProvider<string>>();
             var resilience = resilienceProvider?.GetPipeline("rag-net");
+            var queryExpander = sp.GetService<IQueryExpander>();
+            var multiQueryOptions = sp.GetService<MultiQueryOptions>();
 
-            return new RagPipeline(parsers, chunker, store, embedder, chatClient, options, logger, resilience);
+            return new RagPipeline(parsers, chunker, store, embedder, chatClient, options, logger, resilience, queryExpander, multiQueryOptions);
         });
 
         var builder = new RagBuilder(services);
