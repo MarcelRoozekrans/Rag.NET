@@ -403,6 +403,35 @@ public class RagPipelineTests
         Assert.Equal(0.8, retrieved[2].Score);
     }
 
+    [Fact]
+    public async Task RetrieveAsync_WithoutLostInTheMiddle_PreservesOriginalOrder()
+    {
+        var embeddings = new GeneratedEmbeddings<Embedding<float>>(
+            [new Embedding<float>(new float[] { 0.1f })]);
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(embeddings);
+
+        var results = new List<SearchResult>
+        {
+            new() { Chunk = new TextChunk { Text = "a", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 },
+            new() { Chunk = new TextChunk { Text = "b", DocumentId = "d", ChunkIndex = 1 }, Score = 0.8 },
+            new() { Chunk = new TextChunk { Text = "c", DocumentId = "d", ChunkIndex = 2 }, Score = 0.7 },
+        };
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(results);
+
+        var retrieved = await _sut.RetrieveAsync(
+            "query",
+            new RetrievalOptions { UseLostInTheMiddleReordering = false },
+            TestContext.Current.CancellationToken);
+
+        // Flag is false — original descending score order preserved
+        Assert.Equal(3, retrieved.Count);
+        Assert.Equal(0.9, retrieved[0].Score);
+        Assert.Equal(0.8, retrieved[1].Score);
+        Assert.Equal(0.7, retrieved[2].Score);
+    }
+
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)
