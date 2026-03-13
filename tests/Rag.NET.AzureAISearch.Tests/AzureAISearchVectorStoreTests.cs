@@ -8,8 +8,6 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
 
-#pragma warning disable MA0039 // Do not write your own certificate validation method — intentional for local test simulator
-
 namespace Rag.NET.AzureAISearch.Tests;
 
 [Collection("AzureAISearch")]
@@ -31,7 +29,9 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
 
         var httpHandler = new HttpClientHandler
         {
+#pragma warning disable MA0039 // Do not write your own certificate validation method — intentional for local test simulator
             ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
+#pragma warning restore MA0039
         };
 
         var options = new AzureSearchClientOptions
