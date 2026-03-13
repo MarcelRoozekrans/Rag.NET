@@ -18,6 +18,18 @@ public class TokenAwareChunkingStrategyTests
     };
 
     [Fact]
+    public void Constructor_NullModelName_ThrowsArgumentException()
+    {
+        Assert.ThrowsAny<ArgumentException>(() => new TokenAwareChunkingStrategy(null!));
+    }
+
+    [Fact]
+    public void Constructor_EmptyModelName_ThrowsArgumentException()
+    {
+        Assert.Throws<ArgumentException>(() => new TokenAwareChunkingStrategy(""));
+    }
+
+    [Fact]
     public async Task ChunkAsync_EmptyText_ReturnsNoChunks()
     {
         var section = CreateSection("");
@@ -105,6 +117,15 @@ public class TokenAwareChunkingStrategyTests
         var withOverlap = await _sut.ChunkAsync(section, new ChunkingOptions { MaxChunkSize = 20, Overlap = 5 }, TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.True(withOverlap.Count >= withoutOverlap.Count);
+        Assert.True(withOverlap.Count > withoutOverlap.Count);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_OverlapGreaterThanOrEqualToMaxChunkSize_ThrowsArgumentOutOfRangeException()
+    {
+        var section = new DocumentSection { Text = "some text", DocumentId = "d", SectionIndex = 0 };
+        var options = new ChunkingOptions { MaxChunkSize = 10, Overlap = 10 };
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+            await _sut.ChunkAsync(section, options, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken));
     }
 }
