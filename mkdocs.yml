@@ -77,6 +77,7 @@ nav:
     - Evaluation: evaluation.md
     - Observability: observability.md
     - Extending Rag.NET: extending.md
+    - MCP Server: mcp.md
   - Reference:
     - Benchmarks: benchmarks.md
     - Feature Backlog: features.md
