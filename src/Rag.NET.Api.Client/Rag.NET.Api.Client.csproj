@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Api.Client</RootNamespace>
+    <PackageId>Rag.NET.Api.Client</PackageId>
+    <Description>HTTP client for Rag.NET.Api — implements IRagPipeline over HTTP</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <ProjectReference Include="..\Rag.NET.Api\Rag.NET.Api.csproj" />
+  </ItemGroup>
+</Project>
