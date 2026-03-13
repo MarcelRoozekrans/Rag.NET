@@ -11,7 +11,10 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 - **Chat** - Ask questions with RAG context via `AskAsync` and streaming via `AskStreamingAsync`
 - **Token-aware chunking** - Split by token count (not characters) to respect embedding model limits
 - **Lost-in-the-Middle reordering** - Place highest-scoring chunks at context extremes for better LLM attention
+- **Redundancy filter** - Drop near-duplicate retrieved chunks by cosine similarity before passing to the LLM
+- **Header-aware metadata** - Propagate Markdown/HTML heading hierarchy into chunk metadata as breadcrumbs
 - **Progress reporting** - Track ingestion stages in real time via `IProgress<IngestionProgress>`
+- **Evaluation** - Score answer quality with `Rag.NET.Evaluation` using embedding cosine similarity
 - **DI-first** - Fluent builder API with `Microsoft.Extensions.DependencyInjection`
 - **Extensible** - Implement `IDocumentParser`, `IVectorStore`, or `IChunkingStrategy` to plug in your own
 
@@ -28,6 +31,7 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 | `Rag.NET.Parsers.Word` | Word (.docx) document parser (OpenXml) |
 | `Rag.NET.Parsers.Excel` | Excel (.xlsx) document parser (OpenXml) |
 | `Rag.NET.Parsers.PowerPoint` | PowerPoint (.pptx) document parser (OpenXml) |
+| `Rag.NET.Evaluation` | Answer quality evaluation via embedding cosine similarity |
 
 ## Quick Start
 
@@ -200,6 +204,65 @@ var result = await pipeline.IngestAsync(stream, metadata, progress: progress);
 ```
 
 Four stages are reported: `Parsing` → `Chunking` → `Embedding` → `Storing`.
+
+### Redundancy Filter
+
+Drop near-duplicate retrieved chunks before sending context to the LLM. Uses a single re-embedding batch call and greedy cosine-similarity filtering:
+
+```csharp
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    TopK = 10,
+    UseRedundancyFilter = true,
+    RedundancyThreshold = 0.95f, // default — drop chunks with >95% cosine similarity to an already-accepted chunk
+});
+
+// Also available on AskAsync / AskStreamingAsync via RagOptions
+var response = await pipeline.AskAsync("question", new RagOptions
+{
+    TopK = 10,
+    UseRedundancyFilter = true,
+    RedundancyThreshold = 0.95f,
+});
+```
+
+### Header-Aware Metadata
+
+When ingesting Markdown or HTML documents, heading hierarchy is automatically propagated into `TextChunk.Metadata` as searchable breadcrumbs:
+
+```csharp
+// After ingest, each chunk from a section under "# Chapter 1 > ## Section 2" will carry:
+chunk.Metadata["heading"]            // "Section 2"
+chunk.Metadata["heading_level"]      // "2"
+chunk.Metadata["heading_breadcrumb"] // "Chapter 1 > Section 2"
+
+// Filter retrieval to a specific section:
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    MetadataFilter = new Dictionary<string, string> { ["heading_breadcrumb"] = "Chapter 1 > Section 2" }
+});
+```
+
+### Evaluation
+
+Use `Rag.NET.Evaluation` to score answer quality by cosine similarity between embedded predicted and reference answers — no LLM call required:
+
+```csharp
+using Rag.NET.Evaluation;
+
+var evaluator = new EmbeddingDistanceEvaluator(embeddingGenerator);
+
+var result = await evaluator.EvaluateAsync([
+    new EvaluationSample(
+        Question: "What is RAG?",
+        PredictedAnswer: response.Answer,
+        ReferenceAnswer: "Retrieval-Augmented Generation combines search with LLMs."),
+]);
+
+Console.WriteLine($"Score: {result.MeanScore:F2}"); // e.g. 0.91
+```
+
+Score interpretation: 1.0 = semantically identical, 0.0 = completely unrelated. Scores ≥ 0.85 typically indicate acceptable answer quality.
 
 ## Sample App
 
