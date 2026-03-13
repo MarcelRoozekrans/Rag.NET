@@ -75,10 +75,48 @@ public sealed class RagPipeline(
         CancellationToken cancellationToken)
     {
         var chunks = new List<TextChunk>();
+        var headingBreadcrumbs = new string?[6];
+
         await foreach (var section in parser.ParseAsync(document, metadata, cancellationToken).ConfigureAwait(false))
         {
+            Dictionary<string, string>? headingMetadata = null;
+
+            if (section.HeadingLevel is { } level && level >= 1 && level <= 6 && section.Heading is not null)
+            {
+                headingBreadcrumbs[level - 1] = section.Heading;
+                var idx = level;
+                while (idx < 6)
+                {
+                    headingBreadcrumbs[idx] = null;
+                    idx++;
+                }
+
+                var parts = new List<string>(level);
+                foreach (var h in headingBreadcrumbs[..level])
+                {
+                    if (h is not null)
+                        parts.Add(h);
+                }
+
+                var breadcrumb = string.Join(" > ", parts);
+                headingMetadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["heading"] = section.Heading,
+                    ["heading_level"] = level.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    ["heading_breadcrumb"] = breadcrumb,
+                };
+            }
+
             await foreach (var chunk in chunkingStrategy.ChunkAsync(section, chunkingOptions, cancellationToken).ConfigureAwait(false))
+            {
+                if (headingMetadata is not null)
+                {
+                    foreach (var kv in headingMetadata)
+                        chunk.Metadata.TryAdd(kv.Key, kv.Value);
+                }
+
                 chunks.Add(chunk);
+            }
         }
 
         return chunks;

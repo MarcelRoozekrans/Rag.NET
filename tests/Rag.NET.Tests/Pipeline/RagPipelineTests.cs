@@ -607,6 +607,124 @@ public class RagPipelineTests
         Assert.Equal(1, storingReport.Total);
     }
 
+    [Fact]
+    public async Task IngestAsync_SectionWithHeading_PropagatesMetadataToChunks()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection
+        {
+            Text = "Section content",
+            DocumentId = "doc-1",
+            SectionIndex = 0,
+            HeadingLevel = 2,
+            Heading = "My Section",
+        };
+        var chunk = new TextChunk { Text = "Section content", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        IReadOnlyList<EmbeddedChunk>? captured = null;
+        await _vectorStore.StoreAsync(
+            Arg.Do<IReadOnlyList<EmbeddedChunk>>(c => captured = c),
+            Arg.Any<CancellationToken>());
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Section content"));
+        await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(captured);
+        var chunkMetadata = captured![0].Chunk.Metadata;
+        Assert.Equal("My Section", chunkMetadata["heading"]);
+        Assert.Equal("2", chunkMetadata["heading_level"]);
+        Assert.Equal("My Section", chunkMetadata["heading_breadcrumb"]);
+    }
+
+    [Fact]
+    public async Task IngestAsync_NestedHeadings_BuildsBreadcrumb()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section1 = new DocumentSection
+        {
+            Text = "Chapter content",
+            DocumentId = "doc-1",
+            SectionIndex = 0,
+            HeadingLevel = 1,
+            Heading = "Chapter 1",
+        };
+        var section2 = new DocumentSection
+        {
+            Text = "Overview content",
+            DocumentId = "doc-1",
+            SectionIndex = 1,
+            HeadingLevel = 2,
+            Heading = "Overview",
+        };
+        var chunk1 = new TextChunk { Text = "Chapter content", DocumentId = "doc-1", ChunkIndex = 0 };
+        var chunk2 = new TextChunk { Text = "Overview content", DocumentId = "doc-1", ChunkIndex = 1 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section1, section2));
+        _chunker.ChunkAsync(section1, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk1));
+        _chunker.ChunkAsync(section2, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk2));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding, embedding]));
+
+        IReadOnlyList<EmbeddedChunk>? captured = null;
+        await _vectorStore.StoreAsync(
+            Arg.Do<IReadOnlyList<EmbeddedChunk>>(c => captured = c),
+            Arg.Any<CancellationToken>());
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("content"));
+        await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(captured);
+        var secondChunkMetadata = captured![1].Chunk.Metadata;
+        Assert.Equal("Chapter 1 > Overview", secondChunkMetadata["heading_breadcrumb"]);
+    }
+
+    [Fact]
+    public async Task IngestAsync_SectionWithoutHeading_NoHeadingMetadata()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection
+        {
+            Text = "Plain content",
+            DocumentId = "doc-1",
+            SectionIndex = 0,
+            // No HeadingLevel, no Heading
+        };
+        var chunk = new TextChunk { Text = "Plain content", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        IReadOnlyList<EmbeddedChunk>? captured = null;
+        await _vectorStore.StoreAsync(
+            Arg.Do<IReadOnlyList<EmbeddedChunk>>(c => captured = c),
+            Arg.Any<CancellationToken>());
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Plain content"));
+        await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(captured);
+        var chunkMetadata = captured![0].Chunk.Metadata;
+        Assert.False(chunkMetadata.ContainsKey("heading"), "heading key should not be present for sections without headings");
+        Assert.False(chunkMetadata.ContainsKey("heading_breadcrumb"), "heading_breadcrumb key should not be present for sections without headings");
+    }
+
     private sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
     {
         public void Report(T value) => callback(value);
