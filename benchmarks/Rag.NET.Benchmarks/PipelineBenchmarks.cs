@@ -23,7 +23,7 @@ public class PipelineBenchmarks
     };
 
     [GlobalSetup]
-    public void Setup()
+    public async Task Setup()
     {
         var vectorStore = new NoOpVectorStore();
         var embedder = new FakeEmbeddingGenerator(dimensions: 384);
@@ -37,6 +37,19 @@ public class PipelineBenchmarks
             new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 });
 
         _documentData = Encoding.UTF8.GetBytes(GenerateText(50_000));
+
+        // Pre-ingest so BM25 index is populated for retrieval benchmark
+        using var stream = new MemoryStream(_documentData);
+        await _pipeline.IngestAsync(stream, Metadata);
+    }
+
+    [Benchmark]
+    public async Task<int> RetrieveAsync_HybridBm25()
+    {
+        var results = await _pipeline.RetrieveAsync(
+            "quick brown fox",
+            new RetrievalOptions { TopK = 5, UseHybridSearch = true });
+        return results.Count;
     }
 
     [Benchmark]

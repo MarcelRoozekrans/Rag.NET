@@ -61,6 +61,21 @@ The pipeline benchmark uses `RecursiveChunkingStrategy`. Embedding and vector-st
 
 ---
 
+## Hybrid Search (BM25 fallback)
+
+In-memory BM25 + RRF merge path, activated when `UseHybridSearch = true` and the vector store does not implement `IHybridSearchable`. Dense search is mocked (no-op), BM25 operates on chunks from a pre-ingested 50 KB document (~100 chunks).
+
+| Method | Mean | Allocated |
+|--------|-----:|----------:|
+| RetrieveAsync_HybridBm25 | 21.91 us | 34.19 KB |
+
+**Notes:**
+- Dense search is mocked (no I/O). Real-world latency is dominated by the vector store query (~10–100 ms p99).
+- BM25 uses a `ReaderWriterLockSlim` with concurrent reads — parallel retrieval scales well.
+- RRF merge is O(topK log topK) after BM25 scoring.
+
+---
+
 ## Redundancy Filter
 
 Post-retrieval cosine-similarity filtering. Embedder is mocked (zero I/O latency) to isolate the CPU-only filter loop over 384-dimensional random vectors with threshold = 0.95.
