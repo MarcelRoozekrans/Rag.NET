@@ -449,13 +449,15 @@ public class RagPipelineTests
     [Fact]
     public void UseTokenAwareChunking_WithCustomModel_RegistersWithThatModel()
     {
-        var services = new ServiceCollection();
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
         services.AddRagNet(b => b.UseTokenAwareChunking("gpt-3.5-turbo"));
 
         var provider = services.BuildServiceProvider();
-        var strategy = provider.GetService<IChunkingStrategy>();
+        var strategy = provider.GetRequiredService<Rag.NET.Abstractions.IChunkingStrategy>()
+            as Rag.NET.Chunking.TokenAwareChunkingStrategy;
 
-        Assert.IsType<Rag.NET.Chunking.TokenAwareChunkingStrategy>(strategy);
+        Assert.NotNull(strategy);
+        Assert.Equal("gpt-3.5-turbo", strategy.ModelName);
     }
 
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)

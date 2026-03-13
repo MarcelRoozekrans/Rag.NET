@@ -22,9 +22,13 @@ public sealed class TokenAwareChunkingStrategy : IChunkingStrategy
     /// Defaults to "gpt-4" which uses the cl100k_base encoding.
     /// </param>
     /// <exception cref="ArgumentException">Thrown when <paramref name="modelName"/> is null or whitespace.</exception>
+    /// <summary>Gets the model name used to create the tokenizer encoding.</summary>
+    public string ModelName { get; }
+
     public TokenAwareChunkingStrategy(string modelName = "gpt-4")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+        ModelName = modelName;
         _tokenizer = TiktokenTokenizer.CreateForModel(modelName);
     }
 
