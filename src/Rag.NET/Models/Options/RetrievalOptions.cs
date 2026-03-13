@@ -7,4 +7,6 @@ public sealed class RetrievalOptions
     public IDictionary<string, string>? MetadataFilter { get; set; }
     public bool UseHybridSearch { get; set; }
     public bool UseLostInTheMiddleReordering { get; set; }
+    public bool UseRedundancyFilter { get; set; }
+    public float RedundancyThreshold { get; set; } = 0.95f;
 }

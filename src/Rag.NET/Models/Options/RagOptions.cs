@@ -8,6 +8,8 @@ public sealed class RagOptions
     public double MinScore { get; set; } = 0.0;
     public bool UseHybridSearch { get; set; }
     public bool UseLostInTheMiddleReordering { get; set; }
+    public bool UseRedundancyFilter { get; set; }
+    public float RedundancyThreshold { get; set; } = 0.95f;
     public IDictionary<string, string>? MetadataFilter { get; set; }
     public string? SystemPrompt { get; set; }
     public float? Temperature { get; set; }
