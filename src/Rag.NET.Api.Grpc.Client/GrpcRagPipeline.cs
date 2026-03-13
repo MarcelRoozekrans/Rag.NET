@@ -47,8 +47,8 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
         var request = new RetrieveRequest
         {
             Query = query,
-            TopK = options?.TopK ?? 0,
-            UseHybrid = options?.UseHybridSearch ?? false
+            TopK = options?.TopK ?? 5,
+            UseHybrid = options?.UseHybridSearch ?? true
         };
 
         var response = await grpcClient.RetrieveAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -64,8 +64,8 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
         var request = new AskRequest
         {
             Query = query,
-            TopK = options?.TopK ?? 0,
-            UseHybrid = options?.UseHybridSearch ?? false
+            TopK = options?.TopK ?? 5,
+            UseHybrid = options?.UseHybridSearch ?? true
         };
 
         var response = await grpcClient.AskAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -85,8 +85,8 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
         var request = new AskRequest
         {
             Query = query,
-            TopK = options?.TopK ?? 0,
-            UseHybrid = options?.UseHybridSearch ?? false
+            TopK = options?.TopK ?? 5,
+            UseHybrid = options?.UseHybridSearch ?? true
         };
 
         using var call = grpcClient.AskStream(request, cancellationToken: cancellationToken);

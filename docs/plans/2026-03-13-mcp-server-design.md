@@ -219,3 +219,12 @@ Add a document to the knowledge base.
 | `Rag.NET.Api.Grpc` | `GrpcChannel` against in-process `WebApplicationFactory` |
 | `Rag.NET.Api.Client` + `Grpc.Client` | Integration tests against respective server |
 | End-to-end | dotnet tool as subprocess via stdio, full pipeline with in-memory vector store |
+
+---
+
+## Implementation Notes
+
+The following items appear in this design but were intentionally omitted from v1:
+
+- **`streaming` parameter on `rag_ask`** — Not implemented. The MCP SDK's streaming support operates at the transport level and is separate from tool return values; tool responses are always complete strings. Streaming responses via `AskStreamingAsync` are available through direct SDK integration and are tracked as future work.
+- **`--backend rest/grpc` CLI flags on the dotnet global tool** — Not implemented in v1. Users configure the backend by extending `Program.cs`; the available extension points (`AddRagNetApiClient`, `AddRagNetGrpcClient`) are documented via inline comments in the generated tool host.
