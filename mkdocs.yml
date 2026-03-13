@@ -1,0 +1,77 @@
+site_name: Rag.NET
+site_description: A modular RAG pipeline library for .NET built on Microsoft.Extensions.AI
+site_url: https://rag-net.github.io/Rag.NET/
+repo_url: https://github.com/rag-net/Rag.NET
+repo_name: rag-net/Rag.NET
+edit_uri: edit/master/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Why RAG?: why-rag.md
+  - Getting Started: getting-started.md
+  - Guide:
+    - Architecture: architecture.md
+    - Ingestion: ingestion.md
+    - Chunking: chunking.md
+    - Retrieval: retrieval.md
+    - Post-Retrieval: post-retrieval.md
+    - Vector Stores: vector-stores.md
+    - Evaluation: evaluation.md
+    - Observability: observability.md
+    - Extending Rag.NET: extending.md
+  - Reference:
+    - Benchmarks: benchmarks.md
+    - Feature Backlog: features.md
