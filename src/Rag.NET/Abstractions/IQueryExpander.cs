@@ -10,6 +10,7 @@ public interface IQueryExpander
     /// Generates <paramref name="count"/> alternative phrasings of <paramref name="query"/>.
     /// Implementations may return fewer than <paramref name="count"/> items;
     /// callers must handle partial results.
+    /// An empty list is a valid return value; callers fall back to single-query retrieval in that case.
     /// </summary>
     Task<IReadOnlyList<string>> ExpandAsync(
         string query,
