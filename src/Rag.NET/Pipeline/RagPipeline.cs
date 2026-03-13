@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Polly;
 using Rag.NET.Abstractions;
 using Rag.NET.Logging;
+using Rag.NET.PostRetrieval;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Telemetry;
@@ -103,6 +104,8 @@ public sealed class RagPipeline(
             UseHybridSearch = opts.UseHybridSearch,
         };
 
+        IReadOnlyList<SearchResult> searchResults;
+
         if (opts.UseHybridSearch)
         {
             if (vectorStore is not IHybridSearchable hybrid)
@@ -112,11 +115,17 @@ public sealed class RagPipeline(
                     "Use a vector store that supports hybrid search, such as AzureAISearchVectorStore.");
             }
 
-            return await hybrid.HybridSearchAsync(query, queryEmbeddings[0].Vector, searchOptions, cancellationToken)
+            searchResults = await hybrid.HybridSearchAsync(query, queryEmbeddings[0].Vector, searchOptions, cancellationToken)
                 .ConfigureAwait(false);
         }
+        else
+        {
+            searchResults = await vectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, cancellationToken).ConfigureAwait(false);
+        }
 
-        return await vectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, cancellationToken).ConfigureAwait(false);
+        return opts.UseLostInTheMiddleReordering
+            ? LostInTheMiddleReorderer.Reorder(searchResults)
+            : searchResults;
     }
 
     public async Task<RagResponse> AskAsync(
@@ -137,6 +146,7 @@ public sealed class RagPipeline(
             MinScore = opts.MinScore,
             MetadataFilter = opts.MetadataFilter,
             UseHybridSearch = opts.UseHybridSearch,
+            UseLostInTheMiddleReordering = opts.UseLostInTheMiddleReordering,
         };
         var sources = await RetrieveAsync(query, retrievalOptions, cancellationToken).ConfigureAwait(false);
 
@@ -190,6 +200,7 @@ public sealed class RagPipeline(
             MinScore = opts.MinScore,
             MetadataFilter = opts.MetadataFilter,
             UseHybridSearch = opts.UseHybridSearch,
+            UseLostInTheMiddleReordering = opts.UseLostInTheMiddleReordering,
         };
         var sources = await RetrieveAsync(query, retrievalOptions, cancellationToken).ConfigureAwait(false);
 
