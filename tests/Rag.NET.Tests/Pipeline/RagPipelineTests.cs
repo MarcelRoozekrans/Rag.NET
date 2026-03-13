@@ -460,6 +460,91 @@ public class RagPipelineTests
         Assert.Equal("gpt-3.5-turbo", strategy.ModelName);
     }
 
+    [Fact]
+    public async Task IngestAsync_WithProgress_ReportsAllFourStagesInOrder()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-progress", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "Hello world", DocumentId = "doc-progress", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "Hello world", DocumentId = "doc-progress", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        var reported = new List<IngestionProgress>();
+        var progress = new SynchronousProgress<IngestionProgress>(p => reported.Add(p));
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello world"));
+        await _sut.IngestAsync(stream, metadata, progress: progress, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, reported.Count);
+        Assert.Equal(IngestionProgressStage.Parsing, reported[0].Stage);
+        Assert.Equal(IngestionProgressStage.Chunking, reported[1].Stage);
+        Assert.Equal(IngestionProgressStage.Embedding, reported[2].Stage);
+        Assert.Equal(IngestionProgressStage.Storing, reported[3].Stage);
+        Assert.All(reported, p => Assert.Equal("doc-progress", p.DocumentId));
+    }
+
+    [Fact]
+    public async Task IngestAsync_WithNullProgress_DoesNotThrow()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "Hello", DocumentId = "doc-1", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "Hello", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello"));
+        var ex = await Record.ExceptionAsync(() =>
+            _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public async Task IngestAsync_WithProgress_ReportsChunkCount()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-count", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "text", DocumentId = "doc-count", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "text", DocumentId = "doc-count", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        var reported = new List<IngestionProgress>();
+        var progress = new SynchronousProgress<IngestionProgress>(p => reported.Add(p));
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("text"));
+        await _sut.IngestAsync(stream, metadata, progress: progress, cancellationToken: TestContext.Current.CancellationToken);
+
+        var chunkingReport = reported.First(p => p.Stage == IngestionProgressStage.Chunking);
+        Assert.Equal(1, chunkingReport.Current);
+
+        var storingReport = reported.First(p => p.Stage == IngestionProgressStage.Storing);
+        Assert.Equal(1, storingReport.Current);
+        Assert.Equal(1, storingReport.Total);
+    }
+
+    private sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
+    {
+        public void Report(T value) => callback(value);
+    }
+
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)

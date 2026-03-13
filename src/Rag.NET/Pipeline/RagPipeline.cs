@@ -35,6 +35,7 @@ public sealed class RagPipeline(
         Stream document,
         DocumentMetadata metadata,
         IngestionOptions? options = null,
+        IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var parser = parsers.FirstOrDefault(p => p.CanParse(metadata.ContentType ?? "text/plain"))
@@ -42,49 +43,74 @@ public sealed class RagPipeline(
                 $"No parser registered for content type '{metadata.ContentType}'.");
 
         if (options?.Overwrite == true)
-        {
             await vectorStore.DeleteByDocumentIdAsync(metadata.DocumentId, cancellationToken).ConfigureAwait(false);
-        }
 
-        var chunks = new List<TextChunk>();
+        var chunks = await ParseAndChunkAsync(parser, document, metadata, cancellationToken).ConfigureAwait(false);
 
-        await foreach (var section in parser.ParseAsync(document, metadata, cancellationToken).ConfigureAwait(false))
-        {
-            await foreach (var chunk in chunkingStrategy.ChunkAsync(section, chunkingOptions, cancellationToken).ConfigureAwait(false))
-            {
-                chunks.Add(chunk);
-            }
-        }
-
-        foreach (ref var chunk in CollectionsMarshal.AsSpan(chunks))
-        {
-            foreach (var tag in metadata.Tags)
-            {
-                chunk.Metadata.TryAdd(tag.Key, tag.Value);
-            }
-            chunk.Metadata.TryAdd("document_id", metadata.DocumentId);
-            chunk.Metadata.TryAdd("file_name", metadata.FileName);
-        }
+        ReportProgress(progress, IngestionProgressStage.Parsing, metadata.DocumentId, null, null, "Parsing complete");
+        ApplyMetadataTags(chunks, metadata);
+        ReportProgress(progress, IngestionProgressStage.Chunking, metadata.DocumentId, chunks.Count, null, $"Chunked into {chunks.Count} chunks");
 
         if (chunks.Count == 0)
-        {
             return new IngestionResult { DocumentId = metadata.DocumentId, ChunksStored = 0 };
-        }
 
         var texts = chunks.Select(c => c.Text).ToList();
         var embeddings = await embeddingGenerator.GenerateAsync(texts, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var embeddedChunks = chunks
-            .Zip(embeddings, (chunk, embedding) => new EmbeddedChunk
-            {
-                Chunk = chunk,
-                Embedding = embedding.Vector,
-            })
+            .Zip(embeddings, (chunk, embedding) => new EmbeddedChunk { Chunk = chunk, Embedding = embedding.Vector })
             .ToList();
 
+        ReportProgress(progress, IngestionProgressStage.Embedding, metadata.DocumentId, embeddedChunks.Count, embeddedChunks.Count, $"Generated {embeddedChunks.Count} embeddings");
         await vectorStore.StoreAsync(embeddedChunks, cancellationToken).ConfigureAwait(false);
+        ReportProgress(progress, IngestionProgressStage.Storing, metadata.DocumentId, embeddedChunks.Count, embeddedChunks.Count, $"Stored {embeddedChunks.Count} chunks");
 
         return new IngestionResult { DocumentId = metadata.DocumentId, ChunksStored = embeddedChunks.Count };
+    }
+
+    private async Task<List<TextChunk>> ParseAndChunkAsync(
+        IDocumentParser parser,
+        Stream document,
+        DocumentMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        var chunks = new List<TextChunk>();
+        await foreach (var section in parser.ParseAsync(document, metadata, cancellationToken).ConfigureAwait(false))
+        {
+            await foreach (var chunk in chunkingStrategy.ChunkAsync(section, chunkingOptions, cancellationToken).ConfigureAwait(false))
+                chunks.Add(chunk);
+        }
+
+        return chunks;
+    }
+
+    private static void ApplyMetadataTags(List<TextChunk> chunks, DocumentMetadata metadata)
+    {
+        foreach (ref var chunk in CollectionsMarshal.AsSpan(chunks))
+        {
+            foreach (var tag in metadata.Tags)
+                chunk.Metadata.TryAdd(tag.Key, tag.Value);
+            chunk.Metadata.TryAdd("document_id", metadata.DocumentId);
+            chunk.Metadata.TryAdd("file_name", metadata.FileName);
+        }
+    }
+
+    private static void ReportProgress(
+        IProgress<IngestionProgress>? progress,
+        IngestionProgressStage stage,
+        string documentId,
+        int? current,
+        int? total,
+        string message)
+    {
+        progress?.Report(new IngestionProgress
+        {
+            Stage = stage,
+            DocumentId = documentId,
+            Current = current,
+            Total = total,
+            Message = message,
+        });
     }
 
     public async Task<IReadOnlyList<SearchResult>> RetrieveAsync(
