@@ -1,6 +1,6 @@
 # Rag.NET Feature Backlog
 
-Candidate features for future design and implementation. Inspired by [SimpleRag](https://github.com/Sensum365/SimpleRag), [LangChain](https://github.com/langchain-ai/langchain), and [RAGFlow](https://github.com/infiniflow/ragflow).
+Candidate features for future design and implementation.
 
 ---
 
@@ -500,7 +500,7 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [x] | Redundancy Filter | Low | Embedding access |
 | [x] | Token-Aware Splitting | Low | `Microsoft.ML.Tokenizers` |
 | [ ] | Audio Transcription | Medium | `Whisper.net` |
-| [ ] | BM25 Keyword Retrieval | Medium | None |
+| [x] | BM25 Keyword Retrieval | Medium | None |
 | [ ] | BM25 Synonym Expansion | Medium | BM25 retriever |
 | [ ] | Content-Hash Record Manager | Medium | Persistence store |
 | [ ] | Cross-Encoder Reranking | Medium | Model or API |
