@@ -513,7 +513,7 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [x] | MCP Server | Medium | MCP SDK |
 | [ ] | MMR Retrieval | Medium | Embedding access |
 | [ ] | Multi-Language Code Splitting | Medium | None (regex) |
-| [ ] | Multi-Query Retrieval | Medium | `IChatClient` |
+| [x] | Multi-Query Retrieval | Medium | `IChatClient` |
 | [ ] | SaaS Connectors | Medium | Per-platform SDK |
 | [ ] | Search Result Caching | Medium | None |
 | [ ] | Tag-Based Retrieval | Medium | Hybrid search |
