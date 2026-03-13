@@ -894,6 +894,221 @@ public class RagPipelineTests
         Assert.Single(results);
     }
 
+    [Fact]
+    public async Task IngestAsync_SectionWithHeadingLevelZero_NoHeadingMetadata()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection
+        {
+            Text = "Bad level content",
+            DocumentId = "doc-1",
+            SectionIndex = 0,
+            HeadingLevel = 0,
+            Heading = "Bad",
+        };
+        var chunk = new TextChunk { Text = "Bad level content", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        IReadOnlyList<EmbeddedChunk>? captured = null;
+        await _vectorStore.StoreAsync(
+            Arg.Do<IReadOnlyList<EmbeddedChunk>>(c => captured = c),
+            Arg.Any<CancellationToken>());
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Bad level content"));
+        await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(captured);
+        var chunkMetadata = captured![0].Chunk.Metadata;
+        Assert.False(chunkMetadata.ContainsKey("heading"), "heading key should not be present for out-of-range heading level 0");
+    }
+
+    [Fact]
+    public async Task IngestAsync_SectionWithHeadingLevelSeven_NoHeadingMetadata()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection
+        {
+            Text = "Bad level content",
+            DocumentId = "doc-1",
+            SectionIndex = 0,
+            HeadingLevel = 7,
+            Heading = "Bad",
+        };
+        var chunk = new TextChunk { Text = "Bad level content", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        IReadOnlyList<EmbeddedChunk>? captured = null;
+        await _vectorStore.StoreAsync(
+            Arg.Do<IReadOnlyList<EmbeddedChunk>>(c => captured = c),
+            Arg.Any<CancellationToken>());
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Bad level content"));
+        await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(captured);
+        var chunkMetadata = captured![0].Chunk.Metadata;
+        Assert.False(chunkMetadata.ContainsKey("heading"), "heading key should not be present for out-of-range heading level 7");
+    }
+
+    [Fact]
+    public async Task IngestAsync_SkipLevelHeadings_BreadcrumbSkipsEmptyLevels()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section1 = new DocumentSection
+        {
+            Text = "Root content",
+            DocumentId = "doc-1",
+            SectionIndex = 0,
+            HeadingLevel = 1,
+            Heading = "Root",
+        };
+        var section2 = new DocumentSection
+        {
+            Text = "Deep content",
+            DocumentId = "doc-1",
+            SectionIndex = 1,
+            HeadingLevel = 3,
+            Heading = "Deep",
+        };
+        var chunk1 = new TextChunk { Text = "Root content", DocumentId = "doc-1", ChunkIndex = 0 };
+        var chunk2 = new TextChunk { Text = "Deep content", DocumentId = "doc-1", ChunkIndex = 1 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section1, section2));
+        _chunker.ChunkAsync(section1, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk1));
+        _chunker.ChunkAsync(section2, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk2));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding, embedding]));
+
+        IReadOnlyList<EmbeddedChunk>? captured = null;
+        await _vectorStore.StoreAsync(
+            Arg.Do<IReadOnlyList<EmbeddedChunk>>(c => captured = c),
+            Arg.Any<CancellationToken>());
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("content"));
+        await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(captured);
+        var deepChunkMetadata = captured![1].Chunk.Metadata;
+        Assert.Equal("Root > Deep", deepChunkMetadata["heading_breadcrumb"]);
+    }
+
+    [Fact]
+    public async Task IngestAsync_MultipleTopLevelHeadings_BreadcrumbResetsCorrectly()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section1 = new DocumentSection
+        {
+            Text = "Part 1 content",
+            DocumentId = "doc-1",
+            SectionIndex = 0,
+            HeadingLevel = 1,
+            Heading = "Part 1",
+        };
+        var section2 = new DocumentSection
+        {
+            Text = "Chapter A content",
+            DocumentId = "doc-1",
+            SectionIndex = 1,
+            HeadingLevel = 2,
+            Heading = "Chapter A",
+        };
+        var section3 = new DocumentSection
+        {
+            Text = "Part 2 content",
+            DocumentId = "doc-1",
+            SectionIndex = 2,
+            HeadingLevel = 1,
+            Heading = "Part 2",
+        };
+        var chunk1 = new TextChunk { Text = "Part 1 content", DocumentId = "doc-1", ChunkIndex = 0 };
+        var chunk2 = new TextChunk { Text = "Chapter A content", DocumentId = "doc-1", ChunkIndex = 1 };
+        var chunk3 = new TextChunk { Text = "Part 2 content", DocumentId = "doc-1", ChunkIndex = 2 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section1, section2, section3));
+        _chunker.ChunkAsync(section1, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk1));
+        _chunker.ChunkAsync(section2, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk2));
+        _chunker.ChunkAsync(section3, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk3));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding, embedding, embedding]));
+
+        IReadOnlyList<EmbeddedChunk>? captured = null;
+        await _vectorStore.StoreAsync(
+            Arg.Do<IReadOnlyList<EmbeddedChunk>>(c => captured = c),
+            Arg.Any<CancellationToken>());
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("content"));
+        await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(captured);
+        var part2ChunkMetadata = captured![2].Chunk.Metadata;
+        Assert.Equal("Part 2", part2ChunkMetadata["heading_breadcrumb"]);
+    }
+
+    [Fact]
+    public async Task IngestAsync_MultipleCHunksFromSameSection_AllGetSameHeadingMetadata()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection
+        {
+            Text = "My Section content",
+            DocumentId = "doc-1",
+            SectionIndex = 0,
+            HeadingLevel = 2,
+            Heading = "My Section",
+        };
+        var chunk1 = new TextChunk { Text = "chunk1", DocumentId = "doc-1", ChunkIndex = 0 };
+        var chunk2 = new TextChunk { Text = "chunk2", DocumentId = "doc-1", ChunkIndex = 1 };
+        var chunk3 = new TextChunk { Text = "chunk3", DocumentId = "doc-1", ChunkIndex = 2 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(Arg.Any<DocumentSection>(), Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk1, chunk2, chunk3));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding, embedding, embedding]));
+
+        IReadOnlyList<EmbeddedChunk>? captured = null;
+        await _vectorStore.StoreAsync(
+            Arg.Do<IReadOnlyList<EmbeddedChunk>>(c => captured = c),
+            Arg.Any<CancellationToken>());
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("My Section content"));
+        await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(captured);
+        Assert.Equal(3, captured!.Count);
+        foreach (var embeddedChunk in captured)
+        {
+            var chunkMetadata = embeddedChunk.Chunk.Metadata;
+            Assert.Equal("My Section", chunkMetadata["heading"]);
+            Assert.Equal("My Section", chunkMetadata["heading_breadcrumb"]);
+        }
+    }
+
     private sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
     {
         public void Report(T value) => callback(value);
