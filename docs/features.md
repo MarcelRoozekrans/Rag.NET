@@ -510,7 +510,7 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [ ] | HyDE | Medium | `IChatClient` |
 | [ ] | LLM-as-Judge Evaluation | Medium | `IChatClient` |
 | [ ] | Map-Reduce / Refine Synthesis | Medium | `IChatClient` |
-| [ ] | MCP Server | Medium | MCP SDK |
+| [x] | MCP Server | Medium | MCP SDK |
 | [ ] | MMR Retrieval | Medium | Embedding access |
 | [ ] | Multi-Language Code Splitting | Medium | None (regex) |
 | [ ] | Multi-Query Retrieval | Medium | `IChatClient` |
