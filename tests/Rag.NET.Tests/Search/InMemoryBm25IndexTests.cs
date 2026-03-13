@@ -24,7 +24,8 @@ public class InMemoryBm25IndexTests
         var results = index.Search("fox", topK: 5);
 
         Assert.Single(results);
-        Assert.Equal(0, results[0].docId);
+        Assert.Equal("doc1", results[0].chunk.DocumentId);
+        Assert.Equal(0, results[0].chunk.ChunkIndex);
     }
 
     [Fact]
@@ -37,7 +38,7 @@ public class InMemoryBm25IndexTests
         var results = index.Search("cat", topK: 5);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal(0, results[0].docId); // higher TF should rank first
+        Assert.Equal(0, results[0].chunk.ChunkIndex); // higher TF should rank first
     }
 
     [Fact]
@@ -63,7 +64,7 @@ public class InMemoryBm25IndexTests
 
         var results = index.Search("hello", topK: 5);
         Assert.Single(results);
-        Assert.Equal(1, results[0].docId);
+        Assert.Equal("doc2", results[0].chunk.DocumentId);
     }
 
     [Fact]
@@ -116,6 +117,6 @@ public class InMemoryBm25IndexTests
         var results = index.Search("quick fox", topK: 5);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal(0, results[0].docId); // doc0 should rank higher (matches both terms)
+        Assert.Equal("doc1", results[0].chunk.DocumentId); // doc0 should rank higher (matches both terms)
     }
 }

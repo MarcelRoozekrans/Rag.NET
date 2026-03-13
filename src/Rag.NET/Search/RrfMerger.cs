@@ -9,10 +9,9 @@ internal static class RrfMerger
 {
     private const double K = 60.0;
 
-    public static IReadOnlyList<SearchResult> Merge(
+    internal static IReadOnlyList<SearchResult> Merge(
         IReadOnlyList<SearchResult> dense,
-        IReadOnlyList<(int docId, double score)> bm25Hits,
-        IReadOnlyList<TextChunk> allChunks,
+        IReadOnlyList<(TextChunk chunk, double score)> bm25Hits,
         int topK)
     {
         if (topK <= 0) return [];
@@ -33,8 +32,7 @@ internal static class RrfMerger
         // BM25 results (1-based rank)
         for (int rank = 0; rank < bm25Hits.Count; rank++)
         {
-            var (docId, _) = bm25Hits[rank];
-            var chunk = allChunks[docId];
+            var chunk = bm25Hits[rank].chunk;
             var key = (chunk.DocumentId, chunk.ChunkIndex);
             var contrib = 1.0 / (K + rank + 1);
             rrfScores[key] = rrfScores.TryGetValue(key, out var s) ? s + contrib : contrib;

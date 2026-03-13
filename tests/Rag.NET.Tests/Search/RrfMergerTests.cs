@@ -15,7 +15,7 @@ public class RrfMergerTests
     [Fact]
     public void Merge_ReturnsEmpty_WhenBothListsEmpty()
     {
-        var result = RrfMerger.Merge([], [], [], topK: 5);
+        var result = RrfMerger.Merge([], [], topK: 5);
         Assert.Empty(result);
     }
 
@@ -23,7 +23,7 @@ public class RrfMergerTests
     public void Merge_ReturnsEmpty_WhenTopKIsZero()
     {
         var chunk = Chunk("doc", 0);
-        var result = RrfMerger.Merge([Result(chunk)], [], [chunk], topK: 0);
+        var result = RrfMerger.Merge([Result(chunk)], [], topK: 0);
         Assert.Empty(result);
     }
 
@@ -33,7 +33,7 @@ public class RrfMergerTests
         var chunks = Enumerable.Range(0, 10).Select(i => Chunk("doc", i)).ToList();
         var dense = chunks.Select(c => Result(c, 1.0)).ToList();
 
-        var result = RrfMerger.Merge(dense, [], chunks, topK: 3);
+        var result = RrfMerger.Merge(dense, [], topK: 3);
 
         Assert.Equal(3, result.Count);
     }
@@ -43,9 +43,9 @@ public class RrfMergerTests
     {
         var chunk = Chunk("doc", 0);
         var dense = new List<SearchResult> { Result(chunk, 0.9) };
-        var bm25 = new List<(int docId, double score)> { (0, 50.0) };
+        var bm25 = new List<(TextChunk chunk, double score)> { (chunk, 50.0) };
 
-        var result = RrfMerger.Merge(dense, bm25, [chunk], topK: 5);
+        var result = RrfMerger.Merge(dense, bm25, topK: 5);
 
         Assert.Single(result);
     }
@@ -58,11 +58,10 @@ public class RrfMergerTests
         var chunk1 = Chunk("doc", 1, "dense only");
         var chunk2 = Chunk("doc", 2, "bm25 only");
 
-        var allChunks = new List<TextChunk> { chunk0, chunk1, chunk2 };
         var dense = new List<SearchResult> { Result(chunk0, 0.9), Result(chunk1, 0.8) };
-        var bm25 = new List<(int docId, double score)> { (0, 50.0), (2, 40.0) };
+        var bm25 = new List<(TextChunk chunk, double score)> { (chunk0, 50.0), (chunk2, 40.0) };
 
-        var result = RrfMerger.Merge(dense, bm25, allChunks, topK: 5);
+        var result = RrfMerger.Merge(dense, bm25, topK: 5);
 
         Assert.Equal(3, result.Count);
         // chunk0 (rank 1 in both) has highest RRF score
@@ -75,7 +74,7 @@ public class RrfMergerTests
         var chunks = new[] { Chunk("doc", 0), Chunk("doc", 1) };
         var dense = chunks.Select(c => Result(c)).ToList();
 
-        var result = RrfMerger.Merge(dense, [], [], topK: 5);
+        var result = RrfMerger.Merge(dense, [], topK: 5);
 
         Assert.Equal(2, result.Count);
     }
@@ -84,9 +83,9 @@ public class RrfMergerTests
     public void Merge_WorksWithOnlyBm25Results()
     {
         var chunk = Chunk("doc", 0);
-        var bm25 = new List<(int docId, double score)> { (0, 42.0) };
+        var bm25 = new List<(TextChunk chunk, double score)> { (chunk, 42.0) };
 
-        var result = RrfMerger.Merge([], bm25, [chunk], topK: 5);
+        var result = RrfMerger.Merge([], bm25, topK: 5);
 
         Assert.Single(result);
         Assert.Equal(0, result[0].Chunk.ChunkIndex);
@@ -97,7 +96,7 @@ public class RrfMergerTests
     {
         // Single chunk, rank 1 in dense only → score = 1/(60+1) = 1/61
         var chunk = Chunk("doc", 0);
-        var result = RrfMerger.Merge([Result(chunk)], [], [chunk], topK: 5);
+        var result = RrfMerger.Merge([Result(chunk)], [], topK: 5);
 
         Assert.Single(result);
         var expected = 1.0 / 61.0;
@@ -108,7 +107,7 @@ public class RrfMergerTests
     public void Merge_ReturnsEmpty_WhenTopKIsNegative()
     {
         var chunk = Chunk("doc", 0);
-        var result = RrfMerger.Merge([Result(chunk)], [], [chunk], topK: -1);
+        var result = RrfMerger.Merge([Result(chunk)], [], topK: -1);
         Assert.Empty(result);
     }
 
@@ -118,9 +117,9 @@ public class RrfMergerTests
         // chunk0 rank 1 in dense AND rank 1 in BM25 → score = 1/61 + 1/61 = 2/61
         var chunk = Chunk("doc", 0);
         var dense = new List<SearchResult> { Result(chunk, 0.9) };
-        var bm25 = new List<(int docId, double score)> { (0, 50.0) };
+        var bm25 = new List<(TextChunk chunk, double score)> { (chunk, 50.0) };
 
-        var result = RrfMerger.Merge(dense, bm25, [chunk], topK: 5);
+        var result = RrfMerger.Merge(dense, bm25, topK: 5);
 
         Assert.Single(result);
         var expected = 1.0 / 61.0 + 1.0 / 61.0;
@@ -135,12 +134,10 @@ public class RrfMergerTests
         var chunk0 = Chunk("doc", 0, "shared top");
         var chunk1 = Chunk("doc", 1, "dense second");
         var chunk2 = Chunk("doc", 2, "bm25 second");
-        var allChunks = new List<TextChunk> { chunk0, chunk1, chunk2 };
-
         var dense = new List<SearchResult> { Result(chunk0, 0.9), Result(chunk1, 0.8) };
-        var bm25 = new List<(int docId, double score)> { (0, 50.0), (2, 40.0) };
+        var bm25 = new List<(TextChunk chunk, double score)> { (chunk0, 50.0), (chunk2, 40.0) };
 
-        var result = RrfMerger.Merge(dense, bm25, allChunks, topK: 5);
+        var result = RrfMerger.Merge(dense, bm25, topK: 5);
 
         Assert.Equal(3, result.Count);
         // Scores must be non-ascending
@@ -156,7 +153,7 @@ public class RrfMergerTests
         var chunks = new[] { Chunk("doc", 0), Chunk("doc", 1) };
         var dense = chunks.Select(c => Result(c)).ToList();
 
-        var result = RrfMerger.Merge(dense, [], [], topK: 100);
+        var result = RrfMerger.Merge(dense, [], topK: 100);
 
         Assert.Equal(2, result.Count); // capped at available, not padded
     }

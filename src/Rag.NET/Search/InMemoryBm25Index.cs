@@ -13,7 +13,7 @@ internal sealed class InMemoryBm25Index : IDisposable
     private const double B = 0.75;
 
     private readonly Dictionary<string, List<(int docId, int tf)>> _postings = new(StringComparer.Ordinal);
-    private readonly Dictionary<int, (string documentId, int length)> _docs = [];
+    private readonly Dictionary<int, (TextChunk chunk, int length)> _docs = [];
     private readonly ReaderWriterLockSlim _lock = new();
 
     public void Add(int docId, TextChunk chunk)
@@ -28,7 +28,7 @@ internal sealed class InMemoryBm25Index : IDisposable
         {
             if (_docs.ContainsKey(docId))
                 return; // caller must remove before re-adding
-            _docs[docId] = (chunk.DocumentId, tokens.Count);
+            _docs[docId] = (chunk, tokens.Count);
             foreach (var (term, freq) in tf)
             {
                 if (!_postings.TryGetValue(term, out var list))
@@ -53,7 +53,7 @@ internal sealed class InMemoryBm25Index : IDisposable
             var toRemove = new List<int>();
             foreach (var kv in _docs)
             {
-                if (string.Equals(kv.Value.documentId, documentId, StringComparison.Ordinal))
+                if (string.Equals(kv.Value.chunk.DocumentId, documentId, StringComparison.Ordinal))
                     toRemove.Add(kv.Key);
             }
 
@@ -80,7 +80,7 @@ internal sealed class InMemoryBm25Index : IDisposable
         }
     }
 
-    public IReadOnlyList<(int docId, double score)> Search(string query, int topK)
+    public IReadOnlyList<(TextChunk chunk, double score)> Search(string query, int topK)
     {
         var queryTokens = Tokenize(query);
         if (queryTokens.Count == 0) return [];
@@ -116,9 +116,9 @@ internal sealed class InMemoryBm25Index : IDisposable
                 }
             }
 
-            var result = new List<(int docId, double score)>(Math.Min(scores.Count, topK));
+            var result = new List<(TextChunk chunk, double score)>(Math.Min(scores.Count, topK));
             foreach (var kv in scores)
-                result.Add((kv.Key, kv.Value));
+                result.Add((_docs[kv.Key].chunk, kv.Value));
 
             result.Sort(static (a, b) => b.score.CompareTo(a.score));
 
