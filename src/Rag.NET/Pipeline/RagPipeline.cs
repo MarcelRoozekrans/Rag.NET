@@ -9,6 +9,7 @@ using Rag.NET.Logging;
 using Rag.NET.PostRetrieval;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Search;
 using Rag.NET.Telemetry;
 
 namespace Rag.NET.Pipeline;
@@ -25,6 +26,8 @@ public sealed class RagPipeline(
 {
     private readonly ILogger _logger = (ILogger?)logger ?? NullLogger.Instance;
     private readonly ResiliencePipeline? _resiliencePipeline = resiliencePipeline;
+    private readonly InMemoryBm25Index _bm25Index = new();
+    private int _bm25ChunkCounter;
 
     private const string DefaultSystemPrompt =
         "Answer the user's question based only on the provided context. " +
@@ -43,7 +46,10 @@ public sealed class RagPipeline(
                 $"No parser registered for content type '{metadata.ContentType}'.");
 
         if (options?.Overwrite == true)
+        {
             await vectorStore.DeleteByDocumentIdAsync(metadata.DocumentId, cancellationToken).ConfigureAwait(false);
+            _bm25Index.Remove(metadata.DocumentId);
+        }
 
         var chunks = await ParseAndChunkAsync(parser, document, metadata, cancellationToken).ConfigureAwait(false);
 
@@ -64,6 +70,12 @@ public sealed class RagPipeline(
         ReportProgress(progress, IngestionProgressStage.Embedding, metadata.DocumentId, embeddedChunks.Count, embeddedChunks.Count, $"Generated {embeddedChunks.Count} embeddings");
         await vectorStore.StoreAsync(embeddedChunks, cancellationToken).ConfigureAwait(false);
         ReportProgress(progress, IngestionProgressStage.Storing, metadata.DocumentId, embeddedChunks.Count, embeddedChunks.Count, $"Stored {embeddedChunks.Count} chunks");
+
+        foreach (ref readonly var ec in CollectionsMarshal.AsSpan(embeddedChunks))
+        {
+            var id = System.Threading.Interlocked.Increment(ref _bm25ChunkCounter);
+            _bm25Index.Add(id, ec.Chunk);
+        }
 
         return new IngestionResult { DocumentId = metadata.DocumentId, ChunksStored = embeddedChunks.Count };
     }
@@ -172,15 +184,19 @@ public sealed class RagPipeline(
 
         if (opts.UseHybridSearch)
         {
-            if (vectorStore is not IHybridSearchable hybrid)
+            if (vectorStore is IHybridSearchable hybrid)
             {
-                throw new InvalidOperationException(
-                    "The registered IVectorStore does not implement IHybridSearchable. " +
-                    "Use a vector store that supports hybrid search, such as AzureAISearchVectorStore.");
+                searchResults = await hybrid.HybridSearchAsync(query, queryEmbeddings[0].Vector, searchOptions, cancellationToken)
+                    .ConfigureAwait(false);
             }
-
-            searchResults = await hybrid.HybridSearchAsync(query, queryEmbeddings[0].Vector, searchOptions, cancellationToken)
-                .ConfigureAwait(false);
+            else
+            {
+                // Fallback: run dense + BM25 concurrently, merge via RRF
+                var denseTask = vectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, cancellationToken);
+                var bm25Hits = _bm25Index.Search(query, topK: opts.TopK);
+                var dense = await denseTask.ConfigureAwait(false);
+                searchResults = RrfMerger.Merge(dense, bm25Hits, opts.TopK);
+            }
         }
         else
         {
@@ -289,9 +305,10 @@ public sealed class RagPipeline(
         }
     }
 
-    public Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
     {
-        return vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
+        _bm25Index.Remove(documentId);
+        await vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken).ConfigureAwait(false);
     }
 
     private static (List<ChatMessage> Messages, ChatOptions Options) BuildRagMessages(

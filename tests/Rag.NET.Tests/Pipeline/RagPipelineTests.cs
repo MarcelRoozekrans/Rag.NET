@@ -243,17 +243,22 @@ public class RagPipelineTests
     }
 
     [Fact]
-    public async Task RetrieveAsync_WithHybridSearch_ThrowsWhenStoreNotHybrid()
+    public async Task RetrieveAsync_WithHybridSearch_FallsBackToBm25WhenStoreNotHybrid()
     {
         var queryEmbedding = new Embedding<float>(new float[] { 0.1f });
         _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([]));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            _sut.RetrieveAsync(
-                "test query",
-                new RetrievalOptions { UseHybridSearch = true },
-                TestContext.Current.CancellationToken));
+        // _vectorStore is not IHybridSearchable — should fall back to dense+BM25, not throw
+        var results = await _sut.RetrieveAsync(
+            "test query",
+            new RetrievalOptions { UseHybridSearch = true },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(results);
+        await _vectorStore.Received(1).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -1107,6 +1112,94 @@ public class RagPipelineTests
             Assert.Equal("My Section", chunkMetadata["heading"]);
             Assert.Equal("My Section", chunkMetadata["heading_breadcrumb"]);
         }
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WithHybridSearch_AndNonHybridStore_DoesNotThrow()
+    {
+        // Arrange: ingest a document
+        var metadata = new DocumentMetadata { DocumentId = "doc-hybrid", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "the quick brown fox", DocumentId = "doc-hybrid", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "the quick brown fox", DocumentId = "doc-hybrid", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f, 0.2f, 0.3f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(Arg.Any<DocumentSection>(), Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new GeneratedEmbeddings<Embedding<float>> { embedding }));
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([]));
+
+        await _sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Act: _vectorStore is NOT IHybridSearchable — should fall back, not throw
+        var results = await _sut.RetrieveAsync("fox", new RetrievalOptions { UseHybridSearch = true }, TestContext.Current.CancellationToken);
+
+        // Dense search was called
+        await _vectorStore.Received(1).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+        // No exception — BM25 fallback worked
+        Assert.NotNull(results);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RemovesBm25Entries_SoSubsequentHybridSearchFindsNothing()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-del", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "fox jumps", DocumentId = "doc-del", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "fox jumps", DocumentId = "doc-del", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(Arg.Any<DocumentSection>(), Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new GeneratedEmbeddings<Embedding<float>> { embedding }));
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([]));
+
+        await _sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: TestContext.Current.CancellationToken);
+        await _sut.DeleteAsync("doc-del", TestContext.Current.CancellationToken);
+
+        var results = await _sut.RetrieveAsync("fox", new RetrievalOptions { UseHybridSearch = true }, TestContext.Current.CancellationToken);
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task IngestAsync_WithOverwrite_ClearsBm25BeforeReIndexing()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-ow", FileName = "test.txt", ContentType = "text/plain" };
+
+        var sectionV1 = new DocumentSection { Text = "tiger stalks prey", DocumentId = "doc-ow", SectionIndex = 0 };
+        var chunkV1 = new TextChunk { Text = "tiger stalks prey", DocumentId = "doc-ow", ChunkIndex = 0 };
+
+        var sectionV2 = new DocumentSection { Text = "elephant roams savanna", DocumentId = "doc-ow", SectionIndex = 0 };
+        var chunkV2 = new TextChunk { Text = "elephant roams savanna", DocumentId = "doc-ow", ChunkIndex = 0 };
+
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        // First call returns V1, second returns V2
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(sectionV1), ToAsyncEnumerable(sectionV2));
+        _chunker.ChunkAsync(sectionV1, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunkV1));
+        _chunker.ChunkAsync(sectionV2, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunkV2));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new GeneratedEmbeddings<Embedding<float>> { embedding }));
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([]));
+
+        // Ingest V1
+        await _sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: TestContext.Current.CancellationToken);
+        // Overwrite with V2
+        await _sut.IngestAsync(new MemoryStream(), metadata, new IngestionOptions { Overwrite = true }, cancellationToken: TestContext.Current.CancellationToken);
+
+        // "tiger" from V1 should be gone
+        var results = await _sut.RetrieveAsync("tiger", new RetrievalOptions { UseHybridSearch = true }, TestContext.Current.CancellationToken);
+        Assert.Empty(results);
     }
 
     private sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
