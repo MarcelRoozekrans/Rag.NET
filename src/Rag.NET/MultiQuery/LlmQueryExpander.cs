@@ -11,6 +11,8 @@ internal sealed class LlmQueryExpander(IChatClient chatClient, MultiQueryOptions
         int count,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(query);
+
         var prompt = options.PromptTemplate
             .Replace("{count}", count.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{query}", query, StringComparison.Ordinal);

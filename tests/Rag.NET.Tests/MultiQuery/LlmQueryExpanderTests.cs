@@ -43,6 +43,20 @@ public class LlmQueryExpanderTests
     }
 
     [Fact]
+    public async Task ExpandAsync_WhenLlmResponseTextIsNull_ReturnsEmptyList()
+    {
+        _chatClient
+            .GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse([]));
+
+        var sut = new LlmQueryExpander(_chatClient, new MultiQueryOptions { VariantCount = 3 });
+
+        var result = await sut.ExpandAsync("what is rag?", 3, TestContext.Current.CancellationToken);
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
     public async Task ExpandAsync_InterpolatesCountAndQueryIntoPrompt()
     {
         IEnumerable<ChatMessage>? capturedMessages = null;
