@@ -16,7 +16,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     private readonly IContainer _simulator = new ContainerBuilder("ghcr.io/ellerbach/azure-ai-search-simulator:latest")
         .WithPortBinding(8080, true)
         .WithPortBinding(8443, true)
-        .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r => r.ForPath("/health").ForPort(8080)))
+        .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Now listening on:"))
         .Build();
 
     private AzureAISearchVectorStore _sut = null!;
