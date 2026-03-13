@@ -6,89 +6,56 @@ Understanding the internal structure of Rag.NET helps you choose the right exten
 
 ### Ingestion path
 
-```
-Stream + DocumentMetadata
-        |
-        v
- IDocumentParser.ParseAsync()
-        |
-        v
- DocumentSection[]   (text, optional heading, page number, section index)
-        |
-        v
- IChunkingStrategy.ChunkAsync()
-        |
-        v
- TextChunk[]         (text, DocumentId, ChunkIndex, start/end position, Metadata)
-        |
-        v
- [heading metadata applied; DocumentMetadata.Tags applied]
-        |
-        v
- IEmbeddingGenerator.GenerateAsync()
-        |
-        v
- EmbeddedChunk[]     (TextChunk + ReadOnlyMemory<float>)
-        |
-        v
- IVectorStore.StoreAsync()
- InMemoryBm25Index.Add()      <-- parallel registration for hybrid search fallback
+```mermaid
+flowchart TD
+    A["Stream + DocumentMetadata"] --> B["IDocumentParser.ParseAsync()"]
+    B --> C["DocumentSection[ ]\ntext · heading · page · section index"]
+    C --> D["IChunkingStrategy.ChunkAsync()"]
+    D --> E["TextChunk[ ]\ntext · DocumentId · ChunkIndex · Metadata"]
+    E --> F["Apply heading breadcrumbs\n& DocumentMetadata.Tags"]
+    F --> G["IEmbeddingGenerator.GenerateAsync()"]
+    G --> H["EmbeddedChunk[ ]\nTextChunk + ReadOnlyMemory&lt;float&gt;"]
+    H --> I["IVectorStore.StoreAsync()"]
+    H --> J["InMemoryBm25Index.Add()\nhybrid search fallback"]
+
+    style J fill:#e8f4fd,stroke:#4a90d9
 ```
 
 ### Retrieval path
 
-```
-string query
-        |
-        v
- IEmbeddingGenerator.GenerateAsync()    (single query embedding)
-        |
-        +--[UseHybridSearch=true, IVectorStore implements IHybridSearchable]
-        |           |
-        |           v
-        |   IHybridSearchable.HybridSearchAsync()
-        |
-        +--[UseHybridSearch=true, IVectorStore does NOT implement IHybridSearchable]
-        |           |
-        |           v
-        |   IVectorStore.SearchAsync()  (concurrent)
-        |   InMemoryBm25Index.Search()  (concurrent)
-        |           |
-        |           v
-        |   RrfMerger.Merge()           (Reciprocal Rank Fusion)
-        |
-        +--[UseHybridSearch=false]
-                    |
-                    v
-            IVectorStore.SearchAsync()
-        |
-        v
- [optional] LostInTheMiddleReorderer.Reorder()
-        |
-        v
- [optional] RedundancyFilter.FilterAsync()    (re-embeds batch, cosine dedup)
-        |
-        v
- IReadOnlyList<SearchResult>
+```mermaid
+flowchart TD
+    Q["string query"] --> EMB["IEmbeddingGenerator.GenerateAsync()"]
+
+    EMB --> HYBRID_CHECK{UseHybridSearch?}
+
+    HYBRID_CHECK -- "yes + IHybridSearchable" --> NATIVE["IHybridSearchable.HybridSearchAsync()"]
+    HYBRID_CHECK -- "yes + fallback" --> DENSE["IVectorStore.SearchAsync()"]
+    HYBRID_CHECK -- "yes + fallback" --> BM25["InMemoryBm25Index.Search()"]
+    DENSE --> RRF["RrfMerger.Merge()\nReciprocal Rank Fusion"]
+    BM25 --> RRF
+    HYBRID_CHECK -- no --> SEMANTIC["IVectorStore.SearchAsync()"]
+
+    NATIVE --> POST
+    RRF --> POST
+    SEMANTIC --> POST
+
+    POST["post-retrieval"] --> LITM["[optional]\nLostInTheMiddleReorderer.Reorder()"]
+    LITM --> REDUN["[optional]\nRedundancyFilter.FilterAsync()"]
+    REDUN --> RESULT["IReadOnlyList&lt;SearchResult&gt;"]
+
+    style BM25 fill:#e8f4fd,stroke:#4a90d9
+    style RRF fill:#e8f4fd,stroke:#4a90d9
 ```
 
 ### Ask path
 
-The ask path is the retrieval path followed by:
-
-```
-IReadOnlyList<SearchResult>
-        |
-        v
- Build prompt: [SystemMessage] [ConversationHistory] [Context + Query]
-        |
-        v
- IChatClient.GetResponseAsync() / GetStreamingResponseAsync()
-        |
-        v
- RagResponse { Answer, Sources }
- or
- IAsyncEnumerable<RagStreamingUpdate> { Sources (first), TextDelta (rest) }
+```mermaid
+flowchart TD
+    R["IReadOnlyList&lt;SearchResult&gt;"] --> PROMPT["Build prompt\nSystemMessage · ConversationHistory · Context + Query"]
+    PROMPT --> CHAT["IChatClient"]
+    CHAT -- GetResponseAsync --> RESP["RagResponse\nAnswer + Sources"]
+    CHAT -- GetStreamingResponseAsync --> STREAM["IAsyncEnumerable&lt;RagStreamingUpdate&gt;\nSources first · TextDelta stream"]
 ```
 
 ## Core interfaces
