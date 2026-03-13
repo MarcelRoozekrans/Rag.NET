@@ -490,25 +490,27 @@ public class RagPipelineTests
     }
 
     [Fact]
-    public async Task IngestAsync_WithNullProgress_DoesNotThrow()
+    public async Task IngestAsync_WithProgress_ZeroChunks_ReportsOnlyParsingAndChunking()
     {
-        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
-        var section = new DocumentSection { Text = "Hello", DocumentId = "doc-1", SectionIndex = 0 };
-        var chunk = new TextChunk { Text = "Hello", DocumentId = "doc-1", ChunkIndex = 0 };
-        var embedding = new Embedding<float>(new float[] { 0.1f });
+        var metadata = new DocumentMetadata { DocumentId = "doc-empty", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "empty", DocumentId = "doc-empty", SectionIndex = 0 };
 
         _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
             .Returns(ToAsyncEnumerable(section));
         _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
-            .Returns(ToAsyncEnumerable(chunk));
-        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+            .Returns(ToAsyncEnumerable<TextChunk>()); // no chunks
 
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello"));
-        var ex = await Record.ExceptionAsync(() =>
-            _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken));
+        var reported = new List<IngestionProgress>();
+        var progress = new SynchronousProgress<IngestionProgress>(p => reported.Add(p));
 
-        Assert.Null(ex);
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes("empty"));
+        var result = await _sut.IngestAsync(stream, metadata, progress: progress, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, reported.Count);
+        Assert.Equal(IngestionProgressStage.Parsing, reported[0].Stage);
+        Assert.Equal(IngestionProgressStage.Chunking, reported[1].Stage);
+        Assert.Equal(0, result.ChunksStored);
+        await _vectorStore.DidNotReceive().StoreAsync(Arg.Any<IReadOnlyList<EmbeddedChunk>>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -534,6 +536,7 @@ public class RagPipelineTests
 
         var chunkingReport = reported.First(p => p.Stage == IngestionProgressStage.Chunking);
         Assert.Equal(1, chunkingReport.Current);
+        Assert.Equal(1, chunkingReport.Total);
 
         var storingReport = reported.First(p => p.Stage == IngestionProgressStage.Storing);
         Assert.Equal(1, storingReport.Current);

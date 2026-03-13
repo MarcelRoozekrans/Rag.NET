@@ -49,7 +49,7 @@ public sealed class RagPipeline(
 
         ReportProgress(progress, IngestionProgressStage.Parsing, metadata.DocumentId, null, null, "Parsing complete");
         ApplyMetadataTags(chunks, metadata);
-        ReportProgress(progress, IngestionProgressStage.Chunking, metadata.DocumentId, chunks.Count, null, $"Chunked into {chunks.Count} chunks");
+        ReportProgress(progress, IngestionProgressStage.Chunking, metadata.DocumentId, chunks.Count, chunks.Count, $"Chunked into {chunks.Count} chunks");
 
         if (chunks.Count == 0)
             return new IngestionResult { DocumentId = metadata.DocumentId, ChunksStored = 0 };
