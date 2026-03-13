@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Api.Grpc.Client</RootNamespace>
+    <PackageId>Rag.NET.Api.Grpc.Client</PackageId>
+    <Description>gRPC client for Rag.NET.Api.Grpc — implements IRagPipeline over gRPC</Description>
+    <!-- EPS05 is triggered by generated gRPC client stub code (Nullable<T> passed without in-modifier) -->
+    <NoWarn>$(NoWarn);EPS05</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <ProjectReference Include="..\Rag.NET.Api.Grpc\Rag.NET.Api.Grpc.csproj" />
+    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.*" />
+  </ItemGroup>
+</Project>
