@@ -6,3 +6,4 @@ obj/
 *.DotSettings.user
 BenchmarkDotNet.Artifacts/
 site/
+.worktrees/
