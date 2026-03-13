@@ -7,7 +7,7 @@ namespace Rag.NET.Search;
 /// Thread-safe in-memory BM25 inverted index.
 /// Parameters: k1=1.5, b=0.75 (Lucene defaults).
 /// </summary>
-internal sealed class InMemoryBm25Index
+internal sealed class InMemoryBm25Index : IDisposable
 {
     private const double K1 = 1.5;
     private const double B = 0.75;
@@ -26,6 +26,8 @@ internal sealed class InMemoryBm25Index
         _lock.EnterWriteLock();
         try
         {
+            if (_docs.ContainsKey(docId))
+                return; // caller must remove before re-adding
             _docs[docId] = (chunk.DocumentId, tokens.Count);
             foreach (var (term, freq) in tf)
             {
@@ -82,6 +84,7 @@ internal sealed class InMemoryBm25Index
     {
         var queryTokens = Tokenize(query);
         if (queryTokens.Count == 0) return [];
+        if (topK <= 0) return [];
 
         // Deduplicate query tokens before acquiring lock to avoid LINQ inside loop
         var uniqueTokens = new HashSet<string>(queryTokens, StringComparer.Ordinal);
@@ -95,7 +98,7 @@ internal sealed class InMemoryBm25Index
             foreach (var d in _docs.Values)
                 totalLength += d.length;
             var avgDocLen = totalLength / _docs.Count;
-            var N = _docs.Count;
+            var docCount = _docs.Count;
             var scores = new Dictionary<int, double>();
 
             foreach (var token in uniqueTokens)
@@ -103,7 +106,7 @@ internal sealed class InMemoryBm25Index
                 if (!_postings.TryGetValue(token, out var postingList)) continue;
 
                 var df = postingList.Count;
-                var idf = Math.Log((N - df + 0.5) / (df + 0.5) + 1.0);
+                var idf = Math.Log((docCount - df + 0.5) / (df + 0.5) + 1.0);
 
                 foreach (var (docId, tf) in CollectionsMarshal.AsSpan(postingList))
                 {
@@ -129,6 +132,8 @@ internal sealed class InMemoryBm25Index
             _lock.ExitReadLock();
         }
     }
+
+    public void Dispose() => _lock.Dispose();
 
     private static List<string> Tokenize(string text)
     {

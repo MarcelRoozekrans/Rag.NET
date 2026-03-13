@@ -85,4 +85,37 @@ public class InMemoryBm25IndexTests
         var results = index.Search("jumps", topK: 5);
         Assert.Single(results);
     }
+
+    [Fact]
+    public void Search_ReturnsEmpty_WhenTopKIsZero()
+    {
+        var index = new InMemoryBm25Index();
+        index.Add(0, new TextChunk { Text = "hello world", DocumentId = "doc1", ChunkIndex = 0 });
+        var results = index.Search("hello", topK: 0);
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public void Remove_OnNonExistentDocument_IsNoOp()
+    {
+        var index = new InMemoryBm25Index();
+        index.Add(0, new TextChunk { Text = "hello world", DocumentId = "doc1", ChunkIndex = 0 });
+        index.Remove("does-not-exist"); // should not throw
+        var results = index.Search("hello", topK: 5);
+        Assert.Single(results);
+    }
+
+    [Fact]
+    public void Search_MultiWordQuery_AccumulatesScoresAcrossTerms()
+    {
+        var index = new InMemoryBm25Index();
+        index.Add(0, new TextChunk { Text = "quick brown fox", DocumentId = "doc1", ChunkIndex = 0 });
+        index.Add(1, new TextChunk { Text = "quick lazy dog", DocumentId = "doc2", ChunkIndex = 0 });
+
+        // doc0 has both "quick" and "fox"; doc1 only has "quick"
+        var results = index.Search("quick fox", topK: 5);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(0, results[0].docId); // doc0 should rank higher (matches both terms)
+    }
 }
