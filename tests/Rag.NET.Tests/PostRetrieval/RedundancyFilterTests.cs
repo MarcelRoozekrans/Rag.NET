@@ -127,4 +127,52 @@ public class RedundancyFilterTests
         Assert.Equal("chunk A", filtered[0].Chunk.Text);
         Assert.Equal("chunk C", filtered[1].Chunk.Text);
     }
+
+    [Fact]
+    public async Task FilterAsync_SimilarityExactlyAtThreshold_IsFiltered()
+    {
+        // Construct two vectors where cosine similarity = 0.95 exactly.
+        // first = [1, 0, 0], second = [cos(θ), sin(θ), 0] where cos(θ) = 0.95
+        // cosine similarity = dot product of unit vectors = 0.95 ≥ threshold → second dropped
+        var first = new float[] { 1f, 0f, 0f };
+        var second = new float[] { 0.95f, (float)Math.Sqrt(1 - 0.95 * 0.95), 0f };
+
+        var results = new[] { MakeResult("chunk A"), MakeResult("chunk B") };
+        var embedder = MakeEmbedder(
+            ["chunk A", "chunk B"],
+            [first, second]);
+
+        var filtered = await RedundancyFilter.FilterAsync(
+            results,
+            embedder,
+            threshold: 0.95f,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Single(filtered);
+        Assert.Equal("chunk A", filtered[0].Chunk.Text);
+    }
+
+    [Fact]
+    public async Task FilterAsync_SimilarityJustBelowThreshold_IsKept()
+    {
+        // first = [1, 0, 0], second = [0.94, sin(θ), 0] where cos(θ) ≈ 0.94
+        // cosine similarity ≈ 0.94 < 0.95 threshold → both kept
+        var first = new float[] { 1f, 0f, 0f };
+        var second = new float[] { 0.94f, (float)Math.Sqrt(1 - 0.94 * 0.94), 0f };
+
+        var results = new[] { MakeResult("chunk A"), MakeResult("chunk B") };
+        var embedder = MakeEmbedder(
+            ["chunk A", "chunk B"],
+            [first, second]);
+
+        var filtered = await RedundancyFilter.FilterAsync(
+            results,
+            embedder,
+            threshold: 0.95f,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, filtered.Count);
+        Assert.Equal("chunk A", filtered[0].Chunk.Text);
+        Assert.Equal("chunk B", filtered[1].Chunk.Text);
+    }
 }

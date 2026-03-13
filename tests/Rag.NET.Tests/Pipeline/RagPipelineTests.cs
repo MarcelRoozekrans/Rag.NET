@@ -772,6 +772,128 @@ public class RagPipelineTests
         Assert.Equal(2, results.Count);
     }
 
+    [Fact]
+    public async Task AskAsync_WithRedundancyFilter_DropsRedundantSources()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder, chatClient, new ChunkingOptions());
+
+        // Same vector for query embed and re-embed of both chunks → cosine similarity == 1.0 ≥ 0.95 → second dropped
+        var sharedEmbedding = new Embedding<float>(new float[] { 1f, 0f, 0f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([sharedEmbedding, sharedEmbedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "a", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 },
+                new() { Chunk = new TextChunk { Text = "b", DocumentId = "d", ChunkIndex = 1 }, Score = 0.8 },
+            });
+
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "answer")));
+
+        var response = await sut.AskAsync(
+            "q",
+            new RagOptions { UseRedundancyFilter = true, RedundancyThreshold = 0.95f },
+            TestContext.Current.CancellationToken);
+
+        var source = Assert.Single(response.Sources);
+        Assert.Equal("a", source.Chunk.Text);
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_WithRedundancyFilter_DropsRedundantSources()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder, chatClient, new ChunkingOptions());
+
+        // Same vector for query embed and re-embed of both chunks → cosine similarity == 1.0 ≥ 0.95 → second dropped
+        var sharedEmbedding = new Embedding<float>(new float[] { 1f, 0f, 0f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([sharedEmbedding, sharedEmbedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "a", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 },
+                new() { Chunk = new TextChunk { Text = "b", DocumentId = "d", ChunkIndex = 1 }, Score = 0.8 },
+            });
+
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(new ChatResponseUpdate { Contents = [new TextContent("answer")] }));
+
+        IReadOnlyList<SearchResult>? sources = null;
+        await foreach (var update in sut.AskStreamingAsync("q", new RagOptions { UseRedundancyFilter = true, RedundancyThreshold = 0.95f }, TestContext.Current.CancellationToken))
+        {
+            if (update.Sources is not null)
+                sources = update.Sources;
+        }
+
+        Assert.NotNull(sources);
+        var source = Assert.Single(sources);
+        Assert.Equal("a", source.Chunk.Text);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WithBothLostInTheMiddleAndRedundancyFilter_AppliesReorderingThenFilters()
+    {
+        // LITM reorders [a(0.9), b(0.8), c(0.7)] → [a(0.9), c(0.7), b(0.8)]
+        // RedundancyFilter re-embeds [a, c, b]: a=[1,0,0], c=[1,0,0] (redundant to a), b=[0,1,0] (kept)
+        // Result: [a, b]
+        var vectorA = new float[] { 1f, 0f, 0f };
+        var vectorC = new float[] { 1f, 0f, 0f }; // identical to a → redundant
+        var vectorB = new float[] { 0f, 1f, 0f }; // orthogonal → kept
+
+        // First call: query embed → returns [1,0,0] (only index 0 used)
+        // Second call: re-embed [a, c, b] → returns [vectorA, vectorC, vectorB]
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(vectorA)]),
+                new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(vectorA), new Embedding<float>(vectorC), new Embedding<float>(vectorB)]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "a", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 },
+                new() { Chunk = new TextChunk { Text = "b", DocumentId = "d", ChunkIndex = 1 }, Score = 0.8 },
+                new() { Chunk = new TextChunk { Text = "c", DocumentId = "d", ChunkIndex = 2 }, Score = 0.7 },
+            });
+
+        var results = await _sut.RetrieveAsync(
+            "q",
+            new RetrievalOptions { UseLostInTheMiddleReordering = true, UseRedundancyFilter = true, RedundancyThreshold = 0.95f },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal("a", results[0].Chunk.Text);
+        Assert.Equal("b", results[1].Chunk.Text);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WithRedundancyFilter_AllResultsRedundant_ReturnsFirstOnly()
+    {
+        // All 3 chunks get the same vector → all redundant to the first → only first kept
+        var sharedEmbedding = new Embedding<float>(new float[] { 1f, 0f, 0f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([sharedEmbedding, sharedEmbedding, sharedEmbedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "x", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 },
+                new() { Chunk = new TextChunk { Text = "x", DocumentId = "d", ChunkIndex = 1 }, Score = 0.8 },
+                new() { Chunk = new TextChunk { Text = "x", DocumentId = "d", ChunkIndex = 2 }, Score = 0.7 },
+            });
+
+        var results = await _sut.RetrieveAsync(
+            "q",
+            new RetrievalOptions { UseRedundancyFilter = true, RedundancyThreshold = 0.95f },
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+    }
+
     private sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
     {
         public void Report(T value) => callback(value);
