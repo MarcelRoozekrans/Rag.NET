@@ -1,0 +1,74 @@
+using System.Text;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.Abstractions;
+using Rag.NET.Api.Contracts;
+using Rag.NET.Api.Mapping;
+using Rag.NET.Models;
+using Rag.NET.Models.Options;
+
+namespace Rag.NET.Api.DependencyInjection;
+
+public static class EndpointRouteBuilderExtensions
+{
+    public static IApplicationBuilder UseRagNetApiAuthentication(this IApplicationBuilder app)
+    {
+        app.UseMiddleware<Authentication.ApiKeyMiddleware>();
+        return app;
+    }
+
+    public static IEndpointRouteBuilder MapRagNetApi(this IEndpointRouteBuilder app)
+    {
+        var options = app.ServiceProvider.GetService<RagApiOptions>() ?? new RagApiOptions();
+        var prefix = options.RoutePrefix.TrimEnd('/');
+
+        app.MapPost($"{prefix}/ingest", async (IngestRequest req, IRagPipeline pipeline, CancellationToken ct) =>
+        {
+            var docId = req.DocumentId ?? Guid.NewGuid().ToString();
+            var metadata = new DocumentMetadata
+            {
+                DocumentId = docId,
+                FileName = req.FileName ?? "document.txt",
+                ContentType = req.ContentType,
+                Tags = req.Tags ?? new Dictionary<string, string>(StringComparer.Ordinal)
+            };
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(req.Content));
+            var result = await pipeline.IngestAsync(stream, metadata, cancellationToken: ct).ConfigureAwait(false);
+            return Results.Ok(new IngestResponse(result.DocumentId, result.ChunksStored));
+        });
+
+        app.MapPost($"{prefix}/retrieve", async (RetrieveRequest req, IRagPipeline pipeline, CancellationToken ct) =>
+        {
+            var retrievalOptions = new RetrievalOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
+            var results = await pipeline.RetrieveAsync(req.Query, retrievalOptions, ct).ConfigureAwait(false);
+            return Results.Ok(new RetrieveResponse(results.Select(SearchResultMapper.ToDto).ToList()));
+        });
+
+        app.MapPost($"{prefix}/ask", async (AskRequest req, IRagPipeline pipeline, CancellationToken ct) =>
+        {
+            var ragOptions = new RagOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
+            var result = await pipeline.AskAsync(req.Query, ragOptions, ct).ConfigureAwait(false);
+            return Results.Ok(new AskResponse(result.Answer, result.Sources.Select(SearchResultMapper.ToDto).ToList()));
+        });
+
+        app.MapGet($"{prefix}/ask/stream", async (string query, IRagPipeline pipeline, HttpContext ctx, CancellationToken ct) =>
+        {
+            ctx.Response.ContentType = "text/event-stream";
+            await foreach (var update in pipeline.AskStreamingAsync(query, cancellationToken: ct).ConfigureAwait(false))
+            {
+                if (update.TextDelta is not null)
+                    await ctx.Response.WriteAsync($"data: {update.TextDelta}\n\n", ct).ConfigureAwait(false);
+            }
+        });
+
+        app.MapDelete($"{prefix}/documents/{{documentId}}", async (string documentId, IRagPipeline pipeline, CancellationToken ct) =>
+        {
+            await pipeline.DeleteAsync(documentId, ct).ConfigureAwait(false);
+            return Results.NoContent();
+        });
+
+        return app;
+    }
+}
