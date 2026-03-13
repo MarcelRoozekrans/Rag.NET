@@ -5,6 +5,7 @@
     <Project Path="src/Rag.NET.Parsers.Pdf/Rag.NET.Parsers.Pdf.csproj" />
     <Project Path="src/Rag.NET.Qdrant/Rag.NET.Qdrant.csproj" />
     <Project Path="src/Rag.NET.Api.Client/Rag.NET.Api.Client.csproj" />
+    <Project Path="src/Rag.NET.Api.Grpc/Rag.NET.Api.Grpc.csproj" />
     <Project Path="src/Rag.NET.Api/Rag.NET.Api.csproj" />
     <Project Path="src/Rag.NET.AzureAISearch/Rag.NET.AzureAISearch.csproj" />
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
@@ -18,6 +19,7 @@
     <Project Path="tests/Rag.NET.PgVector.Tests/Rag.NET.PgVector.Tests.csproj" />
     <Project Path="tests/Rag.NET.Qdrant.Tests/Rag.NET.Qdrant.Tests.csproj" />
     <Project Path="tests/Rag.NET.Api.Client.Tests/Rag.NET.Api.Client.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Api.Grpc.Tests/Rag.NET.Api.Grpc.Tests.csproj" />
     <Project Path="tests/Rag.NET.Api.Tests/Rag.NET.Api.Tests.csproj" />
     <Project Path="tests/Rag.NET.AzureAISearch.Tests/Rag.NET.AzureAISearch.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Html.Tests/Rag.NET.Parsers.Html.Tests.csproj" />

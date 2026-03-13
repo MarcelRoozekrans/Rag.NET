@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Api.Grpc</RootNamespace>
+    <PackageId>Rag.NET.Api.Grpc</PackageId>
+    <Description>gRPC service for Rag.NET pipelines</Description>
+    <!-- EPS05 is triggered by generated gRPC client stub code (Nullable<T> passed without in-modifier) -->
+    <NoWarn>$(NoWarn);EPS05</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Api.Grpc.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.*" />
+    <Protobuf Include="Protos\rag.proto" GrpcServices="Both" />
+  </ItemGroup>
+</Project>
