@@ -22,10 +22,14 @@ public sealed class RagPipeline(
     IChatClient? chatClient,
     ChunkingOptions chunkingOptions,
     ILogger<RagPipeline>? logger = null,
-    ResiliencePipeline? resiliencePipeline = null) : IRagPipeline, IDisposable
+    ResiliencePipeline? resiliencePipeline = null,
+    IQueryExpander? queryExpander = null,
+    MultiQueryOptions? multiQueryOptions = null) : IRagPipeline, IDisposable
 {
     private readonly ILogger _logger = (ILogger?)logger ?? NullLogger.Instance;
     private readonly ResiliencePipeline? _resiliencePipeline = resiliencePipeline;
+    private readonly IQueryExpander? _queryExpander = queryExpander;
+    private readonly MultiQueryOptions _multiQueryOptions = multiQueryOptions ?? new MultiQueryOptions();
     private readonly InMemoryBm25Index _bm25Index = new();
     private int _nextBm25DocId;
 
@@ -174,8 +178,6 @@ public sealed class RagPipeline(
         CancellationToken cancellationToken = default)
     {
         var opts = options ?? new RetrievalOptions();
-        var queryEmbeddings = await embeddingGenerator.GenerateAsync(
-            [query], cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var searchOptions = new SearchOptions
         {
@@ -187,34 +189,76 @@ public sealed class RagPipeline(
 
         IReadOnlyList<SearchResult> searchResults;
 
-        if (opts.UseHybridSearch)
+        if (_queryExpander is not null && opts.UseMultiQuery)
         {
-            if (vectorStore is IHybridSearchable hybrid)
+            IReadOnlyList<string> variants;
+            try
             {
-                searchResults = await hybrid.HybridSearchAsync(query, queryEmbeddings[0].Vector, searchOptions, cancellationToken)
+                variants = await _queryExpander.ExpandAsync(query, _multiQueryOptions.VariantCount, cancellationToken)
                     .ConfigureAwait(false);
             }
-            else
+            catch (Exception ex)
             {
-                // Fallback: run dense + BM25 concurrently, merge via RRF
-                var denseTask = vectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, cancellationToken);
-                var bm25Hits = _bm25Index.Search(query, topK: opts.TopK);
-                var dense = await denseTask.ConfigureAwait(false);
-                searchResults = RrfMerger.Merge(dense, bm25Hits, opts.TopK);
+                RagPipelineLog.QueryExpansionFailed(_logger, query, ex);
+                variants = [];
             }
+
+            var allQueries = new List<string>(variants.Count + 1) { query };
+            allQueries.AddRange(variants);
+
+            var tasks = allQueries.Select(q => SearchSingleQueryAsync(q, searchOptions, opts.UseHybridSearch, cancellationToken));
+            var allResults = await Task.WhenAll(tasks).ConfigureAwait(false);
+
+            searchResults = allResults
+                .SelectMany(r => r)
+                .GroupBy(r => (r.Chunk.DocumentId, r.Chunk.ChunkIndex))
+                .Select(g => g.MaxBy(r => r.Score)!)
+                .OrderByDescending(r => r.Score)
+                .Take(opts.TopK)
+                .ToList()
+                .AsReadOnly();
         }
         else
         {
-            searchResults = await vectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, cancellationToken).ConfigureAwait(false);
+            searchResults = await SearchSingleQueryAsync(query, searchOptions, opts.UseHybridSearch, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         if (opts.UseLostInTheMiddleReordering)
             searchResults = LostInTheMiddleReorderer.Reorder(searchResults);
 
         if (opts.UseRedundancyFilter)
-            searchResults = await RedundancyFilter.FilterAsync(searchResults, embeddingGenerator, opts.RedundancyThreshold, cancellationToken).ConfigureAwait(false);
+            searchResults = await RedundancyFilter.FilterAsync(searchResults, embeddingGenerator, opts.RedundancyThreshold, cancellationToken)
+                .ConfigureAwait(false);
 
         return searchResults;
+    }
+
+    private async Task<IReadOnlyList<SearchResult>> SearchSingleQueryAsync(
+        string query,
+        SearchOptions searchOptions,
+        bool useHybridSearch,
+        CancellationToken cancellationToken)
+    {
+        var queryEmbeddings = await embeddingGenerator.GenerateAsync(
+            [query], cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        if (useHybridSearch)
+        {
+            if (vectorStore is IHybridSearchable hybrid)
+            {
+                return await hybrid.HybridSearchAsync(query, queryEmbeddings[0].Vector, searchOptions, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            var denseTask = vectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, cancellationToken);
+            var bm25Hits = _bm25Index.Search(query, topK: searchOptions.TopK);
+            var dense = await denseTask.ConfigureAwait(false);
+            return RrfMerger.Merge(dense, bm25Hits, searchOptions.TopK);
+        }
+
+        return await vectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task<RagResponse> AskAsync(

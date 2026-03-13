@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
@@ -1298,5 +1299,101 @@ public class RagPipelineTests
         }
 
         await Task.CompletedTask.ConfigureAwait(false);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WithMultiQueryExpander_DeduplicatesByChunkKeepingHighestScore()
+    {
+        var expander = Substitute.For<IQueryExpander>();
+        expander.ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(["variant 1"]);
+
+        var sharedChunk = new TextChunk { Text = "shared", DocumentId = "doc-1", ChunkIndex = 0 };
+        var uniqueChunk = new TextChunk { Text = "unique", DocumentId = "doc-2", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f, 0.2f });
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        // First SearchAsync call (original query): sharedChunk at 0.9
+        // Second SearchAsync call (variant 1): sharedChunk at 0.5 + uniqueChunk at 0.8
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(
+                [new SearchResult { Chunk = sharedChunk, Score = 0.9 }],
+                [new SearchResult { Chunk = sharedChunk, Score = 0.5 }, new SearchResult { Chunk = uniqueChunk, Score = 0.8 }]);
+
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder, chatClient: null, new ChunkingOptions(), queryExpander: expander);
+
+        var results = await sut.RetrieveAsync("what is rag?", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(0.9, results[0].Score); // sharedChunk: highest score wins
+        Assert.Equal(0.8, results[1].Score); // uniqueChunk
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WithUseMultiQueryFalse_SkipsExpansion()
+    {
+        var expander = Substitute.For<IQueryExpander>();
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder, chatClient: null, new ChunkingOptions(), queryExpander: expander);
+
+        await sut.RetrieveAsync("query", new RetrievalOptions { UseMultiQuery = false }, TestContext.Current.CancellationToken);
+
+        await expander.DidNotReceive().ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WhenExpanderThrows_FallsBackToSingleQuery()
+    {
+        var expander = Substitute.For<IQueryExpander>();
+        expander.ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("LLM unreachable"));
+
+        var chunk = new TextChunk { Text = "result", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns([new SearchResult { Chunk = chunk, Score = 0.9 }]);
+
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder, chatClient: null, new ChunkingOptions(), queryExpander: expander);
+
+        var results = await sut.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        await _vectorStore.Received(1).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_OriginalQueryAlwaysIncludedInFanOut()
+    {
+        var expander = Substitute.For<IQueryExpander>();
+        expander.ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(["variant 1", "variant 2"]);
+
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder, chatClient: null, new ChunkingOptions(), queryExpander: expander);
+
+        await sut.RetrieveAsync("original", cancellationToken: TestContext.Current.CancellationToken);
+
+        // 3 queries total: original + 2 variants
+        await _vectorStore.Received(3).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
     }
 }
