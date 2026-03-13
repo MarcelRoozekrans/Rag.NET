@@ -9,6 +9,9 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 - **Vector stores** - PostgreSQL/pgvector, Qdrant, Azure AI Search
 - **Retrieval** - Semantic search with configurable top-K and minimum score filtering
 - **Chat** - Ask questions with RAG context via `AskAsync` and streaming via `AskStreamingAsync`
+- **Token-aware chunking** - Split by token count (not characters) to respect embedding model limits
+- **Lost-in-the-Middle reordering** - Place highest-scoring chunks at context extremes for better LLM attention
+- **Progress reporting** - Track ingestion stages in real time via `IProgress<IngestionProgress>`
 - **DI-first** - Fluent builder API with `Microsoft.Extensions.DependencyInjection`
 - **Extensible** - Implement `IDocumentParser`, `IVectorStore`, or `IChunkingStrategy` to plug in your own
 
@@ -149,6 +152,55 @@ var response = await pipeline.AskAsync("question", new RagOptions
 });
 ```
 
+### Token-Aware Chunking
+
+Prevents chunks from silently exceeding embedding model token limits by splitting on token boundaries instead of characters:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseTokenAwareChunking("gpt-4")          // cl100k_base encoding (default)
+    .UseChunkingStrategy<RecursiveChunkingStrategy>(options =>
+    {
+        options.MaxChunkSize = 512;           // tokens, not characters
+        options.Overlap = 50;                 // tokens
+    })
+    .UsePgVector(connectionString));
+```
+
+### Lost-in-the-Middle Reordering
+
+LLMs attend less to content in the middle of their context window ([Liu et al., 2023](https://arxiv.org/abs/2307.03172)). Enable outside-in reordering to place the most relevant chunks at the beginning and end:
+
+```csharp
+// On RetrieveAsync
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    TopK = 10,
+    UseLostInTheMiddleReordering = true,
+});
+
+// On AskAsync / AskStreamingAsync
+var response = await pipeline.AskAsync("question", new RagOptions
+{
+    TopK = 10,
+    UseLostInTheMiddleReordering = true,
+});
+```
+
+### Progress Reporting
+
+Track ingestion stages in real time via the standard `IProgress<T>` interface:
+
+```csharp
+var progress = new Progress<IngestionProgress>(p =>
+    Console.WriteLine($"[{p.Stage}] {p.Message}"));
+
+using var stream = File.OpenRead("report.pdf");
+var result = await pipeline.IngestAsync(stream, metadata, progress: progress);
+```
+
+Four stages are reported: `Parsing` → `Chunking` → `Embedding` → `Storing`.
+
 ## Sample App
 
 The [samples/Rag.NET.Sample](samples/Rag.NET.Sample) project is an interactive console app that demonstrates the full pipeline. It supports both **Ollama** (local) and **OpenAI** providers, uses Testcontainers to spin up a pgvector database automatically, and provides a Q&A loop with streaming responses.
@@ -177,6 +229,9 @@ Measured with [BenchmarkDotNet](https://benchmarkdotnet.org/) on .NET 10, Intel 
 | Fixed | 500 chars | 373 ns | 1.70 KB |
 | Fixed | 5 KB | 3.6 us | 16.74 KB |
 | Fixed | 50 KB | 31.1 us | 158.37 KB |
+| TokenAware | 500 chars | — | — |
+| TokenAware | 5 KB | — | — |
+| TokenAware | 50 KB | — | — |
 
 ### Parsers
 

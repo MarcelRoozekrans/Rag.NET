@@ -128,4 +128,13 @@ public class TokenAwareChunkingStrategyTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
             await _sut.ChunkAsync(section, options, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task ChunkAsync_MaxChunkSizeZero_ThrowsArgumentOutOfRangeException()
+    {
+        var section = new DocumentSection { Text = "some text", DocumentId = "d", SectionIndex = 0 };
+        var options = new ChunkingOptions { MaxChunkSize = 0, Overlap = 0 };
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+            await _sut.ChunkAsync(section, options, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken));
+    }
 }

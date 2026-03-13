@@ -13,6 +13,7 @@ public class ChunkingBenchmarks
     private DocumentSection _largeSection = null!;
     private readonly RecursiveChunkingStrategy _recursive = new();
     private readonly FixedSizeChunkingStrategy _fixed = new();
+    private readonly TokenAwareChunkingStrategy _tokenAware = new();
     private readonly ChunkingOptions _options = new() { MaxChunkSize = 512, Overlap = 50 };
 
     [GlobalSetup]
@@ -88,6 +89,42 @@ public class ChunkingBenchmarks
     {
         int count = 0;
         await foreach (var _ in _fixed.ChunkAsync(_largeSection, _options))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    [Benchmark]
+    public async Task<int> TokenAware_Small()
+    {
+        int count = 0;
+        await foreach (var _ in _tokenAware.ChunkAsync(_smallSection, _options))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    [Benchmark]
+    public async Task<int> TokenAware_Medium()
+    {
+        int count = 0;
+        await foreach (var _ in _tokenAware.ChunkAsync(_mediumSection, _options))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
+    [Benchmark]
+    public async Task<int> TokenAware_Large()
+    {
+        int count = 0;
+        await foreach (var _ in _tokenAware.ChunkAsync(_largeSection, _options))
         {
             count++;
         }

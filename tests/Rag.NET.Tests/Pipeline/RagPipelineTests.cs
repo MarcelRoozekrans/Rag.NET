@@ -435,6 +435,70 @@ public class RagPipelineTests
     }
 
     [Fact]
+    public async Task AskAsync_WithLostInTheMiddle_ReordersRetrievedSources()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder, chatClient, new ChunkingOptions());
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "a", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 },
+                new() { Chunk = new TextChunk { Text = "b", DocumentId = "d", ChunkIndex = 1 }, Score = 0.8 },
+                new() { Chunk = new TextChunk { Text = "c", DocumentId = "d", ChunkIndex = 2 }, Score = 0.7 },
+            });
+
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "answer")));
+
+        var response = await sut.AskAsync("query", new RagOptions { UseLostInTheMiddleReordering = true }, TestContext.Current.CancellationToken);
+
+        // [0.9, 0.8, 0.7] → reordered to [0.9, 0.7, 0.8]
+        Assert.Equal(3, response.Sources.Count);
+        Assert.Equal(0.9, response.Sources[0].Score);
+        Assert.Equal(0.7, response.Sources[1].Score);
+        Assert.Equal(0.8, response.Sources[2].Score);
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_WithLostInTheMiddle_ReordersRetrievedSources()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder, chatClient, new ChunkingOptions());
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "a", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 },
+                new() { Chunk = new TextChunk { Text = "b", DocumentId = "d", ChunkIndex = 1 }, Score = 0.8 },
+                new() { Chunk = new TextChunk { Text = "c", DocumentId = "d", ChunkIndex = 2 }, Score = 0.7 },
+            });
+
+        chatClient.GetStreamingResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(new ChatResponseUpdate { Contents = [new TextContent("answer")] }));
+
+        IReadOnlyList<SearchResult>? sources = null;
+        await foreach (var update in sut.AskStreamingAsync("query", new RagOptions { UseLostInTheMiddleReordering = true }, TestContext.Current.CancellationToken))
+        {
+            if (update.Sources is not null)
+                sources = update.Sources;
+        }
+
+        // [0.9, 0.8, 0.7] → reordered to [0.9, 0.7, 0.8]
+        Assert.NotNull(sources);
+        Assert.Equal(3, sources.Count);
+        Assert.Equal(0.9, sources[0].Score);
+        Assert.Equal(0.7, sources[1].Score);
+        Assert.Equal(0.8, sources[2].Score);
+    }
+
+    [Fact]
     public void UseTokenAwareChunking_RegistersTokenAwareStrategy()
     {
         var services = new ServiceCollection();
