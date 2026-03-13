@@ -11,6 +11,7 @@
     <Project Path="src/Rag.NET.AzureAISearch/Rag.NET.AzureAISearch.csproj" />
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
     <Project Path="src/Rag.NET.Parsers.Word/Rag.NET.Parsers.Word.csproj" />
+    <Project Path="src/Rag.NET.Mcp.Tool/Rag.NET.Mcp.Tool.csproj" />
     <Project Path="src/Rag.NET.Mcp/Rag.NET.Mcp.csproj" />
     <Project Path="src/Rag.NET.Parsers.Excel/Rag.NET.Parsers.Excel.csproj" />
     <Project Path="src/Rag.NET.Parsers.PowerPoint/Rag.NET.Parsers.PowerPoint.csproj" />
