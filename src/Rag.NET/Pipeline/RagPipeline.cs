@@ -187,9 +187,13 @@ public sealed class RagPipeline(
             searchResults = await vectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, cancellationToken).ConfigureAwait(false);
         }
 
-        return opts.UseLostInTheMiddleReordering
-            ? LostInTheMiddleReorderer.Reorder(searchResults)
-            : searchResults;
+        if (opts.UseLostInTheMiddleReordering)
+            searchResults = LostInTheMiddleReorderer.Reorder(searchResults);
+
+        if (opts.UseRedundancyFilter)
+            searchResults = await RedundancyFilter.FilterAsync(searchResults, embeddingGenerator, opts.RedundancyThreshold, cancellationToken).ConfigureAwait(false);
+
+        return searchResults;
     }
 
     public async Task<RagResponse> AskAsync(
@@ -211,6 +215,8 @@ public sealed class RagPipeline(
             MetadataFilter = opts.MetadataFilter,
             UseHybridSearch = opts.UseHybridSearch,
             UseLostInTheMiddleReordering = opts.UseLostInTheMiddleReordering,
+            UseRedundancyFilter = opts.UseRedundancyFilter,
+            RedundancyThreshold = opts.RedundancyThreshold,
         };
         var sources = await RetrieveAsync(query, retrievalOptions, cancellationToken).ConfigureAwait(false);
 
@@ -265,6 +271,8 @@ public sealed class RagPipeline(
             MetadataFilter = opts.MetadataFilter,
             UseHybridSearch = opts.UseHybridSearch,
             UseLostInTheMiddleReordering = opts.UseLostInTheMiddleReordering,
+            UseRedundancyFilter = opts.UseRedundancyFilter,
+            RedundancyThreshold = opts.RedundancyThreshold,
         };
         var sources = await RetrieveAsync(query, retrievalOptions, cancellationToken).ConfigureAwait(false);
 

@@ -725,6 +725,53 @@ public class RagPipelineTests
         Assert.False(chunkMetadata.ContainsKey("heading_breadcrumb"), "heading_breadcrumb key should not be present for sections without headings");
     }
 
+    [Fact]
+    public async Task RetrieveAsync_WithRedundancyFilter_DropsRedundantChunks()
+    {
+        // Both chunks get the same vector → cosine similarity == 1.0 ≥ 0.95 → second is dropped
+        var sharedEmbedding = new Embedding<float>(new float[] { 1f, 0f, 0f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([sharedEmbedding, sharedEmbedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "a", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 },
+                new() { Chunk = new TextChunk { Text = "b", DocumentId = "d", ChunkIndex = 1 }, Score = 0.8 },
+            });
+
+        var results = await _sut.RetrieveAsync(
+            "q",
+            new RetrievalOptions { UseRedundancyFilter = true, RedundancyThreshold = 0.95f },
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("a", results[0].Chunk.Text);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WithoutRedundancyFilter_KeepsAll()
+    {
+        // Same vector for everything, but filter is disabled → both results kept
+        var sharedEmbedding = new Embedding<float>(new float[] { 1f, 0f, 0f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([sharedEmbedding]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "a", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 },
+                new() { Chunk = new TextChunk { Text = "b", DocumentId = "d", ChunkIndex = 1 }, Score = 0.8 },
+            });
+
+        var results = await _sut.RetrieveAsync(
+            "q",
+            new RetrievalOptions { UseRedundancyFilter = false },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+    }
+
     private sealed class SynchronousProgress<T>(Action<T> callback) : IProgress<T>
     {
         public void Report(T value) => callback(value);
