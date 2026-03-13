@@ -58,3 +58,19 @@ dotnet run --project benchmarks/Rag.NET.Benchmarks -c Release -- --filter "*"
 | IngestAsync (50 KB) | 377.9 us | 629.14 KB |
 
 The pipeline benchmark uses `RecursiveChunkingStrategy`. Embedding and vector-store calls are mocked — add your provider's p99 latency for real-world estimates.
+
+---
+
+## Redundancy Filter
+
+Post-retrieval cosine-similarity filtering. Embedder is mocked (zero I/O latency) to isolate the CPU-only filter loop over 384-dimensional random vectors with threshold = 0.95.
+
+| TopK | Mean | Allocated |
+|------|-----:|----------:|
+| 5 | 33.4 us | 9.2 KB |
+| 20 | 246.9 us | 35.36 KB |
+
+**Notes:**
+- Cost scales quadratically with TopK — each new candidate is compared against all already-accepted chunks.
+- In production, the filter loop is negligible compared to the re-embedding API call (typically 10–50 ms for a batch of 5–20 texts).
+- Use `RedundancyThreshold = 0.95f` (default) for typical prose; lower to 0.85 for highly redundant corpora.
