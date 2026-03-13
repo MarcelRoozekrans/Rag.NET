@@ -493,11 +493,11 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | Done | Feature | Complexity | Dependencies |
 |------|---------|------------|--------------|
 | [ ] | Cohere Rerank | Low | Cohere API key |
-| [ ] | Embedding Distance Evaluation | Low | `IEmbeddingGenerator` |
-| [ ] | Header-Aware Markdown/HTML Splitting | Low | Existing Markdown parser |
+| [x] | Embedding Distance Evaluation | Low | `IEmbeddingGenerator` |
+| [x] | Header-Aware Markdown/HTML Splitting | Low | Existing Markdown parser |
 | [x] | Lost-in-the-Middle Reordering | Low | None |
 | [x] | Progress Reporting | Low | None |
-| [ ] | Redundancy Filter | Low | Embedding access |
+| [x] | Redundancy Filter | Low | Embedding access |
 | [x] | Token-Aware Splitting | Low | `Microsoft.ML.Tokenizers` |
 | [ ] | Audio Transcription | Medium | `Whisper.net` |
 | [ ] | BM25 Keyword Retrieval | Medium | None |
