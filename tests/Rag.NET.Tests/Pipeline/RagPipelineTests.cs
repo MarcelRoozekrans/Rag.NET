@@ -1,7 +1,9 @@
 using System.Text;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Rag.NET.Abstractions;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
@@ -430,6 +432,30 @@ public class RagPipelineTests
         Assert.Equal(0.9, retrieved[0].Score);
         Assert.Equal(0.8, retrieved[1].Score);
         Assert.Equal(0.7, retrieved[2].Score);
+    }
+
+    [Fact]
+    public void UseTokenAwareChunking_RegistersTokenAwareStrategy()
+    {
+        var services = new ServiceCollection();
+        services.AddRagNet(b => b.UseTokenAwareChunking());
+
+        var provider = services.BuildServiceProvider();
+        var strategy = provider.GetService<IChunkingStrategy>();
+
+        Assert.IsType<Rag.NET.Chunking.TokenAwareChunkingStrategy>(strategy);
+    }
+
+    [Fact]
+    public void UseTokenAwareChunking_WithCustomModel_RegistersWithThatModel()
+    {
+        var services = new ServiceCollection();
+        services.AddRagNet(b => b.UseTokenAwareChunking("gpt-3.5-turbo"));
+
+        var provider = services.BuildServiceProvider();
+        var strategy = provider.GetService<IChunkingStrategy>();
+
+        Assert.IsType<Rag.NET.Chunking.TokenAwareChunkingStrategy>(strategy);
     }
 
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)

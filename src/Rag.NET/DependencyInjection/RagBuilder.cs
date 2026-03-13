@@ -3,6 +3,7 @@ using Microsoft.Extensions.Resilience;
 using Polly;
 using Polly.Retry;
 using Rag.NET.Abstractions;
+using Rag.NET.Chunking;
 using Rag.NET.Models.Options;
 
 namespace Rag.NET.DependencyInjection;
@@ -23,6 +24,12 @@ public sealed class RagBuilder(IServiceCollection services)
             Services.AddSingleton(options);
         }
 
+        return this;
+    }
+
+    public RagBuilder UseTokenAwareChunking(string modelName = "gpt-4")
+    {
+        Services.AddSingleton<IChunkingStrategy>(_ => new TokenAwareChunkingStrategy(modelName));
         return this;
     }
 
