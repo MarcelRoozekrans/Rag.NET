@@ -103,4 +103,61 @@ public class RrfMergerTests
         var expected = 1.0 / 61.0;
         Assert.Equal(expected, result[0].Score, precision: 10);
     }
+
+    [Fact]
+    public void Merge_ReturnsEmpty_WhenTopKIsNegative()
+    {
+        var chunk = Chunk("doc", 0);
+        var result = RrfMerger.Merge([Result(chunk)], [], [chunk], topK: -1);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void Merge_RrfScore_SumsContributionsFromBothLists()
+    {
+        // chunk0 rank 1 in dense AND rank 1 in BM25 → score = 1/61 + 1/61 = 2/61
+        var chunk = Chunk("doc", 0);
+        var dense = new List<SearchResult> { Result(chunk, 0.9) };
+        var bm25 = new List<(int docId, double score)> { (0, 50.0) };
+
+        var result = RrfMerger.Merge(dense, bm25, [chunk], topK: 5);
+
+        Assert.Single(result);
+        var expected = 1.0 / 61.0 + 1.0 / 61.0;
+        Assert.Equal(expected, result[0].Score, precision: 10);
+    }
+
+    [Fact]
+    public void Merge_SortOrderIsDescendingByRrfScore()
+    {
+        // chunk0 rank 1 in both lists → 2/61; chunk1 rank 2 dense only → 1/62; chunk2 rank 2 bm25 only → 1/62
+        // chunk1 and chunk2 are tied for second place
+        var chunk0 = Chunk("doc", 0, "shared top");
+        var chunk1 = Chunk("doc", 1, "dense second");
+        var chunk2 = Chunk("doc", 2, "bm25 second");
+        var allChunks = new List<TextChunk> { chunk0, chunk1, chunk2 };
+
+        var dense = new List<SearchResult> { Result(chunk0, 0.9), Result(chunk1, 0.8) };
+        var bm25 = new List<(int docId, double score)> { (0, 50.0), (2, 40.0) };
+
+        var result = RrfMerger.Merge(dense, bm25, allChunks, topK: 5);
+
+        Assert.Equal(3, result.Count);
+        // Scores must be non-ascending
+        Assert.True(result[0].Score > result[1].Score);
+        Assert.True(result[1].Score >= result[2].Score);
+        // chunk0 (rank 1 in both) must be first
+        Assert.Equal(0, result[0].Chunk.ChunkIndex);
+    }
+
+    [Fact]
+    public void Merge_TopKLargerThanAvailableChunks_ReturnsAllChunks()
+    {
+        var chunks = new[] { Chunk("doc", 0), Chunk("doc", 1) };
+        var dense = chunks.Select(c => Result(c)).ToList();
+
+        var result = RrfMerger.Merge(dense, [], [], topK: 100);
+
+        Assert.Equal(2, result.Count); // capped at available, not padded
+    }
 }
