@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Mcp</RootNamespace>
+    <PackageId>Rag.NET.Mcp</PackageId>
+    <Description>MCP server tools for Rag.NET pipelines</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="ModelContextProtocol" Version="1.1.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.*" />
+  </ItemGroup>
+</Project>

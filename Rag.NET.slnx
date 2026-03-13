@@ -11,6 +11,7 @@
     <Project Path="src/Rag.NET.AzureAISearch/Rag.NET.AzureAISearch.csproj" />
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
     <Project Path="src/Rag.NET.Parsers.Word/Rag.NET.Parsers.Word.csproj" />
+    <Project Path="src/Rag.NET.Mcp/Rag.NET.Mcp.csproj" />
     <Project Path="src/Rag.NET.Parsers.Excel/Rag.NET.Parsers.Excel.csproj" />
     <Project Path="src/Rag.NET.Parsers.PowerPoint/Rag.NET.Parsers.PowerPoint.csproj" />
     <Project Path="src/Rag.NET.Evaluation/Rag.NET.Evaluation.csproj" />
@@ -26,6 +27,7 @@
     <Project Path="tests/Rag.NET.AzureAISearch.Tests/Rag.NET.AzureAISearch.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Html.Tests/Rag.NET.Parsers.Html.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Word.Tests/Rag.NET.Parsers.Word.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Mcp.Tests/Rag.NET.Mcp.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Excel.Tests/Rag.NET.Parsers.Excel.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.PowerPoint.Tests/Rag.NET.Parsers.PowerPoint.Tests.csproj" />
     <Project Path="tests/Rag.NET.Evaluation.Tests/Rag.NET.Evaluation.Tests.csproj" />
