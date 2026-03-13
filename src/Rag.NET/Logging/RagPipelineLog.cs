@@ -19,6 +19,9 @@ internal static partial class RagPipelineLog
     [LoggerMessage(Level = LogLevel.Debug, Message = "Retrieved {ResultCount} chunk(s)")]
     internal static partial void RetrieveCompleted(ILogger logger, int resultCount);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Query expansion failed for query '{Query}', falling back to single-query retrieval")]
+    internal static partial void QueryExpansionFailed(ILogger logger, string query, Exception exception);
+
     [LoggerMessage(Level = LogLevel.Debug, Message = "Asking with query (TopK={TopK})")]
     internal static partial void AskStarted(ILogger logger, int topK);
 }
