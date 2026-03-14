@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Reranking.Onnx</RootNamespace>
+    <PackageId>Rag.NET.Reranking.Onnx</PackageId>
+    <Description>ONNX Runtime cross-encoder reranking for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.*" />
+  </ItemGroup>
+
+</Project>

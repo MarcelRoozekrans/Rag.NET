@@ -16,6 +16,7 @@
     <Project Path="src/Rag.NET.Parsers.Excel/Rag.NET.Parsers.Excel.csproj" />
     <Project Path="src/Rag.NET.Parsers.PowerPoint/Rag.NET.Parsers.PowerPoint.csproj" />
     <Project Path="src/Rag.NET.Evaluation/Rag.NET.Evaluation.csproj" />
+    <Project Path="src/Rag.NET.Reranking.Onnx/Rag.NET.Reranking.Onnx.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
