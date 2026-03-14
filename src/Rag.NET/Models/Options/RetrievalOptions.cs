@@ -40,6 +40,20 @@ public sealed record RetrievalOptions
     public bool UseHyde { get; init; } = true;
 
     /// <summary>
+    /// Set to <see langword="false"/> to skip embedding caching for this call,
+    /// even when caching is registered via <c>RagBuilder.UseCaching()</c>.
+    /// Has no effect when caching is not registered.
+    /// </summary>
+    public bool UseCacheEmbedding { get; init; } = true;
+
+    /// <summary>
+    /// Set to <see langword="false"/> to skip result caching for this call,
+    /// even when caching is registered via <c>RagBuilder.UseCaching()</c>.
+    /// Has no effect when caching is not registered.
+    /// </summary>
+    public bool UseCacheResult { get; init; } = true;
+
+    /// <summary>
     /// Internal override for the text to embed instead of the query.
     /// Set by <see cref="Rag.NET.Retrieval.HydeRetriever"/> to pass the hypothetical document
     /// to <see cref="Rag.NET.Retrieval.VectorStoreRetriever"/> while preserving the original query for BM25.
