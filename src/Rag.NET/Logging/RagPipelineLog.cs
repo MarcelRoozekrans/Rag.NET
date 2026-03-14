@@ -33,4 +33,16 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "HyDE generation failed for query '{Query}', falling back to original query embedding")]
     internal static partial void HydeGenerationFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Embedding cache hit for query '{Query}'")]
+    internal static partial void EmbeddingCacheHit(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Result cache hit for query '{Query}'")]
+    internal static partial void ResultCacheHit(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Embedding cache operation failed for query '{Query}'")]
+    internal static partial void EmbeddingCacheFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Result cache operation failed for query '{Query}'")]
+    internal static partial void ResultCacheFailed(ILogger logger, string query, Exception exception);
 }
