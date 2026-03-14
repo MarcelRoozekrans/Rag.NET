@@ -503,7 +503,7 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [x] | BM25 Keyword Retrieval | Medium | None |
 | [ ] | BM25 Synonym Expansion | Medium | BM25 retriever |
 | [ ] | Content-Hash Record Manager | Medium | Persistence store |
-| [ ] | Cross-Encoder Reranking | Medium | Model or API |
+| [x] | Cross-Encoder Reranking | Medium | Model or API |
 | [ ] | Data Management API | Medium | `IVectorStore` extension |
 | [ ] | Data Provider Abstraction | Medium | Existing `IDocumentParser` |
 | [ ] | Hierarchical Merger | Medium | None |
