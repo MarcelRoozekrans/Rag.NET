@@ -1,6 +1,6 @@
 # Architecture
 
-Understanding the internal structure of Rag.NET helps you choose the right extension points and diagnose unexpected behaviour. The library is built around a single concrete class, `RagPipeline`, that composes a set of replaceable abstractions through constructor injection.
+Understanding the internal structure of Rag.NET helps you choose the right extension points and diagnose unexpected behaviour. The library is built around three internal interfaces — `IRetriever`, `IIngestor`, `IAnswerEngine` — composed via the decorator pattern and exposed through a single public facade, `IRagPipeline`.
 
 ## Data flow
 
@@ -182,30 +182,46 @@ public interface ICollectionManageable
 | `RerankResult` | Reranker output: `SearchResult` + `double RelevanceScore` |
 | `RagStreamingUpdate` | `AskStreamingAsync` yield: `string? TextDelta` + `IReadOnlyList<SearchResult>? Sources` |
 
-## `RagPipeline` constructor
+## Internal architecture — decorator pipeline
 
-`RagPipeline` is a `sealed` class registered as a singleton by `AddRagNet`. Its constructor parameters are all resolved from DI:
+`RagPipeline` is a thin coordinator with three constructor parameters, each resolved from DI:
 
 ```csharp
 public sealed class RagPipeline(
-    IEnumerable<IDocumentParser> parsers,
-    IChunkingStrategy chunkingStrategy,
-    IVectorStore vectorStore,
-    IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-    IChatClient? chatClient,                    // optional — needed only for AskAsync
-    ChunkingOptions chunkingOptions,
-    ILogger<RagPipeline>? logger = null,        // optional
-    ResiliencePipeline? resiliencePipeline = null,  // optional
-    IQueryExpander? queryExpander = null,        // optional — enables multi-query
-    MultiQueryOptions? multiQueryOptions = null, // optional
-    IReranker? reranker = null)                  // optional — enables cross-encoder reranking
+    IRetriever retriever,
+    IIngestor ingestor,
+    IAnswerEngine? answerEngine = null) : IRagPipeline
 ```
 
-`IChatClient` is optional: `RetrieveAsync`, `IngestAsync`, and `DeleteAsync` work without it. `AskAsync` and `AskStreamingAsync` throw `InvalidOperationException` if no `IChatClient` is registered.
+Each method delegates directly to the appropriate interface. `IAnswerEngine` is optional — `AskAsync` and `AskStreamingAsync` throw `InvalidOperationException` if no `IChatClient` is registered.
+
+### Internal interfaces
+
+| Interface | Base implementation | Responsibility |
+|-----------|-------------------|----------------|
+| `IRetriever` | `VectorStoreRetriever` | Embed query → vector/hybrid search → results |
+| `IIngestor` | `DocumentIngestor` | Parse → chunk → embed → store + BM25 index |
+| `IAnswerEngine` | `ChatAnswerEngine` | Build prompt from sources → call `IChatClient` |
+
+### Retrieval decorator chain
+
+Optional features are composable decorators, each wrapping an inner `IRetriever`. The chain is built inside-out at DI registration time:
+
+```
+LostInTheMiddleRetriever          (always present)
+  → RedundancyFilterRetriever     (always present)
+    → RerankingRetriever          (present when IReranker registered)
+      → MultiQueryRetriever       (present when IQueryExpander registered)
+        → VectorStoreRetriever    (base — always present)
+```
+
+Each decorator checks a per-call flag on `RetrievalOptions` (e.g., `UseReranking`, `UseMultiQuery`) and either applies its logic or passes through to the inner retriever. Decorators catch non-cancellation exceptions and fall back gracefully.
+
+`RetrievalOptions` is a `sealed record` so decorators can use `with` expressions to modify options (e.g., over-fetch `TopK`) without mutating the caller's instance.
 
 ## In-memory BM25 index
 
-`RagPipeline` maintains a private `InMemoryBm25Index` instance (BM25 parameters: k1=1.5, b=0.75) that mirrors what is stored in the vector store. Every chunk stored via `IngestAsync` is also added to this index. When `UseHybridSearch = true` and the vector store does not implement `IHybridSearchable`, the pipeline queries both the dense index and the BM25 index concurrently and merges results using Reciprocal Rank Fusion (k=60).
+`InMemoryBm25Index` is a DI singleton (BM25 parameters: k1=1.5, b=0.75) shared between `DocumentIngestor` (add/remove) and `VectorStoreRetriever` (search). Every chunk stored via `IngestAsync` is also added to this index. When `UseHybridSearch = true` and the vector store does not implement `IHybridSearchable`, the retriever queries both the dense index and the BM25 index concurrently and merges results using Reciprocal Rank Fusion (k=60).
 
 The BM25 index is process-scoped, not persisted. It is rebuilt from scratch each time the application starts. If you need persistence, use a vector store that natively implements `IHybridSearchable`.
 
@@ -216,5 +232,7 @@ See [Getting Started](getting-started.md) for the call sequence. Internally, `Se
 1. Registers `TextDocumentParser` and `MarkdownDocumentParser` as built-in parsers.
 2. Registers `RecursiveChunkingStrategy` as the default `IChunkingStrategy` (unless overridden).
 3. Registers default `ChunkingOptions` (MaxChunkSize=512, Overlap=50).
-4. Creates the `IRagPipeline` singleton via a factory lambda that resolves all dependencies.
-5. Runs the user-supplied `Action<RagBuilder>` for additional configuration.
+4. Registers `InMemoryBm25Index` as a singleton.
+5. Builds the `IRetriever` decorator chain via a factory lambda (see chain order above).
+6. Registers `IIngestor` (`DocumentIngestor`) and `IRagPipeline` (`RagPipeline`).
+7. Runs the user-supplied `Action<RagBuilder>` for additional configuration.

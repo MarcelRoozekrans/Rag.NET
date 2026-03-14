@@ -4,22 +4,24 @@ Production RAG pipelines need structured logging, distributed traces, and resili
 
 ## `ILogger` integration
 
-`RagPipeline` accepts an `ILogger<RagPipeline>` via its constructor. When the DI container provides one, the pipeline emits structured log messages for every significant operation. All messages use high-performance source-generated `[LoggerMessage]` methods.
+Logging is distributed across the decorator pipeline. Each component accepts an optional `ILogger` via its constructor and emits structured log messages for its operations. All messages use high-performance source-generated `[LoggerMessage]` methods.
 
 ### Log messages
 
-| Level | Method | Message template |
-|-------|--------|-----------------|
-| `Information` | `IngestStarted` | `Ingesting document {DocumentId} ({ContentType})` |
-| `Information` | `IngestCompleted` | `Ingested document {DocumentId}: {ChunksStored} chunk(s) stored` |
-| `Error` | `IngestFailed` | `Failed to ingest document {DocumentId}` (includes exception) |
-| `Debug` | `RetrieveStarted` | `Retrieving chunks (TopK={TopK})` |
-| `Debug` | `RetrieveCompleted` | `Retrieved {ResultCount} chunk(s)` |
-| `Debug` | `AskStarted` | `Asking with query (TopK={TopK})` |
+| Component | Level | Method | Message template |
+|-----------|-------|--------|-----------------|
+| `DocumentIngestor` | `Information` | `IngestStarted` | `Ingesting document {DocumentId} ({ContentType})` |
+| `DocumentIngestor` | `Information` | `IngestCompleted` | `Ingested document {DocumentId}: {ChunksStored} chunk(s) stored` |
+| `DocumentIngestor` | `Error` | `IngestFailed` | `Failed to ingest document {DocumentId}` (includes exception) |
+| `VectorStoreRetriever` | `Debug` | `RetrieveStarted` | `Retrieving chunks (TopK={TopK})` |
+| `VectorStoreRetriever` | `Debug` | `RetrieveCompleted` | `Retrieved {ResultCount} chunk(s)` |
+| `MultiQueryRetriever` | `Warning` | `QueryExpansionFailed` | `Query expansion failed for '{Query}'` |
+| `RerankingRetriever` | `Warning` | — | `Reranking failed, returning unranked results` |
+| `RedundancyFilterRetriever` | `Warning` | — | `Redundancy filtering failed, returning unfiltered results` |
 
 ### Setup
 
-Register any `ILogger` provider. The pipeline picks it up automatically:
+Register any `ILogger` provider. The decorators pick it up automatically:
 
 ```csharp
 services.AddLogging(logging =>
@@ -34,17 +36,17 @@ services.AddRagNet(rag => rag.UsePgVector(connectionString));
 With `Microsoft.Extensions.Logging.Console`, a retrieval call produces output similar to:
 
 ```
-dbug: Rag.NET.Pipeline.RagPipeline[0]
+dbug: Rag.NET.Retrieval.VectorStoreRetriever[0]
       Retrieving chunks (TopK=5)
-dbug: Rag.NET.Pipeline.RagPipeline[0]
+dbug: Rag.NET.Retrieval.VectorStoreRetriever[0]
       Retrieved 5 chunk(s)
 ```
 
-No additional configuration is required. If no `ILogger<RagPipeline>` is registered, the pipeline silently uses `NullLogger.Instance`.
+No additional configuration is required. If no `ILogger` is provided, each component silently uses `NullLogger.Instance`.
 
 ## OpenTelemetry `ActivitySource`
 
-`RagPipeline` creates `Activity` spans for the three pipeline operations using an `ActivitySource` named `"Rag.NET"`. The source version is taken from the assembly version at startup.
+The pipeline creates `Activity` spans for the three pipeline operations using an `ActivitySource` named `"Rag.NET"`. The source version is taken from the assembly version at startup.
 
 ### Activity names
 

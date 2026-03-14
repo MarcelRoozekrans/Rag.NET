@@ -42,8 +42,6 @@ public class LostInTheMiddleRetrieverTests
         var opts = new RetrievalOptions { UseLostInTheMiddleReordering = true };
         var reordered = await _sut.RetrieveAsync("q", opts, ct);
 
-        // LostInTheMiddleReorderer puts even-indexed (0,2) at left, odd-indexed (1,3) at right
-        // Expected: doc-1, doc-3, doc-4, doc-2
         Assert.Equal(4, reordered.Count);
         Assert.Equal("doc-1", reordered[0].Chunk.DocumentId);
         Assert.Equal("doc-3", reordered[1].Chunk.DocumentId);
@@ -68,5 +66,95 @@ public class LostInTheMiddleRetrieverTests
         var output = await _sut.RetrieveAsync("q", opts, ct);
 
         Assert.Same(results, output);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_EmptyResults_ReturnsEmpty()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(new List<SearchResult>());
+
+        var opts = new RetrievalOptions { UseLostInTheMiddleReordering = true };
+        var output = await _sut.RetrieveAsync("q", opts, ct);
+
+        Assert.Empty(output);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_SingleResult_ReturnsSingleElement()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var results = new List<SearchResult> { MakeResult("doc-1", 0, 0.9) };
+
+        _inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(results);
+
+        var opts = new RetrievalOptions { UseLostInTheMiddleReordering = true };
+        var output = await _sut.RetrieveAsync("q", opts, ct);
+
+        Assert.Single(output);
+        Assert.Equal("doc-1", output[0].Chunk.DocumentId);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_TwoResults_ReturnsBothPreserved()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var results = new List<SearchResult>
+        {
+            MakeResult("doc-1", 0, 0.9),
+            MakeResult("doc-2", 0, 0.8),
+        };
+
+        _inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(results);
+
+        var opts = new RetrievalOptions { UseLostInTheMiddleReordering = true };
+        var output = await _sut.RetrieveAsync("q", opts, ct);
+
+        Assert.Equal(2, output.Count);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_OddNumberOfResults_ReordersCorrectly()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var results = new List<SearchResult>
+        {
+            MakeResult("doc-1", 0, 0.9),
+            MakeResult("doc-2", 0, 0.8),
+            MakeResult("doc-3", 0, 0.7),
+            MakeResult("doc-4", 0, 0.6),
+            MakeResult("doc-5", 0, 0.5),
+        };
+
+        _inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(results);
+
+        var opts = new RetrievalOptions { UseLostInTheMiddleReordering = true };
+        var output = await _sut.RetrieveAsync("q", opts, ct);
+
+        Assert.Equal(5, output.Count);
+        // Even-indexed inputs (0,2,4) go left, odd-indexed (1,3) go right
+        Assert.Equal("doc-1", output[0].Chunk.DocumentId);
+        Assert.Equal("doc-3", output[1].Chunk.DocumentId);
+        Assert.Equal("doc-5", output[2].Chunk.DocumentId);
+        Assert.Equal("doc-4", output[3].Chunk.DocumentId);
+        Assert.Equal("doc-2", output[4].Chunk.DocumentId);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_NullOptions_UsesDefaults()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var results = new List<SearchResult> { MakeResult("doc-1", 0, 0.9) };
+
+        _inner.RetrieveAsync("q", null, ct)
+            .Returns(results);
+
+        var output = await _sut.RetrieveAsync("q", null, ct);
+
+        Assert.Single(output);
     }
 }

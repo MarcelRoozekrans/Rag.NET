@@ -78,9 +78,92 @@ public class ServiceCollectionExtensionsTests
         await reranker.Received(1).RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>());
     }
 
-    private class FakeReranker : IReranker
+    [Fact]
+    public async Task AddRagNet_WithMultiQuery_ChainsMultiQueryRetriever()
     {
-        public Task<IReadOnlyList<RerankResult>> RerankAsync(string query, IReadOnlyList<SearchResult> results, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<RerankResult>>(new List<RerankResult>());
+        var services = new ServiceCollection();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var queryExpander = Substitute.For<IQueryExpander>();
+
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(embedder);
+        services.AddSingleton(queryExpander);
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>());
+        queryExpander.ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<string> { "variant 1" });
+
+        services.AddRagNet();
+
+        var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        await pipeline.RetrieveAsync("query", new RetrievalOptions { UseMultiQuery = true }, TestContext.Current.CancellationToken);
+
+        await queryExpander.Received(1).ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AddRagNet_WithAllFeatures_ChainsFullDecoratorPipeline()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var reranker = Substitute.For<IReranker>();
+        var queryExpander = Substitute.For<IQueryExpander>();
+
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(embedder);
+        services.AddSingleton(reranker);
+        services.AddSingleton(queryExpander);
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>());
+        queryExpander.ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(new List<string> { "variant" });
+        reranker.RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>())
+            .Returns(new List<RerankResult>());
+
+        services.AddRagNet();
+
+        var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        var opts = new RetrievalOptions
+        {
+            UseMultiQuery = true,
+            UseReranking = true,
+            UseRedundancyFilter = true,
+            UseLostInTheMiddleReordering = true,
+        };
+
+        await pipeline.RetrieveAsync("query", opts, TestContext.Current.CancellationToken);
+
+        await queryExpander.Received(1).ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        await reranker.Received(1).RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void AddRagNet_WithoutOptionalDeps_ResolvesPipeline()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Substitute.For<IVectorStore>());
+        services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+
+        services.AddRagNet();
+
+        var sp = services.BuildServiceProvider();
+        var retriever = sp.GetRequiredService<IRetriever>();
+        var ingestor = sp.GetRequiredService<IIngestor>();
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        Assert.NotNull(retriever);
+        Assert.NotNull(ingestor);
+        Assert.NotNull(pipeline);
     }
 }

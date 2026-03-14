@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.Extensions.AI;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Rag.NET.Abstractions;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
@@ -72,6 +73,92 @@ public class DocumentIngestorTests
         await _sut.DeleteAsync("doc-1", TestContext.Current.CancellationToken);
 
         await _vectorStore.Received(1).DeleteByDocumentIdAsync("doc-1", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task IngestAsync_NoParserRegistered_ThrowsInvalidOperationException()
+    {
+        var noParserIngestor = new DocumentIngestor(
+            [], _chunker, _vectorStore, _embedder, new ChunkingOptions(), _bm25Index);
+
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => noParserIngestor.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task IngestAsync_ParserCannotParseContentType_ThrowsInvalidOperationException()
+    {
+        _parser.CanParse("application/pdf").Returns(false);
+
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.pdf", ContentType = "application/pdf" };
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("pdf content"));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task IngestAsync_EmbedderFails_PropagatesException()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "Hello", DocumentId = "doc-1", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "Hello", DocumentId = "doc-1", ChunkIndex = 0 };
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("Embedding API unreachable"));
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello"));
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task IngestAsync_WithOverwrite_DeletesBeforeIngesting()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable<DocumentSection>());
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("test"));
+        await _sut.IngestAsync(stream, metadata, new IngestionOptions { Overwrite = true },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        await _vectorStore.Received(1).DeleteByDocumentIdAsync("doc-1", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task IngestAsync_ReportsProgress()
+    {
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section = new DocumentSection { Text = "Hello", DocumentId = "doc-1", SectionIndex = 0 };
+        var chunk = new TextChunk { Text = "Hello", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        var reports = new List<IngestionProgress>();
+        var progress = Substitute.For<IProgress<IngestionProgress>>();
+        progress.When(p => p.Report(Arg.Any<IngestionProgress>()))
+            .Do(ci => reports.Add(ci.Arg<IngestionProgress>()));
+
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Hello"));
+        await _sut.IngestAsync(stream, metadata, progress: progress,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(reports.Count >= 3);
     }
 
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)

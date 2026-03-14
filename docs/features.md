@@ -530,3 +530,4 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [ ] | Self-Query Filtering | High | `IChatClient` + schema |
 | [ ] | GraphRAG | Very High | Graph DB + `IChatClient` |
 | [x] | Azure AI Search Tests via Simulator | Low | `Testcontainers` + simulator Docker image |
+| [x] | Decorator Pipeline Refactoring | Medium | None |

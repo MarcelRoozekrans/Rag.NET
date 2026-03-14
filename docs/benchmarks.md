@@ -17,15 +17,15 @@ dotnet run --project benchmarks/Rag.NET.Benchmarks -c Release -- --filter "*"
 
 | Strategy | Input | Mean | Allocated |
 |----------|-------|-----:|----------:|
-| Fixed | 500 chars | 377 ns | 1.70 KB |
-| Fixed | 5 KB | 3.1 us | 16.74 KB |
-| Fixed | 50 KB | 29.1 us | 158.37 KB |
-| Recursive | 500 chars | 916 ns | 2.94 KB |
-| Recursive | 5 KB | 8.1 us | 31.91 KB |
-| Recursive | 50 KB | 93.6 us | 315.54 KB |
-| TokenAware | 500 chars | 18.0 us | 6.10 KB |
-| TokenAware | 5 KB | 156 us | 36.74 KB |
-| TokenAware | 50 KB | 1,750 us | 388.89 KB |
+| Fixed | 500 chars | 209 ns | 1.70 KB |
+| Fixed | 5 KB | 2.0 us | 16.74 KB |
+| Fixed | 50 KB | 33.4 us | 158.37 KB |
+| Recursive | 500 chars | 520 ns | 2.94 KB |
+| Recursive | 5 KB | 4.3 us | 31.91 KB |
+| Recursive | 50 KB | 42.5 us | 315.54 KB |
+| TokenAware | 500 chars | 10.7 us | 6.10 KB |
+| TokenAware | 5 KB | 122 us | 36.74 KB |
+| TokenAware | 50 KB | 1,050 us | 388.90 KB |
 
 **Notes:**
 - `TokenAware` uses `TiktokenTokenizer` (cl100k_base) — encoding/decoding overhead is 20–60× that of character-based strategies.
@@ -38,14 +38,14 @@ dotnet run --project benchmarks/Rag.NET.Benchmarks -c Release -- --filter "*"
 
 | Parser | Input | Mean | Allocated |
 |--------|-------|-----:|----------:|
-| Text | 1 KB | 1.7 us | 9.81 KB |
-| Text | 100 KB | 172.5 us | 403.64 KB |
-| Markdown | 1 KB | 1.9 us | 11.95 KB |
-| Markdown | 100 KB | 331.4 us | 599.17 KB |
-| HTML | 5 sections | 108.4 us | 81.71 KB |
-| HTML | 100 sections | 1,087 us | 615.26 KB |
-| CSV | 500 rows | 333.4 us | 468.55 KB |
-| JSON | 100 elements | 74.3 us | 49.42 KB |
+| Text | 1 KB | 1.1 us | 9.81 KB |
+| Text | 100 KB | 155.4 us | 403.64 KB |
+| Markdown | 1 KB | 1.6 us | 11.95 KB |
+| Markdown | 100 KB | 208.0 us | 599.17 KB |
+| HTML | 5 sections | 43.3 us | 81.71 KB |
+| HTML | 100 sections | 453.0 us | 615.26 KB |
+| CSV | 500 rows | 119.3 us | 468.55 KB |
+| JSON | 100 elements | 40.3 us | 49.42 KB |
 
 ---
 
@@ -78,19 +78,19 @@ In-memory BM25 + RRF merge path, activated when `UseHybridSearch = true` and the
 
 ## Multi-Query Fan-out
 
-CPU-only overhead of multi-query fan-out + deduplication. Both the query expander and vector store are mocked (zero I/O latency) to isolate the LINQ merge/dedup path. Measured against a pre-ingested 50 KB document (~100 chunks).
+CPU-only overhead of the `MultiQueryRetriever` decorator chain: query expansion via `IQueryExpander`, parallel fan-out to inner `VectorStoreRetriever`, and LINQ merge/dedup. Both the query expander and vector store are mocked (zero I/O latency).
 
 | Method | Variants | Mean | Allocated |
 |--------|----------|-----:|----------:|
-| SingleQuery_Baseline | — | ~22 us | ~34 KB |
-| MultiQuery_3Variants | 3 | ~90 us | ~140 KB |
-| MultiQuery_5Variants | 5 | ~145 us | ~230 KB |
+| SingleQuery_Baseline | — | 180 ns | 656 B |
+| MultiQuery_3Variants | 3 | 1,073 ns | 3,504 B |
+| MultiQuery_5Variants | 5 | 1,287 ns | 4,704 B |
 
 **Notes:**
 - Fan-out overhead scales linearly with variant count (one embedding call + one `SearchAsync` call per variant + original).
 - Real-world cost is dominated by the LLM expansion call (~50–200 ms p99) and N parallel vector store queries (~10–100 ms p99 each).
-- The CPU-only merge/dedup path is negligible in production — these numbers measure infrastructure overhead only.
-- When the expander fails, the pipeline falls back to single-query at no extra cost.
+- The CPU-only decorator overhead is negligible in production — these numbers measure infrastructure overhead only.
+- When the expander fails, the decorator falls back to single-query at no extra cost.
 
 ---
 
@@ -112,7 +112,7 @@ Post-retrieval cosine-similarity filtering. Embedder is mocked (zero I/O latency
 
 ## Cross-Encoder Reranking
 
-CPU-only overhead of the reranking pipeline step. The reranker is mocked (returns pre-computed scores) to isolate the sort/trim LINQ path. Embedder and vector store are also mocked.
+CPU-only overhead of the `RerankingRetriever` decorator. The reranker is mocked (returns pre-computed scores) to isolate the sort/trim LINQ path. Embedder and vector store are also mocked.
 
 | TopK | Method | Mean | Allocated |
 |------|--------|-----:|----------:|
@@ -122,7 +122,7 @@ CPU-only overhead of the reranking pipeline step. The reranker is mocked (return
 | 20 | With reranking | 209.6 ns | 1,128 B |
 
 **Notes:**
-- The reranker is mocked — these numbers measure only the pipeline overhead (sorting, trimming, LINQ), not model inference.
+- The reranker is mocked — these numbers measure only the decorator overhead (sorting, trimming, LINQ), not model inference.
 - Real-world reranking cost is dominated by the cross-encoder model (~10–100 ms per query depending on model size and hardware).
-- CPU overhead is negligible compared to model inference; the benchmark confirms the pipeline adds minimal overhead on top of the reranker call.
-- Over-fetch via `CandidateCount` (default: TopK × 3) means the vector store returns more candidates, adding a small increase in data transfer.
+- CPU overhead is negligible compared to model inference; the benchmark confirms the decorator adds minimal overhead on top of the reranker call.
+- Over-fetch via `CandidateCount` (default: TopK × 3) means the inner retriever returns more candidates, adding a small increase in data transfer.

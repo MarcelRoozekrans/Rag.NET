@@ -6,6 +6,7 @@ using Rag.NET.Chunking;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.MultiQuery;
 using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
 using Rag.NET.Retrieval;
@@ -75,7 +76,12 @@ public class MultiQueryBenchmarks
         var embedder = new FakeEmbeddingGenerator(dimensions: 384);
         var bm25Index = new InMemoryBm25Index();
 
-        var retriever = new VectorStoreRetriever(vectorStore, embedder, bm25Index);
+        IRetriever retriever = new VectorStoreRetriever(vectorStore, embedder, bm25Index);
+        retriever = new MultiQueryRetriever(
+            retriever,
+            new FakeQueryExpander(variantCount),
+            new MultiQueryOptions { VariantCount = variantCount });
+
         var ingestor = new DocumentIngestor(
             [new TextDocumentParser()],
             new RecursiveChunkingStrategy(),

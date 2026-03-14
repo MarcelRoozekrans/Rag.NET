@@ -35,29 +35,32 @@ public class RerankingBenchmarks
         var reranker = new FakeReranker();
         var vectorStore = new NoOpVectorStore();
         var embedder = new FakeEmbeddingGenerator(dimensions: 384);
-        var bm25Index = new InMemoryBm25Index();
         var chunkingOptions = new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 };
 
-        var retrieverWithReranker = new VectorStoreRetriever(vectorStore, embedder, bm25Index);
+        // Pipeline with reranking decorator
+        var bm25WithReranker = new InMemoryBm25Index();
+        IRetriever retrieverWithReranker = new VectorStoreRetriever(vectorStore, embedder, bm25WithReranker);
+        retrieverWithReranker = new RerankingRetriever(retrieverWithReranker, reranker);
         var ingestorWithReranker = new DocumentIngestor(
             [new TextDocumentParser()],
             new RecursiveChunkingStrategy(),
             vectorStore,
             embedder,
             chunkingOptions,
-            bm25Index);
+            bm25WithReranker);
 
         _pipeline = new RagPipeline(retrieverWithReranker, ingestorWithReranker);
 
-        var bm25IndexNoReranker = new InMemoryBm25Index();
-        var retrieverNoReranker = new VectorStoreRetriever(vectorStore, embedder, bm25IndexNoReranker);
+        // Pipeline without reranking
+        var bm25NoReranker = new InMemoryBm25Index();
+        IRetriever retrieverNoReranker = new VectorStoreRetriever(vectorStore, embedder, bm25NoReranker);
         var ingestorNoReranker = new DocumentIngestor(
             [new TextDocumentParser()],
             new RecursiveChunkingStrategy(),
             vectorStore,
             embedder,
             chunkingOptions,
-            bm25IndexNoReranker);
+            bm25NoReranker);
 
         _pipelineNoReranker = new RagPipeline(retrieverNoReranker, ingestorNoReranker);
 
