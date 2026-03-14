@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -52,6 +53,18 @@ public static class ServiceCollectionExtensions
 
         IRetriever chain = new VectorStoreRetriever(store, embedder, bm25Index);
 
+        var cachingOptions = sp.GetService<CachingOptions>();
+        var hybridCache = sp.GetService<HybridCache>();
+
+        if (cachingOptions is not null && hybridCache is not null)
+        {
+            chain = new EmbeddingCacheRetriever(
+                chain,
+                hybridCache,
+                cachingOptions,
+                sp.GetService<ILogger<EmbeddingCacheRetriever>>());
+        }
+
         var hydeGenerator = sp.GetService<IHypotheticalDocumentGenerator>();
         if (hydeGenerator is not null)
         {
@@ -82,6 +95,15 @@ public static class ServiceCollectionExtensions
 
         chain = new RedundancyFilterRetriever(chain, embedder, sp.GetService<ILogger<RedundancyFilterRetriever>>());
         chain = new LostInTheMiddleRetriever(chain);
+
+        if (cachingOptions is not null && hybridCache is not null)
+        {
+            chain = new ResultCacheRetriever(
+                chain,
+                hybridCache,
+                cachingOptions,
+                sp.GetService<ILogger<ResultCacheRetriever>>());
+        }
 
         return chain;
     }
