@@ -11,6 +11,7 @@ using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
 using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
+using Rag.NET.Search;
 
 namespace Rag.NET.DependencyInjection;
 
@@ -25,6 +26,7 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton<ChunkingOptions>();
         services.TryAddSingleton<IChunkingStrategy, RecursiveChunkingStrategy>();
+        services.AddSingleton<InMemoryBm25Index>();
 
         services.AddSingleton<IRagPipeline>(sp =>
         {
