@@ -89,6 +89,9 @@ public sealed class DocumentIngestor(
         CancellationToken cancellationToken)
     {
         // Reset stream for second parse pass
+        if (!document.CanSeek)
+            throw new InvalidOperationException(
+                "Parent-document retrieval requires a seekable stream. Wrap the stream in a MemoryStream before calling IngestAsync.");
         document.Position = 0;
 
         var parentChunkingOptions = new ChunkingOptions
