@@ -255,4 +255,78 @@ public class ServiceCollectionExtensionsTests
         Assert.NotNull(ingestor);
         Assert.NotNull(pipeline);
     }
+
+    [Fact]
+    public async Task AddRagNet_WithParentDocumentRetrieval_ReplacesChildWithParentText()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(embedder);
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new()
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = "small child", DocumentId = "doc1", ChunkIndex = 0,
+                        Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["_parentKey"] = "doc1:0" }
+                    },
+                    Score = 0.9
+                }
+            });
+
+        services.AddRagNet(b => b.UseParentDocumentRetrieval());
+
+        var sp = services.BuildServiceProvider();
+
+        // Manually add parent text to the store
+        var parentStore = sp.GetRequiredService<Rag.NET.Storage.InMemoryParentChunkStore>();
+        parentStore.Add("doc1", 0, "large parent context text");
+
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+        var results = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("large parent context text", results[0].Chunk.Text);
+    }
+
+    [Fact]
+    public async Task AddRagNet_WithoutParentDocumentRetrieval_ReturnsChildText()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(embedder);
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new()
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = "small child", DocumentId = "doc1", ChunkIndex = 0,
+                    },
+                    Score = 0.9
+                }
+            });
+
+        services.AddRagNet(); // no UseParentDocumentRetrieval
+
+        var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+        var results = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("small child", results[0].Chunk.Text);
+    }
 }
