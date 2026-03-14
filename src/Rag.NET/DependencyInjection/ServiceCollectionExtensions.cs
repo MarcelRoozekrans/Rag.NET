@@ -85,7 +85,7 @@ public static class ServiceCollectionExtensions
                 sp.GetService<ILogger<RerankingRetriever>>());
         }
 
-        chain = new RedundancyFilterRetriever(chain, embedder);
+        chain = new RedundancyFilterRetriever(chain, embedder, sp.GetService<ILogger<RedundancyFilterRetriever>>());
         chain = new LostInTheMiddleRetriever(chain);
 
         return chain;

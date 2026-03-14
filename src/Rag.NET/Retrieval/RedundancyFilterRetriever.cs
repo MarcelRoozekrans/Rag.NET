@@ -1,4 +1,6 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -6,10 +8,16 @@ using Rag.NET.PostRetrieval;
 
 namespace Rag.NET.Retrieval;
 
+/// <summary>
+/// Decorator that filters near-duplicate results by cosine similarity.
+/// </summary>
 public sealed class RedundancyFilterRetriever(
     IRetriever inner,
-    IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator) : IRetriever
+    IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
+    ILogger? logger = null) : IRetriever
 {
+    private readonly ILogger _logger = logger ?? NullLogger.Instance;
+
     public async Task<IReadOnlyList<SearchResult>> RetrieveAsync(
         string query,
         RetrievalOptions? options = null,
@@ -21,7 +29,16 @@ public sealed class RedundancyFilterRetriever(
         if (!opts.UseRedundancyFilter)
             return results;
 
-        return await RedundancyFilter.FilterAsync(results, embeddingGenerator, opts.RedundancyThreshold, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            return await RedundancyFilter.FilterAsync(results, embeddingGenerator, opts.RedundancyThreshold, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Redundancy filtering failed, returning unfiltered results");
+            return results;
+        }
     }
 }
