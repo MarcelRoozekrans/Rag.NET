@@ -515,7 +515,7 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [ ] | Multi-Language Code Splitting | Medium | None (regex) |
 | [x] | Multi-Query Retrieval | Medium | `IChatClient` |
 | [ ] | SaaS Connectors | Medium | Per-platform SDK |
-| [ ] | Search Result Caching | Medium | None |
+| [x] | Search Result Caching | Medium | None |
 | [ ] | Tag-Based Retrieval | Medium | Hybrid search |
 | [ ] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
 | [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |

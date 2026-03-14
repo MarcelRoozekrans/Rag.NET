@@ -17,6 +17,8 @@ public sealed class RetrievalOptions
     public bool UseHyde                       { get; set; } = true;
     public bool UseMultiQuery                { get; set; } = true;
     public bool UseReranking                 { get; set; } = true;
+    public bool UseCacheEmbedding            { get; set; } = true;
+    public bool UseCacheResult               { get; set; } = true;
     public int? CandidateCount               { get; set; }
 }
 ```
@@ -180,6 +182,60 @@ var results = await pipeline.RetrieveAsync("exact phrase lookup", new RetrievalO
 {
     UseHyde = false,
 });
+```
+
+## Search Result Caching
+
+Caching reduces embedding API and vector store costs on repeated queries. Rag.NET supports two cache levels backed by `HybridCache` — in-process memory (L1) with optional distributed cache (L2, e.g., Redis).
+
+### Enabling
+
+```csharp
+services.AddRagNet(b => b
+    .UseCaching());
+```
+
+Configure TTLs:
+
+```csharp
+services.AddRagNet(b => b
+    .UseCaching(o =>
+    {
+        o.EmbeddingTtl = TimeSpan.FromHours(1);
+        o.ResultTtl = TimeSpan.FromMinutes(10);
+    }));
+```
+
+### Cache levels
+
+| Level | Decorator | What it caches | Default TTL |
+|-------|-----------|---------------|-------------|
+| Embedding | `EmbeddingCacheRetriever` | Retrieval results keyed by embedding text | 30 minutes |
+| Result | `ResultCacheRetriever` | Complete post-processed result list | 5 minutes |
+
+The embedding cache sits just above `VectorStoreRetriever` — on cache hit, it skips embedding generation and vector store search. The result cache wraps the entire chain — on cache hit, it skips everything (reranking, redundancy filter, reordering included).
+
+### Disabling per call
+
+```csharp
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    UseCacheEmbedding = false,  // skip embedding cache
+    UseCacheResult = false,     // skip result cache
+});
+```
+
+### Cache invalidation
+
+Caches expire via TTL. No automatic invalidation on ingest/delete. After bulk ingestion, reduce `ResultTtl` or opt out of caching for the next retrieval call.
+
+### Distributed cache
+
+Register any `IDistributedCache` in DI and `HybridCache` uses it as L2 automatically:
+
+```csharp
+services.AddStackExchangeRedisCache(o => o.Configuration = "localhost:6379");
+services.AddRagNet(b => b.UseCaching());
 ```
 
 ## Multi-query retrieval

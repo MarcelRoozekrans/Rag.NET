@@ -209,15 +209,17 @@ Each method delegates directly to the appropriate interface. `IAnswerEngine` is 
 Optional features are composable decorators, each wrapping an inner `IRetriever`. The chain is built inside-out at DI registration time:
 
 ```
-LostInTheMiddleRetriever          (always present)
-  → RedundancyFilterRetriever     (always present)
-    → RerankingRetriever          (present when IReranker registered)
-      → MultiQueryRetriever       (present when IQueryExpander registered)
-        → HydeRetriever           (present when IHypotheticalDocumentGenerator registered)
-          → VectorStoreRetriever  (base — always present)
+ResultCacheRetriever              (present when UseCaching() called)
+  → LostInTheMiddleRetriever      (always present)
+    → RedundancyFilterRetriever   (always present)
+      → RerankingRetriever        (present when IReranker registered)
+        → MultiQueryRetriever     (present when IQueryExpander registered)
+          → HydeRetriever         (present when IHypotheticalDocumentGenerator registered)
+            → EmbeddingCacheRetriever  (present when UseCaching() called)
+              → VectorStoreRetriever   (base — always present)
 ```
 
-Each decorator checks a per-call flag on `RetrievalOptions` (e.g., `UseReranking`, `UseMultiQuery`, `UseHyde`) and either applies its logic or passes through to the inner retriever. Decorators catch non-cancellation exceptions and fall back gracefully.
+Each decorator checks a per-call flag on `RetrievalOptions` (e.g., `UseReranking`, `UseMultiQuery`, `UseHyde`, `UseCacheResult`, `UseCacheEmbedding`) and either applies its logic or passes through to the inner retriever. Decorators catch non-cancellation exceptions and fall back gracefully.
 
 `RetrievalOptions` is a `sealed record` so decorators can use `with` expressions to modify options (e.g., over-fetch `TopK`) without mutating the caller's instance.
 

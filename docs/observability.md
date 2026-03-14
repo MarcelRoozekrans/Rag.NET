@@ -19,6 +19,10 @@ Logging is distributed across the decorator pipeline. Each component accepts an 
 | `RerankingRetriever` | `Warning` | — | `Reranking failed, returning unranked results` |
 | `HydeRetriever` | `Warning` | `HydeGenerationFailed` | `HyDE generation failed for query '{Query}', falling back to original query embedding` |
 | `RedundancyFilterRetriever` | `Warning` | — | `Redundancy filtering failed, returning unfiltered results` |
+| `EmbeddingCacheRetriever` | `Debug` | `EmbeddingCacheHit` | `Embedding cache hit for query '{Query}'` |
+| `ResultCacheRetriever` | `Debug` | `ResultCacheHit` | `Result cache hit for query '{Query}'` |
+| `EmbeddingCacheRetriever` | `Warning` | `EmbeddingCacheFailed` | `Embedding cache operation failed for query '{Query}'` |
+| `ResultCacheRetriever` | `Warning` | `ResultCacheFailed` | `Result cache operation failed for query '{Query}'` |
 
 ### Setup
 
