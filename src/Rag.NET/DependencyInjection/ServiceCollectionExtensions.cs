@@ -39,8 +39,9 @@ public static class ServiceCollectionExtensions
             var resilience = resilienceProvider?.GetPipeline("rag-net");
             var queryExpander = sp.GetService<IQueryExpander>();
             var multiQueryOptions = sp.GetService<MultiQueryOptions>();
+            var reranker = sp.GetService<IReranker>();
 
-            return new RagPipeline(parsers, chunker, store, embedder, chatClient, options, logger, resilience, queryExpander, multiQueryOptions);
+            return new RagPipeline(parsers, chunker, store, embedder, chatClient, options, logger, resilience, queryExpander, multiQueryOptions, reranker);
         });
 
         var builder = new RagBuilder(services);

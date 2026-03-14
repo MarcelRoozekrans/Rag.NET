@@ -87,6 +87,21 @@ public sealed class RagBuilder(IServiceCollection services)
     }
 
     /// <summary>
+    /// Registers <typeparamref name="TReranker"/> as the <see cref="IReranker"/>.
+    /// When registered, <see cref="RagPipeline"/> rescores search results using
+    /// the cross-encoder for higher precision ranking.
+    /// </summary>
+    /// <remarks>
+    /// Per-call opt-out: pass <c>new RetrievalOptions { UseReranking = false }</c>.
+    /// Over-fetch control: set <c>RetrievalOptions.CandidateCount</c> (defaults to TopK * 3).
+    /// </remarks>
+    public RagBuilder UseReranking<TReranker>() where TReranker : class, IReranker
+    {
+        Services.AddSingleton<IReranker, TReranker>();
+        return this;
+    }
+
+    /// <summary>
     /// Adds a Polly resilience pipeline named <c>"rag-net"</c> that wraps embedding and vector-store calls.
     /// When no <paramref name="configure"/> delegate is provided, a default exponential back-off retry
     /// (3 attempts, 1 s base delay, jitter) is applied.
