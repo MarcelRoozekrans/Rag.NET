@@ -4,12 +4,14 @@ using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Search;
+using ZInject;
 
 namespace Rag.NET.Ingestion;
 
 /// <summary>
 /// Base ingestor that parses, chunks, embeds, and stores documents.
 /// </summary>
+[Singleton(As = typeof(IIngestor))]
 public sealed class DocumentIngestor(
     IEnumerable<IDocumentParser> parsers,
     IChunkingStrategy chunkingStrategy,

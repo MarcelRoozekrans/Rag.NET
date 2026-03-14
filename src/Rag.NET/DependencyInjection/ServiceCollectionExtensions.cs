@@ -4,11 +4,8 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
-using Rag.NET.Chunking;
-using Rag.NET.Ingestion;
 using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
-using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
 using Rag.NET.Retrieval;
 using Rag.NET.Search;
@@ -21,25 +18,14 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         Action<RagBuilder>? configure = null)
     {
-        services.AddSingleton<IDocumentParser, TextDocumentParser>();
-        services.AddSingleton<IDocumentParser, MarkdownDocumentParser>();
+        // ZInject-generated: registers IDocumentParser (Text, Markdown),
+        // IChunkingStrategy (Recursive), IIngestor (DocumentIngestor).
+        services.AddRagNETServices();
 
         services.TryAddSingleton<ChunkingOptions>();
-        services.TryAddSingleton<IChunkingStrategy, RecursiveChunkingStrategy>();
         services.AddSingleton<InMemoryBm25Index>();
 
         services.AddSingleton<IRetriever>(sp => BuildRetrieverChain(sp));
-
-        services.TryAddSingleton<IIngestor>(sp =>
-        {
-            var parsers = sp.GetServices<IDocumentParser>();
-            var chunker = sp.GetRequiredService<IChunkingStrategy>();
-            var store = sp.GetRequiredService<IVectorStore>();
-            var embedder = sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
-            var options = sp.GetRequiredService<ChunkingOptions>();
-            var bm25Index = sp.GetRequiredService<InMemoryBm25Index>();
-            return new DocumentIngestor(parsers, chunker, store, embedder, options, bm25Index);
-        });
 
         services.AddSingleton<IRagPipeline>(sp =>
         {

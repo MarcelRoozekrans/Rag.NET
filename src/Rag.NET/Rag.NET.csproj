@@ -19,6 +19,12 @@
     <PackageReference Include="Microsoft.Extensions.Resilience" Version="9.*" />
     <PackageReference Include="Microsoft.ML.Tokenizers" Version="0.*" />
     <PackageReference Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="0.*" />
+    <PackageReference Include="ZInject" Version="0.10.2" />
+    <PackageReference Include="ZInject.Generator" Version="0.10.2" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Analyzer Include="$(PkgZInject_Generator)\lib\netstandard2.0\ZInject.Generator.dll" />
   </ItemGroup>
 
 </Project>

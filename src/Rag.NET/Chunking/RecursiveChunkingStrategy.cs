@@ -2,9 +2,11 @@ using System.Runtime.CompilerServices;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using ZInject;
 
 namespace Rag.NET.Chunking;
 
+[Singleton(As = typeof(IChunkingStrategy))]
 public sealed class RecursiveChunkingStrategy : IChunkingStrategy
 {
     private static readonly string[] Separators = ["\n\n", "\n", ". ", " "];

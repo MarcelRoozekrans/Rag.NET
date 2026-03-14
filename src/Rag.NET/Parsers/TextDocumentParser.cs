@@ -1,9 +1,11 @@
 using System.Runtime.CompilerServices;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using ZInject;
 
 namespace Rag.NET.Parsers;
 
+[Singleton(As = typeof(IDocumentParser), AllowMultiple = true)]
 public sealed class TextDocumentParser : IDocumentParser
 {
     public bool CanParse(string contentType) =>
