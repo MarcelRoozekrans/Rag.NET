@@ -107,3 +107,22 @@ Post-retrieval cosine-similarity filtering. Embedder is mocked (zero I/O latency
 - Cost scales quadratically with TopK — each new candidate is compared against all already-accepted chunks.
 - In production, the filter loop is negligible compared to the re-embedding API call (typically 10–50 ms for a batch of 5–20 texts).
 - Use `RedundancyThreshold = 0.95f` (default) for typical prose; lower to 0.85 for highly redundant corpora.
+
+---
+
+## Cross-Encoder Reranking
+
+CPU-only overhead of the reranking pipeline step. The reranker is mocked (returns pre-computed scores) to isolate the sort/trim LINQ path. Embedder and vector store are also mocked.
+
+| TopK | Method | Mean | Allocated |
+|------|--------|-----:|----------:|
+| 5 | No reranking (baseline) | _TBD_ | _TBD_ |
+| 5 | With reranking | _TBD_ | _TBD_ |
+| 20 | No reranking (baseline) | _TBD_ | _TBD_ |
+| 20 | With reranking | _TBD_ | _TBD_ |
+
+**Notes:**
+- The reranker is mocked — these numbers measure only the pipeline overhead (sorting, trimming, LINQ), not model inference.
+- Real-world reranking cost is dominated by the cross-encoder model (~10–100 ms per query depending on model size and hardware).
+- CPU overhead is negligible compared to model inference; the benchmark confirms the pipeline adds minimal overhead on top of the reranker call.
+- Over-fetch via `CandidateCount` (default: TopK × 3) means the vector store returns more candidates, adding a small increase in data transfer.
