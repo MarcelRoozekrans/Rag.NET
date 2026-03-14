@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
 using Rag.NET.Chunking;
@@ -27,13 +28,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IChunkingStrategy, RecursiveChunkingStrategy>();
         services.AddSingleton<InMemoryBm25Index>();
 
-        services.TryAddSingleton<IRetriever>(sp =>
-        {
-            var store = sp.GetRequiredService<IVectorStore>();
-            var embedder = sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
-            var bm25Index = sp.GetRequiredService<InMemoryBm25Index>();
-            return new VectorStoreRetriever(store, embedder, bm25Index);
-        });
+        services.AddSingleton<IRetriever>(sp => BuildRetrieverChain(sp));
 
         services.TryAddSingleton<IIngestor>(sp =>
         {
@@ -46,18 +41,14 @@ public static class ServiceCollectionExtensions
             return new DocumentIngestor(parsers, chunker, store, embedder, options, bm25Index);
         });
 
-        services.TryAddSingleton<IAnswerEngine>(sp =>
-        {
-            var chatClient = sp.GetService<IChatClient>();
-            if (chatClient is null) return null!;
-            return new ChatAnswerEngine(chatClient);
-        });
-
         services.AddSingleton<IRagPipeline>(sp =>
         {
             var retriever = sp.GetRequiredService<IRetriever>();
             var ingestor = sp.GetRequiredService<IIngestor>();
-            var answerEngine = sp.GetService<IAnswerEngine>();
+
+            var chatClient = sp.GetService<IChatClient>();
+            IAnswerEngine? answerEngine = chatClient is not null ? new ChatAnswerEngine(chatClient) : null;
+
             return new RagPipeline(retriever, ingestor, answerEngine);
         });
 
@@ -65,5 +56,38 @@ public static class ServiceCollectionExtensions
         configure?.Invoke(builder);
 
         return services;
+    }
+
+    private static IRetriever BuildRetrieverChain(IServiceProvider sp)
+    {
+        var store = sp.GetRequiredService<IVectorStore>();
+        var embedder = sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25Index = sp.GetRequiredService<InMemoryBm25Index>();
+
+        IRetriever chain = new VectorStoreRetriever(store, embedder, bm25Index);
+
+        var queryExpander = sp.GetService<IQueryExpander>();
+        if (queryExpander is not null)
+        {
+            chain = new MultiQueryRetriever(
+                chain,
+                queryExpander,
+                sp.GetService<MultiQueryOptions>() ?? new MultiQueryOptions(),
+                sp.GetService<ILogger<MultiQueryRetriever>>());
+        }
+
+        var reranker = sp.GetService<IReranker>();
+        if (reranker is not null)
+        {
+            chain = new RerankingRetriever(
+                chain,
+                reranker,
+                sp.GetService<ILogger<RerankingRetriever>>());
+        }
+
+        chain = new RedundancyFilterRetriever(chain, embedder);
+        chain = new LostInTheMiddleRetriever(chain);
+
+        return chain;
     }
 }
