@@ -93,4 +93,31 @@ public class EmbeddingCacheRetrieverTests
 
         await _inner.Received(1).RetrieveAsync("query", Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task RetrieveAsync_WhenCacheFails_FallsBackToInner()
+    {
+        var expected = new List<SearchResult>
+        {
+            new() { Chunk = new TextChunk { Text = "fallback", DocumentId = "d1", ChunkIndex = 0 }, Score = 0.8 }
+        };
+        _inner.RetrieveAsync("query", Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(expected);
+
+        var sut = new EmbeddingCacheRetriever(_inner, new ThrowingHybridCache(), _options);
+        var results = await sut.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(expected.Count, results.Count);
+        await _inner.Received(1).RetrieveAsync("query", Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    private sealed class ThrowingHybridCache : HybridCache
+    {
+        public override ValueTask<T> GetOrCreateAsync<TState, T>(string key, TState state, Func<TState, CancellationToken, ValueTask<T>> factory, HybridCacheEntryOptions? options = null, IEnumerable<string>? tags = null, CancellationToken cancellationToken = default)
+            => throw new InvalidOperationException("cache broken");
+
+        public override ValueTask RemoveAsync(string key, CancellationToken cancellationToken = default) => default;
+        public override ValueTask RemoveByTagAsync(string tag, CancellationToken cancellationToken = default) => default;
+        public override ValueTask SetAsync<T>(string key, T value, HybridCacheEntryOptions? options = null, IEnumerable<string>? tags = null, CancellationToken cancellationToken = default) => default;
+    }
 }

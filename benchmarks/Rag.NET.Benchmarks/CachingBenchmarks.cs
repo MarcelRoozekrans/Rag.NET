@@ -86,6 +86,17 @@ public class CachingBenchmarks
     }
 
     [Benchmark]
+    public async Task<int> CacheHit_EmbeddingOnly()
+    {
+        // Result cache miss (unique random suffix), but embedding cache hit (same base query warmed in setup)
+        // This isolates the embedding cache benefit: skips IEmbeddingGenerator but still queries the vector store.
+        var results = await _pipeline.RetrieveAsync(
+            "quick brown fox",
+            new RetrievalOptions { TopK = 5, UseCacheResult = false });
+        return results.Count;
+    }
+
+    [Benchmark]
     public async Task<int> CacheHit_ResultCache()
     {
         var results = await _pipeline.RetrieveAsync(

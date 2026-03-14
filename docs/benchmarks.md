@@ -152,11 +152,12 @@ CPU-only overhead of the `EmbeddingCacheRetriever` and `ResultCacheRetriever` de
 
 | Method | Mean | Allocated |
 |--------|-----:|----------:|
-| CacheMiss_NoCaching (baseline) | 193.2 ns | 924 B |
-| CacheHit_ResultCache | 1,182.1 ns | 1,328 B |
+| CacheMiss_NoCaching (baseline) | 200.6 ns | 924 B |
+| CacheHit_EmbeddingOnly | 734.0 ns | 944 B |
+| CacheHit_ResultCache | 1,007.8 ns | 1,328 B |
 
 **Notes:**
-- The cache hit path (~1.2 μs) includes `HybridCache` dictionary lookup and deserialization overhead. This is negligible compared to what it replaces: embedding API calls (~10–50 ms) and vector store queries (~10–100 ms).
+- The embedding-only cache hit (~734 ns) skips `IEmbeddingGenerator` but still queries the vector store. The full result cache hit (~1.0 μs) skips the entire pipeline. Both are negligible compared to what they replace: embedding API calls (~10–50 ms) and vector store queries (~10–100 ms).
 - The baseline uses `UseCacheResult = false, UseCacheEmbedding = false` with mocked (zero-latency) providers, so it represents the absolute minimum retrieval cost. In production, cache hits eliminate the two most expensive operations in the pipeline.
 - `HybridCache` provides L1 in-process cache by default. Add an `IDistributedCache` (Redis, SQL Server) for L2 cross-instance caching.
 - Default TTLs: embedding cache = 30 minutes, result cache = 5 minutes. Configure via `UseCaching(o => { o.EmbeddingTtl = ...; o.ResultTtl = ...; })`.

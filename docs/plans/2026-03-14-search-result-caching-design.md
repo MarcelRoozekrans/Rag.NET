@@ -41,7 +41,7 @@ Fixed-length keys are safe for any backing store.
 No automatic invalidation on ingest/delete — tracking which documents contributed to which cached results adds significant complexity. Instead:
 
 - **TTL-based expiry** — configurable per cache level
-- **Manual invalidation** — users call `InvalidateCache()` on `IRagPipeline` after bulk ingestion if they need immediate freshness
+- **Per-call opt-out** — set `UseCacheResult = false` or `UseCacheEmbedding = false` on `RetrievalOptions` to bypass cache after bulk ingestion
 
 ## Configuration & DI Wiring
 
