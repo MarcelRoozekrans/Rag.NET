@@ -8,10 +8,10 @@ Ingestion is the process of taking a raw document, converting it to searchable t
 
 ```mermaid
 flowchart TD
-    S1["Stage 1 — Parsing\nDocument parsed into DocumentSection objects"]
-    S2["Stage 2 — Chunking\nSections split into TextChunk objects; metadata applied"]
-    S3["Stage 3 — Embedding\nBatch embedding call completed"]
-    S4["Stage 4 — Storing\nChunks written to the vector store and BM25 index"]
+    S1["Stage 1 — Parsing<br>Document parsed into DocumentSection objects"]
+    S2["Stage 2 — Chunking<br>Sections split into TextChunk objects; metadata applied"]
+    S3["Stage 3 — Embedding<br>Batch embedding call completed"]
+    S4["Stage 4 — Storing<br>Chunks written to the vector store and BM25 index"]
 
     S1 --> S2 --> S3 --> S4
 ```

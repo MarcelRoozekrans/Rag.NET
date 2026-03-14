@@ -94,10 +94,10 @@ The pipeline inspects the registered `IVectorStore` at retrieval time:
 
 ```mermaid
 flowchart TD
-    Q["UseHybridSearch = true"] --> CHECK{IVectorStore implements\nIHybridSearchable?}
-    CHECK -- yes --> NATIVE["HybridSearchAsync()\nbackend handles fusion natively\ne.g. Azure AI Search"]
-    CHECK -- no --> FALLBACK["Dense search + in-memory BM25\nrun concurrently"]
-    FALLBACK --> RRF["RRF merge\nReciprocal Rank Fusion"]
+    Q["UseHybridSearch = true"] --> CHECK{IVectorStore implements<br>IHybridSearchable?}
+    CHECK -- yes --> NATIVE["HybridSearchAsync()<br>backend handles fusion natively<br>e.g. Azure AI Search"]
+    CHECK -- no --> FALLBACK["Dense search + in-memory BM25<br>run concurrently"]
+    FALLBACK --> RRF["RRF merge<br>Reciprocal Rank Fusion"]
 
     style FALLBACK fill:#e8f4fd,stroke:#4a90d9
     style RRF fill:#e8f4fd,stroke:#4a90d9
@@ -161,10 +161,10 @@ services.AddRagNet(b => b
 
 ```mermaid
 flowchart TD
-    Q["User query"] --> EXPAND["LlmQueryExpander\ngenerates N variants"]
-    EXPAND --> FAN["N+1 parallel SearchAsync calls\n(original + variants)"]
-    FAN --> DEDUP["Deduplicate by DocumentId+ChunkIndex\nkeep highest score per chunk"]
-    DEDUP --> TRIM["Order by score desc\nTake TopK"]
+    Q["User query"] --> EXPAND["LlmQueryExpander<br>generates N variants"]
+    EXPAND --> FAN["N+1 parallel SearchAsync calls<br>(original + variants)"]
+    FAN --> DEDUP["Deduplicate by DocumentId+ChunkIndex<br>keep highest score per chunk"]
+    DEDUP --> TRIM["Order by score desc<br>Take TopK"]
     TRIM --> OUT["IReadOnlyList&lt;SearchResult&gt;"]
 ```
 
@@ -209,9 +209,9 @@ When a reranker is registered, the pipeline over-fetches candidates from the vec
 
 ```mermaid
 flowchart TD
-    VS["Vector store search\nfetches CandidateCount results"] --> RF["[optional]\nRedundancyFilter"]
-    RF --> RERANK["IReranker.RerankAsync()\nscore each (query, passage) pair\nsort by relevance desc\ntake TopK"]
-    RERANK --> LITM["[optional]\nLostInTheMiddleReorderer"]
+    VS["Vector store search<br>fetches CandidateCount results"] --> RF["[optional]<br>RedundancyFilter"]
+    RF --> RERANK["IReranker.RerankAsync()<br>score each (query, passage) pair<br>sort by relevance desc<br>take TopK"]
+    RERANK --> LITM["[optional]<br>LostInTheMiddleReorderer"]
     LITM --> OUT["Final IReadOnlyList&lt;SearchResult&gt;"]
 
     style RERANK fill:#e8f4fd,stroke:#4a90d9

@@ -9,14 +9,14 @@ Understanding the internal structure of Rag.NET helps you choose the right exten
 ```mermaid
 flowchart TD
     A["Stream + DocumentMetadata"] --> B["IDocumentParser.ParseAsync()"]
-    B --> C["DocumentSection[ ]\ntext · heading · page · section index"]
+    B --> C["DocumentSection[ ]<br>text · heading · page · section index"]
     C --> D["IChunkingStrategy.ChunkAsync()"]
-    D --> E["TextChunk[ ]\ntext · DocumentId · ChunkIndex · Metadata"]
-    E --> F["Apply heading breadcrumbs\n& DocumentMetadata.Tags"]
+    D --> E["TextChunk[ ]<br>text · DocumentId · ChunkIndex · Metadata"]
+    E --> F["Apply heading breadcrumbs<br>& DocumentMetadata.Tags"]
     F --> G["IEmbeddingGenerator.GenerateAsync()"]
-    G --> H["EmbeddedChunk[ ]\nTextChunk + ReadOnlyMemory&lt;float&gt;"]
+    G --> H["EmbeddedChunk[ ]<br>TextChunk + ReadOnlyMemory&lt;float&gt;"]
     H --> I["IVectorStore.StoreAsync()"]
-    H --> J["InMemoryBm25Index.Add()\nhybrid search fallback"]
+    H --> J["InMemoryBm25Index.Add()<br>hybrid search fallback"]
 
     style J fill:#e8f4fd,stroke:#4a90d9
 ```
@@ -32,7 +32,7 @@ flowchart TD
     HYBRID_CHECK -- "yes + IHybridSearchable" --> NATIVE["IHybridSearchable.HybridSearchAsync()"]
     HYBRID_CHECK -- "yes + fallback" --> DENSE["IVectorStore.SearchAsync()"]
     HYBRID_CHECK -- "yes + fallback" --> BM25["InMemoryBm25Index.Search()"]
-    DENSE --> RRF["RrfMerger.Merge()\nReciprocal Rank Fusion"]
+    DENSE --> RRF["RrfMerger.Merge()<br>Reciprocal Rank Fusion"]
     BM25 --> RRF
     HYBRID_CHECK -- no --> SEMANTIC["IVectorStore.SearchAsync()"]
 
@@ -40,9 +40,9 @@ flowchart TD
     RRF --> POST
     SEMANTIC --> POST
 
-    POST["post-retrieval"] --> REDUN["[optional]\nRedundancyFilter.FilterAsync()"]
-    REDUN --> RERANK["[optional]\nIReranker.RerankAsync()"]
-    RERANK --> LITM["[optional]\nLostInTheMiddleReorderer.Reorder()"]
+    POST["post-retrieval"] --> REDUN["[optional]<br>RedundancyFilter.FilterAsync()"]
+    REDUN --> RERANK["[optional]<br>IReranker.RerankAsync()"]
+    RERANK --> LITM["[optional]<br>LostInTheMiddleReorderer.Reorder()"]
     LITM --> RESULT["IReadOnlyList&lt;SearchResult&gt;"]
 
     style BM25 fill:#e8f4fd,stroke:#4a90d9
@@ -54,10 +54,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    R["IReadOnlyList&lt;SearchResult&gt;"] --> PROMPT["Build prompt\nSystemMessage · ConversationHistory · Context + Query"]
+    R["IReadOnlyList&lt;SearchResult&gt;"] --> PROMPT["Build prompt<br>SystemMessage · ConversationHistory · Context + Query"]
     PROMPT --> CHAT["IChatClient"]
-    CHAT -- GetResponseAsync --> RESP["RagResponse\nAnswer + Sources"]
-    CHAT -- GetStreamingResponseAsync --> STREAM["IAsyncEnumerable&lt;RagStreamingUpdate&gt;\nSources first · TextDelta stream"]
+    CHAT -- GetResponseAsync --> RESP["RagResponse<br>Answer + Sources"]
+    CHAT -- GetStreamingResponseAsync --> STREAM["IAsyncEnumerable&lt;RagStreamingUpdate&gt;<br>Sources first · TextDelta stream"]
 ```
 
 ## Core interfaces

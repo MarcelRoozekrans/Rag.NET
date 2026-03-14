@@ -29,11 +29,11 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 
 ```mermaid
 flowchart TD
-    CORE["Rag.NET\nCore pipeline · Text/Markdown/CSV/JSON parsers · Recursive chunking"]
+    CORE["Rag.NET<br>Core pipeline · Text/Markdown/CSV/JSON parsers · Recursive chunking"]
 
-    CORE --> PG["Rag.NET.PgVector\nPostgreSQL + pgvector"]
-    CORE --> QD["Rag.NET.Qdrant\nQdrant"]
-    CORE --> AZ["Rag.NET.AzureAISearch\nAzure AI Search (native hybrid)"]
+    CORE --> PG["Rag.NET.PgVector<br>PostgreSQL + pgvector"]
+    CORE --> QD["Rag.NET.Qdrant<br>Qdrant"]
+    CORE --> AZ["Rag.NET.AzureAISearch<br>Azure AI Search (native hybrid)"]
 
     CORE --> PDF["Rag.NET.Parsers.Pdf"]
     CORE --> HTML["Rag.NET.Parsers.Html"]
@@ -41,7 +41,7 @@ flowchart TD
     CORE --> XL["Rag.NET.Parsers.Excel"]
     CORE --> PPT["Rag.NET.Parsers.PowerPoint"]
 
-    CORE --> EVAL["Rag.NET.Evaluation\nEmbedding-based answer quality"]
+    CORE --> EVAL["Rag.NET.Evaluation<br>Embedding-based answer quality"]
 
     style PG fill:#e8f4fd,stroke:#4a90d9
     style QD fill:#e8f4fd,stroke:#4a90d9

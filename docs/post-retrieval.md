@@ -21,7 +21,7 @@ flowchart LR
         R1["Rank 1"] --- R2["Rank 2"] --- R3["Rank 3"] --- R4["Rank 4"] --- R5["Rank 5"] --- R6["Rank 6"]
     end
     subgraph Output["Output — outside-in placement"]
-        P0["Pos 0\nRank 1"] --- P1["Pos 1\nRank 3"] --- P2["Pos 2\nRank 5"] --- P3["Pos 3\nRank 6"] --- P4["Pos 4\nRank 4"] --- P5["Pos 5\nRank 2"]
+        P0["Pos 0<br>Rank 1"] --- P1["Pos 1<br>Rank 3"] --- P2["Pos 2<br>Rank 5"] --- P3["Pos 3<br>Rank 6"] --- P4["Pos 4<br>Rank 4"] --- P5["Pos 5<br>Rank 2"]
     end
     Input --> Output
 ```
@@ -71,15 +71,15 @@ Redundant retrieved chunks waste context window space. When multiple chunks cont
 
 ```mermaid
 flowchart TD
-    A["TopK chunks (score-sorted)"] --> B["Re-embed all chunks\n(single batch call)"]
+    A["TopK chunks (score-sorted)"] --> B["Re-embed all chunks<br>(single batch call)"]
     B --> C["Iterate chunks in relevance order"]
-    C --> D{Cosine similarity to any\naccepted chunk >= threshold?}
+    C --> D{Cosine similarity to any<br>accepted chunk >= threshold?}
     D -- yes --> E["Drop chunk"]
     D -- no --> F["Accept chunk"]
     E --> G{More chunks?}
     F --> G
     G -- yes --> C
-    G -- no --> H["Return accepted list\n(order preserved)"]
+    G -- no --> H["Return accepted list<br>(order preserved)"]
 ```
 
 1. All `TopK` retrieved chunk texts are re-embedded in a single batch call to `IEmbeddingGenerator`.
@@ -143,10 +143,10 @@ When multiple post-retrieval options are enabled on the same call, the order is:
 
 ```mermaid
 flowchart TD
-    VS["Vector store search\n(dense or hybrid)"]
-    REDUN["RedundancyFilter.FilterAsync()\nremoves near-duplicate chunks"]
-    RERANK["IReranker.RerankAsync()\ncross-encoder rescoring\ntakes TopK best"]
-    LITM["LostInTheMiddleReorderer.Reorder()\noutside-in placement"]
+    VS["Vector store search<br>(dense or hybrid)"]
+    REDUN["RedundancyFilter.FilterAsync()<br>removes near-duplicate chunks"]
+    RERANK["IReranker.RerankAsync()<br>cross-encoder rescoring<br>takes TopK best"]
+    LITM["LostInTheMiddleReorderer.Reorder()<br>outside-in placement"]
     OUT["Final IReadOnlyList&lt;SearchResult&gt;"]
 
     VS --> REDUN --> RERANK --> LITM --> OUT

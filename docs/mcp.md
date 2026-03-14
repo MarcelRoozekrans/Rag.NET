@@ -5,9 +5,9 @@ Rag.NET can be exposed as a [Model Context Protocol](https://modelcontextprotoco
 ```mermaid
 flowchart LR
     CD["Claude Desktop / Cursor"]
-    MCP["Rag.NET.Mcp\n(MCP tools)"]
+    MCP["Rag.NET.Mcp<br>(MCP tools)"]
     PIPE["IRagPipeline"]
-    VS["Vector Store\n+ Embedding + LLM"]
+    VS["Vector Store<br>+ Embedding + LLM"]
 
     CD -- "stdio / HTTP+SSE" --> MCP
     MCP --> PIPE

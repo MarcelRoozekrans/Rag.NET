@@ -4,10 +4,10 @@ This page walks through a complete end-to-end setup: installing packages, wiring
 
 ```mermaid
 flowchart LR
-    PKG["1. Install packages"] --> DI["2–4. Register AI services\n& build DI container"]
-    DI --> INGEST["5. IngestAsync\nparse → chunk → embed → store"]
-    INGEST --> ASK["6. AskAsync\nretrieve → prompt → LLM"]
-    ASK --> RESP["RagResponse\nAnswer + Sources"]
+    PKG["1. Install packages"] --> DI["2–4. Register AI services<br>& build DI container"]
+    DI --> INGEST["5. IngestAsync<br>parse → chunk → embed → store"]
+    INGEST --> ASK["6. AskAsync<br>retrieve → prompt → LLM"]
+    ASK --> RESP["RagResponse<br>Answer + Sources"]
 
     style INGEST fill:#e8f4fd,stroke:#4a90d9
 ```

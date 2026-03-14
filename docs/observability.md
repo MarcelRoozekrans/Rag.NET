@@ -141,9 +141,9 @@ The `ResiliencePipeline` instance is available to `RagPipeline` for wrapping emb
 ```mermaid
 flowchart LR
     PIPE["RagPipeline"]
-    LOG["ILogger\nstructured log lines"]
-    OTEL["ActivitySource\ndistributed traces"]
-    POLLY["Polly ResiliencePipeline\nexponential back-off retry"]
+    LOG["ILogger<br>structured log lines"]
+    OTEL["ActivitySource<br>distributed traces"]
+    POLLY["Polly ResiliencePipeline<br>exponential back-off retry"]
 
     PIPE --> LOG
     PIPE --> OTEL

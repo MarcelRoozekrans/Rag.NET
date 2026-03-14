@@ -4,11 +4,11 @@ Large Language Models have strong language understanding but a fixed knowledge c
 
 ```mermaid
 flowchart LR
-    DOCS["Your documents\nPDFs, Word, wikis…"] --> IDX["Vector index\n(pre-ingested)"]
+    DOCS["Your documents<br>PDFs, Word, wikis…"] --> IDX["Vector index<br>(pre-ingested)"]
     USER["User query"] --> EMBED["Embed query"]
-    EMBED --> SEARCH["Retrieve relevant chunks\nfrom index"]
+    EMBED --> SEARCH["Retrieve relevant chunks<br>from index"]
     IDX --> SEARCH
-    SEARCH --> PROMPT["Inject context\ninto prompt"]
+    SEARCH --> PROMPT["Inject context<br>into prompt"]
     USER --> PROMPT
     PROMPT --> LLM["LLM"]
     LLM --> ANS["Answer + Sources"]

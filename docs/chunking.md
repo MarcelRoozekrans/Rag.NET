@@ -67,7 +67,7 @@ Attempts to split on natural text boundaries using a priority list of separators
 flowchart TD
     A["Candidate piece"] --> B{Fits in MaxChunkSize?}
     B -- yes --> OUT["Emit chunk"]
-    B -- no --> C{"Try next\nseparator"}
+    B -- no --> C{"Try next<br>separator"}
     C -- "1. paragraph break \\n\\n" --> A
     C -- "2. line break \\n" --> A
     C -- "3. sentence boundary '. '" --> A

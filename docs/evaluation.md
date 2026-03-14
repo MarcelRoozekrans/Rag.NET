@@ -25,11 +25,11 @@ The only built-in implementation. It:
 
 ```mermaid
 flowchart TD
-    A["EvaluationSample[ ]"] --> B["Embed predicted answers\n(single batch call)"]
-    A --> C["Embed reference answers\n(single batch call)"]
-    B --> D["Compute cosine similarity\nfor each pair"]
+    A["EvaluationSample[ ]"] --> B["Embed predicted answers<br>(single batch call)"]
+    A --> C["Embed reference answers<br>(single batch call)"]
+    B --> D["Compute cosine similarity<br>for each pair"]
     C --> D
-    D --> E["EvaluationResult\nMeanScore + Scores[ ]"]
+    D --> E["EvaluationResult<br>MeanScore + Scores[ ]"]
 ```
 
 1. Embeds all predicted answers in a single batch call.
