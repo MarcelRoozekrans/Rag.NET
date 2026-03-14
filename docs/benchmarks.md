@@ -143,3 +143,20 @@ CPU-only overhead of the `RerankingRetriever` decorator. The reranker is mocked 
 - Real-world reranking cost is dominated by the cross-encoder model (~10–100 ms per query depending on model size and hardware).
 - CPU overhead is negligible compared to model inference; the benchmark confirms the decorator adds minimal overhead on top of the reranker call.
 - Over-fetch via `CandidateCount` (default: TopK × 3) means the inner retriever returns more candidates, adding a small increase in data transfer.
+
+---
+
+## Search Result Caching
+
+CPU-only overhead of the `EmbeddingCacheRetriever` and `ResultCacheRetriever` decorators backed by `HybridCache`. Both the embedder and vector store are mocked (zero I/O) to isolate the cache lookup and serialization overhead.
+
+| Method | Mean | Allocated |
+|--------|-----:|----------:|
+| CacheMiss_NoCaching (baseline) | 193.2 ns | 924 B |
+| CacheHit_ResultCache | 1,182.1 ns | 1,328 B |
+
+**Notes:**
+- The cache hit path (~1.2 μs) includes `HybridCache` dictionary lookup and deserialization overhead. This is negligible compared to what it replaces: embedding API calls (~10–50 ms) and vector store queries (~10–100 ms).
+- The baseline uses `UseCacheResult = false, UseCacheEmbedding = false` with mocked (zero-latency) providers, so it represents the absolute minimum retrieval cost. In production, cache hits eliminate the two most expensive operations in the pipeline.
+- `HybridCache` provides L1 in-process cache by default. Add an `IDistributedCache` (Redis, SQL Server) for L2 cross-instance caching.
+- Default TTLs: embedding cache = 30 minutes, result cache = 5 minutes. Configure via `UseCaching(o => { o.EmbeddingTtl = ...; o.ResultTtl = ...; })`.

@@ -3,6 +3,7 @@ using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
 using Rag.NET.Ingestion;
@@ -26,6 +27,7 @@ public class CachingBenchmarks
 {
     private RagPipeline _pipeline = null!;
     private byte[] _documentData = null!;
+    private IHost _host = null!;
 
     private static readonly DocumentMetadata Metadata = new()
     {
@@ -43,10 +45,10 @@ public class CachingBenchmarks
         var embedder = new FakeEmbeddingGenerator(dimensions: 384);
         var bm25Index = new InMemoryBm25Index();
 
-        var services = new ServiceCollection();
-        services.AddHybridCache();
-        var sp = services.BuildServiceProvider();
-        var cache = sp.GetRequiredService<HybridCache>();
+        var builder = Host.CreateApplicationBuilder(Array.Empty<string>());
+        builder.Services.AddHybridCache();
+        _host = builder.Build();
+        var cache = _host.Services.GetRequiredService<HybridCache>();
         var cachingOptions = new CachingOptions();
 
         IRetriever retriever = new VectorStoreRetriever(vectorStore, embedder, bm25Index);
@@ -70,6 +72,9 @@ public class CachingBenchmarks
         // Warm the cache
         await _pipeline.RetrieveAsync("quick brown fox", new RetrievalOptions { TopK = 5 });
     }
+
+    [GlobalCleanup]
+    public void Cleanup() => _host?.Dispose();
 
     [Benchmark(Baseline = true)]
     public async Task<int> CacheMiss_NoCaching()
