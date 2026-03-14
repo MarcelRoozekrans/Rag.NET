@@ -116,10 +116,10 @@ CPU-only overhead of the reranking pipeline step. The reranker is mocked (return
 
 | TopK | Method | Mean | Allocated |
 |------|--------|-----:|----------:|
-| 5 | No reranking (baseline) | _TBD_ | _TBD_ |
-| 5 | With reranking | _TBD_ | _TBD_ |
-| 20 | No reranking (baseline) | _TBD_ | _TBD_ |
-| 20 | With reranking | _TBD_ | _TBD_ |
+| 5 | No reranking (baseline) | 101.9 ns | 688 B |
+| 5 | With reranking | 188.8 ns | 1,128 B |
+| 20 | No reranking (baseline) | 101.1 ns | 688 B |
+| 20 | With reranking | 209.6 ns | 1,128 B |
 
 **Notes:**
 - The reranker is mocked — these numbers measure only the pipeline overhead (sorting, trimming, LINQ), not model inference.
