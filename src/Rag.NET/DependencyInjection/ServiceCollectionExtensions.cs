@@ -5,11 +5,13 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
+using Rag.NET.Ingestion;
 using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
 using Rag.NET.Pipeline;
 using Rag.NET.Retrieval;
 using Rag.NET.Search;
+using Rag.NET.Storage;
 
 namespace Rag.NET.DependencyInjection;
 
@@ -20,11 +22,22 @@ public static class ServiceCollectionExtensions
         Action<RagBuilder>? configure = null)
     {
         // ZInject-generated: registers IDocumentParser (Text, Markdown),
-        // IChunkingStrategy (Recursive), IIngestor (DocumentIngestor).
+        // IChunkingStrategy (Recursive). IIngestor is registered manually below
+        // to support optional ParentDocumentOptions/InMemoryParentChunkStore parameters.
         services.AddRagNETServices();
 
         services.TryAddSingleton<ChunkingOptions>();
         services.AddSingleton<InMemoryBm25Index>();
+
+        services.AddSingleton<IIngestor>(sp => new DocumentIngestor(
+            sp.GetServices<IDocumentParser>(),
+            sp.GetRequiredService<IChunkingStrategy>(),
+            sp.GetRequiredService<IVectorStore>(),
+            sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
+            sp.GetRequiredService<ChunkingOptions>(),
+            sp.GetRequiredService<InMemoryBm25Index>(),
+            sp.GetService<InMemoryParentChunkStore>(),
+            sp.GetService<ParentDocumentOptions>()));
 
         services.AddSingleton<IRetriever>(sp => BuildRetrieverChain(sp));
 

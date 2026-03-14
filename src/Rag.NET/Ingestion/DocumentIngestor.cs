@@ -4,21 +4,22 @@ using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Search;
-using ZInject;
+using Rag.NET.Storage;
 
 namespace Rag.NET.Ingestion;
 
 /// <summary>
 /// Base ingestor that parses, chunks, embeds, and stores documents.
 /// </summary>
-[Singleton(As = typeof(IIngestor))]
 public sealed class DocumentIngestor(
     IEnumerable<IDocumentParser> parsers,
     IChunkingStrategy chunkingStrategy,
     IVectorStore vectorStore,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     ChunkingOptions chunkingOptions,
-    InMemoryBm25Index bm25Index) : IIngestor
+    InMemoryBm25Index bm25Index,
+    InMemoryParentChunkStore? parentStore = null,
+    ParentDocumentOptions? parentOptions = null) : IIngestor
 {
     private int _nextBm25DocId;
 
@@ -40,6 +41,11 @@ public sealed class DocumentIngestor(
         }
 
         var chunks = await ParseAndChunkAsync(parser, document, metadata, cancellationToken).ConfigureAwait(false);
+
+        if (parentOptions is not null && parentStore is not null)
+        {
+            await ChunkAndStoreParentsAsync(parser, document, metadata, chunks, cancellationToken).ConfigureAwait(false);
+        }
 
         ReportProgress(progress, IngestionProgressStage.Parsing, metadata.DocumentId, null, null, "Parsing complete");
         ApplyMetadataTags(chunks, metadata);
@@ -72,6 +78,44 @@ public sealed class DocumentIngestor(
     {
         await vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken).ConfigureAwait(false);
         bm25Index.Remove(documentId);
+        parentStore?.Remove(documentId);
+    }
+
+    private async Task ChunkAndStoreParentsAsync(
+        IDocumentParser parser,
+        Stream document,
+        DocumentMetadata metadata,
+        List<TextChunk> childChunks,
+        CancellationToken cancellationToken)
+    {
+        // Reset stream for second parse pass
+        document.Position = 0;
+
+        var parentChunkingOptions = new ChunkingOptions
+        {
+            MaxChunkSize = parentOptions!.ParentChunkSize,
+            Overlap = parentOptions.ParentOverlap
+        };
+
+        var parentBoundaries = new List<(int start, int end)>();
+        var parentIndex = 0;
+
+        await foreach (var section in parser.ParseAsync(document, metadata, cancellationToken).ConfigureAwait(false))
+        {
+            await foreach (var parentChunk in chunkingStrategy.ChunkAsync(section, parentChunkingOptions, cancellationToken).ConfigureAwait(false))
+            {
+                parentStore!.Add(metadata.DocumentId, parentIndex, parentChunk.Text);
+                parentBoundaries.Add((parentChunk.StartPosition, parentChunk.EndPosition));
+                parentIndex++;
+            }
+        }
+
+        // Assign _parentKey to each child chunk
+        foreach (ref readonly var child in CollectionsMarshal.AsSpan(childChunks))
+        {
+            var pIdx = InMemoryParentChunkStore.FindParentIndex(parentBoundaries, child.StartPosition);
+            child.Metadata["_parentKey"] = InMemoryParentChunkStore.GetParentKey(metadata.DocumentId, pIdx);
+        }
     }
 
     private async Task<List<TextChunk>> ParseAndChunkAsync(
