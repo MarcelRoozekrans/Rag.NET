@@ -507,7 +507,7 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [ ] | Data Management API | Medium | `IVectorStore` extension |
 | [ ] | Data Provider Abstraction | Medium | Existing `IDocumentParser` |
 | [ ] | Hierarchical Merger | Medium | None |
-| [ ] | HyDE | Medium | `IChatClient` |
+| [x] | HyDE | Medium | `IChatClient` |
 | [ ] | LLM-as-Judge Evaluation | Medium | `IChatClient` |
 | [ ] | Map-Reduce / Refine Synthesis | Medium | `IChatClient` |
 | [x] | MCP Server | Medium | MCP SDK |

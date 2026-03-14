@@ -30,8 +30,9 @@ public sealed class VectorStoreRetriever(
             UseHybridSearch = opts.UseHybridSearch,
         };
 
+        var textToEmbed = opts.EmbeddingTextOverride ?? query;
         var queryEmbeddings = await embeddingGenerator.GenerateAsync(
-            [query], cancellationToken: cancellationToken).ConfigureAwait(false);
+            [textToEmbed], cancellationToken: cancellationToken).ConfigureAwait(false);
 
         if (opts.UseHybridSearch)
         {

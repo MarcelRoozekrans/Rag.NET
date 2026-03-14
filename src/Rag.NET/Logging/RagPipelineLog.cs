@@ -30,4 +30,7 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Reranked {CandidateCount} candidates to {ResultCount} result(s)")]
     internal static partial void RerankingCompleted(ILogger logger, int candidateCount, int resultCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "HyDE generation failed for query '{Query}', falling back to original query embedding")]
+    internal static partial void HydeGenerationFailed(ILogger logger, string query, Exception exception);
 }

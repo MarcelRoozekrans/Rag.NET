@@ -31,4 +31,18 @@ public sealed record RetrievalOptions
     /// Ignored when no reranker is registered or <see cref="UseReranking"/> is <see langword="false"/>.
     /// </summary>
     public int? CandidateCount { get; init; }
+
+    /// <summary>
+    /// Set to <see langword="false"/> to skip HyDE (Hypothetical Document Embeddings) for this call,
+    /// even when <see cref="Rag.NET.Abstractions.IHypotheticalDocumentGenerator"/> is registered in DI.
+    /// Has no effect when no generator is registered.
+    /// </summary>
+    public bool UseHyde { get; init; } = true;
+
+    /// <summary>
+    /// Internal override for the text to embed instead of the query.
+    /// Set by <see cref="Rag.NET.Retrieval.HydeRetriever"/> to pass the hypothetical document
+    /// to <see cref="Rag.NET.Retrieval.VectorStoreRetriever"/> while preserving the original query for BM25.
+    /// </summary>
+    internal string? EmbeddingTextOverride { get; init; }
 }

@@ -52,6 +52,15 @@ public static class ServiceCollectionExtensions
 
         IRetriever chain = new VectorStoreRetriever(store, embedder, bm25Index);
 
+        var hydeGenerator = sp.GetService<IHypotheticalDocumentGenerator>();
+        if (hydeGenerator is not null)
+        {
+            chain = new HydeRetriever(
+                chain,
+                hydeGenerator,
+                sp.GetService<ILogger<HydeRetriever>>());
+        }
+
         var queryExpander = sp.GetService<IQueryExpander>();
         if (queryExpander is not null)
         {
