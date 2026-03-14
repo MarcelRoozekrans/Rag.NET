@@ -45,4 +45,10 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Result cache operation failed for query '{Query}'")]
     internal static partial void ResultCacheFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Parent document retrieved for query '{Query}': {ChildCount} children -> {ParentCount} parents")]
+    internal static partial void ParentDocumentRetrieved(ILogger logger, string query, int childCount, int parentCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Parent document lookup failed for query '{Query}', returning child chunks")]
+    internal static partial void ParentDocumentFailed(ILogger logger, string query, Exception exception);
 }
