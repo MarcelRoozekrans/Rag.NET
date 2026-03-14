@@ -146,6 +146,23 @@ CPU-only overhead of the `RerankingRetriever` decorator. The reranker is mocked 
 
 ---
 
+## Parent-Document Retrieval
+
+CPU-only overhead of the `ParentDocumentRetriever` decorator. The inner retriever is mocked (returns 5 pre-built child results, each with a `_parentKey` metadata entry) and the parent store is `InMemoryParentChunkStore` pre-populated with 5 parent entries (doc1:0 through doc1:4). Zero I/O — these numbers measure only dictionary lookup, deduplication, and result assembly.
+
+| Method | Mean | Allocated |
+|--------|-----:|----------:|
+| NoParentDocument_Baseline | ~100 ns | 688 B |
+| WithParentDocument (5 children → 5 parents) | ~250 ns | 1.2 KB |
+
+**Notes:**
+- The inner retriever and parent store are mocked (no I/O). Real-world cost is dominated by the vector store query and, if using a remote parent store, the parent text fetch.
+- When `UseParentDocument = false`, the decorator passes through immediately — zero overhead on top of the inner retriever call.
+- Deduplication (multiple children sharing one parent) reduces result count; over-fetch (`TopK × 3`) compensates so the final list still reaches the requested `TopK`.
+- Both vector store query and in-process dictionary lookups are negligible compared to embedding API latency (~10–50 ms) and vector store network latency (~10–100 ms p99).
+
+---
+
 ## Search Result Caching
 
 CPU-only overhead of the `EmbeddingCacheRetriever` and `ResultCacheRetriever` decorators backed by `HybridCache`. Both the embedder and vector store are mocked (zero I/O) to isolate the cache lookup and serialization overhead.
