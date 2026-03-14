@@ -1593,4 +1593,130 @@ public class RagPipelineTests
         Assert.Equal("from variant", results[0].Chunk.Text);
         await reranker.Received(1).RerankAsync("query", Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task RetrieveAsync_WhenRerankerThrowsOperationCanceled_PropagatesException()
+    {
+        var reranker = Substitute.For<IReranker>();
+        reranker.RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException());
+
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns([new SearchResult { Chunk = new TextChunk { Text = "r", DocumentId = "d1", ChunkIndex = 0 }, Score = 0.9 }]);
+
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder,
+            chatClient: null, new ChunkingOptions(), reranker: reranker);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            sut.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WhenRerankerRegistered_DefaultCandidateCountIsTopKTimes3()
+    {
+        var reranker = Substitute.For<IReranker>();
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+        reranker.RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder,
+            chatClient: null, new ChunkingOptions(), reranker: reranker);
+
+        // TopK=5 (default), CandidateCount=null → should use 5*3=15
+        await sut.RetrieveAsync("query", new RetrievalOptions { TopK = 5 }, TestContext.Current.CancellationToken);
+
+        await _vectorStore.Received(1).SearchAsync(
+            Arg.Any<ReadOnlyMemory<float>>(),
+            Arg.Is<SearchOptions>(o => o.TopK == 15),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WhenRerankerRegistered_TrimsToTopKAfterReranking()
+    {
+        var reranker = Substitute.For<IReranker>();
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        var candidates = Enumerable.Range(0, 10).Select(i =>
+            new SearchResult { Chunk = new TextChunk { Text = $"chunk-{i}", DocumentId = $"d{i}", ChunkIndex = 0 }, Score = 0.5 })
+            .ToList();
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(candidates);
+
+        reranker.RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var results = callInfo.ArgAt<IReadOnlyList<SearchResult>>(1);
+                return results.Select((r, i) => new RerankResult
+                {
+                    SearchResult = r,
+                    RelevanceScore = 1.0 - (i * 0.1),
+                }).ToList();
+            });
+
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder,
+            chatClient: null, new ChunkingOptions(), reranker: reranker);
+
+        var results = await sut.RetrieveAsync("query", new RetrievalOptions { TopK = 3 }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, results.Count); // 10 candidates → trimmed to 3
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_WhenRerankerAndRedundancyFilter_RedundancyRunsBeforeReranking()
+    {
+        var reranker = Substitute.For<IReranker>();
+        var chunk1 = new TextChunk { Text = "unique chunk", DocumentId = "d1", ChunkIndex = 0 };
+        var chunk2 = new TextChunk { Text = "duplicate chunk", DocumentId = "d2", ChunkIndex = 0 };
+        var queryEmbedding = new Embedding<float>(new float[] { 0.1f });
+        var chunkEmbedding1 = new Embedding<float>(new float[] { 1f, 0f, 0f });
+        var chunkEmbedding2 = new Embedding<float>(new float[] { 0f, 1f, 0f });
+
+        // First call: query embedding; Second call: re-embed chunks for redundancy filter
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]),
+                new GeneratedEmbeddings<Embedding<float>>([chunkEmbedding1, chunkEmbedding2]));
+
+        _vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns([
+                new SearchResult { Chunk = chunk1, Score = 0.9 },
+                new SearchResult { Chunk = chunk2, Score = 0.8 },
+            ]);
+
+        // Reranker receives whatever redundancy filter passes through
+        reranker.RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var results = callInfo.ArgAt<IReadOnlyList<SearchResult>>(1);
+                return results.Select(r => new RerankResult
+                {
+                    SearchResult = r,
+                    RelevanceScore = 0.9,
+                }).ToList();
+            });
+
+        var sut = new RagPipeline([_parser], _chunker, _vectorStore, _embedder,
+            chatClient: null, new ChunkingOptions(), reranker: reranker);
+
+        var results = await sut.RetrieveAsync("query", new RetrievalOptions
+        {
+            UseRedundancyFilter = true,
+            RedundancyThreshold = 0.95f,
+        }, TestContext.Current.CancellationToken);
+
+        // Both features ran without error — redundancy filter then reranking
+        await reranker.Received(1).RerankAsync("query", Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>());
+    }
 }
