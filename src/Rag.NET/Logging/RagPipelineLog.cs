@@ -24,4 +24,10 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Asking with query (TopK={TopK})")]
     internal static partial void AskStarted(ILogger logger, int topK);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Reranking failed for query '{Query}', returning results without reranking")]
+    internal static partial void RerankingFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Reranked {CandidateCount} candidates to {ResultCount} result(s)")]
+    internal static partial void RerankingCompleted(ILogger logger, int candidateCount, int resultCount);
 }

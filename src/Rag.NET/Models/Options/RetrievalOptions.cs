@@ -16,4 +16,19 @@ public sealed class RetrievalOptions
     /// Has no effect when no expander is registered.
     /// </summary>
     public bool UseMultiQuery { get; set; } = true;
+
+    /// <summary>
+    /// Set to <see langword="false"/> to skip cross-encoder reranking for this call,
+    /// even when <see cref="Rag.NET.Abstractions.IReranker"/> is registered in DI.
+    /// Has no effect when no reranker is registered.
+    /// </summary>
+    public bool UseReranking { get; set; } = true;
+
+    /// <summary>
+    /// Number of candidates to fetch from vector search before reranking.
+    /// When an <see cref="Rag.NET.Abstractions.IReranker"/> is registered and this is
+    /// <see langword="null"/>, defaults to <see cref="TopK"/> * 3.
+    /// Ignored when no reranker is registered or <see cref="UseReranking"/> is <see langword="false"/>.
+    /// </summary>
+    public int? CandidateCount { get; set; }
 }
