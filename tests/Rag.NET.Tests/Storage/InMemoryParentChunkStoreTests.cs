@@ -64,4 +64,14 @@ public class InMemoryParentChunkStoreTests
         var idx = InMemoryParentChunkStore.FindParentIndex(parentBoundaries, childStart: 200);
         Assert.Equal(0, idx);
     }
+
+    [Fact]
+    public void FindParentIndex_ChildStartExactlyAtParentEnd_ReturnsCorrectParent()
+    {
+        // Parent 0 covers 0-99, parent 1 covers 100-199
+        // A child starting exactly at 99 (parent 0's end) belongs to parent 0
+        var parentBoundaries = new List<(int start, int end)> { (0, 99), (100, 199) };
+        var idx = InMemoryParentChunkStore.FindParentIndex(parentBoundaries, childStart: 99);
+        Assert.Equal(0, idx);
+    }
 }

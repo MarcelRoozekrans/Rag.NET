@@ -152,8 +152,8 @@ CPU-only overhead of the `ParentDocumentRetriever` decorator. The inner retrieve
 
 | Method | Mean | Allocated |
 |--------|-----:|----------:|
-| NoParentDocument_Baseline | ~100 ns | 688 B |
-| WithParentDocument (5 children → 5 parents) | ~250 ns | 1.2 KB |
+| NoParentDocument_Baseline | 13.0 ns | 144 B |
+| WithParentDocument (5 children → 5 parents) | 723.1 ns | 2,120 B |
 
 **Notes:**
 - The inner retriever and parent store are mocked (no I/O). Real-world cost is dominated by the vector store query and, if using a remote parent store, the parent text fetch.

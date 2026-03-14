@@ -323,7 +323,7 @@ services.AddRagNet(b => b
 
 ### How it works
 
-**Ingestion:** When `UseParentDocumentRetrieval()` is registered, `DocumentIngestor` performs a dual chunking pass. The document is chunked at the normal (small) granularity for embedding and vector store storage. In parallel, the same document is chunked at `ParentChunkSize` / `ParentOverlap` and the resulting parent chunks are stored in `InMemoryParentChunkStore`, keyed by `DocumentId` and chunk index.
+**Ingestion:** When `UseParentDocumentRetrieval()` is registered, `DocumentIngestor` performs a dual chunking pass. The document is chunked at the normal (small) granularity for embedding and vector store storage. In parallel, the same document is chunked at `ParentChunkSize` / `ParentOverlap` and the resulting parent chunks are stored in `InMemoryParentChunkStore`, keyed by `DocumentId` and chunk index. **The stream passed to `IngestAsync` must be seekable** (e.g., `MemoryStream`) — the second pass resets the stream position to zero. Wrap non-seekable streams (HTTP response bodies, compressed streams) in a `MemoryStream` before calling `IngestAsync` when this feature is active.
 
 **Retrieval:** `ParentDocumentRetriever` calls the inner retriever to obtain child `SearchResult` objects, then maps each child chunk to its parent via the store. If every child lookup succeeds, the parent chunks replace the children in the returned list. If a lookup fails (e.g., the store was not yet populated after a restart), the retriever logs a warning and returns the original child chunks unmodified.
 
