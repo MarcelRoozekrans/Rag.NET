@@ -25,6 +25,7 @@ internal static class CacheKeyGenerator
         sb.Append('|').Append(options.CandidateCount);
         sb.Append('|').Append(options.UseHyde);
         sb.Append('|').Append(options.UseLostInTheMiddleReordering);
+        sb.Append('|').Append(options.UseParentDocument);
 
         if (options.MetadataFilter is { Count: > 0 })
         {

@@ -54,6 +54,13 @@ public sealed record RetrievalOptions
     public bool UseCacheResult { get; init; } = true;
 
     /// <summary>
+    /// Set to <see langword="false"/> to skip parent-document text replacement for this call,
+    /// even when parent-document retrieval is registered via <c>RagBuilder.UseParentDocumentRetrieval()</c>.
+    /// Has no effect when parent-document retrieval is not registered.
+    /// </summary>
+    public bool UseParentDocument { get; init; } = true;
+
+    /// <summary>
     /// Internal override for the text to embed instead of the query.
     /// Set by <see cref="Rag.NET.Retrieval.HydeRetriever"/> to pass the hypothetical document
     /// to <see cref="Rag.NET.Retrieval.VectorStoreRetriever"/> while preserving the original query for BM25.

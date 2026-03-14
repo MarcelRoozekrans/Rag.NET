@@ -147,6 +147,14 @@ public class CacheKeyGeneratorTests
     }
 
     [Fact]
+    public void ForResult_DifferentUseParentDocument_ReturnsDifferentKey()
+    {
+        var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseParentDocument = false });
+        var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseParentDocument = true });
+        Assert.NotEqual(key1, key2);
+    }
+
+    [Fact]
     public void ForResult_MetadataFilterOrderDoesNotAffectKey()
     {
         var filter1 = new Dictionary<string, string>(StringComparer.Ordinal) { ["a"] = "1", ["b"] = "2" };
