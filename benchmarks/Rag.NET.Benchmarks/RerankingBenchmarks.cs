@@ -3,10 +3,13 @@ using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
+using Rag.NET.Ingestion;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
+using Rag.NET.Retrieval;
+using Rag.NET.Search;
 
 namespace Rag.NET.Benchmarks;
 
@@ -32,23 +35,31 @@ public class RerankingBenchmarks
         var reranker = new FakeReranker();
         var vectorStore = new NoOpVectorStore();
         var embedder = new FakeEmbeddingGenerator(dimensions: 384);
+        var bm25Index = new InMemoryBm25Index();
+        var chunkingOptions = new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 };
 
-        _pipeline = new RagPipeline(
+        var retrieverWithReranker = new VectorStoreRetriever(vectorStore, embedder, bm25Index);
+        var ingestorWithReranker = new DocumentIngestor(
             [new TextDocumentParser()],
             new RecursiveChunkingStrategy(),
             vectorStore,
             embedder,
-            chatClient: null,
-            new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 },
-            reranker: reranker);
+            chunkingOptions,
+            bm25Index);
 
-        _pipelineNoReranker = new RagPipeline(
+        _pipeline = new RagPipeline(retrieverWithReranker, ingestorWithReranker);
+
+        var bm25IndexNoReranker = new InMemoryBm25Index();
+        var retrieverNoReranker = new VectorStoreRetriever(vectorStore, embedder, bm25IndexNoReranker);
+        var ingestorNoReranker = new DocumentIngestor(
             [new TextDocumentParser()],
             new RecursiveChunkingStrategy(),
             vectorStore,
             embedder,
-            chatClient: null,
-            new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 });
+            chunkingOptions,
+            bm25IndexNoReranker);
+
+        _pipelineNoReranker = new RagPipeline(retrieverNoReranker, ingestorNoReranker);
 
         var metadata = new DocumentMetadata
         {
@@ -98,7 +109,7 @@ public class RerankingBenchmarks
     }
 
     /// <summary>
-    /// Returns pre-computed descending scores — simulates model output with zero latency.
+    /// Returns pre-computed descending scores -- simulates model output with zero latency.
     /// </summary>
     private sealed class FakeReranker : IReranker
     {

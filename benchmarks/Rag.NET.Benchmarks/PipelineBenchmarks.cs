@@ -2,10 +2,13 @@ using System.Text;
 using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.AI;
 using Rag.NET.Chunking;
+using Rag.NET.Ingestion;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
+using Rag.NET.Retrieval;
+using Rag.NET.Search;
 
 namespace Rag.NET.Benchmarks;
 
@@ -27,14 +30,18 @@ public class PipelineBenchmarks
     {
         var vectorStore = new NoOpVectorStore();
         var embedder = new FakeEmbeddingGenerator(dimensions: 384);
+        var bm25Index = new InMemoryBm25Index();
 
-        _pipeline = new RagPipeline(
+        var retriever = new VectorStoreRetriever(vectorStore, embedder, bm25Index);
+        var ingestor = new DocumentIngestor(
             [new TextDocumentParser()],
             new RecursiveChunkingStrategy(),
             vectorStore,
             embedder,
-            chatClient: null,
-            new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 });
+            new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 },
+            bm25Index);
+
+        _pipeline = new RagPipeline(retriever, ingestor);
 
         _documentData = Encoding.UTF8.GetBytes(GenerateText(50_000));
 

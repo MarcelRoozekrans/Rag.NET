@@ -3,10 +3,13 @@ using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
+using Rag.NET.Ingestion;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
+using Rag.NET.Retrieval;
+using Rag.NET.Search;
 
 namespace Rag.NET.Benchmarks;
 
@@ -14,7 +17,7 @@ namespace Rag.NET.Benchmarks;
 /// Benchmarks the CPU-only overhead of multi-query fan-out + deduplication.
 /// Both the query expander and vector store are mocked (zero I/O latency) to isolate
 /// the LINQ merge/dedup path. Real-world cost is dominated by the LLM expansion call
-/// (~50–200 ms) and N parallel vector store queries.
+/// (~50-200 ms) and N parallel vector store queries.
 /// </summary>
 [MemoryDiagnoser]
 public class MultiQueryBenchmarks
@@ -68,20 +71,20 @@ public class MultiQueryBenchmarks
 
     private async Task<RagPipeline> BuildPipelineAsync(int variantCount)
     {
-        var expander = new FakeQueryExpander(variantCount);
-        var multiQueryOptions = new MultiQueryOptions { VariantCount = variantCount };
         var vectorStore = new NoOpVectorStore();
         var embedder = new FakeEmbeddingGenerator(dimensions: 384);
+        var bm25Index = new InMemoryBm25Index();
 
-        var pipeline = new RagPipeline(
+        var retriever = new VectorStoreRetriever(vectorStore, embedder, bm25Index);
+        var ingestor = new DocumentIngestor(
             [new TextDocumentParser()],
             new RecursiveChunkingStrategy(),
             vectorStore,
             embedder,
-            chatClient: null,
             new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 },
-            queryExpander: expander,
-            multiQueryOptions: multiQueryOptions);
+            bm25Index);
+
+        var pipeline = new RagPipeline(retriever, ingestor);
 
         using var stream = new MemoryStream(_documentData);
         await pipeline.IngestAsync(stream, Metadata);
