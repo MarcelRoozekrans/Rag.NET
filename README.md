@@ -12,6 +12,7 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 - **Token-aware chunking** - Split by token count (not characters) to respect embedding model limits
 - **Lost-in-the-Middle reordering** - Place highest-scoring chunks at context extremes for better LLM attention
 - **Redundancy filter** - Drop near-duplicate retrieved chunks by cosine similarity before passing to the LLM
+- **Cross-encoder reranking** - Rescore search results with ONNX cross-encoder models for higher precision
 - **Header-aware metadata** - Propagate Markdown/HTML heading hierarchy into chunk metadata as breadcrumbs
 - **Progress reporting** - Track ingestion stages in real time via `IProgress<IngestionProgress>`
 - **Evaluation** - Score answer quality with `Rag.NET.Evaluation` using embedding cosine similarity
@@ -32,6 +33,7 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 | `Rag.NET.Parsers.Excel` | Excel (.xlsx) document parser (OpenXml) |
 | `Rag.NET.Parsers.PowerPoint` | PowerPoint (.pptx) document parser (OpenXml) |
 | `Rag.NET.Evaluation` | Answer quality evaluation via embedding cosine similarity |
+| `Rag.NET.Reranking.Onnx` | ONNX Runtime cross-encoder reranking |
 
 ## Quick Start
 

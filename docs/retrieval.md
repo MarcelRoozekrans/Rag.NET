@@ -15,6 +15,8 @@ public sealed class RetrievalOptions
     public bool UseRedundancyFilter          { get; set; }
     public float RedundancyThreshold         { get; set; } = 0.95f;
     public bool UseMultiQuery                { get; set; } = true;
+    public bool UseReranking                 { get; set; } = true;
+    public int? CandidateCount               { get; set; }
 }
 ```
 
@@ -34,6 +36,8 @@ var results = await pipeline.RetrieveAsync("What are the Q4 targets?", new Retri
     UseRedundancyFilter           = true,
     RedundancyThreshold           = 0.92f,
     UseMultiQuery                 = true,
+    UseReranking                  = true,
+    CandidateCount                = 20,
     MetadataFilter = new Dictionary<string, string>
     {
         ["department"] = "finance",
@@ -177,6 +181,78 @@ var results = await pipeline.RetrieveAsync("exact phrase lookup", new RetrievalO
 });
 ```
 
+## Cross-encoder reranking
+
+Cross-encoder reranking rescores search results by running each (query, passage) pair through a cross-encoder model. Unlike bi-encoders (used for embedding), cross-encoders jointly attend to both inputs, producing significantly more accurate relevance scores at the cost of per-pair inference.
+
+### Enabling
+
+Register a reranker on the builder. The core package provides `UseReranking<T>()` for custom implementations. The `Rag.NET.Reranking.Onnx` package provides a local ONNX model implementation:
+
+```csharp
+// Option 1: ONNX cross-encoder (local model)
+services.AddRagNet(b => b
+    .UseOnnxReranking(o =>
+    {
+        o.ModelPath = "models/ms-marco-MiniLM-L-6-v2.onnx";
+        o.MaxLength = 512;
+    }));
+
+// Option 2: Custom implementation (e.g., Cohere, Jina)
+services.AddRagNet(b => b
+    .UseReranking<MyCohereReranker>());
+```
+
+### How it works
+
+When a reranker is registered, the pipeline over-fetches candidates from the vector store (`CandidateCount`, defaulting to `TopK × 3`), then the reranker rescores and trims to `TopK`:
+
+```mermaid
+flowchart TD
+    VS["Vector store search\nfetches CandidateCount results"] --> RF["[optional]\nRedundancyFilter"]
+    RF --> RERANK["IReranker.RerankAsync()\nscore each (query, passage) pair\nsort by relevance desc\ntake TopK"]
+    RERANK --> LITM["[optional]\nLostInTheMiddleReorderer"]
+    LITM --> OUT["Final IReadOnlyList&lt;SearchResult&gt;"]
+
+    style RERANK fill:#e8f4fd,stroke:#4a90d9
+```
+
+If the reranker fails (network error, model issue), the pipeline logs a warning and returns results in their original vector-search order.
+
+### Disabling per call
+
+When a reranker is registered, it is active by default. Opt out for a specific call:
+
+```csharp
+var results = await pipeline.RetrieveAsync("exact phrase lookup", new RetrievalOptions
+{
+    UseReranking = false,
+});
+```
+
+### Over-fetch control
+
+Set `CandidateCount` to control how many candidates the vector store returns before reranking:
+
+```csharp
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    TopK           = 5,       // final result count
+    CandidateCount = 30,      // fetch 30 candidates, rerank, return top 5
+});
+```
+
+When `CandidateCount` is not set, it defaults to `TopK × 3`. When no reranker is registered, `CandidateCount` is ignored.
+
+### Recommended models
+
+| Model | Languages | Size | Use case |
+|-------|-----------|------|----------|
+| `ms-marco-MiniLM-L-6-v2` | English | ~80 MB | Fast, good accuracy for English-only corpora |
+| `bge-reranker-v2-m3` | 100+ | ~568 MB | Multilingual, strong accuracy |
+
+Download ONNX models from [Hugging Face](https://huggingface.co) and point `ModelPath` to the `.onnx` file.
+
 ## Metadata filtering
 
 `MetadataFilter` is a dictionary of key-value pairs that must all match a chunk's `Metadata` for the chunk to be returned. This is an AND filter — all entries must match.
@@ -243,7 +319,7 @@ public sealed class RagOptions
 }
 ```
 
-> **Note:** `RagOptions` does not expose `UseMultiQuery`. To disable multi-query expansion for a single call, use `RetrieveAsync` directly with `UseMultiQuery = false`.
+> **Note:** `RagOptions` does not expose `UseMultiQuery`, `UseReranking`, or `CandidateCount`. To control these per call, use `RetrieveAsync` directly.
 
 The retrieval-related properties are forwarded verbatim to an internal `RetrievalOptions` before the chat call:
 
@@ -279,9 +355,10 @@ var response = await pipeline.AskAsync("Can you give an example?", new RagOption
 
 ## Post-retrieval processing
 
-After the vector/BM25 search, two optional post-processors can further improve quality:
+After the vector/BM25 search, three optional post-processors can further improve quality:
 
-- **Lost-in-the-Middle reordering** — see [Post-Retrieval](post-retrieval.md#lost-in-the-middle-reordering)
 - **Redundancy filtering** — see [Post-Retrieval](post-retrieval.md#redundancy-filter)
+- **Cross-encoder reranking** — see [Cross-encoder reranking](#cross-encoder-reranking) above
+- **Lost-in-the-Middle reordering** — see [Post-Retrieval](post-retrieval.md#lost-in-the-middle-reordering)
 
-Both are enabled per-call via flags on `RetrievalOptions` or `RagOptions`.
+They run in the order listed above (redundancy → reranking → reordering) and are enabled per-call via flags on `RetrievalOptions` or `RagOptions`.

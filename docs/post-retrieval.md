@@ -1,6 +1,6 @@
 # Post-Retrieval
 
-After the vector store returns a ranked list of chunks, two optional post-processors can improve the quality of what the LLM receives. Both are disabled by default and enabled per-call via flags on `RetrievalOptions` or `RagOptions`. They run in a fixed order: Lost-in-the-Middle reordering first, then redundancy filtering.
+After the vector store returns a ranked list of chunks, three optional post-processors can improve the quality of what the LLM receives. All are controlled per-call via flags on `RetrievalOptions`. They run in a fixed order: redundancy filtering first, then cross-encoder reranking, then Lost-in-the-Middle reordering.
 
 ## Lost-in-the-Middle reordering
 
@@ -139,23 +139,25 @@ public static class RedundancyFilter
 
 ## Execution order
 
-When both options are enabled on the same call, the order is:
+When multiple post-retrieval options are enabled on the same call, the order is:
 
 ```mermaid
 flowchart TD
     VS["Vector store search\n(dense or hybrid)"]
-    LITM["LostInTheMiddleReorderer.Reorder()\noperates on score-sorted results"]
-    REDUN["RedundancyFilter.FilterAsync()\noperates on the reordered list"]
+    REDUN["RedundancyFilter.FilterAsync()\nremoves near-duplicate chunks"]
+    RERANK["IReranker.RerankAsync()\ncross-encoder rescoring\ntakes TopK best"]
+    LITM["LostInTheMiddleReorderer.Reorder()\noutside-in placement"]
     OUT["Final IReadOnlyList&lt;SearchResult&gt;"]
 
-    VS --> LITM --> REDUN --> OUT
+    VS --> REDUN --> RERANK --> LITM --> OUT
 
-    style LITM fill:#e8f4fd,stroke:#4a90d9
     style REDUN fill:#e8f4fd,stroke:#4a90d9
+    style RERANK fill:#e8f4fd,stroke:#4a90d9
+    style LITM fill:#e8f4fd,stroke:#4a90d9
 ```
 
-1. Vector store search (dense, or hybrid)
-2. `LostInTheMiddleReorderer.Reorder()` — operates on score-sorted results
-3. `RedundancyFilter.FilterAsync()` — operates on the reordered list
+1. **Redundancy filter** — removes near-duplicate chunks (cheap, cosine similarity on existing embeddings)
+2. **Cross-encoder reranking** — rescores each (query, passage) pair with a cross-encoder model (expensive, per-pair inference). Trims to `TopK` after scoring. Only active when an `IReranker` is registered via `UseReranking<T>()` or `UseOnnxReranking()`.
+3. **Lost-in-the-Middle reordering** — places highest-scoring chunks at context extremes for better LLM attention (presentation concern, zero cost)
 
-The reorderer runs before the redundancy filter so that the filter preserves the outside-in positional intent when it removes chunks.
+The redundancy filter runs before reranking to reduce the number of expensive cross-encoder inference calls. The reorderer runs last because it is a presentation concern — it should operate on the final ranked list.

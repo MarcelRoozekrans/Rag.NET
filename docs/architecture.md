@@ -40,12 +40,14 @@ flowchart TD
     RRF --> POST
     SEMANTIC --> POST
 
-    POST["post-retrieval"] --> LITM["[optional]\nLostInTheMiddleReorderer.Reorder()"]
-    LITM --> REDUN["[optional]\nRedundancyFilter.FilterAsync()"]
-    REDUN --> RESULT["IReadOnlyList&lt;SearchResult&gt;"]
+    POST["post-retrieval"] --> REDUN["[optional]\nRedundancyFilter.FilterAsync()"]
+    REDUN --> RERANK["[optional]\nIReranker.RerankAsync()"]
+    RERANK --> LITM["[optional]\nLostInTheMiddleReorderer.Reorder()"]
+    LITM --> RESULT["IReadOnlyList&lt;SearchResult&gt;"]
 
     style BM25 fill:#e8f4fd,stroke:#4a90d9
     style RRF fill:#e8f4fd,stroke:#4a90d9
+    style RERANK fill:#e8f4fd,stroke:#4a90d9
 ```
 
 ### Ask path
@@ -177,6 +179,7 @@ public interface ICollectionManageable
 | `SearchResult` | Retrieval output: `TextChunk` + `double Score` |
 | `IngestionResult` | `IngestAsync` return: `DocumentId` + `ChunksStored` |
 | `RagResponse` | `AskAsync` return: `string Answer` + `IReadOnlyList<SearchResult> Sources` |
+| `RerankResult` | Reranker output: `SearchResult` + `double RelevanceScore` |
 | `RagStreamingUpdate` | `AskStreamingAsync` yield: `string? TextDelta` + `IReadOnlyList<SearchResult>? Sources` |
 
 ## `RagPipeline` constructor
@@ -192,7 +195,10 @@ public sealed class RagPipeline(
     IChatClient? chatClient,                    // optional — needed only for AskAsync
     ChunkingOptions chunkingOptions,
     ILogger<RagPipeline>? logger = null,        // optional
-    ResiliencePipeline? resiliencePipeline = null)  // optional
+    ResiliencePipeline? resiliencePipeline = null,  // optional
+    IQueryExpander? queryExpander = null,        // optional — enables multi-query
+    MultiQueryOptions? multiQueryOptions = null, // optional
+    IReranker? reranker = null)                  // optional — enables cross-encoder reranking
 ```
 
 `IChatClient` is optional: `RetrieveAsync`, `IngestAsync`, and `DeleteAsync` work without it. `AskAsync` and `AskStreamingAsync` throw `InvalidOperationException` if no `IChatClient` is registered.
