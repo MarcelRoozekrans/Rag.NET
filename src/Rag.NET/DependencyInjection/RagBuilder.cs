@@ -8,6 +8,7 @@ using Rag.NET.Chunking;
 using Rag.NET.HyDE;
 using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
+using Rag.NET.Storage;
 
 namespace Rag.NET.DependencyInjection;
 
@@ -122,6 +123,25 @@ public sealed class RagBuilder(IServiceCollection services)
         configure?.Invoke(options);
         Services.AddSingleton(options);
         Services.AddHybridCache();
+        return this;
+    }
+
+    /// <summary>
+    /// Enables parent-document retrieval. At ingestion, documents are chunked twice:
+    /// small child chunks are embedded for precise matching, large parent chunks are
+    /// stored in-memory for context-rich answer generation. At retrieval, child matches
+    /// are replaced with their parent text.
+    /// </summary>
+    /// <remarks>
+    /// Per-call opt-out: pass <c>new RetrievalOptions { UseParentDocument = false }</c>.
+    /// </remarks>
+    /// <param name="configure">Optional delegate to configure <see cref="ParentDocumentOptions"/>.</param>
+    public RagBuilder UseParentDocumentRetrieval(Action<ParentDocumentOptions>? configure = null)
+    {
+        var options = new ParentDocumentOptions();
+        configure?.Invoke(options);
+        Services.AddSingleton(options);
+        Services.AddSingleton<InMemoryParentChunkStore>();
         return this;
     }
 

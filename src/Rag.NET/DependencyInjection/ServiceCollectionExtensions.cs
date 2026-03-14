@@ -65,7 +65,37 @@ public static class ServiceCollectionExtensions
         var bm25Index = sp.GetRequiredService<InMemoryBm25Index>();
 
         IRetriever chain = new VectorStoreRetriever(store, embedder, bm25Index);
+        chain = WrapWithQueryDecorators(chain, sp);
 
+        var parentDocOptions = sp.GetService<ParentDocumentOptions>();
+        var parentStore = sp.GetService<InMemoryParentChunkStore>();
+        if (parentDocOptions is not null && parentStore is not null)
+        {
+            chain = new ParentDocumentRetriever(
+                chain,
+                parentStore,
+                sp.GetService<ILogger<ParentDocumentRetriever>>());
+        }
+
+        chain = new RedundancyFilterRetriever(chain, embedder, sp.GetService<ILogger<RedundancyFilterRetriever>>());
+        chain = new LostInTheMiddleRetriever(chain);
+
+        var cachingOptions = sp.GetService<CachingOptions>();
+        var hybridCache = sp.GetService<HybridCache>();
+        if (cachingOptions is not null && hybridCache is not null)
+        {
+            chain = new ResultCacheRetriever(
+                chain,
+                hybridCache,
+                cachingOptions,
+                sp.GetService<ILogger<ResultCacheRetriever>>());
+        }
+
+        return chain;
+    }
+
+    private static IRetriever WrapWithQueryDecorators(IRetriever chain, IServiceProvider sp)
+    {
         var cachingOptions = sp.GetService<CachingOptions>();
         var hybridCache = sp.GetService<HybridCache>();
 
@@ -104,18 +134,6 @@ public static class ServiceCollectionExtensions
                 chain,
                 reranker,
                 sp.GetService<ILogger<RerankingRetriever>>());
-        }
-
-        chain = new RedundancyFilterRetriever(chain, embedder, sp.GetService<ILogger<RedundancyFilterRetriever>>());
-        chain = new LostInTheMiddleRetriever(chain);
-
-        if (cachingOptions is not null && hybridCache is not null)
-        {
-            chain = new ResultCacheRetriever(
-                chain,
-                hybridCache,
-                cachingOptions,
-                sp.GetService<ILogger<ResultCacheRetriever>>());
         }
 
         return chain;
