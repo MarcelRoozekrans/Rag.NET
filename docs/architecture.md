@@ -17,8 +17,10 @@ flowchart TD
     G --> H["EmbeddedChunk[ ]<br>TextChunk + ReadOnlyMemory&lt;float&gt;"]
     H --> I["IVectorStore.StoreAsync()"]
     H --> J["InMemoryBm25Index.Add()<br>hybrid search fallback"]
+    E --> K["InMemoryParentChunkStore.Add()<br>parent-document retrieval (optional)"]
 
     style J fill:#e8f4fd,stroke:#4a90d9
+    style K fill:#e8f4fd,stroke:#4a90d9
 ```
 
 ### Retrieval path
