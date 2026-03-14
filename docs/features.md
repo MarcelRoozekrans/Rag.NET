@@ -269,6 +269,15 @@ Backing store: `IMemoryCache` by default; pluggable via `ISearchCache` for distr
 
 ---
 
+### SQLite Persistence for In-Memory Indexes
+**Package:** `Rag.NET` (core)
+
+Persist the `InMemoryBm25Index` and parent chunk store to a local SQLite file so they survive application restarts without re-ingestion. Backed by `Microsoft.Data.Sqlite`. On startup: load from SQLite. On ingest/delete: write-through to SQLite alongside the vector store. Single file path configuration.
+
+**Why:** Both the BM25 index and parent chunk store are currently process-scoped and lost on restart. For large corpora where re-ingestion is expensive (hours of embedding API calls), this avoids the mandatory re-ingest-on-startup cost.
+
+---
+
 ### Content-Hash Record Manager
 **Package:** `Rag.NET` (core)
 
@@ -516,6 +525,7 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [x] | Multi-Query Retrieval | Medium | `IChatClient` |
 | [ ] | SaaS Connectors | Medium | Per-platform SDK |
 | [x] | Search Result Caching | Medium | None |
+| [ ] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
 | [ ] | Tag-Based Retrieval | Medium | Hybrid search |
 | [ ] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
 | [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
