@@ -24,12 +24,14 @@ public sealed class RagPipeline(
     ILogger<RagPipeline>? logger = null,
     ResiliencePipeline? resiliencePipeline = null,
     IQueryExpander? queryExpander = null,
-    MultiQueryOptions? multiQueryOptions = null) : IRagPipeline, IDisposable
+    MultiQueryOptions? multiQueryOptions = null,
+    IReranker? reranker = null) : IRagPipeline, IDisposable
 {
     private readonly ILogger _logger = (ILogger?)logger ?? NullLogger.Instance;
     private readonly ResiliencePipeline? _resiliencePipeline = resiliencePipeline;
     private readonly IQueryExpander? _queryExpander = queryExpander;
     private readonly MultiQueryOptions _multiQueryOptions = multiQueryOptions ?? new MultiQueryOptions();
+    private readonly IReranker? _reranker = reranker;
     private readonly InMemoryBm25Index _bm25Index = new();
     private int _nextBm25DocId;
 
@@ -181,61 +183,97 @@ public sealed class RagPipeline(
 
         var searchOptions = new SearchOptions
         {
-            TopK = opts.TopK,
+            TopK = (_reranker is not null && opts.UseReranking)
+                ? (opts.CandidateCount ?? opts.TopK * 3)
+                : opts.TopK,
             MinScore = opts.MinScore,
             MetadataFilter = opts.MetadataFilter,
             UseHybridSearch = opts.UseHybridSearch,
         };
 
-        IReadOnlyList<SearchResult> searchResults;
-
-        if (_queryExpander is not null && opts.UseMultiQuery)
-        {
-            IReadOnlyList<string> variants;
-            try
-            {
-                variants = await _queryExpander.ExpandAsync(query, _multiQueryOptions.VariantCount, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                RagPipelineLog.QueryExpansionFailed(_logger, query, ex);
-                variants = [];
-            }
-
-            var allQueries = new List<string>(variants.Count + 1) { query };
-            allQueries.AddRange(variants);
-
-            var tasks = allQueries.Select(q => SearchSingleQueryAsync(q, searchOptions, opts.UseHybridSearch, cancellationToken)).ToArray();
-            var allResults = await Task.WhenAll(tasks).ConfigureAwait(false);
-
-            searchResults = allResults
-                .SelectMany(r => r)
-                .GroupBy(r => (r.Chunk.DocumentId, r.Chunk.ChunkIndex))
-                .Select(g => g.MaxBy(r => r.Score)!)
-                .OrderByDescending(r => r.Score)
-                .Take(opts.TopK)
-                .ToList()
-                .AsReadOnly();
-        }
-        else
-        {
-            searchResults = await SearchSingleQueryAsync(query, searchOptions, opts.UseHybridSearch, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        if (opts.UseLostInTheMiddleReordering)
-            searchResults = LostInTheMiddleReorderer.Reorder(searchResults);
+        var searchResults = (_queryExpander is not null && opts.UseMultiQuery)
+            ? await MultiQuerySearchAsync(query, searchOptions, opts, cancellationToken).ConfigureAwait(false)
+            : await SearchSingleQueryAsync(query, searchOptions, opts.UseHybridSearch, cancellationToken).ConfigureAwait(false);
 
         if (opts.UseRedundancyFilter)
             searchResults = await RedundancyFilter.FilterAsync(searchResults, embeddingGenerator, opts.RedundancyThreshold, cancellationToken)
                 .ConfigureAwait(false);
 
+        if (_reranker is not null && opts.UseReranking)
+            searchResults = await RerankAsync(query, searchResults, opts.TopK, cancellationToken).ConfigureAwait(false);
+
+        if (opts.UseLostInTheMiddleReordering)
+            searchResults = LostInTheMiddleReorderer.Reorder(searchResults);
+
         return searchResults;
+    }
+
+    private async Task<IReadOnlyList<SearchResult>> MultiQuerySearchAsync(
+        string query,
+        SearchOptions searchOptions,
+        RetrievalOptions opts,
+        CancellationToken cancellationToken)
+    {
+        IReadOnlyList<string> variants;
+        try
+        {
+            variants = await _queryExpander!.ExpandAsync(query, _multiQueryOptions.VariantCount, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            RagPipelineLog.QueryExpansionFailed(_logger, query, ex);
+            variants = [];
+        }
+
+        var allQueries = new List<string>(variants.Count + 1) { query };
+        allQueries.AddRange(variants);
+
+        var tasks = allQueries.Select(q => SearchSingleQueryAsync(q, searchOptions, opts.UseHybridSearch, cancellationToken)).ToArray();
+        var allResults = await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        return allResults
+            .SelectMany(r => r)
+            .GroupBy(r => (r.Chunk.DocumentId, r.Chunk.ChunkIndex))
+            .Select(g => g.MaxBy(r => r.Score)!)
+            .OrderByDescending(r => r.Score)
+            .Take(opts.TopK)
+            .ToList()
+            .AsReadOnly();
+    }
+
+    private async Task<IReadOnlyList<SearchResult>> RerankAsync(
+        string query,
+        IReadOnlyList<SearchResult> searchResults,
+        int topK,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var candidateCount = searchResults.Count;
+            var reranked = await _reranker!.RerankAsync(query, searchResults, cancellationToken)
+                .ConfigureAwait(false);
+
+            var results = reranked
+                .OrderByDescending(r => r.RelevanceScore)
+                .Take(topK)
+                .Select(r => r.SearchResult)
+                .ToList()
+                .AsReadOnly();
+
+            RagPipelineLog.RerankingCompleted(_logger, candidateCount, results.Count);
+            return results;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            RagPipelineLog.RerankingFailed(_logger, query, ex);
+            return searchResults;
+        }
     }
 
     private async Task<IReadOnlyList<SearchResult>> SearchSingleQueryAsync(
