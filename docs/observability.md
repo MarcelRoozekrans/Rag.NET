@@ -23,6 +23,8 @@ Logging is distributed across the decorator pipeline. Each component accepts an 
 | `ResultCacheRetriever` | `Debug` | `ResultCacheHit` | `Result cache hit for query '{Query}'` |
 | `EmbeddingCacheRetriever` | `Warning` | `EmbeddingCacheFailed` | `Embedding cache operation failed for query '{Query}'` |
 | `ResultCacheRetriever` | `Warning` | `ResultCacheFailed` | `Result cache operation failed for query '{Query}'` |
+| `ParentDocumentRetriever` | `Debug` | `ParentDocumentRetrieved` | `Parent document retrieved for query '{Query}': {ChildCount} children -> {ParentCount} parents` |
+| `ParentDocumentRetriever` | `Warning` | `ParentDocumentFailed` | `Parent document lookup failed for query '{Query}', returning child chunks` |
 
 ### Setup
 

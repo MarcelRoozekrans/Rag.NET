@@ -16,6 +16,7 @@ public sealed class RetrievalOptions
     public float RedundancyThreshold         { get; set; } = 0.95f;
     public bool UseHyde                       { get; set; } = true;
     public bool UseMultiQuery                { get; set; } = true;
+    public bool UseParentDocument            { get; set; } = true;
     public bool UseReranking                 { get; set; } = true;
     public bool UseCacheEmbedding            { get; set; } = true;
     public bool UseCacheResult               { get; set; } = true;
@@ -288,6 +289,66 @@ When an expander is registered, multi-query is active by default. Opt out for a 
 var results = await pipeline.RetrieveAsync("exact phrase lookup", new RetrievalOptions
 {
     UseMultiQuery = false,
+});
+```
+
+## Parent-Document Retrieval
+
+Parent-document retrieval indexes small child chunks for precise embedding matching but returns their larger parent documents to the LLM. This resolves a fundamental tension: embedding precision favors small chunks (sharp semantic signal), while answer quality favors large context (rich surrounding text). Child chunks are matched at retrieval time; the pipeline then swaps each child for its pre-stored parent before returning results.
+
+### Enabling
+
+Register `UseParentDocumentRetrieval()` on the builder. No `IChatClient` is required.
+
+```csharp
+services.AddRagNet(b => b
+    .UseParentDocumentRetrieval());
+```
+
+Configure parent chunk size and overlap:
+
+```csharp
+services.AddRagNet(b => b
+    .UseParentDocumentRetrieval(o =>
+    {
+        o.ParentChunkSize = 4096;
+        o.ParentOverlap   = 200;
+    }));
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `ParentChunkSize` | `2048` | Character size of parent chunks stored in the parent store |
+| `ParentOverlap` | `100` | Overlap in characters between adjacent parent chunks |
+
+### How it works
+
+**Ingestion:** When `UseParentDocumentRetrieval()` is registered, `DocumentIngestor` performs a dual chunking pass. The document is chunked at the normal (small) granularity for embedding and vector store storage. In parallel, the same document is chunked at `ParentChunkSize` / `ParentOverlap` and the resulting parent chunks are stored in `InMemoryParentChunkStore`, keyed by `DocumentId` and chunk index.
+
+**Retrieval:** `ParentDocumentRetriever` calls the inner retriever to obtain child `SearchResult` objects, then maps each child chunk to its parent via the store. If every child lookup succeeds, the parent chunks replace the children in the returned list. If a lookup fails (e.g., the store was not yet populated after a restart), the retriever logs a warning and returns the original child chunks unmodified.
+
+```mermaid
+flowchart TD
+    Q["User query"] --> INNER["Inner retriever<br>returns child chunks"]
+    INNER --> LOOKUP["InMemoryParentChunkStore<br>child → parent lookup"]
+    LOOKUP -- success --> PARENTS["Parent chunks returned to LLM"]
+    LOOKUP -- failure --> CHILDREN["Child chunks returned (fallback)"]
+
+    style LOOKUP fill:#e8f4fd,stroke:#4a90d9
+```
+
+### In-memory store trade-off
+
+`InMemoryParentChunkStore` is a process-scoped singleton — the same lifecycle as `InMemoryBm25Index`. Parent chunks are not persisted and must be rebuilt by re-running ingestion after each application restart. For large corpora where re-ingestion is expensive, see the [SQLite Persistence](features.md) backlog item.
+
+### Disabling per call
+
+When parent-document retrieval is registered, it is active by default. Opt out for a specific call:
+
+```csharp
+var results = await pipeline.RetrieveAsync("exact phrase lookup", new RetrievalOptions
+{
+    UseParentDocument = false,
 });
 ```
 

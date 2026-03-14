@@ -535,7 +535,7 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [ ] | Image / Video Description | High | Vision LLM |
 | [ ] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
 | [ ] | Long-Term Conversational Memory | High | Vector store + `IChatClient` |
-| [ ] | Parent-Document Retrieval | High | Dual index |
+| [x] | Parent-Document Retrieval | High | Dual index |
 | [ ] | RAPTOR | High | UMAP + GMM + `IChatClient` |
 | [ ] | Self-Query Filtering | High | `IChatClient` + schema |
 | [ ] | GraphRAG | Very High | Graph DB + `IChatClient` |

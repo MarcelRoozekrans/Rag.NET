@@ -212,14 +212,15 @@ Optional features are composable decorators, each wrapping an inner `IRetriever`
 ResultCacheRetriever              (present when UseCaching() called)
   → LostInTheMiddleRetriever      (always present)
     → RedundancyFilterRetriever   (always present)
-      → RerankingRetriever        (present when IReranker registered)
-        → MultiQueryRetriever     (present when IQueryExpander registered)
-          → HydeRetriever         (present when IHypotheticalDocumentGenerator registered)
-            → EmbeddingCacheRetriever  (present when UseCaching() called)
-              → VectorStoreRetriever   (base — always present)
+      → ParentDocumentRetriever   (present when UseParentDocumentRetrieval() called)
+        → RerankingRetriever      (present when IReranker registered)
+          → MultiQueryRetriever   (present when IQueryExpander registered)
+            → HydeRetriever       (present when IHypotheticalDocumentGenerator registered)
+              → EmbeddingCacheRetriever  (present when UseCaching() called)
+                → VectorStoreRetriever   (base — always present)
 ```
 
-Each decorator checks a per-call flag on `RetrievalOptions` (e.g., `UseReranking`, `UseMultiQuery`, `UseHyde`, `UseCacheResult`, `UseCacheEmbedding`) and either applies its logic or passes through to the inner retriever. Decorators catch non-cancellation exceptions and fall back gracefully.
+Each decorator checks a per-call flag on `RetrievalOptions` (e.g., `UseReranking`, `UseMultiQuery`, `UseHyde`, `UseParentDocument`, `UseCacheResult`, `UseCacheEmbedding`) and either applies its logic or passes through to the inner retriever. Decorators catch non-cancellation exceptions and fall back gracefully.
 
 `RetrievalOptions` is a `sealed record` so decorators can use `with` expressions to modify options (e.g., over-fetch `TopK`) without mutating the caller's instance.
 
@@ -229,6 +230,8 @@ Each decorator checks a per-call flag on `RetrievalOptions` (e.g., `UseReranking
 
 The BM25 index is process-scoped, not persisted. It is rebuilt from scratch each time the application starts. If you need persistence, use a vector store that natively implements `IHybridSearchable`.
 
+`InMemoryParentChunkStore` follows the same lifecycle: a DI singleton populated during ingestion and lost on restart. It must be rebuilt by re-running ingestion after each application start.
+
 ## DI wiring
 
 See [Getting Started](getting-started.md) for the call sequence. Internally, `ServiceCollectionExtensions.AddRagNet`:
@@ -236,7 +239,7 @@ See [Getting Started](getting-started.md) for the call sequence. Internally, `Se
 1. Registers `TextDocumentParser` and `MarkdownDocumentParser` as built-in parsers.
 2. Registers `RecursiveChunkingStrategy` as the default `IChunkingStrategy` (unless overridden).
 3. Registers default `ChunkingOptions` (MaxChunkSize=512, Overlap=50).
-4. Registers `InMemoryBm25Index` as a singleton.
+4. Registers `InMemoryBm25Index` and `InMemoryParentChunkStore` as singletons.
 5. Builds the `IRetriever` decorator chain via a factory lambda (see chain order above).
 6. Registers `IIngestor` (`DocumentIngestor`) and `IRagPipeline` (`RagPipeline`).
 7. Runs the user-supplied `Action<RagBuilder>` for additional configuration.
