@@ -66,4 +66,15 @@ public class LlmHypotheticalDocumentGeneratorTests
         await Assert.ThrowsAsync<ArgumentNullException>(
             () => sut.GenerateAsync(null!, TestContext.Current.CancellationToken));
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GenerateAsync_WhenQueryIsEmptyOrWhiteSpace_ThrowsArgumentException(string query)
+    {
+        var sut = new LlmHypotheticalDocumentGenerator(_chatClient, new HydeOptions());
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => sut.GenerateAsync(query, TestContext.Current.CancellationToken));
+    }
 }

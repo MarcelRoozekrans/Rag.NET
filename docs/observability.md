@@ -17,6 +17,7 @@ Logging is distributed across the decorator pipeline. Each component accepts an 
 | `VectorStoreRetriever` | `Debug` | `RetrieveCompleted` | `Retrieved {ResultCount} chunk(s)` |
 | `MultiQueryRetriever` | `Warning` | `QueryExpansionFailed` | `Query expansion failed for '{Query}'` |
 | `RerankingRetriever` | `Warning` | — | `Reranking failed, returning unranked results` |
+| `HydeRetriever` | `Warning` | `HydeGenerationFailed` | `HyDE generation failed for query '{Query}', falling back to original query embedding` |
 | `RedundancyFilterRetriever` | `Warning` | — | `Redundancy filtering failed, returning unfiltered results` |
 
 ### Setup

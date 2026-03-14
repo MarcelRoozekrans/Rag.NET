@@ -8,7 +8,7 @@ internal sealed class LlmHypotheticalDocumentGenerator(IChatClient chatClient, H
 {
     public async Task<string> GenerateAsync(string query, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(query);
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
 
         var prompt = options.PromptTemplate
             .Replace("{query}", query, StringComparison.Ordinal);

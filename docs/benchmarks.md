@@ -94,6 +94,23 @@ CPU-only overhead of the `MultiQueryRetriever` decorator chain: query expansion 
 
 ---
 
+## HyDE (Hypothetical Document Embeddings)
+
+CPU-only overhead of the `HydeRetriever` decorator. The hypothetical document generator is mocked (returns a fixed string) to isolate the decorator's option-rewriting and pass-through cost. Embedder and vector store are also mocked.
+
+| Method | Mean | Allocated |
+|--------|-----:|----------:|
+| NoHyde_Baseline | 140.5 ns | 624 B |
+| WithHyde | 173.1 ns | 920 B |
+
+**Notes:**
+- The generator is mocked — these numbers measure only the decorator overhead (option rewriting, embedding text override), not LLM inference.
+- Real-world HyDE cost is dominated by the LLM call to generate the hypothetical document (~50–500 ms p99 depending on model and prompt length).
+- CPU overhead is negligible compared to the LLM call; the benchmark confirms the decorator adds minimal overhead on top of the generator call.
+- When HyDE generation fails, the decorator falls back to the original query embedding at no extra cost.
+
+---
+
 ## Redundancy Filter
 
 Post-retrieval cosine-similarity filtering. Embedder is mocked (zero I/O latency) to isolate the CPU-only filter loop over 384-dimensional random vectors with threshold = 0.95.

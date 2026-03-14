@@ -40,7 +40,8 @@ flowchart TD
     RRF --> POST
     SEMANTIC --> POST
 
-    POST["post-retrieval"] --> REDUN["[optional]<br>RedundancyFilter.FilterAsync()"]
+    POST["post-retrieval"] --> HYDE["[optional]<br>HydeRetriever<br>embed hypothetical doc"]
+    HYDE --> REDUN["[optional]<br>RedundancyFilter.FilterAsync()"]
     REDUN --> RERANK["[optional]<br>IReranker.RerankAsync()"]
     RERANK --> LITM["[optional]<br>LostInTheMiddleReorderer.Reorder()"]
     LITM --> RESULT["IReadOnlyList&lt;SearchResult&gt;"]
@@ -212,10 +213,11 @@ LostInTheMiddleRetriever          (always present)
   → RedundancyFilterRetriever     (always present)
     → RerankingRetriever          (present when IReranker registered)
       → MultiQueryRetriever       (present when IQueryExpander registered)
-        → VectorStoreRetriever    (base — always present)
+        → HydeRetriever           (present when IHypotheticalDocumentGenerator registered)
+          → VectorStoreRetriever  (base — always present)
 ```
 
-Each decorator checks a per-call flag on `RetrievalOptions` (e.g., `UseReranking`, `UseMultiQuery`) and either applies its logic or passes through to the inner retriever. Decorators catch non-cancellation exceptions and fall back gracefully.
+Each decorator checks a per-call flag on `RetrievalOptions` (e.g., `UseReranking`, `UseMultiQuery`, `UseHyde`) and either applies its logic or passes through to the inner retriever. Decorators catch non-cancellation exceptions and fall back gracefully.
 
 `RetrievalOptions` is a `sealed record` so decorators can use `with` expressions to modify options (e.g., over-fetch `TopK`) without mutating the caller's instance.
 

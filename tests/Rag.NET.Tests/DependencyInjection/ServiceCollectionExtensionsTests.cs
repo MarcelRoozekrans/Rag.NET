@@ -107,6 +107,35 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public async Task AddRagNet_WithHyde_ChainsHydeRetriever()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var hydeGenerator = Substitute.For<IHypotheticalDocumentGenerator>();
+
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(embedder);
+        services.AddSingleton(hydeGenerator);
+
+        hydeGenerator.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("hypothetical document");
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>());
+
+        services.AddRagNet();
+
+        var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        await hydeGenerator.Received(1).GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task AddRagNet_WithAllFeatures_ChainsFullDecoratorPipeline()
     {
         var services = new ServiceCollection();
@@ -114,12 +143,16 @@ public class ServiceCollectionExtensionsTests
         var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
         var reranker = Substitute.For<IReranker>();
         var queryExpander = Substitute.For<IQueryExpander>();
+        var hydeGenerator = Substitute.For<IHypotheticalDocumentGenerator>();
 
         services.AddSingleton(vectorStore);
         services.AddSingleton(embedder);
         services.AddSingleton(reranker);
         services.AddSingleton(queryExpander);
+        services.AddSingleton(hydeGenerator);
 
+        hydeGenerator.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns("hypothetical document");
         embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
         vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
@@ -140,10 +173,12 @@ public class ServiceCollectionExtensionsTests
             UseReranking = true,
             UseRedundancyFilter = true,
             UseLostInTheMiddleReordering = true,
+            UseHyde = true,
         };
 
         await pipeline.RetrieveAsync("query", opts, TestContext.Current.CancellationToken);
 
+        await hydeGenerator.Received().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
         await queryExpander.Received(1).ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
         await reranker.Received(1).RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>());
     }

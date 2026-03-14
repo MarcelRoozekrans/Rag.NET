@@ -14,6 +14,7 @@ public sealed class RetrievalOptions
     public bool UseLostInTheMiddleReordering { get; set; }
     public bool UseRedundancyFilter          { get; set; }
     public float RedundancyThreshold         { get; set; } = 0.95f;
+    public bool UseHyde                       { get; set; } = true;
     public bool UseMultiQuery                { get; set; } = true;
     public bool UseReranking                 { get; set; } = true;
     public int? CandidateCount               { get; set; }
@@ -35,6 +36,7 @@ var results = await pipeline.RetrieveAsync("What are the Q4 targets?", new Retri
     UseLostInTheMiddleReordering  = true,
     UseRedundancyFilter           = true,
     RedundancyThreshold           = 0.92f,
+    UseHyde                       = true,
     UseMultiQuery                 = true,
     UseReranking                  = true,
     CandidateCount                = 20,
@@ -127,6 +129,58 @@ Each document's RRF score is the sum of its reciprocal ranks across both result 
 RRF scores are not cosine similarities. `MinScore` filtering is applied by the dense retriever before merging; the final RRF scores are not filtered by `MinScore`.
 
 See [benchmarks](benchmarks.md#hybrid-search-bm25-fallback) for throughput data on the BM25+RRF path.
+
+## Hypothetical Document Embeddings (HyDE)
+
+HyDE improves retrieval for queries that are phrased very differently from the documents they should match. Instead of embedding the raw query, the pipeline asks an LLM to generate a hypothetical answer document and embeds that instead. The original query string is still used for BM25/keyword search, so hybrid search remains effective.
+
+### Enabling
+
+Register `UseHyde()` on the builder. An `IChatClient` must already be registered — it is used to generate the hypothetical document.
+
+```csharp
+services.AddRagNet(b => b
+    .UseHyde());
+```
+
+Configure the prompt template:
+
+```csharp
+services.AddRagNet(b => b
+    .UseHyde(o =>
+    {
+        o.PromptTemplate =
+            "Write a short passage that answers the following question.\n\n" +
+            "Question: {query}";
+    }));
+```
+
+`{query}` is a required placeholder in the template.
+
+### How it works
+
+```mermaid
+flowchart TD
+    Q["User query"] --> HYDE["LlmHypotheticalDocumentGenerator<br>generates hypothetical answer"]
+    HYDE --> EMB["Embed hypothetical document<br>(not the original query)"]
+    EMB --> VS["VectorStoreRetriever<br>dense search with hyp. embedding"]
+    Q --> BM25["BM25 keyword search<br>(uses original query)"]
+
+    style HYDE fill:#e8f4fd,stroke:#4a90d9
+```
+
+The original query is preserved for BM25/keyword matching via an internal `EmbeddingTextOverride` property on `RetrievalOptions`. If the LLM call fails (network error, timeout), the pipeline logs a warning and falls back to embedding the original query.
+
+### Disabling per call
+
+When a HyDE generator is registered, it is active by default. Opt out for a specific call:
+
+```csharp
+var results = await pipeline.RetrieveAsync("exact phrase lookup", new RetrievalOptions
+{
+    UseHyde = false,
+});
+```
 
 ## Multi-query retrieval
 

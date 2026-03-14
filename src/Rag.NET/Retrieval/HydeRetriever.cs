@@ -15,9 +15,9 @@ namespace Rag.NET.Retrieval;
 public sealed class HydeRetriever(
     IRetriever inner,
     IHypotheticalDocumentGenerator generator,
-    ILogger<HydeRetriever>? logger = null) : IRetriever
+    ILogger? logger = null) : IRetriever
 {
-    private readonly ILogger _logger = logger ?? NullLogger<HydeRetriever>.Instance;
+    private readonly ILogger _logger = logger ?? NullLogger.Instance;
 
     public async Task<IReadOnlyList<SearchResult>> RetrieveAsync(
         string query,
