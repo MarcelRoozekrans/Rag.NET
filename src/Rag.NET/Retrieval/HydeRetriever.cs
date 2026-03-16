@@ -32,6 +32,7 @@ public sealed class HydeRetriever(
         try
         {
             var hypotheticalDoc = await generator.GenerateAsync(query, cancellationToken).ConfigureAwait(false);
+            RagPipelineLog.HydeDocumentGenerated(_logger, query, hypotheticalDoc.Length);
             return await inner.RetrieveAsync(
                 query,
                 opts with { UseHyde = false, EmbeddingTextOverride = hypotheticalDoc },

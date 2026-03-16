@@ -37,15 +37,20 @@ public sealed class EmbeddingCacheRetriever(
 
         try
         {
+            var factoryCalled = false;
             var results = await cache.GetOrCreateAsync(
                 cacheKey,
                 async ct =>
                 {
+                    factoryCalled = true;
                     var innerResults = await inner.RetrieveAsync(query, options, ct).ConfigureAwait(false);
                     return innerResults as List<SearchResult> ?? innerResults.ToList();
                 },
                 new HybridCacheEntryOptions { Expiration = cachingOptions.EmbeddingTtl },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (!factoryCalled)
+                RagPipelineLog.EmbeddingCacheHit(_logger, query);
 
             return results ?? [];
         }

@@ -51,4 +51,19 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Parent document lookup failed for query '{Query}', returning child chunks")]
     internal static partial void ParentDocumentFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "HyDE generated {Length}-char hypothetical document for query '{Query}'")]
+    internal static partial void HydeDocumentGenerated(ILogger logger, string query, int length);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Query expansion produced {VariantCount} variant(s) for query '{Query}'")]
+    internal static partial void QueryExpansionCompleted(ILogger logger, string query, int variantCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Vector store search ({SearchMode}): {ResultCount} result(s) returned")]
+    internal static partial void VectorStoreSearchCompleted(ILogger logger, string searchMode, int resultCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Redundancy filter: kept {OutputCount} of {InputCount} result(s)")]
+    internal static partial void RedundancyFilterCompleted(ILogger logger, int inputCount, int outputCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Redundancy filtering failed for query '{Query}', returning unfiltered results")]
+    internal static partial void RedundancyFilteringFailed(ILogger logger, string query, Exception exception);
 }

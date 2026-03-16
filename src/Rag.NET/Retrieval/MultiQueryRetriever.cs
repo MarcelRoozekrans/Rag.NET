@@ -30,6 +30,7 @@ public sealed class MultiQueryRetriever(
         {
             variants = await queryExpander.ExpandAsync(query, multiQueryOptions.VariantCount, cancellationToken)
                 .ConfigureAwait(false);
+            RagPipelineLog.QueryExpansionCompleted(_logger, query, variants.Count);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
