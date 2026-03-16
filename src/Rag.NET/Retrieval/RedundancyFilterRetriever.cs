@@ -11,12 +11,15 @@ namespace Rag.NET.Retrieval;
 /// <summary>
 /// Decorator that filters near-duplicate results by cosine similarity.
 /// </summary>
-public sealed class RedundancyFilterRetriever(
+public sealed partial class RedundancyFilterRetriever(
     IRetriever inner,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     ILogger? logger = null) : IRetriever
 {
     private readonly ILogger _logger = logger ?? NullLogger.Instance;
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Redundancy filtering failed, returning unfiltered results")]
+    private partial void LogFilteringFailed(Exception ex);
 
     public async Task<IReadOnlyList<SearchResult>> RetrieveAsync(
         string query,
@@ -37,7 +40,7 @@ public sealed class RedundancyFilterRetriever(
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Redundancy filtering failed, returning unfiltered results");
+            LogFilteringFailed(ex);
             return results;
         }
     }
