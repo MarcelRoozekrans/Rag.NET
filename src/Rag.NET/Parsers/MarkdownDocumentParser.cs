@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
-using ZInject;
+using ZeroAlloc.Inject;
 
 namespace Rag.NET.Parsers;
 

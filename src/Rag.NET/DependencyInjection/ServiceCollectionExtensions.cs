@@ -21,7 +21,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         Action<RagBuilder>? configure = null)
     {
-        // ZInject-generated: registers IDocumentParser (Text, Markdown),
+        // ZeroAlloc.Inject-generated: registers IDocumentParser (Text, Markdown),
         // IChunkingStrategy (Recursive). IIngestor is registered manually below
         // to support optional ParentDocumentOptions/InMemoryParentChunkStore parameters.
         services.AddRagNETServices();

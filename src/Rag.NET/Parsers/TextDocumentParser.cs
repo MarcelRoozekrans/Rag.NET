@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
-using ZInject;
+using ZeroAlloc.Inject;
 
 namespace Rag.NET.Parsers;
 
