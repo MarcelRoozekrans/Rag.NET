@@ -39,6 +39,14 @@ public sealed class SqliteContentHashStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task GetETagAsync_UnknownEntry_ReturnsNull()
+    {
+        var sut = new SqliteContentHashStore(_dbPath);
+        var result = await sut.GetETagAsync("prov-1", "missing", TestContext.Current.CancellationToken);
+        Assert.Null(result);
+    }
+
+    [Fact]
     public async Task GetAllIdsAsync_ReturnsScopedIds()
     {
         var sut = new SqliteContentHashStore(_dbPath);
