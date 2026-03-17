@@ -3,7 +3,7 @@ using Rag.NET.Models;
 namespace Rag.NET.Abstractions;
 
 /// <summary>
-/// In-process keyword index supporting Add, Remove, and BM25-scored Search.
+/// Keyword index supporting Add, Remove, and BM25-scored Search.
 /// </summary>
 public interface IBm25Index : IDisposable
 {
