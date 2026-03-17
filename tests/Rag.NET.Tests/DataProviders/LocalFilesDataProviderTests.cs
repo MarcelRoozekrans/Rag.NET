@@ -1,0 +1,102 @@
+using Rag.NET.DataProviders;
+using Xunit;
+
+namespace Rag.NET.Tests.DataProviders;
+
+public sealed class LocalFilesDataProviderTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(Path.GetTempPath(), $"ragnet-local-{Guid.NewGuid():N}");
+
+    public LocalFilesDataProviderTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose() => Directory.Delete(_dir, recursive: true);
+
+    private string WriteFile(string name, string content = "hello")
+    {
+        var path = Path.Combine(_dir, name);
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ReturnsAllFiles_WhenNoFilter()
+    {
+        WriteFile("a.txt");
+        WriteFile("b.txt");
+
+        var sut = new LocalFilesDataProvider(_dir);
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, entries.Count);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_FiltersByExtension()
+    {
+        WriteFile("a.md");
+        WriteFile("b.txt");
+
+        var sut = new LocalFilesDataProvider(_dir, new LocalFilesOptions { Extensions = [".md"] });
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal("a.md", entries[0].FileName);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Entry_HasAbsolutePathAsId()
+    {
+        var path = WriteFile("readme.md");
+        var sut = new LocalFilesDataProvider(_dir);
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(path, entries[0].Id);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Entry_HasETagFromLastWriteAndSize()
+    {
+        WriteFile("readme.md", "some content");
+        var sut = new LocalFilesDataProvider(_dir);
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var info = new FileInfo(Path.Combine(_dir, "readme.md"));
+        var expected = $"{info.LastWriteTimeUtc.Ticks}:{info.Length}";
+        Assert.Equal(expected, entries[0].ETag);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_OpenContentAsync_ReturnsFileContents()
+    {
+        WriteFile("readme.md", "hello world");
+        var sut = new LocalFilesDataProvider(_dir);
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        using var reader = new StreamReader(stream);
+        var content = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("hello world", content);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_PredicateFilter_ExcludesMatchedFiles()
+    {
+        WriteFile("keep.md");
+        WriteFile("skip.md");
+
+        var sut = new LocalFilesDataProvider(_dir, new LocalFilesOptions
+        {
+            Filter = path => !path.Contains("skip"),
+        });
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal("keep.md", entries[0].FileName);
+    }
+}
