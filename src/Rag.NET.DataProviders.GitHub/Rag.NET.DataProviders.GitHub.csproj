@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.DataProviders.GitHub</RootNamespace>
+    <PackageId>Rag.NET.DataProviders.GitHub</PackageId>
+    <Description>GitHub data provider for Rag.NET using Octokit</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Octokit" Version="13.*" />
+  </ItemGroup>
+
+</Project>
