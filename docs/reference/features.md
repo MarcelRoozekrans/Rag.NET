@@ -6,29 +6,11 @@ sidebar_position: 2
 
 # Rag.NET Feature Backlog
 
-Candidate features for future design and implementation.
+Candidate features for future design and implementation. Completed features are documented in their own pages.
 
 ---
 
 ## Chunking
-
-### Token-Aware Splitting
-**Package:** `Rag.NET` (core)
-
-Split text by token count (using `Microsoft.ML.Tokenizers`) rather than character count. `FixedSizeChunking` is currently character-based, which can produce chunks that exceed embedding model token limits on dense text like code or URLs.
-
-**Why:** Embedding models and LLM context windows have token limits, not character limits.
-
----
-
-### Header-Aware Markdown / HTML Splitting
-**Package:** `Rag.NET` (core)
-
-Split Markdown at header boundaries and attach the full header hierarchy (`H1`, `H2`, `H3`) as chunk metadata. Likewise for HTML by heading elements. Retrieved chunks carry structural context usable for display or metadata filtering.
-
-**Why:** Rag.NET's Markdown parser does not propagate heading context into chunk metadata.
-
----
 
 ### Hierarchical Merger (Regex-Driven Tree Chunking)
 **Package:** `Rag.NET` (core)
@@ -75,69 +57,6 @@ Pre-built chunking templates for common vertical document types:
 
 ## Retrieval
 
-### Multi-Query Retrieval
-**Package:** `Rag.NET` (core)
-
-Use an LLM to generate several alternative phrasings of the user's question (typically 3–5 variants), run each against the vector store, then deduplicate and merge results. Addresses the single-embedding limitation: one vector captures only one semantic angle of a question.
-
-**Why:** Significantly broadens recall for ambiguous or multi-faceted questions at the cost of one extra LLM call.
-
----
-
-### Hypothetical Document Embeddings (HyDE)
-**Package:** `Rag.NET` (core)
-
-Use an LLM to generate a hypothetical "ideal answer document" for the query, embed that hypothetical document, and use the resulting vector for similarity search. Since the hypothetical document lives in the same embedding space as indexed content, it retrieves far more relevant passages than embedding the short query itself.
-
-**Why:** Especially powerful for asymmetric retrieval (short query vs. long document).
-
----
-
-### Parent-Document / Small-Chunk Retrieval
-**Package:** `Rag.NET` (core)
-
-Index small chunks for precise embedding matching but return their larger parent documents to the LLM for answer generation. Resolves the tension between embedding precision (favors small chunks) and LLM context richness (favors large context). Requires storing both a fine-grained child index and a coarser parent store.
-
-**Why:** Improves answer quality by giving the LLM richer context while keeping retrieval precision high.
-
----
-
-### BM25 / In-Memory Keyword Retrieval
-**Package:** `Rag.NET` (core)
-
-A lightweight in-memory BM25/TF-IDF retriever that operates without a vector store. Enables hybrid search for stores lacking native BM25 (Qdrant, pgvector) and serves as a fast, zero-infrastructure retrieval baseline for unit tests and small deployments.
-
-**Why:** Enables hybrid retrieval on all vector stores, not just Azure AI Search.
-
----
-
-### BM25 Synonym Expansion
-**Package:** `Rag.NET` (core)
-
-Augment BM25 retrieval with runtime-updatable domain-specific synonym dictionaries (e.g., "MI" → "myocardial infarction", "k8s" → "kubernetes"). Synonyms receive a configurable boost weight lower than the original token. Dictionary updatable at runtime without restart.
-
-**Why:** Domain terminology mismatches silently reduce BM25 recall in specialised corpora (medical, legal, engineering).
-
----
-
-### Ensemble / Reciprocal Rank Fusion (RRF)
-**Package:** `Rag.NET` (core)
-
-Combine results from multiple retrievers (e.g., BM25 + dense vector) using Reciprocal Rank Fusion with configurable per-retriever weights. Unlike Rag.NET's current hybrid search (tied to Azure AI Search), RRF works across all vector stores and allows mixing any two retrieval strategies.
-
-**Why:** RRF consistently outperforms individual retrievers by combining rank signals.
-
----
-
-### MMR (Maximal Marginal Relevance)
-**Package:** `Rag.NET` (core)
-
-Select retrieved documents that are both relevant to the query and maximally dissimilar from each other. Reduces redundancy in retrieved context — especially important when a corpus has many near-duplicate chunks. Operates as an optional retrieval mode alongside existing score-only ranking.
-
-**Why:** Rag.NET currently returns by score only, which can yield repetitive context.
-
----
-
 ### Self-Query / Metadata Filter Generation
 **Package:** `Rag.NET` (core)
 
@@ -165,6 +84,24 @@ Combine semantic similarity score with a recency decay factor. Fresher documents
 
 ---
 
+### BM25 Synonym Expansion
+**Package:** `Rag.NET` (core)
+
+Augment BM25 retrieval with runtime-updatable domain-specific synonym dictionaries (e.g., "MI" → "myocardial infarction", "k8s" → "kubernetes"). Synonyms receive a configurable boost weight lower than the original token. Dictionary updatable at runtime without restart.
+
+**Why:** Domain terminology mismatches silently reduce BM25 recall in specialised corpora (medical, legal, engineering).
+
+---
+
+### Ensemble / Reciprocal Rank Fusion (RRF)
+**Package:** `Rag.NET` (core)
+
+Combine results from multiple retrievers (e.g., BM25 + dense vector) using Reciprocal Rank Fusion with configurable per-retriever weights. Unlike Rag.NET's current hybrid search (tied to Azure AI Search), RRF works across all vector stores and allows mixing any two retrieval strategies.
+
+**Why:** RRF consistently outperforms individual retrievers by combining rank signals.
+
+---
+
 ### RAPTOR — Recursive Abstractive Tree Summarization
 **Package:** `Rag.NET` (core)
 
@@ -183,34 +120,7 @@ After initial retrieval, use an LLM to judge whether the retrieved information i
 
 ---
 
-## Post-Retrieval: Reranking & Compression
-
-### Lost-in-the-Middle Reordering
-**Package:** `Rag.NET` (core)
-
-Reorder retrieved documents so the most relevant appear at the beginning and end of the context window, exploiting the known "lost-in-the-middle" phenomenon (Liu et al. 2023) where LLMs pay less attention to content in the middle of long contexts. Zero LLM calls, zero cost.
-
-**Why:** Trivially cheap transformation that consistently improves answer quality on multi-document retrieval.
-
----
-
-### Redundancy / Clustering Filter
-**Package:** `Rag.NET` (core)
-
-Remove near-duplicate retrieved chunks by computing pairwise embedding similarity and suppressing documents too similar to an already-selected one. Reduces context bloat and token consumption without any LLM call.
-
-**Why:** Corpora with many near-duplicate passages waste context window space and degrade answer quality.
-
----
-
-### Cross-Encoder Reranking
-**Package:** `Rag.NET` (core)
-
-After initial vector retrieval (e.g., top-50 candidates), re-score each (query, document) pair with a cross-encoder model that jointly encodes both, producing a much more accurate relevance score. Return only the top-K after reranking. Pluggable via `IDocumentReranker` abstraction with local-model and hosted-API implementations.
-
-**Why:** Bi-encoder similarity (used at retrieval time) trades accuracy for speed; cross-encoder reranking recovers accuracy at the final step.
-
----
+## Post-Retrieval
 
 ### Cohere Rerank
 **Package:** `Rag.NET.Reranking.Cohere`
@@ -253,36 +163,6 @@ Run an LLM over each ingested document to generate representative Q&A pairs or s
 ---
 
 ## Indexing Infrastructure
-
-### Search Result Caching
-**Package:** `Rag.NET` (core)
-
-Two-level opt-in caching for `RetrieveAsync` / `AskAsync` to reduce embedding and vector search costs on repeated queries.
-
-- `CacheEmbedding` — cache the query embedding vector; skip re-embedding identical queries
-- `CacheSearchResult` — cache the full result list; skip the vector store round-trip entirely
-
-```csharp
-new RetrievalOptions
-{
-    CachingStrategy = new SearchCachingStrategy(SearchCachingStrategyType.CacheSearchResult, TimeSpan.FromMinutes(5))
-}
-```
-
-Backing store: `IMemoryCache` by default; pluggable via `ISearchCache` for distributed caches (Redis, etc.).
-
-**Why:** Repeated identical queries are expensive. Caching avoids redundant embedding and vector search calls without changing the public API.
-
----
-
-### SQLite Persistence for In-Memory Indexes
-**Package:** `Rag.NET` (core)
-
-Persist the `InMemoryBm25Index` and parent chunk store to a local SQLite file so they survive application restarts without re-ingestion. Backed by `Microsoft.Data.Sqlite`. On startup: load from SQLite. On ingest/delete: write-through to SQLite alongside the vector store. Single file path configuration.
-
-**Why:** Both the BM25 index and parent chunk store are currently process-scoped and lost on restart. For large corpora where re-ingestion is expensive (hours of embedding API calls), this avoids the mandatory re-ingest-on-startup cost.
-
----
 
 ### Content-Hash Record Manager
 **Package:** `Rag.NET` (core)
@@ -404,24 +284,6 @@ Build a hierarchical JSON tree from document content representing the document's
 
 ## Management & Observability
 
-### Progress Reporting via IProgress&lt;T&gt;
-**Package:** `Rag.NET` (core)
-
-Surface fine-grained ingestion progress to callers via `IProgress<RagProgress>` alongside existing `ILogger` telemetry.
-
-```csharp
-record RagProgress(RagProgressStage Stage, string Message, int? Current, int? Total, string? DocumentId);
-
-Task<IngestionResult> IngestAsync(Stream content, DocumentMetadata metadata,
-    IngestionOptions? options = null,
-    IProgress<RagProgress>? progress = null,
-    CancellationToken cancellationToken = default);
-```
-
-**Why:** `ILogger` is infrastructure-facing. `IProgress<T>` is caller-facing — enables CLI progress bars, SignalR updates, and test assertions.
-
----
-
 ### Data Management API
 **Package:** `Rag.NET` (core)
 
@@ -453,53 +315,7 @@ Persistent episodic memory store separate from chat history: messages stored in 
 
 Use an LLM to grade whether a predicted answer is correct given a reference answer or context document. Supports arbitrary rubric criteria (correctness, relevance, conciseness, coherence, harmlessness). Exposed as `IRagEvaluator` returning `EvaluationResult` (score + reasoning).
 
-**Why:** Rag.NET has no evaluation infrastructure, making it impossible to measure answer quality in CI or experimentation.
-
----
-
-### Embedding Distance Evaluation
-**Package:** `Rag.NET.Evaluation`
-
-Score semantic similarity between a predicted answer and a reference answer using cosine distance in embedding space. Lightweight, model-free quality signal suitable for regression testing.
-
-**Why:** Captures paraphrase equivalence without an LLM call — a fast smoke test for answer quality.
-
----
-
-## Testing Infrastructure
-
-### Azure AI Search Integration Tests via Simulator
-**Project:** `tests/Rag.NET.AzureAISearch.Tests`
-
-Replace the env-var-gated `AzureAISearchVectorStoreTests` (which silently skips when `AZURE_SEARCH_ENDPOINT`/`AZURE_SEARCH_API_KEY` are absent) with a [Testcontainers](https://dotnet.testcontainers.org/) fixture backed by the [azure-ai-search-simulator](https://github.com/Ellerbach/azure-ai-search-simulator) Docker image (`ghcr.io/ellerbach/azure-ai-search-simulator:latest`).
-
-The simulator exposes a compatible Azure AI Search REST API surface (index management, document upload, vector search, hybrid search, synonym maps) and works directly with the official `Azure.Search.Documents` SDK. No Azure subscription required.
-
-```csharp
-// Before: silently skips in CI
-if (_endpoint is null || _apiKey is null) return;
-
-// After: always runs via Testcontainers
-await using var container = new AzureAISearchSimulatorBuilder()
-    .WithVectorDimensions(3)
-    .Build();
-await container.StartAsync();
-var sut = new AzureAISearchVectorStore(container.GetEndpointUri(), indexName,
-    new AzureKeyCredential(container.GetApiKey()), vectorDimensions: 3);
-```
-
-**Why:** Rag.NET's pgvector and Qdrant integration tests already run fully locally via Testcontainers. Azure AI Search is the only vector store that requires a live cloud service — closing this gap makes CI green on every machine and PR without any Azure credentials.
-
----
-
-## Infrastructure & Interoperability
-
-### MCP Server
-**Package:** `Rag.NET.Mcp`
-
-Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelcontextprotocol.io/) tools, making Rag.NET consumable by any MCP-compatible LLM host (Claude Desktop, LM Studio, Cursor, etc.) without custom integration code.
-
-**Why:** MCP is becoming the de-facto standard for wiring RAG backends into LLM tool-use.
+**Why:** Rag.NET has no evaluation infrastructure beyond embedding distance, making it impossible to measure answer quality in CI or experimentation.
 
 ---
 
@@ -507,6 +323,7 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 
 | Done | Feature | Complexity | Dependencies |
 |------|---------|------------|--------------|
+| [x] | Azure AI Search Tests via Simulator | Low | `Testcontainers` + simulator Docker image |
 | [ ] | Cohere Rerank | Low | Cohere API key |
 | [x] | Embedding Distance Evaluation | Low | `IEmbeddingGenerator` |
 | [x] | Header-Aware Markdown/HTML Splitting | Low | Existing Markdown parser |
@@ -521,6 +338,7 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [x] | Cross-Encoder Reranking | Medium | Model or API |
 | [ ] | Data Management API | Medium | `IVectorStore` extension |
 | [ ] | Data Provider Abstraction | Medium | Existing `IDocumentParser` |
+| [x] | Decorator Pipeline Refactoring | Medium | None |
 | [ ] | Hierarchical Merger | Medium | None |
 | [x] | HyDE | Medium | `IChatClient` |
 | [ ] | LLM-as-Judge Evaluation | Medium | `IChatClient` |
@@ -545,5 +363,3 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [ ] | RAPTOR | High | UMAP + GMM + `IChatClient` |
 | [ ] | Self-Query Filtering | High | `IChatClient` + schema |
 | [ ] | GraphRAG | Very High | Graph DB + `IChatClient` |
-| [x] | Azure AI Search Tests via Simulator | Low | `Testcontainers` + simulator Docker image |
-| [x] | Decorator Pipeline Refactoring | Medium | None |
