@@ -96,7 +96,9 @@ public class MmrSelectorTests
     public async Task SelectAsync_Lambda0_SelectsByDiversityOnly()
     {
         // lambda=0.0 → pure diversity.
-        // After selecting A (first pick), B is orthogonal (most diverse), C is identical to A.
+        // First iteration: no prior selected, penalty term is 0 for all candidates,
+        // so all score 0.0 and the first element in the remaining array (A) wins the tie.
+        // After selecting A, B is orthogonal (sim_A=0.0 → least penalised), C is identical to A (sim_A=1.0 → most penalised).
         // TopK=2 → [A, B].
         var candidates = new[]
         {
@@ -126,10 +128,13 @@ public class MmrSelectorTests
     public async Task SelectAsync_DefaultLambda_BalancesRelevanceAndDiversity()
     {
         // lambda=0.5. Query=[1,0].
-        // A=[1,0] (sim_q=1.0) — selected first.
-        // After A is selected: B=[0,1] (sim_q=0.0, sim_A=0.0), C=[0.9,√0.19] (sim_q≈0.9, sim_A≈0.9).
-        // MMR(B)=0.5*0.0-0.5*0.0=0.0, MMR(C)=0.5*0.9-0.5*0.9=0.0. Tied → B wins (first in list).
-        // TopK=2 → [A, B].
+        // A=[0.8, 0.6] (sim_q=0.8) — selected first (highest relevance).
+        // After A is selected:
+        //   B=[0.6, -0.8]: sim_q=0.6, sim_A=0.8*0.6+0.6*(-0.8)=0.48-0.48=0.0
+        //     → MMR(B) = 0.5*0.6 - 0.5*0.0 =  0.30
+        //   C=[0.6,  0.8]: sim_q=0.6, sim_A=0.8*0.6+0.6*0.8=0.48+0.48=0.96
+        //     → MMR(C) = 0.5*0.6 - 0.5*0.96 = -0.18
+        // B is strictly better than C → TopK=2 → [A, B].
         var candidates = new[]
         {
             MakeResult("A"),
@@ -139,10 +144,10 @@ public class MmrSelectorTests
         var embedder = MakeEmbedder(
             ["query", "A", "B", "C"],
             [
-                new float[] { 1f, 0f },
-                new float[] { 1f, 0f },
-                new float[] { 0f, 1f },
-                new float[] { 0.9f, (float)Math.Sqrt(1 - 0.81) },
+                new float[] { 1f,   0f   },   // query
+                new float[] { 0.8f, 0.6f },   // A
+                new float[] { 0.6f, -0.8f },  // B — orthogonal to A, moderate relevance
+                new float[] { 0.6f, 0.8f },   // C — similar to A, same relevance as B
             ]);
 
         var result = await MmrSelector.SelectAsync(
