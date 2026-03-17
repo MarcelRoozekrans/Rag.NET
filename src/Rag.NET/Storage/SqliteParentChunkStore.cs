@@ -8,7 +8,7 @@ namespace Rag.NET.Storage;
 /// Uses the same <c>rag_metadata</c> and collection-name stale guard as <see cref="SqliteBm25Index"/>.
 /// The two stores can share a database file.
 /// </summary>
-public sealed class SqliteParentChunkStore : IParentChunkStore, IDisposable
+public sealed class SqliteParentChunkStore : IParentChunkStore
 {
     private readonly InMemoryParentChunkStore _memory = new();
     private readonly string _dbPath;
