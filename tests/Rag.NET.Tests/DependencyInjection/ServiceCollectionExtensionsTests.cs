@@ -467,6 +467,27 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public void AddRagNet_WithContentHashRecordManager_RegistersIContentHashStore()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"ragnet-di-{Guid.NewGuid():N}.db");
+        try
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton(Substitute.For<IVectorStore>());
+            services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+            services.AddRagNet(b => b.UseContentHashRecordManager(dbPath));
+
+            using var sp = services.BuildServiceProvider();
+            var store = sp.GetService<IContentHashStore>();
+            Assert.NotNull(store);
+        }
+        finally
+        {
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
     public async Task AddRagNet_WithParentDocumentRetrieval_OptedOut_ReturnsChildText()
     {
         var services = new ServiceCollection();
