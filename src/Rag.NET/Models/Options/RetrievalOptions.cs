@@ -11,6 +11,27 @@ public sealed record RetrievalOptions
     public float RedundancyThreshold { get; init; } = 0.95f;
 
     /// <summary>
+    /// Set to <see langword="true"/> to enable Maximal Marginal Relevance selection for this call.
+    /// Requires <c>RagBuilder.UseMmr()</c>. Unlike most retrieval features, MMR is opt-in per call.
+    /// Has no effect when <c>UseMmr()</c> is not registered.
+    /// </summary>
+    public bool UseMmr { get; init; } = false;
+
+    /// <summary>
+    /// Lambda parameter for MMR: weight between relevance and diversity.
+    /// <c>1.0</c> = pure relevance (no diversity), <c>0.0</c> = pure diversity (ignores relevance).
+    /// Default <c>0.5</c> balances both.
+    /// </summary>
+    public float MmrLambda { get; init; } = 0.5f;
+
+    /// <summary>
+    /// Number of candidates to fetch before MMR selection.
+    /// Defaults to <see cref="TopK"/> * 3 when <see langword="null"/>.
+    /// Ignored when <see cref="UseMmr"/> is <see langword="false"/>.
+    /// </summary>
+    public int? MmrCandidateCount { get; init; }
+
+    /// <summary>
     /// Set to <see langword="false"/> to skip multi-query expansion for this call,
     /// even when <see cref="Rag.NET.Abstractions.IQueryExpander"/> is registered in DI.
     /// Has no effect when no expander is registered.
