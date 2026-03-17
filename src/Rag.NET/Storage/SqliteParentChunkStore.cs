@@ -64,6 +64,7 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
     {
         if (_disposed) return;
         _disposed = true;
+        _memory.Dispose();
         _initLock.Dispose();
     }
 
