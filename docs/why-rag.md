@@ -1,3 +1,9 @@
+---
+id: why-rag
+title: Why RAG?
+sidebar_position: 2
+---
+
 # Why RAG?
 
 Large Language Models have strong language understanding but a fixed knowledge cutoff and no access to your private data. Retrieval-Augmented Generation (RAG) bridges this gap by retrieving relevant passages from a document corpus at query time and injecting them into the model's context window before generation. The model then answers using evidence, not just its weights — reducing hallucinations and making answers auditable by pointing to source chunks.

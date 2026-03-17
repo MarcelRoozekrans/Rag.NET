@@ -1,3 +1,9 @@
+---
+id: extending
+title: Extending Rag.NET
+sidebar_position: 9
+---
+
 # Extending Rag.NET
 
 Rag.NET is built around three extension points — `IDocumentParser`, `IVectorStore`, and `IChunkingStrategy` — that let you plug in custom implementations without touching pipeline code. Each interface is small and purposeful. This page walks through a concrete implementation of each.

@@ -1,3 +1,9 @@
+---
+id: ingestion
+title: Ingestion
+sidebar_position: 2
+---
+
 # Ingestion
 
 Ingestion is the process of taking a raw document, converting it to searchable text, splitting it into chunks, generating embeddings, and writing everything to the vector store. Understanding each sub-stage helps you choose the right parser, configure metadata correctly, and track progress in production.

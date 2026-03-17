@@ -1,3 +1,9 @@
+---
+id: chunking
+title: Chunking
+sidebar_position: 3
+---
+
 # Chunking
 
 Embedding models have a finite token budget (typically 512–8192 tokens). If a document section exceeds that budget the model silently truncates or errors. Chunking divides each `DocumentSection` into `TextChunk` objects that fit within the budget while preserving enough context for retrieval to work. Choosing the wrong strategy or size is the most common cause of poor RAG quality.

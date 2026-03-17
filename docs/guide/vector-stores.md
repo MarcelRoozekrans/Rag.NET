@@ -1,3 +1,9 @@
+---
+id: vector-stores
+title: Vector Stores
+sidebar_position: 6
+---
+
 # Vector Stores
 
 The vector store is the persistence layer for embedded chunks. Rag.NET ships three implementations, each registered via a fluent extension method on `RagBuilder`. The interface is designed to be swapped without changing any pipeline code.

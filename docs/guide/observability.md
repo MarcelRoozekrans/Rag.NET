@@ -1,3 +1,9 @@
+---
+id: observability
+title: Observability
+sidebar_position: 8
+---
+
 # Observability
 
 Production RAG pipelines need structured logging, distributed traces, and resilience against transient failures in external APIs. Rag.NET integrates with the standard .NET observability stack — `Microsoft.Extensions.Logging`, OpenTelemetry `ActivitySource`, and Polly — so you can wire up your existing infrastructure without additional adapters.

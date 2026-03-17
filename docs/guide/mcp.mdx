@@ -1,3 +1,12 @@
+---
+id: mcp
+title: MCP Server
+sidebar_position: 10
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # MCP Server
 
 Rag.NET can be exposed as a [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server, making it consumable by any MCP-compatible host — Claude Desktop, Cursor, LM Studio, and others — without custom integration code.
@@ -146,8 +155,9 @@ ragnet-mcp
 ragnet-mcp --transport http --port 5050 --api-key your-secret
 ```
 
-!!! note
-    The tool is a host scaffold — `IRagPipeline` is **not** pre-configured. Add your embedding, vector store, and chat client registrations to the generated `Program.cs` before running.
+:::note
+The tool is a host scaffold — `IRagPipeline` is **not** pre-configured. Add your embedding, vector store, and chat client registrations to the generated `Program.cs` before running.
+:::
 
 ---
 
@@ -202,8 +212,8 @@ Add Rag.NET as an MCP server in Claude Desktop's config file.
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
-=== "In-process (stdio)"
-
+<Tabs>
+  <TabItem value="in-process" label="In-process (stdio)" default>
     ```json
     {
       "mcpServers": {
@@ -215,9 +225,8 @@ Add Rag.NET as an MCP server in Claude Desktop's config file.
       }
     }
     ```
-
-=== "dotnet global tool (stdio)"
-
+  </TabItem>
+  <TabItem value="global-tool" label="dotnet global tool (stdio)">
     ```json
     {
       "mcpServers": {
@@ -231,9 +240,8 @@ Add Rag.NET as an MCP server in Claude Desktop's config file.
       }
     }
     ```
-
-=== "HTTP backend"
-
+  </TabItem>
+  <TabItem value="http" label="HTTP backend">
     ```json
     {
       "mcpServers": {
@@ -246,6 +254,8 @@ Add Rag.NET as an MCP server in Claude Desktop's config file.
       }
     }
     ```
+  </TabItem>
+</Tabs>
 
 ---
 

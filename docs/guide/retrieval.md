@@ -1,3 +1,9 @@
+---
+id: retrieval
+title: Retrieval
+sidebar_position: 4
+---
+
 # Retrieval
 
 Retrieval is the step that determines answer quality more than any other. A well-configured retrieval layer surfaces the right chunks for a given query; a poorly configured one buries them. This page covers `RetrievalOptions`, semantic search, hybrid BM25+vector search, multi-query retrieval, metadata filtering, and the `RagOptions` properties that mirror these settings for `AskAsync`.

@@ -1,3 +1,9 @@
+---
+id: post-retrieval
+title: Post-Retrieval
+sidebar_position: 5
+---
+
 # Post-Retrieval
 
 After the vector store returns a ranked list of chunks, three optional post-processors can improve the quality of what the LLM receives. All are controlled per-call via flags on `RetrievalOptions`. They run in a fixed order: redundancy filtering first, then cross-encoder reranking, then Lost-in-the-Middle reordering.

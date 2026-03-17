@@ -1,3 +1,11 @@
+---
+id: index
+title: Rag.NET Documentation
+sidebar_label: Home
+sidebar_position: 1
+slug: /
+---
+
 # Rag.NET Documentation
 
 Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .NET, built on [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai-preview/) abstractions. These docs cover every layer from first setup to production-grade extensions.

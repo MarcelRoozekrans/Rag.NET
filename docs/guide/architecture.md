@@ -1,3 +1,9 @@
+---
+id: architecture
+title: Architecture
+sidebar_position: 1
+---
+
 # Architecture
 
 Understanding the internal structure of Rag.NET helps you choose the right extension points and diagnose unexpected behaviour. The library is built around three internal interfaces — `IRetriever`, `IIngestor`, `IAnswerEngine` — composed via the decorator pattern and exposed through a single public facade, `IRagPipeline`.

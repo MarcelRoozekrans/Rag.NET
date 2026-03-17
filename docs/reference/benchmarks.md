@@ -1,3 +1,9 @@
+---
+id: benchmarks
+title: Benchmarks
+sidebar_position: 1
+---
+
 # Rag.NET Benchmarks
 
 Measured with [BenchmarkDotNet](https://benchmarkdotnet.org/) v0.15.8 on .NET 10.0.4, Windows 11 (25H2).

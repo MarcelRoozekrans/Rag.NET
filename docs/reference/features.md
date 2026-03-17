@@ -1,3 +1,9 @@
+---
+id: features
+title: Feature Backlog
+sidebar_position: 2
+---
+
 # Rag.NET Feature Backlog
 
 Candidate features for future design and implementation.

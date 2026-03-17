@@ -1,3 +1,9 @@
+---
+id: evaluation
+title: Evaluation
+sidebar_position: 7
+---
+
 # Evaluation
 
 Evaluating RAG output quality without ground-truth labels is hard. `Rag.NET.Evaluation` provides a lightweight, LLM-free approach: it measures how semantically close a predicted answer is to a reference answer using cosine similarity of their embeddings. This gives a reproducible, fast score that correlates well with human judgement for factual Q&A tasks.
