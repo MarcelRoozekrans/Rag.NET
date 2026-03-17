@@ -129,4 +129,37 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Equal("id-1", capturedMetadata[0].DocumentId);
         Assert.Equal("report.pdf", capturedMetadata[0].FileName);
     }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_IngestThrows_AppendsToErrorsAndContinues()
+    {
+        // id-1 throws, id-2 succeeds — both must be attempted
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(),
+                Arg.Is<DocumentMetadata>(m => string.Equals(m.DocumentId, "id-1", StringComparison.Ordinal)),
+                Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IngestionResult>(new InvalidOperationException("simulated failure")));
+
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(),
+                Arg.Is<DocumentMetadata>(m => string.Equals(m.DocumentId, "id-2", StringComparison.Ordinal)),
+                Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new IngestionResult { DocumentId = "id-2", ChunksStored = 1 });
+
+        var provider = MakeProvider(
+            ("id-1", "fail.txt", "hello", null),
+            ("id-2", "ok.txt",   "world", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, "prov",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Ingested);                                     // id-2 ingested
+        Assert.Equal(2, result.Ingested + result.Skipped); // both entries were attempted
+        Assert.Single(result.Errors);
+        Assert.Contains("id-1", result.Errors[0], StringComparison.Ordinal); // error message names the entry
+    }
 }
