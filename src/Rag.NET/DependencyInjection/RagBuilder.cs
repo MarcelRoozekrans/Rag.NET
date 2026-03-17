@@ -181,6 +181,28 @@ public sealed class RagBuilder(IServiceCollection services)
     }
 
     /// <summary>
+    /// Registers SQLite-backed persistence for <see cref="IBm25Index"/> and <see cref="IParentChunkStore"/>.
+    /// On startup, both stores load persisted data from <paramref name="dbPath"/>.
+    /// Every Add/Remove writes through to SQLite synchronously.
+    /// </summary>
+    /// <param name="dbPath">Path to the SQLite database file. Created if it does not exist.</param>
+    /// <param name="collectionName">
+    /// Optional stale-data guard. If the registered name differs from what is stored in the database,
+    /// all persisted data is wiped before loading. Change this value when replacing the vector store.
+    /// Omit to skip the stale guard.
+    /// </param>
+    public RagBuilder UseSqlitePersistence(string dbPath, string? collectionName = null)
+    {
+        Services.AddSingleton<SqliteBm25Index>(_ => new SqliteBm25Index(dbPath, collectionName));
+        Services.AddSingleton<IBm25Index>(sp => sp.GetRequiredService<SqliteBm25Index>());
+
+        Services.AddSingleton<SqliteParentChunkStore>(_ => new SqliteParentChunkStore(dbPath, collectionName));
+        Services.AddSingleton<IParentChunkStore>(sp => sp.GetRequiredService<SqliteParentChunkStore>());
+
+        return this;
+    }
+
+    /// <summary>
     /// Adds a Polly resilience pipeline named <c>"rag-net"</c> that wraps embedding and vector-store calls.
     /// When no <paramref name="configure"/> delegate is provided, a default exponential back-off retry
     /// (3 attempts, 1 s base delay, jitter) is applied.
