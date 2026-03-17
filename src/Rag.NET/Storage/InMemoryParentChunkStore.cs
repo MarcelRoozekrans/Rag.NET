@@ -12,6 +12,8 @@ public sealed class InMemoryParentChunkStore : IParentChunkStore
 {
     private readonly ConcurrentDictionary<string, string> _store = new(StringComparer.Ordinal);
 
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     public void Add(string documentId, int parentChunkIndex, string text)
     {
         var key = GetParentKey(documentId, parentChunkIndex);
