@@ -31,7 +31,7 @@ public static class RagPipelineExtensions
         var deleted = 0;
         var errors = new List<string>();
 
-        IReadOnlySet<string> knownIds = hashStore is not null
+        IReadOnlySet<string> knownIds = hashStore is not null && cleanupMode == CleanupMode.Full
             ? await hashStore.GetAllIdsAsync(providerId, cancellationToken).ConfigureAwait(false)
             : (IReadOnlySet<string>)new HashSet<string>(StringComparer.Ordinal);
 
