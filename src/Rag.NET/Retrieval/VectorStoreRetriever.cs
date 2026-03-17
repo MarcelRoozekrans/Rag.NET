@@ -16,7 +16,7 @@ namespace Rag.NET.Retrieval;
 public sealed class VectorStoreRetriever(
     IVectorStore vectorStore,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-    InMemoryBm25Index bm25Index,
+    IBm25Index bm25Index,
     ILogger? logger = null) : IRetriever
 {
     private readonly ILogger _logger = logger ?? NullLogger.Instance;

@@ -11,7 +11,6 @@ using Rag.NET.MultiQuery;
 using Rag.NET.Pipeline;
 using Rag.NET.Retrieval;
 using Rag.NET.Search;
-using Rag.NET.Storage;
 
 namespace Rag.NET.DependencyInjection;
 
@@ -35,8 +34,8 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IVectorStore>(),
             sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
             sp.GetRequiredService<ChunkingOptions>(),
-            sp.GetRequiredService<InMemoryBm25Index>(),
-            sp.GetService<InMemoryParentChunkStore>(),
+            sp.GetRequiredService<IBm25Index>(),
+            sp.GetService<IParentChunkStore>(),
             sp.GetService<ParentDocumentOptions>()));
 
         services.AddSingleton<IRetriever>(sp => BuildRetrieverChain(sp));
@@ -55,6 +54,9 @@ public static class ServiceCollectionExtensions
         var builder = new RagBuilder(services);
         configure?.Invoke(builder);
 
+        // Default IBm25Index → InMemoryBm25Index (can be overridden by UseSqlitePersistence)
+        services.TryAddSingleton<IBm25Index>(sp => sp.GetRequiredService<InMemoryBm25Index>());
+
         return services;
     }
 
@@ -62,13 +64,13 @@ public static class ServiceCollectionExtensions
     {
         var store = sp.GetRequiredService<IVectorStore>();
         var embedder = sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();
-        var bm25Index = sp.GetRequiredService<InMemoryBm25Index>();
+        var bm25Index = sp.GetRequiredService<IBm25Index>();
 
         IRetriever chain = new VectorStoreRetriever(store, embedder, bm25Index);
         chain = WrapWithQueryDecorators(chain, sp);
 
         var parentDocOptions = sp.GetService<ParentDocumentOptions>();
-        var parentStore = sp.GetService<InMemoryParentChunkStore>();
+        var parentStore = sp.GetService<IParentChunkStore>();
         if (parentDocOptions is not null && parentStore is not null)
         {
             chain = new ParentDocumentRetriever(

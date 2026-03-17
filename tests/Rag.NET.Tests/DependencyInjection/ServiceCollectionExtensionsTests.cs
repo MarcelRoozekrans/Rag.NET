@@ -286,7 +286,7 @@ public class ServiceCollectionExtensionsTests
         var sp = services.BuildServiceProvider();
 
         // Manually add parent text to the store
-        var parentStore = sp.GetRequiredService<Rag.NET.Storage.InMemoryParentChunkStore>();
+        var parentStore = sp.GetRequiredService<Rag.NET.Abstractions.IParentChunkStore>();
         parentStore.Add("doc1", 0, "large parent context text");
 
         var pipeline = sp.GetRequiredService<IRagPipeline>();
@@ -397,7 +397,7 @@ public class ServiceCollectionExtensionsTests
         services.AddRagNet(b => b.UseParentDocumentRetrieval());
 
         var sp = services.BuildServiceProvider();
-        var parentStore = sp.GetRequiredService<Rag.NET.Storage.InMemoryParentChunkStore>();
+        var parentStore = sp.GetRequiredService<Rag.NET.Abstractions.IParentChunkStore>();
         parentStore.Add("doc1", 0, "large parent context text");
 
         var pipeline = sp.GetRequiredService<IRagPipeline>();

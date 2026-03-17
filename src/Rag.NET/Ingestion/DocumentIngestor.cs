@@ -3,7 +3,6 @@ using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
-using Rag.NET.Search;
 using Rag.NET.Storage;
 
 namespace Rag.NET.Ingestion;
@@ -17,8 +16,8 @@ public sealed class DocumentIngestor(
     IVectorStore vectorStore,
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     ChunkingOptions chunkingOptions,
-    InMemoryBm25Index bm25Index,
-    InMemoryParentChunkStore? parentStore = null,
+    IBm25Index bm25Index,
+    IParentChunkStore? parentStore = null,
     ParentDocumentOptions? parentOptions = null) : IIngestor
 {
     private int _nextBm25DocId;

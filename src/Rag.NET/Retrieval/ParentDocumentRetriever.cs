@@ -4,7 +4,6 @@ using Rag.NET.Abstractions;
 using Rag.NET.Logging;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
-using Rag.NET.Storage;
 
 namespace Rag.NET.Retrieval;
 
@@ -15,7 +14,7 @@ namespace Rag.NET.Retrieval;
 /// </summary>
 public sealed class ParentDocumentRetriever(
     IRetriever inner,
-    InMemoryParentChunkStore parentStore,
+    IParentChunkStore parentStore,
     ILogger? logger = null) : IRetriever
 {
     private const string ParentKeyMetadata = "_parentKey";

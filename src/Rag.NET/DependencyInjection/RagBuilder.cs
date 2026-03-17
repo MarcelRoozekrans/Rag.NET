@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Resilience;
 using Polly;
 using Polly.Retry;
@@ -143,6 +144,7 @@ public sealed class RagBuilder(IServiceCollection services)
         configure?.Invoke(options);
         Services.AddSingleton(options);
         Services.AddSingleton<InMemoryParentChunkStore>();
+        Services.TryAddSingleton<IParentChunkStore>(sp => sp.GetRequiredService<InMemoryParentChunkStore>());
         return this;
     }
 
