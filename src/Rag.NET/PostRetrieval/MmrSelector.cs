@@ -24,6 +24,8 @@ public static class MmrSelector
         ArgumentNullException.ThrowIfNull(candidates);
         ArgumentNullException.ThrowIfNull(embedder);
         ArgumentException.ThrowIfNullOrEmpty(query);
+        if (lambda is < 0f or > 1f)
+            throw new ArgumentOutOfRangeException(nameof(lambda), lambda, "Lambda must be between 0.0 and 1.0 inclusive.");
 
         if (candidates.Count == 0)
             return Array.Empty<SearchResult>();

@@ -29,7 +29,7 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
         ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureInitialised();
         _memory.Add(documentId, parentChunkIndex, text);
-        using var conn = OpenConnection();
+        using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT OR REPLACE INTO parent_chunks (document_id, parent_chunk_index, text)
@@ -53,10 +53,21 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
         ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureInitialised();
         _memory.Remove(documentId);
-        using var conn = OpenConnection();
+        using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM parent_chunks WHERE document_id = $docId";
         cmd.Parameters.AddWithValue("$docId", documentId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        EnsureInitialised();
+        await _memory.ClearAsync(cancellationToken).ConfigureAwait(false);
+        using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM parent_chunks";
         cmd.ExecuteNonQuery();
     }
 
@@ -92,15 +103,15 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
 
     private void InitialiseCore()
     {
-        using var conn = OpenConnection();
+        using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
         CreateSchema(conn);
 
         if (_collectionName is not null)
         {
-            var storedName = ReadMetadata(conn, "parent_chunks_collection_name");
+            var storedName = SqliteStoreHelper.ReadMetadata(conn, "parent_chunks_collection_name");
             if (storedName is not null && !string.Equals(storedName, _collectionName, StringComparison.Ordinal))
                 ClearData(conn);
-            WriteMetadata(conn, "parent_chunks_collection_name", _collectionName);
+            SqliteStoreHelper.WriteMetadata(conn, "parent_chunks_collection_name", _collectionName);
         }
 
         LoadIntoMemory(conn);
@@ -108,12 +119,9 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
 
     private static void CreateSchema(SqliteConnection conn)
     {
+        SqliteStoreHelper.EnsureMetadataTable(conn);
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            CREATE TABLE IF NOT EXISTS rag_metadata (
-                key   TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
             CREATE TABLE IF NOT EXISTS parent_chunks (
                 document_id        TEXT NOT NULL,
                 parent_chunk_index INTEGER NOT NULL,
@@ -121,23 +129,6 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
                 PRIMARY KEY (document_id, parent_chunk_index)
             );
             """;
-        cmd.ExecuteNonQuery();
-    }
-
-    private static string? ReadMetadata(SqliteConnection conn, string key)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT value FROM rag_metadata WHERE key = $key";
-        cmd.Parameters.AddWithValue("$key", key);
-        return cmd.ExecuteScalar() as string;
-    }
-
-    private static void WriteMetadata(SqliteConnection conn, string key, string value)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT OR REPLACE INTO rag_metadata (key, value) VALUES ($key, $value)";
-        cmd.Parameters.AddWithValue("$key", key);
-        cmd.Parameters.AddWithValue("$value", value);
         cmd.ExecuteNonQuery();
     }
 
@@ -155,12 +146,5 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
             _memory.Add(reader.GetString(0), reader.GetInt32(1), reader.GetString(2));
-    }
-
-    private SqliteConnection OpenConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        conn.Open();
-        return conn;
     }
 }

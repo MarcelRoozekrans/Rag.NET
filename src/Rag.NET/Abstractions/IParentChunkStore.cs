@@ -8,4 +8,7 @@ public interface IParentChunkStore : IDisposable, IAsyncDisposable
     void Add(string documentId, int parentChunkIndex, string text);
     bool TryGet(string documentId, int parentChunkIndex, out string? text);
     void Remove(string documentId);
+
+    /// <summary>Removes all entries from the store.</summary>
+    Task ClearAsync(CancellationToken cancellationToken = default);
 }

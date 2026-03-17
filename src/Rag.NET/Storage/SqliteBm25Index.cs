@@ -32,7 +32,7 @@ public sealed class SqliteBm25Index : IBm25Index
         ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureInitialised();
         _memory.Add(docId, chunk);
-        using var conn = OpenConnection();
+        using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT OR REPLACE INTO bm25_docs
@@ -55,7 +55,7 @@ public sealed class SqliteBm25Index : IBm25Index
         ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureInitialised();
         _memory.Remove(documentId);
-        using var conn = OpenConnection();
+        using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM bm25_docs WHERE document_id = $docId";
         cmd.Parameters.AddWithValue("$docId", documentId);
@@ -67,6 +67,17 @@ public sealed class SqliteBm25Index : IBm25Index
         ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureInitialised();
         return _memory.Search(query, topK);
+    }
+
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        EnsureInitialised();
+        await _memory.ClearAsync(cancellationToken).ConfigureAwait(false);
+        using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM bm25_docs";
+        cmd.ExecuteNonQuery();
     }
 
     public void Dispose()
@@ -101,17 +112,17 @@ public sealed class SqliteBm25Index : IBm25Index
 
     private void InitialiseCore()
     {
-        using var conn = OpenConnection();
+        using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
         CreateSchema(conn);
 
         if (_collectionName is not null)
         {
-            var storedName = ReadMetadata(conn, "bm25_collection_name");
+            var storedName = SqliteStoreHelper.ReadMetadata(conn, "bm25_collection_name");
             if (storedName is not null && !string.Equals(storedName, _collectionName, StringComparison.Ordinal))
             {
                 ClearData(conn);
             }
-            WriteMetadata(conn, "bm25_collection_name", _collectionName);
+            SqliteStoreHelper.WriteMetadata(conn, "bm25_collection_name", _collectionName);
         }
 
         LoadIntoMemory(conn);
@@ -119,12 +130,9 @@ public sealed class SqliteBm25Index : IBm25Index
 
     private static void CreateSchema(SqliteConnection conn)
     {
+        SqliteStoreHelper.EnsureMetadataTable(conn);
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            CREATE TABLE IF NOT EXISTS rag_metadata (
-                key   TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
             CREATE TABLE IF NOT EXISTS bm25_docs (
                 doc_id         INTEGER NOT NULL PRIMARY KEY,
                 document_id    TEXT NOT NULL,
@@ -135,23 +143,6 @@ public sealed class SqliteBm25Index : IBm25Index
                 metadata_json  TEXT NOT NULL DEFAULT '{}'
             );
             """;
-        cmd.ExecuteNonQuery();
-    }
-
-    private static string? ReadMetadata(SqliteConnection conn, string key)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT value FROM rag_metadata WHERE key = $key";
-        cmd.Parameters.AddWithValue("$key", key);
-        return cmd.ExecuteScalar() as string;
-    }
-
-    private static void WriteMetadata(SqliteConnection conn, string key, string value)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT OR REPLACE INTO rag_metadata (key, value) VALUES ($key, $value)";
-        cmd.Parameters.AddWithValue("$key", key);
-        cmd.Parameters.AddWithValue("$value", value);
         cmd.ExecuteNonQuery();
     }
 
@@ -188,12 +179,5 @@ public sealed class SqliteBm25Index : IBm25Index
 
         foreach (ref readonly var row in CollectionsMarshal.AsSpan(rows))
             _memory.Add(row.docId, row.chunk);
-    }
-
-    private SqliteConnection OpenConnection()
-    {
-        var conn = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
-        conn.Open();
-        return conn;
     }
 }

@@ -134,6 +134,21 @@ public sealed class InMemoryBm25Index : IBm25Index
         }
     }
 
+    public Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        _lock.EnterWriteLock();
+        try
+        {
+            _docs.Clear();
+            _postings.Clear();
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+        return Task.CompletedTask;
+    }
+
     public void Dispose() => _lock.Dispose();
 
     public ValueTask DisposeAsync()

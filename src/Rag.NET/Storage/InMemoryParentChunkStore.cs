@@ -34,6 +34,12 @@ public sealed class InMemoryParentChunkStore : IParentChunkStore
         return false;
     }
 
+    public Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        _store.Clear();
+        return Task.CompletedTask;
+    }
+
     public void Remove(string documentId)
     {
         var prefix = documentId + ":";
