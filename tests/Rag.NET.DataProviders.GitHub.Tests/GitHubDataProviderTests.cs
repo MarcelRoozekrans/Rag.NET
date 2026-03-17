@@ -117,4 +117,30 @@ public sealed class GitHubDataProviderTests
         // Verify full tree was NOT called
         await client.Git.Tree.DidNotReceive().GetRecursive(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
     }
+
+    [Fact]
+    public async Task GetFilesAsync_DeltaRun_SkipsRemovedFiles()
+    {
+        var compareResult = new CompareResult(
+            url: "", htmlUrl: "", permalinkUrl: "", diffUrl: "", patchUrl: "",
+            baseCommit: null!, mergeBaseCommit: null!,
+            status: "ahead", aheadBy: 2, behindBy: 0, totalCommits: 2,
+            commits: [],
+            files:
+            [
+                new GitHubCommitFile("kept.md", 0, 0, 0, "modified", "", "", "", "sha-kept", "", ""),
+                new GitHubCommitFile("deleted.md", 0, 0, 0, "removed", "", "", "", "sha-del", "", ""),
+            ]);
+
+        var tree = MakeTree();
+        var client = MakeClient(tree, compareResult);
+        var sut = new GitHubDataProvider(Owner, Repo, client,
+            new GitHubDataProviderOptions { LastIngestedCommitSha = "old-sha" });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal("kept.md", entries[0].Id);
+        Assert.DoesNotContain(entries, e => string.Equals(e.Id, "deleted.md", StringComparison.Ordinal));
+    }
 }
