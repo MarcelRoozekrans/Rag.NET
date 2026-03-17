@@ -216,3 +216,66 @@ See [benchmarks](benchmarks.md) for detailed measurements. Key takeaways:
 - Parsing and chunking of a 50 KB document completes in under 400 µs (mocked embedder).
 - Real ingestion time is dominated by the embedding API call, typically 50–500 ms per batch.
 - Use `Overwrite = true` and a stable `DocumentId` for incremental refreshes to avoid accumulating stale chunks.
+
+## Data providers
+
+For batch ingestion from a directory, website, or GitHub repository, use `IngestFromProviderAsync` instead of calling `IngestAsync` in a loop. It handles ETag/hash deduplication and optional cleanup automatically.
+
+### `LocalFilesDataProvider`
+
+```csharp
+var provider = new LocalFilesDataProvider("/data/docs", new LocalFilesOptions
+{
+    Extensions   = [".pdf", ".docx", ".md"],
+    SearchOption = SearchOption.AllDirectories,
+    Filter       = path => !path.Contains(".git"),
+});
+
+var result = await pipeline.IngestFromProviderAsync(provider, "my-corpus",
+    hashStore: sp.GetRequiredService<IContentHashStore>(),
+    cleanupMode: CleanupMode.Full);
+
+Console.WriteLine($"Ingested: {result.Ingested}, Skipped: {result.Skipped}, Deleted: {result.Deleted}");
+```
+
+### `SitemapDataProvider`
+
+```csharp
+var provider = new SitemapDataProvider("https://docs.example.com/sitemap.xml", httpClient);
+await pipeline.IngestFromProviderAsync(provider, "docs-site", hashStore: hashStore);
+```
+
+### `WebCrawlerDataProvider`
+
+```csharp
+var provider = new WebCrawlerDataProvider("https://docs.example.com", httpClient, new WebCrawlerOptions
+{
+    MaxDepth = 3,
+    MaxPages = 500,
+    SameDomain = true,
+    RespectRobotsTxt = true,
+});
+await pipeline.IngestFromProviderAsync(provider, "docs-site", hashStore: hashStore);
+```
+
+### `GitHubDataProvider`
+
+```csharp
+var provider = new GitHubDataProvider("my-org", "my-repo", githubClient, new GitHubDataProviderOptions
+{
+    Branch                = "main",
+    Extensions            = [".md", ".cs"],
+    Filter                = path => !path.StartsWith("docs/plans/"),
+    LastIngestedCommitSha = settings.LastIngestedCommitSha, // null on first run
+});
+await pipeline.IngestFromProviderAsync(provider, "github-repo", hashStore: hashStore);
+// Save result to settings for next run: settings.LastIngestedCommitSha = latestCommitSha;
+```
+
+### Registration
+
+```csharp
+services.AddRagNet(b => b
+    .UsePgVector(connectionString, vectorDimensions: 1536)
+    .UseContentHashRecordManager("ragnet-hashes.db"));
+```

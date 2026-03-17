@@ -334,10 +334,10 @@ Use an LLM to grade whether a predicted answer is correct given a reference answ
 | [ ] | Audio Transcription | Medium | `Whisper.net` |
 | [x] | BM25 Keyword Retrieval | Medium | None |
 | [ ] | BM25 Synonym Expansion | Medium | BM25 retriever |
-| [ ] | Content-Hash Record Manager | Medium | Persistence store |
+| [x] | Content-Hash Record Manager | Medium | Persistence store |
 | [x] | Cross-Encoder Reranking | Medium | Model or API |
 | [ ] | Data Management API | Medium | `IVectorStore` extension |
-| [ ] | Data Provider Abstraction | Medium | Existing `IDocumentParser` |
+| [x] | Data Provider Abstraction | Medium | Existing `IDocumentParser` |
 | [x] | Decorator Pipeline Refactoring | Medium | None |
 | [ ] | Hierarchical Merger | Medium | None |
 | [x] | HyDE | Medium | `IChatClient` |
@@ -351,7 +351,7 @@ Use an LLM to grade whether a predicted answer is correct given a reference answ
 | [x] | Search Result Caching | Medium | None |
 | [x] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
 | [ ] | Tag-Based Retrieval | Medium | Hybrid search |
-| [ ] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
+| [x] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
 | [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
 | [ ] | Deep Research Loop | High | `IChatClient` |
 | [ ] | Domain-Specific Chunking Templates | High | Per-domain logic |
