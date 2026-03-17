@@ -1,0 +1,80 @@
+using Rag.NET.Models;
+using Rag.NET.Storage;
+using Xunit;
+
+namespace Rag.NET.Tests.Storage;
+
+public class SqliteBm25IndexTests : IAsyncDisposable
+{
+    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"ragnet-test-{Guid.NewGuid():N}.db");
+    private SqliteBm25Index? _sut;
+
+    private SqliteBm25Index CreateSut(string collection = "test-coll")
+    {
+        _sut = new SqliteBm25Index(_dbPath, collection);
+        return _sut;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_sut is not null) await _sut.DisposeAsync();
+        if (File.Exists(_dbPath)) File.Delete(_dbPath);
+    }
+
+    private static TextChunk MakeChunk(string docId, int idx, string text) => new()
+    {
+        Text = text, DocumentId = docId, ChunkIndex = idx,
+    };
+
+    [Fact]
+    public async Task Add_ThenRestart_SearchFindsChunk()
+    {
+        var sut = CreateSut();
+        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        await sut.DisposeAsync();
+
+        // Simulate restart: create new instance pointing to same db
+        _sut = new SqliteBm25Index(_dbPath, "test-coll");
+        var results = _sut.Search("hello", topK: 5);
+        Assert.Single(results);
+        Assert.Equal("hello world", results[0].chunk.Text);
+    }
+
+    [Fact]
+    public async Task Remove_ThenRestart_SearchFindsNothing()
+    {
+        var sut = CreateSut();
+        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        sut.Remove("doc-1");
+        await sut.DisposeAsync();
+
+        _sut = new SqliteBm25Index(_dbPath, "test-coll");
+        var results = _sut.Search("hello", topK: 5);
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task CollectionNameMismatch_WipesExistingData()
+    {
+        var sut = CreateSut("collection-A");
+        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        await sut.DisposeAsync();
+
+        // New instance with different collection name → stale guard wipes data
+        _sut = new SqliteBm25Index(_dbPath, "collection-B");
+        var results = _sut.Search("hello", topK: 5);
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public void Add_MultipleChunks_AllReturnedBySearch()
+    {
+        var sut = CreateSut();
+        sut.Add(1, MakeChunk("doc-1", 0, "the quick brown fox"));
+        sut.Add(2, MakeChunk("doc-2", 0, "the lazy dog"));
+
+        var results = sut.Search("fox", topK: 5);
+        Assert.Single(results); // only first chunk matches "fox"
+        Assert.Equal("doc-1", results[0].chunk.DocumentId);
+    }
+}
