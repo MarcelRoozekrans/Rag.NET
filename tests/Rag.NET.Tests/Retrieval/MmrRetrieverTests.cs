@@ -107,6 +107,30 @@ public class MmrRetrieverTests
     }
 
     [Fact]
+    public async Task RetrieveAsync_CandidateCountLessThanTopK_ReturnsFewer()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var results = new List<SearchResult> { MakeResult("doc-1", "only one") };
+        _inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct).Returns(results);
+
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), ct)
+            .Returns(ci =>
+            {
+                var count = ci.Arg<IEnumerable<string>>().Count();
+                var vecs = Enumerable.Range(0, count)
+                    .Select(_ => new Embedding<float>(new float[] { 1f, 0f }))
+                    .ToList();
+                return new GeneratedEmbeddings<Embedding<float>>(vecs);
+            });
+
+        // MmrCandidateCount (1) < TopK (5) — should not throw, returns 1 result
+        var opts = new RetrievalOptions { UseMmr = true, TopK = 5, MmrCandidateCount = 1 };
+        var output = await _sut.RetrieveAsync("q", opts, ct);
+
+        Assert.Single(output); // can't return more than candidates fetched
+    }
+
+    [Fact]
     public async Task RetrieveAsync_CancellationRequested_Throws()
     {
         var ct = TestContext.Current.CancellationToken;

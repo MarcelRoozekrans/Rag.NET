@@ -166,7 +166,7 @@ Where:
 ```mermaid
 flowchart TD
     INNER["Inner retriever<br>fetches MmrCandidateCount results"]
-    EMBED["Embed query + all candidates<br>(two batch calls)"]
+    EMBED["Embed query + all candidates<br>(single batch call)"]
     MMR["MmrSelector<br>greedy selection — TopK iterations"]
     OUT["TopK diverse, relevant results"]
 
@@ -198,6 +198,8 @@ var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 | `0.5` | (default) — balanced trade-off, works well for most use cases |
 | `0.3` | Diversity-heavy — maximises variety at the cost of some relevance |
 | `0.0` | Pure diversity — may return less relevant but maximally distinct results |
+
+> **Note:** `MmrLambda` must be between `0.0` and `1.0` inclusive. Values outside this range throw `ArgumentOutOfRangeException`.
 
 ### MMR vs Redundancy Filter
 

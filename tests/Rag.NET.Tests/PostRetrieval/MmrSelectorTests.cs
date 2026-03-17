@@ -124,6 +124,20 @@ public class MmrSelectorTests
         Assert.Equal("B", result[1].Chunk.Text);
     }
 
+    [Theory]
+    [InlineData(-0.1f)]
+    [InlineData(1.1f)]
+    [InlineData(2.0f)]
+    public async Task SelectAsync_LambdaOutOfRange_Throws(float lambda)
+    {
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var candidates = new[] { MakeResult("A") };
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            MmrSelector.SelectAsync("query", candidates, embedder, topK: 1, lambda: lambda,
+                cancellationToken: TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task SelectAsync_DefaultLambda_BalancesRelevanceAndDiversity()
     {

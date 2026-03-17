@@ -567,7 +567,7 @@ The SQLite file is created at the path you specify. It contains three tables:
 | Table | Contents |
 |-------|---------|
 | `rag_metadata` | Key-value pairs (collection name guard) |
-| `bm25_docs` | Raw chunk data — text, source, metadata JSON, token length |
+| `bm25_docs` | Raw chunk data — text, metadata JSON, chunk position |
 | `parent_chunks` | Parent chunk text keyed by `(document_id, parent_chunk_index)` |
 
 ### When to use

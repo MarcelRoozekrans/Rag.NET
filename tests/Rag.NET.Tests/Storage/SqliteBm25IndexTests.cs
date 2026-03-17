@@ -77,4 +77,30 @@ public class SqliteBm25IndexTests : IAsyncDisposable
         Assert.Single(results); // only first chunk matches "fox"
         Assert.Equal("doc-1", results[0].chunk.DocumentId);
     }
+
+    [Fact]
+    public async Task ClearAsync_RemovesAllChunks()
+    {
+        var sut = CreateSut();
+        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        sut.Add(2, MakeChunk("doc-2", 0, "foo bar"));
+
+        await sut.ClearAsync(TestContext.Current.CancellationToken);
+
+        var results = sut.Search("hello", topK: 5);
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task ClearAsync_ThenRestart_SearchFindsNothing()
+    {
+        var sut = CreateSut();
+        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        await sut.ClearAsync(TestContext.Current.CancellationToken);
+        await sut.DisposeAsync();
+
+        _sut = new SqliteBm25Index(_dbPath, "test-coll");
+        var results = _sut.Search("hello", topK: 5);
+        Assert.Empty(results);
+    }
 }

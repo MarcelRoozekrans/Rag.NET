@@ -70,4 +70,29 @@ public class SqliteParentChunkStoreTests : IAsyncDisposable
         Assert.True(sut.TryGet("doc-1", 1, out var t1));
         Assert.Equal("second parent", t1);
     }
+
+    [Fact]
+    public async Task ClearAsync_RemovesAllEntries()
+    {
+        var sut = CreateSut();
+        sut.Add("doc-1", 0, "parent text");
+
+        await sut.ClearAsync(TestContext.Current.CancellationToken);
+
+        var found = sut.TryGet("doc-1", 0, out _);
+        Assert.False(found);
+    }
+
+    [Fact]
+    public async Task ClearAsync_ThenRestart_TryGetFails()
+    {
+        var sut = CreateSut();
+        sut.Add("doc-1", 0, "parent text");
+        await sut.ClearAsync(TestContext.Current.CancellationToken);
+        await sut.DisposeAsync();
+
+        _sut = new SqliteParentChunkStore(_dbPath, "test-coll");
+        var found = _sut.TryGet("doc-1", 0, out _);
+        Assert.False(found);
+    }
 }
