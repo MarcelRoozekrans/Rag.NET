@@ -5,7 +5,7 @@ namespace Rag.NET.Abstractions;
 /// <summary>
 /// Keyword index supporting Add, Remove, and BM25-scored Search.
 /// </summary>
-public interface IBm25Index : IDisposable
+public interface IBm25Index : IDisposable, IAsyncDisposable
 {
     void Add(int docId, TextChunk chunk);
     void Remove(string documentId);

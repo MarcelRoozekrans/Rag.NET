@@ -136,7 +136,13 @@ public sealed class InMemoryBm25Index : IBm25Index
 
     public void Dispose() => _lock.Dispose();
 
-    private static List<string> Tokenize(string text)
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
+    }
+
+    internal static List<string> Tokenize(string text)
     {
         var tokens = new List<string>();
         var lower = text.ToLowerInvariant();

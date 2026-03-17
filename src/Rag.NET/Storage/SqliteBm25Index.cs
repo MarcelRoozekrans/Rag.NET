@@ -17,7 +17,7 @@ public sealed class SqliteBm25Index : IBm25Index
     private readonly string _dbPath;
     private readonly string? _collectionName;
     private readonly SemaphoreSlim _initLock = new(1, 1);
-    private bool _initialised;
+    private volatile bool _initialised;
     private bool _disposed;
 
     public SqliteBm25Index(string dbPath, string? collectionName = null)
@@ -29,6 +29,7 @@ public sealed class SqliteBm25Index : IBm25Index
 
     public void Add(int docId, TextChunk chunk)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureInitialised();
         _memory.Add(docId, chunk);
         using var conn = OpenConnection();
@@ -46,12 +47,13 @@ public sealed class SqliteBm25Index : IBm25Index
         cmd.Parameters.AddWithValue("$endPos", chunk.EndPosition);
         cmd.Parameters.AddWithValue("$text", chunk.Text);
         cmd.Parameters.AddWithValue("$meta", JsonSerializer.Serialize(chunk.Metadata));
-        cmd.Parameters.AddWithValue("$len", Tokenize(chunk.Text).Count);
+        cmd.Parameters.AddWithValue("$len", InMemoryBm25Index.Tokenize(chunk.Text).Count);
         cmd.ExecuteNonQuery();
     }
 
     public void Remove(string documentId)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureInitialised();
         _memory.Remove(documentId);
         using var conn = OpenConnection();
@@ -63,6 +65,7 @@ public sealed class SqliteBm25Index : IBm25Index
 
     public IReadOnlyList<(TextChunk chunk, double score)> Search(string query, int topK)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         EnsureInitialised();
         return _memory.Search(query, topK);
     }
@@ -71,15 +74,14 @@ public sealed class SqliteBm25Index : IBm25Index
     {
         if (_disposed) return;
         _disposed = true;
-        SqliteConnection.ClearAllPools();
         _memory.Dispose();
         _initLock.Dispose();
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         Dispose();
-        await Task.CompletedTask.ConfigureAwait(false);
+        return ValueTask.CompletedTask;
     }
 
     private void EnsureInitialised()
@@ -192,27 +194,8 @@ public sealed class SqliteBm25Index : IBm25Index
 
     private SqliteConnection OpenConnection()
     {
-        var conn = new SqliteConnection($"Data Source={_dbPath}");
+        var conn = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
         conn.Open();
         return conn;
-    }
-
-    // Minimal tokenizer matching InMemoryBm25Index.Tokenize for token_length calculation
-    private static List<string> Tokenize(string text)
-    {
-        var tokens = new List<string>();
-        var lower = text.ToLowerInvariant();
-        var start = -1;
-        for (var i = 0; i <= lower.Length; i++)
-        {
-            var isAlnum = i < lower.Length && char.IsLetterOrDigit(lower[i]);
-            if (isAlnum && start == -1) start = i;
-            else if (!isAlnum && start != -1)
-            {
-                tokens.Add(lower[start..i]);
-                start = -1;
-            }
-        }
-        return tokens;
     }
 }
