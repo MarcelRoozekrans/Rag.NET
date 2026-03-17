@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Rag.NET.Abstractions;
 using Rag.NET.Models;
 
 namespace Rag.NET.Search;
@@ -7,7 +8,7 @@ namespace Rag.NET.Search;
 /// Thread-safe in-memory BM25 inverted index.
 /// Parameters: k1=1.5, b=0.75 (Lucene defaults).
 /// </summary>
-public sealed class InMemoryBm25Index : IDisposable
+public sealed class InMemoryBm25Index : IBm25Index
 {
     private const double K1 = 1.5;
     private const double B = 0.75;
