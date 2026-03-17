@@ -331,6 +331,45 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public async Task AddRagNet_WithMmr_CallsEmbedderTwiceForMmrSelection()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(embedder);
+
+        var singleVec = new float[] { 1f, 0f };
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var count = ci.Arg<IEnumerable<string>>().Count();
+                var embeddings = Enumerable.Range(0, count)
+                    .Select(_ => new Embedding<float>(singleVec))
+                    .ToList();
+                return new GeneratedEmbeddings<Embedding<float>>(embeddings);
+            });
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "candidate doc", DocumentId = "doc1", ChunkIndex = 0 }, Score = 0.9 }
+            });
+
+        services.AddRagNet(b => b.UseMmr());
+
+        var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        await pipeline.RetrieveAsync("query", new RetrievalOptions { UseMmr = true },
+            TestContext.Current.CancellationToken);
+
+        // With UseMmr=true: embedder called once for vector search + once for query embedding in MMR
+        await embedder.Received(2).GenerateAsync(
+            Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task AddRagNet_WithParentDocumentRetrieval_OptedOut_ReturnsChildText()
     {
         var services = new ServiceCollection();

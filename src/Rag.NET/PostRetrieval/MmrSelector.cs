@@ -30,14 +30,15 @@ public static class MmrSelector
 
         var k = Math.Min(topK, candidates.Count);
 
-        var queryEmbedding = await embedder.GenerateAsync([query], cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-        var queryVec = queryEmbedding[0].Vector;
-
         var chunkTexts = candidates.Select(r => r.Chunk.Text).ToList();
-        var chunkEmbeddings = await embedder.GenerateAsync(chunkTexts, cancellationToken: cancellationToken)
+        var allTexts = new List<string>(chunkTexts.Count + 1) { query };
+        allTexts.AddRange(chunkTexts);
+
+        var allEmbeddings = await embedder.GenerateAsync(allTexts, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
-        var chunkVecs = chunkEmbeddings.Select(e => e.Vector).ToArray();
+
+        var queryVec = allEmbeddings[0].Vector;
+        var chunkVecs = allEmbeddings.Skip(1).Select(e => e.Vector).ToArray();
 
         var selected = new List<(SearchResult Result, ReadOnlyMemory<float> Vector)>(k);
         var remaining = new bool[candidates.Count]; // true = already selected/removed

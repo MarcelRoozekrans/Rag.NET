@@ -8,6 +8,7 @@ using Rag.NET.Chunking;
 using Rag.NET.HyDE;
 using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
+using Rag.NET.Retrieval;
 using Rag.NET.Storage;
 
 namespace Rag.NET.DependencyInjection;
@@ -157,6 +158,23 @@ public sealed class RagBuilder(IServiceCollection services)
     public RagBuilder UseReranking<TReranker>() where TReranker : class, IReranker
     {
         Services.AddSingleton<IReranker, TReranker>();
+        return this;
+    }
+
+    /// <summary>
+    /// Registers <see cref="MmrRetriever"/> in the post-retrieval chain.
+    /// When registered, MMR selection is opt-in per call: set
+    /// <c>new RetrievalOptions { UseMmr = true }</c> to activate.
+    /// </summary>
+    /// <remarks>
+    /// MMR over-fetches candidates (<see cref="RetrievalOptions.MmrCandidateCount"/>, default TopK × 3),
+    /// then selects <see cref="RetrievalOptions.TopK"/> results balancing relevance and diversity.
+    /// Requires <c>IEmbeddingGenerator</c> to be registered in DI.
+    /// Per-call activation: pass <c>new RetrievalOptions { UseMmr = true }</c>.
+    /// </remarks>
+    public RagBuilder UseMmr()
+    {
+        Services.AddSingleton<MmrEnabled>();
         return this;
     }
 

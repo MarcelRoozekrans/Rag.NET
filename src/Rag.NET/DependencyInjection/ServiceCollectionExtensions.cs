@@ -78,6 +78,12 @@ public static class ServiceCollectionExtensions
         }
 
         chain = new RedundancyFilterRetriever(chain, embedder, sp.GetService<ILogger<RedundancyFilterRetriever>>());
+
+        if (sp.GetService<MmrEnabled>() is not null)
+        {
+            chain = new MmrRetriever(chain, embedder, sp.GetService<ILogger<MmrRetriever>>());
+        }
+
         chain = new LostInTheMiddleRetriever(chain);
 
         var cachingOptions = sp.GetService<CachingOptions>();
