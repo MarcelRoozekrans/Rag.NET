@@ -117,4 +117,55 @@ public sealed class WebCrawlerDataProviderTests
 
         Assert.Contains("Page 1", content, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task GetFilesAsync_FragmentUrls_TreatedAsSamePage()
+    {
+        // Two anchors pointing to /page with different fragments both normalise to /page
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [SeedUrl] = """
+                <html><body>
+                  <a href="/page#section1">S1</a>
+                  <a href="/page#section2">S2</a>
+                </body></html>
+                """,
+            ["https://example.com/page"] = "<html><body>Page content</body></html>",
+        };
+        var sut = new WebCrawlerDataProvider(SeedUrl, MakeClient(responses),
+            new WebCrawlerOptions { RespectRobotsTxt = false });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // seed + /page (both fragment variants deduplicated → only one /page entry)
+        Assert.Equal(2, entries.Count);
+        Assert.Contains(entries, e => string.Equals(e.Id, SeedUrl, StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/page", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_HttpError_SkipsPageAndContinues()
+    {
+        // /exists is in the fake server; /missing is not → 404 → HttpRequestException → silently skipped
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [SeedUrl] = """
+                <html><body>
+                  <a href="/exists">Exists</a>
+                  <a href="/missing">Missing</a>
+                </body></html>
+                """,
+            ["https://example.com/exists"] = "<html><body>Exists page</body></html>",
+            // /missing intentionally absent → FakeHttpMessageHandler returns 404
+        };
+        var sut = new WebCrawlerDataProvider(SeedUrl, MakeClient(responses),
+            new WebCrawlerOptions { RespectRobotsTxt = false });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, entries.Count); // seed + /exists; /missing is skipped
+        Assert.DoesNotContain(entries, e => e.Id.Contains("missing", StringComparison.Ordinal));
+    }
 }
