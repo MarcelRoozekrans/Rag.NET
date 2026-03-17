@@ -66,4 +66,10 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Redundancy filtering failed for query '{Query}', returning unfiltered results")]
     internal static partial void RedundancyFilteringFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "MMR selection completed: {CandidateCount} candidates -> {ResultCount} result(s)")]
+    internal static partial void MmrSelectionCompleted(ILogger logger, int candidateCount, int resultCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "MMR selection failed for query '{Query}', returning candidates in original order")]
+    internal static partial void MmrSelectionFailed(ILogger logger, string query, Exception exception);
 }
