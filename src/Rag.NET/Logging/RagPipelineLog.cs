@@ -72,4 +72,7 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "MMR selection failed for query '{Query}', returning candidates in original order")]
     internal static partial void MmrSelectionFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "MmrCandidateCount ({CandidateCount}) is less than TopK ({TopK}); MMR may return fewer results than requested")]
+    internal static partial void MmrCandidateCountLessThanTopK(ILogger logger, int candidateCount, int topK);
 }

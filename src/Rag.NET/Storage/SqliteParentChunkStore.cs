@@ -97,10 +97,10 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
 
         if (_collectionName is not null)
         {
-            var storedName = ReadMetadata(conn, "collection_name");
+            var storedName = ReadMetadata(conn, "parent_chunks_collection_name");
             if (storedName is not null && !string.Equals(storedName, _collectionName, StringComparison.Ordinal))
                 ClearData(conn);
-            WriteMetadata(conn, "collection_name", _collectionName);
+            WriteMetadata(conn, "parent_chunks_collection_name", _collectionName);
         }
 
         LoadIntoMemory(conn);
@@ -144,7 +144,7 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
     private static void ClearData(SqliteConnection conn)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM parent_chunks; DELETE FROM rag_metadata;";
+        cmd.CommandText = "DELETE FROM parent_chunks; DELETE FROM rag_metadata WHERE key = 'parent_chunks_collection_name';";
         cmd.ExecuteNonQuery();
     }
 

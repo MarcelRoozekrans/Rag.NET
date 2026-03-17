@@ -44,12 +44,12 @@ public sealed class InMemoryParentChunkStore : IParentChunkStore
         }
     }
 
-    public static string GetParentKey(string documentId, int parentChunkIndex)
+    internal static string GetParentKey(string documentId, int parentChunkIndex)
         => ParentChunkKeyHelper.GetParentKey(documentId, parentChunkIndex);
 
     /// <summary>
     /// Finds which parent chunk contains a child chunk based on start position.
     /// </summary>
-    public static int FindParentIndex(IReadOnlyList<(int start, int end)> parentBoundaries, int childStart)
+    internal static int FindParentIndex(IReadOnlyList<(int start, int end)> parentBoundaries, int childStart)
         => ParentChunkKeyHelper.FindParentIndex(parentBoundaries, childStart);
 }

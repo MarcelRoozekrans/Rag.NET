@@ -36,9 +36,9 @@ public sealed class SqliteBm25Index : IBm25Index
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT OR REPLACE INTO bm25_docs
-                (doc_id, document_id, chunk_index, start_position, end_position, chunk_text, metadata_json, token_length)
+                (doc_id, document_id, chunk_index, start_position, end_position, chunk_text, metadata_json)
             VALUES
-                ($docId, $documentId, $chunkIndex, $startPos, $endPos, $text, $meta, $len)
+                ($docId, $documentId, $chunkIndex, $startPos, $endPos, $text, $meta)
             """;
         cmd.Parameters.AddWithValue("$docId", docId);
         cmd.Parameters.AddWithValue("$documentId", chunk.DocumentId);
@@ -47,7 +47,6 @@ public sealed class SqliteBm25Index : IBm25Index
         cmd.Parameters.AddWithValue("$endPos", chunk.EndPosition);
         cmd.Parameters.AddWithValue("$text", chunk.Text);
         cmd.Parameters.AddWithValue("$meta", JsonSerializer.Serialize(chunk.Metadata));
-        cmd.Parameters.AddWithValue("$len", InMemoryBm25Index.Tokenize(chunk.Text).Count);
         cmd.ExecuteNonQuery();
     }
 
@@ -107,12 +106,12 @@ public sealed class SqliteBm25Index : IBm25Index
 
         if (_collectionName is not null)
         {
-            var storedName = ReadMetadata(conn, "collection_name");
+            var storedName = ReadMetadata(conn, "bm25_collection_name");
             if (storedName is not null && !string.Equals(storedName, _collectionName, StringComparison.Ordinal))
             {
                 ClearData(conn);
             }
-            WriteMetadata(conn, "collection_name", _collectionName);
+            WriteMetadata(conn, "bm25_collection_name", _collectionName);
         }
 
         LoadIntoMemory(conn);
@@ -133,8 +132,7 @@ public sealed class SqliteBm25Index : IBm25Index
                 start_position INTEGER NOT NULL DEFAULT 0,
                 end_position   INTEGER NOT NULL DEFAULT 0,
                 chunk_text     TEXT NOT NULL,
-                metadata_json  TEXT NOT NULL DEFAULT '{}',
-                token_length   INTEGER NOT NULL
+                metadata_json  TEXT NOT NULL DEFAULT '{}'
             );
             """;
         cmd.ExecuteNonQuery();
@@ -160,7 +158,7 @@ public sealed class SqliteBm25Index : IBm25Index
     private static void ClearData(SqliteConnection conn)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM bm25_docs; DELETE FROM rag_metadata;";
+        cmd.CommandText = "DELETE FROM bm25_docs; DELETE FROM rag_metadata WHERE key = 'bm25_collection_name';";
         cmd.ExecuteNonQuery();
     }
 

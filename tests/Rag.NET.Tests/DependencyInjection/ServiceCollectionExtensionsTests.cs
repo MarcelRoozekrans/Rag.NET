@@ -420,6 +420,53 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
+    public async Task AddRagNet_WithSqlitePersistence_CollectionMismatch_WipesStaleData()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"ragnet-stale-test-{Guid.NewGuid():N}.db");
+        try
+        {
+            var ct = TestContext.Current.CancellationToken;
+
+            // --- Session 1: ingest with collection-A ---
+            var services1 = new ServiceCollection();
+            var vectorStore = Substitute.For<IVectorStore>();
+            var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+            services1.AddSingleton(vectorStore);
+            services1.AddSingleton(embedder);
+            embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), ct)
+                .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+            vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), ct)
+                .Returns(new List<SearchResult>());
+
+            services1.AddRagNet(b => b.UseSqlitePersistence(dbPath, "collection-A"));
+            var sp1 = services1.BuildServiceProvider();
+            var ingestor1 = sp1.GetRequiredService<IIngestor>();
+            await ingestor1.IngestAsync(
+                new MemoryStream(System.Text.Encoding.UTF8.GetBytes("hello world")),
+                new Rag.NET.Models.DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt" },
+                cancellationToken: ct);
+            await sp1.DisposeAsync();
+
+            // --- Session 2: open with collection-B → stale guard should wipe ---
+            var services2 = new ServiceCollection();
+            services2.AddSingleton(vectorStore);
+            services2.AddSingleton(embedder);
+            services2.AddRagNet(b => b.UseSqlitePersistence(dbPath, "collection-B"));
+            var sp2 = services2.BuildServiceProvider();
+
+            var bm25 = sp2.GetRequiredService<IBm25Index>();
+            var results = bm25.Search("hello", topK: 5);
+
+            Assert.Empty(results); // stale guard should have wiped collection-A data
+            await sp2.DisposeAsync();
+        }
+        finally
+        {
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
     public async Task AddRagNet_WithParentDocumentRetrieval_OptedOut_ReturnsChildText()
     {
         var services = new ServiceCollection();

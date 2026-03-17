@@ -31,6 +31,8 @@ public sealed class MmrRetriever(
             return await inner.RetrieveAsync(query, options, cancellationToken).ConfigureAwait(false);
 
         var candidateCount = opts.MmrCandidateCount ?? opts.TopK * 3;
+        if (candidateCount < opts.TopK)
+            RagPipelineLog.MmrCandidateCountLessThanTopK(_logger, candidateCount, opts.TopK);
         var expanded = opts with { TopK = candidateCount, UseMmr = false };
 
         var candidates = await inner.RetrieveAsync(query, expanded, cancellationToken).ConfigureAwait(false);
