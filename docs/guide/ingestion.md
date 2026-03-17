@@ -245,6 +245,15 @@ var provider = new SitemapDataProvider("https://docs.example.com/sitemap.xml", h
 await pipeline.IngestFromProviderAsync(provider, "docs-site", hashStore: hashStore);
 ```
 
+### `RssDataProvider`
+
+```csharp
+var provider = new RssDataProvider("https://example.com/feed.rss", httpClient);
+await pipeline.IngestFromProviderAsync(provider, "blog-feed", hashStore: hashStore);
+```
+
+Supports RSS 2.0 and Atom feeds. `Id` is the `<guid>` or `<link>` element; `ETag` is `<pubDate>` / `<updated>` — so unchanged posts are automatically skipped on subsequent runs.
+
 ### `WebCrawlerDataProvider`
 
 ```csharp
