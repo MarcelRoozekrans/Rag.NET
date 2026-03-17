@@ -14,7 +14,10 @@ public sealed class RetrievalOptions
     public bool UseLostInTheMiddleReordering { get; set; }
     public bool UseRedundancyFilter          { get; set; }
     public float RedundancyThreshold         { get; set; } = 0.95f;
-    public bool UseHyde                       { get; set; } = true;
+    public bool UseMmr                       { get; set; } = false;  // opt-in
+    public float MmrLambda                   { get; set; } = 0.5f;
+    public int? MmrCandidateCount            { get; set; }
+    public bool UseHyde                      { get; set; } = true;
     public bool UseMultiQuery                { get; set; } = true;
     public bool UseParentDocument            { get; set; } = true;
     public bool UseReranking                 { get; set; } = true;
@@ -39,6 +42,9 @@ var results = await pipeline.RetrieveAsync("What are the Q4 targets?", new Retri
     UseLostInTheMiddleReordering  = true,
     UseRedundancyFilter           = true,
     RedundancyThreshold           = 0.92f,
+    UseMmr                        = true,
+    MmrLambda                     = 0.5f,
+    MmrCandidateCount             = 30,
     UseHyde                       = true,
     UseMultiQuery                 = true,
     UseReranking                  = true,
@@ -117,7 +123,7 @@ Azure AI Search implements `IHybridSearchable` and performs server-side BM25+vec
 
 ### In-memory BM25 index
 
-`RagPipeline` maintains a thread-safe `InMemoryBm25Index` using BM25 parameters k1=1.5, b=0.75 (Lucene defaults). Every chunk stored via `IngestAsync` is indexed automatically. The index is process-local and not persisted — it is rebuilt each time the application starts. For stores that need persistent keyword search without native hybrid support, use Azure AI Search.
+`RagPipeline` maintains a thread-safe `InMemoryBm25Index` using BM25 parameters k1=1.5, b=0.75 (Lucene defaults). Every chunk stored via `IngestAsync` is indexed automatically. The index is process-local by default — it is rebuilt each time the application starts. To persist the index across restarts without re-ingestion, see [SQLite Persistence](#sqlite-persistence) below. For stores that need persistent keyword search without native hybrid support, use Azure AI Search.
 
 ### Reciprocal Rank Fusion (RRF)
 
@@ -339,7 +345,7 @@ flowchart TD
 
 ### In-memory store trade-off
 
-`InMemoryParentChunkStore` is a process-scoped singleton — the same lifecycle as `InMemoryBm25Index`. Parent chunks are not persisted and must be rebuilt by re-running ingestion after each application restart. For large corpora where re-ingestion is expensive, see the [SQLite Persistence](features.md) backlog item.
+`InMemoryParentChunkStore` is a process-scoped singleton — the same lifecycle as `InMemoryBm25Index`. Parent chunks are not persisted and must be rebuilt by re-running ingestion after each application restart. To persist parent chunks across restarts, see [SQLite Persistence](#sqlite-persistence) below.
 
 ### Disabling per call
 
@@ -524,12 +530,65 @@ var response = await pipeline.AskAsync("Can you give an example?", new RagOption
 });
 ```
 
+## SQLite Persistence
+
+By default, `InMemoryBm25Index` and `InMemoryParentChunkStore` are process-scoped and lost on restart. For large corpora where re-ingestion is expensive, SQLite persistence writes both stores through to a local SQLite file and reloads them on startup.
+
+### Enabling
+
+```csharp
+services.AddRagNet(b => b
+    .UseHybridSearch()              // optional — enables BM25 index
+    .UseParentDocumentRetrieval()   // optional — enables parent chunk store
+    .UseSqlitePersistence("rag-data.db", collectionName: "my-docs"));
+```
+
+`collectionName` is the stale-data guard: if the registered name does not match what is stored in the SQLite file (e.g., after switching to a new vector store), all persisted rows are wiped before loading. Omit `collectionName` to skip this check.
+
+### Invalidation rules
+
+| Event | What happens |
+|-------|-------------|
+| Document deleted via pipeline | `Remove(documentId)` deletes rows from SQLite synchronously |
+| Document re-ingested (`Overwrite = true`) | Rows removed then re-added |
+| App restarts, same collection | Rows loaded into memory — no re-ingestion needed |
+| App restarts, different `collectionName` | All rows wiped; starts fresh |
+| Manual reset | Call `ClearAsync()` on the injected `IBm25Index` or `IParentChunkStore` |
+| Vector store modified externally | Not detected automatically — change `collectionName` or call `ClearAsync()` |
+
+### How it works
+
+Both `SqliteBm25Index` and `SqliteParentChunkStore` wrap their in-memory counterparts. Every `Add`/`Remove` call updates memory first, then writes through to SQLite synchronously. On first use (lazy), the stores initialise — creating tables if needed, checking the collection name guard, then loading all rows into the in-memory index by calling `Add()` in bulk. The BM25 posting list is derived state and is rebuilt from the stored chunk texts on load, not persisted separately.
+
+### Database file
+
+The SQLite file is created at the path you specify. It contains three tables:
+
+| Table | Contents |
+|-------|---------|
+| `rag_metadata` | Key-value pairs (collection name guard) |
+| `bm25_docs` | Raw chunk data — text, source, metadata JSON, token length |
+| `parent_chunks` | Parent chunk text keyed by `(document_id, parent_chunk_index)` |
+
+### When to use
+
+SQLite persistence is worth enabling when:
+- Ingestion takes more than a few minutes for your corpus
+- You use hybrid search with pgvector or Qdrant (no native BM25)
+- You use parent-document retrieval on a large corpus
+
+It is not needed when:
+- You use Azure AI Search (which handles BM25 server-side)
+- Your corpus is small and re-ingestion is fast
+- You redeploy with a fresh vector store frequently
+
 ## Post-retrieval processing
 
-After the vector/BM25 search, three optional post-processors can further improve quality:
+After the vector/BM25 search, four optional post-processors can further improve quality:
 
 - **Redundancy filtering** — see [Post-Retrieval](post-retrieval.md#redundancy-filter)
+- **MMR** — see [Post-Retrieval](post-retrieval.md#maximal-marginal-relevance-mmr)
 - **Cross-encoder reranking** — see [Cross-encoder reranking](#cross-encoder-reranking) above
 - **Lost-in-the-Middle reordering** — see [Post-Retrieval](post-retrieval.md#lost-in-the-middle-reordering)
 
-They run in the order listed above (redundancy → reranking → reordering) and are enabled per-call via flags on `RetrievalOptions` or `RagOptions`.
+They run in the order listed above (redundancy → MMR → reranking → reordering) and are enabled per-call via flags on `RetrievalOptions` or `RagOptions`.

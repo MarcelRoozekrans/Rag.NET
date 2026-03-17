@@ -520,12 +520,12 @@ Expose `RetrieveAsync` and `AskAsync` as [Model Context Protocol](https://modelc
 | [ ] | LLM-as-Judge Evaluation | Medium | `IChatClient` |
 | [ ] | Map-Reduce / Refine Synthesis | Medium | `IChatClient` |
 | [x] | MCP Server | Medium | MCP SDK |
-| [ ] | MMR Retrieval | Medium | Embedding access |
+| [x] | MMR Retrieval | Medium | Embedding access |
 | [ ] | Multi-Language Code Splitting | Medium | None (regex) |
 | [x] | Multi-Query Retrieval | Medium | `IChatClient` |
 | [ ] | SaaS Connectors | Medium | Per-platform SDK |
 | [x] | Search Result Caching | Medium | None |
-| [ ] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
+| [x] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
 | [ ] | Tag-Based Retrieval | Medium | Hybrid search |
 | [ ] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
 | [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |

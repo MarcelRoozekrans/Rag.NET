@@ -137,6 +137,100 @@ public static class RedundancyFilter
 
 `FilterAsync` is called internally by `RagPipeline.RetrieveAsync`. You can call it directly if you are composing your own retrieval pipeline outside of `IRagPipeline`.
 
+## Maximal Marginal Relevance (MMR)
+
+MMR selects results that are both relevant to the query and maximally different from each other. Where the redundancy filter simply drops near-duplicates, MMR actively re-ranks candidates using a combined score that balances relevance against inter-result diversity, and is query-aware.
+
+### Enabling
+
+Register `UseMmr()` on the builder. An `IEmbeddingGenerator` must already be registered — no `IChatClient` required.
+
+```csharp
+services.AddRagNet(b => b
+    .UseMmr());
+```
+
+### How it works
+
+MMR over-fetches candidates (default `MmrCandidateCount = TopK × 3`), then greedily selects `TopK` results using:
+
+```
+score(d) = λ · sim(d, query) – (1–λ) · max_{s∈S} sim(d, s)
+```
+
+Where:
+- `sim(d, query)` — cosine similarity between chunk `d` and the query
+- `max_{s∈S} sim(d, s)` — maximum cosine similarity between `d` and any already-selected chunk
+- `λ` (`MmrLambda`) — controls the relevance/diversity trade-off; `1.0` = pure relevance, `0.0` = pure diversity
+
+```mermaid
+flowchart TD
+    INNER["Inner retriever<br>fetches MmrCandidateCount results"]
+    EMBED["Embed query + all candidates<br>(two batch calls)"]
+    MMR["MmrSelector<br>greedy selection — TopK iterations"]
+    OUT["TopK diverse, relevant results"]
+
+    INNER --> EMBED --> MMR --> OUT
+
+    style MMR fill:#e8f4fd,stroke:#4a90d9
+```
+
+If embedding fails, the pipeline logs a warning and returns candidates in their original score order.
+
+### Usage
+
+```csharp
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    TopK              = 5,
+    UseMmr            = true,
+    MmrLambda         = 0.5f,   // default — balanced relevance and diversity
+    MmrCandidateCount = 20,     // default: TopK * 3
+});
+```
+
+### Lambda guidance
+
+| `MmrLambda` | Effect |
+|-------------|--------|
+| `1.0` | Pure relevance — equivalent to returning the top-scoring candidates |
+| `0.7` | Slightly diversified — good for homogeneous corpora |
+| `0.5` | (default) — balanced trade-off, works well for most use cases |
+| `0.3` | Diversity-heavy — maximises variety at the cost of some relevance |
+| `0.0` | Pure diversity — may return less relevant but maximally distinct results |
+
+### MMR vs Redundancy Filter
+
+|  | Redundancy Filter | MMR |
+|--|-------------------|-----|
+| **Goal** | Remove near-duplicates | Select diverse, relevant results |
+| **Scoring** | Binary (keep / drop) | Continuous MMR score |
+| **Query-aware** | No | Yes — relevance to query is part of the score |
+| **Cost** | One batch embed | Two embed calls (query + chunks) |
+
+They can be used together. The redundancy filter runs before MMR in the decorator chain — MMR then selects the diverse subset from the already-deduplicated candidates.
+
+### Disabling per call
+
+`UseMmr` is opt-in — the decorator is active only when the call explicitly sets `UseMmr = true`. This differs from other registered features (HyDE, reranking, multi-query) which default to `true` and require explicit opt-out.
+
+### API reference
+
+```csharp
+public static class MmrSelector
+{
+    public static async Task<IReadOnlyList<SearchResult>> SelectAsync(
+        string query,
+        IReadOnlyList<SearchResult> candidates,
+        IEmbeddingGenerator<string, Embedding<float>> embedder,
+        int topK,
+        float lambda = 0.5f,
+        CancellationToken cancellationToken = default);
+}
+```
+
+`SelectAsync` is called internally by `MmrRetriever`. You can call it directly if you are composing your own retrieval pipeline outside of `IRagPipeline`.
+
 ## Execution order
 
 When multiple post-retrieval options are enabled on the same call, the order is:
@@ -145,19 +239,22 @@ When multiple post-retrieval options are enabled on the same call, the order is:
 flowchart TD
     VS["Vector store search<br>(dense or hybrid)"]
     REDUN["RedundancyFilter.FilterAsync()<br>removes near-duplicate chunks"]
+    MMR["MmrSelector.SelectAsync()<br>diverse + relevant selection<br>over-fetches then trims to TopK"]
     RERANK["IReranker.RerankAsync()<br>cross-encoder rescoring<br>takes TopK best"]
     LITM["LostInTheMiddleReorderer.Reorder()<br>outside-in placement"]
     OUT["Final IReadOnlyList&lt;SearchResult&gt;"]
 
-    VS --> REDUN --> RERANK --> LITM --> OUT
+    VS --> REDUN --> MMR --> RERANK --> LITM --> OUT
 
     style REDUN fill:#e8f4fd,stroke:#4a90d9
+    style MMR fill:#e8f4fd,stroke:#4a90d9
     style RERANK fill:#e8f4fd,stroke:#4a90d9
     style LITM fill:#e8f4fd,stroke:#4a90d9
 ```
 
 1. **Redundancy filter** — removes near-duplicate chunks (cheap, cosine similarity on existing embeddings)
-2. **Cross-encoder reranking** — rescores each (query, passage) pair with a cross-encoder model (expensive, per-pair inference). Trims to `TopK` after scoring. Only active when an `IReranker` is registered via `UseReranking<T>()` or `UseOnnxReranking()`.
-3. **Lost-in-the-Middle reordering** — places highest-scoring chunks at context extremes for better LLM attention (presentation concern, zero cost)
+2. **MMR** — selects `TopK` diverse, query-relevant results from the de-duplicated candidate pool. Opt-in (`UseMmr = true` required).
+3. **Cross-encoder reranking** — rescores each (query, passage) pair with a cross-encoder model (expensive, per-pair inference). Trims to `TopK` after scoring. Only active when an `IReranker` is registered via `UseReranking<T>()` or `UseOnnxReranking()`.
+4. **Lost-in-the-Middle reordering** — places highest-scoring chunks at context extremes for better LLM attention (presentation concern, zero cost)
 
-The redundancy filter runs before reranking to reduce the number of expensive cross-encoder inference calls. The reorderer runs last because it is a presentation concern — it should operate on the final ranked list.
+The redundancy filter runs first to reduce the candidate pool before MMR's embedding calls. MMR runs before reranking so the cross-encoder operates on the already-diversified set.
