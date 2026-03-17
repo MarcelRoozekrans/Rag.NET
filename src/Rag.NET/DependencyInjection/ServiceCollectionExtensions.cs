@@ -22,7 +22,7 @@ public static class ServiceCollectionExtensions
     {
         // ZeroAlloc.Inject-generated: registers IDocumentParser (Text, Markdown),
         // IChunkingStrategy (Recursive). IIngestor is registered manually below
-        // to support optional ParentDocumentOptions/InMemoryParentChunkStore parameters.
+        // to support optional ParentDocumentOptions/IParentChunkStore parameters.
         services.AddRagNETServices();
 
         services.TryAddSingleton<ChunkingOptions>();
