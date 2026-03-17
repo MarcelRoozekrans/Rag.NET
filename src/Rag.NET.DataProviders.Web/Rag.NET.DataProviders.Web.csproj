@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.DataProviders.Web</RootNamespace>
+    <PackageId>Rag.NET.DataProviders.Web</PackageId>
+    <Description>Web data providers (crawler, sitemap, RSS) for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="AngleSharp" Version="1.*" />
+  </ItemGroup>
+
+</Project>
