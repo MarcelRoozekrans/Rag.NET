@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Rag.NET.Abstractions;
 
 namespace Rag.NET.Storage;
 
@@ -6,7 +7,7 @@ namespace Rag.NET.Storage;
 /// Thread-safe in-memory store for parent chunk text.
 /// Process-scoped, not persisted — rebuilt on re-ingestion (same trade-off as <see cref="Search.InMemoryBm25Index"/>).
 /// </summary>
-public sealed class InMemoryParentChunkStore
+public sealed class InMemoryParentChunkStore : IParentChunkStore
 {
     private readonly ConcurrentDictionary<string, string> _store = new(StringComparer.Ordinal);
 
