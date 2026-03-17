@@ -54,7 +54,7 @@ public static class ServiceCollectionExtensions
         var builder = new RagBuilder(services);
         configure?.Invoke(builder);
 
-        // Default IBm25Index → InMemoryBm25Index (can be overridden by UseSqlitePersistence)
+        // Default IBm25Index → InMemoryBm25Index (overridable before configure runs, e.g. via UseSqlitePersistence())
         services.TryAddSingleton<IBm25Index>(sp => sp.GetRequiredService<InMemoryBm25Index>());
 
         return services;

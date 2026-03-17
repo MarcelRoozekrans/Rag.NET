@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Rag.NET.Abstractions;
+using Rag.NET.Ingestion;
 
 namespace Rag.NET.Storage;
 
@@ -41,20 +42,11 @@ public sealed class InMemoryParentChunkStore : IParentChunkStore
     }
 
     public static string GetParentKey(string documentId, int parentChunkIndex)
-        => $"{documentId}:{parentChunkIndex}";
+        => ParentChunkKeyHelper.GetParentKey(documentId, parentChunkIndex);
 
     /// <summary>
     /// Finds which parent chunk contains a child chunk based on start position.
     /// </summary>
     public static int FindParentIndex(IReadOnlyList<(int start, int end)> parentBoundaries, int childStart)
-    {
-        for (int i = 0; i < parentBoundaries.Count; i++)
-        {
-            if (childStart >= parentBoundaries[i].start && childStart <= parentBoundaries[i].end)
-                return i;
-        }
-
-        // Fallback: assign to last parent
-        return parentBoundaries.Count - 1;
-    }
+        => ParentChunkKeyHelper.FindParentIndex(parentBoundaries, childStart);
 }

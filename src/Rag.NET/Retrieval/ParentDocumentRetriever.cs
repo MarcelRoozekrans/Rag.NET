@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
+using Rag.NET.Ingestion;
 using Rag.NET.Logging;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -17,7 +18,6 @@ public sealed class ParentDocumentRetriever(
     IParentChunkStore parentStore,
     ILogger? logger = null) : IRetriever
 {
-    private const string ParentKeyMetadata = "_parentKey";
     private const int OverFetchMultiplier = 3;
 
     private readonly ILogger _logger = logger ?? NullLogger.Instance;
@@ -59,7 +59,7 @@ public sealed class ParentDocumentRetriever(
 
         foreach (var result in childResults)
         {
-            if (!result.Chunk.Metadata.TryGetValue(ParentKeyMetadata, out var parentKey))
+            if (!result.Chunk.Metadata.TryGetValue(ParentChunkKeyHelper.ParentKeyMetadata, out var parentKey))
             {
                 noParentResults.Add(result);
                 continue;

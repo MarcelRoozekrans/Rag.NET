@@ -114,24 +114,9 @@ public sealed class DocumentIngestor(
         // Assign _parentKey to each child chunk
         foreach (ref readonly var child in CollectionsMarshal.AsSpan(childChunks))
         {
-            var pIdx = FindParentIndex(parentBoundaries, child.StartPosition);
-            child.Metadata["_parentKey"] = GetParentKey(metadata.DocumentId, pIdx);
+            var pIdx = ParentChunkKeyHelper.FindParentIndex(parentBoundaries, child.StartPosition);
+            child.Metadata[ParentChunkKeyHelper.ParentKeyMetadata] = ParentChunkKeyHelper.GetParentKey(metadata.DocumentId, pIdx);
         }
-    }
-
-    private static string GetParentKey(string documentId, int parentChunkIndex)
-        => $"{documentId}:{parentChunkIndex}";
-
-    private static int FindParentIndex(IReadOnlyList<(int start, int end)> parentBoundaries, int childStart)
-    {
-        for (int i = 0; i < parentBoundaries.Count; i++)
-        {
-            if (childStart >= parentBoundaries[i].start && childStart <= parentBoundaries[i].end)
-                return i;
-        }
-
-        // Fallback: assign to last parent
-        return parentBoundaries.Count - 1;
     }
 
     private async Task<List<TextChunk>> ParseAndChunkAsync(
