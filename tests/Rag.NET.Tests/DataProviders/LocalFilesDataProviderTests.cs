@@ -133,4 +133,33 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         Assert.Single(entries);
         Assert.Equal("root.txt", entries[0].FileName);
     }
+
+    [Fact]
+    public async Task GetFilesAsync_CaseInsensitiveExtension_IncludesFile()
+    {
+        // Write a file with uppercase extension
+        File.WriteAllText(Path.Combine(_dir, "readme.MD"), "content");
+        var sut = new LocalFilesDataProvider(_dir, new LocalFilesOptions { Extensions = [".md"] });
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_FilterDelegate_ExcludesMatchingFiles()
+    {
+        WriteFile("keep.txt");
+        WriteFile("exclude.txt");
+
+        var sut = new LocalFilesDataProvider(_dir, new LocalFilesOptions
+        {
+            Filter = path => !path.EndsWith("exclude.txt", StringComparison.OrdinalIgnoreCase)
+        });
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.EndsWith("keep.txt", entries[0].Id, StringComparison.OrdinalIgnoreCase);
+    }
 }
