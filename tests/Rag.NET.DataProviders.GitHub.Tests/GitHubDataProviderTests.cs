@@ -143,4 +143,54 @@ public sealed class GitHubDataProviderTests
         Assert.Equal("kept.md", entries[0].Id);
         Assert.DoesNotContain(entries, e => string.Equals(e.Id, "deleted.md", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public async Task GetFilesAsync_FullTree_ExcludesNonBlobItems()
+    {
+        // Mix one directory (TreeType.Tree) with one file (TreeType.Blob)
+        var treeItems = new List<TreeItem>
+        {
+            new TreeItem("src/",        "040000", TreeType.Tree, 0,   "tree-sha",
+                $"https://api.github.com/repos/{Owner}/{Repo}/git/trees/tree-sha"),
+            new TreeItem("src/main.cs", "100644", TreeType.Blob, 500, "blob-sha",
+                $"https://api.github.com/repos/{Owner}/{Repo}/git/blobs/blob-sha"),
+        };
+        var tree = new TreeResponse("abc123", "https://api.github.com", treeItems, truncated: false);
+        var sut = new GitHubDataProvider(Owner, Repo, MakeClient(tree));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal("src/main.cs", entries[0].Id);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_DeltaRun_ExtensionFilter_ExcludesNonMatchingFiles()
+    {
+        var compareResult = new CompareResult(
+            url: "", htmlUrl: "", permalinkUrl: "", diffUrl: "", patchUrl: "",
+            baseCommit: null!, mergeBaseCommit: null!,
+            status: "ahead", aheadBy: 2, behindBy: 0, totalCommits: 2,
+            commits: [],
+            files:
+            [
+                new GitHubCommitFile("changed.md",   0, 0, 0, "modified", "", "", "", "sha-md",   "", ""),
+                new GitHubCommitFile("changed.yaml", 0, 0, 0, "modified", "", "", "", "sha-yaml", "", ""),
+            ]);
+
+        var tree = MakeTree(); // full tree not used in delta mode
+        var sut = new GitHubDataProvider(Owner, Repo, MakeClient(tree, compareResult),
+            new GitHubDataProviderOptions
+            {
+                LastIngestedCommitSha = "old-sha",
+                Extensions = [".md"],
+            });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal("changed.md", entries[0].Id);
+    }
 }
