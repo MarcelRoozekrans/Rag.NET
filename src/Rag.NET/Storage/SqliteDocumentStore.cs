@@ -82,6 +82,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
         EnsureInitialised();
 
         using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
+        using var tx = conn.BeginTransaction();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             DELETE FROM rag_documents WHERE doc_id = $docId;
@@ -89,6 +90,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
             """;
         cmd.Parameters.AddWithValue("$docId", documentId);
         cmd.ExecuteNonQuery();
+        tx.Commit();
     }
 
     public Task<IReadOnlyList<DocumentSummary>> GetDocumentsAsync(CancellationToken cancellationToken = default)
