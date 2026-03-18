@@ -225,6 +225,37 @@ public class DocumentIngestorTests
         dataManager.Received(1).Remove("doc-1");
     }
 
+    [Fact]
+    public async Task IngestAsync_WithOverwriteAndDataManager_RemovesBeforeRerecording()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var dataManager = Substitute.For<IRagDataManager>();
+        var sut = new DocumentIngestor(
+            [_parser], _chunker, _vectorStore, _embedder,
+            new ChunkingOptions(), _bm25Index,
+            dataManager: dataManager);
+
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var section  = new DocumentSection  { Text = "Hello", DocumentId = "doc-1", SectionIndex = 0 };
+        var chunk    = new TextChunk        { Text = "Hello", DocumentId = "doc-1", ChunkIndex = 0 };
+        var embedding = new Embedding<float>(new float[] { 0.1f });
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, ct).Returns(ToAsyncEnumerable(section));
+        _chunker.ChunkAsync(section, Arg.Any<ChunkingOptions>(), ct).Returns(ToAsyncEnumerable(chunk));
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), ct)
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([embedding]));
+
+        // First ingest — no overwrite, Remove is NOT called
+        using var stream1 = new MemoryStream("hello"u8.ToArray());
+        await sut.IngestAsync(stream1, metadata, cancellationToken: ct);
+
+        // Second ingest with overwrite — Remove MUST be called before Add
+        using var stream2 = new MemoryStream("hello"u8.ToArray());
+        await sut.IngestAsync(stream2, metadata, new IngestionOptions { Overwrite = true }, cancellationToken: ct);
+
+        dataManager.Received(1).Remove("doc-1");
+    }
+
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)

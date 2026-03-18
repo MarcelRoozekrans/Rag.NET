@@ -41,6 +41,7 @@ public sealed class DocumentIngestor(
         {
             await vectorStore.DeleteByDocumentIdAsync(metadata.DocumentId, cancellationToken).ConfigureAwait(false);
             bm25Index.Remove(metadata.DocumentId);
+            dataManager?.Remove(metadata.DocumentId);
         }
 
         var chunks = await ParseAndChunkAsync(parser, document, metadata, cancellationToken).ConfigureAwait(false);
