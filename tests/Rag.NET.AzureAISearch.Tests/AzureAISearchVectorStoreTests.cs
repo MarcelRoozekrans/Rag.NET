@@ -185,10 +185,12 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     [Fact]
     public async Task DeleteByDocumentId_WithMoreChunksThanPageSize_DeletesAllChunksAcrossMultiplePages()
     {
-        // Arrange: store 3 chunks for the same document, then delete with pageSize=2
-        // This forces two delete iterations: first page returns 2 IDs, second page returns 1 ID.
+        // Arrange: store 5 chunks for the same document, then delete with pageSize=2.
+        // With 5 chunks and pageSize=2 the loop must execute at least 3 times (pages of 2, 2, 1).
+        // A single-page implementation could never remove all 5 chunks in one shot, so this
+        // setup makes it impossible to pass on a broken single-iteration implementation.
         const string documentId = "doc-pagination-test";
-        var chunks = Enumerable.Range(0, 3).Select(i => new EmbeddedChunk
+        var chunks = Enumerable.Range(0, 5).Select(i => new EmbeddedChunk
         {
             Chunk = new TextChunk { Text = $"chunk {i}", DocumentId = documentId, ChunkIndex = i },
             Embedding = new float[] { 1.0f, 0.0f, 0.0f },
@@ -197,7 +199,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
         await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
-        // Act: delete with pageSize=2 to exercise the pagination loop
+        // Act: delete with pageSize=2 to exercise the pagination loop (3 fetches required for 5 chunks)
         await _sut.DeleteByDocumentIdAsync(documentId, pageSize: 2, TestContext.Current.CancellationToken);
         await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 

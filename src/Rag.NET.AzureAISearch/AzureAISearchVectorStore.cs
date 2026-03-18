@@ -203,7 +203,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
                 await _searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
             }
-        } while (idsToDelete.Count == pageSize);
+        } while (idsToDelete.Count > 0);
     }
 
     public async Task CreateCollectionAsync(string name, int vectorDimensions, CancellationToken cancellationToken = default)
