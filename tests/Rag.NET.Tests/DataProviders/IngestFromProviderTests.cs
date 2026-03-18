@@ -206,6 +206,35 @@ public sealed class IngestFromProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task IngestFromProviderAsync_CleanupDeleteThrows_ErrorIsRecordedButProcessingContinues()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var hashStore = new SqliteContentHashStore(_dbPath);
+
+        // Pre-register "id-old" as a known file from a previous run
+        await hashStore.SetAsync("prov", "id-old", etag: null, hash: "oldhash", ct);
+
+        // Provider returns only "id-new" — "id-old" has disappeared and should be cleaned up
+        var provider = MakeProvider(("id-new", "b.txt", "world", null));
+
+        // DeleteAsync throws for "id-old"
+        _pipeline.DeleteAsync("id-old", Arg.Any<CancellationToken>())
+            .Returns(Task.FromException(new InvalidOperationException("delete failed")));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, "prov",
+            hashStore: hashStore,
+            cleanupMode: CleanupMode.Full,
+            cancellationToken: ct);
+
+        // Error is recorded
+        Assert.Contains(result.Errors, e => e.Contains("id-old", StringComparison.Ordinal));
+        // Processing continued — id-new was ingested
+        await _pipeline.Received(1).IngestAsync(
+            Arg.Any<Stream>(), Arg.Is<DocumentMetadata>(m => m.DocumentId == "id-new"),
+            Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), ct);
+    }
+
+    [Fact]
     public async Task IngestFromProviderAsync_MergesBaseAndEntryMetadataTags()
     {
         var capturedMetadata = new List<DocumentMetadata>();
