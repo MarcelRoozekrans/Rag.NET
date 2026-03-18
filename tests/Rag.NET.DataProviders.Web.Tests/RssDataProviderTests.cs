@@ -100,4 +100,52 @@ public sealed class RssDataProviderTests
 
         Assert.Equal("2024-01-01T00:00:00Z", entries[0].ETag);
     }
+
+    [Fact]
+    public async Task GetFilesAsync_Rss2_MissingGuid_FallsBackToLink()
+    {
+        // No <guid> element — Id must come from <link>
+        const string xml = """
+            <?xml version="1.0"?>
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <link>https://example.com/post-via-link</link>
+                  <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+                </item>
+              </channel>
+            </rss>
+            """;
+        var sut = new RssDataProvider("https://example.com/feed.rss",
+            MakeClient("https://example.com/feed.rss", xml));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal("https://example.com/post-via-link", entries[0].Id);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Atom_MissingId_FallsBackToLinkHref()
+    {
+        // No <id> element — Id must come from <link href>
+        const string xml = """
+            <?xml version="1.0"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <link href="https://example.com/post-via-link"/>
+                <updated>2024-01-01T00:00:00Z</updated>
+              </entry>
+            </feed>
+            """;
+        var sut = new RssDataProvider("https://example.com/atom.xml",
+            MakeClient("https://example.com/atom.xml", xml));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal("https://example.com/post-via-link", entries[0].Id);
+    }
 }
