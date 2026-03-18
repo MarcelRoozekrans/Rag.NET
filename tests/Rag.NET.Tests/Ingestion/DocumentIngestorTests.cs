@@ -182,6 +182,57 @@ public class DocumentIngestorTests
         _ = _parser.DidNotReceive().ParseAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task IngestAsync_SectionsWithHeadings_ApplysBreadcrumbMetadataToChunks()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var metadata = new DocumentMetadata { DocumentId = "doc-h", FileName = "doc.md", ContentType = "text/markdown" };
+
+        var section1 = new DocumentSection { Text = "Intro text", DocumentId = "doc-h", SectionIndex = 0,
+            Heading = "Chapter 1", HeadingLevel = 1 };
+        var section2 = new DocumentSection { Text = "Sub text", DocumentId = "doc-h", SectionIndex = 1,
+            Heading = "Section 1.1", HeadingLevel = 2 };
+        var section3 = new DocumentSection { Text = "Next chapter", DocumentId = "doc-h", SectionIndex = 2,
+            Heading = "Chapter 2", HeadingLevel = 1 };
+
+        var chunk1 = new TextChunk { Text = "Intro text", DocumentId = "doc-h", ChunkIndex = 0 };
+        var chunk2 = new TextChunk { Text = "Sub text", DocumentId = "doc-h", ChunkIndex = 1 };
+        var chunk3 = new TextChunk { Text = "Next chapter", DocumentId = "doc-h", ChunkIndex = 2 };
+
+        _parser.ParseAsync(Arg.Any<Stream>(), metadata, ct)
+            .Returns(ToAsyncEnumerable(section1, section2, section3));
+        _chunker.ChunkAsync(section1, Arg.Any<ChunkingOptions>(), ct).Returns(ToAsyncEnumerable(chunk1));
+        _chunker.ChunkAsync(section2, Arg.Any<ChunkingOptions>(), ct).Returns(ToAsyncEnumerable(chunk2));
+        _chunker.ChunkAsync(section3, Arg.Any<ChunkingOptions>(), ct).Returns(ToAsyncEnumerable(chunk3));
+
+        var embeddings = new GeneratedEmbeddings<Embedding<float>>(
+        [
+            new Embedding<float>(new float[] { 0.1f }),
+            new Embedding<float>(new float[] { 0.2f }),
+            new Embedding<float>(new float[] { 0.3f }),
+        ]);
+        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), ct)
+            .Returns(embeddings);
+
+        using var stream = new MemoryStream("content"u8.ToArray());
+        await _sut.IngestAsync(stream, metadata, cancellationToken: ct);
+
+        // chunk1: only H1 breadcrumb
+        Assert.Equal("Chapter 1", chunk1.Metadata["heading"]);
+        Assert.Equal("1", chunk1.Metadata["heading_level"]);
+        Assert.Equal("Chapter 1", chunk1.Metadata["heading_breadcrumb"]);
+
+        // chunk2: H1 > H2 breadcrumb
+        Assert.Equal("Section 1.1", chunk2.Metadata["heading"]);
+        Assert.Equal("2", chunk2.Metadata["heading_level"]);
+        Assert.Equal("Chapter 1 > Section 1.1", chunk2.Metadata["heading_breadcrumb"]);
+
+        // chunk3: new H1 clears H2 — breadcrumb is just "Chapter 2"
+        Assert.Equal("Chapter 2", chunk3.Metadata["heading"]);
+        Assert.Equal("1", chunk3.Metadata["heading_level"]);
+        Assert.Equal("Chapter 2", chunk3.Metadata["heading_breadcrumb"]);
+    }
+
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)
