@@ -17,7 +17,8 @@ public sealed class DocumentIngestor(
     ChunkingOptions chunkingOptions,
     IBm25Index bm25Index,
     IParentChunkStore? parentStore = null,
-    ParentDocumentOptions? parentOptions = null) : IIngestor
+    ParentDocumentOptions? parentOptions = null,
+    IRagDataManager? dataManager = null) : IIngestor
 {
     private int _nextBm25DocId;
 
@@ -73,6 +74,8 @@ public sealed class DocumentIngestor(
             bm25Index.Add(id, ec.Chunk);
         }
 
+        dataManager?.Add(metadata, chunks);
+
         return new IngestionResult { DocumentId = metadata.DocumentId, ChunksStored = embeddedChunks.Count };
     }
 
@@ -81,6 +84,7 @@ public sealed class DocumentIngestor(
         await vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken).ConfigureAwait(false);
         bm25Index.Remove(documentId);
         parentStore?.Remove(documentId);
+        dataManager?.Remove(documentId);
     }
 
     private async Task ChunkAndStoreParentsAsync(
