@@ -93,4 +93,20 @@ public sealed class SqliteContentHashStoreTests : IDisposable
         Assert.Equal("hash-1", await sut2.GetHashAsync("prov-1", "entry-1", TestContext.Current.CancellationToken));
         Assert.Equal("etag-1", await sut2.GetETagAsync("prov-1", "entry-1", TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task GetHashAsync_SameEntryId_DifferentProviders_AreIndependent()
+    {
+        var sut = new SqliteContentHashStore(_dbPath);
+
+        // Same entry ID, two different providers, two different hashes
+        await sut.SetAsync("prov-1", "shared-entry", null, "hash-from-prov1", TestContext.Current.CancellationToken);
+        await sut.SetAsync("prov-2", "shared-entry", null, "hash-from-prov2", TestContext.Current.CancellationToken);
+
+        var hash1 = await sut.GetHashAsync("prov-1", "shared-entry", TestContext.Current.CancellationToken);
+        var hash2 = await sut.GetHashAsync("prov-2", "shared-entry", TestContext.Current.CancellationToken);
+
+        Assert.Equal("hash-from-prov1", hash1);
+        Assert.Equal("hash-from-prov2", hash2);
+    }
 }
