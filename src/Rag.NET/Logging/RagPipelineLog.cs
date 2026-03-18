@@ -22,8 +22,8 @@ internal static partial class RagPipelineLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "Query expansion failed for query '{Query}', falling back to single-query retrieval")]
     internal static partial void QueryExpansionFailed(ILogger logger, string query, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Variant query retrieval failed for variant '{Query}', skipping")]
-    internal static partial void VariantQueryFailed(ILogger logger, string query, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Query retrieval failed for query '{Query}', skipping")]
+    internal static partial void QueryRetrievalFailed(ILogger logger, string query, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Asking with query (TopK={TopK})")]
     internal static partial void AskStarted(ILogger logger, int topK);

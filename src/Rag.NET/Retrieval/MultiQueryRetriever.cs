@@ -70,7 +70,7 @@ public sealed class MultiQueryRetriever(
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            RagPipelineLog.VariantQueryFailed(_logger, query, ex);
+            RagPipelineLog.QueryRetrievalFailed(_logger, query, ex);
             return null;
         }
     }
