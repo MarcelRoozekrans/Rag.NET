@@ -336,7 +336,7 @@ Use an LLM to grade whether a predicted answer is correct given a reference answ
 | [ ] | BM25 Synonym Expansion | Medium | BM25 retriever |
 | [x] | Content-Hash Record Manager | Medium | Persistence store |
 | [x] | Cross-Encoder Reranking | Medium | Model or API |
-| [ ] | Data Management API | Medium | `IVectorStore` extension |
+| [x] | Data Management API | Medium | `IVectorStore` extension |
 | [x] | Data Provider Abstraction | Medium | Existing `IDocumentParser` |
 | [x] | Decorator Pipeline Refactoring | Medium | None |
 | [ ] | Hierarchical Merger | Medium | None |
