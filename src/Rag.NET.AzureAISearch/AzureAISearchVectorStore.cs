@@ -176,6 +176,10 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         int pageSize,
         CancellationToken cancellationToken = default)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize);
+        if (pageSize > 1000)
+            throw new ArgumentOutOfRangeException(nameof(pageSize), pageSize, "Page size must not exceed 1000 (Azure AI Search maximum).");
+
         List<string> idsToDelete;
         do
         {
@@ -200,7 +204,10 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             if (idsToDelete.Count > 0)
             {
                 var batch = IndexDocumentsBatch.Delete("id", idsToDelete);
-                await _searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken)
+                await _searchClient.IndexDocumentsAsync(
+                        batch,
+                        new IndexDocumentsOptions { ThrowOnAnyError = true },
+                        cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
             }
         } while (idsToDelete.Count > 0);

@@ -165,6 +165,30 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DeleteByDocumentId_WithPageSizeZero_ThrowsArgumentOutOfRangeException()
+    {
+        var sut = new AzureAISearchVectorStore(
+            new Uri("https://localhost:8443"),
+            "test-index",
+            new AzureKeyCredential("dummy-key"));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => sut.DeleteByDocumentIdAsync("doc-id", pageSize: 0, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task DeleteByDocumentId_WithPageSizeOverLimit_ThrowsArgumentOutOfRangeException()
+    {
+        var sut = new AzureAISearchVectorStore(
+            new Uri("https://localhost:8443"),
+            "test-index",
+            new AzureKeyCredential("dummy-key"));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => sut.DeleteByDocumentIdAsync("doc-id", pageSize: 1001, CancellationToken.None));
+    }
+
+    [Fact]
     public void EscapeODataString_ValueWithSingleQuote_DoublesSingleQuotes()
     {
         Assert.Equal("it''s here", AzureAISearchVectorStore.EscapeODataString("it's here"));
