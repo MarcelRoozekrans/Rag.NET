@@ -99,4 +99,22 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         Assert.Single(entries);
         Assert.Equal("keep.md", entries[0].FileName);
     }
+
+    [Fact]
+    public async Task GetFilesAsync_TopDirectoryOnly_ExcludesSubdirectoryFiles()
+    {
+        WriteFile("root.txt");
+        var sub = Path.Combine(_dir, "sub");
+        Directory.CreateDirectory(sub);
+        File.WriteAllText(Path.Combine(sub, "nested.txt"), "nested");
+
+        var sut = new LocalFilesDataProvider(_dir,
+            new LocalFilesOptions { SearchOption = SearchOption.TopDirectoryOnly });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal("root.txt", entries[0].FileName);
+    }
 }
