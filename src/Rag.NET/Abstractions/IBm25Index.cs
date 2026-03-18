@@ -7,6 +7,9 @@ namespace Rag.NET.Abstractions;
 /// </summary>
 public interface IBm25Index : IDisposable, IAsyncDisposable
 {
+    /// <summary>Creates or migrates any backing storage needed by the index.</summary>
+    Task InitializeAsync(CancellationToken cancellationToken = default);
+
     void Add(int docId, TextChunk chunk);
     void Remove(string documentId);
     IReadOnlyList<(TextChunk chunk, double score)> Search(string query, int topK);

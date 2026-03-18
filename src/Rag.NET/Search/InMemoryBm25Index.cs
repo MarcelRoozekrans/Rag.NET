@@ -149,6 +149,9 @@ public sealed class InMemoryBm25Index : IBm25Index
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
+    public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
     public void Dispose() => _lock.Dispose();
 
     public ValueTask DisposeAsync()

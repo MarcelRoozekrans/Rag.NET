@@ -15,6 +15,9 @@ public sealed class InMemoryParentChunkStore : IParentChunkStore
     public void Dispose() { } // no resources to release
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
+    /// <inheritdoc/>
+    public Task InitializeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
     public void Add(string documentId, int parentChunkIndex, string text)
     {
         var key = GetParentKey(documentId, parentChunkIndex);
