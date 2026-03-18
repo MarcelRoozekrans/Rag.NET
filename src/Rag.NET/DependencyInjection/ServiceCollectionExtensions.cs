@@ -36,7 +36,8 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<ChunkingOptions>(),
             sp.GetRequiredService<IBm25Index>(),
             sp.GetService<IParentChunkStore>(),
-            sp.GetService<ParentDocumentOptions>()));
+            sp.GetService<ParentDocumentOptions>(),
+            sp.GetService<IRagDataManager>()));
 
         services.AddSingleton<IRetriever>(sp => BuildRetrieverChain(sp));
 

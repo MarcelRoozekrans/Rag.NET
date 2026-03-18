@@ -209,9 +209,11 @@ public sealed class SqliteDocumentStore : IRagDataManager
         return Task.Run(() =>
         {
             using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
+            using var tx   = conn.BeginTransaction();
             using var cmd  = conn.CreateCommand();
             cmd.CommandText = "DELETE FROM rag_documents; DELETE FROM rag_chunks;";
             cmd.ExecuteNonQuery();
+            tx.Commit();
         }, cancellationToken);
     }
 
