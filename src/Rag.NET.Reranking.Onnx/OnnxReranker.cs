@@ -9,6 +9,7 @@ public sealed class OnnxReranker : IReranker, IDisposable
 {
     private readonly InferenceSession _session;
     private readonly OnnxRerankerOptions _options;
+    private readonly IReadOnlyDictionary<string, int> _vocab;
 
     public OnnxReranker(OnnxRerankerOptions options)
     {
@@ -17,7 +18,12 @@ public sealed class OnnxReranker : IReranker, IDisposable
         if (!File.Exists(options.ModelPath))
             throw new FileNotFoundException($"ONNX model file not found: {options.ModelPath}", options.ModelPath);
 
+        if (!File.Exists(options.VocabPath))
+            throw new FileNotFoundException(
+                $"BERT vocabulary file not found: {options.VocabPath}", options.VocabPath);
+
         _options = options;
+        _vocab = LoadVocab(options.VocabPath);
         _session = new InferenceSession(options.ModelPath);
     }
 
@@ -68,6 +74,8 @@ public sealed class OnnxReranker : IReranker, IDisposable
     private (DenseTensor<long> InputIds, DenseTensor<long> AttentionMask, DenseTensor<long> TokenTypeIds) TokenizePair(
         string query, string passage)
     {
+        const int unkId = 100; // [UNK] in standard BERT vocab
+
         var maxLen = _options.MaxLength;
         var queryTokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var passageTokens = passage.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -77,6 +85,9 @@ public sealed class OnnxReranker : IReranker, IDisposable
         var queryLen = Math.Min(queryTokens.Length, available / 2);
         var passageLen = Math.Min(passageTokens.Length, available - queryLen);
         var totalLen = queryLen + passageLen + 3;
+
+        int[] queryIds = Array.ConvertAll(queryTokens, w => _vocab.TryGetValue(w.ToLowerInvariant(), out var id) ? id : unkId);
+        int[] passageIds = Array.ConvertAll(passageTokens, w => _vocab.TryGetValue(w.ToLowerInvariant(), out var id) ? id : unkId);
 
         var inputIds = new DenseTensor<long>([1, totalLen]);
         var attentionMask = new DenseTensor<long>([1, totalLen]);
@@ -90,7 +101,7 @@ public sealed class OnnxReranker : IReranker, IDisposable
         var pos = 1;
         for (var i = 0; i < queryLen; i++, pos++)
         {
-            inputIds[0, pos] = (uint)(queryTokens[i].GetHashCode(StringComparison.Ordinal) & 0x7FFF);
+            inputIds[0, pos] = queryIds[i];
             attentionMask[0, pos] = 1;
             tokenTypeIds[0, pos] = 0;
         }
@@ -103,7 +114,7 @@ public sealed class OnnxReranker : IReranker, IDisposable
 
         for (var i = 0; i < passageLen; i++, pos++)
         {
-            inputIds[0, pos] = (uint)(passageTokens[i].GetHashCode(StringComparison.Ordinal) & 0x7FFF);
+            inputIds[0, pos] = passageIds[i];
             attentionMask[0, pos] = 1;
             tokenTypeIds[0, pos] = 1;
         }
@@ -115,6 +126,23 @@ public sealed class OnnxReranker : IReranker, IDisposable
 
         return (inputIds, attentionMask, tokenTypeIds);
     }
+
+    private static IReadOnlyDictionary<string, int> LoadVocab(string vocabPath)
+    {
+        var lines = File.ReadAllLines(vocabPath);
+        var vocab = new Dictionary<string, int>(lines.Length, StringComparer.Ordinal);
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var token = lines[i];
+            if (!string.IsNullOrEmpty(token))
+                vocab[token] = i;
+        }
+        return vocab;
+    }
+
+    // Internal for unit-test access; not part of the public API.
+    internal static IReadOnlyDictionary<string, int> LoadVocabForTest(string vocabPath) =>
+        LoadVocab(vocabPath);
 
     private static double Sigmoid(float x) => 1.0 / (1.0 + Math.Exp(-x));
 

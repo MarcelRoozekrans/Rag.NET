@@ -12,4 +12,11 @@ public sealed class OnnxRerankerOptions
     /// Query + passage pairs exceeding this are truncated.
     /// </summary>
     public int MaxLength { get; set; } = 512;
+
+    /// <summary>
+    /// Path to the BERT vocabulary file (vocab.txt).
+    /// Each line is a token; the line index is the token ID.
+    /// Standard BERT uncased vocab.txt files are available from the model hub.
+    /// </summary>
+    public required string VocabPath { get; set; }
 }
