@@ -161,6 +161,27 @@ public class DocumentIngestorTests
         Assert.True(reports.Count >= 3);
     }
 
+    [Fact]
+    public async Task IngestAsync_NonSeekableStream_WithParentOptions_ThrowsBeforeParsingStarts()
+    {
+        // Arrange: non-seekable stream
+        var stream = new NonSeekableStream(new MemoryStream("hello world"u8.ToArray()));
+        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt" };
+
+        var parentStore = Substitute.For<IParentChunkStore>();
+        var sut = new DocumentIngestor(
+            [_parser], _chunker, _vectorStore, _embedder,
+            new ChunkingOptions(), _bm25Index,
+            parentStore: parentStore,
+            parentOptions: new ParentDocumentOptions());
+
+        // Act & Assert: must throw BEFORE calling ParseAsync
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken));
+
+        _ = _parser.DidNotReceive().ParseAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<CancellationToken>());
+    }
+
     private static async IAsyncEnumerable<T> ToAsyncEnumerable<T>(params T[] items)
     {
         foreach (var item in items)
@@ -168,5 +189,20 @@ public class DocumentIngestorTests
             yield return item;
             await Task.CompletedTask;
         }
+    }
+
+    // Helper: minimal non-seekable stream wrapper
+    private sealed class NonSeekableStream(Stream inner) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

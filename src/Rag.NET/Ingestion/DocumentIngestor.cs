@@ -32,6 +32,10 @@ public sealed class DocumentIngestor(
             ?? throw new InvalidOperationException(
                 $"No parser registered for content type '{metadata.ContentType}'.");
 
+        if (parentOptions is not null && parentStore is not null && !document.CanSeek)
+            throw new InvalidOperationException(
+                "Parent-document retrieval requires a seekable stream. Wrap the stream in a MemoryStream before calling IngestAsync.");
+
         if (options?.Overwrite == true)
         {
             await vectorStore.DeleteByDocumentIdAsync(metadata.DocumentId, cancellationToken).ConfigureAwait(false);
@@ -87,9 +91,6 @@ public sealed class DocumentIngestor(
         CancellationToken cancellationToken)
     {
         // Reset stream for second parse pass
-        if (!document.CanSeek)
-            throw new InvalidOperationException(
-                "Parent-document retrieval requires a seekable stream. Wrap the stream in a MemoryStream before calling IngestAsync.");
         document.Position = 0;
 
         var parentChunkingOptions = new ChunkingOptions
