@@ -25,14 +25,23 @@ public class OnnxRerankerTests
     [Fact]
     public void Constructor_WhenVocabPathDoesNotExist_ThrowsFileNotFoundException()
     {
-        var options = new OnnxRerankerOptions
+        // Use a real temp file as model path so the model check passes
+        var tempModel = Path.GetTempFileName();
+        try
         {
-            ModelPath = "nonexistent/model.onnx",
-            VocabPath = "nonexistent/vocab.txt",
-        };
+            var options = new OnnxRerankerOptions
+            {
+                ModelPath = tempModel,
+                VocabPath = "nonexistent/vocab.txt",
+            };
 
-        // FileNotFoundException for the model path fires first (model is checked first)
-        Assert.Throws<FileNotFoundException>(() => new OnnxReranker(options));
+            var ex = Assert.Throws<FileNotFoundException>(() => new OnnxReranker(options));
+            Assert.Contains("vocab", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            File.Delete(tempModel);
+        }
     }
 
     [Fact]
