@@ -181,4 +181,32 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     {
         Assert.Equal("it''s a ''test''", AzureAISearchVectorStore.EscapeODataString("it's a 'test'"));
     }
+
+    [Fact]
+    public async Task DeleteByDocumentId_WithMoreChunksThanPageSize_DeletesAllChunksAcrossMultiplePages()
+    {
+        // Arrange: store 3 chunks for the same document, then delete with pageSize=2
+        // This forces two delete iterations: first page returns 2 IDs, second page returns 1 ID.
+        const string documentId = "doc-pagination-test";
+        var chunks = Enumerable.Range(0, 3).Select(i => new EmbeddedChunk
+        {
+            Chunk = new TextChunk { Text = $"chunk {i}", DocumentId = documentId, ChunkIndex = i },
+            Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+        }).ToList();
+
+        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+
+        // Act: delete with pageSize=2 to exercise the pagination loop
+        await _sut.DeleteByDocumentIdAsync(documentId, pageSize: 2, TestContext.Current.CancellationToken);
+        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+
+        // Assert: no chunks remain for the document
+        var results = await _sut.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 10 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Empty(results);
+    }
 }

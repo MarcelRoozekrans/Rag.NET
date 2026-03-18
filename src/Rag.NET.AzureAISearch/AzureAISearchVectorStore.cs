@@ -166,32 +166,44 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             .ConfigureAwait(false);
     }
 
-    public async Task DeleteByDocumentIdAsync(
+    public Task DeleteByDocumentIdAsync(
         string documentId,
+        CancellationToken cancellationToken = default) =>
+        DeleteByDocumentIdAsync(documentId, pageSize: 1000, cancellationToken);
+
+    internal async Task DeleteByDocumentIdAsync(
+        string documentId,
+        int pageSize,
         CancellationToken cancellationToken = default)
     {
-        var searchOptions = new Azure.Search.Documents.SearchOptions
+        List<string> idsToDelete;
+        do
         {
-            Filter = $"document_id eq '{documentId}'",
-            Select = { "id" },
-            Size = 1000,
-        };
+            idsToDelete = [];
 
-        var response = await _searchClient.SearchAsync<SearchDocument>(
-            null, searchOptions, cancellationToken).ConfigureAwait(false);
+            var searchOptions = new Azure.Search.Documents.SearchOptions
+            {
+                Filter = $"document_id eq '{EscapeODataString(documentId)}'",
+                Select = { "id" },
+                Size = pageSize,
+            };
 
-        var idsToDelete = new List<string>();
-        await foreach (var result in response.Value.GetResultsAsync().WithCancellation(cancellationToken).ConfigureAwait(false))
-        {
-            idsToDelete.Add(result.Document.GetString("id"));
-        }
+            var response = await _searchClient.SearchAsync<SearchDocument>(
+                null, searchOptions, cancellationToken).ConfigureAwait(false);
 
-        if (idsToDelete.Count > 0)
-        {
-            var batch = IndexDocumentsBatch.Delete("id", idsToDelete);
-            await _searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-        }
+            await foreach (var result in response.Value.GetResultsAsync()
+                .WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                idsToDelete.Add(result.Document.GetString("id"));
+            }
+
+            if (idsToDelete.Count > 0)
+            {
+                var batch = IndexDocumentsBatch.Delete("id", idsToDelete);
+                await _searchClient.IndexDocumentsAsync(batch, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        } while (idsToDelete.Count == pageSize);
     }
 
     public async Task CreateCollectionAsync(string name, int vectorDimensions, CancellationToken cancellationToken = default)
