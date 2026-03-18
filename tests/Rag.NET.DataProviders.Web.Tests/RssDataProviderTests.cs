@@ -150,6 +150,31 @@ public sealed class RssDataProviderTests
     }
 
     [Fact]
+    public async Task GetFilesAsync_Atom_OpenContentAsync_ReturnsSeekableStream()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <id>https://example.com/atom-post-1</id>
+                <link href="https://example.com/atom-post-1"/>
+              </entry>
+            </feed>
+            """;
+        var handler = new FakeHttpMessageHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["https://example.com/feed.atom"] = xml,
+            ["https://example.com/atom-post-1"] = "<html>atom content</html>",
+        });
+        var sut = new RssDataProvider("https://example.com/feed.atom", new HttpClient(handler));
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        Assert.True(stream.CanSeek, "stream must be seekable for parent-document retrieval");
+    }
+
+    [Fact]
     public async Task GetFilesAsync_Rss2_OpenContentAsync_ReturnsSeekableStream()
     {
         const string xml = """

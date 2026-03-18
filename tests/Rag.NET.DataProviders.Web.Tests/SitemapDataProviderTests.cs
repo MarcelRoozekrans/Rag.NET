@@ -121,6 +121,6 @@ public sealed class SitemapDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
-        Assert.True(stream.CanSeek);
+        Assert.True(stream.CanSeek, "stream must be seekable for parent-document retrieval");
     }
 }
