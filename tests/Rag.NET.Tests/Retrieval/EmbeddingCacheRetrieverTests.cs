@@ -95,6 +95,19 @@ public class EmbeddingCacheRetrieverTests
     }
 
     [Fact]
+    public async Task RetrieveAsync_OnCacheMiss_CallsInnerRetriever()
+    {
+        _inner.RetrieveAsync("miss-query", Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>());
+
+        var sut = new EmbeddingCacheRetriever(_inner, _cache, _options);
+        await sut.RetrieveAsync("miss-query", cancellationToken: TestContext.Current.CancellationToken);
+
+        // Inner retriever called exactly once confirms the factory ran (cache miss path)
+        await _inner.Received(1).RetrieveAsync("miss-query", Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RetrieveAsync_WhenCacheFails_FallsBackToInner()
     {
         var expected = new List<SearchResult>
