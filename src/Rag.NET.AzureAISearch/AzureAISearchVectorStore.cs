@@ -119,7 +119,8 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         if (options.MetadataFilter is { Count: > 0 })
         {
             var filterClauses = options.MetadataFilter
-                .Select(kvp => $"search.ismatch('\"{kvp.Key}\":\"{kvp.Value}\"', 'metadata')")
+                .Select(kvp =>
+                    $"search.ismatch('\"{EscapeODataString(kvp.Key)}\":\"{EscapeODataString(kvp.Value)}\"', 'metadata')")
                 .ToList();
             searchOptions.Filter = string.Join(" and ", filterClauses);
         }
@@ -155,7 +156,8 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         if (options.MetadataFilter is { Count: > 0 })
         {
             var filterClauses = options.MetadataFilter
-                .Select(kvp => $"search.ismatch('\"{kvp.Key}\":\"{kvp.Value}\"', 'metadata')")
+                .Select(kvp =>
+                    $"search.ismatch('\"{EscapeODataString(kvp.Key)}\":\"{EscapeODataString(kvp.Value)}\"', 'metadata')")
                 .ToList();
             searchOptions.Filter = string.Join(" and ", filterClauses);
         }
@@ -241,6 +243,10 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             return false;
         }
     }
+
+    /// <summary>Escapes a string for use in an OData string literal by doubling single quotes.</summary>
+    internal static string EscapeODataString(string value) =>
+        value.Replace("'", "''", StringComparison.Ordinal);
 
     private async Task<IReadOnlyList<SearchResult>> ExecuteSearchAsync(
         string? searchText,

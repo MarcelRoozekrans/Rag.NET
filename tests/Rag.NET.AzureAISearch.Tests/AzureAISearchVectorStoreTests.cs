@@ -163,4 +163,22 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
         Assert.False(await manageable.CollectionExistsAsync(tempIndex, TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public void EscapeODataString_ValueWithSingleQuote_DoublesSingleQuotes()
+    {
+        Assert.Equal("it''s here", AzureAISearchVectorStore.EscapeODataString("it's here"));
+    }
+
+    [Fact]
+    public void EscapeODataString_ValueWithNoSpecialChars_ReturnsUnchanged()
+    {
+        Assert.Equal("normal", AzureAISearchVectorStore.EscapeODataString("normal"));
+    }
+
+    [Fact]
+    public void EscapeODataString_ValueWithMultipleSingleQuotes_DoublesAllOfThem()
+    {
+        Assert.Equal("it''s a ''test''", AzureAISearchVectorStore.EscapeODataString("it's a 'test'"));
+    }
 }
