@@ -118,4 +118,31 @@ public class MultiQueryRetrieverTests
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => _sut.RetrieveAsync("q", opts, ct));
     }
+
+    [Fact]
+    public async Task RetrieveAsync_VariantQueryThrows_ReturnsResultsFromSuccessfulQueries()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        _expander.ExpandAsync("q", 2, ct)
+            .Returns(new List<string> { "variant1", "variant2" });
+
+        // Original query succeeds
+        _inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns([MakeResult("doc-1", 0, 0.9)]);
+        // variant1 throws
+        _inner.RetrieveAsync("variant1", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(Task.FromException<IReadOnlyList<SearchResult>>(new InvalidOperationException("retriever failed")));
+        // variant2 succeeds
+        _inner.RetrieveAsync("variant2", Arg.Any<RetrievalOptions?>(), ct)
+            .Returns([MakeResult("doc-2", 0, 0.7)]);
+
+        var opts = new RetrievalOptions { UseMultiQuery = true, TopK = 10 };
+        var results = await _sut.RetrieveAsync("q", opts, ct);
+
+        // Both successful query results must be in the output
+        Assert.Equal(2, results.Count);
+        Assert.Contains(results, r => string.Equals(r.Chunk.DocumentId, "doc-1", StringComparison.Ordinal));
+        Assert.Contains(results, r => string.Equals(r.Chunk.DocumentId, "doc-2", StringComparison.Ordinal));
+    }
 }

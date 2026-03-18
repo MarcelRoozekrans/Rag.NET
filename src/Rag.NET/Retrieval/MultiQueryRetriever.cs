@@ -42,16 +42,36 @@ public sealed class MultiQueryRetriever(
         var allQueries = new List<string>(variants.Count + 1) { query };
         allQueries.AddRange(variants);
 
-        var tasks = allQueries.Select(q => inner.RetrieveAsync(q, options, cancellationToken)).ToArray();
+        var tasks = allQueries
+            .Select(q => SafeRetrieveAsync(q, options, cancellationToken))
+            .ToArray();
         var allResults = await Task.WhenAll(tasks).ConfigureAwait(false);
 
         return allResults
-            .SelectMany(r => r)
+            .Where(r => r is not null)
+            .SelectMany(r => r!)
             .GroupBy(r => (r.Chunk.DocumentId, r.Chunk.ChunkIndex))
             .Select(g => g.MaxBy(r => r.Score)!)
             .OrderByDescending(r => r.Score)
             .Take(opts.TopK)
             .ToList()
             .AsReadOnly();
+    }
+
+    private async Task<IReadOnlyList<SearchResult>?> SafeRetrieveAsync(
+        string query,
+        RetrievalOptions? options,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await inner.RetrieveAsync(query, options, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            RagPipelineLog.VariantQueryFailed(_logger, query, ex);
+            return null;
+        }
     }
 }
