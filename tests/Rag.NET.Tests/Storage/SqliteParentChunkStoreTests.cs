@@ -95,4 +95,15 @@ public class SqliteParentChunkStoreTests : IAsyncDisposable
         var found = _sut.TryGet("doc-1", 0, out _);
         Assert.False(found);
     }
+
+    [Fact]
+    public async Task InitializeAsync_CanBeAwaited_ThenStoreWorksWithoutBlockingInit()
+    {
+        var sut = CreateSut();
+        await sut.InitializeAsync(TestContext.Current.CancellationToken);
+
+        sut.Add("doc-1", 0, "parent text");
+        Assert.True(sut.TryGet("doc-1", 0, out var text));
+        Assert.Equal("parent text", text);
+    }
 }

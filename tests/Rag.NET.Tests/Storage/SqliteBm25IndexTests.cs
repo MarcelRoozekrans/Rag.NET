@@ -103,4 +103,20 @@ public class SqliteBm25IndexTests : IAsyncDisposable
         var results = _sut.Search("hello", topK: 5);
         Assert.Empty(results);
     }
+
+    [Fact]
+    public async Task InitializeAsync_CanBeAwaited_ThenAddWorksWithoutBlockingInit()
+    {
+        var sut = CreateSut();
+
+        // Should complete without blocking the thread-pool
+        await sut.InitializeAsync(TestContext.Current.CancellationToken);
+
+        // Subsequent operations use the already-initialised state
+        sut.Add(1, MakeChunk("doc-1", 0, "hello world"));
+        var results = sut.Search("hello", 5);
+
+        Assert.Single(results);
+        Assert.Equal("doc-1", results[0].chunk.DocumentId);
+    }
 }

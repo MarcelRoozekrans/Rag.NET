@@ -60,6 +60,31 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// Explicitly initialises the SQLite backing store. Call this during application startup
+    /// (e.g. from a hosted service or DI setup) to avoid blocking thread-pool threads
+    /// on the first <see cref="Add"/> or <see cref="TryGet"/> call.
+    /// </summary>
+    public Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_initialised) return Task.CompletedTask;
+        return Task.Run(() =>
+        {
+            _initLock.Wait(cancellationToken);
+            try
+            {
+                if (_initialised) return;
+                InitialiseCore();
+                _initialised = true;
+            }
+            finally
+            {
+                _initLock.Release();
+            }
+        }, cancellationToken);
+    }
+
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
