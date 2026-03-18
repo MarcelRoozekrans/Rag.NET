@@ -138,12 +138,13 @@ public sealed class LocalFilesDataProviderTests : IDisposable
     public async Task GetFilesAsync_CaseInsensitiveExtension_IncludesFile()
     {
         // Write a file with uppercase extension
-        File.WriteAllText(Path.Combine(_dir, "readme.MD"), "content");
+        WriteFile("readme.MD", "content");
         var sut = new LocalFilesDataProvider(_dir, new LocalFilesOptions { Extensions = [".md"] });
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(entries);
+        Assert.Equal("readme.MD", entries[0].FileName);
     }
 
     [Fact]

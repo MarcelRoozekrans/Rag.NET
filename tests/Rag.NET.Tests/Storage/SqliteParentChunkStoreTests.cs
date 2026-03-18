@@ -110,7 +110,7 @@ public class SqliteParentChunkStoreTests : IAsyncDisposable
     [Fact]
     public void Add_AfterDispose_ThrowsObjectDisposedException()
     {
-        var sut = new SqliteParentChunkStore(_dbPath, "test-coll");
+        var sut = CreateSut();
         sut.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() => sut.Add("doc-1", 0, "text"));
@@ -119,7 +119,7 @@ public class SqliteParentChunkStoreTests : IAsyncDisposable
     [Fact]
     public void TryGet_AfterDispose_ThrowsObjectDisposedException()
     {
-        var sut = new SqliteParentChunkStore(_dbPath, "test-coll");
+        var sut = CreateSut();
         sut.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() => sut.TryGet("doc-1", 0, out _));
