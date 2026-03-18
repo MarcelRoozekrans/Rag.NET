@@ -37,7 +37,7 @@ public sealed class LocalFilesDataProvider : IFileContentProvider
             var capturedPath = path;
 
             yield return new FileEntry(
-                Id: path,
+                Id: Path.GetRelativePath(_rootPath, path),
                 FileName: Path.GetFileName(path),
                 OpenContentAsync: _ => Task.FromResult<Stream>(File.OpenRead(capturedPath)),
                 ETag: etag);

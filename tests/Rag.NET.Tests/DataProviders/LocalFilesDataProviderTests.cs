@@ -46,14 +46,30 @@ public sealed class LocalFilesDataProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task GetFilesAsync_Entry_HasAbsolutePathAsId()
+    public async Task GetFilesAsync_Entry_HasRelativePathAsId()
     {
-        var path = WriteFile("readme.md");
+        WriteFile("readme.md");
         var sut = new LocalFilesDataProvider(_dir);
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(path, entries[0].Id);
+        Assert.Equal("readme.md", entries[0].Id);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_SubdirectoryFile_HasRelativePathWithForwardSlash()
+    {
+        var sub = Path.Combine(_dir, "docs");
+        Directory.CreateDirectory(sub);
+        File.WriteAllText(Path.Combine(sub, "guide.md"), "content");
+
+        var sut = new LocalFilesDataProvider(_dir);
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Path.GetRelativePath uses the platform separator — normalise for the assertion
+        var id = entries[0].Id.Replace('\\', '/');
+        Assert.Equal("docs/guide.md", id);
     }
 
     [Fact]
