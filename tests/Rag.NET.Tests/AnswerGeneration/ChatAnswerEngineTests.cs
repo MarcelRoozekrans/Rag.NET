@@ -123,6 +123,46 @@ public class ChatAnswerEngineTests
     }
 
     [Fact]
+    public async Task AskAsync_WhenResponseTextIsNull_ReturnsEmptyString()
+    {
+        var sources = new List<SearchResult>();
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, (string?)null)));
+
+        var result = await _sut.AskAsync("q", sources, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(string.Empty, result.Answer);
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_WithMultipleUpdates_YieldsSourcesThenAllTextDeltas()
+    {
+        var sources = new List<SearchResult>
+        {
+            new() { Chunk = new TextChunk { Text = "Source text", DocumentId = "doc-1", ChunkIndex = 0 }, Score = 0.9 }
+        };
+
+        _chatClient.GetStreamingResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(
+                new ChatResponseUpdate { Contents = [new TextContent("Hello ")] },
+                new ChatResponseUpdate { Contents = [new TextContent("world")] }));
+
+        var updates = new List<RagStreamingUpdate>();
+        await foreach (var update in _sut.AskStreamingAsync("q", sources, cancellationToken: TestContext.Current.CancellationToken))
+        {
+            updates.Add(update);
+        }
+
+        Assert.Equal(3, updates.Count);
+        Assert.Same(sources, updates[0].Sources);
+        Assert.Null(updates[0].TextDelta);
+        Assert.Equal("Hello ", updates[1].TextDelta);
+        Assert.Equal("world", updates[2].TextDelta);
+    }
+
+    [Fact]
     public async Task AskAsync_IncludesSourceTextInUserMessage()
     {
         var sources = new List<SearchResult>

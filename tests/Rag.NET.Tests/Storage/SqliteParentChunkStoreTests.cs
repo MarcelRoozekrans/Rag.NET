@@ -106,4 +106,22 @@ public class SqliteParentChunkStoreTests : IAsyncDisposable
         Assert.True(sut.TryGet("doc-1", 0, out var text));
         Assert.Equal("parent text", text);
     }
+
+    [Fact]
+    public void Add_AfterDispose_ThrowsObjectDisposedException()
+    {
+        var sut = CreateSut();
+        sut.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => sut.Add("doc-1", 0, "text"));
+    }
+
+    [Fact]
+    public void TryGet_AfterDispose_ThrowsObjectDisposedException()
+    {
+        var sut = CreateSut();
+        sut.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => sut.TryGet("doc-1", 0, out _));
+    }
 }

@@ -94,4 +94,82 @@ public class RagPipelineFacadeTests
             await foreach (var _ in sut.AskStreamingAsync("q", cancellationToken: TestContext.Current.CancellationToken)) { }
         });
     }
+
+    [Fact]
+    public async Task AskStreamingAsync_RetrievesThenStreamsUpdates()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sources = new List<SearchResult>
+        {
+            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 }
+        };
+        _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(sources);
+
+        var updates = new List<RagStreamingUpdate>
+        {
+            new() { Sources = sources },
+            new() { TextDelta = "Hello " },
+            new() { TextDelta = "world" },
+        };
+        _answerEngine.AskStreamingAsync("q", sources, Arg.Any<RagOptions?>(), ct)
+            .Returns(StreamingUpdatesFrom(updates));
+
+        var received = new List<RagStreamingUpdate>();
+        await foreach (var update in _sut.AskStreamingAsync("q", cancellationToken: ct))
+            received.Add(update);
+
+        Assert.Equal(3, received.Count);
+        Assert.Same(sources, received[0].Sources);
+        Assert.Equal("Hello ", received[1].TextDelta);
+        Assert.Equal("world", received[2].TextDelta);
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_MapsRagOptionsToRetrievalOptions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(new List<SearchResult>());
+        _answerEngine.AskStreamingAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<RagOptions?>(), ct)
+            .Returns(EmptyStreamingUpdates());
+
+        var opts = new RagOptions
+        {
+            TopK = 7,
+            MinScore = 0.5,
+            UseHybridSearch = true,
+            UseLostInTheMiddleReordering = true,
+            UseRedundancyFilter = true,
+            RedundancyThreshold = 0.8f,
+            MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["key"] = "val" },
+        };
+        await foreach (var _ in _sut.AskStreamingAsync("q", opts, ct)) { }
+
+        await _retriever.Received(1).RetrieveAsync(
+            "q",
+            Arg.Is<RetrievalOptions?>(r =>
+                r != null &&
+                r.TopK == 7 &&
+                r.MinScore == 0.5 &&
+                r.UseHybridSearch &&
+                r.UseLostInTheMiddleReordering &&
+                r.UseRedundancyFilter &&
+                r.RedundancyThreshold == 0.8f &&
+                r.MetadataFilter != null &&
+                r.MetadataFilter.ContainsKey("key")),
+            ct);
+    }
+
+    private static async IAsyncEnumerable<RagStreamingUpdate> StreamingUpdatesFrom(IEnumerable<RagStreamingUpdate> items)
+    {
+        foreach (var item in items)
+        {
+            await Task.CompletedTask;
+            yield return item;
+        }
+    }
+
+    private static IAsyncEnumerable<RagStreamingUpdate> EmptyStreamingUpdates()
+        => StreamingUpdatesFrom([]);
 }

@@ -116,4 +116,20 @@ public class RecursiveChunkingStrategyTests
         Assert.Equal(expectedStart, chunks[1].StartPosition);
         Assert.Equal(expectedStart + "Second paragraph.".Length, chunks[1].EndPosition);
     }
+
+    [Fact]
+    public async Task ChunkAsync_NoSeparatorFound_HardSplitsAtMaxSize()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // 25 'a' chars with MaxChunkSize=10 and no valid separator — must hard-split
+        var text = new string('a', 25);
+        var section = CreateSection(text);
+        var options = new ChunkingOptions { MaxChunkSize = 10, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(section, options, ct).ToListAsync(ct);
+
+        Assert.True(chunks.Count >= 2, "Hard split must produce multiple chunks");
+        Assert.All(chunks, c => Assert.True(c.Text.Length <= 10, $"Chunk too long: '{c.Text}'"));
+        Assert.Equal(text, string.Concat(chunks.Select(c => c.Text)));
+    }
 }

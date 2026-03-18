@@ -119,4 +119,33 @@ public class SqliteBm25IndexTests : IAsyncDisposable
         Assert.Single(results);
         Assert.Equal("doc-1", results[0].chunk.DocumentId);
     }
+
+    [Fact]
+    public void Add_AfterDispose_ThrowsObjectDisposedException()
+    {
+        var sut = CreateSut();
+        sut.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() =>
+            sut.Add(1, MakeChunk("doc-1", 0, "hello")));
+    }
+
+    [Fact]
+    public void Search_AfterDispose_ThrowsObjectDisposedException()
+    {
+        var sut = CreateSut();
+        sut.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => sut.Search("hello", 5));
+    }
+
+    [Fact]
+    public async Task InitializeAsync_AfterDispose_ThrowsObjectDisposedException()
+    {
+        var sut = CreateSut();
+        await sut.DisposeAsync();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => sut.InitializeAsync(TestContext.Current.CancellationToken));
+    }
 }
