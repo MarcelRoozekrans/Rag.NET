@@ -156,4 +156,25 @@ public class PgVectorStoreTests : IAsyncLifetime
         await manageable.DeleteCollectionAsync("temp_collection", TestContext.Current.CancellationToken);
         Assert.False(await manageable.CollectionExistsAsync("temp_collection", TestContext.Current.CancellationToken));
     }
+
+    [Theory]
+    [InlineData("foo; DROP TABLE rag_chunks; --")]
+    [InlineData("FOO")]
+    [InlineData("1starts_with_digit")]
+    [InlineData("has space")]
+    [InlineData("has-hyphen")]
+    public async Task CreateCollectionAsync_InvalidName_ThrowsArgumentException(string name)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _sut.CreateCollectionAsync(name, 3, TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("foo; DROP TABLE rag_chunks; --")]
+    [InlineData("1bad")]
+    public async Task DeleteCollectionAsync_InvalidName_ThrowsArgumentException(string name)
+    {
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => _sut.DeleteCollectionAsync(name, TestContext.Current.CancellationToken));
+    }
 }

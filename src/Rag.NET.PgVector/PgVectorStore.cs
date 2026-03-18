@@ -8,7 +8,7 @@ using Rag.NET.Models.Options;
 
 namespace Rag.NET.PgVector;
 
-public sealed class PgVectorStore : IVectorStore, ICollectionManageable, IDisposable
+public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable, IDisposable
 {
     private readonly NpgsqlDataSource _dataSource;
     private readonly int _vectorDimensions;
@@ -174,6 +174,7 @@ public sealed class PgVectorStore : IVectorStore, ICollectionManageable, IDispos
 
     public async Task CreateCollectionAsync(string name, int vectorDimensions, CancellationToken cancellationToken = default)
     {
+        var quotedName = ValidateAndQuoteIdentifier(name);
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
         {
@@ -185,7 +186,7 @@ public sealed class PgVectorStore : IVectorStore, ICollectionManageable, IDispos
             await conn.ReloadTypesAsync().ConfigureAwait(false);
 
             var sql = $$"""
-                CREATE TABLE IF NOT EXISTS {{name}} (
+                CREATE TABLE IF NOT EXISTS {{quotedName}} (
                     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                     document_id TEXT NOT NULL,
                     chunk_index INTEGER NOT NULL,
@@ -200,7 +201,8 @@ public sealed class PgVectorStore : IVectorStore, ICollectionManageable, IDispos
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            var indexCmd = new NpgsqlCommand($"CREATE INDEX IF NOT EXISTS idx_{name}_document_id ON {name} (document_id)", conn);
+            var indexCmd = new NpgsqlCommand(
+                $"CREATE INDEX IF NOT EXISTS \"idx_{name}_document_id\" ON {quotedName} (document_id)", conn);
             await using (indexCmd.ConfigureAwait(false))
             {
                 await indexCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -210,15 +212,36 @@ public sealed class PgVectorStore : IVectorStore, ICollectionManageable, IDispos
 
     public async Task DeleteCollectionAsync(string name, CancellationToken cancellationToken = default)
     {
+        var quotedName = ValidateAndQuoteIdentifier(name);
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
         {
-            var cmd = new NpgsqlCommand($"DROP TABLE IF EXISTS {name}", conn);
+            var cmd = new NpgsqlCommand($"DROP TABLE IF EXISTS {quotedName}", conn);
             await using (cmd.ConfigureAwait(false))
             {
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
         }
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"^[a-z_][a-z0-9_]{0,62}$",
+        System.Text.RegularExpressions.RegexOptions.NonBacktracking)]
+    private static partial System.Text.RegularExpressions.Regex SafeIdentifierRegex();
+
+    /// <summary>
+    /// Validates that <paramref name="name"/> is a safe PostgreSQL identifier
+    /// (lowercase letters, digits, underscores; max 63 chars; must start with letter or underscore)
+    /// and returns it double-quoted for safe use in DDL statements.
+    /// </summary>
+    private static string ValidateAndQuoteIdentifier(string name)
+    {
+        if (!SafeIdentifierRegex().IsMatch(name))
+            throw new ArgumentException(
+                $"Collection name '{name}' is invalid. Use only lowercase letters, digits, and underscores " +
+                "(max 63 chars, must start with a letter or underscore).",
+                nameof(name));
+        return $"\"{name}\"";
     }
 
     public async Task<bool> CollectionExistsAsync(string name, CancellationToken cancellationToken = default)
