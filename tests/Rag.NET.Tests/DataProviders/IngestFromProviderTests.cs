@@ -162,4 +162,73 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Single(result.Errors);
         Assert.Contains("id-1", result.Errors[0], StringComparison.Ordinal); // error message names the entry
     }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_CleanupModeNone_DoesNotDeleteDisappearedDocuments()
+    {
+        var hashStore = new SqliteContentHashStore(_dbPath);
+        // "old-id" exists in the store but will not appear from the provider
+        await hashStore.SetAsync("prov", "old-id", null, "old-hash", TestContext.Current.CancellationToken);
+
+        var provider = MakeProvider(("new-id", "new.txt", "content", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, "prov",
+            hashStore: hashStore,
+            cleanupMode: CleanupMode.None,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.Deleted);
+        await _pipeline.DidNotReceive().DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        // "old-id" must still be in the store
+        Assert.NotNull(await hashStore.GetHashAsync("prov", "old-id", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_MergesBaseAndEntryMetadataTags()
+    {
+        var capturedMetadata = new List<DocumentMetadata>();
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(),
+                Arg.Do<DocumentMetadata>(m => capturedMetadata.Add(m)),
+                Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new IngestionResult { DocumentId = "id-1", ChunksStored = 1 });
+
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                new FileEntry(
+                    Id: "id-1",
+                    FileName: "doc.txt",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
+                    Metadata: new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["source"]  = "entry-value",   // entry overrides base for "source"
+                        ["extra"]   = "entry-extra",
+                    })
+            }.ToAsyncEnumerable());
+
+        var baseMetadata = new DocumentMetadata
+        {
+            DocumentId = "",
+            FileName   = "",
+            Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["source"]    = "base-value",
+                ["base-only"] = "base-only-value",
+            }
+        };
+
+        await _pipeline.IngestFromProviderAsync(provider, "prov",
+            baseMetadata: baseMetadata,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Single(capturedMetadata);
+        var tags = capturedMetadata[0].Tags!;
+        Assert.Equal("entry-value",     tags["source"]);     // entry overrides base
+        Assert.Equal("base-only-value", tags["base-only"]);  // base tag forwarded
+        Assert.Equal("entry-extra",     tags["extra"]);      // entry-only tag included
+    }
 }
