@@ -114,7 +114,9 @@ public static class RagPipelineExtensions
         var storedHash = await hashStore.GetHashAsync(providerId, entry.Id, cancellationToken).ConfigureAwait(false);
         if (string.Equals(hash, storedHash, StringComparison.Ordinal))
         {
-            await hashStore.SetAsync(providerId, entry.Id, entry.ETag, hash, cancellationToken).ConfigureAwait(false);
+            // Only refresh ETag when there's a non-null ETag to store
+            if (entry.ETag is not null)
+                await hashStore.SetAsync(providerId, entry.Id, entry.ETag, hash, cancellationToken).ConfigureAwait(false);
             return EntryOutcome.Skipped;
         }
 

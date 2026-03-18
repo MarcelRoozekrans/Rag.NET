@@ -184,6 +184,28 @@ public sealed class IngestFromProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task IngestFromProviderAsync_NullETag_HashMatch_DoesNotWriteHashStore()
+    {
+        var hashStore = Substitute.For<IContentHashStore>();
+
+        // Pre-compute SHA-256 of "hello" — same as what the provider will return
+        var helloHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("hello"u8.ToArray()));
+        hashStore.GetETagAsync("prov", "id-1", Arg.Any<CancellationToken>()).Returns((string?)null);
+        hashStore.GetHashAsync("prov", "id-1", Arg.Any<CancellationToken>()).Returns(helloHash);
+
+        // Provider returns null ETag — content unchanged (hash matches)
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        await _pipeline.IngestFromProviderAsync(provider, "prov",
+            hashStore: hashStore,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // SetAsync must NOT be called — there is no new ETag to store and hash already matches
+        await hashStore.DidNotReceive().SetAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task IngestFromProviderAsync_MergesBaseAndEntryMetadataTags()
     {
         var capturedMetadata = new List<DocumentMetadata>();
