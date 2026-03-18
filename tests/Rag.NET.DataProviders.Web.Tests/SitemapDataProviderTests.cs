@@ -101,4 +101,26 @@ public sealed class SitemapDataProviderTests
 
         Assert.Equal("getting-started.html", entries[0].FileName);
     }
+
+    [Fact]
+    public async Task GetFilesAsync_OpenContentAsync_ReturnsSeekableStream()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+              <url><loc>https://example.com/page</loc></url>
+            </urlset>
+            """;
+        var client = MakeClient(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["https://example.com/sitemap.xml"] = xml,
+            ["https://example.com/page"] = "<html>content</html>",
+        });
+        var sut = new SitemapDataProvider("https://example.com/sitemap.xml", client);
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        Assert.True(stream.CanSeek);
+    }
 }

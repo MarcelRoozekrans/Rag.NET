@@ -44,7 +44,15 @@ public sealed class RssDataProvider : IFileContentProvider
                 yield return new FileEntry(
                     Id: id,
                     FileName: InferFileName(id),
-                    OpenContentAsync: async ct => await _httpClient.GetStreamAsync(capturedLink, ct).ConfigureAwait(false),
+                    OpenContentAsync: async ct =>
+                    {
+                        var response = await _httpClient.GetStreamAsync(capturedLink, ct).ConfigureAwait(false);
+                        var buffer = new MemoryStream();
+                        await response.CopyToAsync(buffer, ct).ConfigureAwait(false);
+                        await response.DisposeAsync().ConfigureAwait(false);
+                        buffer.Position = 0;
+                        return (Stream)buffer;
+                    },
                     ETag: updated);
             }
         }
@@ -64,7 +72,15 @@ public sealed class RssDataProvider : IFileContentProvider
                 yield return new FileEntry(
                     Id: id,
                     FileName: InferFileName(id),
-                    OpenContentAsync: async ct => await _httpClient.GetStreamAsync(capturedLink, ct).ConfigureAwait(false),
+                    OpenContentAsync: async ct =>
+                    {
+                        var response = await _httpClient.GetStreamAsync(capturedLink, ct).ConfigureAwait(false);
+                        var buffer = new MemoryStream();
+                        await response.CopyToAsync(buffer, ct).ConfigureAwait(false);
+                        await response.DisposeAsync().ConfigureAwait(false);
+                        buffer.Position = 0;
+                        return (Stream)buffer;
+                    },
                     ETag: pubDate);
             }
         }

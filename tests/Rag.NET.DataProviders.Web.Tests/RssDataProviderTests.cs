@@ -148,4 +148,31 @@ public sealed class RssDataProviderTests
         Assert.Single(entries);
         Assert.Equal("https://example.com/post-via-link", entries[0].Id);
     }
+
+    [Fact]
+    public async Task GetFilesAsync_Rss2_OpenContentAsync_ReturnsSeekableStream()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <guid>https://example.com/post-1</guid>
+                  <link>https://example.com/post-1</link>
+                </item>
+              </channel>
+            </rss>
+            """;
+        var handler = new FakeHttpMessageHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["https://example.com/feed.rss"] = xml,
+            ["https://example.com/post-1"] = "<html>content</html>",
+        });
+        var sut = new RssDataProvider("https://example.com/feed.rss", new HttpClient(handler));
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        Assert.True(stream.CanSeek, "stream must be seekable for parent-document retrieval");
+    }
 }

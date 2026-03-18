@@ -59,7 +59,15 @@ public sealed class SitemapDataProvider : IFileContentProvider
                 yield return new FileEntry(
                     Id: loc,
                     FileName: InferFileName(loc),
-                    OpenContentAsync: async ct => await _httpClient.GetStreamAsync(capturedLoc, ct).ConfigureAwait(false),
+                    OpenContentAsync: async ct =>
+                    {
+                        var response = await _httpClient.GetStreamAsync(capturedLoc, ct).ConfigureAwait(false);
+                        var buffer = new MemoryStream();
+                        await response.CopyToAsync(buffer, ct).ConfigureAwait(false);
+                        await response.DisposeAsync().ConfigureAwait(false);
+                        buffer.Position = 0;
+                        return (Stream)buffer;
+                    },
                     ETag: lastMod);
             }
         }
