@@ -1,6 +1,15 @@
 <Project>
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
+    <!-- Workaround for .NET 10 SDK 10.0.104 regression (tracked upstream):
+         MSB3492 ("Could not read existing cache file") fires during the CLI's
+         question-build pre-check. TreatWarningsAsErrors escalates it to an error,
+         which causes the pre-check to exit non-zero and the CLI to abort instead
+         of proceeding to compile. Demoting MSB3492 to a message lets the pre-check
+         exit cleanly. NOTE: `dotnet test` from a completely empty obj/ still
+         requires `dotnet build` first — a deeper CLI regression in the same SDK.
+         Remove both this workaround and the note once the SDK bug is fixed. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3492</MSBuildWarningsAsMessages>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>preview</LangVersion>
