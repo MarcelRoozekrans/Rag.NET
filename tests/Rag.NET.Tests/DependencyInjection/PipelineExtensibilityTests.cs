@@ -97,16 +97,17 @@ public class PipelineExtensibilityTests
         services.AddSingleton(new TrackingRetrievalBehavior(() => oldExecuted = true));
         services.AddSingleton(new AlternateTrackingRetrievalBehavior(() => newExecuted = true));
 
-        // Replace LostInTheMiddleBehavior with AlternateTrackingRetrievalBehavior
         services.AddRagNet(retrieval: b =>
-            b.Replace<LostInTheMiddleBehavior, AlternateTrackingRetrievalBehavior>());
+        {
+            // First add TrackingRetrievalBehavior to the pipeline, then replace it with Alternate
+            b.Add<TrackingRetrievalBehavior>(before: typeof(VectorStoreBehavior));
+            b.Replace<TrackingRetrievalBehavior, AlternateTrackingRetrievalBehavior>();
+        });
 
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
-        await pipeline.RetrieveAsync("query",
-            new RetrievalOptions { UseLostInTheMiddleReordering = true },
-            TestContext.Current.CancellationToken);
+        await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(oldExecuted, "Replaced (old) behavior should NOT execute");
         Assert.True(newExecuted, "Replacement (new) behavior should execute");
