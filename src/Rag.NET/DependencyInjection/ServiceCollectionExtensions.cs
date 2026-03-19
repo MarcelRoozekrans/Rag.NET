@@ -3,10 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
-using Rag.NET.DependencyInjection;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
-using Rag.NET.Retrieval;
 using Rag.NET.Search;
 
 namespace Rag.NET.DependencyInjection;
