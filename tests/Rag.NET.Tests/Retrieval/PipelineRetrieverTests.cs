@@ -1,5 +1,3 @@
-using Microsoft.Extensions.AI;
-using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
