@@ -4,6 +4,7 @@ namespace Rag.NET.Pipeline;
 /// Wraps a delegate chain built once at startup.
 /// ExecuteAsync has zero allocation on the hot path — all closures are captured at build time.
 /// </summary>
+#pragma warning disable MA0049 // Type name should not match containing namespace
 public sealed class Pipeline<TContext, TResult>(
     Func<TContext, CancellationToken, ValueTask<TResult>> chain)
 {
