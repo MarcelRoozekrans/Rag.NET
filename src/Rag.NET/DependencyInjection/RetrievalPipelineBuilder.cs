@@ -25,15 +25,18 @@ public sealed class RetrievalPipelineBuilder
     public RetrievalPipelineBuilder Add<T>(Type? after = null, Type? before = null)
         where T : IRetrievalBehavior
     {
-        var idx = after is not null ? _types.IndexOf(after) + 1
+        var raw = after is not null ? _types.IndexOf(after)
                 : before is not null ? _types.IndexOf(before)
                 : _types.Count;
-        if (idx < 0) idx = _types.Count;
+        var idx = raw < 0 ? _types.Count
+                : after is not null ? raw + 1
+                : raw;
         _types.Insert(idx, typeof(T));
         return this;
     }
 
     public RetrievalPipelineBuilder Replace<TOld, TNew>()
+        where TOld : IRetrievalBehavior
         where TNew : IRetrievalBehavior
     {
         var idx = _types.IndexOf(typeof(TOld));
