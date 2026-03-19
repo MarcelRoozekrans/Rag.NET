@@ -1,7 +1,11 @@
+using Microsoft.Extensions.AI;
+using NSubstitute;
+using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Retrieval;
 using Rag.NET.Retrieval.Behaviors;
+using Rag.NET.Search;
 using Rag.NET.Storage;
 using Xunit;
 
@@ -188,5 +192,146 @@ public class RetrievalBehaviorTests
 
         Assert.True(nextCalled);
         Assert.Same(results, output);
+    }
+
+    // ── RerankingBehavior ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Reranking_WhenRerankerNull_ReturnsNextResults()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var results = new List<SearchResult>
+        {
+            MakeResult("doc-1", 0, 0.9),
+            MakeResult("doc-2", 0, 0.8),
+        };
+
+        var sut = new RerankingBehavior { Reranker = null };
+        var ctx = MakeCtx(new RetrievalOptions { UseReranking = true });
+
+        var output = await sut.HandleAsync(ctx, ct, NextReturning(results));
+
+        Assert.Same(results, output);
+    }
+
+    [Fact]
+    public async Task Reranking_WhenFlagFalse_ReturnsNextResults()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var results = new List<SearchResult>
+        {
+            MakeResult("doc-1", 0, 0.9),
+        };
+
+        var reranker = Substitute.For<IReranker>();
+        var sut = new RerankingBehavior { Reranker = reranker };
+        var ctx = MakeCtx(new RetrievalOptions { UseReranking = false });
+
+        var output = await sut.HandleAsync(ctx, ct, NextReturning(results));
+
+        Assert.Same(results, output);
+        await reranker.DidNotReceive().RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>());
+    }
+
+    // ── HydeBehavior ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Hyde_WhenGeneratorNull_ReturnsNextResults()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var results = new List<SearchResult>
+        {
+            MakeResult("doc-1", 0, 0.9),
+        };
+
+        var sut = new HydeBehavior { HydeGenerator = null };
+        var ctx = MakeCtx(new RetrievalOptions { UseHyde = true });
+
+        var output = await sut.HandleAsync(ctx, ct, NextReturning(results));
+
+        Assert.Same(results, output);
+    }
+
+    [Fact]
+    public async Task Hyde_WhenEnabled_PassesHypotheticalDocAsEmbeddingOverride()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string hypotheticalDoc = "This is the hypothetical document.";
+        var results = new List<SearchResult>
+        {
+            MakeResult("doc-1", 0, 0.9),
+        };
+
+        var generator = Substitute.For<IHypotheticalDocumentGenerator>();
+        generator.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(hypotheticalDoc));
+
+        var sut = new HydeBehavior { HydeGenerator = generator };
+        var ctx = MakeCtx(new RetrievalOptions { UseHyde = true });
+
+        string? capturedOverride = null;
+        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next =
+            (innerCtx, _) =>
+            {
+                capturedOverride = innerCtx.Options.EmbeddingTextOverride;
+                return ValueTask.FromResult<IReadOnlyList<SearchResult>>(results);
+            };
+
+        var output = await sut.HandleAsync(ctx, ct, next);
+
+        Assert.Equal(hypotheticalDoc, capturedOverride);
+        Assert.Same(results, output);
+    }
+
+    // ── MultiQueryBehavior ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task MultiQuery_WhenExpanderNull_ReturnsNextResults()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var results = new List<SearchResult>
+        {
+            MakeResult("doc-1", 0, 0.9),
+        };
+
+        var sut = new MultiQueryBehavior { QueryExpander = null };
+        var ctx = MakeCtx(new RetrievalOptions { UseMultiQuery = true });
+
+        var output = await sut.HandleAsync(ctx, ct, NextReturning(results));
+
+        Assert.Same(results, output);
+    }
+
+    // ── VectorStoreBehavior ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task VectorStore_WhenDenseSearch_CallsVectorStoreAndReturnsResults()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25Index = new InMemoryBm25Index();
+
+        var queryEmbedding = new Embedding<float>(new float[] { 0.1f, 0.2f });
+        var expected = MakeResult("doc-1", 0, 0.95);
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
+
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { expected });
+
+        var sut = new VectorStoreBehavior
+        {
+            VectorStore = vectorStore,
+            Embedder = embedder,
+            Bm25Index = bm25Index,
+        };
+
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = false });
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("Terminal behavior must not call next"));
+
+        Assert.Single(output);
+        Assert.Equal(0.95, output[0].Score);
     }
 }
