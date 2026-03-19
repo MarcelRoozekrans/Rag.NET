@@ -221,12 +221,12 @@ services.AddRagNet(b => b
 
 ### Cache levels
 
-| Level | Decorator | What it caches | Default TTL |
-|-------|-----------|---------------|-------------|
-| Embedding | `EmbeddingCacheRetriever` | Retrieval results keyed by embedding text | 30 minutes |
-| Result | `ResultCacheRetriever` | Complete post-processed result list | 5 minutes |
+| Level | Behavior | What it caches | Default TTL |
+|-------|----------|---------------|-------------|
+| Embedding | `EmbeddingCacheBehavior` | Retrieval results keyed by embedding text | 30 minutes |
+| Result | `ResultCacheBehavior` | Complete post-processed result list | 5 minutes |
 
-The embedding cache sits just above `VectorStoreRetriever` — on cache hit, it skips embedding generation and vector store search. The result cache wraps the entire chain — on cache hit, it skips everything (reranking, redundancy filter, reordering included).
+The embedding cache sits just above `VectorStoreBehavior` — on cache hit, it skips embedding generation and vector store search. The result cache wraps the entire chain — on cache hit, it skips everything (reranking, redundancy filter, reordering included).
 
 ### Disabling per call
 
@@ -335,9 +335,9 @@ services.AddRagNet(b => b
 
 ### How it works
 
-**Ingestion:** When `UseParentDocumentRetrieval()` is registered, `DocumentIngestor` performs a dual chunking pass. The document is chunked at the normal (small) granularity for embedding and vector store storage. In parallel, the same document is chunked at `ParentChunkSize` / `ParentOverlap` and the resulting parent chunks are stored in `InMemoryParentChunkStore`, keyed by `DocumentId` and chunk index. **The stream passed to `IngestAsync` must be seekable** (e.g., `MemoryStream`) — the second pass resets the stream position to zero. Wrap non-seekable streams (HTTP response bodies, compressed streams) in a `MemoryStream` before calling `IngestAsync` when this feature is active.
+**Ingestion:** When `UseParentDocumentRetrieval()` is registered, `ParentDocumentIngestionBehavior` performs a dual chunking pass. The document is chunked at the normal (small) granularity for embedding and vector store storage. In parallel, the same document is chunked at `ParentChunkSize` / `ParentOverlap` and the resulting parent chunks are stored in `InMemoryParentChunkStore`, keyed by `DocumentId` and chunk index. **The stream passed to `IngestAsync` must be seekable** (e.g., `MemoryStream`) — the second pass resets the stream position to zero. Wrap non-seekable streams (HTTP response bodies, compressed streams) in a `MemoryStream` before calling `IngestAsync` when this feature is active.
 
-**Retrieval:** `ParentDocumentRetriever` calls the inner retriever to obtain child `SearchResult` objects, then maps each child chunk to its parent via the store. If every child lookup succeeds, the parent chunks replace the children in the returned list. If a lookup fails (e.g., the store was not yet populated after a restart), the retriever logs a warning and returns the original child chunks unmodified.
+**Retrieval:** `ParentDocumentRetrievalBehavior` calls the next behavior in the chain to obtain child `SearchResult` objects, then maps each child chunk to its parent via the store. If every child lookup succeeds, the parent chunks replace the children in the returned list. If a lookup fails (e.g., the store was not yet populated after a restart), the behavior logs a warning and returns the original child chunks unmodified.
 
 ```mermaid
 flowchart TD

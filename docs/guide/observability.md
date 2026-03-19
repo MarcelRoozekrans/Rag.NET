@@ -10,27 +10,27 @@ Production RAG pipelines need structured logging, distributed traces, and resili
 
 ## `ILogger` integration
 
-Logging is distributed across the decorator pipeline. Each component accepts an optional `ILogger` via its constructor and emits structured log messages for its operations. All messages use high-performance source-generated `[LoggerMessage]` methods.
+Logging is distributed across the behavior pipeline. Each behavior accepts an optional `ILogger` via its constructor and emits structured log messages for its operations. All messages use high-performance source-generated `[LoggerMessage]` methods.
 
 ### Log messages
 
 | Component | Level | Method | Message template |
 |-----------|-------|--------|-----------------|
-| `DocumentIngestor` | `Information` | `IngestStarted` | `Ingesting document {DocumentId} ({ContentType})` |
-| `DocumentIngestor` | `Information` | `IngestCompleted` | `Ingested document {DocumentId}: {ChunksStored} chunk(s) stored` |
-| `DocumentIngestor` | `Error` | `IngestFailed` | `Failed to ingest document {DocumentId}` (includes exception) |
-| `VectorStoreRetriever` | `Debug` | `RetrieveStarted` | `Retrieving chunks (TopK={TopK})` |
-| `VectorStoreRetriever` | `Debug` | `RetrieveCompleted` | `Retrieved {ResultCount} chunk(s)` |
-| `MultiQueryRetriever` | `Warning` | `QueryExpansionFailed` | `Query expansion failed for '{Query}'` |
-| `RerankingRetriever` | `Warning` | — | `Reranking failed, returning unranked results` |
-| `HydeRetriever` | `Warning` | `HydeGenerationFailed` | `HyDE generation failed for query '{Query}', falling back to original query embedding` |
-| `RedundancyFilterRetriever` | `Warning` | — | `Redundancy filtering failed, returning unfiltered results` |
-| `EmbeddingCacheRetriever` | `Debug` | `EmbeddingCacheHit` | `Embedding cache hit for query '{Query}'` |
-| `ResultCacheRetriever` | `Debug` | `ResultCacheHit` | `Result cache hit for query '{Query}'` |
-| `EmbeddingCacheRetriever` | `Warning` | `EmbeddingCacheFailed` | `Embedding cache operation failed for query '{Query}'` |
-| `ResultCacheRetriever` | `Warning` | `ResultCacheFailed` | `Result cache operation failed for query '{Query}'` |
-| `ParentDocumentRetriever` | `Debug` | `ParentDocumentRetrieved` | `Parent document retrieved for query '{Query}': {ChildCount} children -> {ParentCount} parents` |
-| `ParentDocumentRetriever` | `Warning` | `ParentDocumentFailed` | `Parent document lookup failed for query '{Query}', returning child chunks` |
+| `PipelineIngestor` | `Information` | `IngestStarted` | `Ingesting document {DocumentId} ({ContentType})` |
+| `PipelineIngestor` | `Information` | `IngestCompleted` | `Ingested document {DocumentId}: {ChunksStored} chunk(s) stored` |
+| `PipelineIngestor` | `Error` | `IngestFailed` | `Failed to ingest document {DocumentId}` (includes exception) |
+| `VectorStoreBehavior` | `Debug` | `RetrieveStarted` | `Retrieving chunks (TopK={TopK})` |
+| `VectorStoreBehavior` | `Debug` | `RetrieveCompleted` | `Retrieved {ResultCount} chunk(s)` |
+| `MultiQueryBehavior` | `Warning` | `QueryExpansionFailed` | `Query expansion failed for '{Query}'` |
+| `RerankingBehavior` | `Warning` | — | `Reranking failed, returning unranked results` |
+| `HydeBehavior` | `Warning` | `HydeGenerationFailed` | `HyDE generation failed for query '{Query}', falling back to original query embedding` |
+| `RedundancyFilterBehavior` | `Warning` | — | `Redundancy filtering failed, returning unfiltered results` |
+| `EmbeddingCacheBehavior` | `Debug` | `EmbeddingCacheHit` | `Embedding cache hit for query '{Query}'` |
+| `ResultCacheBehavior` | `Debug` | `ResultCacheHit` | `Result cache hit for query '{Query}'` |
+| `EmbeddingCacheBehavior` | `Warning` | `EmbeddingCacheFailed` | `Embedding cache operation failed for query '{Query}'` |
+| `ResultCacheBehavior` | `Warning` | `ResultCacheFailed` | `Result cache operation failed for query '{Query}'` |
+| `ParentDocumentRetrievalBehavior` | `Debug` | `ParentDocumentRetrieved` | `Parent document retrieved for query '{Query}': {ChildCount} children -> {ParentCount} parents` |
+| `ParentDocumentRetrievalBehavior` | `Warning` | `ParentDocumentFailed` | `Parent document lookup failed for query '{Query}', returning child chunks` |
 
 ### Setup
 

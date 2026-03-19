@@ -6,7 +6,7 @@ sidebar_position: 1
 
 # Architecture
 
-Understanding the internal structure of Rag.NET helps you choose the right extension points and diagnose unexpected behaviour. The library is built around three internal interfaces — `IRetriever`, `IIngestor`, `IAnswerEngine` — composed via the decorator pattern and exposed through a single public facade, `IRagPipeline`.
+Understanding the internal structure of Rag.NET helps you choose the right extension points and diagnose unexpected behaviour. The library is built around three internal interfaces — `IRetriever`, `IIngestor`, `IAnswerEngine` — assembled as behavior pipelines and exposed through a single public facade, `IRagPipeline`.
 
 ## Data flow
 
@@ -191,7 +191,7 @@ public interface ICollectionManageable
 | `RerankResult` | Reranker output: `SearchResult` + `double RelevanceScore` |
 | `RagStreamingUpdate` | `AskStreamingAsync` yield: `string? TextDelta` + `IReadOnlyList<SearchResult>? Sources` |
 
-## Internal architecture — decorator pipeline
+## Internal architecture — behavior pipeline
 
 `RagPipeline` is a thin coordinator with three constructor parameters, each resolved from DI:
 
@@ -206,35 +206,48 @@ Each method delegates directly to the appropriate interface. `IAnswerEngine` is 
 
 ### Internal interfaces
 
-| Interface | Base implementation | Responsibility |
-|-----------|-------------------|----------------|
-| `IRetriever` | `VectorStoreRetriever` | Embed query → vector/hybrid search → results |
-| `IIngestor` | `DocumentIngestor` | Parse → chunk → embed → store + BM25 index |
+| Interface | Implementation | Responsibility |
+|-----------|----------------|----------------|
+| `IRetriever` | `PipelineRetriever` | Run retrieval behavior chain → results |
+| `IIngestor` | `PipelineIngestor` | Run ingestion behavior chain → store chunks |
 | `IAnswerEngine` | `ChatAnswerEngine` | Build prompt from sources → call `IChatClient` |
 
-### Retrieval decorator chain
+### Ingestion behavior chain
 
-Optional features are composable decorators, each wrapping an inner `IRetriever`. The chain is built inside-out at DI registration time:
+Ingestion is handled by `PipelineIngestor`, which executes a fixed sequence of singleton behaviors assembled by `IngestionPipelineBuilder`. Each behavior owns its own injected services and receives a lean `IngestionContext` carrying only runtime inputs and accumulated state:
 
 ```
-ResultCacheRetriever              (present when UseCaching() called)
-  → LostInTheMiddleRetriever      (always present)
-    → RedundancyFilterRetriever   (always present)
-      → ParentDocumentRetriever   (present when UseParentDocumentRetrieval() called)
-        → RerankingRetriever      (present when IReranker registered)
-          → MultiQueryRetriever   (present when IQueryExpander registered)
-            → HydeRetriever       (present when IHypotheticalDocumentGenerator registered)
-              → EmbeddingCacheRetriever  (present when UseCaching() called)
-                → VectorStoreRetriever   (base — always present)
+OverwriteBehavior
+  → ParseBehavior
+    → ChunkingBehavior
+      → MetadataBehavior
+        → ParentDocumentIngestionBehavior   (present when UseParentDocumentRetrieval() called)
+          → EmbeddingBehavior
+            → StorageBehavior
 ```
 
-Each decorator checks a per-call flag on `RetrievalOptions` (e.g., `UseReranking`, `UseMultiQuery`, `UseHyde`, `UseParentDocument`, `UseCacheResult`, `UseCacheEmbedding`) and either applies its logic or passes through to the inner retriever. Decorators catch non-cancellation exceptions and fall back gracefully.
+### Retrieval behavior chain
 
-`RetrievalOptions` is a `sealed record` so decorators can use `with` expressions to modify options (e.g., over-fetch `TopK`) without mutating the caller's instance.
+Retrieval is handled by `PipelineRetriever`, which executes a sequence of singleton behaviors assembled by `RetrievalPipelineBuilder`. Each behavior checks per-call flags on `RetrievalOptions` and either applies its logic or passes through to the next behavior:
+
+```
+ResultCacheBehavior              (present when UseCaching() called)
+  → LostInTheMiddleBehavior      (always present)
+    → MmrBehavior                (always present)
+      → RedundancyFilterBehavior (always present)
+        → ParentDocumentRetrievalBehavior  (present when UseParentDocumentRetrieval() called)
+          → RerankingBehavior    (present when IReranker registered)
+            → MultiQueryBehavior (present when IQueryExpander registered)
+              → HydeBehavior     (present when IHypotheticalDocumentGenerator registered)
+                → EmbeddingCacheBehavior  (present when UseCaching() called)
+                  → VectorStoreBehavior   (base — always present)
+```
+
+Behaviors catch non-cancellation exceptions and fall back gracefully. `RetrievalOptions` is a `sealed record` so behaviors can use `with` expressions to modify options (e.g., over-fetch `TopK`) without mutating the caller's instance.
 
 ## In-memory BM25 index
 
-`InMemoryBm25Index` is a DI singleton (BM25 parameters: k1=1.5, b=0.75) shared between `DocumentIngestor` (add/remove) and `VectorStoreRetriever` (search). Every chunk stored via `IngestAsync` is also added to this index. When `UseHybridSearch = true` and the vector store does not implement `IHybridSearchable`, the retriever queries both the dense index and the BM25 index concurrently and merges results using Reciprocal Rank Fusion (k=60).
+`InMemoryBm25Index` is a DI singleton (BM25 parameters: k1=1.5, b=0.75) shared between `StorageBehavior` (add/remove during ingestion) and `VectorStoreBehavior` (search during retrieval). Every chunk stored via `IngestAsync` is also added to this index. When `UseHybridSearch = true` and the vector store does not implement `IHybridSearchable`, the retrieval behavior queries both the dense index and the BM25 index concurrently and merges results using Reciprocal Rank Fusion (k=60).
 
 The BM25 index is process-scoped, not persisted. It is rebuilt from scratch each time the application starts. If you need persistence, use a vector store that natively implements `IHybridSearchable`.
 
@@ -248,6 +261,7 @@ See [Getting Started](getting-started.md) for the call sequence. Internally, `Se
 2. Registers `RecursiveChunkingStrategy` as the default `IChunkingStrategy` (unless overridden).
 3. Registers default `ChunkingOptions` (MaxChunkSize=512, Overlap=50).
 4. Registers `InMemoryBm25Index` and `InMemoryParentChunkStore` as singletons.
-5. Builds the `IRetriever` decorator chain via a factory lambda (see chain order above).
-6. Registers `IIngestor` (`DocumentIngestor`) and `IRagPipeline` (`RagPipeline`).
-7. Runs the user-supplied `Action<RagBuilder>` for additional configuration.
+5. Accepts optional `ingestion:` and `retrieval:` builder callbacks for pipeline extensibility.
+6. Assembles the `IIngestor` behavior chain via `IngestionPipelineBuilder` and the `IRetriever` behavior chain via `RetrievalPipelineBuilder`, registering the resulting `PipelineIngestor` and `PipelineRetriever`.
+7. Registers `IRagPipeline` (`RagPipeline`).
+8. Runs the user-supplied `Action<RagBuilder>` for additional configuration.
