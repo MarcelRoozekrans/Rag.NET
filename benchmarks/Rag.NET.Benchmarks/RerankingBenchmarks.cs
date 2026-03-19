@@ -1,15 +1,12 @@
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
-using Rag.NET.Chunking;
-using Rag.NET.Ingestion;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
-using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
-using Rag.NET.Retrieval;
-using Rag.NET.Search;
 
 namespace Rag.NET.Benchmarks;
 
@@ -21,8 +18,10 @@ namespace Rag.NET.Benchmarks;
 [MemoryDiagnoser]
 public class RerankingBenchmarks
 {
-    private RagPipeline _pipeline = null!;
-    private RagPipeline _pipelineNoReranker = null!;
+    private IRagPipeline _pipeline = null!;
+    private IRagPipeline _pipelineNoReranker = null!;
+    private ServiceProvider _spWithReranker = null!;
+    private ServiceProvider _spNoReranker = null!;
 
     [Params(5, 20)]
     public int TopK { get; set; }
@@ -32,38 +31,6 @@ public class RerankingBenchmarks
     {
         var documentData = Encoding.UTF8.GetBytes(GenerateText(50_000));
 
-        var reranker = new FakeReranker();
-        var vectorStore = new NoOpVectorStore();
-        var embedder = new FakeEmbeddingGenerator(dimensions: 384);
-        var chunkingOptions = new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 };
-
-        // Pipeline with reranking decorator
-        var bm25WithReranker = new InMemoryBm25Index();
-        IRetriever retrieverWithReranker = new VectorStoreRetriever(vectorStore, embedder, bm25WithReranker);
-        retrieverWithReranker = new RerankingRetriever(retrieverWithReranker, reranker);
-        var ingestorWithReranker = new DocumentIngestor(
-            [new TextDocumentParser()],
-            new RecursiveChunkingStrategy(),
-            vectorStore,
-            embedder,
-            chunkingOptions,
-            bm25WithReranker);
-
-        _pipeline = new RagPipeline(retrieverWithReranker, ingestorWithReranker);
-
-        // Pipeline without reranking
-        var bm25NoReranker = new InMemoryBm25Index();
-        IRetriever retrieverNoReranker = new VectorStoreRetriever(vectorStore, embedder, bm25NoReranker);
-        var ingestorNoReranker = new DocumentIngestor(
-            [new TextDocumentParser()],
-            new RecursiveChunkingStrategy(),
-            vectorStore,
-            embedder,
-            chunkingOptions,
-            bm25NoReranker);
-
-        _pipelineNoReranker = new RagPipeline(retrieverNoReranker, ingestorNoReranker);
-
         var metadata = new DocumentMetadata
         {
             DocumentId = "bench-doc",
@@ -71,11 +38,40 @@ public class RerankingBenchmarks
             ContentType = "text/plain",
         };
 
-        using var stream1 = new MemoryStream(documentData);
-        await _pipeline.IngestAsync(stream1, metadata).ConfigureAwait(false);
+        // Pipeline with reranking
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton<IVectorStore, NoOpVectorStore>();
+            services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
+                new FakeEmbeddingGenerator(dimensions: 384));
+            services.AddRagNet(configure: b => b.UseReranking<FakeReranker>());
+            _spWithReranker = services.BuildServiceProvider();
+            _pipeline = _spWithReranker.GetRequiredService<IRagPipeline>();
 
-        using var stream2 = new MemoryStream(documentData);
-        await _pipelineNoReranker.IngestAsync(stream2, metadata).ConfigureAwait(false);
+            using var stream1 = new MemoryStream(documentData);
+            await _pipeline.IngestAsync(stream1, metadata).ConfigureAwait(false);
+        }
+
+        // Pipeline without reranking
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton<IVectorStore, NoOpVectorStore>();
+            services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
+                new FakeEmbeddingGenerator(dimensions: 384));
+            services.AddRagNet();
+            _spNoReranker = services.BuildServiceProvider();
+            _pipelineNoReranker = _spNoReranker.GetRequiredService<IRagPipeline>();
+
+            using var stream2 = new MemoryStream(documentData);
+            await _pipelineNoReranker.IngestAsync(stream2, metadata).ConfigureAwait(false);
+        }
+    }
+
+    [GlobalCleanup]
+    public void Cleanup()
+    {
+        _spWithReranker?.Dispose();
+        _spNoReranker?.Dispose();
     }
 
     [Benchmark(Baseline = true)]

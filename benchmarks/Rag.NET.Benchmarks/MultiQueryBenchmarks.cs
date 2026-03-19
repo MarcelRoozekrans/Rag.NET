@@ -1,16 +1,13 @@
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
-using Rag.NET.Chunking;
-using Rag.NET.Ingestion;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
-using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
-using Rag.NET.Retrieval;
-using Rag.NET.Search;
 
 namespace Rag.NET.Benchmarks;
 
@@ -23,8 +20,10 @@ namespace Rag.NET.Benchmarks;
 [MemoryDiagnoser]
 public class MultiQueryBenchmarks
 {
-    private RagPipeline _pipeline3Variants = null!;
-    private RagPipeline _pipeline5Variants = null!;
+    private IRagPipeline _pipeline3Variants = null!;
+    private IRagPipeline _pipeline5Variants = null!;
+    private ServiceProvider _sp3 = null!;
+    private ServiceProvider _sp5 = null!;
     private byte[] _documentData = null!;
 
     private static readonly DocumentMetadata Metadata = new()
@@ -39,8 +38,15 @@ public class MultiQueryBenchmarks
     {
         _documentData = Encoding.UTF8.GetBytes(GenerateText(50_000));
 
-        _pipeline3Variants = await BuildPipelineAsync(variantCount: 3);
-        _pipeline5Variants = await BuildPipelineAsync(variantCount: 5);
+        (_sp3, _pipeline3Variants) = await BuildPipelineAsync(variantCount: 3);
+        (_sp5, _pipeline5Variants) = await BuildPipelineAsync(variantCount: 5);
+    }
+
+    [GlobalCleanup]
+    public void Cleanup()
+    {
+        _sp3?.Dispose();
+        _sp5?.Dispose();
     }
 
     [Benchmark]
@@ -70,32 +76,24 @@ public class MultiQueryBenchmarks
         return results.Count;
     }
 
-    private async Task<RagPipeline> BuildPipelineAsync(int variantCount)
+    private async Task<(ServiceProvider sp, IRagPipeline pipeline)> BuildPipelineAsync(int variantCount)
     {
-        var vectorStore = new NoOpVectorStore();
-        var embedder = new FakeEmbeddingGenerator(dimensions: 384);
-        var bm25Index = new InMemoryBm25Index();
+        var services = new ServiceCollection();
+        services.AddSingleton<IVectorStore, NoOpVectorStore>();
+        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
+            new FakeEmbeddingGenerator(dimensions: 384));
+        // Register fake expander directly — MultiQueryBehavior picks it up via optional DI injection.
+        services.AddSingleton<IQueryExpander>(new FakeQueryExpander(variantCount));
+        services.AddSingleton(new MultiQueryOptions { VariantCount = variantCount });
+        services.AddRagNet();
 
-        IRetriever retriever = new VectorStoreRetriever(vectorStore, embedder, bm25Index);
-        retriever = new MultiQueryRetriever(
-            retriever,
-            new FakeQueryExpander(variantCount),
-            new MultiQueryOptions { VariantCount = variantCount });
-
-        var ingestor = new DocumentIngestor(
-            [new TextDocumentParser()],
-            new RecursiveChunkingStrategy(),
-            vectorStore,
-            embedder,
-            new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 },
-            bm25Index);
-
-        var pipeline = new RagPipeline(retriever, ingestor);
+        var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
 
         using var stream = new MemoryStream(_documentData);
         await pipeline.IngestAsync(stream, Metadata);
 
-        return pipeline;
+        return (sp, pipeline);
     }
 
     private static string GenerateText(int approximateLength)

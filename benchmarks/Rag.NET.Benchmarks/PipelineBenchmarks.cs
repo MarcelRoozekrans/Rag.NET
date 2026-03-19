@@ -1,21 +1,20 @@
 using System.Text;
 using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.AI;
-using Rag.NET.Chunking;
-using Rag.NET.Ingestion;
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.Abstractions;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
-using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
-using Rag.NET.Retrieval;
-using Rag.NET.Search;
 
 namespace Rag.NET.Benchmarks;
 
 [MemoryDiagnoser]
 public class PipelineBenchmarks
 {
-    private RagPipeline _pipeline = null!;
+    private IRagPipeline _pipeline = null!;
+    private ServiceProvider _sp = null!;
     private byte[] _documentData = null!;
 
     private static readonly DocumentMetadata Metadata = new()
@@ -28,20 +27,14 @@ public class PipelineBenchmarks
     [GlobalSetup]
     public async Task Setup()
     {
-        var vectorStore = new NoOpVectorStore();
-        var embedder = new FakeEmbeddingGenerator(dimensions: 384);
-        var bm25Index = new InMemoryBm25Index();
+        var services = new ServiceCollection();
+        services.AddSingleton<IVectorStore, NoOpVectorStore>();
+        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
+            new FakeEmbeddingGenerator(dimensions: 384));
+        services.AddRagNet();
 
-        var retriever = new VectorStoreRetriever(vectorStore, embedder, bm25Index);
-        var ingestor = new DocumentIngestor(
-            [new TextDocumentParser()],
-            new RecursiveChunkingStrategy(),
-            vectorStore,
-            embedder,
-            new ChunkingOptions { MaxChunkSize = 512, Overlap = 50 },
-            bm25Index);
-
-        _pipeline = new RagPipeline(retriever, ingestor);
+        _sp = services.BuildServiceProvider();
+        _pipeline = _sp.GetRequiredService<IRagPipeline>();
 
         _documentData = Encoding.UTF8.GetBytes(GenerateText(50_000));
 
@@ -49,6 +42,9 @@ public class PipelineBenchmarks
         using var stream = new MemoryStream(_documentData);
         await _pipeline.IngestAsync(stream, Metadata);
     }
+
+    [GlobalCleanup]
+    public void Cleanup() => _sp?.Dispose();
 
     [Benchmark]
     public async Task<int> RetrieveAsync_HybridBm25()
@@ -82,7 +78,7 @@ public class PipelineBenchmarks
         return sb.ToString();
     }
 
-    private sealed class NoOpVectorStore : Abstractions.IVectorStore
+    private sealed class NoOpVectorStore : IVectorStore
     {
         public Task StoreAsync(IReadOnlyList<EmbeddedChunk> chunks, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
