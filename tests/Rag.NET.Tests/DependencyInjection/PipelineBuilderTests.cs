@@ -1,4 +1,3 @@
-using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Ingestion;
 using Rag.NET.Ingestion.Behaviors;
@@ -30,6 +29,7 @@ public class PipelineBuilderTests
         var types = builder.GetBehaviorTypes();
         var parseIdx = types.ToList().IndexOf(typeof(ParseBehavior));
         Assert.Equal(typeof(NoOpIngestionBehavior), types[parseIdx + 1]);
+        Assert.Equal(8, types.Count); // 7 defaults + 1 inserted
     }
 
     [Fact]
@@ -40,9 +40,21 @@ public class PipelineBuilderTests
         var types = builder.GetBehaviorTypes();
         Assert.DoesNotContain(typeof(EmbeddingBehavior), types);
         Assert.Contains(typeof(NoOpIngestionBehavior), types);
+        Assert.Equal(7, types.Count); // count unchanged
+        var embeddingIdx = 5; // EmbeddingBehavior was at index 5 (0-based: Overwrite=0, Parse=1, Chunking=2, Metadata=3, ParentDoc=4, Embedding=5)
+        Assert.Equal(typeof(NoOpIngestionBehavior), types.ToList()[embeddingIdx]);
     }
 
     // ── RetrievalPipelineBuilder ─────────────────────────────────────────
+
+    [Fact]
+    public void RetrievalBuilder_DefaultContainsAllTenBehaviors()
+    {
+        var builder = new RetrievalPipelineBuilder();
+        var types = builder.GetBehaviorTypes();
+        Assert.Equal(10, types.Count);
+        Assert.Equal(typeof(VectorStoreBehavior), types[^1]);
+    }
 
     [Fact]
     public void RetrievalBuilder_Add_InsertsBeforeTarget()
@@ -52,6 +64,7 @@ public class PipelineBuilderTests
         var types = builder.GetBehaviorTypes();
         var vsIdx = types.ToList().IndexOf(typeof(VectorStoreBehavior));
         Assert.Equal(typeof(NoOpRetrievalBehavior), types[vsIdx - 1]);
+        Assert.Equal(11, types.Count); // 10 defaults + 1 inserted
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
