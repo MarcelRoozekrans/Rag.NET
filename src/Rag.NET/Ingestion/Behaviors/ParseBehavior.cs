@@ -29,7 +29,8 @@ public sealed class ParseBehavior : IIngestionBehavior
             if (section.HeadingLevel is { } level && level >= 1 && level <= 6 && section.Heading is not null)
             {
                 headingBreadcrumbs[level - 1] = section.Heading;
-                for (var idx = level; idx < 6; idx++) headingBreadcrumbs[idx] = null;
+                foreach (ref var slot in headingBreadcrumbs.AsSpan(level))
+                    slot = null;
 
                 var parts = new List<string>(level);
                 foreach (var h in headingBreadcrumbs[..level])

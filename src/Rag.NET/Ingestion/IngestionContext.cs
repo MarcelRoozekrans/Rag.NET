@@ -17,14 +17,16 @@ public sealed class IngestionContext
     public IProgress<IngestionProgress>? Progress  { get; init; }
 
     // ── Accumulated state (populated by behaviors in order) ───────────────
+#pragma warning disable MA0016 // CollectionsMarshal.AsSpan requires concrete List<T>
     public List<DocumentSection> Sections          { get; } = [];
     public List<TextChunk> Chunks                  { get; } = [];
     public List<EmbeddedChunk> EmbeddedChunks      { get; } = [];
+#pragma warning restore MA0016
 
     // ── Counter delegate — facade provides this so StorageBehavior
     //    assigns unique BM25 doc IDs across concurrent ingest calls ─────────
     public required Func<int> GetNextBm25DocId     { get; init; }
 
     // ── Extension bag — custom behaviors store/read state here ───────────
-    public Dictionary<string, object?> Extensions  { get; } = new();
+    public IDictionary<string, object?> Extensions { get; } = new Dictionary<string, object?>(StringComparer.Ordinal);
 }

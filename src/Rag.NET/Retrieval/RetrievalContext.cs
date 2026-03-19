@@ -20,5 +20,5 @@ public sealed record RetrievalContext
     public ILogger Logger                          { get; init; } = NullLogger.Instance;
 
     // ── Extension bag — custom behaviors store/read state here ───────────
-    public Dictionary<string, object?> Extensions  { get; init; } = new();
+    public IDictionary<string, object?> Extensions { get; init; } = new Dictionary<string, object?>(StringComparer.Ordinal);
 }
