@@ -312,10 +312,11 @@ Persistent episodic memory store separate from chat history: messages stored in 
 
 ### LLM-as-Judge Evaluation
 **Package:** `Rag.NET.Evaluation`
+**Status:** ✅ Done
 
-Use an LLM to grade whether a predicted answer is correct given a reference answer or context document. Supports arbitrary rubric criteria (correctness, relevance, conciseness, coherence, harmlessness). Exposed as `IRagEvaluator` returning `EvaluationResult` (score + reasoning).
+Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (correctness, faithfulness, relevance) using any `IChatClient`. One LLM call per sample, all evaluated concurrently. Results carry per-criterion scores (0–1) and reasoning strings. `LlmJudgeResult.MeanScore(criterion)` and `AllPass(criterion, threshold)` support CI gate patterns. When `SourceChunks` is null or empty, faithfulness is automatically excluded. Custom criteria can be passed to the constructor.
 
-**Why:** Rag.NET has no evaluation infrastructure beyond embedding distance, making it impossible to measure answer quality in CI or experimentation.
+**Why:** Embedding distance gives a single blunt signal that cannot detect hallucinations, factual errors, or off-topic answers. LLM-as-judge closes this gap with interpretable, per-criterion verdicts.
 
 ---
 
@@ -341,7 +342,7 @@ Use an LLM to grade whether a predicted answer is correct given a reference answ
 | [x] | Decorator Pipeline Refactoring | Medium | None |
 | [ ] | Hierarchical Merger | Medium | None |
 | [x] | HyDE | Medium | `IChatClient` |
-| [ ] | LLM-as-Judge Evaluation | Medium | `IChatClient` |
+| [x] | LLM-as-Judge Evaluation | Medium | `IChatClient` |
 | [ ] | Map-Reduce / Refine Synthesis | Medium | `IChatClient` |
 | [x] | MCP Server | Medium | MCP SDK |
 | [x] | MMR Retrieval | Medium | Embedding access |
