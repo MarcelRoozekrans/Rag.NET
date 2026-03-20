@@ -2,3 +2,10 @@ root = true
 
 [*.cs]
 dotnet_diagnostic.ZA0401.severity = warning
+
+# LlmJudgeException intentionally omits the standard parameterless/message-only
+# exception constructors because RawResponse is the primary diagnostic value and
+# leaving it empty would be misleading. Suppress the Roslynator rule that requires
+# those constructors.
+[src/Rag.NET.Evaluation/LlmJudgeException.cs]
+dotnet_diagnostic.RCS1194.severity = none
