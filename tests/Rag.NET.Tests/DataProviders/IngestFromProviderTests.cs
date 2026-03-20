@@ -263,7 +263,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         var baseMetadata = new DocumentMetadata
         {
-            DocumentId = new DocumentId(""),
+            DocumentId = new DocumentId("placeholder"),
             FileName   = "",
             Tags = new Dictionary<string, string>(StringComparer.Ordinal)
             {
