@@ -81,7 +81,7 @@ using Rag.NET.Models;
 
 var metadata = new DocumentMetadata
 {
-    DocumentId = "report-2024-q4",   // your stable identifier — used for updates/deletes
+    DocumentId = new DocumentId("report-2024-q4"),   // your stable identifier — used for updates/deletes
     FileName   = "report.pdf",
     ContentType = "application/pdf",
     Tags = new Dictionary<string, string>
@@ -93,7 +93,10 @@ var metadata = new DocumentMetadata
 
 using var stream = File.OpenRead("report.pdf");
 var result = await pipeline.IngestAsync(stream, metadata);
-Console.WriteLine($"Stored {result.ChunksStored} chunks for {result.DocumentId}");
+if (result.IsSuccess)
+    Console.WriteLine($"Stored {result.Value.ChunksStored} chunks for {result.Value.DocumentId}");
+else
+    Console.WriteLine($"Ingestion failed: {result.Error}");
 ```
 
 The `ContentType` value drives parser selection. Omitting it defaults to `text/plain`. Tags are propagated into every chunk's `Metadata` dictionary and can be used for [metadata filtering](retrieval.md#metadata-filtering) at query time.
@@ -153,8 +156,9 @@ var results = await pipeline.RetrieveAsync("key findings", new RetrievalOptions
     MinScore = 0.6,
 });
 
-foreach (var r in results)
-    Console.WriteLine($"[{r.Score:F2}] {r.Chunk.Text}");
+if (results.IsSuccess)
+    foreach (var r in results.Value)
+        Console.WriteLine($"[{r.Score:F2}] {r.Chunk.Text}");
 ```
 
 ## 8. Delete a document

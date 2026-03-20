@@ -78,14 +78,14 @@ The single public entry point that application code should depend on.
 ```csharp
 public interface IRagPipeline
 {
-    Task<IngestionResult> IngestAsync(
+    Task<Result<IngestionResult, RagError>> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
         IngestionOptions? options = null,
         IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
-    Task<IReadOnlyList<SearchResult>> RetrieveAsync(
+    Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
         string query,
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default);
@@ -240,7 +240,8 @@ ResultCacheBehavior              (present when UseCaching() called)
             → MultiQueryBehavior (present when IQueryExpander registered)
               → HydeBehavior     (present when IHypotheticalDocumentGenerator registered)
                 → EmbeddingCacheBehavior  (present when UseCaching() called)
-                  → VectorStoreBehavior   (base — always present)
+                  → FilterBehavior        (always present — applies RetrievalOptions.Filter spec)
+                    → VectorStoreBehavior (base — always present)
 ```
 
 Behaviors catch non-cancellation exceptions and fall back gracefully. `RetrievalOptions` is a `sealed record` so behaviors can use `with` expressions to modify options (e.g., over-fetch `TopK`) without mutating the caller's instance.

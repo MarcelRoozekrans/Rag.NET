@@ -34,6 +34,7 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 | `Rag.NET.Parsers.PowerPoint` | PowerPoint (.pptx) document parser (OpenXml) |
 | `Rag.NET.Evaluation` | Answer quality evaluation via embedding cosine similarity |
 | `Rag.NET.Reranking.Onnx` | ONNX Runtime cross-encoder reranking |
+| `Rag.NET.Mediator` | ZeroAlloc.Mediator integration — dispatch ingest/retrieve/delete via `IMediator` |
 
 ## Quick Start
 
@@ -67,14 +68,17 @@ var pipeline = provider.GetRequiredService<IRagPipeline>();
 ```csharp
 var metadata = new DocumentMetadata
 {
-    DocumentId = "my-doc",
+    DocumentId = new DocumentId("my-doc"),
     FileName = "report.pdf",
     ContentType = "application/pdf",
 };
 
 using var stream = File.OpenRead("report.pdf");
 var result = await pipeline.IngestAsync(stream, metadata);
-Console.WriteLine($"Stored {result.ChunksStored} chunks");
+if (result.IsSuccess)
+    Console.WriteLine($"Stored {result.Value.ChunksStored} chunks");
+else
+    Console.WriteLine($"Ingestion failed: {result.Error}");
 ```
 
 ### Ask a Question
@@ -101,8 +105,9 @@ await foreach (var update in pipeline.AskStreamingAsync("Summarize the report"))
 
 ```csharp
 var results = await pipeline.RetrieveAsync("key findings", new RetrievalOptions { TopK = 5 });
-foreach (var result in results)
-    Console.WriteLine($"[{result.Score:F2}] {result.Chunk.Text}");
+if (results.IsSuccess)
+    foreach (var r in results.Value)
+        Console.WriteLine($"[{r.Score:F2}] {r.Chunk.Text}");
 ```
 
 ## Vector Store Setup

@@ -1,18 +1,19 @@
 using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Mediator.Handlers;
 using ZeroAlloc.Mediator;
 
 namespace Rag.NET.Mediator.DependencyInjection;
 
-public static class MediatorServiceCollectionExtensions
+public static class MediatorBuilderExtensions
 {
-    public static IServiceCollection AddRagNETMediator(this IServiceCollection services)
+    public static RagBuilder UseMediator(this RagBuilder builder)
     {
-        services.AddTransient<IngestCommandHandler>();
-        services.AddTransient<RetrieveQueryHandler>();
-        services.AddTransient<DeleteCommandHandler>();
+        builder.Services.AddTransient<IngestCommandHandler>();
+        builder.Services.AddTransient<RetrieveQueryHandler>();
+        builder.Services.AddTransient<DeleteCommandHandler>();
 
-        services.AddSingleton<IMediator>(sp =>
+        builder.Services.AddSingleton<IMediator>(sp =>
         {
             ZeroAlloc.Mediator.Mediator.Configure(cfg =>
             {
@@ -23,6 +24,6 @@ public static class MediatorServiceCollectionExtensions
             return new MediatorService();
         });
 
-        return services;
+        return builder;
     }
 }

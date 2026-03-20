@@ -11,25 +11,26 @@ Retrieval is the step that determines answer quality more than any other. A well
 ## `RetrievalOptions`
 
 ```csharp
-public sealed class RetrievalOptions
+public sealed record RetrievalOptions
 {
-    public int TopK                          { get; set; } = 5;
-    public double MinScore                   { get; set; } = 0.0;
-    public IDictionary<string, string>? MetadataFilter { get; set; }
-    public bool UseHybridSearch              { get; set; }
-    public bool UseLostInTheMiddleReordering { get; set; }
-    public bool UseRedundancyFilter          { get; set; }
-    public float RedundancyThreshold         { get; set; } = 0.95f;
-    public bool UseMmr                       { get; set; } = false;  // opt-in
-    public float MmrLambda                   { get; set; } = 0.5f;
-    public int? MmrCandidateCount            { get; set; }
-    public bool UseHyde                      { get; set; } = true;
-    public bool UseMultiQuery                { get; set; } = true;
-    public bool UseParentDocument            { get; set; } = true;
-    public bool UseReranking                 { get; set; } = true;
-    public bool UseCacheEmbedding            { get; set; } = true;
-    public bool UseCacheResult               { get; set; } = true;
-    public int? CandidateCount               { get; set; }
+    public int TopK                          { get; init; } = 5;
+    public double MinScore                   { get; init; } = 0.0;
+    public IDictionary<string, string>? MetadataFilter { get; init; }
+    public ISpecification<SearchResult>? Filter { get; init; }
+    public bool UseHybridSearch              { get; init; }
+    public bool UseLostInTheMiddleReordering { get; init; }
+    public bool UseRedundancyFilter          { get; init; }
+    public float RedundancyThreshold         { get; init; } = 0.95f;
+    public bool UseMmr                       { get; init; } = false;  // opt-in
+    public float MmrLambda                   { get; init; } = 0.5f;
+    public int? MmrCandidateCount            { get; init; }
+    public bool UseHyde                      { get; init; } = true;
+    public bool UseMultiQuery                { get; init; } = true;
+    public bool UseParentDocument            { get; init; } = true;
+    public bool UseReranking                 { get; init; } = true;
+    public bool UseCacheEmbedding            { get; init; } = true;
+    public bool UseCacheResult               { get; init; } = true;
+    public int? CandidateCount               { get; init; }
 }
 ```
 
@@ -64,7 +65,16 @@ var results = await pipeline.RetrieveAsync("What are the Q4 targets?", new Retri
 
 ## `SearchResult`
 
-`RetrieveAsync` returns `IReadOnlyList<SearchResult>`, ordered by relevance (descending) unless Lost-in-the-Middle reordering is enabled:
+`RetrieveAsync` returns `Result<IReadOnlyList<SearchResult>, RagError>`. Unwrap with `.IsSuccess` / `.Value` / `.Error` before iterating:
+
+```csharp
+var result = await pipeline.RetrieveAsync("query");
+if (result.IsSuccess)
+    foreach (var r in result.Value)
+        Console.WriteLine($"[{r.Score:F2}] {r.Chunk.Text}");
+```
+
+Results are ordered by relevance (descending) unless Lost-in-the-Middle reordering is enabled.
 
 ```csharp
 public sealed record SearchResult
@@ -481,6 +491,47 @@ The metadata filter implementation varies by vector store:
 - **pgvector:** JSONB containment operator (`@>`) on the `metadata` column.
 - **Qdrant:** Must-match conditions on `meta_{key}` payload fields.
 - **Azure AI Search:** `search.ismatch` filter clauses on the serialised `metadata` field.
+
+## Specification-based filtering
+
+`RetrievalOptions.Filter` accepts any `ISpecification<SearchResult>` (from `ZeroAlloc.Specification`) and is applied in-process after the vector store returns results. Unlike `MetadataFilter`, which is pushed down to the database, `Filter` runs locally and can express arbitrary logic — score thresholds, tag checks, document ID restrictions, or combinations of all three.
+
+Three built-in specifications are provided in `Rag.NET`:
+
+| Specification | Description |
+|---------------|-------------|
+| `MinScoreSpec(threshold)` | Keep results with `Score >= threshold` |
+| `HasTagSpec(key, value)` | Keep results whose chunk metadata contains `key=value` (ordinal) |
+| `DocumentIdSpec(id)` | Keep results from a specific document |
+
+Specifications compose via source-generated combinators (`And`, `Or`, `Not`):
+
+```csharp
+using Rag.NET.Retrieval.Specifications;
+
+// Only results from "report-2024-q4" with score >= 0.7
+var filter = new DocumentIdSpec(new DocumentId("report-2024-q4"))
+    .And(new MinScoreSpec(0.7));
+
+var results = await pipeline.RetrieveAsync("capital expenditure", new RetrievalOptions
+{
+    TopK   = 10,
+    Filter = filter,
+});
+```
+
+```csharp
+// Results from either the finance OR the legal department
+var filter = new HasTagSpec("department", "finance")
+    .Or(new HasTagSpec("department", "legal"));
+
+var results = await pipeline.RetrieveAsync("compliance obligations", new RetrievalOptions
+{
+    Filter = filter,
+});
+```
+
+> **`Filter` vs `MetadataFilter`:** Use `MetadataFilter` when the vector store supports server-side filtering (pgvector, Qdrant, Azure AI Search) — it reduces the number of rows transferred. Use `Filter` for logic the database cannot express (score comparisons, compound predicates, custom `ISpecification` implementations).
 
 ## Using retrieval options with `AskAsync`
 

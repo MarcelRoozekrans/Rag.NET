@@ -25,6 +25,7 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 | [Evaluation](evaluation.md) | `EmbeddingDistanceEvaluator`, `EvaluationSample`, score interpretation |
 | [Observability](observability.md) | `ILogger` structured logging, OpenTelemetry `ActivitySource`, Polly resilience |
 | [Extending](extending.md) | Implementing `IDocumentParser`, `IVectorStore`, `IChunkingStrategy` |
+| [Mediator](mediator.md) | Dispatching ingest/retrieve/delete commands via `Rag.NET.Mediator` and ZeroAlloc.Mediator |
 
 ## Quick links
 
@@ -50,11 +51,13 @@ flowchart TD
     CORE --> PPT["Rag.NET.Parsers.PowerPoint"]
 
     CORE --> EVAL["Rag.NET.Evaluation<br>Embedding-based answer quality"]
+    CORE --> MED["Rag.NET.Mediator<br>ZeroAlloc.Mediator integration"]
 
     style PG fill:#e8f4fd,stroke:#4a90d9
     style QD fill:#e8f4fd,stroke:#4a90d9
     style AZ fill:#e8f4fd,stroke:#4a90d9
     style EVAL fill:#e8f4fd,stroke:#4a90d9
+    style MED fill:#e8f4fd,stroke:#4a90d9
 ```
 
 | NuGet package | Contents |
@@ -69,6 +72,7 @@ flowchart TD
 | `Rag.NET.Parsers.Excel` | Excel `.xlsx` parser (OpenXml) |
 | `Rag.NET.Parsers.PowerPoint` | PowerPoint `.pptx` parser (OpenXml) |
 | `Rag.NET.Evaluation` | Answer-quality evaluation via embedding cosine similarity |
+| `Rag.NET.Mediator` | ZeroAlloc.Mediator integration — dispatch ingest/retrieve/delete via `IMediator` |
 
 ## Requirements
 
