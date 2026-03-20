@@ -8,9 +8,11 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Api.DependencyInjection;
+using Rag.NET.Mediator.Requests;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
+using ZeroAlloc.Mediator;
 using ZeroAlloc.Results;
 
 namespace Rag.NET.Api.Client.Tests;
@@ -19,11 +21,13 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
 {
     private readonly TestServer _testServer;
     private readonly IRagPipeline _mockPipeline;
+    private readonly IMediator _mockMediator;
     private readonly HttpRagPipeline _httpRagPipeline;
 
     public HttpRagPipelineIntegrationTests()
     {
         _mockPipeline = CreateMockPipeline();
+        _mockMediator = CreateMockMediator();
 
 #pragma warning disable ASPDEPR004 // WebHostBuilder is deprecated in favor of HostBuilder/WebApplicationBuilder — intentional for TestServer usage
 #pragma warning disable ASPDEPR008 // TestServer(IWebHostBuilder) is deprecated — intentional for minimal test setup
@@ -31,6 +35,7 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
             .ConfigureServices(services =>
             {
                 services.AddSingleton(_mockPipeline);
+                services.AddSingleton(_mockMediator);
                 services.AddRagNetApi(o => o.ApiKeys = ["test-key"]);
                 services.AddRouting();
             })
@@ -53,22 +58,6 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
     {
         var mock = Substitute.For<IRagPipeline>();
 
-        mock.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
-                (IReadOnlyList<SearchResult>)new List<SearchResult>
-                {
-                    new SearchResult
-                    {
-                        Score = 0.9,
-                        Chunk = new TextChunk { Text = "chunk text", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 }
-                    }
-                })));
-
-        mock.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
-                Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
-                new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 3 })));
-
         mock.AskAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new RagResponse { Answer = "42", Sources = [] }));
 
@@ -76,6 +65,36 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
             .Returns(AsyncEnumerableOf(
                 new RagStreamingUpdate { TextDelta = "Hello" },
                 new RagStreamingUpdate { TextDelta = " World" }));
+
+        return mock;
+    }
+
+    private static IMediator CreateMockMediator()
+    {
+        var mock = Substitute.For<IMediator>();
+
+#pragma warning disable EPS06 // ValueTask struct copy — intentional test double setup via NSubstitute
+        mock.Send(Arg.Any<RetrieveQuery>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ValueTask<Result<IReadOnlyList<SearchResult>, RagError>>(
+                Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                    (IReadOnlyList<SearchResult>)new List<SearchResult>
+                    {
+                        new SearchResult
+                        {
+                            Score = 0.9,
+                            Chunk = new TextChunk { Text = "chunk text", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 }
+                        }
+                    })));
+
+        mock.Send(Arg.Any<IngestCommand>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ValueTask<Result<IngestionResult, RagError>>(
+                Result<IngestionResult, RagError>.Success(
+                    new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 3 })));
+
+        mock.Send(Arg.Any<DeleteCommand>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ValueTask<Result<Unit, RagError>>(
+                Result<Unit, RagError>.Success(Unit.Value)));
+#pragma warning restore EPS06
 
         return mock;
     }
@@ -127,7 +146,9 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
     {
         await _httpRagPipeline.DeleteAsync("doc-1", TestContext.Current.CancellationToken);
 
-        await _mockPipeline.Received(1).DeleteAsync("doc-1", Arg.Any<CancellationToken>());
+        _ = await _mockMediator.Received(1).Send(
+            Arg.Is<DeleteCommand>(c => c.DocumentId.ToString() == "doc-1"),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

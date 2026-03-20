@@ -13,6 +13,7 @@
     <Project Path="src/Rag.NET.Parsers.Word/Rag.NET.Parsers.Word.csproj" />
     <Project Path="src/Rag.NET.Mcp.Tool/Rag.NET.Mcp.Tool.csproj" />
     <Project Path="src/Rag.NET.Mcp/Rag.NET.Mcp.csproj" />
+    <Project Path="src/Rag.NET.Mediator/Rag.NET.Mediator.csproj" />
     <Project Path="src/Rag.NET.Parsers.Excel/Rag.NET.Parsers.Excel.csproj" />
     <Project Path="src/Rag.NET.Parsers.PowerPoint/Rag.NET.Parsers.PowerPoint.csproj" />
     <Project Path="src/Rag.NET.DataProviders.GitHub/Rag.NET.DataProviders.GitHub.csproj" />

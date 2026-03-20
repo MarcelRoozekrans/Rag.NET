@@ -6,8 +6,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 using Rag.NET.Api.Contracts;
 using Rag.NET.Api.Mapping;
+using Rag.NET.Mediator.Requests;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using ZeroAlloc.Mediator;
 
 namespace Rag.NET.Api.DependencyInjection;
 
@@ -24,7 +26,7 @@ public static class EndpointRouteBuilderExtensions
         var options = app.ServiceProvider.GetService<RagApiOptions>() ?? new RagApiOptions();
         var prefix = options.RoutePrefix.TrimEnd('/');
 
-        app.MapPost($"{prefix}/ingest", async (IngestRequest req, IRagPipeline pipeline, CancellationToken ct) =>
+        app.MapPost($"{prefix}/ingest", async (IngestRequest req, IMediator mediator, CancellationToken ct) =>
         {
             var docId = req.DocumentId ?? Guid.NewGuid().ToString();
             var metadata = new DocumentMetadata
@@ -35,16 +37,16 @@ public static class EndpointRouteBuilderExtensions
                 Tags = req.Tags ?? new Dictionary<string, string>(StringComparer.Ordinal)
             };
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(req.Content));
-            var result = await pipeline.IngestAsync(stream, metadata, cancellationToken: ct).ConfigureAwait(false);
+            var result = await mediator.Send(new IngestCommand(stream, metadata), ct).ConfigureAwait(false);
             return result.IsSuccess
                 ? Results.Ok(new IngestResponse(result.Value.DocumentId.ToString(), result.Value.ChunksStored))
                 : MapRagError(result.Error);
         });
 
-        app.MapPost($"{prefix}/retrieve", async (RetrieveRequest req, IRagPipeline pipeline, CancellationToken ct) =>
+        app.MapPost($"{prefix}/retrieve", async (RetrieveRequest req, IMediator mediator, CancellationToken ct) =>
         {
             var retrievalOptions = new RetrievalOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
-            var result = await pipeline.RetrieveAsync(req.Query, retrievalOptions, ct).ConfigureAwait(false);
+            var result = await mediator.Send(new RetrieveQuery(req.Query, retrievalOptions), ct).ConfigureAwait(false);
             return result.IsSuccess
                 ? Results.Ok(new RetrieveResponse(result.Value.Select(SearchResultMapper.ToDto).ToList()))
                 : MapRagError(result.Error);
@@ -67,9 +69,9 @@ public static class EndpointRouteBuilderExtensions
             }
         });
 
-        app.MapDelete($"{prefix}/documents/{{documentId}}", async (string documentId, IRagPipeline pipeline, CancellationToken ct) =>
+        app.MapDelete($"{prefix}/documents/{{documentId}}", async (string documentId, IMediator mediator, CancellationToken ct) =>
         {
-            await pipeline.DeleteAsync(documentId, ct).ConfigureAwait(false);
+            _ = await mediator.Send(new DeleteCommand(new DocumentId(documentId)), ct).ConfigureAwait(false);
             return Results.NoContent();
         });
 

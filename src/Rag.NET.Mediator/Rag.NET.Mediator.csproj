@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Rag.NET.Mediator</RootNamespace>
+    <PackageId>Rag.NET.Mediator</PackageId>
+    <Description>ZeroAlloc.Mediator integration for Rag.NET</Description>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <!-- Suppress ZAM003: request types use class records because they carry Stream / IProgress
+         references that cannot be stored in readonly record structs. -->
+    <NoWarn>ZAM003</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ZeroAlloc.Mediator" Version="1.1.7" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.Mediator.Generator" Version="1.1.7" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Analyzer Include="$(PkgZeroAlloc_Mediator_Generator)\lib\netstandard2.0\ZeroAlloc.Mediator.Generator.dll" />
+  </ItemGroup>
+</Project>

@@ -14,5 +14,6 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <ProjectReference Include="..\Rag.NET.Mediator\Rag.NET.Mediator.csproj" />
   </ItemGroup>
 </Project>
