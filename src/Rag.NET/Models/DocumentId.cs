@@ -8,7 +8,11 @@ public sealed class DocumentId : IEquatable<DocumentId>
 {
     private readonly string _value;
 
-    public DocumentId(string value) => _value = value;
+    public DocumentId(string value)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(value);
+        _value = value;
+    }
 
     public override string ToString() => _value;
 
