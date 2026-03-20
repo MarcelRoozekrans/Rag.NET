@@ -19,6 +19,7 @@ public sealed class RetrievalPipelineBuilder
         typeof(MultiQueryBehavior),
         typeof(HydeBehavior),
         typeof(EmbeddingCacheBehavior),
+        typeof(FilterBehavior),
         typeof(VectorStoreBehavior),
     ];
 
