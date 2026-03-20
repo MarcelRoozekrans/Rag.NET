@@ -84,4 +84,65 @@ public class LlmJudgeEvaluatorTests
 
         Assert.Equal(2, result.Samples.Count);
     }
+
+    [Fact]
+    public async Task EvaluateAsync_WithoutSources_FaithfulnessAbsentFromResult()
+    {
+        var client = MakeChatClient(ValidJsonTwoCriteria);
+        var sut = new LlmJudgeEvaluator(client);
+
+        var samples = new[]
+        {
+            new EvaluationSample(
+                Question: "What is RAG?",
+                PredictedAnswer: "RAG is retrieval-augmented generation.",
+                ReferenceAnswer: "RAG combines retrieval with LLM generation.",
+                SourceChunks: null),
+        };
+
+        var result = await sut.EvaluateAsync(samples, TestContext.Current.CancellationToken);
+
+        var judgement = Assert.Single(result.Samples);
+        Assert.False(judgement.Criteria.ContainsKey("faithfulness"));
+        Assert.True(judgement.Criteria.ContainsKey("correctness"));
+        Assert.True(judgement.Criteria.ContainsKey("relevance"));
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_WithoutSources_PromptDoesNotMentionFaithfulness()
+    {
+        var capturedMessages = new List<IEnumerable<ChatMessage>>();
+        var client = Substitute.For<IChatClient>();
+        client
+            .GetResponseAsync(
+                Arg.Do<IEnumerable<ChatMessage>>(msgs => capturedMessages.Add(msgs)),
+                Arg.Any<ChatOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, ValidJsonTwoCriteria)]));
+
+        var sut = new LlmJudgeEvaluator(client);
+
+        var samples = new[]
+        {
+            new EvaluationSample(
+                Question: "What is RAG?",
+                PredictedAnswer: "RAG is retrieval-augmented generation.",
+                ReferenceAnswer: "RAG combines retrieval with LLM generation.",
+                SourceChunks: null),
+        };
+
+        await sut.EvaluateAsync(samples, TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(capturedMessages);
+        foreach (var messages in capturedMessages)
+        {
+            foreach (var message in messages)
+            {
+                Assert.DoesNotContain(
+                    "faithfulness",
+                    message.Text ?? string.Empty,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
 }
