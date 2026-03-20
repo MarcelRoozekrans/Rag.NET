@@ -24,6 +24,12 @@ public sealed class PipelineRetriever : IRetriever
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        if (options is not null && options.TopK <= 0)
+        {
+            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(
+                new RagError.ValidationFailed([new Models.ValidationFailure("TopK", "TopK must be greater than 0.")]));
+        }
+
         var ctx = new RetrievalContext
         {
             Query = query,
@@ -42,4 +48,5 @@ public sealed class PipelineRetriever : IRetriever
             return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(ex));
         }
     }
+
 }

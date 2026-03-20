@@ -1,7 +1,10 @@
+using ZeroAlloc.Validation;
+
 namespace Rag.NET.Models.Options;
 
+[Validate]
 public sealed class ChunkingOptions
 {
-    public int MaxChunkSize { get; set; } = 512;
-    public int Overlap { get; set; } = 50;
+    [GreaterThan(0)] public int MaxChunkSize { get; set; } = 512;
+    [GreaterThan(0)] public int Overlap { get; set; } = 50;
 }

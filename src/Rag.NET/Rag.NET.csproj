@@ -24,10 +24,16 @@
     <PackageReference Include="ZeroAlloc.Inject" Version="1.2.1" />
     <PackageReference Include="ZeroAlloc.Results" Version="0.*" />
     <PackageReference Include="ZeroAlloc.Inject.Generator" Version="1.2.1" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.Validation" Version="0.*" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.Pipeline" Version="0.*" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.Pipeline.Generators" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
   </ItemGroup>
 
   <ItemGroup>
     <Analyzer Include="$(PkgZeroAlloc_Inject_Generator)\analyzers\dotnet\cs\ZeroAlloc.Inject.Generator.dll" />
+    <Analyzer Include="C:\Projects\Prive\ZeroAlloc.Validation\src\ZeroAlloc.Validation.Generator\bin\Release\netstandard2.0\ZeroAlloc.Validation.Generator.dll" />
+    <Analyzer Include="$(PkgZeroAlloc_Pipeline_Generators)\lib\netstandard2.0\ZeroAlloc.Pipeline.Generators.dll" />
+    <Analyzer Include="$(PkgZeroAlloc_Pipeline)\lib\netstandard2.0\ZeroAlloc.Pipeline.dll" />
   </ItemGroup>
 
 </Project>

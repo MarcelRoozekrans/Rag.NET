@@ -4,6 +4,7 @@ using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using ZeroAlloc.Inject;
 using ZeroAlloc.Results;
+using ZeroAlloc.Validation;
 
 namespace Rag.NET.Ingestion;
 
@@ -29,6 +30,11 @@ public sealed class PipelineIngestor : IIngestor
         IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        var validationResult = new DocumentMetadataValidator().Validate(metadata);
+        if (!validationResult.IsValid)
+            return Result<IngestionResult, RagError>.Failure(
+                new RagError.ValidationFailed(MapFailures(validationResult.Failures)));
+
         if (!document.CanRead)
             return Result<IngestionResult, RagError>.Failure(new RagError.NonSeekableStream());
 
@@ -63,5 +69,13 @@ public sealed class PipelineIngestor : IIngestor
         Bm25Index.Remove(documentId);
         ParentStore?.Remove(documentId);
         DataManager?.Remove(documentId);
+    }
+
+    private static IReadOnlyList<Models.ValidationFailure> MapFailures(ReadOnlySpan<ZeroAlloc.Validation.ValidationFailure> failures)
+    {
+        var result = new Models.ValidationFailure[failures.Length];
+        for (var i = 0; i < failures.Length; i++)
+            result[i] = new Models.ValidationFailure(failures[i].PropertyName, failures[i].ErrorMessage);
+        return result;
     }
 }
