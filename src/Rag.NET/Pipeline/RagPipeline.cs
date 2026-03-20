@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Pipeline;
 
@@ -14,7 +15,7 @@ public sealed class RagPipeline(
     IIngestor ingestor,
     IAnswerEngine? answerEngine = null) : IRagPipeline
 {
-    public Task<IngestionResult> IngestAsync(
+    public Task<Result<IngestionResult, RagError>> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
         IngestionOptions? options = null,
@@ -22,7 +23,7 @@ public sealed class RagPipeline(
         CancellationToken cancellationToken = default)
         => ingestor.IngestAsync(document, metadata, options, progress, cancellationToken);
 
-    public Task<IReadOnlyList<SearchResult>> RetrieveAsync(
+    public Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
         string query,
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -38,17 +39,10 @@ public sealed class RagPipeline(
                 "IAnswerEngine is not registered. Register an IChatClient in DI to use AskAsync.");
 
         var opts = options ?? new RagOptions();
-        var retrievalOptions = new RetrievalOptions
-        {
-            TopK = opts.TopK,
-            MinScore = opts.MinScore,
-            MetadataFilter = opts.MetadataFilter,
-            UseHybridSearch = opts.UseHybridSearch,
-            UseLostInTheMiddleReordering = opts.UseLostInTheMiddleReordering,
-            UseRedundancyFilter = opts.UseRedundancyFilter,
-            RedundancyThreshold = opts.RedundancyThreshold,
-        };
-        var sources = await retriever.RetrieveAsync(query, retrievalOptions, cancellationToken).ConfigureAwait(false);
+        var retrievalResult = await retriever.RetrieveAsync(query, BuildRetrievalOptions(opts), cancellationToken).ConfigureAwait(false);
+        if (!retrievalResult.IsSuccess)
+            throw new InvalidOperationException($"Retrieval failed: {retrievalResult.Error}");
+        var sources = retrievalResult.Value;
 
         return await answerEngine.AskAsync(query, sources, opts, cancellationToken).ConfigureAwait(false);
     }
@@ -63,17 +57,10 @@ public sealed class RagPipeline(
                 "IAnswerEngine is not registered. Register an IChatClient in DI to use AskStreamingAsync.");
 
         var opts = options ?? new RagOptions();
-        var retrievalOptions = new RetrievalOptions
-        {
-            TopK = opts.TopK,
-            MinScore = opts.MinScore,
-            MetadataFilter = opts.MetadataFilter,
-            UseHybridSearch = opts.UseHybridSearch,
-            UseLostInTheMiddleReordering = opts.UseLostInTheMiddleReordering,
-            UseRedundancyFilter = opts.UseRedundancyFilter,
-            RedundancyThreshold = opts.RedundancyThreshold,
-        };
-        var sources = await retriever.RetrieveAsync(query, retrievalOptions, cancellationToken).ConfigureAwait(false);
+        var retrievalResult = await retriever.RetrieveAsync(query, BuildRetrievalOptions(opts), cancellationToken).ConfigureAwait(false);
+        if (!retrievalResult.IsSuccess)
+            throw new InvalidOperationException($"Retrieval failed: {retrievalResult.Error}");
+        var sources = retrievalResult.Value;
 
         await foreach (var update in answerEngine.AskStreamingAsync(query, sources, opts, cancellationToken).ConfigureAwait(false))
         {
@@ -83,4 +70,15 @@ public sealed class RagPipeline(
 
     public Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
         => ingestor.DeleteAsync(documentId, cancellationToken);
+
+    private static RetrievalOptions BuildRetrievalOptions(RagOptions opts) => new()
+    {
+        TopK = opts.TopK,
+        MinScore = opts.MinScore,
+        MetadataFilter = opts.MetadataFilter,
+        UseHybridSearch = opts.UseHybridSearch,
+        UseLostInTheMiddleReordering = opts.UseLostInTheMiddleReordering,
+        UseRedundancyFilter = opts.UseRedundancyFilter,
+        RedundancyThreshold = opts.RedundancyThreshold,
+    };
 }

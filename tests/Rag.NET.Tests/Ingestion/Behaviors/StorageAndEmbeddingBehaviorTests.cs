@@ -22,7 +22,7 @@ public class StorageAndEmbeddingBehaviorTests
             Stream = new MemoryStream(),
             Metadata = metadata ?? new DocumentMetadata
             {
-                DocumentId = "doc-1",
+                DocumentId = new DocumentId("doc-1"),
                 FileName = "test.txt",
                 ContentType = "text/plain",
             },
@@ -42,8 +42,8 @@ public class StorageAndEmbeddingBehaviorTests
         var ct = TestContext.Current.CancellationToken;
         var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
 
-        var chunk1 = new TextChunk { Text = "hello", DocumentId = "doc-1", ChunkIndex = 0 };
-        var chunk2 = new TextChunk { Text = "world", DocumentId = "doc-1", ChunkIndex = 1 };
+        var chunk1 = new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 };
+        var chunk2 = new TextChunk { Text = "world", DocumentId = new DocumentId("doc-1"), ChunkIndex = 1 };
 
         var vec1 = new float[] { 0.1f, 0.2f };
         var vec2 = new float[] { 0.3f, 0.4f };
@@ -100,7 +100,7 @@ public class StorageAndEmbeddingBehaviorTests
 
         var sut = new EmbeddingBehavior { Embedder = embedder };
         var ctx = MakeContext(progress: progress);
-        ctx.Chunks.Add(new TextChunk { Text = "hi", DocumentId = "doc-1", ChunkIndex = 0 });
+        ctx.Chunks.Add(new TextChunk { Text = "hi", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
 
         await sut.HandleAsync(ctx, ct, (c, _) => ValueTask.FromResult(
             new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
@@ -128,7 +128,7 @@ public class StorageAndEmbeddingBehaviorTests
             DataManager = dataManager,
         };
 
-        var chunk = new TextChunk { Text = "hello", DocumentId = "doc-1", ChunkIndex = 0 };
+        var chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 };
         var embeddedChunk = new EmbeddedChunk { Chunk = chunk, Embedding = new float[] { 0.5f } };
 
         var ctx = MakeContext();
@@ -162,7 +162,7 @@ public class StorageAndEmbeddingBehaviorTests
         var ctx = MakeContext();
         ctx.EmbeddedChunks.Add(new EmbeddedChunk
         {
-            Chunk = new TextChunk { Text = "x", DocumentId = "doc-1", ChunkIndex = 0 },
+            Chunk = new TextChunk { Text = "x", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
             Embedding = new float[] { 1f },
         });
 
@@ -189,7 +189,7 @@ public class StorageAndEmbeddingBehaviorTests
         var ctx = MakeContext();
         ctx.EmbeddedChunks.Add(new EmbeddedChunk
         {
-            Chunk = new TextChunk { Text = "x", DocumentId = "doc-1", ChunkIndex = 0 },
+            Chunk = new TextChunk { Text = "x", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
             Embedding = new float[] { 1f },
         });
 
@@ -221,7 +221,7 @@ public class StorageAndEmbeddingBehaviorTests
         var ctx = MakeContext(progress: progress);
         ctx.EmbeddedChunks.Add(new EmbeddedChunk
         {
-            Chunk = new TextChunk { Text = "x", DocumentId = "doc-1", ChunkIndex = 0 },
+            Chunk = new TextChunk { Text = "x", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
             Embedding = new float[] { 1f },
         });
 

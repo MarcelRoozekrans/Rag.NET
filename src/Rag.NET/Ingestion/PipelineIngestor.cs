@@ -3,6 +3,8 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using ZeroAlloc.Inject;
+using ZeroAlloc.Results;
+using ZeroAlloc.Validation;
 
 namespace Rag.NET.Ingestion;
 
@@ -16,18 +18,32 @@ public sealed class PipelineIngestor : IIngestor
     [Inject] public Pipeline<IngestionContext, IngestionResult> Pipeline { get; set; } = null!;
     [Inject] public IVectorStore VectorStore { get; set; } = null!;
     [Inject] public IBm25Index Bm25Index { get; set; } = null!;
+    [Inject] public ChunkingOptions ChunkingOptions { get; set; } = null!;
     [Inject(Required = false)] public IParentChunkStore? ParentStore { get; set; }
     [Inject(Required = false)] public IRagDataManager? DataManager { get; set; }
 
     private int _nextBm25DocId;
 
-    public Task<IngestionResult> IngestAsync(
+    public async Task<Result<IngestionResult, RagError>> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
         IngestionOptions? options = null,
         IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        var chunkingValidation = new ChunkingOptionsValidator().Validate(ChunkingOptions);
+        if (!chunkingValidation.IsValid)
+            return Result<IngestionResult, RagError>.Failure(
+                new RagError.ValidationFailed(MapFailures(chunkingValidation.Failures)));
+
+        var validationResult = new DocumentMetadataValidator().Validate(metadata);
+        if (!validationResult.IsValid)
+            return Result<IngestionResult, RagError>.Failure(
+                new RagError.ValidationFailed(MapFailures(validationResult.Failures)));
+
+        if (!document.CanRead)
+            return Result<IngestionResult, RagError>.Failure(new RagError.NonSeekableStream());
+
         var ctx = new IngestionContext
         {
             Stream = document,
@@ -37,7 +53,20 @@ public sealed class PipelineIngestor : IIngestor
             GetNextBm25DocId = () => System.Threading.Interlocked.Increment(ref _nextBm25DocId),
         };
 
-        return Pipeline.ExecuteAsync(ctx, cancellationToken).AsTask();
+        try
+        {
+            var result = await Pipeline.ExecuteAsync(ctx, cancellationToken).ConfigureAwait(false);
+            return Result<IngestionResult, RagError>.Success(result);
+        }
+        catch (NoParserFoundException ex)
+        {
+            return Result<IngestionResult, RagError>.Failure(new RagError.NoParserFound(ex.ContentType));
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return Result<IngestionResult, RagError>.Failure(new RagError.StorageFailed(ex));
+        }
     }
 
     public async Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
@@ -46,5 +75,13 @@ public sealed class PipelineIngestor : IIngestor
         Bm25Index.Remove(documentId);
         ParentStore?.Remove(documentId);
         DataManager?.Remove(documentId);
+    }
+
+    private static IReadOnlyList<Models.ValidationFailure> MapFailures(ReadOnlySpan<ZeroAlloc.Validation.ValidationFailure> failures)
+    {
+        var result = new Models.ValidationFailure[failures.Length];
+        for (var i = 0; i < failures.Length; i++)
+            result[i] = new Models.ValidationFailure(failures[i].PropertyName, failures[i].ErrorMessage);
+        return result;
     }
 }

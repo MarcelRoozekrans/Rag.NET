@@ -25,27 +25,27 @@ public class ParserBenchmarks
 
     private static readonly DocumentMetadata TextMeta = new()
     {
-        DocumentId = "bench", FileName = "bench.txt", ContentType = "text/plain",
+        DocumentId = new DocumentId("bench"), FileName = "bench.txt", ContentType = "text/plain",
     };
 
     private static readonly DocumentMetadata MarkdownMeta = new()
     {
-        DocumentId = "bench", FileName = "bench.md", ContentType = "text/markdown",
+        DocumentId = new DocumentId("bench"), FileName = "bench.md", ContentType = "text/markdown",
     };
 
     private static readonly DocumentMetadata HtmlMeta = new()
     {
-        DocumentId = "bench", FileName = "bench.html", ContentType = "text/html",
+        DocumentId = new DocumentId("bench"), FileName = "bench.html", ContentType = "text/html",
     };
 
     private static readonly DocumentMetadata CsvMeta = new()
     {
-        DocumentId = "bench", FileName = "bench.csv", ContentType = "text/csv",
+        DocumentId = new DocumentId("bench"), FileName = "bench.csv", ContentType = "text/csv",
     };
 
     private static readonly DocumentMetadata JsonMeta = new()
     {
-        DocumentId = "bench", FileName = "bench.json", ContentType = "application/json",
+        DocumentId = new DocumentId("bench"), FileName = "bench.json", ContentType = "application/json",
     };
 
     [GlobalSetup]

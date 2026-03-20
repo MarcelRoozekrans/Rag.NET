@@ -8,6 +8,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
 using Rag.NET.Pipeline;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Benchmarks;
 
@@ -28,7 +29,7 @@ public class MultiQueryBenchmarks
 
     private static readonly DocumentMetadata Metadata = new()
     {
-        DocumentId  = "bench-doc",
+        DocumentId = new DocumentId("bench-doc"),
         FileName    = "bench.txt",
         ContentType = "text/plain",
     };
@@ -55,7 +56,7 @@ public class MultiQueryBenchmarks
         var results = await _pipeline3Variants.RetrieveAsync(
             "quick brown fox",
             new RetrievalOptions { TopK = 5, UseMultiQuery = true });
-        return results.Count;
+        return results.IsSuccess ? results.Value.Count : 0;
     }
 
     [Benchmark]
@@ -64,7 +65,7 @@ public class MultiQueryBenchmarks
         var results = await _pipeline5Variants.RetrieveAsync(
             "quick brown fox",
             new RetrievalOptions { TopK = 5, UseMultiQuery = true });
-        return results.Count;
+        return results.IsSuccess ? results.Value.Count : 0;
     }
 
     [Benchmark(Baseline = true)]
@@ -73,7 +74,7 @@ public class MultiQueryBenchmarks
         var results = await _pipeline3Variants.RetrieveAsync(
             "quick brown fox",
             new RetrievalOptions { TopK = 5, UseMultiQuery = false });
-        return results.Count;
+        return results.IsSuccess ? results.Value.Count : 0;
     }
 
     private async Task<(ServiceProvider sp, IRagPipeline pipeline)> BuildPipelineAsync(int variantCount)
@@ -91,7 +92,7 @@ public class MultiQueryBenchmarks
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
         using var stream = new MemoryStream(_documentData);
-        await pipeline.IngestAsync(stream, Metadata);
+        _ = await pipeline.IngestAsync(stream, Metadata);
 
         return (sp, pipeline);
     }

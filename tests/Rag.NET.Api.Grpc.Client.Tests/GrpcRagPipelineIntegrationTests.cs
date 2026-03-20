@@ -11,6 +11,7 @@ using Rag.NET.Api.Grpc.Proto;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Api.Grpc.Client.Tests;
 
@@ -25,20 +26,22 @@ public sealed class GrpcRagPipelineIntegrationTests : IAsyncLifetime
         _pipeline = Substitute.For<IRagPipeline>();
 
         _pipeline.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>(
-            [
-                new SearchResult
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                (IReadOnlyList<SearchResult>)new List<SearchResult>
                 {
-                    Chunk = new TextChunk { Text = "Hello world", DocumentId = "doc-1", ChunkIndex = 0 },
-                    Score = 0.9
-                }
-            ]));
+                    new SearchResult
+                    {
+                        Chunk = new TextChunk { Text = "Hello world", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
+                        Score = 0.9
+                    }
+                })));
 
         _pipeline.IngestAsync(
                 Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
                 Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new IngestionResult { DocumentId = "doc-42", ChunksStored = 5 }));
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("doc-42"), ChunksStored = 5 })));
 
         _pipeline.DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
@@ -85,30 +88,30 @@ public sealed class GrpcRagPipelineIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RetrieveAsync_ReturnsResults_WhenDocumentsIngested()
     {
-        var results = await _grpcRagPipeline.RetrieveAsync(
+        var result = await _grpcRagPipeline.RetrieveAsync(
             "test query",
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotNull(results);
-        Assert.Single(results);
-        Assert.Equal("Hello world", results[0].Chunk.Text);
-        Assert.Equal("doc-1", results[0].Chunk.DocumentId);
-        Assert.Equal(0.9, results[0].Score);
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value);
+        Assert.Equal("Hello world", result.Value[0].Chunk.Text);
+        Assert.Equal("doc-1", result.Value[0].Chunk.DocumentId);
+        Assert.Equal(0.9, result.Value[0].Score);
     }
 
     [Fact]
     public async Task IngestAsync_ReturnsIngestionResult_WhenContentProvided()
     {
         using var stream = new MemoryStream("Test content"u8.ToArray());
-        var metadata = new DocumentMetadata { DocumentId = "doc-42", FileName = "test.txt" };
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-42"), FileName = "test.txt" };
 
         var result = await _grpcRagPipeline.IngestAsync(
             stream, metadata,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotNull(result);
-        Assert.Equal("doc-42", result.DocumentId);
-        Assert.Equal(5, result.ChunksStored);
+        Assert.True(result.IsSuccess);
+        Assert.Equal("doc-42", result.Value.DocumentId);
+        Assert.Equal(5, result.Value.ChunksStored);
     }
 
     [Fact]
@@ -122,13 +125,14 @@ public sealed class GrpcRagPipelineIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RetrieveAsync_MapsSearchResults_Correctly()
     {
-        var results = await _grpcRagPipeline.RetrieveAsync(
+        var result = await _grpcRagPipeline.RetrieveAsync(
             "another query",
             new RetrievalOptions { TopK = 3 },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.NotEmpty(results);
-        var first = results[0];
+        Assert.True(result.IsSuccess);
+        Assert.NotEmpty(result.Value);
+        var first = result.Value[0];
         Assert.Equal(0, first.Chunk.ChunkIndex);
         Assert.Equal(0.9, first.Score);
     }

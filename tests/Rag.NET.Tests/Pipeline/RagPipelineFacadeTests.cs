@@ -5,6 +5,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Tests.Pipeline;
 
@@ -25,28 +26,31 @@ public class RagPipelineFacadeTests
     {
         var expected = new List<SearchResult>
         {
-            new() { Chunk = new TextChunk { Text = "x", DocumentId = "d", ChunkIndex = 0 }, Score = 1.0 }
+            new() { Chunk = new TextChunk { Text = "x", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 1.0 }
         };
         var opts = new RetrievalOptions { TopK = 10 };
-        _retriever.RetrieveAsync("query", opts, Arg.Any<CancellationToken>()).Returns(expected);
+        _retriever.RetrieveAsync("query", opts, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(expected)));
 
         var result = await _sut.RetrieveAsync("query", opts, TestContext.Current.CancellationToken);
 
-        Assert.Same(expected, result);
+        Assert.True(result.IsSuccess);
+        Assert.Same(expected, result.Value);
     }
 
     [Fact]
     public async Task IngestAsync_DelegatesToIngestor()
     {
-        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "f.txt", ContentType = "text/plain" };
-        var expected = new IngestionResult { DocumentId = "doc-1", ChunksStored = 5 };
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "f.txt", ContentType = "text/plain" };
+        var expected = new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 5 };
         _ingestor.IngestAsync(Arg.Any<Stream>(), metadata, Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
-            .Returns(expected);
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(expected)));
 
         using var stream = new MemoryStream();
         var result = await _sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Same(expected, result);
+        Assert.True(result.IsSuccess);
+        Assert.Same(expected, result.Value);
     }
 
     [Fact]
@@ -61,10 +65,10 @@ public class RagPipelineFacadeTests
     {
         var sources = new List<SearchResult>
         {
-            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 }
+            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 0.9 }
         };
         _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(sources);
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(sources)));
 
         var expected = new RagResponse { Answer = "The answer", Sources = sources };
         _answerEngine.AskAsync("q", sources, Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
@@ -101,10 +105,10 @@ public class RagPipelineFacadeTests
         var ct = TestContext.Current.CancellationToken;
         var sources = new List<SearchResult>
         {
-            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 }
+            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 0.9 }
         };
         _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
-            .Returns(sources);
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(sources)));
 
         var updates = new List<RagStreamingUpdate>
         {
@@ -130,7 +134,8 @@ public class RagPipelineFacadeTests
     {
         var ct = TestContext.Current.CancellationToken;
         _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
-            .Returns(new List<SearchResult>());
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                (IReadOnlyList<SearchResult>)new List<SearchResult>())));
         _answerEngine.AskStreamingAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<RagOptions?>(), ct)
             .Returns(EmptyStreamingUpdates());
 
@@ -146,7 +151,7 @@ public class RagPipelineFacadeTests
         };
         await foreach (var _ in _sut.AskStreamingAsync("q", opts, ct)) { }
 
-        await _retriever.Received(1).RetrieveAsync(
+        _ = await _retriever.Received(1).RetrieveAsync(
             "q",
             Arg.Is<RetrievalOptions?>(r =>
                 r != null &&

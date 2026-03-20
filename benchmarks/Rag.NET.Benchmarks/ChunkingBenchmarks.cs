@@ -135,7 +135,7 @@ public class ChunkingBenchmarks
     private static DocumentSection CreateSection(string text) => new()
     {
         Text = text,
-        DocumentId = "bench-doc",
+        DocumentId = new DocumentId("bench-doc"),
         SectionIndex = 0,
     };
 

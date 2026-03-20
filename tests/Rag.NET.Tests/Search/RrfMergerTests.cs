@@ -7,7 +7,7 @@ namespace Rag.NET.Tests.Search;
 public class RrfMergerTests
 {
     private static TextChunk Chunk(string docId, int chunkIndex, string text = "text") =>
-        new() { DocumentId = docId, ChunkIndex = chunkIndex, Text = text };
+        new() { DocumentId = new DocumentId(docId), ChunkIndex = chunkIndex, Text = text };
 
     private static SearchResult Result(TextChunk chunk, double score = 1.0) =>
         new() { Chunk = chunk, Score = score };

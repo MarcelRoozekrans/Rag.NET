@@ -1,5 +1,6 @@
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Abstractions;
 
@@ -9,7 +10,7 @@ namespace Rag.NET.Abstractions;
 /// </summary>
 public interface IIngestor
 {
-    Task<IngestionResult> IngestAsync(
+    Task<Result<IngestionResult, RagError>> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
         IngestionOptions? options = null,

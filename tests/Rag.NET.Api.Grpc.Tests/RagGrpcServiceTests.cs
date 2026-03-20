@@ -12,6 +12,7 @@ using Rag.NET.Api.Grpc.Proto;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Api.Grpc.Tests;
 
@@ -26,11 +27,13 @@ public sealed class RagGrpcServiceTests : IAsyncLifetime
     {
         _pipeline = Substitute.For<IRagPipeline>();
         _pipeline.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([]));
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                (IReadOnlyList<SearchResult>)Array.Empty<SearchResult>())));
         _pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
                 Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new IngestionResult { DocumentId = "doc-1", ChunksStored = 3 }));
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 3 })));
         _pipeline.DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
@@ -120,7 +123,7 @@ public sealed class RagGrpcServiceTests : IAsyncLifetime
     {
         var client = new RagService.RagServiceClient(_channel);
         var response = await client.DeleteAsync(
-            new DeleteRequest { DocumentId = "doc-1" },
+            new DeleteRequest { DocumentId = new DocumentId("doc-1") },
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(response);

@@ -17,8 +17,7 @@ public sealed class ParseBehavior : IIngestionBehavior
         Func<IngestionContext, CancellationToken, ValueTask<IngestionResult>> next)
     {
         var parser = Parsers.FirstOrDefault(p => p.CanParse(ctx.Metadata.ContentType ?? "text/plain"))
-            ?? throw new InvalidOperationException(
-                $"No parser registered for content type '{ctx.Metadata.ContentType}'.");
+            ?? throw new NoParserFoundException(ctx.Metadata.ContentType ?? "text/plain");
 
         var headingBreadcrumbs = new string?[6];
 

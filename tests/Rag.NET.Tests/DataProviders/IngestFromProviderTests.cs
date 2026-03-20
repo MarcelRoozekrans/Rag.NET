@@ -6,6 +6,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Storage;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Tests.DataProviders;
 
@@ -13,6 +14,19 @@ public sealed class IngestFromProviderTests : IDisposable
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"ragnet-ingest-{Guid.NewGuid():N}.db");
     private readonly IRagPipeline _pipeline = Substitute.For<IRagPipeline>();
+
+    public IngestFromProviderTests()
+    {
+        // Default: IngestAsync succeeds with an empty result unless overridden per-test.
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(),
+                Arg.Any<DocumentMetadata>(),
+                Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ci => Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = ci.ArgAt<DocumentMetadata>(1).DocumentId, ChunksStored = 1 })));
+    }
 
     public void Dispose()
     {
@@ -44,7 +58,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         Assert.Equal(2, result.Ingested);
         Assert.Equal(0, result.Skipped);
-        await _pipeline.Received(2).IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
+        _ = await _pipeline.Received(2).IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
     }
 
@@ -60,7 +74,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         Assert.Equal(0, result.Ingested);
         Assert.Equal(1, result.Skipped);
-        await _pipeline.DidNotReceive().IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
+        _ = await _pipeline.DidNotReceive().IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
     }
 
@@ -93,7 +107,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         var hash = await hashStore.GetHashAsync("prov", "id-1", TestContext.Current.CancellationToken);
         Assert.NotNull(hash);
-        await _pipeline.Received(1).IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
+        _ = await _pipeline.Received(1).IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
     }
 
@@ -119,7 +133,8 @@ public sealed class IngestFromProviderTests : IDisposable
         var capturedMetadata = new List<DocumentMetadata>();
         _pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Do<DocumentMetadata>(m => capturedMetadata.Add(m)),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
-            .Returns(new IngestionResult { DocumentId = "id-1", ChunksStored = 1 });
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("id-1"), ChunksStored = 1 })));
 
         var provider = MakeProvider(("id-1", "report.pdf", "content", null));
         await _pipeline.IngestFromProviderAsync(provider, "prov",
@@ -133,14 +148,15 @@ public sealed class IngestFromProviderTests : IDisposable
     [Fact]
     public async Task IngestFromProviderAsync_IngestThrows_AppendsToErrorsAndContinues()
     {
-        // id-1 throws, id-2 succeeds — both must be attempted
+        // id-1 returns failure, id-2 succeeds — both must be attempted
         _pipeline.IngestAsync(
                 Arg.Any<Stream>(),
                 Arg.Is<DocumentMetadata>(m => string.Equals(m.DocumentId, "id-1", StringComparison.Ordinal)),
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromException<IngestionResult>(new InvalidOperationException("simulated failure")));
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Failure(
+                new RagError.StorageFailed(new InvalidOperationException("simulated failure")))));
 
         _pipeline.IngestAsync(
                 Arg.Any<Stream>(),
@@ -148,7 +164,8 @@ public sealed class IngestFromProviderTests : IDisposable
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(new IngestionResult { DocumentId = "id-2", ChunksStored = 1 });
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("id-2"), ChunksStored = 1 })));
 
         var provider = MakeProvider(
             ("id-1", "fail.txt", "hello", null),
@@ -229,8 +246,8 @@ public sealed class IngestFromProviderTests : IDisposable
         // Error is recorded
         Assert.Contains(result.Errors, e => e.Contains("id-old", StringComparison.Ordinal));
         // Processing continued — id-new was ingested
-        await _pipeline.Received(1).IngestAsync(
-            Arg.Any<Stream>(), Arg.Is<DocumentMetadata>(m => m.DocumentId == "id-new"),
+        _ = await _pipeline.Received(1).IngestAsync(
+            Arg.Any<Stream>(), Arg.Is<DocumentMetadata>(m => m.DocumentId.Equals(new DocumentId("id-new"))),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), ct);
     }
 
@@ -244,7 +261,8 @@ public sealed class IngestFromProviderTests : IDisposable
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(new IngestionResult { DocumentId = "id-1", ChunksStored = 1 });
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("id-1"), ChunksStored = 1 })));
 
         var provider = Substitute.For<IFileContentProvider>();
         provider.GetFilesAsync(Arg.Any<CancellationToken>())
@@ -263,8 +281,8 @@ public sealed class IngestFromProviderTests : IDisposable
 
         var baseMetadata = new DocumentMetadata
         {
-            DocumentId = "",
-            FileName   = "",
+            DocumentId = new DocumentId("id-1"),
+            FileName   = "base.pdf",
             Tags = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["source"]    = "base-value",

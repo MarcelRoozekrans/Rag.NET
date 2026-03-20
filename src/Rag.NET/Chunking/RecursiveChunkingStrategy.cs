@@ -57,7 +57,7 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
             yield return new TextChunk
             {
                 Text = chunkText,
-                DocumentId = section.DocumentId,
+                DocumentId = new DocumentId(section.DocumentId),
                 ChunkIndex = chunkIndex++,
                 StartPosition = startPosition,
                 EndPosition = endPosition,

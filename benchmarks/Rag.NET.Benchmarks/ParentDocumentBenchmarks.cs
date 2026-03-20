@@ -7,6 +7,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using Rag.NET.Storage;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Benchmarks;
 
@@ -33,7 +34,7 @@ public class ParentDocumentBenchmarks
             Chunk = new TextChunk
             {
                 Text = $"child chunk {i}",
-                DocumentId = "doc1",
+                DocumentId = new DocumentId("doc1"),
                 ChunkIndex = i,
                 Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
@@ -83,12 +84,18 @@ public class ParentDocumentBenchmarks
     }
 
     [Benchmark(Baseline = true)]
-    public Task<IReadOnlyList<SearchResult>> NoParentDocument_Baseline()
-        => _pipelineBaseline.RetrieveAsync("test query", new RetrievalOptions { UseParentDocument = false });
+    public async Task<int> NoParentDocument_Baseline()
+    {
+        var result = await _pipelineBaseline.RetrieveAsync("test query", new RetrievalOptions { UseParentDocument = false });
+        return result.IsSuccess ? result.Value.Count : 0;
+    }
 
     [Benchmark]
-    public Task<IReadOnlyList<SearchResult>> WithParentDocument()
-        => _pipeline.RetrieveAsync("test query", new RetrievalOptions { UseParentDocument = true });
+    public async Task<int> WithParentDocument()
+    {
+        var result = await _pipeline.RetrieveAsync("test query", new RetrievalOptions { UseParentDocument = true });
+        return result.IsSuccess ? result.Value.Count : 0;
+    }
 
     /// <summary>
     /// Minimal <see cref="IVectorStore"/> that always returns the same pre-built search results.

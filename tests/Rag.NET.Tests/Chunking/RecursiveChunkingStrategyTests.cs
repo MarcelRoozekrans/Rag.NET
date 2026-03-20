@@ -12,7 +12,7 @@ public class RecursiveChunkingStrategyTests
     private static DocumentSection CreateSection(string text) => new()
     {
         Text = text,
-        DocumentId = "doc-1",
+        DocumentId = new DocumentId("doc-1"),
         SectionIndex = 0
     };
 

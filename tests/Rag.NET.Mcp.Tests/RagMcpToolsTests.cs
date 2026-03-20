@@ -5,6 +5,7 @@ using Rag.NET.Mcp.Tools;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Mcp.Tests;
 
@@ -25,7 +26,7 @@ public sealed class RagMcpToolsTests
     [Fact]
     public async Task RetrieveAsync_CallsPipelineWithCorrectOptions_AndReturnsJsonResults()
     {
-        var chunk = new TextChunk { Text = "hello", DocumentId = "doc-1", ChunkIndex = 0 };
+        var chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 };
         var searchResult = new SearchResult { Chunk = chunk, Score = 0.9 };
         IReadOnlyList<SearchResult> results = [searchResult];
 
@@ -33,7 +34,7 @@ public sealed class RagMcpToolsTests
                 "my query",
                 Arg.Is<RetrievalOptions>(o => o.TopK == 3 && o.UseHybridSearch),
                 Arg.Any<CancellationToken>())
-            .Returns(results);
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(results)));
 
         var json = await _sut.RetrieveAsync("my query", topK: 3, useHybrid: true);
 
@@ -50,11 +51,12 @@ public sealed class RagMcpToolsTests
                 Arg.Any<string>(),
                 Arg.Is<RetrievalOptions>(o => o.TopK == 5 && o.UseHybridSearch),
                 Arg.Any<CancellationToken>())
-            .Returns([]);
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                (IReadOnlyList<SearchResult>)Array.Empty<SearchResult>())));
 
         await _sut.RetrieveAsync("test");
 
-        await _pipeline.Received(1).RetrieveAsync(
+        _ = await _pipeline.Received(1).RetrieveAsync(
             "test",
             Arg.Is<RetrievalOptions>(o => o.TopK == 5 && o.UseHybridSearch),
             Arg.Any<CancellationToken>());
@@ -67,7 +69,7 @@ public sealed class RagMcpToolsTests
     [Fact]
     public async Task AskAsync_CallsPipelineWithCorrectOptions_AndReturnsJsonAnswer()
     {
-        var chunk = new TextChunk { Text = "relevant", DocumentId = "doc-2", ChunkIndex = 0 };
+        var chunk = new TextChunk { Text = "relevant", DocumentId = new DocumentId("doc-2"), ChunkIndex = 0 };
         var response = new RagResponse
         {
             Answer = "42",
@@ -116,14 +118,15 @@ public sealed class RagMcpToolsTests
         _pipeline.IngestAsync(
                 Arg.Any<Stream>(),
                 Arg.Is<DocumentMetadata>(m =>
-                    m.DocumentId == "doc-42" &&
+                    m.DocumentId.Equals(new DocumentId("doc-42")) &&
                     m.FileName == "report.txt" &&
                     m.ContentType == "text/plain" &&
                     m.Tags["author"] == "Alice"),
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(new IngestionResult { DocumentId = "doc-42", ChunksStored = 5 });
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("doc-42"), ChunksStored = 5 })));
 
         var json = await _sut.IngestAsync(
             content: "document body",
@@ -150,7 +153,8 @@ public sealed class RagMcpToolsTests
             .Returns(ci =>
             {
                 var meta = ci.ArgAt<DocumentMetadata>(1);
-                return Task.FromResult(new IngestionResult { DocumentId = meta.DocumentId, ChunksStored = 1 });
+                return Task.FromResult(Result<IngestionResult, RagError>.Success(
+                    new IngestionResult { DocumentId = meta.DocumentId, ChunksStored = 1 }));
             });
 
         var json = await _sut.IngestAsync("text", null, null, null, null);
@@ -171,7 +175,8 @@ public sealed class RagMcpToolsTests
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(new IngestionResult { DocumentId = "x", ChunksStored = 0 });
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("x"), ChunksStored = 0 })));
 
         await _sut.IngestAsync("text", "doc-1", "file.txt", null, ["key1=val1", "key2=val2", "malformed"]);
 

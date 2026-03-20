@@ -5,6 +5,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using ZeroAlloc.Inject;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Retrieval;
 
@@ -18,11 +19,24 @@ public sealed class PipelineRetriever : IRetriever
     [Inject] public Pipeline<RetrievalContext, IReadOnlyList<SearchResult>> Pipeline { get; set; } = null!;
     [Inject(Required = false)] public ILogger<PipelineRetriever>? Logger { get; set; }
 
-    public Task<IReadOnlyList<SearchResult>> RetrieveAsync(
+    public async Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
         string query,
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        if (options is not null)
+        {
+            if (options.TopK <= 0)
+                return Result<IReadOnlyList<SearchResult>, RagError>.Failure(
+                    new RagError.ValidationFailed([new Models.ValidationFailure("TopK", "TopK must be greater than 0.")]));
+            if (options.RedundancyThreshold < 0.0f || options.RedundancyThreshold > 1.0f)
+                return Result<IReadOnlyList<SearchResult>, RagError>.Failure(
+                    new RagError.ValidationFailed([new Models.ValidationFailure("RedundancyThreshold", "RedundancyThreshold must be between 0.0 and 1.0.")]));
+            if (options.MmrLambda < 0.0f || options.MmrLambda > 1.0f)
+                return Result<IReadOnlyList<SearchResult>, RagError>.Failure(
+                    new RagError.ValidationFailed([new Models.ValidationFailure("MmrLambda", "MmrLambda must be between 0.0 and 1.0.")]));
+        }
+
         var ctx = new RetrievalContext
         {
             Query = query,
@@ -30,6 +44,15 @@ public sealed class PipelineRetriever : IRetriever
             Logger = (ILogger?)Logger ?? NullLogger.Instance,
         };
 
-        return Pipeline.ExecuteAsync(ctx, cancellationToken).AsTask();
+        try
+        {
+            var result = await Pipeline.ExecuteAsync(ctx, cancellationToken).ConfigureAwait(false);
+            return Result<IReadOnlyList<SearchResult>, RagError>.Success(result);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(ex));
+        }
     }
 }

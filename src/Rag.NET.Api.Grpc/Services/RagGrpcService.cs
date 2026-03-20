@@ -17,7 +17,7 @@ internal sealed class RagGrpcService(IRagPipeline pipeline) : RagService.RagServ
 
         var metadata = new DocumentMetadata
         {
-            DocumentId = docId,
+            DocumentId = new DocumentId(docId),
             FileName = string.IsNullOrEmpty(request.FileName) ? "document.txt" : request.FileName,
             ContentType = string.IsNullOrEmpty(request.ContentType) ? null : request.ContentType,
             Tags = new Dictionary<string, string>(request.Tags, StringComparer.Ordinal)
@@ -26,10 +26,13 @@ internal sealed class RagGrpcService(IRagPipeline pipeline) : RagService.RagServ
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(request.Content));
         var result = await pipeline.IngestAsync(stream, metadata, cancellationToken: context.CancellationToken).ConfigureAwait(false);
 
+        if (!result.IsSuccess)
+            throw new RpcException(new Status(StatusCode.Internal, $"Ingestion failed: {result.Error}"));
+
         return new IngestResponse
         {
-            DocumentId = result.DocumentId,
-            ChunksStored = result.ChunksStored
+            DocumentId = result.Value.DocumentId,
+            ChunksStored = result.Value.ChunksStored
         };
     }
 
@@ -41,10 +44,13 @@ internal sealed class RagGrpcService(IRagPipeline pipeline) : RagService.RagServ
             UseHybridSearch = request.UseHybrid
         };
 
-        var results = await pipeline.RetrieveAsync(request.Query, options, context.CancellationToken).ConfigureAwait(false);
+        var result = await pipeline.RetrieveAsync(request.Query, options, context.CancellationToken).ConfigureAwait(false);
+
+        if (!result.IsSuccess)
+            throw new RpcException(new Status(StatusCode.Internal, $"Retrieval failed: {result.Error}"));
 
         var response = new RetrieveResponse();
-        response.Results.AddRange(results.Select(ToProto));
+        response.Results.AddRange(result.Value.Select(ToProto));
         return response;
     }
 

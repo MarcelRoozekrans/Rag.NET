@@ -7,6 +7,7 @@ using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Benchmarks;
 
@@ -19,7 +20,7 @@ public class PipelineBenchmarks
 
     private static readonly DocumentMetadata Metadata = new()
     {
-        DocumentId = "bench-doc",
+        DocumentId = new DocumentId("bench-doc"),
         FileName = "bench.txt",
         ContentType = "text/plain",
     };
@@ -40,7 +41,7 @@ public class PipelineBenchmarks
 
         // Pre-ingest so BM25 index is populated for retrieval benchmark
         using var stream = new MemoryStream(_documentData);
-        await _pipeline.IngestAsync(stream, Metadata);
+        _ = await _pipeline.IngestAsync(stream, Metadata);
     }
 
     [GlobalCleanup]
@@ -52,7 +53,7 @@ public class PipelineBenchmarks
         var results = await _pipeline.RetrieveAsync(
             "quick brown fox",
             new RetrievalOptions { TopK = 5, UseHybridSearch = true });
-        return results.Count;
+        return results.IsSuccess ? results.Value.Count : 0;
     }
 
     [Benchmark]
@@ -60,7 +61,7 @@ public class PipelineBenchmarks
     {
         using var stream = new MemoryStream(_documentData);
         var result = await _pipeline.IngestAsync(stream, Metadata).ConfigureAwait(false);
-        return result.ChunksStored;
+        return result.IsSuccess ? result.Value.ChunksStored : 0;
     }
 
     private static string GenerateText(int approximateLength)

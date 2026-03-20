@@ -1,5 +1,11 @@
+using Rag.NET.Models;
+using ZeroAlloc.Specification;
+
 namespace Rag.NET.Models.Options;
 
+// Note: [Validate] is intentionally absent. The ZeroAlloc.Validation source generator
+// does not support record types. Validation for TopK, RedundancyThreshold, and MmrLambda
+// is applied manually in PipelineRetriever.RetrieveAsync.
 public sealed record RetrievalOptions
 {
     public int TopK { get; init; } = 5;
@@ -52,6 +58,12 @@ public sealed record RetrievalOptions
     /// Ignored when no reranker is registered or <see cref="UseReranking"/> is <see langword="false"/>.
     /// </summary>
     public int? CandidateCount { get; init; }
+
+    /// <summary>
+    /// Optional post-search filter. Only results satisfying this specification are returned.
+    /// Build complex filters with <c>spec.And(other)</c>, <c>spec.Or(other)</c>, <c>spec.Not()</c>.
+    /// </summary>
+    public ISpecification<SearchResult>? Filter { get; init; }
 
     /// <summary>
     /// Set to <see langword="false"/> to skip HyDE (Hypothetical Document Embeddings) for this call,

@@ -23,8 +23,10 @@ public sealed class RagMcpTools(IRagPipeline pipeline)
             UseHybridSearch = useHybrid,
         };
 
-        var results = await pipeline.RetrieveAsync(query, options).ConfigureAwait(false);
-        return JsonSerializer.Serialize(results);
+        var result = await pipeline.RetrieveAsync(query, options).ConfigureAwait(false);
+        if (!result.IsSuccess)
+            throw new InvalidOperationException($"Retrieval failed: {result.Error}");
+        return JsonSerializer.Serialize(result.Value);
     }
 
     [McpServerTool(Name = "rag_ask")]
@@ -69,7 +71,7 @@ public sealed class RagMcpTools(IRagPipeline pipeline)
 
         var metadata = new DocumentMetadata
         {
-            DocumentId = resolvedId,
+            DocumentId = new DocumentId(resolvedId),
             FileName = resolvedFileName,
             ContentType = contentType,
             Tags = tagDict,
@@ -77,7 +79,8 @@ public sealed class RagMcpTools(IRagPipeline pipeline)
 
         using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(content));
         var result = await pipeline.IngestAsync(stream, metadata).ConfigureAwait(false);
-
-        return JsonSerializer.Serialize(new { result.DocumentId, result.ChunksStored });
+        if (!result.IsSuccess)
+            throw new InvalidOperationException($"Ingestion failed: {result.Error}");
+        return JsonSerializer.Serialize(new { result.Value.DocumentId, result.Value.ChunksStored });
     }
 }

@@ -293,7 +293,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             {
                 Chunk = new TextChunk
                 {
-                    DocumentId = result.Document.GetString("document_id"),
+                    DocumentId = new DocumentId(result.Document.GetString("document_id")),
                     ChunkIndex = result.Document.GetInt32("chunk_index") ?? 0,
                     Text = result.Document.GetString("text"),
                     Metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal),

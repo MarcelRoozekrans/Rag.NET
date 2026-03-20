@@ -9,9 +9,12 @@ using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Api.Contracts;
 using Rag.NET.Api.DependencyInjection;
+using Rag.NET.Mediator.Requests;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
+using ZeroAlloc.Mediator;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Api.Tests.Integration;
 
@@ -24,13 +27,21 @@ public sealed class RagApiIntegrationTests : IAsyncLifetime
     public RagApiIntegrationTests()
     {
         var pipeline = Substitute.For<IRagPipeline>();
-        pipeline.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([]));
-        pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
-                Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new IngestionResult { DocumentId = "doc-1", ChunksStored = 1 }));
+
+        var mediator = Substitute.For<IMediator>();
+#pragma warning disable EPS06 // ValueTask struct copy — intentional test double setup via NSubstitute
+        mediator.Send(Arg.Any<RetrieveQuery>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ValueTask<Result<IReadOnlyList<SearchResult>, RagError>>(
+                Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                    (IReadOnlyList<SearchResult>)Array.Empty<SearchResult>())));
+        mediator.Send(Arg.Any<IngestCommand>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ValueTask<Result<IngestionResult, RagError>>(
+                Result<IngestionResult, RagError>.Success(
+                    new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 1 })));
+        mediator.Send(Arg.Any<DeleteCommand>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ValueTask<Result<Unit, RagError>>(
+                Result<Unit, RagError>.Success(Unit.Value)));
+#pragma warning restore EPS06
 
 #pragma warning disable ASPDEPR004 // WebHostBuilder is deprecated in favor of HostBuilder/WebApplicationBuilder — intentional for TestServer usage
 #pragma warning disable ASPDEPR008 // TestServer(IWebHostBuilder) is deprecated — intentional for minimal test setup
@@ -38,6 +49,7 @@ public sealed class RagApiIntegrationTests : IAsyncLifetime
             .ConfigureServices(services =>
             {
                 services.AddSingleton(pipeline);
+                services.AddSingleton(mediator);
                 services.AddRagNetApi(o => o.ApiKeys = ["test-key"]);
                 services.AddRouting();
             })

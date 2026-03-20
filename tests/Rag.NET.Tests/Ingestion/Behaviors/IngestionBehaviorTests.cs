@@ -23,7 +23,7 @@ public class IngestionBehaviorTests
             Stream = new MemoryStream(),
             Metadata = metadata ?? new DocumentMetadata
             {
-                DocumentId = "doc-1",
+                DocumentId = new DocumentId("doc-1"),
                 FileName = "test.txt",
                 ContentType = "text/plain",
             },
@@ -140,8 +140,8 @@ public class IngestionBehaviorTests
         var sut = new ChunkingBehavior();
         var ctx = MakeContext();
 
-        ctx.Chunks.Add(new TextChunk { Text = "hello", DocumentId = "doc-1", ChunkIndex = 0 });
-        ctx.Chunks.Add(new TextChunk { Text = "world", DocumentId = "doc-1", ChunkIndex = 1 });
+        ctx.Chunks.Add(new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
+        ctx.Chunks.Add(new TextChunk { Text = "world", DocumentId = new DocumentId("doc-1"), ChunkIndex = 1 });
 
         var nextCalled = false;
         ValueTask<IngestionResult> TrackingNext(IngestionContext c, CancellationToken _)
@@ -166,7 +166,7 @@ public class IngestionBehaviorTests
             .Do(ci => reports.Add(ci.Arg<IngestionProgress>()));
 
         var ctx = MakeContext(progress: progress);
-        ctx.Chunks.Add(new TextChunk { Text = "hello", DocumentId = "doc-1", ChunkIndex = 0 });
+        ctx.Chunks.Add(new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
 
         var sut = new ChunkingBehavior();
         await sut.HandleAsync(ctx, ct, StubNext);
@@ -185,7 +185,7 @@ public class IngestionBehaviorTests
         var ct = TestContext.Current.CancellationToken;
         var metadata = new DocumentMetadata
         {
-            DocumentId = "doc-42",
+            DocumentId = new DocumentId("doc-42"),
             FileName = "report.pdf",
             ContentType = "application/pdf",
             Tags = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -196,8 +196,8 @@ public class IngestionBehaviorTests
         };
 
         var ctx = MakeContext(metadata: metadata);
-        ctx.Chunks.Add(new TextChunk { Text = "chunk A", DocumentId = "doc-42", ChunkIndex = 0 });
-        ctx.Chunks.Add(new TextChunk { Text = "chunk B", DocumentId = "doc-42", ChunkIndex = 1 });
+        ctx.Chunks.Add(new TextChunk { Text = "chunk A", DocumentId = new DocumentId("doc-42"), ChunkIndex = 0 });
+        ctx.Chunks.Add(new TextChunk { Text = "chunk B", DocumentId = new DocumentId("doc-42"), ChunkIndex = 1 });
 
         var sut = new MetadataBehavior();
         await sut.HandleAsync(ctx, ct, StubNext);
@@ -217,7 +217,7 @@ public class IngestionBehaviorTests
         var ct = TestContext.Current.CancellationToken;
         var metadata = new DocumentMetadata
         {
-            DocumentId = "doc-1",
+            DocumentId = new DocumentId("doc-1"),
             FileName = "test.txt",
             Tags = new Dictionary<string, string>(StringComparer.Ordinal)
             {
@@ -226,7 +226,7 @@ public class IngestionBehaviorTests
         };
 
         var ctx = MakeContext(metadata: metadata);
-        var chunk = new TextChunk { Text = "hello", DocumentId = "doc-1", ChunkIndex = 0 };
+        var chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 };
         // Pre-populate document_id to simulate a chunk that already has it set
         chunk.Metadata["document_id"] = "pre-existing";
         ctx.Chunks.Add(chunk);
@@ -243,7 +243,7 @@ public class IngestionBehaviorTests
     {
         var ct = TestContext.Current.CancellationToken;
         var ctx = MakeContext();
-        ctx.Chunks.Add(new TextChunk { Text = "x", DocumentId = "doc-1", ChunkIndex = 0 });
+        ctx.Chunks.Add(new TextChunk { Text = "x", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });
 
         var nextCalled = false;
         ValueTask<IngestionResult> TrackingNext(IngestionContext c, CancellationToken _)

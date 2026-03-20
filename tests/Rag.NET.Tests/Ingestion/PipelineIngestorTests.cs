@@ -24,6 +24,7 @@ public class PipelineIngestorTests
                     new IngestionResult { DocumentId = ctx.Metadata.DocumentId, ChunksStored = 0 })),
             VectorStore = vectorStore ?? Substitute.For<IVectorStore>(),
             Bm25Index = bm25 ?? Substitute.For<IBm25Index>(),
+            ChunkingOptions = new ChunkingOptions(),
             ParentStore = parentStore,
             DataManager = dataManager,
         };
@@ -38,7 +39,7 @@ public class PipelineIngestorTests
             return ValueTask.FromResult(new IngestionResult { DocumentId = ctx.Metadata.DocumentId, ChunksStored = 3 });
         });
         var sut = CreateSut(pipeline: pipeline);
-        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt", ContentType = "text/plain" };
         using var stream = new MemoryStream("hello"u8.ToArray());
         var ct = TestContext.Current.CancellationToken;
 
@@ -47,8 +48,9 @@ public class PipelineIngestorTests
         Assert.NotNull(capturedCtx);
         Assert.Same(stream, capturedCtx!.Stream);
         Assert.Same(metadata, capturedCtx.Metadata);
-        Assert.Equal("doc-1", result.DocumentId);
-        Assert.Equal(3, result.ChunksStored);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new DocumentId("doc-1"), result.Value.DocumentId);
+        Assert.Equal(3, result.Value.ChunksStored);
     }
 
     [Fact]
@@ -88,11 +90,11 @@ public class PipelineIngestorTests
             return ValueTask.FromResult(new IngestionResult { DocumentId = ctx.Metadata.DocumentId, ChunksStored = 0 });
         });
         var sut = CreateSut(pipeline: pipeline);
-        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "f.txt" };
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "f.txt" };
         var ct = TestContext.Current.CancellationToken;
 
-        await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);
-        await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);
+        _ = await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);
+        _ = await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);
 
         // Across two calls, the IDs should monotonically increase (thread-safe Interlocked.Increment)
         Assert.Equal(4, capturedIds.Count);

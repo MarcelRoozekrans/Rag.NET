@@ -18,8 +18,8 @@ public class InMemoryBm25IndexTests
     public void Search_ReturnsMatchingDoc_WhenTermPresent()
     {
         var index = new InMemoryBm25Index();
-        index.Add(0, new TextChunk { Text = "the quick brown fox", DocumentId = "doc1", ChunkIndex = 0 });
-        index.Add(1, new TextChunk { Text = "the lazy dog sleeps", DocumentId = "doc1", ChunkIndex = 1 });
+        index.Add(0, new TextChunk { Text = "the quick brown fox", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 });
+        index.Add(1, new TextChunk { Text = "the lazy dog sleeps", DocumentId = new DocumentId("doc1"), ChunkIndex = 1 });
 
         var results = index.Search("fox", topK: 5);
 
@@ -32,8 +32,8 @@ public class InMemoryBm25IndexTests
     public void Search_RanksHigherFrequencyTermHigher()
     {
         var index = new InMemoryBm25Index();
-        index.Add(0, new TextChunk { Text = "cat cat cat", DocumentId = "doc1", ChunkIndex = 0 });
-        index.Add(1, new TextChunk { Text = "cat dog bird", DocumentId = "doc1", ChunkIndex = 1 });
+        index.Add(0, new TextChunk { Text = "cat cat cat", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 });
+        index.Add(1, new TextChunk { Text = "cat dog bird", DocumentId = new DocumentId("doc1"), ChunkIndex = 1 });
 
         var results = index.Search("cat", topK: 5);
 
@@ -46,7 +46,7 @@ public class InMemoryBm25IndexTests
     {
         var index = new InMemoryBm25Index();
         for (int i = 0; i < 10; i++)
-            index.Add(i, new TextChunk { Text = "hello world", DocumentId = "doc1", ChunkIndex = i });
+            index.Add(i, new TextChunk { Text = "hello world", DocumentId = new DocumentId("doc1"), ChunkIndex = i });
 
         var results = index.Search("hello", topK: 3);
 
@@ -57,8 +57,8 @@ public class InMemoryBm25IndexTests
     public void Remove_DeletesAllChunksForDocument()
     {
         var index = new InMemoryBm25Index();
-        index.Add(0, new TextChunk { Text = "hello world", DocumentId = "doc1", ChunkIndex = 0 });
-        index.Add(1, new TextChunk { Text = "hello universe", DocumentId = "doc2", ChunkIndex = 0 });
+        index.Add(0, new TextChunk { Text = "hello world", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 });
+        index.Add(1, new TextChunk { Text = "hello universe", DocumentId = new DocumentId("doc2"), ChunkIndex = 0 });
 
         index.Remove("doc1");
 
@@ -71,7 +71,7 @@ public class InMemoryBm25IndexTests
     public void Search_IsCaseInsensitive()
     {
         var index = new InMemoryBm25Index();
-        index.Add(0, new TextChunk { Text = "Hello World", DocumentId = "doc1", ChunkIndex = 0 });
+        index.Add(0, new TextChunk { Text = "Hello World", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 });
 
         var results = index.Search("hello", topK: 5);
         Assert.Single(results);
@@ -81,7 +81,7 @@ public class InMemoryBm25IndexTests
     public void Search_IgnoresPunctuation()
     {
         var index = new InMemoryBm25Index();
-        index.Add(0, new TextChunk { Text = "fox! jumps... over, the fence.", DocumentId = "doc1", ChunkIndex = 0 });
+        index.Add(0, new TextChunk { Text = "fox! jumps... over, the fence.", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 });
 
         var results = index.Search("jumps", topK: 5);
         Assert.Single(results);
@@ -91,7 +91,7 @@ public class InMemoryBm25IndexTests
     public void Search_ReturnsEmpty_WhenTopKIsZero()
     {
         var index = new InMemoryBm25Index();
-        index.Add(0, new TextChunk { Text = "hello world", DocumentId = "doc1", ChunkIndex = 0 });
+        index.Add(0, new TextChunk { Text = "hello world", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 });
         var results = index.Search("hello", topK: 0);
         Assert.Empty(results);
     }
@@ -100,7 +100,7 @@ public class InMemoryBm25IndexTests
     public void Remove_OnNonExistentDocument_IsNoOp()
     {
         var index = new InMemoryBm25Index();
-        index.Add(0, new TextChunk { Text = "hello world", DocumentId = "doc1", ChunkIndex = 0 });
+        index.Add(0, new TextChunk { Text = "hello world", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 });
         index.Remove("does-not-exist"); // should not throw
         var results = index.Search("hello", topK: 5);
         Assert.Single(results);
@@ -110,8 +110,8 @@ public class InMemoryBm25IndexTests
     public void Search_MultiWordQuery_AccumulatesScoresAcrossTerms()
     {
         var index = new InMemoryBm25Index();
-        index.Add(0, new TextChunk { Text = "quick brown fox", DocumentId = "doc1", ChunkIndex = 0 });
-        index.Add(1, new TextChunk { Text = "quick lazy dog", DocumentId = "doc2", ChunkIndex = 0 });
+        index.Add(0, new TextChunk { Text = "quick brown fox", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 });
+        index.Add(1, new TextChunk { Text = "quick lazy dog", DocumentId = new DocumentId("doc2"), ChunkIndex = 0 });
 
         // "doc1" (quick brown fox) has both "quick" and "fox"; "doc2" only has "quick"
         var results = index.Search("quick fox", topK: 5);
@@ -127,8 +127,8 @@ public class InMemoryBm25IndexTests
     public void Search_EmptyOrWhitespaceQuery_ReturnsEmpty(string query)
     {
         var index = new InMemoryBm25Index();
-        index.Add(0, new TextChunk { Text = "hello world", DocumentId = "doc1", ChunkIndex = 0 });
-        index.Add(1, new TextChunk { Text = "quick brown fox", DocumentId = "doc1", ChunkIndex = 1 });
+        index.Add(0, new TextChunk { Text = "hello world", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 });
+        index.Add(1, new TextChunk { Text = "quick brown fox", DocumentId = new DocumentId("doc1"), ChunkIndex = 1 });
 
         var results = index.Search(query, topK: 5);
 
@@ -140,14 +140,14 @@ public class InMemoryBm25IndexTests
     public void Add_DuplicateDocId_IsIdempotent()
     {
         var index = new InMemoryBm25Index();
-        var chunk = new TextChunk { Text = "hello world", DocumentId = "doc1", ChunkIndex = 0 };
+        var chunk = new TextChunk { Text = "hello world", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 };
 
         // Add the same docId twice
         index.Add(42, chunk);
         index.Add(42, chunk);
 
         // Add another doc so we can compare ranking — it should not be demoted by double-counting
-        index.Add(99, new TextChunk { Text = "hello universe", DocumentId = "doc2", ChunkIndex = 0 });
+        index.Add(99, new TextChunk { Text = "hello universe", DocumentId = new DocumentId("doc2"), ChunkIndex = 0 });
 
         var results = index.Search("hello", topK: 5);
 
@@ -163,9 +163,9 @@ public class InMemoryBm25IndexTests
     {
         var index = new InMemoryBm25Index();
         // All 3 documents contain "common" → df == N == 3
-        index.Add(0, new TextChunk { Text = "common ground", DocumentId = "doc1", ChunkIndex = 0 });
-        index.Add(1, new TextChunk { Text = "common sense", DocumentId = "doc2", ChunkIndex = 0 });
-        index.Add(2, new TextChunk { Text = "common people", DocumentId = "doc3", ChunkIndex = 0 });
+        index.Add(0, new TextChunk { Text = "common ground", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 });
+        index.Add(1, new TextChunk { Text = "common sense", DocumentId = new DocumentId("doc2"), ChunkIndex = 0 });
+        index.Add(2, new TextChunk { Text = "common people", DocumentId = new DocumentId("doc3"), ChunkIndex = 0 });
 
         var results = index.Search("common", topK: 5);
 

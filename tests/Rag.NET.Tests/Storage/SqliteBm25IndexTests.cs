@@ -23,7 +23,7 @@ public class SqliteBm25IndexTests : IAsyncDisposable
 
     private static TextChunk MakeChunk(string docId, int idx, string text) => new()
     {
-        Text = text, DocumentId = docId, ChunkIndex = idx,
+        Text = text, DocumentId = new DocumentId(docId), ChunkIndex = idx,
     };
 
     [Fact]

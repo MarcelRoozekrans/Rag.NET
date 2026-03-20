@@ -8,6 +8,7 @@ using Rag.NET.HyDE;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Benchmarks;
 
@@ -26,7 +27,7 @@ public class HydeBenchmarks
 
     private static readonly DocumentMetadata Metadata = new()
     {
-        DocumentId  = "bench-doc",
+        DocumentId = new DocumentId("bench-doc"),
         FileName    = "bench.txt",
         ContentType = "text/plain",
     };
@@ -48,7 +49,7 @@ public class HydeBenchmarks
         _pipeline = _sp.GetRequiredService<IRagPipeline>();
 
         using var stream = new MemoryStream(_documentData);
-        await _pipeline.IngestAsync(stream, Metadata);
+        _ = await _pipeline.IngestAsync(stream, Metadata);
     }
 
     [GlobalCleanup]
@@ -60,7 +61,7 @@ public class HydeBenchmarks
         var results = await _pipeline.RetrieveAsync(
             "quick brown fox",
             new RetrievalOptions { TopK = 5, UseHyde = false });
-        return results.Count;
+        return results.IsSuccess ? results.Value.Count : 0;
     }
 
     [Benchmark]
@@ -69,7 +70,7 @@ public class HydeBenchmarks
         var results = await _pipeline.RetrieveAsync(
             "quick brown fox",
             new RetrievalOptions { TopK = 5, UseHyde = true });
-        return results.Count;
+        return results.IsSuccess ? results.Value.Count : 0;
     }
 
     private static string GenerateText(int approximateLength)

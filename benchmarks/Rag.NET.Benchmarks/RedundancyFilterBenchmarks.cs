@@ -52,7 +52,7 @@ public class RedundancyFilterBenchmarks
 
             results[i] = new SearchResult
             {
-                Chunk = new TextChunk { Text = $"chunk {i}", DocumentId = "doc", ChunkIndex = i },
+                Chunk = new TextChunk { Text = $"chunk {i}", DocumentId = new DocumentId("doc"), ChunkIndex = i },
                 Score = 1.0 - (i * 0.01),
             };
         }

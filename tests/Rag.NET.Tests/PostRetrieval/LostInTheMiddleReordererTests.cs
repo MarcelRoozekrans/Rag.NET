@@ -8,7 +8,7 @@ public class LostInTheMiddleReordererTests
 {
     private static SearchResult MakeResult(double score) => new()
     {
-        Chunk = new TextChunk { Text = $"text-{score}", DocumentId = "doc-1", ChunkIndex = 0 },
+        Chunk = new TextChunk { Text = $"text-{score}", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
         Score = score,
     };
 

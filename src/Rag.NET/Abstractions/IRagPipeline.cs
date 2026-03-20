@@ -1,5 +1,6 @@
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Abstractions;
 
@@ -20,8 +21,8 @@ public interface IRagPipeline
     /// (Parsing → Chunking → Embedding → Storing).
     /// </param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
-    /// <returns>An <see cref="IngestionResult"/> containing the document ID and number of chunks stored.</returns>
-    Task<IngestionResult> IngestAsync(
+    /// <returns>A <see cref="Result{T,E}"/> containing an <see cref="IngestionResult"/> on success, or a <see cref="RagError"/> on failure.</returns>
+    Task<Result<IngestionResult, RagError>> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
         IngestionOptions? options = null,
@@ -34,9 +35,8 @@ public interface IRagPipeline
     /// <param name="query">The natural-language query to search for.</param>
     /// <param name="options">Optional retrieval settings (TopK, MinScore, hybrid search, reordering).</param>
     /// <param name="cancellationToken">Token to cancel the operation.</param>
-    /// <returns>A list of <see cref="SearchResult"/> ordered by relevance score (descending), or reordered
-    /// using the lost-in-the-middle algorithm when <see cref="RetrievalOptions.UseLostInTheMiddleReordering"/> is set.</returns>
-    Task<IReadOnlyList<SearchResult>> RetrieveAsync(
+    /// <returns>A <see cref="Result{T,E}"/> containing a list of <see cref="SearchResult"/> on success, or a <see cref="RagError"/> on failure.</returns>
+    Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
         string query,
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default);

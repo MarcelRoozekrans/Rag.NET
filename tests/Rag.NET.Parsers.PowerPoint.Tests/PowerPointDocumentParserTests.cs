@@ -13,7 +13,7 @@ public class PowerPointDocumentParserTests
 
     private static DocumentMetadata CreateMetadata() => new()
     {
-        DocumentId = "doc-1",
+        DocumentId = new DocumentId("doc-1"),
         FileName = "test.pptx"
     };
 

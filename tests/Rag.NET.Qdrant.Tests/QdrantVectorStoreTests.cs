@@ -37,12 +37,12 @@ public class QdrantVectorStoreTests : IAsyncLifetime
         {
             new()
             {
-                Chunk = new TextChunk { Text = "cats are great", DocumentId = "doc-1", ChunkIndex = 0 },
+                Chunk = new TextChunk { Text = "cats are great", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
             },
             new()
             {
-                Chunk = new TextChunk { Text = "dogs are great", DocumentId = "doc-1", ChunkIndex = 1 },
+                Chunk = new TextChunk { Text = "dogs are great", DocumentId = new DocumentId("doc-1"), ChunkIndex = 1 },
                 Embedding = new float[] { 0.0f, 1.0f, 0.0f },
             },
         };
@@ -65,7 +65,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
         {
             new()
             {
-                Chunk = new TextChunk { Text = "text1", DocumentId = "doc-to-delete", ChunkIndex = 0 },
+                Chunk = new TextChunk { Text = "text1", DocumentId = new DocumentId("doc-to-delete"), ChunkIndex = 0 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
             },
         };
@@ -88,12 +88,12 @@ public class QdrantVectorStoreTests : IAsyncLifetime
         {
             new()
             {
-                Chunk = new TextChunk { Text = "close match", DocumentId = "doc-1", ChunkIndex = 0 },
+                Chunk = new TextChunk { Text = "close match", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
             },
             new()
             {
-                Chunk = new TextChunk { Text = "far match", DocumentId = "doc-1", ChunkIndex = 1 },
+                Chunk = new TextChunk { Text = "far match", DocumentId = new DocumentId("doc-1"), ChunkIndex = 1 },
                 Embedding = new float[] { 0.0f, 0.0f, 1.0f },
             },
         };
@@ -118,7 +118,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
             {
                 Chunk = new TextChunk
                 {
-                    Text = "engineering doc", DocumentId = "doc-1", ChunkIndex = 0,
+                    Text = "engineering doc", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0,
                     Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
                 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
@@ -127,7 +127,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
             {
                 Chunk = new TextChunk
                 {
-                    Text = "marketing doc", DocumentId = "doc-2", ChunkIndex = 0,
+                    Text = "marketing doc", DocumentId = new DocumentId("doc-2"), ChunkIndex = 0,
                     Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "marketing" },
                 },
                 Embedding = new float[] { 0.9f, 0.1f, 0.0f },

@@ -18,7 +18,7 @@ public class RetrievalBehaviorTests
     private static SearchResult MakeResult(string docId, int chunkIndex, double score) =>
         new()
         {
-            Chunk = new TextChunk { Text = $"{docId}-{chunkIndex}", DocumentId = docId, ChunkIndex = chunkIndex },
+            Chunk = new TextChunk { Text = $"{docId}-{chunkIndex}", DocumentId = new DocumentId(docId), ChunkIndex = chunkIndex },
             Score = score
         };
 
