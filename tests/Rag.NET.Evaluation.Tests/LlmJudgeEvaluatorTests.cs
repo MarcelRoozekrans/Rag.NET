@@ -137,4 +137,149 @@ public class LlmJudgeEvaluatorTests
         foreach (var message in captured)
             Assert.DoesNotContain("faithfulness", message.Text, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task EvaluateAsync_MalformedJson_ThrowsLlmJudgeException()
+    {
+        const string malformedJson = "this is not json at all {{{";
+        var client = MakeChatClient(malformedJson);
+        var sut = new LlmJudgeEvaluator(client);
+
+        var samples = new[]
+        {
+            new EvaluationSample("Q?", "A.", "R."),
+        };
+
+        var ex = await Assert.ThrowsAsync<LlmJudgeException>(
+            () => sut.EvaluateAsync(samples, TestContext.Current.CancellationToken));
+
+        Assert.Equal(malformedJson, ex.RawResponse);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_MarkdownFencedJson_ParsedSuccessfully()
+    {
+        const string fencedJson = """
+            ```json
+            {
+              "correctness": { "score": 0.80, "reasoning": "Good." },
+              "relevance":   { "score": 0.90, "reasoning": "Relevant." }
+            }
+            ```
+            """;
+
+        var client = MakeChatClient(fencedJson);
+        var sut = new LlmJudgeEvaluator(client);
+
+        var samples = new[]
+        {
+            new EvaluationSample(
+                Question: "What is RAG?",
+                PredictedAnswer: "RAG is retrieval-augmented generation.",
+                ReferenceAnswer: "RAG combines retrieval with LLM generation.",
+                SourceChunks: null),
+        };
+
+        var result = await sut.EvaluateAsync(samples, TestContext.Current.CancellationToken);
+
+        var judgement = Assert.Single(result.Samples);
+        Assert.True(judgement.Criteria.ContainsKey("correctness"));
+        Assert.True(judgement.Criteria.ContainsKey("relevance"));
+        Assert.Equal(0.80, judgement.Criteria["correctness"].Score, precision: 10);
+        Assert.Equal(0.90, judgement.Criteria["relevance"].Score, precision: 10);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_MissingCriterionKey_ThrowsLlmJudgeException()
+    {
+        // JSON with only "relevance" — "correctness" is missing
+        const string jsonMissingCorrectness = """
+            {
+              "relevance": { "score": 0.95, "reasoning": "Relevant." }
+            }
+            """;
+
+        var client = MakeChatClient(jsonMissingCorrectness);
+        var sut = new LlmJudgeEvaluator(client);
+
+        var samples = new[]
+        {
+            new EvaluationSample(
+                Question: "Q?",
+                PredictedAnswer: "A.",
+                ReferenceAnswer: "R.",
+                SourceChunks: null),
+        };
+
+        var ex = await Assert.ThrowsAsync<LlmJudgeException>(
+            () => sut.EvaluateAsync(samples, TestContext.Current.CancellationToken));
+
+        Assert.Contains("correctness", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_ScoreAboveOne_IsClamped()
+    {
+        const string jsonScoreAboveOne = """
+            {
+              "correctness": { "score": 1.5, "reasoning": "too high" },
+              "relevance":   { "score": 0.8, "reasoning": "ok" }
+            }
+            """;
+
+        var client = MakeChatClient(jsonScoreAboveOne);
+        var sut = new LlmJudgeEvaluator(client);
+
+        var samples = new[]
+        {
+            new EvaluationSample(
+                Question: "Q?",
+                PredictedAnswer: "A.",
+                ReferenceAnswer: "R.",
+                SourceChunks: null),
+        };
+
+        var result = await sut.EvaluateAsync(samples, TestContext.Current.CancellationToken);
+
+        var judgement = Assert.Single(result.Samples);
+        Assert.Equal(1.0, judgement.Criteria["correctness"].Score, precision: 10);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_ScoreBelowZero_IsClamped()
+    {
+        const string jsonScoreBelowZero = """
+            {
+              "correctness": { "score": 0.7, "reasoning": "ok" },
+              "relevance":   { "score": -0.5, "reasoning": "too low" }
+            }
+            """;
+
+        var client = MakeChatClient(jsonScoreBelowZero);
+        var sut = new LlmJudgeEvaluator(client);
+
+        var samples = new[]
+        {
+            new EvaluationSample(
+                Question: "Q?",
+                PredictedAnswer: "A.",
+                ReferenceAnswer: "R.",
+                SourceChunks: null),
+        };
+
+        var result = await sut.EvaluateAsync(samples, TestContext.Current.CancellationToken);
+
+        var judgement = Assert.Single(result.Samples);
+        Assert.Equal(0.0, judgement.Criteria["relevance"].Score, precision: 10);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_EmptySamples_ThrowsArgumentException()
+    {
+        var client = MakeChatClient(ValidJsonTwoCriteria);
+        var sut = new LlmJudgeEvaluator(client);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => sut.EvaluateAsync(new List<EvaluationSample>(), TestContext.Current.CancellationToken));
+    }
 }
