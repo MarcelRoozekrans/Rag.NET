@@ -58,4 +58,56 @@ public class PipelineRetrieverValidationTests
 
         Assert.True(result.IsSuccess);
     }
+
+    [Fact]
+    public async Task RedundancyThreshold_BelowZero_ReturnsFailed()
+    {
+        var sut = CreateSut();
+        var options = new RetrievalOptions { RedundancyThreshold = -0.1f };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("RedundancyThreshold", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task RedundancyThreshold_AboveOne_ReturnsFailed()
+    {
+        var sut = CreateSut();
+        var options = new RetrievalOptions { RedundancyThreshold = 1.1f };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("RedundancyThreshold", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task MmrLambda_BelowZero_ReturnsFailed()
+    {
+        var sut = CreateSut();
+        var options = new RetrievalOptions { MmrLambda = -0.1f };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("MmrLambda", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task MmrLambda_AboveOne_ReturnsFailed()
+    {
+        var sut = CreateSut();
+        var options = new RetrievalOptions { MmrLambda = 1.1f };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("MmrLambda", StringComparison.OrdinalIgnoreCase));
+    }
 }

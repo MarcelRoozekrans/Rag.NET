@@ -30,6 +30,18 @@ public sealed class PipelineRetriever : IRetriever
                 new RagError.ValidationFailed([new Models.ValidationFailure("TopK", "TopK must be greater than 0.")]));
         }
 
+        if (options is not null && (options.RedundancyThreshold < 0.0f || options.RedundancyThreshold > 1.0f))
+        {
+            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(
+                new RagError.ValidationFailed([new Models.ValidationFailure("RedundancyThreshold", "RedundancyThreshold must be between 0.0 and 1.0.")]));
+        }
+
+        if (options is not null && (options.MmrLambda < 0.0f || options.MmrLambda > 1.0f))
+        {
+            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(
+                new RagError.ValidationFailed([new Models.ValidationFailure("MmrLambda", "MmrLambda must be between 0.0 and 1.0.")]));
+        }
+
         var ctx = new RetrievalContext
         {
             Query = query,
