@@ -131,3 +131,123 @@ The evaluator makes two embedding API calls (one batch per role: predicted/refer
 - **The metric is symmetric.** A very short predicted answer that happens to share vocabulary with the reference can score deceptively high.
 - **Reference answers must be high quality.** Poorly written or ambiguous reference answers produce noisy scores.
 - The evaluator requires at least one sample; it throws `ArgumentException` for an empty list.
+
+---
+
+## `LlmJudgeEvaluator`
+
+Where `EmbeddingDistanceEvaluator` measures semantic proximity, `LlmJudgeEvaluator` asks an LLM to reason about answer quality. It can detect hallucinations, factual errors, and off-topic answers — things embedding similarity cannot catch.
+
+One `IChatClient` call is made per sample. All calls run in parallel via `Task.WhenAll`.
+
+### When to use it
+
+| Situation | Recommended evaluator |
+|---|---|
+| Fast regression gate, no LLM API cost | `EmbeddingDistanceEvaluator` |
+| Detecting hallucinations or factual errors | `LlmJudgeEvaluator` |
+| Checking whether retrieved context was used faithfully | `LlmJudgeEvaluator` with `SourceChunks` |
+| High-stakes production validation | Both, in combination |
+
+### Basic usage
+
+```csharp
+using Microsoft.Extensions.AI;
+using Rag.NET.Evaluation;
+
+var evaluator = new LlmJudgeEvaluator(chatClient);
+
+var samples = new[]
+{
+    new EvaluationSample(
+        Question: "What is the capital of France?",
+        PredictedAnswer: "The capital of France is Paris.",
+        ReferenceAnswer: "Paris",
+        SourceChunks: ["France is a country in Europe. Its capital is Paris."]),
+};
+
+LlmJudgeResult result = await evaluator.EvaluateAsync(samples);
+
+Console.WriteLine(result.MeanScore("correctness")); // e.g. 0.95
+Console.WriteLine(result.MeanScore("faithfulness")); // e.g. 0.90
+Console.WriteLine(result.MeanScore("relevance"));    // e.g. 1.00
+```
+
+### `EvaluationSample` and `SourceChunks`
+
+`EvaluationSample` now carries an optional `SourceChunks` parameter:
+
+```csharp
+public sealed record EvaluationSample(
+    string Question,
+    string PredictedAnswer,
+    string ReferenceAnswer,
+    IReadOnlyList<string>? SourceChunks = null);
+```
+
+When `SourceChunks` is null or empty on a sample, faithfulness is automatically excluded from the prompt and result for that sample. You can safely mix samples with and without source chunks in the same run.
+
+### Default criteria
+
+The evaluator uses three built-in criteria by default:
+
+| Criterion | What it checks |
+|---|---|
+| `JudgeCriterion.Correctness` | Is the predicted answer factually correct given the reference answer? |
+| `JudgeCriterion.Faithfulness` | Does the answer stay grounded in the retrieved context without hallucinating? |
+| `JudgeCriterion.Relevance` | Does the answer directly and completely address the question? |
+
+### Custom criteria
+
+Pass any combination of built-in and custom criteria to the constructor:
+
+```csharp
+var evaluator = new LlmJudgeEvaluator(chatClient, criteria: new[]
+{
+    JudgeCriterion.Correctness,
+    new JudgeCriterion("conciseness", "Is the answer brief and to the point without unnecessary elaboration?"),
+});
+```
+
+A `JudgeCriterion` is a `(Name, Description)` record. The `Name` is the key used in results; the `Description` is the rubric shown to the LLM judge.
+
+### `LlmJudgeResult`
+
+```csharp
+public sealed record LlmJudgeResult(IReadOnlyList<SampleJudgement> Samples)
+{
+    public double MeanScore(string criterion);
+    public bool AllPass(string criterion, double threshold);
+}
+```
+
+`MeanScore` returns the arithmetic mean across all samples that contain the criterion. `AllPass` returns `true` if every such sample meets or exceeds the threshold — useful as a CI gate.
+
+### Using it in a CI gate
+
+```csharp
+LlmJudgeResult result = await evaluator.EvaluateAsync(goldSet);
+
+if (!result.AllPass("correctness", threshold: 0.8))
+    throw new Exception("Correctness gate failed");
+```
+
+### Per-sample reasoning
+
+Each sample exposes the LLM's score and reasoning for every criterion:
+
+```csharp
+foreach (var judgement in result.Samples)
+{
+    Console.WriteLine($"Q: {judgement.Question}");
+    foreach (var (criterion, score) in judgement.Criteria)
+        Console.WriteLine($"  {criterion}: {score.Score:F2} — {score.Reasoning}");
+}
+```
+
+### Error handling
+
+| Exception | When thrown |
+|---|---|
+| `LlmJudgeException` | The LLM returns malformed JSON after markdown fence-stripping. The `RawResponse` property contains the original text for diagnosis. |
+| `ArgumentException` | An empty samples list is passed to `EvaluateAsync`. |
