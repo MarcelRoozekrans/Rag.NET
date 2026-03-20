@@ -15,6 +15,9 @@ public readonly partial struct HasTagSpec(string key, string value) : ISpecifica
     {
         var capturedKey = key;
         var capturedValue = value;
+        // Expression tree uses == operator (not string.Equals with StringComparison) because
+        // expression tree consumers (IQueryable, ORM translators) cannot translate the Ordinal overload.
+        // Behavior is identical for in-memory use; == on string is ordinal under the hood in .NET.
         return r => r.Chunk.Metadata.ContainsKey(capturedKey) &&
                     r.Chunk.Metadata[capturedKey] == capturedValue;
     }

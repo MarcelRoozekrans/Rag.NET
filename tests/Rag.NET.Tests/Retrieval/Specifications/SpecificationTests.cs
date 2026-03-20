@@ -40,6 +40,13 @@ public class SpecificationTests
     }
 
     [Fact]
+    public void MinScoreSpec_AtExactThreshold_Passes()
+    {
+        var spec = new MinScoreSpec(0.8);
+        Assert.True(spec.IsSatisfiedBy(MakeResult("d", 0.8))); // inclusive boundary
+    }
+
+    [Fact]
     public void AndSpec_RequiresBoth()
     {
         var spec = new MinScoreSpec(0.8).And(new HasTagSpec("lang", "en"));
