@@ -88,7 +88,7 @@ public class LlmJudgeEvaluatorTests
     [Fact]
     public async Task EvaluateAsync_WithoutSources_FaithfulnessAbsentFromResult()
     {
-        var client = MakeChatClient(ValidJsonTwoCriteria);
+        var client = MakeChatClient(ValidJsonAllCriteria);
         var sut = new LlmJudgeEvaluator(client);
 
         var samples = new[]
@@ -133,16 +133,8 @@ public class LlmJudgeEvaluatorTests
 
         await sut.EvaluateAsync(samples, TestContext.Current.CancellationToken);
 
-        Assert.NotEmpty(capturedMessages);
-        foreach (var messages in capturedMessages)
-        {
-            foreach (var message in messages)
-            {
-                Assert.DoesNotContain(
-                    "faithfulness",
-                    message.Text ?? string.Empty,
-                    StringComparison.OrdinalIgnoreCase);
-            }
-        }
+        var captured = Assert.Single(capturedMessages);
+        foreach (var message in captured)
+            Assert.DoesNotContain("faithfulness", message.Text, StringComparison.OrdinalIgnoreCase);
     }
 }
