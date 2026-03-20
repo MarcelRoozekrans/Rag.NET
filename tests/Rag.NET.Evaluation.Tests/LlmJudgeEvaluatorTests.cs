@@ -215,6 +215,7 @@ public class LlmJudgeEvaluatorTests
             () => sut.EvaluateAsync(samples, TestContext.Current.CancellationToken));
 
         Assert.Contains("correctness", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(ex.RawResponse);
     }
 
     [Fact]
