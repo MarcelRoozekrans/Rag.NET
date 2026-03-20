@@ -18,7 +18,13 @@
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
   </ItemGroup>
 
+
   <ItemGroup>
+    <!-- Explicit analyzer registration is required in addition to the PackageReference above.
+         ZeroAlloc.Mediator.Generator uses PrivateAssets="all" / ExcludeAssets="runtime", which
+         prevents the SDK from auto-wiring the generator DLL as a Roslyn analyzer. Without this
+         item the source generator never runs and all generated types (IMediator, MediatorService,
+         etc.) are absent, causing CS0246/CS0234 build errors. -->
     <Analyzer Include="$(PkgZeroAlloc_Mediator_Generator)\lib\netstandard2.0\ZeroAlloc.Mediator.Generator.dll" />
   </ItemGroup>
 </Project>

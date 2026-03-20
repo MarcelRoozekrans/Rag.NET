@@ -27,15 +27,6 @@ public sealed class RagApiIntegrationTests : IAsyncLifetime
     public RagApiIntegrationTests()
     {
         var pipeline = Substitute.For<IRagPipeline>();
-        pipeline.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
-                (IReadOnlyList<SearchResult>)Array.Empty<SearchResult>())));
-        pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
-                Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
-                new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 1 })));
 
         var mediator = Substitute.For<IMediator>();
 #pragma warning disable EPS06 // ValueTask struct copy — intentional test double setup via NSubstitute

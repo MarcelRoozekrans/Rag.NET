@@ -71,8 +71,10 @@ public static class EndpointRouteBuilderExtensions
 
         app.MapDelete($"{prefix}/documents/{{documentId}}", async (string documentId, IMediator mediator, CancellationToken ct) =>
         {
-            _ = await mediator.Send(new DeleteCommand(new DocumentId(documentId)), ct).ConfigureAwait(false);
-            return Results.NoContent();
+            var deleteResult = await mediator.Send(new DeleteCommand(new DocumentId(documentId)), ct).ConfigureAwait(false);
+            return deleteResult.IsSuccess
+                ? Results.NoContent()
+                : MapRagError(deleteResult.Error);
         });
 
         return app;
