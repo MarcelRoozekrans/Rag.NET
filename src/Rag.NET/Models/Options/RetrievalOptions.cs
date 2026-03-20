@@ -1,5 +1,8 @@
 namespace Rag.NET.Models.Options;
 
+// Note: [Validate] is intentionally absent. The ZeroAlloc.Validation source generator
+// does not support record types. Validation for TopK, RedundancyThreshold, and MmrLambda
+// is applied manually in PipelineRetriever.RetrieveAsync.
 public sealed record RetrievalOptions
 {
     public int TopK { get; init; } = 5;

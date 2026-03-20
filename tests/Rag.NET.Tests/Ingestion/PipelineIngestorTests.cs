@@ -24,6 +24,7 @@ public class PipelineIngestorTests
                     new IngestionResult { DocumentId = ctx.Metadata.DocumentId, ChunksStored = 0 })),
             VectorStore = vectorStore ?? Substitute.For<IVectorStore>(),
             Bm25Index = bm25 ?? Substitute.For<IBm25Index>(),
+            ChunkingOptions = new ChunkingOptions(),
             ParentStore = parentStore,
             DataManager = dataManager,
         };

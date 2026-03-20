@@ -1,6 +1,7 @@
 using Rag.NET.Abstractions;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
+using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using NSubstitute;
 using Xunit;
@@ -16,6 +17,7 @@ public class PipelineIngestorResultTests
             (ctx, _) => ValueTask.FromResult(new IngestionResult { DocumentId = ctx.Metadata.DocumentId, ChunksStored = 0 })),
         VectorStore = Substitute.For<IVectorStore>(),
         Bm25Index = Substitute.For<IBm25Index>(),
+        ChunkingOptions = new ChunkingOptions(),
     };
 
     [Fact]

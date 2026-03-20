@@ -18,4 +18,3 @@ public abstract record RagError
     /// <summary>The ingestion stream is not readable.</summary>
     public sealed record NonSeekableStream() : RagError;
 }
-

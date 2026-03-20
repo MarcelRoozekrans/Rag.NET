@@ -18,6 +18,7 @@ public sealed class PipelineIngestor : IIngestor
     [Inject] public Pipeline<IngestionContext, IngestionResult> Pipeline { get; set; } = null!;
     [Inject] public IVectorStore VectorStore { get; set; } = null!;
     [Inject] public IBm25Index Bm25Index { get; set; } = null!;
+    [Inject] public ChunkingOptions ChunkingOptions { get; set; } = null!;
     [Inject(Required = false)] public IParentChunkStore? ParentStore { get; set; }
     [Inject(Required = false)] public IRagDataManager? DataManager { get; set; }
 
@@ -30,6 +31,11 @@ public sealed class PipelineIngestor : IIngestor
         IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        var chunkingValidation = new ChunkingOptionsValidator().Validate(ChunkingOptions);
+        if (!chunkingValidation.IsValid)
+            return Result<IngestionResult, RagError>.Failure(
+                new RagError.ValidationFailed(MapFailures(chunkingValidation.Failures)));
+
         var validationResult = new DocumentMetadataValidator().Validate(metadata);
         if (!validationResult.IsValid)
             return Result<IngestionResult, RagError>.Failure(
