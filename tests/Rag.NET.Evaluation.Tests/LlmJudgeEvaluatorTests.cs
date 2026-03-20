@@ -244,6 +244,7 @@ public class LlmJudgeEvaluatorTests
 
         var judgement = Assert.Single(result.Samples);
         Assert.Equal(1.0, judgement.Criteria["correctness"].Score, precision: 10);
+        Assert.Equal(0.8, judgement.Criteria["relevance"].Score, precision: 10);
     }
 
     [Fact]
@@ -272,6 +273,7 @@ public class LlmJudgeEvaluatorTests
 
         var judgement = Assert.Single(result.Samples);
         Assert.Equal(0.0, judgement.Criteria["relevance"].Score, precision: 10);
+        Assert.Equal(0.7, judgement.Criteria["correctness"].Score, precision: 10);
     }
 
     [Fact]
@@ -280,7 +282,9 @@ public class LlmJudgeEvaluatorTests
         var client = MakeChatClient(ValidJsonTwoCriteria);
         var sut = new LlmJudgeEvaluator(client);
 
-        await Assert.ThrowsAsync<ArgumentException>(
-            () => sut.EvaluateAsync(new List<EvaluationSample>(), TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => sut.EvaluateAsync(Array.Empty<EvaluationSample>(), TestContext.Current.CancellationToken));
+
+        Assert.Equal("samples", ex.ParamName);
     }
 }
