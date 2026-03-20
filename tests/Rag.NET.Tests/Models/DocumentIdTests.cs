@@ -80,5 +80,6 @@ public class DocumentIdTests
         DocumentId? id = new DocumentId("doc-1");
         Assert.False(id == null);
         Assert.False(null == id);
+        Assert.True((DocumentId?)null == (DocumentId?)null);
     }
 }
