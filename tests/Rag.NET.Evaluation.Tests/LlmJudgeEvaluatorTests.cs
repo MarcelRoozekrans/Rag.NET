@@ -58,6 +58,8 @@ public class LlmJudgeEvaluatorTests
         Assert.True(judgement.Criteria.ContainsKey("relevance"));
         Assert.Equal(0.85, judgement.Criteria["correctness"].Score, precision: 10);
         Assert.Equal("Mostly correct.", judgement.Criteria["correctness"].Reasoning);
+        Assert.Equal(0.90, judgement.Criteria["faithfulness"].Score, precision: 10);
+        Assert.Equal(1.00, judgement.Criteria["relevance"].Score, precision: 10);
     }
 
     [Fact]
@@ -274,6 +276,29 @@ public class LlmJudgeEvaluatorTests
         var judgement = Assert.Single(result.Samples);
         Assert.Equal(0.0, judgement.Criteria["relevance"].Score, precision: 10);
         Assert.Equal(0.7, judgement.Criteria["correctness"].Score, precision: 10);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_WithEmptySourceChunks_FaithfulnessAbsentFromResult()
+    {
+        var client = MakeChatClient(ValidJsonAllCriteria);
+        var sut = new LlmJudgeEvaluator(client);
+
+        var samples = new[]
+        {
+            new EvaluationSample(
+                Question: "What is RAG?",
+                PredictedAnswer: "RAG is retrieval-augmented generation.",
+                ReferenceAnswer: "RAG combines retrieval with LLM generation.",
+                SourceChunks: []),
+        };
+
+        var result = await sut.EvaluateAsync(samples, TestContext.Current.CancellationToken);
+
+        var judgement = Assert.Single(result.Samples);
+        Assert.False(judgement.Criteria.ContainsKey("faithfulness"));
+        Assert.True(judgement.Criteria.ContainsKey("correctness"));
+        Assert.True(judgement.Criteria.ContainsKey("relevance"));
     }
 
     [Fact]

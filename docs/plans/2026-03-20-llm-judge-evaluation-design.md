@@ -58,10 +58,12 @@ public sealed record EvaluationSample(
     string Question,
     string PredictedAnswer,
     string ReferenceAnswer,
-    IReadOnlyList<SearchResult>? Sources = null);  // new optional property
+    IReadOnlyList<string>? SourceChunks = null);  // new optional property
 ```
 
-Backwards-compatible — existing callers without `Sources` continue to work. When `Sources` is null, the faithfulness criterion is excluded from the prompt and result.
+Backwards-compatible — existing callers without `SourceChunks` continue to work. When `SourceChunks` is null or empty, the faithfulness criterion is excluded from the prompt and result.
+
+> **Note:** The implementation uses `IReadOnlyList<string>? SourceChunks` rather than `IReadOnlyList<SearchResult>? Sources` to keep `Rag.NET.Evaluation` free of a dependency on the core `Rag.NET` package. Callers extract `.Chunk.Text` themselves before constructing `EvaluationSample`.
 
 ### Result types
 

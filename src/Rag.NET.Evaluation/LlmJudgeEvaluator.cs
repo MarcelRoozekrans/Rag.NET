@@ -99,8 +99,11 @@ public sealed class LlmJudgeEvaluator(
         sb.AppendLine();
         sb.AppendLine("Respond with this exact JSON shape:");
         sb.AppendLine("{");
-        foreach (var c in activeCriteria)
-            sb.Append(CultureInfo.InvariantCulture, $"  \"{c.Name}\": {{ \"score\": 0.0, \"reasoning\": \"...\" }},").AppendLine();
+        for (var i = 0; i < activeCriteria.Count; i++)
+        {
+            var comma = i < activeCriteria.Count - 1 ? "," : string.Empty;
+            sb.Append(CultureInfo.InvariantCulture, $"  \"{activeCriteria[i].Name}\": {{ \"score\": 0.0, \"reasoning\": \"...\" }}{comma}").AppendLine();
+        }
         sb.AppendLine("}");
 
         return sb.ToString();
