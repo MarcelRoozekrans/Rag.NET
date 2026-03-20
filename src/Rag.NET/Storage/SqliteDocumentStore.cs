@@ -113,7 +113,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
                            ?? new Dictionary<string, string>(StringComparer.Ordinal);
                 results.Add(new DocumentSummary
                 {
-                    DocumentId  = reader.GetString(0),
+                    DocumentId  = new DocumentId(reader.GetString(0)),
                     FileName    = reader.GetString(1),
                     ContentType = reader.IsDBNull(2) ? null : reader.GetString(2),
                     Tags        = tags,

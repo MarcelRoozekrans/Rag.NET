@@ -38,7 +38,7 @@ public sealed class SqliteDocumentStoreTests : IAsyncDisposable
 
         var docs = await sut.GetDocumentsAsync(ct);
         Assert.Single(docs);
-        Assert.Equal("doc-1",           docs[0].DocumentId);
+        Assert.Equal(new DocumentId("doc-1"), docs[0].DocumentId);
         Assert.Equal("report.pdf",      docs[0].FileName);
         Assert.Equal("application/pdf", docs[0].ContentType);
         Assert.Equal(2,                 docs[0].ChunkCount);
@@ -129,7 +129,7 @@ public sealed class SqliteDocumentStoreTests : IAsyncDisposable
         _sut = new SqliteDocumentStore(_dbPath, "test-coll");
         var docs = await _sut.GetDocumentsAsync(TestContext.Current.CancellationToken);
         Assert.Single(docs);
-        Assert.Equal("doc-1", docs[0].DocumentId);
+        Assert.Equal(new DocumentId("doc-1"), docs[0].DocumentId);
     }
 
     [Fact]

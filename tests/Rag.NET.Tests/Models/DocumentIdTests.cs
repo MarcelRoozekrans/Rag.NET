@@ -52,4 +52,33 @@ public class DocumentIdTests
         dict[id] = 42;
         Assert.Equal(42, dict[new DocumentId("doc-1")]);
     }
+
+    [Fact]
+    public void DocumentId_NullStringThrows()
+    {
+        Assert.Throws<ArgumentNullException>(() => new DocumentId(null!));
+    }
+
+    [Fact]
+    public void DocumentId_EmptyStringThrows()
+    {
+        Assert.Throws<ArgumentException>(() => new DocumentId(""));
+    }
+
+    [Fact]
+    public void DocumentId_JsonRoundTrip()
+    {
+        var id = new DocumentId("doc-1");
+        var json = System.Text.Json.JsonSerializer.Serialize(id);
+        var restored = System.Text.Json.JsonSerializer.Deserialize<DocumentId>(json);
+        Assert.Equal(id, restored);
+    }
+
+    [Fact]
+    public void DocumentId_NullEqualityOperator()
+    {
+        DocumentId? id = new DocumentId("doc-1");
+        Assert.False(id == null);
+        Assert.False(null == id);
+    }
 }

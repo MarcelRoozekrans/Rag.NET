@@ -34,7 +34,12 @@ public sealed class DocumentId : IEquatable<DocumentId>
     private sealed class DocumentIdJsonConverter : JsonConverter<DocumentId>
     {
         public override DocumentId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-            => new(reader.GetString() ?? string.Empty);
+        {
+            var value = reader.GetString();
+            if (string.IsNullOrEmpty(value))
+                throw new JsonException("DocumentId cannot be null or empty.");
+            return new(value);
+        }
 
         public override void Write(Utf8JsonWriter writer, DocumentId value, JsonSerializerOptions options)
             => writer.WriteStringValue(value._value);
