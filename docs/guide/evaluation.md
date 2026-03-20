@@ -57,10 +57,11 @@ var evaluator = new EmbeddingDistanceEvaluator(embeddingGenerator);
 public sealed record EvaluationSample(
     string Question,
     string PredictedAnswer,
-    string ReferenceAnswer);
+    string ReferenceAnswer,
+    IReadOnlyList<string>? SourceChunks = null);
 ```
 
-`Question` is carried for your own logging; the evaluator does not embed or score it.
+`Question` is carried for your own logging; the evaluator does not embed or score it. `SourceChunks` is optional and only used by `LlmJudgeEvaluator`; `EmbeddingDistanceEvaluator` ignores it.
 
 ## `EvaluationResult`
 
@@ -163,7 +164,7 @@ var samples = new[]
         Question: "What is the capital of France?",
         PredictedAnswer: "The capital of France is Paris.",
         ReferenceAnswer: "Paris",
-        SourceChunks: ["France is a country in Europe. Its capital is Paris."]),
+        SourceChunks: new[] { "France is a country in Europe. Its capital is Paris." }),
 };
 
 LlmJudgeResult result = await evaluator.EvaluateAsync(samples);
@@ -175,16 +176,6 @@ Console.WriteLine(result.MeanScore("relevance"));    // e.g. 1.00
 
 ### `EvaluationSample` and `SourceChunks`
 
-`EvaluationSample` now carries an optional `SourceChunks` parameter:
-
-```csharp
-public sealed record EvaluationSample(
-    string Question,
-    string PredictedAnswer,
-    string ReferenceAnswer,
-    IReadOnlyList<string>? SourceChunks = null);
-```
-
 When `SourceChunks` is null or empty on a sample, faithfulness is automatically excluded from the prompt and result for that sample. You can safely mix samples with and without source chunks in the same run.
 
 ### Default criteria
@@ -194,8 +185,10 @@ The evaluator uses three built-in criteria by default:
 | Criterion | What it checks |
 |---|---|
 | `JudgeCriterion.Correctness` | Is the predicted answer factually correct given the reference answer? |
-| `JudgeCriterion.Faithfulness` | Does the answer stay grounded in the retrieved context without hallucinating? |
+| `JudgeCriterion.Faithfulness`* | Does the answer stay grounded in the retrieved context without hallucinating? |
 | `JudgeCriterion.Relevance` | Does the answer directly and completely address the question? |
+
+\* Only included when `SourceChunks` is provided for a sample.
 
 ### Custom criteria
 
@@ -222,6 +215,8 @@ public sealed record LlmJudgeResult(IReadOnlyList<SampleJudgement> Samples)
 ```
 
 `MeanScore` returns the arithmetic mean across all samples that contain the criterion. `AllPass` returns `true` if every such sample meets or exceeds the threshold — useful as a CI gate.
+
+> **Note:** If the criterion name does not match any sample result — for example, due to a typo — `MeanScore` returns `0.0` and `AllPass` returns `true` vacuously. Always verify criterion names against those configured on the evaluator.
 
 ### Using it in a CI gate
 
