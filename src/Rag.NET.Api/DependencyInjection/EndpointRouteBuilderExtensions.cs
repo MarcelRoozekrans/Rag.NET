@@ -29,7 +29,7 @@ public static class EndpointRouteBuilderExtensions
             var docId = req.DocumentId ?? Guid.NewGuid().ToString();
             var metadata = new DocumentMetadata
             {
-                DocumentId = docId,
+                DocumentId = new DocumentId(docId),
                 FileName = req.FileName ?? "document.txt",
                 ContentType = req.ContentType,
                 Tags = req.Tags ?? new Dictionary<string, string>(StringComparer.Ordinal)

@@ -21,7 +21,7 @@ public class ParseBehaviorTests
             Stream = new MemoryStream(),
             Metadata = new DocumentMetadata
             {
-                DocumentId = "doc-1",
+                DocumentId = new DocumentId("doc-1"),
                 FileName = "test.txt",
                 ContentType = contentType,
             },
@@ -47,7 +47,7 @@ public class ParseBehaviorTests
     }
 
     private static TextChunk MakeChunk(int index = 0)
-        => new TextChunk { Text = "chunk", DocumentId = "doc-1", ChunkIndex = index };
+        => new TextChunk { Text = "chunk", DocumentId = new DocumentId("doc-1"), ChunkIndex = index };
 
     private static ParseBehavior MakeSut(
         IDocumentParser parser,
@@ -84,7 +84,7 @@ public class ParseBehaviorTests
     public async Task SingleSectionSingleChunk_PopulatesChunksAndSections()
     {
         var ct = TestContext.Current.CancellationToken;
-        var section = new DocumentSection { Text = "Hello world", DocumentId = "doc-1" };
+        var section = new DocumentSection { Text = "Hello world", DocumentId = new DocumentId("doc-1") };
         var chunk = MakeChunk();
 
         var parser = Substitute.For<IDocumentParser>();
@@ -111,7 +111,7 @@ public class ParseBehaviorTests
     public async Task SectionWithoutHeading_ChunkHasNoHeadingMetadata()
     {
         var ct = TestContext.Current.CancellationToken;
-        var section = new DocumentSection { Text = "No heading here", DocumentId = "doc-1" };
+        var section = new DocumentSection { Text = "No heading here", DocumentId = new DocumentId("doc-1") };
         var chunk = MakeChunk();
 
         var parser = Substitute.For<IDocumentParser>();
@@ -140,7 +140,7 @@ public class ParseBehaviorTests
         var section = new DocumentSection
         {
             Text = "Section body",
-            DocumentId = "doc-1",
+            DocumentId = new DocumentId("doc-1"),
             HeadingLevel = 2,
             Heading = "My Section",
         };
@@ -172,14 +172,14 @@ public class ParseBehaviorTests
         var h1Section = new DocumentSection
         {
             Text = "Intro body",
-            DocumentId = "doc-1",
+            DocumentId = new DocumentId("doc-1"),
             HeadingLevel = 1,
             Heading = "Intro",
         };
         var h2Section = new DocumentSection
         {
             Text = "Details body",
-            DocumentId = "doc-1",
+            DocumentId = new DocumentId("doc-1"),
             HeadingLevel = 2,
             Heading = "Details",
         };
@@ -215,21 +215,21 @@ public class ParseBehaviorTests
         var h2A = new DocumentSection
         {
             Text = "A body",
-            DocumentId = "doc-1",
+            DocumentId = new DocumentId("doc-1"),
             HeadingLevel = 2,
             Heading = "A",
         };
         var h1B = new DocumentSection
         {
             Text = "B body",
-            DocumentId = "doc-1",
+            DocumentId = new DocumentId("doc-1"),
             HeadingLevel = 1,
             Heading = "B",
         };
         var h2C = new DocumentSection
         {
             Text = "C body",
-            DocumentId = "doc-1",
+            DocumentId = new DocumentId("doc-1"),
             HeadingLevel = 2,
             Heading = "C",
         };
@@ -270,7 +270,7 @@ public class ParseBehaviorTests
         progress.When(p => p.Report(Arg.Any<IngestionProgress>()))
             .Do(ci => reports.Add(ci.Arg<IngestionProgress>()));
 
-        var section = new DocumentSection { Text = "body", DocumentId = "doc-1" };
+        var section = new DocumentSection { Text = "body", DocumentId = new DocumentId("doc-1") };
 
         var parser = Substitute.For<IDocumentParser>();
         parser.CanParse("text/plain").Returns(true);
@@ -294,7 +294,7 @@ public class ParseBehaviorTests
     public async Task CallsNextAfterProcessing()
     {
         var ct = TestContext.Current.CancellationToken;
-        var section = new DocumentSection { Text = "body", DocumentId = "doc-1" };
+        var section = new DocumentSection { Text = "body", DocumentId = new DocumentId("doc-1") };
 
         var parser = Substitute.For<IDocumentParser>();
         parser.CanParse("text/plain").Returns(true);

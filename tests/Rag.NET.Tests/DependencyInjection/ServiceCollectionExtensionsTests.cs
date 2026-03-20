@@ -274,7 +274,7 @@ public class ServiceCollectionExtensionsTests
                 {
                     Chunk = new TextChunk
                     {
-                        Text = "small child", DocumentId = "doc1", ChunkIndex = 0,
+                        Text = "small child", DocumentId = new DocumentId("doc1"), ChunkIndex = 0,
                         Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["_parentKey"] = "doc1:0" }
                     },
                     Score = 0.9
@@ -314,7 +314,7 @@ public class ServiceCollectionExtensionsTests
                 {
                     Chunk = new TextChunk
                     {
-                        Text = "small child", DocumentId = "doc1", ChunkIndex = 0,
+                        Text = "small child", DocumentId = new DocumentId("doc1"), ChunkIndex = 0,
                     },
                     Score = 0.9
                 }
@@ -353,7 +353,7 @@ public class ServiceCollectionExtensionsTests
         vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
             .Returns(new List<SearchResult>
             {
-                new() { Chunk = new TextChunk { Text = "candidate doc", DocumentId = "doc1", ChunkIndex = 0 }, Score = 0.9 }
+                new() { Chunk = new TextChunk { Text = "candidate doc", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 }, Score = 0.9 }
             });
 
         services.AddRagNet(b => b.UseMmr());
@@ -395,7 +395,7 @@ public class ServiceCollectionExtensionsTests
             var ingestor1 = sp1.GetRequiredService<IIngestor>();
             await ingestor1.IngestAsync(
                 new MemoryStream(System.Text.Encoding.UTF8.GetBytes("hello world")),
-                new Rag.NET.Models.DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt" },
+                new Rag.NET.Models.DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt" },
                 cancellationToken: ct);
 
             await sp1.DisposeAsync();
@@ -443,7 +443,7 @@ public class ServiceCollectionExtensionsTests
             var ingestor1 = sp1.GetRequiredService<IIngestor>();
             await ingestor1.IngestAsync(
                 new MemoryStream(System.Text.Encoding.UTF8.GetBytes("hello world")),
-                new Rag.NET.Models.DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt" },
+                new Rag.NET.Models.DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt" },
                 cancellationToken: ct);
             await sp1.DisposeAsync();
 
@@ -505,7 +505,7 @@ public class ServiceCollectionExtensionsTests
                 {
                     Chunk = new TextChunk
                     {
-                        Text = "small child", DocumentId = "doc1", ChunkIndex = 0,
+                        Text = "small child", DocumentId = new DocumentId("doc1"), ChunkIndex = 0,
                         Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["_parentKey"] = "doc1:0" }
                     },
                     Score = 0.9

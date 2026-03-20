@@ -13,7 +13,7 @@ public class TokenAwareChunkingStrategyTests
     private static DocumentSection CreateSection(string text) => new()
     {
         Text = text,
-        DocumentId = "doc-1",
+        DocumentId = new DocumentId("doc-1"),
         SectionIndex = 0,
     };
 
@@ -123,7 +123,7 @@ public class TokenAwareChunkingStrategyTests
     [Fact]
     public async Task ChunkAsync_OverlapGreaterThanOrEqualToMaxChunkSize_ThrowsArgumentOutOfRangeException()
     {
-        var section = new DocumentSection { Text = "some text", DocumentId = "d", SectionIndex = 0 };
+        var section = new DocumentSection { Text = "some text", DocumentId = new DocumentId("d"), SectionIndex = 0 };
         var options = new ChunkingOptions { MaxChunkSize = 10, Overlap = 10 };
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
             await _sut.ChunkAsync(section, options, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken));
@@ -132,7 +132,7 @@ public class TokenAwareChunkingStrategyTests
     [Fact]
     public async Task ChunkAsync_MaxChunkSizeZero_ThrowsArgumentOutOfRangeException()
     {
-        var section = new DocumentSection { Text = "some text", DocumentId = "d", SectionIndex = 0 };
+        var section = new DocumentSection { Text = "some text", DocumentId = new DocumentId("d"), SectionIndex = 0 };
         var options = new ChunkingOptions { MaxChunkSize = 0, Overlap = 0 };
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
             await _sut.ChunkAsync(section, options, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken));

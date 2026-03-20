@@ -34,7 +34,7 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
                     Chunk = new TextChunk
                     {
                         Text = "chunk text",
-                        DocumentId = "doc-1",
+                        DocumentId = new DocumentId("doc-1"),
                         ChunkIndex = 0
                     }
                 }
@@ -43,7 +43,7 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
         _mockPipeline
             .IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new IngestionResult { DocumentId = "doc-1", ChunksStored = 3 }));
+            .Returns(Task.FromResult(new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 3 }));
 
         _mockPipeline
             .AskAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
@@ -115,7 +115,7 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
     public async Task IngestAsync_ReturnsIngestionResult_FromServer()
     {
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes("document content"));
-        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt" };
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt" };
 
         var result = await _httpRagPipeline.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
 

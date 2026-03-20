@@ -52,7 +52,7 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
                 Payload =
                 {
                     ["text"] = chunk.Chunk.Text,
-                    ["document_id"] = chunk.Chunk.DocumentId,
+                    ["document_id"] = (string)chunk.Chunk.DocumentId,
                     ["chunk_index"] = chunk.Chunk.ChunkIndex,
                     ["metadata"] = JsonSerializer.Serialize(chunk.Chunk.Metadata),
                 },
@@ -103,7 +103,7 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
                     Chunk = new TextChunk
                     {
                         Text = point.Payload["text"].StringValue,
-                        DocumentId = point.Payload["document_id"].StringValue,
+                        DocumentId = new DocumentId(point.Payload["document_id"].StringValue),
                         ChunkIndex = (int)point.Payload["chunk_index"].IntegerValue,
                         Metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal),
                     },

@@ -17,7 +17,7 @@ internal sealed class RagGrpcService(IRagPipeline pipeline) : RagService.RagServ
 
         var metadata = new DocumentMetadata
         {
-            DocumentId = docId,
+            DocumentId = new DocumentId(docId),
             FileName = string.IsNullOrEmpty(request.FileName) ? "document.txt" : request.FileName,
             ContentType = string.IsNullOrEmpty(request.ContentType) ? null : request.ContentType,
             Tags = new Dictionary<string, string>(request.Tags, StringComparer.Ordinal)

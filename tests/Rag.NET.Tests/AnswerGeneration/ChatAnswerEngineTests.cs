@@ -22,7 +22,7 @@ public class ChatAnswerEngineTests
     {
         var sources = new List<SearchResult>
         {
-            new() { Chunk = new TextChunk { Text = "Source text", DocumentId = "doc-1", ChunkIndex = 0 }, Score = 0.9 }
+            new() { Chunk = new TextChunk { Text = "Source text", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 }, Score = 0.9 }
         };
 
         _chatClient.GetResponseAsync(
@@ -100,7 +100,7 @@ public class ChatAnswerEngineTests
     {
         var sources = new List<SearchResult>
         {
-            new() { Chunk = new TextChunk { Text = "Source text", DocumentId = "doc-1", ChunkIndex = 0 }, Score = 0.9 }
+            new() { Chunk = new TextChunk { Text = "Source text", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 }, Score = 0.9 }
         };
 
         _chatClient.GetStreamingResponseAsync(
@@ -140,7 +140,7 @@ public class ChatAnswerEngineTests
     {
         var sources = new List<SearchResult>
         {
-            new() { Chunk = new TextChunk { Text = "Source text", DocumentId = "doc-1", ChunkIndex = 0 }, Score = 0.9 }
+            new() { Chunk = new TextChunk { Text = "Source text", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 }, Score = 0.9 }
         };
 
         _chatClient.GetStreamingResponseAsync(
@@ -167,8 +167,8 @@ public class ChatAnswerEngineTests
     {
         var sources = new List<SearchResult>
         {
-            new() { Chunk = new TextChunk { Text = "First source", DocumentId = "doc-1", ChunkIndex = 0 }, Score = 0.9 },
-            new() { Chunk = new TextChunk { Text = "Second source", DocumentId = "doc-2", ChunkIndex = 0 }, Score = 0.8 },
+            new() { Chunk = new TextChunk { Text = "First source", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 }, Score = 0.9 },
+            new() { Chunk = new TextChunk { Text = "Second source", DocumentId = new DocumentId("doc-2"), ChunkIndex = 0 }, Score = 0.8 },
         };
 
         _chatClient.GetResponseAsync(

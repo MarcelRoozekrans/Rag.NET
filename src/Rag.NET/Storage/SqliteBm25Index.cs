@@ -41,7 +41,7 @@ public sealed class SqliteBm25Index : IBm25Index
                 ($docId, $documentId, $chunkIndex, $startPos, $endPos, $text, $meta)
             """;
         cmd.Parameters.AddWithValue("$docId", docId);
-        cmd.Parameters.AddWithValue("$documentId", chunk.DocumentId);
+        cmd.Parameters.AddWithValue("$documentId", (string)chunk.DocumentId);
         cmd.Parameters.AddWithValue("$chunkIndex", chunk.ChunkIndex);
         cmd.Parameters.AddWithValue("$startPos", chunk.StartPosition);
         cmd.Parameters.AddWithValue("$endPos", chunk.EndPosition);
@@ -192,7 +192,7 @@ public sealed class SqliteBm25Index : IBm25Index
 
             var chunk = new TextChunk
             {
-                DocumentId = reader.GetString(1),
+                DocumentId = new DocumentId(reader.GetString(1)),
                 ChunkIndex = reader.GetInt32(2),
                 StartPosition = reader.GetInt32(3),
                 EndPosition = reader.GetInt32(4),

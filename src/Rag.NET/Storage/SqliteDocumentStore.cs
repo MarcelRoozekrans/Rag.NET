@@ -41,7 +41,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
             VALUES
                 ($docId, $fileName, $contentType, $tagsJson, $ingestedAt, $chunkCount)
             """;
-        docCmd.Parameters.AddWithValue("$docId",       metadata.DocumentId);
+        docCmd.Parameters.AddWithValue("$docId",       (string)metadata.DocumentId);
         docCmd.Parameters.AddWithValue("$fileName",    metadata.FileName);
         docCmd.Parameters.AddWithValue("$contentType", (object?)metadata.ContentType ?? DBNull.Value);
         docCmd.Parameters.AddWithValue("$tagsJson",    JsonSerializer.Serialize(metadata.Tags));
@@ -64,7 +64,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
         var pMeta         = chunkCmd.Parameters.Add("$meta",     SqliteType.Text);
         foreach (var chunk in chunks)
         {
-            pChunkDocId.Value = chunk.DocumentId;
+            pChunkDocId.Value = (string)chunk.DocumentId;
             pChunkIdx.Value   = chunk.ChunkIndex;
             pStartPos.Value   = chunk.StartPosition;
             pEndPos.Value     = chunk.EndPosition;
@@ -149,7 +149,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
                                ?? new Dictionary<string, string>(StringComparer.Ordinal);
                 results.Add(new TextChunk
                 {
-                    DocumentId    = documentId,
+                    DocumentId    = new DocumentId(documentId),
                     ChunkIndex    = reader.GetInt32(0),
                     StartPosition = reader.GetInt32(1),
                     EndPosition   = reader.GetInt32(2),

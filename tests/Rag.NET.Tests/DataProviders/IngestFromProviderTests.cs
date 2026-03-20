@@ -119,7 +119,7 @@ public sealed class IngestFromProviderTests : IDisposable
         var capturedMetadata = new List<DocumentMetadata>();
         _pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Do<DocumentMetadata>(m => capturedMetadata.Add(m)),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
-            .Returns(new IngestionResult { DocumentId = "id-1", ChunksStored = 1 });
+            .Returns(new IngestionResult { DocumentId = new DocumentId("id-1"), ChunksStored = 1 });
 
         var provider = MakeProvider(("id-1", "report.pdf", "content", null));
         await _pipeline.IngestFromProviderAsync(provider, "prov",
@@ -148,7 +148,7 @@ public sealed class IngestFromProviderTests : IDisposable
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(new IngestionResult { DocumentId = "id-2", ChunksStored = 1 });
+            .Returns(new IngestionResult { DocumentId = new DocumentId("id-2"), ChunksStored = 1 });
 
         var provider = MakeProvider(
             ("id-1", "fail.txt", "hello", null),
@@ -230,7 +230,7 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Contains(result.Errors, e => e.Contains("id-old", StringComparison.Ordinal));
         // Processing continued — id-new was ingested
         await _pipeline.Received(1).IngestAsync(
-            Arg.Any<Stream>(), Arg.Is<DocumentMetadata>(m => m.DocumentId == "id-new"),
+            Arg.Any<Stream>(), Arg.Is<DocumentMetadata>(m => m.DocumentId.Equals(new DocumentId("id-new"))),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), ct);
     }
 
@@ -244,7 +244,7 @@ public sealed class IngestFromProviderTests : IDisposable
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(new IngestionResult { DocumentId = "id-1", ChunksStored = 1 });
+            .Returns(new IngestionResult { DocumentId = new DocumentId("id-1"), ChunksStored = 1 });
 
         var provider = Substitute.For<IFileContentProvider>();
         provider.GetFilesAsync(Arg.Any<CancellationToken>())
@@ -263,7 +263,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         var baseMetadata = new DocumentMetadata
         {
-            DocumentId = "",
+            DocumentId = new DocumentId(""),
             FileName   = "",
             Tags = new Dictionary<string, string>(StringComparer.Ordinal)
             {

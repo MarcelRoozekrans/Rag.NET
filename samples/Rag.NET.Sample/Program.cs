@@ -98,7 +98,7 @@ try
 
             var metadata = new DocumentMetadata
             {
-                DocumentId = fileName,
+                DocumentId = new DocumentId(fileName),
                 FileName = fileName,
                 ContentType = contentType,
             };

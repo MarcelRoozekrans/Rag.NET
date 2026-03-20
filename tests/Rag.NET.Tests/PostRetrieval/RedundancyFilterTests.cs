@@ -10,7 +10,7 @@ public class RedundancyFilterTests
 {
     private static SearchResult MakeResult(string text, double score = 0.9) => new()
     {
-        Chunk = new TextChunk { Text = text, DocumentId = "doc-1", ChunkIndex = 0 },
+        Chunk = new TextChunk { Text = text, DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
         Score = score,
     };
 

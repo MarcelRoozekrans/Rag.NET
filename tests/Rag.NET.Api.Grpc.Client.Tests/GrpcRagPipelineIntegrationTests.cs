@@ -29,7 +29,7 @@ public sealed class GrpcRagPipelineIntegrationTests : IAsyncLifetime
             [
                 new SearchResult
                 {
-                    Chunk = new TextChunk { Text = "Hello world", DocumentId = "doc-1", ChunkIndex = 0 },
+                    Chunk = new TextChunk { Text = "Hello world", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
                     Score = 0.9
                 }
             ]));
@@ -38,7 +38,7 @@ public sealed class GrpcRagPipelineIntegrationTests : IAsyncLifetime
                 Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
                 Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new IngestionResult { DocumentId = "doc-42", ChunksStored = 5 }));
+            .Returns(Task.FromResult(new IngestionResult { DocumentId = new DocumentId("doc-42"), ChunksStored = 5 }));
 
         _pipeline.DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
@@ -100,7 +100,7 @@ public sealed class GrpcRagPipelineIntegrationTests : IAsyncLifetime
     public async Task IngestAsync_ReturnsIngestionResult_WhenContentProvided()
     {
         using var stream = new MemoryStream("Test content"u8.ToArray());
-        var metadata = new DocumentMetadata { DocumentId = "doc-42", FileName = "test.txt" };
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-42"), FileName = "test.txt" };
 
         var result = await _grpcRagPipeline.IngestAsync(
             stream, metadata,

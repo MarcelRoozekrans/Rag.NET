@@ -33,7 +33,7 @@ public class ParentDocumentBenchmarks
             Chunk = new TextChunk
             {
                 Text = $"child chunk {i}",
-                DocumentId = "doc1",
+                DocumentId = new DocumentId("doc1"),
                 ChunkIndex = i,
                 Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
                 {

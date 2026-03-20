@@ -30,7 +30,7 @@ public sealed class RagGrpcServiceTests : IAsyncLifetime
         _pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
                 Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new IngestionResult { DocumentId = "doc-1", ChunksStored = 3 }));
+            .Returns(Task.FromResult(new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 3 }));
         _pipeline.DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
 
@@ -120,7 +120,7 @@ public sealed class RagGrpcServiceTests : IAsyncLifetime
     {
         var client = new RagService.RagServiceClient(_channel);
         var response = await client.DeleteAsync(
-            new DeleteRequest { DocumentId = "doc-1" },
+            new DeleteRequest { DocumentId = new DocumentId("doc-1") },
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(response);

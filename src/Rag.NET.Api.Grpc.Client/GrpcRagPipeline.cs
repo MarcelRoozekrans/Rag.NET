@@ -34,7 +34,7 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
 
         return new IngestionResult
         {
-            DocumentId = response.DocumentId,
+            DocumentId = new DocumentId(response.DocumentId),
             ChunksStored = response.ChunksStored
         };
     }
@@ -109,7 +109,7 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
         var chunk = new TextChunk
         {
             Text = proto.Text,
-            DocumentId = proto.DocumentId,
+            DocumentId = new DocumentId(proto.DocumentId),
             ChunkIndex = proto.ChunkIndex
         };
 

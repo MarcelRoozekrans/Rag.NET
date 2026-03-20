@@ -131,7 +131,7 @@ public class PipelineExtensibilityTests
 
         await ingestor.IngestAsync(
             new MemoryStream("hello world"u8.ToArray()),
-            new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt" },
+            new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt" },
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(executed, "Custom ingestion behavior should have executed");

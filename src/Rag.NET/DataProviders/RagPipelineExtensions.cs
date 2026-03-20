@@ -180,7 +180,7 @@ public static class RagPipelineExtensions
 
         return new DocumentMetadata
         {
-            DocumentId = entry.Id,
+            DocumentId = new DocumentId(entry.Id),
             FileName = entry.FileName,
             ContentType = baseMetadata?.ContentType,
             Tags = tags,

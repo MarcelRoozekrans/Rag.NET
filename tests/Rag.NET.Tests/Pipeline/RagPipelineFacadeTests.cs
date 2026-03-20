@@ -25,7 +25,7 @@ public class RagPipelineFacadeTests
     {
         var expected = new List<SearchResult>
         {
-            new() { Chunk = new TextChunk { Text = "x", DocumentId = "d", ChunkIndex = 0 }, Score = 1.0 }
+            new() { Chunk = new TextChunk { Text = "x", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 1.0 }
         };
         var opts = new RetrievalOptions { TopK = 10 };
         _retriever.RetrieveAsync("query", opts, Arg.Any<CancellationToken>()).Returns(expected);
@@ -38,8 +38,8 @@ public class RagPipelineFacadeTests
     [Fact]
     public async Task IngestAsync_DelegatesToIngestor()
     {
-        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "f.txt", ContentType = "text/plain" };
-        var expected = new IngestionResult { DocumentId = "doc-1", ChunksStored = 5 };
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "f.txt", ContentType = "text/plain" };
+        var expected = new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 5 };
         _ingestor.IngestAsync(Arg.Any<Stream>(), metadata, Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
             .Returns(expected);
 
@@ -61,7 +61,7 @@ public class RagPipelineFacadeTests
     {
         var sources = new List<SearchResult>
         {
-            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 }
+            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 0.9 }
         };
         _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
             .Returns(sources);
@@ -101,7 +101,7 @@ public class RagPipelineFacadeTests
         var ct = TestContext.Current.CancellationToken;
         var sources = new List<SearchResult>
         {
-            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = "d", ChunkIndex = 0 }, Score = 0.9 }
+            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 0.9 }
         };
         _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
             .Returns(sources);

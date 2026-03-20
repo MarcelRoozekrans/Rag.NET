@@ -25,7 +25,7 @@ public sealed class RagMcpToolsTests
     [Fact]
     public async Task RetrieveAsync_CallsPipelineWithCorrectOptions_AndReturnsJsonResults()
     {
-        var chunk = new TextChunk { Text = "hello", DocumentId = "doc-1", ChunkIndex = 0 };
+        var chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 };
         var searchResult = new SearchResult { Chunk = chunk, Score = 0.9 };
         IReadOnlyList<SearchResult> results = [searchResult];
 
@@ -67,7 +67,7 @@ public sealed class RagMcpToolsTests
     [Fact]
     public async Task AskAsync_CallsPipelineWithCorrectOptions_AndReturnsJsonAnswer()
     {
-        var chunk = new TextChunk { Text = "relevant", DocumentId = "doc-2", ChunkIndex = 0 };
+        var chunk = new TextChunk { Text = "relevant", DocumentId = new DocumentId("doc-2"), ChunkIndex = 0 };
         var response = new RagResponse
         {
             Answer = "42",
@@ -116,14 +116,14 @@ public sealed class RagMcpToolsTests
         _pipeline.IngestAsync(
                 Arg.Any<Stream>(),
                 Arg.Is<DocumentMetadata>(m =>
-                    m.DocumentId == "doc-42" &&
+                    m.DocumentId.Equals(new DocumentId("doc-42")) &&
                     m.FileName == "report.txt" &&
                     m.ContentType == "text/plain" &&
                     m.Tags["author"] == "Alice"),
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(new IngestionResult { DocumentId = "doc-42", ChunksStored = 5 });
+            .Returns(new IngestionResult { DocumentId = new DocumentId("doc-42"), ChunksStored = 5 });
 
         var json = await _sut.IngestAsync(
             content: "document body",
@@ -171,7 +171,7 @@ public sealed class RagMcpToolsTests
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(new IngestionResult { DocumentId = "x", ChunksStored = 0 });
+            .Returns(new IngestionResult { DocumentId = new DocumentId("x"), ChunksStored = 0 });
 
         await _sut.IngestAsync("text", "doc-1", "file.txt", null, ["key1=val1", "key2=val2", "malformed"]);
 

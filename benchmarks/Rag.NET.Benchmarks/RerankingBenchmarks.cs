@@ -33,7 +33,7 @@ public class RerankingBenchmarks
 
         var metadata = new DocumentMetadata
         {
-            DocumentId = "bench-doc",
+            DocumentId = new DocumentId("bench-doc"),
             FileName = "bench.txt",
             ContentType = "text/plain",
         };

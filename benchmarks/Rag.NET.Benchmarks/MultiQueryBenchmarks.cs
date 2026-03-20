@@ -28,7 +28,7 @@ public class MultiQueryBenchmarks
 
     private static readonly DocumentMetadata Metadata = new()
     {
-        DocumentId  = "bench-doc",
+        DocumentId = new DocumentId("bench-doc"),
         FileName    = "bench.txt",
         ContentType = "text/plain",
     };

@@ -22,10 +22,10 @@ public sealed class SqliteDocumentStoreTests : IAsyncDisposable
     }
 
     private static DocumentMetadata MakeMetadata(string docId, string fileName = "test.txt", string? contentType = "text/plain")
-        => new() { DocumentId = docId, FileName = fileName, ContentType = contentType };
+        => new() { DocumentId = new DocumentId(docId), FileName = fileName, ContentType = contentType };
 
     private static TextChunk MakeChunk(string docId, int idx, string text, int start = 0, int end = 0)
-        => new() { DocumentId = docId, ChunkIndex = idx, Text = text, StartPosition = start, EndPosition = end };
+        => new() { DocumentId = new DocumentId(docId), ChunkIndex = idx, Text = text, StartPosition = start, EndPosition = end };
 
     [Fact]
     public async Task Add_ThenGetDocuments_ReturnsSummaryWithCorrectFields()

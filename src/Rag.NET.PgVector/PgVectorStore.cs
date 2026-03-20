@@ -76,7 +76,7 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
                     """, conn);
                 await using (cmd.ConfigureAwait(false))
                 {
-                    cmd.Parameters.AddWithValue(chunk.Chunk.DocumentId);
+                    cmd.Parameters.AddWithValue((string)chunk.Chunk.DocumentId);
                     cmd.Parameters.Add(new NpgsqlParameter<int> { TypedValue = chunk.Chunk.ChunkIndex });
                     cmd.Parameters.AddWithValue(chunk.Chunk.Text);
                     cmd.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Jsonb,
@@ -140,7 +140,7 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
                         {
                             Chunk = new TextChunk
                             {
-                                DocumentId = reader.GetString(0),
+                                DocumentId = new DocumentId(reader.GetString(0)),
                                 ChunkIndex = reader.GetInt32(1),
                                 Text = reader.GetString(2),
                                 Metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal),

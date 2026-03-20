@@ -16,7 +16,7 @@ public class EmbeddingCacheBehaviorTests
     private static SearchResult MakeResult(string docId, double score) =>
         new()
         {
-            Chunk = new TextChunk { Text = docId, DocumentId = docId, ChunkIndex = 0 },
+            Chunk = new TextChunk { Text = docId, DocumentId = new DocumentId(docId), ChunkIndex = 0 },
             Score = score
         };
 

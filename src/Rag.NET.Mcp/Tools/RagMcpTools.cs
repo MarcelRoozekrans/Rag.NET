@@ -69,7 +69,7 @@ public sealed class RagMcpTools(IRagPipeline pipeline)
 
         var metadata = new DocumentMetadata
         {
-            DocumentId = resolvedId,
+            DocumentId = new DocumentId(resolvedId),
             FileName = resolvedFileName,
             ContentType = contentType,
             Tags = tagDict,

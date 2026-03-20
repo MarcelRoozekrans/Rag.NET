@@ -42,7 +42,7 @@ public sealed class HttpRagPipeline : IRagPipeline
         var ingestResponse = await response.Content.ReadFromJsonAsync<IngestResponse>(cancellationToken).ConfigureAwait(false);
         return new IngestionResult
         {
-            DocumentId = ingestResponse!.DocumentId,
+            DocumentId = new DocumentId(ingestResponse!.DocumentId),
             ChunksStored = ingestResponse.ChunksStored
         };
     }
@@ -128,7 +128,7 @@ public sealed class HttpRagPipeline : IRagPipeline
             Chunk = new TextChunk
             {
                 Text = dto.Text,
-                DocumentId = dto.DocumentId,
+                DocumentId = new DocumentId(dto.DocumentId),
                 ChunkIndex = dto.ChunkIndex,
                 Metadata = dto.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal)
             }

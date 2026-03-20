@@ -38,7 +38,7 @@ public class PipelineIngestorTests
             return ValueTask.FromResult(new IngestionResult { DocumentId = ctx.Metadata.DocumentId, ChunksStored = 3 });
         });
         var sut = CreateSut(pipeline: pipeline);
-        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "test.txt", ContentType = "text/plain" };
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt", ContentType = "text/plain" };
         using var stream = new MemoryStream("hello"u8.ToArray());
         var ct = TestContext.Current.CancellationToken;
 
@@ -88,7 +88,7 @@ public class PipelineIngestorTests
             return ValueTask.FromResult(new IngestionResult { DocumentId = ctx.Metadata.DocumentId, ChunksStored = 0 });
         });
         var sut = CreateSut(pipeline: pipeline);
-        var metadata = new DocumentMetadata { DocumentId = "doc-1", FileName = "f.txt" };
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "f.txt" };
         var ct = TestContext.Current.CancellationToken;
 
         await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);

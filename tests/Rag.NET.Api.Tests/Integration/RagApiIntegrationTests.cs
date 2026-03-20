@@ -30,7 +30,7 @@ public sealed class RagApiIntegrationTests : IAsyncLifetime
         pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
                 Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new IngestionResult { DocumentId = "doc-1", ChunksStored = 1 }));
+            .Returns(Task.FromResult(new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 1 }));
 
 #pragma warning disable ASPDEPR004 // WebHostBuilder is deprecated in favor of HostBuilder/WebApplicationBuilder — intentional for TestServer usage
 #pragma warning disable ASPDEPR008 // TestServer(IWebHostBuilder) is deprecated — intentional for minimal test setup

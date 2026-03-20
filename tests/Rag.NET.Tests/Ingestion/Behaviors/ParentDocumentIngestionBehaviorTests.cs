@@ -24,7 +24,7 @@ public class ParentDocumentIngestionBehaviorTests
             Stream = stream ?? new MemoryStream(),
             Metadata = new DocumentMetadata
             {
-                DocumentId = "doc-1",
+                DocumentId = new DocumentId("doc-1"),
                 FileName = "test.txt",
                 ContentType = "text/plain",
             },
@@ -120,14 +120,14 @@ public class ParentDocumentIngestionBehaviorTests
         var section = new DocumentSection
         {
             Text = "Hello world",
-            DocumentId = "doc-1",
+            DocumentId = new DocumentId("doc-1"),
             SectionIndex = 0,
         };
 
         var parentChunk = new TextChunk
         {
             Text = "Hello world",
-            DocumentId = "doc-1",
+            DocumentId = new DocumentId("doc-1"),
             ChunkIndex = 0,
             StartPosition = 0,
             EndPosition = 10,
@@ -153,7 +153,7 @@ public class ParentDocumentIngestionBehaviorTests
         var childChunk = new TextChunk
         {
             Text = "Hello",
-            DocumentId = "doc-1",
+            DocumentId = new DocumentId("doc-1"),
             ChunkIndex = 0,
             StartPosition = 0,
             EndPosition = 4,
