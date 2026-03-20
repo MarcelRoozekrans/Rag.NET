@@ -47,4 +47,25 @@ public class LlmJudgeResultTests
         var result = MakeResult(("correctness", 0.8), ("correctness", 0.5));
         Assert.False(result.AllPass("correctness", 0.7));
     }
+
+    [Fact]
+    public void AllPass_WhenCriterionAbsent_ReturnsTrue()
+    {
+        var result = MakeResult(("correctness", 0.8));
+        Assert.True(result.AllPass("relevance", 0.7));
+    }
+
+    [Fact]
+    public void AllPass_WhenScoreEqualsThreshold_ReturnsTrue()
+    {
+        var result = MakeResult(("correctness", 0.7));
+        Assert.True(result.AllPass("correctness", 0.7));
+    }
+
+    [Fact]
+    public void MeanScore_EmptySamples_ReturnsZero()
+    {
+        var result = new LlmJudgeResult([]);
+        Assert.Equal(0.0, result.MeanScore("correctness"), precision: 10);
+    }
 }
