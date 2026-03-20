@@ -11,6 +11,7 @@ using Rag.NET.Api.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Api.Client.Tests;
 
@@ -22,42 +23,7 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
 
     public HttpRagPipelineIntegrationTests()
     {
-        _mockPipeline = Substitute.For<IRagPipeline>();
-
-        _mockPipeline
-            .RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>(
-            [
-                new SearchResult
-                {
-                    Score = 0.9,
-                    Chunk = new TextChunk
-                    {
-                        Text = "chunk text",
-                        DocumentId = new DocumentId("doc-1"),
-                        ChunkIndex = 0
-                    }
-                }
-            ]));
-
-        _mockPipeline
-            .IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
-                Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 3 }));
-
-        _mockPipeline
-            .AskAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new RagResponse
-            {
-                Answer = "42",
-                Sources = []
-            }));
-
-        _mockPipeline
-            .AskStreamingAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(AsyncEnumerableOf(
-                new RagStreamingUpdate { TextDelta = "Hello" },
-                new RagStreamingUpdate { TextDelta = " World" }));
+        _mockPipeline = CreateMockPipeline();
 
 #pragma warning disable ASPDEPR004 // WebHostBuilder is deprecated in favor of HostBuilder/WebApplicationBuilder — intentional for TestServer usage
 #pragma warning disable ASPDEPR008 // TestServer(IWebHostBuilder) is deprecated — intentional for minimal test setup
@@ -83,6 +49,37 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
         _httpRagPipeline = new HttpRagPipeline(httpClient);
     }
 
+    private static IRagPipeline CreateMockPipeline()
+    {
+        var mock = Substitute.For<IRagPipeline>();
+
+        mock.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                (IReadOnlyList<SearchResult>)new List<SearchResult>
+                {
+                    new SearchResult
+                    {
+                        Score = 0.9,
+                        Chunk = new TextChunk { Text = "chunk text", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 }
+                    }
+                })));
+
+        mock.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 3 })));
+
+        mock.AskAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new RagResponse { Answer = "42", Sources = [] }));
+
+        mock.AskStreamingAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(AsyncEnumerableOf(
+                new RagStreamingUpdate { TextDelta = "Hello" },
+                new RagStreamingUpdate { TextDelta = " World" }));
+
+        return mock;
+    }
+
     public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
     public ValueTask DisposeAsync()
@@ -103,12 +100,13 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task RetrieveAsync_ReturnsResults_FromServer()
     {
-        var results = await _httpRagPipeline.RetrieveAsync("test query", cancellationToken: TestContext.Current.CancellationToken);
+        var result = await _httpRagPipeline.RetrieveAsync("test query", cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("chunk text", results[0].Chunk.Text);
-        Assert.Equal("doc-1", results[0].Chunk.DocumentId);
-        Assert.Equal(0.9, results[0].Score);
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value);
+        Assert.Equal("chunk text", result.Value[0].Chunk.Text);
+        Assert.Equal("doc-1", result.Value[0].Chunk.DocumentId);
+        Assert.Equal(0.9, result.Value[0].Score);
     }
 
     [Fact]
@@ -119,8 +117,9 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
 
         var result = await _httpRagPipeline.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("doc-1", result.DocumentId);
-        Assert.Equal(3, result.ChunksStored);
+        Assert.True(result.IsSuccess);
+        Assert.Equal("doc-1", result.Value.DocumentId);
+        Assert.Equal(3, result.Value.ChunksStored);
     }
 
     [Fact]

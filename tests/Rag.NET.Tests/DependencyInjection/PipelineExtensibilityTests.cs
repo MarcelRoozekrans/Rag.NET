@@ -58,7 +58,7 @@ public class PipelineExtensibilityTests
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
-        await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(executed, "Custom retrieval behavior should have executed");
     }
@@ -82,7 +82,7 @@ public class PipelineExtensibilityTests
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
-        await pipeline.RetrieveAsync("original-query", cancellationToken: TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("original-query", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("overridden-query", seenQuery);
     }
@@ -107,7 +107,7 @@ public class PipelineExtensibilityTests
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
-        await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(oldExecuted, "Replaced (old) behavior should NOT execute");
         Assert.True(newExecuted, "Replacement (new) behavior should execute");
@@ -129,7 +129,7 @@ public class PipelineExtensibilityTests
         var sp = services.BuildServiceProvider();
         var ingestor = sp.GetRequiredService<IIngestor>();
 
-        await ingestor.IngestAsync(
+        _ = await ingestor.IngestAsync(
             new MemoryStream("hello world"u8.ToArray()),
             new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt" },
             cancellationToken: TestContext.Current.CancellationToken);

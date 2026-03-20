@@ -5,6 +5,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.Api.Contracts;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Api.Client;
 
@@ -17,7 +18,7 @@ public sealed class HttpRagPipeline : IRagPipeline
         _httpClient = httpClient;
     }
 
-    public async Task<IngestionResult> IngestAsync(
+    public async Task<Result<IngestionResult, RagError>> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
         IngestionOptions? options = null,
@@ -40,14 +41,14 @@ public sealed class HttpRagPipeline : IRagPipeline
         response.EnsureSuccessStatusCode();
 
         var ingestResponse = await response.Content.ReadFromJsonAsync<IngestResponse>(cancellationToken).ConfigureAwait(false);
-        return new IngestionResult
+        return Result<IngestionResult, RagError>.Success(new IngestionResult
         {
             DocumentId = new DocumentId(ingestResponse!.DocumentId),
             ChunksStored = ingestResponse.ChunksStored
-        };
+        });
     }
 
-    public async Task<IReadOnlyList<SearchResult>> RetrieveAsync(
+    public async Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
         string query,
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -63,7 +64,8 @@ public sealed class HttpRagPipeline : IRagPipeline
         response.EnsureSuccessStatusCode();
 
         var retrieveResponse = await response.Content.ReadFromJsonAsync<RetrieveResponse>(cancellationToken).ConfigureAwait(false);
-        return retrieveResponse!.Results.Select(MapToSearchResult).ToList();
+        return Result<IReadOnlyList<SearchResult>, RagError>.Success(
+            retrieveResponse!.Results.Select(MapToSearchResult).ToList());
     }
 
     public async Task<RagResponse> AskAsync(

@@ -3,6 +3,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using ZeroAlloc.Inject;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Ingestion;
 
@@ -21,13 +22,16 @@ public sealed class PipelineIngestor : IIngestor
 
     private int _nextBm25DocId;
 
-    public Task<IngestionResult> IngestAsync(
+    public async Task<Result<IngestionResult, RagError>> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
         IngestionOptions? options = null,
         IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        if (!document.CanRead)
+            return Result<IngestionResult, RagError>.Failure(new RagError.NonSeekableStream());
+
         var ctx = new IngestionContext
         {
             Stream = document,
@@ -37,7 +41,20 @@ public sealed class PipelineIngestor : IIngestor
             GetNextBm25DocId = () => System.Threading.Interlocked.Increment(ref _nextBm25DocId),
         };
 
-        return Pipeline.ExecuteAsync(ctx, cancellationToken).AsTask();
+        try
+        {
+            var result = await Pipeline.ExecuteAsync(ctx, cancellationToken).ConfigureAwait(false);
+            return Result<IngestionResult, RagError>.Success(result);
+        }
+        catch (NoParserFoundException ex)
+        {
+            return Result<IngestionResult, RagError>.Failure(new RagError.NoParserFound(ex.ContentType));
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return Result<IngestionResult, RagError>.Failure(new RagError.StorageFailed(ex));
+        }
     }
 
     public async Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)

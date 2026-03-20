@@ -1,5 +1,6 @@
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Abstractions;
 
@@ -9,7 +10,7 @@ namespace Rag.NET.Abstractions;
 /// </summary>
 public interface IRetriever
 {
-    Task<IReadOnlyList<SearchResult>> RetrieveAsync(
+    Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
         string query,
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default);

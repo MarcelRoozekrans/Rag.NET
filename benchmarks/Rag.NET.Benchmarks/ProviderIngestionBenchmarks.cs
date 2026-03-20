@@ -4,6 +4,7 @@ using Rag.NET.DataProviders;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Storage;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Benchmarks;
 
@@ -91,19 +92,21 @@ public class ProviderIngestionBenchmarks
 
     private sealed class NoOpRagPipeline : IRagPipeline
     {
-        public Task<IngestionResult> IngestAsync(
+        public Task<Result<IngestionResult, RagError>> IngestAsync(
             Stream document,
             DocumentMetadata metadata,
             IngestionOptions? options = null,
             IProgress<IngestionProgress>? progress = null,
             CancellationToken cancellationToken = default)
-            => Task.FromResult(new IngestionResult { DocumentId = metadata.DocumentId, ChunksStored = 1 });
+            => Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = metadata.DocumentId, ChunksStored = 1 }));
 
-        public Task<IReadOnlyList<SearchResult>> RetrieveAsync(
+        public Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
             string query,
             RetrievalOptions? options = null,
             CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<SearchResult>>([]);
+            => Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                (IReadOnlyList<SearchResult>)[]));
 
         public Task<RagResponse> AskAsync(
             string query,

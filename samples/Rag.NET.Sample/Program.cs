@@ -105,7 +105,7 @@ try
 
             using var stream = File.OpenRead(file);
             var result = await pipeline.IngestAsync(stream, metadata);
-            Console.WriteLine($"  {fileName}: {result.ChunksStored} chunks stored");
+            Console.WriteLine($"  {fileName}: {(result.IsSuccess ? result.Value.ChunksStored : 0)} chunks stored");
         }
     }
 

@@ -5,6 +5,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using ZeroAlloc.Inject;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Retrieval;
 
@@ -18,7 +19,7 @@ public sealed class PipelineRetriever : IRetriever
     [Inject] public Pipeline<RetrievalContext, IReadOnlyList<SearchResult>> Pipeline { get; set; } = null!;
     [Inject(Required = false)] public ILogger<PipelineRetriever>? Logger { get; set; }
 
-    public Task<IReadOnlyList<SearchResult>> RetrieveAsync(
+    public async Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
         string query,
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -30,6 +31,15 @@ public sealed class PipelineRetriever : IRetriever
             Logger = (ILogger?)Logger ?? NullLogger.Instance,
         };
 
-        return Pipeline.ExecuteAsync(ctx, cancellationToken).AsTask();
+        try
+        {
+            var result = await Pipeline.ExecuteAsync(ctx, cancellationToken).ConfigureAwait(false);
+            return Result<IReadOnlyList<SearchResult>, RagError>.Success(result);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(ex));
+        }
     }
 }

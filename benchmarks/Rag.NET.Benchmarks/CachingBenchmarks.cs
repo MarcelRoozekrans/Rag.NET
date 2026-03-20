@@ -7,6 +7,7 @@ using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Benchmarks;
 
@@ -47,10 +48,10 @@ public class CachingBenchmarks
         _pipeline = _sp.GetRequiredService<IRagPipeline>();
 
         using var stream = new MemoryStream(_documentData);
-        await _pipeline.IngestAsync(stream, Metadata);
+        _ = await _pipeline.IngestAsync(stream, Metadata);
 
         // Warm the cache
-        await _pipeline.RetrieveAsync("quick brown fox", new RetrievalOptions { TopK = 5 });
+        _ = await _pipeline.RetrieveAsync("quick brown fox", new RetrievalOptions { TopK = 5 });
     }
 
     [GlobalCleanup]
@@ -62,7 +63,7 @@ public class CachingBenchmarks
         var results = await _pipeline.RetrieveAsync(
             $"quick brown fox {Random.Shared.Next()}", // unique query = cache miss
             new RetrievalOptions { TopK = 5, UseCacheResult = false, UseCacheEmbedding = false });
-        return results.Count;
+        return results.IsSuccess ? results.Value.Count : 0;
     }
 
     [Benchmark]
@@ -73,7 +74,7 @@ public class CachingBenchmarks
         var results = await _pipeline.RetrieveAsync(
             "quick brown fox",
             new RetrievalOptions { TopK = 5, UseCacheResult = false });
-        return results.Count;
+        return results.IsSuccess ? results.Value.Count : 0;
     }
 
     [Benchmark]
@@ -82,7 +83,7 @@ public class CachingBenchmarks
         var results = await _pipeline.RetrieveAsync(
             "quick brown fox",
             new RetrievalOptions { TopK = 5 });
-        return results.Count;
+        return results.IsSuccess ? results.Value.Count : 0;
     }
 
     private static string GenerateText(int approximateLength)

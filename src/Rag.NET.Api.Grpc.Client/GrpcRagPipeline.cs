@@ -4,12 +4,13 @@ using Rag.NET.Abstractions;
 using Rag.NET.Api.Grpc.Proto;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Api.Grpc.Client;
 
 public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IRagPipeline
 {
-    public async Task<IngestionResult> IngestAsync(
+    public async Task<Result<IngestionResult, RagError>> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
         IngestionOptions? options = null,
@@ -32,14 +33,14 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
 
         var response = await grpcClient.IngestAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        return new IngestionResult
+        return Result<IngestionResult, RagError>.Success(new IngestionResult
         {
             DocumentId = new DocumentId(response.DocumentId),
             ChunksStored = response.ChunksStored
-        };
+        });
     }
 
-    public async Task<IReadOnlyList<SearchResult>> RetrieveAsync(
+    public async Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
         string query,
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -53,7 +54,8 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
 
         var response = await grpcClient.RetrieveAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        return response.Results.Select(ToSearchResult).ToList();
+        return Result<IReadOnlyList<SearchResult>, RagError>.Success(
+            response.Results.Select(ToSearchResult).ToList());
     }
 
     public async Task<RagResponse> AskAsync(

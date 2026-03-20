@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders;
 
@@ -81,7 +82,9 @@ public static class RagPipelineExtensions
                 if (hashStore is null)
                 {
                     var metadata = BuildMetadata(entry, baseMetadata);
-                    await pipeline.IngestAsync(rawStream, metadata, options, progress, cancellationToken).ConfigureAwait(false);
+                    var ingestResult = await pipeline.IngestAsync(rawStream, metadata, options, progress, cancellationToken).ConfigureAwait(false);
+                    if (!ingestResult.IsSuccess)
+                        throw new InvalidOperationException($"Ingestion failed: {ingestResult.Error}");
                     return EntryOutcome.Ingested;
                 }
 
@@ -122,7 +125,9 @@ public static class RagPipelineExtensions
 
         buffer.Position = 0;
         var metadata = BuildMetadata(entry, baseMetadata);
-        await pipeline.IngestAsync(buffer, metadata, options, progress, cancellationToken).ConfigureAwait(false);
+        var ingestResult = await pipeline.IngestAsync(buffer, metadata, options, progress, cancellationToken).ConfigureAwait(false);
+        if (!ingestResult.IsSuccess)
+            throw new InvalidOperationException($"Ingestion failed: {ingestResult.Error}");
         await hashStore.SetAsync(providerId, entry.Id, entry.ETag, hash, cancellationToken).ConfigureAwait(false);
         return EntryOutcome.Ingested;
     }

@@ -36,14 +36,18 @@ public static class EndpointRouteBuilderExtensions
             };
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(req.Content));
             var result = await pipeline.IngestAsync(stream, metadata, cancellationToken: ct).ConfigureAwait(false);
-            return Results.Ok(new IngestResponse(result.DocumentId, result.ChunksStored));
+            return result.IsSuccess
+                ? Results.Ok(new IngestResponse(result.Value.DocumentId.ToString(), result.Value.ChunksStored))
+                : MapRagError(result.Error);
         });
 
         app.MapPost($"{prefix}/retrieve", async (RetrieveRequest req, IRagPipeline pipeline, CancellationToken ct) =>
         {
             var retrievalOptions = new RetrievalOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
-            var results = await pipeline.RetrieveAsync(req.Query, retrievalOptions, ct).ConfigureAwait(false);
-            return Results.Ok(new RetrieveResponse(results.Select(SearchResultMapper.ToDto).ToList()));
+            var result = await pipeline.RetrieveAsync(req.Query, retrievalOptions, ct).ConfigureAwait(false);
+            return result.IsSuccess
+                ? Results.Ok(new RetrieveResponse(result.Value.Select(SearchResultMapper.ToDto).ToList()))
+                : MapRagError(result.Error);
         });
 
         app.MapPost($"{prefix}/ask", async (AskRequest req, IRagPipeline pipeline, CancellationToken ct) =>
@@ -71,4 +75,13 @@ public static class EndpointRouteBuilderExtensions
 
         return app;
     }
+
+    private static IResult MapRagError(RagError err) => err switch
+    {
+        RagError.ValidationFailed v => Results.UnprocessableEntity(new { errors = v.Failures.Select(f => new { f.PropertyName, f.ErrorMessage }) }),
+        RagError.NoParserFound n    => Results.BadRequest(new { error = $"No parser for content type: {n.ContentType}" }),
+        RagError.NonSeekableStream  => Results.BadRequest(new { error = "Document stream is not readable." }),
+        RagError.StorageFailed s    => Results.Problem($"Storage error: {s.Inner.Message}"),
+        _                           => Results.StatusCode(500),
+    };
 }

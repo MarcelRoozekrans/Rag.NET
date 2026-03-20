@@ -12,6 +12,7 @@ using Rag.NET.Api.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Api.Tests.Integration;
 
@@ -26,11 +27,13 @@ public sealed class RagApiIntegrationTests : IAsyncLifetime
         var pipeline = Substitute.For<IRagPipeline>();
         pipeline.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([]));
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                (IReadOnlyList<SearchResult>)Array.Empty<SearchResult>())));
         pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
                 Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 1 }));
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("doc-1"), ChunksStored = 1 })));
 
 #pragma warning disable ASPDEPR004 // WebHostBuilder is deprecated in favor of HostBuilder/WebApplicationBuilder — intentional for TestServer usage
 #pragma warning disable ASPDEPR008 // TestServer(IWebHostBuilder) is deprecated — intentional for minimal test setup

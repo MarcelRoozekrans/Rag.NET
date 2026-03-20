@@ -73,7 +73,7 @@ public class ServiceCollectionExtensionsTests
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
-        await pipeline.RetrieveAsync("query", new RetrievalOptions { UseReranking = true }, TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("query", new RetrievalOptions { UseReranking = true }, TestContext.Current.CancellationToken);
 
         await reranker.Received(1).RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>());
     }
@@ -101,7 +101,7 @@ public class ServiceCollectionExtensionsTests
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
-        await pipeline.RetrieveAsync("query", new RetrievalOptions { UseMultiQuery = true }, TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("query", new RetrievalOptions { UseMultiQuery = true }, TestContext.Current.CancellationToken);
 
         await queryExpander.Received(1).ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
@@ -130,7 +130,7 @@ public class ServiceCollectionExtensionsTests
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
-        await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
 
         await hydeGenerator.Received(1).GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
@@ -176,7 +176,7 @@ public class ServiceCollectionExtensionsTests
             UseHyde = true,
         };
 
-        await pipeline.RetrieveAsync("query", opts, TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("query", opts, TestContext.Current.CancellationToken);
 
         await hydeGenerator.Received().GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
         await queryExpander.Received(1).ExpandAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
@@ -202,8 +202,8 @@ public class ServiceCollectionExtensionsTests
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
-        await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
-        await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
 
         // Second call should be cached — embedder called only once
         await embedder.Received(1).GenerateAsync(
@@ -229,8 +229,8 @@ public class ServiceCollectionExtensionsTests
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
-        await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
-        await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+        _ = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
 
         // Without caching, embedder should be called twice
         await embedder.Received(2).GenerateAsync(
@@ -290,10 +290,11 @@ public class ServiceCollectionExtensionsTests
         parentStore.Add("doc1", 0, "large parent context text");
 
         var pipeline = sp.GetRequiredService<IRagPipeline>();
-        var results = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+        var result = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("large parent context text", results[0].Chunk.Text);
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value);
+        Assert.Equal("large parent context text", result.Value[0].Chunk.Text);
     }
 
     [Fact]
@@ -324,10 +325,11 @@ public class ServiceCollectionExtensionsTests
 
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
-        var results = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+        var result = await pipeline.RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("small child", results[0].Chunk.Text);
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value);
+        Assert.Equal("small child", result.Value[0].Chunk.Text);
     }
 
     [Fact]
@@ -361,7 +363,7 @@ public class ServiceCollectionExtensionsTests
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
 
-        await pipeline.RetrieveAsync("query", new RetrievalOptions { UseMmr = true },
+        _ = await pipeline.RetrieveAsync("query", new RetrievalOptions { UseMmr = true },
             TestContext.Current.CancellationToken);
 
         // With UseMmr=true: embedder called once for vector search + once for query embedding in MMR
@@ -393,7 +395,7 @@ public class ServiceCollectionExtensionsTests
 
             // Ingest a chunk — this should write to SQLite
             var ingestor1 = sp1.GetRequiredService<IIngestor>();
-            await ingestor1.IngestAsync(
+            _ = await ingestor1.IngestAsync(
                 new MemoryStream(System.Text.Encoding.UTF8.GetBytes("hello world")),
                 new Rag.NET.Models.DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt" },
                 cancellationToken: ct);
@@ -441,7 +443,7 @@ public class ServiceCollectionExtensionsTests
             services1.AddRagNet(b => b.UseSqlitePersistence(dbPath, "collection-A"));
             var sp1 = services1.BuildServiceProvider();
             var ingestor1 = sp1.GetRequiredService<IIngestor>();
-            await ingestor1.IngestAsync(
+            _ = await ingestor1.IngestAsync(
                 new MemoryStream(System.Text.Encoding.UTF8.GetBytes("hello world")),
                 new Rag.NET.Models.DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.txt" },
                 cancellationToken: ct);
@@ -520,9 +522,10 @@ public class ServiceCollectionExtensionsTests
 
         var pipeline = sp.GetRequiredService<IRagPipeline>();
         var opts = new RetrievalOptions { UseParentDocument = false };
-        var results = await pipeline.RetrieveAsync("query", opts, TestContext.Current.CancellationToken);
+        var result = await pipeline.RetrieveAsync("query", opts, TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("small child", results[0].Chunk.Text);
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value);
+        Assert.Equal("small child", result.Value[0].Chunk.Text);
     }
 }

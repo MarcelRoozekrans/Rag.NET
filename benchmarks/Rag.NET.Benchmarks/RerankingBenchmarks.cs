@@ -7,6 +7,7 @@ using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Benchmarks;
 
@@ -49,7 +50,7 @@ public class RerankingBenchmarks
             _pipeline = _spWithReranker.GetRequiredService<IRagPipeline>();
 
             using var stream1 = new MemoryStream(documentData);
-            await _pipeline.IngestAsync(stream1, metadata).ConfigureAwait(false);
+            _ = await _pipeline.IngestAsync(stream1, metadata).ConfigureAwait(false);
         }
 
         // Pipeline without reranking
@@ -63,7 +64,7 @@ public class RerankingBenchmarks
             _pipelineNoReranker = _spNoReranker.GetRequiredService<IRagPipeline>();
 
             using var stream2 = new MemoryStream(documentData);
-            await _pipelineNoReranker.IngestAsync(stream2, metadata).ConfigureAwait(false);
+            _ = await _pipelineNoReranker.IngestAsync(stream2, metadata).ConfigureAwait(false);
         }
     }
 
@@ -75,22 +76,24 @@ public class RerankingBenchmarks
     }
 
     [Benchmark(Baseline = true)]
-    public async Task<IReadOnlyList<SearchResult>> RetrieveAsync_NoReranking()
+    public async Task<int> RetrieveAsync_NoReranking()
     {
-        return await _pipelineNoReranker.RetrieveAsync("test query", new RetrievalOptions
+        var result = await _pipelineNoReranker.RetrieveAsync("test query", new RetrievalOptions
         {
             TopK = TopK,
         }).ConfigureAwait(false);
+        return result.IsSuccess ? result.Value.Count : 0;
     }
 
     [Benchmark]
-    public async Task<IReadOnlyList<SearchResult>> RetrieveAsync_WithReranking()
+    public async Task<int> RetrieveAsync_WithReranking()
     {
-        return await _pipeline.RetrieveAsync("test query", new RetrievalOptions
+        var result = await _pipeline.RetrieveAsync("test query", new RetrievalOptions
         {
             TopK = TopK,
             CandidateCount = TopK * 3,
         }).ConfigureAwait(false);
+        return result.IsSuccess ? result.Value.Count : 0;
     }
 
     private static string GenerateText(int approximateLength)

@@ -74,7 +74,7 @@ public class ParseBehaviorTests
         var sut = MakeSut(parser);
         var ctx = MakeContext(contentType: "application/pdf");
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsAsync<NoParserFoundException>(
             () => sut.HandleAsync(ctx, ct, StubNext).AsTask());
 
         Assert.Contains("application/pdf", ex.Message, StringComparison.Ordinal);

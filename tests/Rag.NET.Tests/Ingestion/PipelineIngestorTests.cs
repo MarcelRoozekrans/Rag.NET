@@ -47,8 +47,9 @@ public class PipelineIngestorTests
         Assert.NotNull(capturedCtx);
         Assert.Same(stream, capturedCtx!.Stream);
         Assert.Same(metadata, capturedCtx.Metadata);
-        Assert.Equal("doc-1", result.DocumentId);
-        Assert.Equal(3, result.ChunksStored);
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new DocumentId("doc-1"), result.Value.DocumentId);
+        Assert.Equal(3, result.Value.ChunksStored);
     }
 
     [Fact]
@@ -91,8 +92,8 @@ public class PipelineIngestorTests
         var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "f.txt" };
         var ct = TestContext.Current.CancellationToken;
 
-        await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);
-        await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);
+        _ = await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);
+        _ = await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: ct);
 
         // Across two calls, the IDs should monotonically increase (thread-safe Interlocked.Increment)
         Assert.Equal(4, capturedIds.Count);

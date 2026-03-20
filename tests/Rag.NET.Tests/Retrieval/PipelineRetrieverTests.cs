@@ -29,7 +29,7 @@ public class PipelineRetrieverTests
         var sut = CreateSut(pipeline);
         var options = new RetrievalOptions { TopK = 5 };
 
-        await sut.RetrieveAsync("my query", options, TestContext.Current.CancellationToken);
+        _ = await sut.RetrieveAsync("my query", options, TestContext.Current.CancellationToken);
 
         Assert.NotNull(capturedCtx);
         Assert.Equal("my query", capturedCtx!.Query);
@@ -46,7 +46,7 @@ public class PipelineRetrieverTests
             return ValueTask.FromResult<IReadOnlyList<SearchResult>>([]);
         }));
 
-        await sut.RetrieveAsync("q", null, TestContext.Current.CancellationToken);
+        _ = await sut.RetrieveAsync("q", null, TestContext.Current.CancellationToken);
 
         Assert.NotNull(captured);
         Assert.NotNull(captured!.Options);
