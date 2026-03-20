@@ -4,4 +4,5 @@ namespace Rag.NET.Evaluation;
 public sealed record EvaluationSample(
     string Question,
     string PredictedAnswer,
-    string ReferenceAnswer);
+    string ReferenceAnswer,
+    IReadOnlyList<string>? SourceChunks = null);
