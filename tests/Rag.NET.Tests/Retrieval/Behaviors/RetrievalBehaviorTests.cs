@@ -310,7 +310,6 @@ public class RetrievalBehaviorTests
         var ct = TestContext.Current.CancellationToken;
         var vectorStore = Substitute.For<IVectorStore>();
         var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
-        var bm25Index = new InMemoryBm25Index();
 
         var queryEmbedding = new Embedding<float>(new float[] { 0.1f, 0.2f });
         var expected = MakeResult("doc-1", 0, 0.95);
@@ -325,7 +324,6 @@ public class RetrievalBehaviorTests
         {
             VectorStore = vectorStore,
             Embedder = embedder,
-            Bm25Index = bm25Index,
         };
 
         var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = false });
@@ -333,5 +331,33 @@ public class RetrievalBehaviorTests
 
         Assert.Single(output);
         Assert.Equal(0.95, output[0].Score);
+    }
+
+    [Fact]
+    public async Task VectorStore_WhenHybridSearch_PerformsDenseOnlySearch()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        var queryEmbedding = new Embedding<float>(new float[] { 0.1f, 0.2f });
+        var expected = MakeResult("doc-1", 0, 0.95);
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { expected });
+
+        var sut = new VectorStoreBehavior
+        {
+            VectorStore = vectorStore,
+            Embedder = embedder,
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
+
+        Assert.Single(output);
+        await vectorStore.Received(1).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
     }
 }

@@ -25,6 +25,7 @@ public class RetrievalOptionsTests
             UseHybridSearch = true,
             UseReranking = false,
             RedundancyThreshold = 0.8f,
+            EnsembleOptions = new EnsembleOptions { K = 30 },
         };
         var modified = original with { TopK = 15 };
 
@@ -32,5 +33,7 @@ public class RetrievalOptionsTests
         Assert.True(modified.UseHybridSearch);
         Assert.False(modified.UseReranking);
         Assert.Equal(0.8f, modified.RedundancyThreshold);
+        Assert.NotNull(modified.EnsembleOptions);
+        Assert.Equal(30, modified.EnsembleOptions.K);
     }
 }

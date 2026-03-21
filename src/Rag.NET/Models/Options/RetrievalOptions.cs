@@ -12,6 +12,13 @@ public sealed record RetrievalOptions
     public double MinScore { get; init; } = 0.0;
     public IDictionary<string, string>? MetadataFilter { get; init; }
     public bool UseHybridSearch { get; init; }
+
+    /// <summary>
+    /// Per-retriever weights and k for RRF hybrid search.
+    /// Null applies defaults (0.5 / 0.5 / 60). Only used when <see cref="UseHybridSearch"/> is true.
+    /// </summary>
+    public EnsembleOptions? EnsembleOptions { get; init; }
+
     public bool UseLostInTheMiddleReordering { get; init; }
     public bool UseRedundancyFilter { get; init; }
     public float RedundancyThreshold { get; init; } = 0.95f;

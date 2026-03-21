@@ -1,4 +1,5 @@
 using Rag.NET.Models;
+using Rag.NET.Models.Options;
 
 namespace Rag.NET.Search;
 
@@ -35,6 +36,50 @@ internal static class RrfMerger
             var chunk = bm25Hits[rank].chunk;
             var key = (chunk.DocumentId, chunk.ChunkIndex);
             var contrib = 1.0 / (K + rank + 1);
+            rrfScores[key] = rrfScores.TryGetValue(key, out var s) ? s + contrib : contrib;
+            chunkLookup.TryAdd(key, chunk);
+        }
+
+        var sorted = new List<(double score, TextChunk chunk)>(rrfScores.Count);
+        foreach (var (key, score) in rrfScores)
+            sorted.Add((score, chunkLookup[key]));
+
+        sorted.Sort(static (a, b) => b.score.CompareTo(a.score));
+
+        var count = Math.Min(topK, sorted.Count);
+        var result = new List<SearchResult>(count);
+        for (int i = 0; i < count; i++)
+            result.Add(new SearchResult { Chunk = sorted[i].chunk, Score = sorted[i].score });
+
+        return result;
+    }
+
+    internal static IReadOnlyList<SearchResult> Merge(
+        IReadOnlyList<SearchResult> dense,
+        IReadOnlyList<(TextChunk chunk, double score)> bm25Hits,
+        int topK,
+        EnsembleOptions options)
+    {
+        if (topK <= 0) return [];
+        var k = Math.Max(1, options.K);
+
+        var rrfScores = new Dictionary<(string docId, int chunkIndex), double>();
+        var chunkLookup = new Dictionary<(string docId, int chunkIndex), TextChunk>();
+
+        for (int rank = 0; rank < dense.Count; rank++)
+        {
+            var chunk = dense[rank].Chunk;
+            var key = (chunk.DocumentId, chunk.ChunkIndex);
+            var contrib = options.DenseWeight / (k + rank + 1);
+            rrfScores[key] = rrfScores.TryGetValue(key, out var s) ? s + contrib : contrib;
+            chunkLookup.TryAdd(key, chunk);
+        }
+
+        for (int rank = 0; rank < bm25Hits.Count; rank++)
+        {
+            var chunk = bm25Hits[rank].chunk;
+            var key = (chunk.DocumentId, chunk.ChunkIndex);
+            var contrib = options.Bm25Weight / (k + rank + 1);
             rrfScores[key] = rrfScores.TryGetValue(key, out var s) ? s + contrib : contrib;
             chunkLookup.TryAdd(key, chunk);
         }
