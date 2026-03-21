@@ -37,6 +37,9 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
         var initialPrompt = refineOpts.InitialPromptTemplate ?? DefaultInitialPrompt;
         var refinePrompt = refineOpts.RefinePromptTemplate ?? DefaultRefinePrompt;
 
+        if (sources.Count == 0)
+            return new RagResponse { Answer = string.Empty, Sources = sources };
+
         // Initial call on first chunk — always propagates on failure
         var firstChunk = sources[0];
         var initialText = initialPrompt
