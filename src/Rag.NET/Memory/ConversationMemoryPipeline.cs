@@ -1,19 +1,26 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.ML.Tokenizers;
 using Rag.NET.Abstractions;
+using Rag.NET.Logging;
 using Rag.NET.Models.Options;
 
 namespace Rag.NET.Memory;
 
 /// <summary>
 /// Applies sliding-window and token-budget strategies to trim conversation history.
-/// Strategies are applied in order: sliding window first, then token budget.
+/// Strategies are applied in order: sliding window first, then token budget, then optional summary.
 /// System messages are always preserved.
 /// </summary>
 public sealed class ConversationMemoryPipeline : IConversationMemory
 {
+    private const string DefaultSummaryPrompt =
+        "Summarize the following conversation concisely, preserving key facts and context:\n\n{messages}";
+
     private readonly ConversationMemoryOptions _options;
     private readonly IChatClient? _chatClient;
+    private readonly ILogger _logger;
     private readonly Tokenizer _tokenizer;
 
     /// <summary>
@@ -22,22 +29,25 @@ public sealed class ConversationMemoryPipeline : IConversationMemory
     /// </summary>
     public IReadOnlyList<ChatMessage> TrimmedMessages { get; private set; } = [];
 
-    public ConversationMemoryPipeline(ConversationMemoryOptions options, IChatClient? chatClient)
+    public ConversationMemoryPipeline(ConversationMemoryOptions options, IChatClient? chatClient, ILogger<ConversationMemoryPipeline>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         _options = options;
         _chatClient = chatClient;
+        _logger = logger ?? NullLogger<ConversationMemoryPipeline>.Instance;
         _tokenizer = TiktokenTokenizer.CreateForModel("gpt-4");
     }
 
-    public Task<IReadOnlyList<ChatMessage>> ProcessAsync(
+    public async Task<IReadOnlyList<ChatMessage>> ProcessAsync(
         IReadOnlyList<ChatMessage> history,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (history.Count == 0)
         {
             TrimmedMessages = [];
-            return Task.FromResult<IReadOnlyList<ChatMessage>>([]);
+            return [];
         }
 
         var result = new List<ChatMessage>(history);
@@ -60,7 +70,46 @@ public sealed class ConversationMemoryPipeline : IConversationMemory
         }
 
         TrimmedMessages = allTrimmed;
-        return Task.FromResult<IReadOnlyList<ChatMessage>>(result);
+
+        // Step 3: Summary
+        if (_options.UseSummary && allTrimmed.Count > 0 && _chatClient is not null)
+        {
+            var summary = await GenerateSummaryAsync(allTrimmed, cancellationToken).ConfigureAwait(false);
+            if (summary is not null)
+            {
+                result.Insert(0, new ChatMessage(ChatRole.System, $"Summary of earlier conversation: {summary}"));
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<string?> GenerateSummaryAsync(
+        List<ChatMessage> trimmedMessages, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var formatted = string.Join("\n", trimmedMessages.Select(m => $"{m.Role}: {m.Text}"));
+            var template = _options.SummaryPromptTemplate ?? DefaultSummaryPrompt;
+            var prompt = template.Replace("{messages}", formatted);
+
+            var messages = new List<ChatMessage>
+            {
+                new(ChatRole.User, prompt),
+            };
+
+            var response = await _chatClient!.GetResponseAsync(messages, options: null, cancellationToken).ConfigureAwait(false);
+            return response.Text;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            RagPipelineLog.ConversationSummaryFailed(_logger, ex);
+            return null;
+        }
     }
 
     private static (List<ChatMessage> Kept, List<ChatMessage> Trimmed) ApplySlidingWindow(

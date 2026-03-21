@@ -1,4 +1,6 @@
 using Microsoft.Extensions.AI;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Rag.NET.Memory;
 using Rag.NET.Models.Options;
 using Xunit;
@@ -135,5 +137,103 @@ public class ConversationMemoryTests
         // Should be fewer than 6 (window) and fewer than original 10
         Assert.True(result.Count < 6);
         Assert.True(result[^1].Text?.Contains("Answer 5", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Summary_WhenTrimmedMessages_PrependsSummarySystemMessage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "Summary of old conversation.")));
+
+        var opts = new ConversationMemoryOptions { MaxExchanges = 1, UseSummary = true };
+        var sut = new ConversationMemoryPipeline(opts, chatClient);
+        var history = new List<ChatMessage>
+        {
+            new(ChatRole.User, "Q1"), new(ChatRole.Assistant, "A1"),
+            new(ChatRole.User, "Q2"), new(ChatRole.Assistant, "A2"),
+        };
+
+        var result = await sut.ProcessAsync(history, ct);
+
+        // Should have: summary system message + last exchange (Q2, A2) = 3 messages
+        Assert.Equal(3, result.Count);
+        Assert.Equal(ChatRole.System, result[0].Role);
+        Assert.True(result[0].Text!.Contains("Summary", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Summary_LlmFails_ReturnsTrimmedWithoutSummary()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("LLM down"));
+
+        var opts = new ConversationMemoryOptions { MaxExchanges = 1, UseSummary = true };
+        var sut = new ConversationMemoryPipeline(opts, chatClient);
+        var history = MakeExchanges(3);
+
+        var result = await sut.ProcessAsync(history, ct);
+
+        // Should still work — just no summary prepended
+        Assert.Equal(2, result.Count); // last exchange only, no summary
+    }
+
+    [Fact]
+    public async Task Summary_NoTrimmedMessages_SkipsSummaryCall()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var chatClient = Substitute.For<IChatClient>();
+
+        var opts = new ConversationMemoryOptions { MaxExchanges = 10, UseSummary = true };
+        var sut = new ConversationMemoryPipeline(opts, chatClient);
+        var history = MakeExchanges(2); // well within window
+
+        var result = await sut.ProcessAsync(history, ct);
+
+        await chatClient.DidNotReceive().GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Summary_CustomPromptTemplate_UsedInLlmCall()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "Custom summary.")));
+
+        var opts = new ConversationMemoryOptions
+        {
+            MaxExchanges = 1,
+            UseSummary = true,
+            SummaryPromptTemplate = "Summarize this chat: {messages}",
+        };
+        var sut = new ConversationMemoryPipeline(opts, chatClient);
+        var history = MakeExchanges(3);
+
+        _ = await sut.ProcessAsync(history, ct);
+
+        await chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Text != null && m.Text.Contains("Summarize this chat", StringComparison.Ordinal))),
+            Arg.Any<ChatOptions?>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Summary_OperationCanceled_Propagates()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var chatClient = Substitute.For<IChatClient>();
+        var opts = new ConversationMemoryOptions { MaxExchanges = 1, UseSummary = true };
+        var sut = new ConversationMemoryPipeline(opts, chatClient);
+        var history = MakeExchanges(3);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => sut.ProcessAsync(history, cts.Token));
     }
 }
