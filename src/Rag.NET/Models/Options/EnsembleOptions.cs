@@ -20,7 +20,7 @@ public sealed class EnsembleOptions
 
     /// <summary>
     /// The rank constant used in the Reciprocal Rank Fusion denominator formula:
-    /// <c>weight / (k + rank)</c>. A higher value reduces the impact of rank differences
+    /// <c>weight / (k + rank + 1)</c>. A higher value reduces the impact of rank differences
     /// between candidate lists. The value <c>60</c> is the canonical default recommended
     /// by Cormack et al. (2009) and has been shown to perform well across diverse corpora.
     /// Defaults to <c>60</c>.
