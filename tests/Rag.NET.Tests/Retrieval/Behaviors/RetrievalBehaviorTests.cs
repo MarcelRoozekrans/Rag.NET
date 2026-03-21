@@ -334,12 +334,11 @@ public class RetrievalBehaviorTests
     }
 
     [Fact]
-    public async Task VectorStore_WhenHybridSearch_DoesNotCallBm25_PerformsDenseOnly()
+    public async Task VectorStore_WhenHybridSearch_PerformsDenseOnlySearch()
     {
         var ct = TestContext.Current.CancellationToken;
         var vectorStore = Substitute.For<IVectorStore>();
         var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
-        var bm25Index = Substitute.For<IBm25Index>();
 
         var queryEmbedding = new Embedding<float>(new float[] { 0.1f, 0.2f });
         var expected = MakeResult("doc-1", 0, 0.95);
@@ -359,6 +358,6 @@ public class RetrievalBehaviorTests
         var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
 
         Assert.Single(output);
-        bm25Index.DidNotReceive().Search(Arg.Any<string>(), Arg.Any<int>());
+        await vectorStore.Received(1).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
     }
 }
