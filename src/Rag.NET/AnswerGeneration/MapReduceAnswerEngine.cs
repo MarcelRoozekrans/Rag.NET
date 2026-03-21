@@ -12,7 +12,7 @@ namespace Rag.NET.AnswerGeneration;
 /// Executes one LLM call per source chunk in parallel (map), filters "not found" responses,
 /// then combines surviving partials in a single reduce call.
 /// </summary>
-public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapReduceAnswerEngine> logger) : IAnswerEngine
+public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapReduceAnswerEngine> logger, IConversationMemory? memory = null) : IAnswerEngine
 {
     private const string DefaultMapPrompt =
         "Using only the following text, answer this question as best you can.\n" +
@@ -37,10 +37,13 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         var mapPrompt = mrOpts.MapPromptTemplate ?? DefaultMapPrompt;
         var reducePrompt = mrOpts.ReducePromptTemplate ?? DefaultReducePrompt;
 
+        // Process conversation history once, then reuse across map/reduce calls
+        var processedHistory = await ProcessHistoryAsync(opts, cancellationToken).ConfigureAwait(false);
+
         // Map step — parallel, bounded by MapConcurrency (clamped to at least 1)
         var concurrency = Math.Max(1, mrOpts.MapConcurrency);
         using var semaphore = new SemaphoreSlim(concurrency, concurrency);
-        var mapTasks = sources.Select(source => MapOneAsync(source, query, mapPrompt, chatOptions, opts, semaphore, cancellationToken));
+        var mapTasks = sources.Select(source => MapOneAsync(source, query, mapPrompt, chatOptions, opts, processedHistory, semaphore, cancellationToken));
         var mapResults = await Task.WhenAll(mapTasks).ConfigureAwait(false);
 
         var partials = mapResults
@@ -53,7 +56,7 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
             .Replace("{partials}", string.Join("\n\n---\n\n", partials!))
             .Replace("{query}", query);
 
-        var reduceMessages = BuildMessages(reduceText, opts);
+        var reduceMessages = BuildMessages(reduceText, opts, processedHistory);
         var reduceResponse = await chatClient.GetResponseAsync(reduceMessages, chatOptions, cancellationToken).ConfigureAwait(false);
 
         return new RagResponse
@@ -81,6 +84,7 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         string mapPromptTemplate,
         ChatOptions chatOptions,
         RagOptions opts,
+        IReadOnlyList<ChatMessage>? processedHistory,
         SemaphoreSlim semaphore,
         CancellationToken cancellationToken)
     {
@@ -94,7 +98,7 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
                 .Replace("{chunk}", source.Chunk.Text)
                 .Replace("{query}", query);
 
-            var messages = BuildMessages(prompt, opts);
+            var messages = BuildMessages(prompt, opts, processedHistory);
             var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
             return response.Text;
         }
@@ -113,13 +117,26 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         }
     }
 
-    private static List<ChatMessage> BuildMessages(string userText, RagOptions opts)
+    private async Task<IReadOnlyList<ChatMessage>?> ProcessHistoryAsync(RagOptions opts, CancellationToken cancellationToken)
+    {
+        if (opts.ConversationHistory is not { Count: > 0 })
+            return null;
+
+        IReadOnlyList<ChatMessage> history = opts.ConversationHistory as IReadOnlyList<ChatMessage> ?? opts.ConversationHistory.ToList();
+
+        if (memory is null)
+            return history;
+
+        return await memory.ProcessAsync(history, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static List<ChatMessage> BuildMessages(string userText, RagOptions opts, IReadOnlyList<ChatMessage>? processedHistory)
     {
         var messages = new List<ChatMessage>();
         if (opts.SystemPrompt is not null)
             messages.Add(new ChatMessage(ChatRole.System, opts.SystemPrompt));
-        if (opts.ConversationHistory is { Count: > 0 })
-            messages.AddRange(opts.ConversationHistory);
+        if (processedHistory is { Count: > 0 })
+            messages.AddRange(processedHistory);
         messages.Add(new ChatMessage(ChatRole.User, userText));
         return messages;
     }

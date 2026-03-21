@@ -1,6 +1,9 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Resilience;
 using Polly;
 using Polly.Retry;
@@ -8,6 +11,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
 using Rag.NET.HyDE;
 using Rag.NET.Ingestion.Behaviors;
+using Rag.NET.Memory;
 using Rag.NET.SelfQuery;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -293,6 +297,27 @@ public sealed class RagBuilder(IServiceCollection services)
             }
         });
 
+        return this;
+    }
+
+    /// <summary>
+    /// Registers <see cref="ConversationMemoryPipeline"/> as the <see cref="IConversationMemory"/>.
+    /// When registered, answer engines automatically trim conversation history before each call
+    /// using the configured sliding-window, token-budget, and optional summary strategies.
+    /// </summary>
+    /// <param name="options">
+    /// Optional memory options. When null, a default <see cref="ConversationMemoryOptions"/> is used
+    /// (no window or token limits — history passes through unchanged until configured).
+    /// </param>
+    public RagBuilder UseConversationMemory(ConversationMemoryOptions? options = null)
+    {
+        var opts = options ?? new ConversationMemoryOptions();
+        Services.AddSingleton(opts);
+        Services.AddSingleton<IConversationMemory>(sp =>
+            new ConversationMemoryPipeline(
+                opts,
+                sp.GetService<IChatClient>(),
+                sp.GetService<ILogger<ConversationMemoryPipeline>>() ?? NullLogger<ConversationMemoryPipeline>.Instance));
         return this;
     }
 }
