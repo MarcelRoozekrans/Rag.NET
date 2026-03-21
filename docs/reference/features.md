@@ -12,6 +12,15 @@ Candidate features for future design and implementation. Completed features are 
 
 ## Chunking
 
+### Semantic Chunking (Embedding-Based Boundary Detection)
+**Package:** `Rag.NET` (core)
+
+Split text by meaning boundaries rather than fixed sizes. Embed each sentence, compute cosine similarity between consecutive sentence embeddings, and break where similarity drops below a configurable threshold (breakpoint detection). Produces chunks that are coherent units of meaning — no more splitting mid-thought. Configurable minimum/maximum chunk size and similarity threshold.
+
+**Why:** The single biggest quality lever for retrieval. Fixed-size and recursive splitting regularly break mid-paragraph or mid-argument, producing chunks where context is lost. Semantic chunking ensures each chunk is a self-contained unit of meaning, directly improving retrieval precision across all use cases.
+
+---
+
 ### Hierarchical Merger (Regex-Driven Tree Chunking)
 **Package:** `Rag.NET` (core)
 
@@ -102,6 +111,8 @@ Combine results from multiple retrievers (e.g., BM25 + dense vector) using Recip
 
 **Why:** RRF consistently outperforms individual retrievers by combining rank signals.
 
+**Status:** ✅ Done
+
 ---
 
 ### RAPTOR — Recursive Abstractive Tree Summarization
@@ -142,6 +153,8 @@ Answer questions over large document sets by first mapping an LLM call over each
 
 **Why:** Essential for long-document and large-corpus RAG workloads.
 
+**Status:** ✅ Done
+
 ---
 
 ### Refine (Iterative Synthesis)
@@ -150,6 +163,8 @@ Answer questions over large document sets by first mapping an LLM call over each
 Process chunks sequentially: generate an initial answer from the first chunk, then iteratively refine by feeding each subsequent chunk plus the running answer to the LLM. More token-efficient than map-reduce for sequential coherence tasks.
 
 **Why:** Handles context-window overflow gracefully with a different trade-off profile than map-reduce.
+
+**Status:** ✅ Done
 
 ---
 
@@ -264,6 +279,8 @@ Transcribe WAV, MP3, FLAC, OGG, and other audio files using [Whisper.net](https:
 
 **Why:** Meeting recordings, podcasts, and voice notes are a growing source of enterprise knowledge that text-only pipelines cannot reach.
 
+**Status:** ✅ Done
+
 ---
 
 ## Knowledge Graph
@@ -303,12 +320,12 @@ A read/delete surface for browsing and managing ingested data via `IRagDataManag
 
 ---
 
-### Long-Term Conversational Memory
+### Conversational Memory Management
 **Package:** `Rag.NET` (core)
 
-Persistent episodic memory store separate from chat history: messages stored in a vector store with both dense and BM25 fields, retrieved by hybrid search. An LLM-based ranking step re-scores memories by recency, relevance, and importance. Survives session boundaries.
+Automatic conversation history management for multi-turn RAG. Three composable strategies: (1) **Sliding window** — keep only the last N exchanges; (2) **Token-budget truncation** — trim oldest messages to stay within a configurable token budget; (3) **Summary memory** — LLM-summarize older messages into a compact system-message prefix when the window overflows. Plugs into `RagOptions.ConversationHistory` so callers don't need to manage truncation themselves. Optional persistent memory store for cross-session recall via hybrid search.
 
-**Why:** Enterprise chatbots and agents need stateful memory that persists across sessions, distinct from within-session chat history.
+**Why:** Multi-turn RAG is the dominant use case, but `ConversationHistory` is currently a raw list the caller must manage. Without auto-summarization and windowing, conversations either blow the context window or lose important context through naive truncation.
 
 ---
 
@@ -336,7 +353,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Progress Reporting | Low | None |
 | [x] | Redundancy Filter | Low | Embedding access |
 | [x] | Token-Aware Splitting | Low | `Microsoft.ML.Tokenizers` |
-| [ ] | Audio Transcription | Medium | `Whisper.net` |
+| [x] | Audio Transcription | Medium | `Whisper.net` |
 | [x] | BM25 Keyword Retrieval | Medium | None |
 | [ ] | BM25 Synonym Expansion | Medium | BM25 retriever |
 | [x] | Content-Hash Record Manager | Medium | Persistence store |
@@ -347,7 +364,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [ ] | Hierarchical Merger | Medium | None |
 | [x] | HyDE | Medium | `IChatClient` |
 | [x] | LLM-as-Judge Evaluation | Medium | `IChatClient` |
-| [ ] | Map-Reduce / Refine Synthesis | Medium | `IChatClient` |
+| [x] | Map-Reduce / Refine Synthesis | Medium | `IChatClient` |
 | [x] | MCP Server | Medium | MCP SDK |
 | [x] | MMR Retrieval | Medium | Embedding access |
 | [ ] | Multi-Language Code Splitting | Medium | None (regex) |
@@ -357,13 +374,14 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
 | [ ] | Tag-Based Retrieval | Medium | Hybrid search |
 | [x] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
+| [ ] | Semantic Chunking (Embedding-Based) | Medium | `IEmbeddingGenerator` |
 | [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
 | [ ] | Deep Research Loop | High | `IChatClient` |
 | [ ] | Domain-Specific Chunking Templates | High | Per-domain logic |
-| [ ] | Ensemble / RRF | High | Multiple retrievers |
+| [x] | Ensemble / RRF | High | Multiple retrievers |
 | [ ] | Image / Video Description | High | Vision LLM |
 | [x] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
-| [ ] | Long-Term Conversational Memory | High | Vector store + `IChatClient` |
+| [ ] | Conversational Memory Management | High | `IChatClient` + tokenizer |
 | [x] | Parent-Document Retrieval | High | Dual index |
 | [ ] | RAPTOR | High | UMAP + GMM + `IChatClient` |
 | [x] | Self-Query Filtering | High | `IChatClient` + schema |
