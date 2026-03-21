@@ -1,9 +1,9 @@
 using Rag.NET.Models.Options;
 using Xunit;
 
-namespace Rag.NET.Tests.Retrieval.Behaviors;
+namespace Rag.NET.Tests.Models.Options;
 
-public class EnsembleBehaviorTests
+public class EnsembleOptionsTests
 {
     [Fact]
     public void EnsembleOptions_Defaults_AreCorrect()
