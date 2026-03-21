@@ -1,12 +1,17 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ZeroAlloc.ValueObjects;
 
 namespace Rag.NET.Models;
 
 [JsonConverter(typeof(DocumentIdJsonConverter))]
-public sealed class DocumentId : IEquatable<DocumentId>
+[ValueObject]
+public sealed partial class DocumentId
 {
     private readonly string _value;
+
+    [EqualityMember]
+    public string Value => _value;
 
     public DocumentId(string value)
     {
@@ -18,18 +23,6 @@ public sealed class DocumentId : IEquatable<DocumentId>
 
     public static implicit operator string(DocumentId id) => id._value;
     public static explicit operator DocumentId(string s) => new(s);
-
-    public bool Equals(DocumentId? other) => other is not null && string.Equals(_value, other._value, StringComparison.Ordinal);
-
-    public override bool Equals(object? obj) => obj is DocumentId other && Equals(other);
-
-    public override int GetHashCode() => _value.GetHashCode(StringComparison.Ordinal);
-
-    public static bool operator ==(DocumentId? left, DocumentId? right)
-        => left?.Equals(right) ?? right is null;
-
-    public static bool operator !=(DocumentId? left, DocumentId? right)
-        => !(left == right);
 
     private sealed class DocumentIdJsonConverter : JsonConverter<DocumentId>
     {
