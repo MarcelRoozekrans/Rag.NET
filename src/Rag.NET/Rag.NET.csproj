@@ -29,6 +29,7 @@
     <PackageReference Include="ZeroAlloc.Validation" Version="0.*" GeneratePathProperty="true" />
     <PackageReference Include="ZeroAlloc.Pipeline" Version="0.*" GeneratePathProperty="true" />
     <PackageReference Include="ZeroAlloc.Pipeline.Generators" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.ValueObjects" Version="1.*" GeneratePathProperty="true" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,6 +40,7 @@
     <Analyzer Include="$(PkgZeroAlloc_Pipeline_Generators)\lib\netstandard2.0\ZeroAlloc.Pipeline.Generators.dll" />
     <Analyzer Include="$(PkgZeroAlloc_Pipeline)\lib\netstandard2.0\ZeroAlloc.Pipeline.dll" />
     <Analyzer Include="$(PkgZeroAlloc_Specification_Generator)\analyzers\dotnet\cs\ZeroAlloc.Specification.Generator.dll" />
+    <Analyzer Include="$(PkgZeroAlloc_ValueObjects)\analyzers\dotnet\cs\ZeroAlloc.ValueObjects.Generator.dll" />
   </ItemGroup>
 
 </Project>
