@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Parsers.Audio</RootNamespace>
+    <PackageId>Rag.NET.Parsers.Audio</PackageId>
+    <Description>Audio transcription parser for Rag.NET using Whisper.net</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Whisper.net" Version="1.*" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.*" />
+  </ItemGroup>
+
+</Project>
