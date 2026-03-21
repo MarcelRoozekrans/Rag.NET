@@ -15,6 +15,7 @@ public sealed class LlmMetadataExtractionBehavior : IIngestionBehavior
 {
     [Inject(Required = false)] public IChatClient? ChatClient { get; set; }
     [Inject(Required = false)] public LlmMetadataExtractionOptions? ExtractionOptions { get; set; }
+    [Inject(Required = false)] public ILogger<LlmMetadataExtractionBehavior>? Logger { get; set; }
 
     public async ValueTask<IngestionResult> HandleAsync(
         IngestionContext ctx, CancellationToken ct,
@@ -36,11 +37,11 @@ public sealed class LlmMetadataExtractionBehavior : IIngestionBehavior
                     if (IsKeyAllowed(key))
                         ctx.Chunks[i].Metadata.TryAdd(key, value);
                 }
-                RagPipelineLog.MetadataExtractionCompleted(NullLogger.Instance, tags.Count, chunkIndex);
+                RagPipelineLog.MetadataExtractionCompleted((ILogger?)Logger ?? NullLogger.Instance, tags.Count, chunkIndex);
             }
             else
             {
-                RagPipelineLog.MetadataExtractionFailed(NullLogger.Instance, chunkIndex, result.Error);
+                RagPipelineLog.MetadataExtractionFailed((ILogger?)Logger ?? NullLogger.Instance, chunkIndex, result.Error);
             }
         }
 
@@ -66,7 +67,7 @@ public sealed class LlmMetadataExtractionBehavior : IIngestionBehavior
         try
         {
             var prompt = BuildPrompt(text);
-            var messages = new List<ChatMessage> { new(ChatRole.User, prompt) };
+            ChatMessage[] messages = [new(ChatRole.User, prompt)];
             var response = await ChatClient!.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
             var json = response.Text ?? "{}";
 

@@ -142,6 +142,36 @@ public class LlmMetadataExtractionBehaviorTests
         Assert.Empty(chunk.Metadata);
     }
 
+    // ── next is always called ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task WhenLlmFails_NextIsStillCalled()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "not json")]));
+
+        var sut = new LlmMetadataExtractionBehavior
+        {
+            ChatClient = chatClient,
+            ExtractionOptions = new LlmMetadataExtractionOptions()
+        };
+        var chunk = MakeChunk("some text");
+        var ctx = MakeContext(chunk);
+
+        var nextCalled = false;
+        ValueTask<IngestionResult> TrackingNext(IngestionContext c, CancellationToken _)
+        {
+            nextCalled = true;
+            return ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 });
+        }
+
+        await sut.HandleAsync(ctx, ct, TrackingNext);
+
+        Assert.True(nextCalled);
+    }
+
     // ── Empty JSON ────────────────────────────────────────────────────────────
 
     [Fact]
