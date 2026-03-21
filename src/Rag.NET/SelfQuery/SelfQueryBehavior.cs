@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -88,42 +89,13 @@ public sealed class SelfQueryBehavior : IRetrievalBehavior
 
     private static ISpecification<SearchResult>? BuildFilter(IReadOnlyList<KeyValuePair<string, string>> filters)
     {
-        if (filters.Count == 0)
-            return null;
-
-        var specs = filters.Select(f => new HasTagSpec(f.Key, f.Value)).ToArray();
-        return new AllTagsSpec(specs);
-    }
-
-    private sealed class AllTagsSpec(HasTagSpec[] specs) : ISpecification<SearchResult>
-    {
-        public bool IsSatisfiedBy(SearchResult candidate) =>
-            Array.TrueForAll(specs, s => s.IsSatisfiedBy(candidate));
-
-        public System.Linq.Expressions.Expression<Func<SearchResult, bool>> ToExpression()
+        ISpecification<SearchResult>? result = null;
+        foreach (var (key, value) in filters)
         {
-            var param = System.Linq.Expressions.Expression.Parameter(typeof(SearchResult), "r");
-            System.Linq.Expressions.Expression? body = null;
-            foreach (var spec in specs)
-            {
-                var compiled = spec.ToExpression();
-                var visitor = new ParameterReplaceVisitor(compiled.Parameters[0], param);
-                var replaced = visitor.Visit(compiled.Body);
-                body = body is null ? replaced : System.Linq.Expressions.Expression.AndAlso(body, replaced);
-            }
-            body ??= System.Linq.Expressions.Expression.Constant(true);
-            return System.Linq.Expressions.Expression.Lambda<Func<SearchResult, bool>>(body, param);
+            var spec = new HasTagSpec(key, value);
+            result = result is null ? spec : result.And(spec);
         }
-    }
-
-    private sealed class ParameterReplaceVisitor(
-        System.Linq.Expressions.ParameterExpression from,
-        System.Linq.Expressions.ParameterExpression to)
-        : System.Linq.Expressions.ExpressionVisitor
-    {
-        protected override System.Linq.Expressions.Expression VisitParameter(
-            System.Linq.Expressions.ParameterExpression node) =>
-            node == from ? to : base.VisitParameter(node);
+        return result;
     }
 
     private string BuildPrompt(string question)
@@ -148,5 +120,25 @@ public sealed class SelfQueryBehavior : IRetrievalBehavior
 
             Question: {{question}}
             """;
+    }
+}
+
+file static class SpecificationCompositionExtensions
+{
+    internal static ISpecification<T> And<T>(this ISpecification<T> left, ISpecification<T> right) =>
+        new AndSpec<T>(left, right);
+
+    private sealed class AndSpec<T>(ISpecification<T> left, ISpecification<T> right) : ISpecification<T>
+    {
+        public bool IsSatisfiedBy(T candidate) =>
+            left.IsSatisfiedBy(candidate) && right.IsSatisfiedBy(candidate);
+
+        public Expression<Func<T, bool>> ToExpression()
+        {
+            var param = Expression.Parameter(typeof(T), "r");
+            var leftBody = Expression.Invoke(left.ToExpression(), param);
+            var rightBody = Expression.Invoke(right.ToExpression(), param);
+            return Expression.Lambda<Func<T, bool>>(Expression.AndAlso(leftBody, rightBody), param);
+        }
     }
 }

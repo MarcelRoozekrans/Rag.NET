@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -124,8 +125,9 @@ public class SelfQueryBehaviorTests
         chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "not json")]));
 
+        var fakeLogger = new FakeLogger();
         var sut = new SelfQueryBehavior { ChatClient = chatClient, SelfQueryOptions = new SelfQueryOptions() };
-        var ctx = MakeCtx();
+        var ctx = MakeCtx() with { Logger = fakeLogger };
         var (next, getCapture) = CapturingNext();
 
         await sut.HandleAsync(ctx, ct, next);
@@ -135,5 +137,15 @@ public class SelfQueryBehaviorTests
         // no filter, no embedding override — original query preserved
         Assert.Null(getCapture()!.Options.Filter);
         Assert.Null(getCapture()!.Options.EmbeddingTextOverride);
+        Assert.Contains(fakeLogger.Entries, e => e.Level == LogLevel.Warning);
+    }
+
+    private sealed class FakeLogger : ILogger
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, formatter(state, exception)));
     }
 }
