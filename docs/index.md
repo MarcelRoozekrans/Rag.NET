@@ -26,6 +26,7 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 | [Observability](observability.md) | `ILogger` structured logging, OpenTelemetry `ActivitySource`, Polly resilience |
 | [Extending](extending.md) | Implementing `IDocumentParser`, `IVectorStore`, `IChunkingStrategy` |
 | [Mediator](mediator.md) | Dispatching ingest/retrieve/delete commands via `Rag.NET.Mediator` and ZeroAlloc.Mediator |
+| [OSS Libraries](oss-libraries.md) | Every open-source dependency used, where it is used, and why |
 
 ## Quick links
 
