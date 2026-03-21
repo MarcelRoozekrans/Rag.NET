@@ -12,7 +12,7 @@ namespace Rag.NET.AnswerGeneration;
 /// Generates an initial answer from the first source chunk, then iteratively refines it
 /// with each subsequent chunk. Sequential by design.
 /// </summary>
-public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAnswerEngine> logger) : IAnswerEngine
+public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAnswerEngine> logger, IConversationMemory? memory = null) : IAnswerEngine
 {
     private const string DefaultInitialPrompt =
         "Answer this question using only the following context.\n\n" +
@@ -40,13 +40,16 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
         if (sources.Count == 0)
             return new RagResponse { Answer = string.Empty, Sources = sources };
 
+        // Process conversation history once for reuse across all calls
+        var processedHistory = await ProcessHistoryAsync(opts, cancellationToken).ConfigureAwait(false);
+
         // Initial call on first chunk — always propagates on failure
         var firstChunk = sources[0];
         var initialText = initialPrompt
             .Replace("{chunk}", firstChunk.Chunk.Text)
             .Replace("{query}", query);
 
-        var initialMessages = BuildMessages(initialText, opts);
+        var initialMessages = BuildMessages(initialText, opts, processedHistory);
         var initialResponse = await chatClient.GetResponseAsync(initialMessages, chatOptions, cancellationToken).ConfigureAwait(false);
         var currentAnswer = initialResponse.Text ?? string.Empty;
 
@@ -61,7 +64,7 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
                     .Replace("{chunk}", source.Chunk.Text)
                     .Replace("{query}", query);
 
-                var refineMessages = BuildMessages(refineText, opts);
+                var refineMessages = BuildMessages(refineText, opts, processedHistory);
                 var refineResponse = await chatClient.GetResponseAsync(refineMessages, chatOptions, cancellationToken).ConfigureAwait(false);
                 currentAnswer = refineResponse.Text ?? currentAnswer;
             }
@@ -94,13 +97,26 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
         yield return new RagStreamingUpdate { TextDelta = response.Answer };
     }
 
-    private static List<ChatMessage> BuildMessages(string userText, RagOptions opts)
+    private async Task<IReadOnlyList<ChatMessage>?> ProcessHistoryAsync(RagOptions opts, CancellationToken cancellationToken)
+    {
+        if (opts.ConversationHistory is not { Count: > 0 })
+            return null;
+
+        IReadOnlyList<ChatMessage> history = opts.ConversationHistory as IReadOnlyList<ChatMessage> ?? opts.ConversationHistory.ToList();
+
+        if (memory is null)
+            return history;
+
+        return await memory.ProcessAsync(history, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static List<ChatMessage> BuildMessages(string userText, RagOptions opts, IReadOnlyList<ChatMessage>? processedHistory)
     {
         var messages = new List<ChatMessage>();
         if (opts.SystemPrompt is not null)
             messages.Add(new ChatMessage(ChatRole.System, opts.SystemPrompt));
-        if (opts.ConversationHistory is { Count: > 0 })
-            messages.AddRange(opts.ConversationHistory);
+        if (processedHistory is { Count: > 0 })
+            messages.AddRange(processedHistory);
         messages.Add(new ChatMessage(ChatRole.User, userText));
         return messages;
     }

@@ -1,6 +1,9 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using Rag.NET.Abstractions;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Memory;
 using Rag.NET.Models.Options;
 using Xunit;
@@ -235,5 +238,25 @@ public class ConversationMemoryTests
 
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => sut.ProcessAsync(history, cts.Token));
+    }
+
+    [Fact]
+    public void UseConversationMemory_RegistersMemoryAndOptions()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Substitute.For<IChatClient>());
+        services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+        services.AddSingleton(Substitute.For<IVectorStore>());
+
+        services.AddRagNet(rag => rag.UseConversationMemory(new ConversationMemoryOptions
+        {
+            MaxExchanges = 5,
+            MaxTokens = 2000,
+        }));
+
+        var provider = services.BuildServiceProvider();
+        var memory = provider.GetService<IConversationMemory>();
+        Assert.NotNull(memory);
+        Assert.IsType<ConversationMemoryPipeline>(memory);
     }
 }

@@ -8,6 +8,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
 using Rag.NET.HyDE;
 using Rag.NET.Ingestion.Behaviors;
+using Rag.NET.Memory;
 using Rag.NET.SelfQuery;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -279,6 +280,22 @@ public sealed class RagBuilder(IServiceCollection services)
             }
         });
 
+        return this;
+    }
+
+    /// <summary>
+    /// Registers <see cref="ConversationMemoryPipeline"/> as the <see cref="IConversationMemory"/>.
+    /// When registered, answer engines automatically trim conversation history before each call
+    /// using the configured sliding-window, token-budget, and optional summary strategies.
+    /// </summary>
+    /// <param name="options">
+    /// Optional memory options. When null, a default <see cref="ConversationMemoryOptions"/> is used
+    /// (no window or token limits — history passes through unchanged until configured).
+    /// </param>
+    public RagBuilder UseConversationMemory(ConversationMemoryOptions? options = null)
+    {
+        Services.AddSingleton(options ?? new ConversationMemoryOptions());
+        Services.AddSingleton<IConversationMemory, ConversationMemoryPipeline>();
         return this;
     }
 }

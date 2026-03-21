@@ -9,7 +9,7 @@ namespace Rag.NET.AnswerGeneration;
 /// <summary>
 /// Generates answers by building a context prompt from search results and calling an <see cref="IChatClient"/>.
 /// </summary>
-public sealed class ChatAnswerEngine(IChatClient chatClient) : IAnswerEngine
+public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory? memory = null) : IAnswerEngine
 {
     private const string DefaultSystemPrompt =
         "Answer the user's question based only on the provided context. " +
@@ -22,7 +22,7 @@ public sealed class ChatAnswerEngine(IChatClient chatClient) : IAnswerEngine
         RagOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var (messages, chatOptions) = BuildMessages(sources, query, options ?? new RagOptions());
+        var (messages, chatOptions) = await BuildMessagesAsync(sources, query, options ?? new RagOptions(), cancellationToken).ConfigureAwait(false);
 
         var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
 
@@ -41,7 +41,7 @@ public sealed class ChatAnswerEngine(IChatClient chatClient) : IAnswerEngine
     {
         yield return new RagStreamingUpdate { Sources = sources };
 
-        var (messages, chatOptions) = BuildMessages(sources, query, options ?? new RagOptions());
+        var (messages, chatOptions) = await BuildMessagesAsync(sources, query, options ?? new RagOptions(), cancellationToken).ConfigureAwait(false);
 
         await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false))
         {
@@ -52,10 +52,11 @@ public sealed class ChatAnswerEngine(IChatClient chatClient) : IAnswerEngine
         }
     }
 
-    private static (List<ChatMessage> Messages, ChatOptions Options) BuildMessages(
+    private async Task<(List<ChatMessage> Messages, ChatOptions Options)> BuildMessagesAsync(
         IReadOnlyList<SearchResult> sources,
         string query,
-        RagOptions opts)
+        RagOptions opts,
+        CancellationToken cancellationToken)
     {
         var context = string.Join("\n\n---\n\n",
             sources.Select((s, i) => $"[Source {i + 1}]\n{s.Chunk.Text}"));
@@ -69,7 +70,10 @@ public sealed class ChatAnswerEngine(IChatClient chatClient) : IAnswerEngine
 
         if (opts.ConversationHistory is { Count: > 0 })
         {
-            messages.AddRange(opts.ConversationHistory);
+            IReadOnlyList<ChatMessage> history = opts.ConversationHistory as IReadOnlyList<ChatMessage> ?? opts.ConversationHistory.ToList();
+            if (memory is not null)
+                history = await memory.ProcessAsync(history, cancellationToken).ConfigureAwait(false);
+            messages.AddRange(history);
         }
 
         messages.Add(new ChatMessage(ChatRole.User, $"Context:\n{context}\n\nQuestion: {query}"));
