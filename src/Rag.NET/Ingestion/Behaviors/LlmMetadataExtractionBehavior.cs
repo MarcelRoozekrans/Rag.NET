@@ -77,9 +77,10 @@ public sealed class LlmMetadataExtractionBehavior : IIngestionBehavior
 
             return Result<IReadOnlyDictionary<string, string>>.Success(parsed);
         }
-        catch (JsonException ex)
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
         {
-            return Result<IReadOnlyDictionary<string, string>>.Failure(ex.Message);
+            return Result<IReadOnlyDictionary<string, string>>.Failure(ex.ToString());
         }
     }
 

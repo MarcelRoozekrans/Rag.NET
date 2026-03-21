@@ -62,7 +62,7 @@ public sealed class SelfQueryBehavior : IRetrievalBehavior
             var response = await ChatClient!.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
             var json = response.Text ?? "{}";
 
-            var doc = JsonDocument.Parse(json);
+            using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
 
             var query = root.TryGetProperty("query", out var qProp) ? qProp.GetString() ?? question : question;
@@ -87,6 +87,8 @@ public sealed class SelfQueryBehavior : IRetrievalBehavior
         }
     }
 
+    // Schema is injected into the LLM prompt only — the LLM is trusted to return schema-valid keys.
+    // No server-side key filtering is applied here, unlike LlmMetadataExtractionBehavior.
     private static ISpecification<SearchResult>? BuildFilter(IReadOnlyList<KeyValuePair<string, string>> filters)
     {
         ISpecification<SearchResult>? result = null;
