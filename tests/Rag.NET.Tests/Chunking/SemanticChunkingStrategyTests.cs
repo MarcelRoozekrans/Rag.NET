@@ -1,4 +1,7 @@
+using Microsoft.Extensions.AI;
+using NSubstitute;
 using Rag.NET.Chunking;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
 
@@ -6,6 +9,24 @@ namespace Rag.NET.Tests.Chunking;
 
 public class SemanticChunkingStrategyTests
 {
+    private static IEmbeddingGenerator<string, Embedding<float>> MockEmbedder(params float[][] vectors)
+    {
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var inputs = ci.Arg<IEnumerable<string>>().ToList();
+                var result = new GeneratedEmbeddings<Embedding<float>>();
+                for (int i = 0; i < inputs.Count; i++)
+                    result.Add(new Embedding<float>(i < vectors.Length ? vectors[i] : vectors[^1]));
+                return Task.FromResult(result);
+            });
+        return embedder;
+    }
+
     [Fact]
     public void Options_Defaults_AreCorrect()
     {
@@ -53,5 +74,132 @@ public class SemanticChunkingStrategyTests
         var b = new float[] { 0f, 1f };
         var sim = SemanticChunkingStrategy.CosineSimilarity(a, b);
         Assert.Equal(0.0, sim, precision: 5);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_TwoDifferentTopics_BreaksBetweenThem()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = MockEmbedder(
+            [1f, 0f, 0f],     // sentence 1 — topic A
+            [0.9f, 0.1f, 0f], // sentence 2 — topic A (similar)
+            [0f, 0f, 1f]);    // sentence 3 — topic B (different)
+
+        var opts = new SemanticChunkingOptions { BreakpointPercentile = 0.5f, MinChunkSize = 1, MaxChunkSize = 5000 };
+        var sut = new SemanticChunkingStrategy(embedder, opts);
+        var section = new DocumentSection
+        {
+            Text = "Topic A first. Topic A second. Topic B entirely different.",
+            DocumentId = new DocumentId("doc-1"),
+        };
+
+        var chunks = await sut.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.Equal(2, chunks.Count);
+        Assert.Contains("Topic A", chunks[0].Text, StringComparison.Ordinal);
+        Assert.Contains("Topic B", chunks[1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_SingleSentence_ReturnsOneChunk_NoEmbeddingCall()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        var sut = new SemanticChunkingStrategy(embedder, new SemanticChunkingOptions());
+        var section = new DocumentSection
+        {
+            Text = "Just one sentence here",
+            DocumentId = new DocumentId("doc-1"),
+        };
+
+        var chunks = await sut.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.Single(chunks);
+        await embedder.DidNotReceive().GenerateAsync(
+            Arg.Any<IEnumerable<string>>(),
+            Arg.Any<EmbeddingGenerationOptions?>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ChunkAsync_EmptyText_ReturnsNoChunks()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var sut = new SemanticChunkingStrategy(embedder, new SemanticChunkingOptions());
+        var section = new DocumentSection { Text = "", DocumentId = new DocumentId("doc-1") };
+
+        var chunks = await sut.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.Empty(chunks);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_UniformSimilarity_FewOrNoBreaks()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = MockEmbedder([1f, 0f], [0.99f, 0.01f], [0.98f, 0.02f], [0.97f, 0.03f]);
+        var opts = new SemanticChunkingOptions { BreakpointPercentile = 0.25f, MinChunkSize = 1, MaxChunkSize = 5000 };
+        var sut = new SemanticChunkingStrategy(embedder, opts);
+        var section = new DocumentSection
+        {
+            Text = "Same topic one. Same topic two. Same topic three. Same topic four.",
+            DocumentId = new DocumentId("doc-1"),
+        };
+
+        var chunks = await sut.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct);
+
+        // With 4 sentences and 3 similarities, bottom 25% = at most 1 break → at most 2 chunks
+        Assert.InRange(chunks.Count, 1, 2);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_CustomChunkingEmbedder_UsesOverride()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var defaultEmbedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var customEmbedder = MockEmbedder([1f, 0f], [0f, 1f]);
+
+        var opts = new SemanticChunkingOptions
+        {
+            ChunkingEmbedder = customEmbedder,
+            BreakpointPercentile = 0.5f,
+            MinChunkSize = 1,
+            MaxChunkSize = 5000,
+        };
+        var sut = new SemanticChunkingStrategy(defaultEmbedder, opts);
+        var section = new DocumentSection
+        {
+            Text = "First sentence. Second sentence.",
+            DocumentId = new DocumentId("doc-1"),
+        };
+
+        _ = await sut.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct);
+
+        await customEmbedder.Received(1).GenerateAsync(
+            Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
+        await defaultEmbedder.DidNotReceive().GenerateAsync(
+            Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ChunkAsync_SetsDocumentIdAndChunkIndex()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = MockEmbedder([1f, 0f], [0f, 1f], [1f, 0f]);
+        var opts = new SemanticChunkingOptions { BreakpointPercentile = 0.5f, MinChunkSize = 1, MaxChunkSize = 5000 };
+        var sut = new SemanticChunkingStrategy(embedder, opts);
+        var section = new DocumentSection
+        {
+            Text = "First topic. Different topic. Back to first.",
+            DocumentId = new DocumentId("doc-1"),
+        };
+
+        var chunks = await sut.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.All(chunks, c => Assert.Equal("doc-1", c.DocumentId.ToString()));
+        for (int i = 0; i < chunks.Count; i++)
+            Assert.Equal(i, chunks[i].ChunkIndex);
     }
 }

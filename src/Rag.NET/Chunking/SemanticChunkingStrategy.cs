@@ -55,7 +55,93 @@ public sealed partial class SemanticChunkingStrategy(
         ChunkingOptions chunkingOptions,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await Task.CompletedTask.ConfigureAwait(false);
-        yield break; // Full implementation in Task 3.
+        var sentences = SplitSentences(section.Text);
+        if (sentences.Count == 0)
+            yield break;
+
+        if (sentences.Count == 1)
+        {
+            yield return new TextChunk
+            {
+                Text = sentences[0],
+                DocumentId = section.DocumentId,
+                ChunkIndex = 0,
+                StartPosition = 0,
+                EndPosition = sentences[0].Length,
+            };
+            yield break;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var activeEmbedder = _options.ChunkingEmbedder ?? _embedder;
+        var embeddings = await activeEmbedder.GenerateAsync(sentences, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        var similarities = ComputeConsecutiveSimilarities(sentences, embeddings);
+        var groups = GroupSentencesByBreakpoints(sentences, similarities);
+
+        int chunkIndex = 0;
+        int cursor = 0;
+        for (int g = 0; g < groups.Count; g++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var chunk = BuildChunk(section, groups[g], chunkIndex, cursor);
+            if (chunk is null)
+                continue;
+            chunkIndex++;
+            cursor = chunk.EndPosition;
+            yield return chunk;
+        }
+    }
+
+    private static double[] ComputeConsecutiveSimilarities(
+        IReadOnlyList<string> sentences,
+        GeneratedEmbeddings<Embedding<float>> embeddings)
+    {
+        var similarities = new double[sentences.Count - 1];
+        for (int i = 0; i < similarities.Length; i++)
+            similarities[i] = CosineSimilarity(embeddings[i].Vector.Span, embeddings[i + 1].Vector.Span);
+        return similarities;
+    }
+
+    private List<List<string>> GroupSentencesByBreakpoints(
+        IReadOnlyList<string> sentences,
+        double[] similarities)
+    {
+        var percentile = Math.Clamp(_options.BreakpointPercentile, 0.01f, 0.99f);
+        var sorted = similarities.OrderBy(s => s).ToArray();
+        var thresholdIndex = (int)Math.Floor(percentile * sorted.Length);
+        var threshold = sorted[Math.Min(thresholdIndex, sorted.Length - 1)];
+
+        var groups = new List<List<string>> { new() { sentences[0] } };
+        for (int i = 0; i < similarities.Length; i++)
+        {
+            if (similarities[i] < threshold)
+                groups.Add(new List<string>());
+            groups[^1].Add(sentences[i + 1]);
+        }
+        return groups;
+    }
+
+    private static TextChunk? BuildChunk(DocumentSection section, List<string> group, int chunkIndex, int cursor)
+    {
+        var chunkText = string.Join(" ", group);
+        if (string.IsNullOrWhiteSpace(chunkText))
+            return null;
+
+        var startPos = section.Text.IndexOf(group[0], cursor, StringComparison.Ordinal);
+        if (startPos < 0) startPos = cursor;
+        var lastSentence = group[^1];
+        var lastPos = section.Text.IndexOf(lastSentence, startPos, StringComparison.Ordinal);
+        var endPos = lastPos >= 0 ? lastPos + lastSentence.Length : startPos + chunkText.Length;
+
+        return new TextChunk
+        {
+            Text = chunkText,
+            DocumentId = section.DocumentId,
+            ChunkIndex = chunkIndex,
+            StartPosition = startPos,
+            EndPosition = endPos,
+        };
     }
 }
