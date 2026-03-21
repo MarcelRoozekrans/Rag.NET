@@ -97,6 +97,6 @@ internal static partial class RagPipelineLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "Refine call failed for document '{DocumentId}', preserving previous answer")]
     internal static partial void RefineStepFailed(ILogger logger, string documentId, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "EnsembleBehavior: BM25 search failed; falling back to dense-only results.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EnsembleBehavior: BM25 search failed; falling back to dense-only results")]
     internal static partial void EnsembleBm25Failed(ILogger logger, Exception exception);
 }

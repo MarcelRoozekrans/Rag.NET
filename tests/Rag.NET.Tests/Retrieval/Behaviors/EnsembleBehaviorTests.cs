@@ -26,10 +26,6 @@ public class EnsembleBehaviorTests
     private static RetrievalContext MakeCtx(RetrievalOptions options) =>
         new() { Query = "test query", Options = options, Logger = NullLogger.Instance };
 
-    private static Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>>
-        NextReturning(IReadOnlyList<SearchResult> results) =>
-        (_, _) => ValueTask.FromResult(results);
-
     [Fact]
     public async Task HandleAsync_HybridSearchFalse_CallsNext()
     {
@@ -186,5 +182,67 @@ public class EnsembleBehaviorTests
         var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
 
         Assert.NotEmpty(output);
+    }
+
+    [Fact]
+    public async Task HandleAsync_Bm25ThrowsOperationCanceled_PropagatesException()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25Index = Substitute.For<IBm25Index>();
+
+        var queryEmbedding = new Embedding<float>(new float[] { 0.1f });
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>())
+            .Throws<OperationCanceledException>();
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = vectorStore,
+            Bm25Index = bm25Index,
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException()).AsTask());
+    }
+
+    [Fact]
+    public async Task HandleAsync_Bm25ReturnsEmpty_ReturnsDenseResults()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25Index = Substitute.For<IBm25Index>();
+
+        var queryEmbedding = new Embedding<float>(new float[] { 0.1f });
+        var denseResults = new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) };
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([queryEmbedding]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(denseResults);
+        bm25Index.Search(Arg.Any<string>(), Arg.Any<int>())
+            .Returns(Array.Empty<(TextChunk, double)>());
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = vectorStore,
+            Bm25Index = bm25Index,
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        Assert.NotEmpty(output);
+        Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-dense", StringComparison.Ordinal));
     }
 }
