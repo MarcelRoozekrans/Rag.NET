@@ -22,6 +22,7 @@ public sealed class RetrievalPipelineBuilder
         typeof(HydeBehavior),
         typeof(EmbeddingCacheBehavior),
         typeof(FilterBehavior),
+        typeof(EnsembleBehavior),   // <-- new
         typeof(VectorStoreBehavior),
     ];
 
