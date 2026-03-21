@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
 using Rag.NET.Models.Options;
@@ -39,7 +40,16 @@ public static class ServiceCollectionExtensions
             var r = sp.GetRequiredService<IRetriever>();
             var i = sp.GetRequiredService<IIngestor>();
             var chatClient = sp.GetService<IChatClient>();
-            IAnswerEngine? answerEngine = chatClient is not null ? new ChatAnswerEngine(chatClient) : null;
+            IAnswerEngine? answerEngine = null;
+            if (chatClient is not null)
+            {
+                var chatEngine = new ChatAnswerEngine(chatClient);
+                var mapReduceEngine = new MapReduceAnswerEngine(chatClient,
+                    sp.GetRequiredService<ILogger<MapReduceAnswerEngine>>());
+                var refineEngine = new RefineAnswerEngine(chatClient,
+                    sp.GetRequiredService<ILogger<RefineAnswerEngine>>());
+                answerEngine = new DispatchingAnswerEngine(chatEngine, mapReduceEngine, refineEngine);
+            }
             return new RagPipeline(r, i, answerEngine);
         });
 
