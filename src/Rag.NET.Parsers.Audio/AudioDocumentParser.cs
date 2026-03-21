@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 
