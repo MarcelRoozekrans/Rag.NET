@@ -7,6 +7,8 @@ using Polly.Retry;
 using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
 using Rag.NET.HyDE;
+using Rag.NET.Ingestion.Behaviors;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
 using Rag.NET.Retrieval;
@@ -107,6 +109,22 @@ public sealed class RagBuilder(IServiceCollection services)
         configure?.Invoke(options);
         Services.AddSingleton(options);
         Services.AddSingleton<IHypotheticalDocumentGenerator, LlmHypotheticalDocumentGenerator>();
+        return this;
+    }
+
+    /// <summary>
+    /// Enables LLM-driven metadata extraction at ingestion time.
+    /// When registered, an LLM call is made per chunk to extract structured key-value tags,
+    /// which are stored in chunk metadata for use with <see cref="UseSelfQuery"/>.
+    /// </summary>
+    /// <remarks>
+    /// Requires <c>IChatClient</c> to be registered in DI.
+    /// When <paramref name="schema"/> is provided, extraction is constrained to the listed fields.
+    /// </remarks>
+    /// <param name="schema">Optional list of fields to extract. When null, the LLM extracts freely.</param>
+    public RagBuilder UseLlmMetadataExtraction(IReadOnlyList<AttributeInfo>? schema = null)
+    {
+        Services.AddSingleton(new LlmMetadataExtractionOptions { Schema = schema });
         return this;
     }
 

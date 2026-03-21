@@ -13,6 +13,7 @@ public sealed class IngestionPipelineBuilder
         typeof(OverwriteBehavior),
         typeof(ParseBehavior),
         typeof(ChunkingBehavior),
+        typeof(LlmMetadataExtractionBehavior),
         typeof(MetadataBehavior),
         typeof(ParentDocumentIngestionBehavior),
         typeof(EmbeddingBehavior),
