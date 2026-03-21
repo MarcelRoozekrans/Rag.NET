@@ -1,3 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.Abstractions;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Whisper.net;
 using Whisper.net.Ggml;
@@ -26,6 +29,48 @@ public class AudioDocumentParserTests
 
     private static SegmentData MakeSegment(string text, TimeSpan start, TimeSpan end) =>
         new(text, start, end, 0f, 0f, 0f, 0f, "en", []);
+
+    [Fact]
+    public void AddAudioParser_RegistersParserInDI()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        builder.AddAudioParser();
+
+        var provider = services.BuildServiceProvider();
+        var parsers = provider.GetServices<IDocumentParser>();
+        Assert.Contains(parsers, p => p is AudioDocumentParser);
+    }
+
+    [Fact]
+    public void AddAudioParser_RegistersCustomOptions()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+        var customOptions = new AudioParserOptions { ModelType = GgmlType.Medium, Language = "fr" };
+
+        builder.AddAudioParser(customOptions);
+
+        var provider = services.BuildServiceProvider();
+        var resolved = provider.GetRequiredService<AudioParserOptions>();
+        Assert.Equal(GgmlType.Medium, resolved.ModelType);
+        Assert.Equal("fr", resolved.Language);
+    }
+
+    [Fact]
+    public void AddAudioParser_DefaultOptions_WhenNoneProvided()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        builder.AddAudioParser();
+
+        var provider = services.BuildServiceProvider();
+        var resolved = provider.GetRequiredService<AudioParserOptions>();
+        Assert.Equal(GgmlType.Base, resolved.ModelType);
+        Assert.Null(resolved.Language);
+    }
 
     [Fact]
     public void AudioParserOptions_Defaults_AreCorrect()
