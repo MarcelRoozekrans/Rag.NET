@@ -1,4 +1,3 @@
-using Microsoft.Extensions.AI;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
@@ -113,6 +112,29 @@ public class DispatchingAnswerEngineTests
 
         Assert.Equal(2, received.Count);
         Assert.Equal("mapreduce result", received[1].TextDelta);
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_RefineStrategy_DelegatesToRefineEngine()
+    {
+        var opts = new RagOptions { SynthesisStrategy = SynthesisStrategy.Refine };
+        var sources = EmptySources();
+        var updates = new List<RagStreamingUpdate>
+        {
+            new() { Sources = sources },
+            new() { TextDelta = "refine result" },
+        };
+
+        _refineEngine.AskStreamingAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(),
+            Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(updates.ToAsyncEnumerable());
+
+        var received = new List<RagStreamingUpdate>();
+        await foreach (var update in _sut.AskStreamingAsync("q", sources, opts, TestContext.Current.CancellationToken))
+            received.Add(update);
+
+        Assert.Equal(2, received.Count);
+        Assert.Equal("refine result", received[1].TextDelta);
     }
 
     [Fact]
