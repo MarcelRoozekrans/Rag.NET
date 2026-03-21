@@ -78,4 +78,16 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "MmrCandidateCount ({CandidateCount}) is less than TopK ({TopK}); MMR may return fewer results than requested")]
     internal static partial void MmrCandidateCountLessThanTopK(ILogger logger, int candidateCount, int topK);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "LLM metadata extraction produced {TagCount} tag(s) for chunk {ChunkIndex}")]
+    internal static partial void MetadataExtractionCompleted(ILogger logger, int tagCount, int chunkIndex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM metadata extraction failed for chunk {ChunkIndex}, skipping: {Error}")]
+    internal static partial void MetadataExtractionFailed(ILogger logger, int chunkIndex, string error);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Self-query produced {FilterCount} filter(s) for query '{Query}'")]
+    internal static partial void SelfQueryCompleted(ILogger logger, string query, int filterCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Self-query failed for query '{Query}', proceeding without filter: {Error}")]
+    internal static partial void SelfQueryFailed(ILogger logger, string query, string error);
 }
