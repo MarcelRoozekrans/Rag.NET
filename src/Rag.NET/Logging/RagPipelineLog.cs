@@ -90,4 +90,10 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Self-query failed for query '{Query}', proceeding without filter: {Error}")]
     internal static partial void SelfQueryFailed(ILogger logger, string query, string error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Map-reduce map call failed for document '{DocumentId}', treating as not found")]
+    internal static partial void MapReduceMapFailed(ILogger logger, string documentId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Refine call failed for document '{DocumentId}', preserving previous answer")]
+    internal static partial void RefineStepFailed(ILogger logger, string documentId, Exception exception);
 }
