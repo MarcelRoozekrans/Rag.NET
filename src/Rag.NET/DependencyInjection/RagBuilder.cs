@@ -1,6 +1,9 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Resilience;
 using Polly;
 using Polly.Retry;
@@ -294,8 +297,13 @@ public sealed class RagBuilder(IServiceCollection services)
     /// </param>
     public RagBuilder UseConversationMemory(ConversationMemoryOptions? options = null)
     {
-        Services.AddSingleton(options ?? new ConversationMemoryOptions());
-        Services.AddSingleton<IConversationMemory, ConversationMemoryPipeline>();
+        var opts = options ?? new ConversationMemoryOptions();
+        Services.AddSingleton(opts);
+        Services.AddSingleton<IConversationMemory>(sp =>
+            new ConversationMemoryPipeline(
+                opts,
+                sp.GetService<IChatClient>(),
+                sp.GetService<ILogger<ConversationMemoryPipeline>>() ?? NullLogger<ConversationMemoryPipeline>.Instance));
         return this;
     }
 }

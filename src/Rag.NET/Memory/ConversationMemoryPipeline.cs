@@ -23,19 +23,13 @@ public sealed class ConversationMemoryPipeline : IConversationMemory
     private readonly ILogger _logger;
     private readonly Tokenizer _tokenizer;
 
-    /// <summary>
-    /// Gets the messages that were trimmed during the last <see cref="ProcessAsync"/> call.
-    /// Useful for downstream summarization.
-    /// </summary>
-    public IReadOnlyList<ChatMessage> TrimmedMessages { get; private set; } = [];
-
     public ConversationMemoryPipeline(ConversationMemoryOptions options, IChatClient? chatClient, ILogger<ConversationMemoryPipeline>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         _options = options;
         _chatClient = chatClient;
         _logger = logger ?? NullLogger<ConversationMemoryPipeline>.Instance;
-        _tokenizer = TiktokenTokenizer.CreateForModel("gpt-4");
+        _tokenizer = TiktokenTokenizer.CreateForEncoding("cl100k_base");
     }
 
     public async Task<IReadOnlyList<ChatMessage>> ProcessAsync(
@@ -46,7 +40,6 @@ public sealed class ConversationMemoryPipeline : IConversationMemory
 
         if (history.Count == 0)
         {
-            TrimmedMessages = [];
             return [];
         }
 
@@ -68,8 +61,6 @@ public sealed class ConversationMemoryPipeline : IConversationMemory
             allTrimmed.AddRange(trimmed);
             result = kept;
         }
-
-        TrimmedMessages = allTrimmed;
 
         // Step 3: Summary
         if (_options.UseSummary && allTrimmed.Count > 0 && _chatClient is not null)
