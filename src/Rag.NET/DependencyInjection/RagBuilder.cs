@@ -8,6 +8,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
 using Rag.NET.HyDE;
 using Rag.NET.Ingestion.Behaviors;
+using Rag.NET.SelfQuery;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
@@ -125,6 +126,23 @@ public sealed class RagBuilder(IServiceCollection services)
     public RagBuilder UseLlmMetadataExtraction(IReadOnlyList<AttributeInfo>? schema = null)
     {
         Services.AddSingleton(new LlmMetadataExtractionOptions { Schema = schema });
+        return this;
+    }
+
+    /// <summary>
+    /// Enables self-query rewriting at retrieval time.
+    /// When registered, the LLM parses each question into a refined semantic query
+    /// and a structured metadata filter before retrieval executes.
+    /// </summary>
+    /// <remarks>
+    /// Requires <c>IChatClient</c> to be registered in DI.
+    /// Per-call opt-out: pass <c>new RetrievalOptions { UseSelfQuery = false }</c>.
+    /// When <paramref name="schema"/> is provided, filtering is constrained to the listed fields.
+    /// </remarks>
+    /// <param name="schema">Optional list of filterable fields. When null, the LLM filters freely.</param>
+    public RagBuilder UseSelfQuery(IReadOnlyList<AttributeInfo>? schema = null)
+    {
+        Services.AddSingleton(new SelfQueryOptions { Schema = schema });
         return this;
     }
 

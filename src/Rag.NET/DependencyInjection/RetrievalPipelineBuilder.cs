@@ -3,6 +3,7 @@ using Rag.NET.Models;
 using Rag.NET.Pipeline;
 using Rag.NET.Retrieval;
 using Rag.NET.Retrieval.Behaviors;
+using Rag.NET.SelfQuery;
 
 namespace Rag.NET.DependencyInjection;
 
@@ -10,6 +11,7 @@ public sealed class RetrievalPipelineBuilder
 {
     private readonly List<Type> _types =
     [
+        typeof(SelfQueryBehavior),
         typeof(ResultCacheBehavior),
         typeof(LostInTheMiddleBehavior),
         typeof(MmrBehavior),
