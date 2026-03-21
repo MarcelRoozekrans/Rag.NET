@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
@@ -173,8 +172,9 @@ public sealed partial class SemanticChunkingStrategy(
             var current = new List<string>();
             int currentLen = 0;
 
-            var span = CollectionsMarshal.AsSpan(groups[i]);
-            foreach (ref readonly var sentence in span)
+#pragma warning disable HLQ012 // Plain foreach is clearer here; no perf-critical path
+            foreach (var sentence in groups[i])
+#pragma warning restore HLQ012
             {
                 var addedLen = currentLen == 0 ? sentence.Length : sentence.Length + 1; // +1 for space join
                 if (current.Count > 0 && currentLen + addedLen > _options.MaxChunkSize)

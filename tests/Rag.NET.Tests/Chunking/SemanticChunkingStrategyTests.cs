@@ -267,7 +267,8 @@ public class SemanticChunkingStrategyTests
         var chunks = await sut.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct);
 
         Assert.True(chunks.Count > 1);
-        Assert.All(chunks, c => Assert.True(c.Text.Length <= opts.MaxChunkSize + 50)); // small tolerance
+        // A single sentence exceeding MaxChunkSize is an inherent limitation (no sub-sentence splitting).
+        Assert.All(chunks, c => Assert.True(c.Text.Length <= opts.MaxChunkSize));
     }
 
     [Fact]
