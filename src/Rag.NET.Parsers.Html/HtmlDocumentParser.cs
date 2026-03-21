@@ -85,7 +85,7 @@ public sealed class HtmlDocumentParser : IDocumentParser
         }
     }
 
-    private static DocumentSection? BuildHeadingSection(IElement heading, string documentId, int sectionIndex)
+    private static DocumentSection? BuildHeadingSection(IElement heading, DocumentId documentId, int sectionIndex)
     {
         var headingText = heading.TextContent.Trim();
         var sectionContent = new StringBuilder();
@@ -119,7 +119,7 @@ public sealed class HtmlDocumentParser : IDocumentParser
         };
     }
 
-    private static DocumentSection CreateSection(string text, string documentId, int sectionIndex) =>
+    private static DocumentSection CreateSection(string text, DocumentId documentId, int sectionIndex) =>
         new()
         {
             Text = text,

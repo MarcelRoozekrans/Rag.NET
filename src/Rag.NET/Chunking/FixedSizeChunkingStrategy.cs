@@ -44,7 +44,7 @@ public sealed class FixedSizeChunkingStrategy : IChunkingStrategy
                 yield return new TextChunk
                 {
                     Text = chunkText,
-                    DocumentId = new DocumentId(section.DocumentId),
+                    DocumentId = section.DocumentId,
                     ChunkIndex = chunkIndex++,
                     StartPosition = position,
                     EndPosition = end,

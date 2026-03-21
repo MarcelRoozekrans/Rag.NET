@@ -83,7 +83,7 @@ public sealed class TokenAwareChunkingStrategy : IChunkingStrategy
                 yield return new TextChunk
                 {
                     Text = chunkText.Trim(),
-                    DocumentId = new DocumentId(section.DocumentId),
+                    DocumentId = section.DocumentId,
                     ChunkIndex = chunkIndex++,
                     StartPosition = position,
                     EndPosition = end,

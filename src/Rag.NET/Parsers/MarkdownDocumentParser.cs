@@ -56,7 +56,7 @@ public sealed partial class MarkdownDocumentParser : IDocumentParser
         }
     }
 
-    private static DocumentSection CreatePlainSection(string text, string documentId, int index) =>
+    private static DocumentSection CreatePlainSection(string text, DocumentId documentId, int index) =>
         new()
         {
             Text = text,
@@ -65,7 +65,7 @@ public sealed partial class MarkdownDocumentParser : IDocumentParser
         };
 
     private static DocumentSection CreateHeadingSection(
-        string text, MatchCollection matches, int i, string documentId, int sectionIndex)
+        string text, MatchCollection matches, int i, DocumentId documentId, int sectionIndex)
     {
         var match = matches[i];
         int contentEnd = i + 1 < matches.Count ? matches[i + 1].Index : text.Length;
