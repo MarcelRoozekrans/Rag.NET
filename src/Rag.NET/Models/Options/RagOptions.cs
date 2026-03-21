@@ -14,4 +14,7 @@ public sealed class RagOptions
     public string? SystemPrompt { get; set; }
     public float? Temperature { get; set; }
     public IList<ChatMessage>? ConversationHistory { get; set; }
+    public SynthesisStrategy SynthesisStrategy { get; set; } = SynthesisStrategy.Default;
+    public MapReduceOptions? MapReduceOptions { get; set; }
+    public RefineOptions? RefineOptions { get; set; }
 }
