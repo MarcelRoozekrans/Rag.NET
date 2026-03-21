@@ -73,6 +73,13 @@ public sealed record RetrievalOptions
     public bool UseHyde { get; init; } = true;
 
     /// <summary>
+    /// Set to <see langword="false"/> to skip self-query rewriting and filter generation for this call,
+    /// even when <see cref="SelfQueryOptions"/> is registered in DI.
+    /// Has no effect when <c>UseSelfQuery()</c> is not registered.
+    /// </summary>
+    public bool UseSelfQuery { get; init; } = true;
+
+    /// <summary>
     /// Set to <see langword="false"/> to skip embedding caching for this call,
     /// even when caching is registered via <c>RagBuilder.UseCaching()</c>.
     /// Has no effect when caching is not registered.
