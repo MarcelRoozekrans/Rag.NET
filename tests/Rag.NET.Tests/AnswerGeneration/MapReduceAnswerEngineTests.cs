@@ -70,7 +70,7 @@ public class MapReduceAnswerEngineTests
     }
 
     [Fact]
-    public async Task AskAsync_AllSourcesReturnNotFound_ReduceCalledWithEmptyPartials()
+    public async Task AskAsync_AllSourcesReturnNotFound_ReduceStillCalled()
     {
         var sources = new List<SearchResult>
         {
@@ -182,9 +182,18 @@ public class MapReduceAnswerEngineTests
             Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(ChatReply("partial"), ChatReply("final"));
 
-        // Should not throw; custom templates accepted
         var result = await _sut.AskAsync("my question", sources, opts, TestContext.Current.CancellationToken);
 
         Assert.Equal("final", result.Answer);
+
+        // Verify the map call used the custom map template
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Text != null && m.Text.Contains("Custom map:"))),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+
+        // Verify the reduce call used the custom reduce template
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Text != null && m.Text.Contains("Custom reduce:"))),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 }

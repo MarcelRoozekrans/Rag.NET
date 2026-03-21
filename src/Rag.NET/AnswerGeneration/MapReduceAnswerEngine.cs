@@ -37,8 +37,9 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         var mapPrompt = mrOpts.MapPromptTemplate ?? DefaultMapPrompt;
         var reducePrompt = mrOpts.ReducePromptTemplate ?? DefaultReducePrompt;
 
-        // Map step — parallel, bounded by MapConcurrency
-        using var semaphore = new SemaphoreSlim(mrOpts.MapConcurrency);
+        // Map step — parallel, bounded by MapConcurrency (clamped to at least 1)
+        var concurrency = Math.Max(1, mrOpts.MapConcurrency);
+        using var semaphore = new SemaphoreSlim(concurrency, concurrency);
         var mapTasks = sources.Select(source => MapOneAsync(source, query, mapPrompt, chatOptions, opts, semaphore, cancellationToken));
         var mapResults = await Task.WhenAll(mapTasks).ConfigureAwait(false);
 
@@ -83,9 +84,12 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         SemaphoreSlim semaphore,
         CancellationToken cancellationToken)
     {
-        await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var acquired = false;
         try
         {
+            await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+            acquired = true;
+
             var prompt = mapPromptTemplate
                 .Replace("{chunk}", source.Chunk.Text)
                 .Replace("{query}", query);
@@ -105,7 +109,7 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         }
         finally
         {
-            semaphore.Release();
+            if (acquired) semaphore.Release();
         }
     }
 
