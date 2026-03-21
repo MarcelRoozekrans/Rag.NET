@@ -39,7 +39,7 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
 
         // Map step — parallel, bounded by MapConcurrency
         using var semaphore = new SemaphoreSlim(mrOpts.MapConcurrency);
-        var mapTasks = sources.Select(source => MapOneAsync(source, query, mapPrompt, chatOptions, semaphore, cancellationToken));
+        var mapTasks = sources.Select(source => MapOneAsync(source, query, mapPrompt, chatOptions, opts, semaphore, cancellationToken));
         var mapResults = await Task.WhenAll(mapTasks).ConfigureAwait(false);
 
         var partials = mapResults
@@ -79,6 +79,7 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         string query,
         string mapPromptTemplate,
         ChatOptions chatOptions,
+        RagOptions opts,
         SemaphoreSlim semaphore,
         CancellationToken cancellationToken)
     {
@@ -89,7 +90,7 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
                 .Replace("{chunk}", source.Chunk.Text)
                 .Replace("{query}", query);
 
-            var messages = new List<ChatMessage> { new(ChatRole.User, prompt) };
+            var messages = BuildMessages(prompt, opts);
             var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
             return response.Text;
         }
@@ -111,6 +112,8 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
     private static List<ChatMessage> BuildMessages(string userText, RagOptions opts)
     {
         var messages = new List<ChatMessage>();
+        if (opts.SystemPrompt is not null)
+            messages.Add(new ChatMessage(ChatRole.System, opts.SystemPrompt));
         if (opts.ConversationHistory is { Count: > 0 })
             messages.AddRange(opts.ConversationHistory);
         messages.Add(new ChatMessage(ChatRole.User, userText));

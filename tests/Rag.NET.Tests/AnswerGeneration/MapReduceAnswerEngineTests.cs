@@ -148,6 +148,24 @@ public class MapReduceAnswerEngineTests
     }
 
     [Fact]
+    public async Task AskAsync_WithSystemPrompt_IncludesItInMessages()
+    {
+        var sources = new List<SearchResult> { MakeSource("chunk A") };
+        var opts = new RagOptions { SystemPrompt = "You are a helpful assistant." };
+
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ChatReply("partial"), ChatReply("final"));
+
+        await _sut.AskAsync("What?", sources, opts, TestContext.Current.CancellationToken);
+
+        // Both map call and reduce call should include the system message
+        await _chatClient.Received(2).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Role == ChatRole.System && m.Text == "You are a helpful assistant.")),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task AskAsync_WithCustomPromptTemplates_UsesCustomTemplates()
     {
         var sources = new List<SearchResult> { MakeSource("chunk A") };
