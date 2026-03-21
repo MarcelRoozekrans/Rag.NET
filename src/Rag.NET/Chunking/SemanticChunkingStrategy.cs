@@ -50,6 +50,8 @@ public sealed partial class SemanticChunkingStrategy(
         return denom == 0 ? 0 : dot / denom;
     }
 
+    // chunkingOptions (MaxChunkSize/Overlap) is not used — semantic chunking uses its own
+    // SemanticChunkingOptions for size constraints. The parameter is required by IChunkingStrategy.
     public async IAsyncEnumerable<TextChunk> ChunkAsync(
         DocumentSection section,
         ChunkingOptions chunkingOptions,

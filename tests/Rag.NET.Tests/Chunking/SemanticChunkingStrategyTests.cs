@@ -184,6 +184,24 @@ public class SemanticChunkingStrategyTests
     }
 
     [Fact]
+    public async Task ChunkAsync_CancelledToken_ThrowsOperationCancelledException()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var embedder = MockEmbedder([1f, 0f], [0f, 1f]);
+        var sut = new SemanticChunkingStrategy(embedder, new SemanticChunkingOptions { MinChunkSize = 1, MaxChunkSize = 5000 });
+        var section = new DocumentSection
+        {
+            Text = "First sentence. Second sentence.",
+            DocumentId = new DocumentId("doc-1"),
+        };
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => sut.ChunkAsync(section, new ChunkingOptions(), cts.Token).ToListAsync(cts.Token).AsTask());
+    }
+
+    [Fact]
     public async Task ChunkAsync_SetsDocumentIdAndChunkIndex()
     {
         var ct = TestContext.Current.CancellationToken;
