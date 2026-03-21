@@ -64,6 +64,8 @@ Use an LLM to translate a natural-language question into a vector search query p
 
 **Why:** Rag.NET has no mechanism to automatically derive metadata filters from user questions.
 
+**Status:** ✅ Done
+
 ---
 
 ### Tag-Based Retrieval Filtering
@@ -159,6 +161,8 @@ Process chunks sequentially: generate an initial answer from the first chunk, th
 Run an LLM over each ingested document to generate representative Q&A pairs or structured metadata tags (topics, entities, document type) and attach them to chunks. At retrieval time, user questions match against these pre-generated questions, yielding much better recall than embedding raw chunk text alone.
 
 **Why:** One of the highest-impact RAG accuracy improvements — applied at index time, zero retrieval overhead.
+
+**Status:** ✅ Done
 
 ---
 
@@ -358,9 +362,9 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [ ] | Domain-Specific Chunking Templates | High | Per-domain logic |
 | [ ] | Ensemble / RRF | High | Multiple retrievers |
 | [ ] | Image / Video Description | High | Vision LLM |
-| [ ] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
+| [x] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
 | [ ] | Long-Term Conversational Memory | High | Vector store + `IChatClient` |
 | [x] | Parent-Document Retrieval | High | Dual index |
 | [ ] | RAPTOR | High | UMAP + GMM + `IChatClient` |
-| [ ] | Self-Query Filtering | High | `IChatClient` + schema |
+| [x] | Self-Query Filtering | High | `IChatClient` + schema |
 | [ ] | GraphRAG | Very High | Graph DB + `IChatClient` |
