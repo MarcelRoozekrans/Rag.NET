@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
@@ -82,6 +83,9 @@ public sealed partial class SemanticChunkingStrategy(
         var similarities = ComputeConsecutiveSimilarities(sentences, embeddings);
         var groups = GroupSentencesByBreakpoints(sentences, similarities);
 
+        MergeUndersizedGroups(groups);
+        SplitOversizedGroups(groups);
+
         int chunkIndex = 0;
         int cursor = 0;
         for (int g = 0; g < groups.Count; g++)
@@ -124,6 +128,76 @@ public sealed partial class SemanticChunkingStrategy(
         }
         return groups;
     }
+
+    private void MergeUndersizedGroups(List<List<string>> groups)
+    {
+        bool merged = true;
+        while (merged && groups.Count > 1)
+        {
+            merged = false;
+            for (int i = 0; i < groups.Count; i++)
+            {
+                var groupLength = GroupCharLength(groups[i]);
+                if (groupLength >= _options.MinChunkSize)
+                    continue;
+
+                // Pick the smaller neighbor to merge with
+                int neighborIndex;
+                if (i == 0)
+                    neighborIndex = 1;
+                else if (i == groups.Count - 1)
+                    neighborIndex = i - 1;
+                else
+                    neighborIndex = GroupCharLength(groups[i - 1]) <= GroupCharLength(groups[i + 1]) ? i - 1 : i + 1;
+
+                // Merge into the earlier index
+                int target = Math.Min(i, neighborIndex);
+                int source = Math.Max(i, neighborIndex);
+                groups[target].AddRange(groups[source]);
+                groups.RemoveAt(source);
+
+                merged = true;
+                break; // restart scan after mutation
+            }
+        }
+    }
+
+    private void SplitOversizedGroups(List<List<string>> groups)
+    {
+        for (int i = 0; i < groups.Count; i++)
+        {
+            if (GroupCharLength(groups[i]) <= _options.MaxChunkSize)
+                continue;
+
+            var subGroups = new List<List<string>>();
+            var current = new List<string>();
+            int currentLen = 0;
+
+            var span = CollectionsMarshal.AsSpan(groups[i]);
+            foreach (ref readonly var sentence in span)
+            {
+                var addedLen = currentLen == 0 ? sentence.Length : sentence.Length + 1; // +1 for space join
+                if (current.Count > 0 && currentLen + addedLen > _options.MaxChunkSize)
+                {
+                    subGroups.Add(current);
+                    current = new List<string>();
+                    currentLen = 0;
+                }
+                current.Add(sentence);
+                currentLen += currentLen == 0 ? sentence.Length : addedLen;
+            }
+            if (current.Count > 0)
+                subGroups.Add(current);
+
+            // Replace the original group with subgroups
+            groups.RemoveAt(i);
+            groups.InsertRange(i, subGroups);
+            i += subGroups.Count - 1; // skip past inserted groups
+        }
+    }
+
+    private static int GroupCharLength(List<string> group) =>
+        group.Sum(s => s.Length) + Math.Max(0, group.Count - 1); // spaces between sentences
 
     private static TextChunk? BuildChunk(DocumentSection section, List<string> group, int chunkIndex, int cursor)
     {

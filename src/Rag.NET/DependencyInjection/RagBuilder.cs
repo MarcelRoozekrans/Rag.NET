@@ -27,6 +27,20 @@ public sealed class RagBuilder(IServiceCollection services)
     public IServiceCollection Services { get; } = services;
 
     /// <summary>
+    /// Registers <see cref="SemanticChunkingStrategy"/> which splits text at meaning
+    /// boundaries using embedding similarity between consecutive sentences.
+    /// Uses the same <see cref="IEmbeddingGenerator{TInput,TEmbedding}"/> registered for
+    /// retrieval by default. Override via <see cref="SemanticChunkingOptions.ChunkingEmbedder"/>
+    /// when you want a smaller/faster model for chunking only.
+    /// </summary>
+    public RagBuilder UseSemanticChunking(SemanticChunkingOptions? options = null)
+    {
+        Services.AddSingleton(options ?? new SemanticChunkingOptions());
+        Services.AddSingleton<IChunkingStrategy, SemanticChunkingStrategy>();
+        return this;
+    }
+
+    /// <summary>
     /// Registers a custom chunking strategy. Optionally configures <see cref="ChunkingOptions"/>
     /// (MaxChunkSize and Overlap), which are interpreted as characters by most built-in strategies.
     /// </summary>

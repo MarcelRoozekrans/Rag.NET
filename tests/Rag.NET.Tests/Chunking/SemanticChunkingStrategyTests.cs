@@ -1,6 +1,9 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
+using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
@@ -219,5 +222,67 @@ public class SemanticChunkingStrategyTests
         Assert.All(chunks, c => Assert.Equal("doc-1", c.DocumentId.ToString()));
         for (int i = 0; i < chunks.Count; i++)
             Assert.Equal(i, chunks[i].ChunkIndex);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_ChunkBelowMinSize_MergedWithNeighbor()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = MockEmbedder([1f, 0f], [1f, 0f], [0f, 1f]);
+        var opts = new SemanticChunkingOptions
+        {
+            BreakpointPercentile = 0.5f,
+            MinChunkSize = 200, // individual sentences are < 200 chars, so merge
+            MaxChunkSize = 5000,
+        };
+        var sut = new SemanticChunkingStrategy(embedder, opts);
+        var section = new DocumentSection
+        {
+            Text = "Short. Also short. Very different topic here with more words.",
+            DocumentId = new DocumentId("doc-1"),
+        };
+
+        var chunks = await sut.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct);
+
+        // All should merge since each chunk is below MinChunkSize
+        Assert.Single(chunks);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_ChunkAboveMaxSize_SplitAtSentenceBoundary()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = MockEmbedder([1f, 0f], [1f, 0f], [1f, 0f], [1f, 0f]);
+        var longSentence = new string('a', 400);
+        var text = $"{longSentence}. {longSentence}. {longSentence}. {longSentence}.";
+        var opts = new SemanticChunkingOptions
+        {
+            BreakpointPercentile = 0.25f,
+            MinChunkSize = 1,
+            MaxChunkSize = 500,
+        };
+        var sut = new SemanticChunkingStrategy(embedder, opts);
+        var section = new DocumentSection { Text = text, DocumentId = new DocumentId("doc-1") };
+
+        var chunks = await sut.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.True(chunks.Count > 1);
+        Assert.All(chunks, c => Assert.True(c.Text.Length <= opts.MaxChunkSize + 50)); // small tolerance
+    }
+
+    [Fact]
+    public void UseSemanticChunking_RegistersStrategyAndOptions()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+        services.AddSingleton(Substitute.For<IVectorStore>());
+        services.AddRagNet(rag => rag.UseSemanticChunking());
+
+        var provider = services.BuildServiceProvider();
+        var strategy = provider.GetService<IChunkingStrategy>();
+        var options = provider.GetService<SemanticChunkingOptions>();
+
+        Assert.IsType<SemanticChunkingStrategy>(strategy);
+        Assert.NotNull(options);
     }
 }
