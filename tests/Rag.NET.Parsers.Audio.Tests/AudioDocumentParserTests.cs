@@ -17,6 +17,31 @@ file sealed class FakeAudioDocumentParser(
         fakeSegments.ToAsyncEnumerable();
 }
 
+file sealed class CapturingFakeParser(
+    AudioParserOptions options,
+    IReadOnlyList<SegmentData> fakeSegments,
+    Action<string> onPath) : AudioDocumentParser(options)
+{
+    protected override IAsyncEnumerable<SegmentData> TranscribeAsync(
+        string audioFilePath, CancellationToken ct)
+    {
+        onPath(audioFilePath);
+        return fakeSegments.ToAsyncEnumerable();
+    }
+}
+
+file sealed class ThrowingFakeParser(
+    AudioParserOptions options,
+    Action<string> onPath) : AudioDocumentParser(options)
+{
+    protected override IAsyncEnumerable<SegmentData> TranscribeAsync(
+        string audioFilePath, CancellationToken ct)
+    {
+        onPath(audioFilePath);
+        throw new InvalidOperationException("Whisper exploded");
+    }
+}
+
 public class AudioDocumentParserTests
 {
     private static readonly AudioParserOptions DefaultOptions = new();
@@ -163,5 +188,39 @@ public class AudioDocumentParserTests
 
         Assert.Single(sections);
         Assert.Equal("00:01.500 - 00:05.200", sections[0].Heading);
+    }
+
+    [Fact]
+    public async Task ParseAsync_TempFileDeletedAfterSuccess()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        string? capturedTempPath = null;
+
+        var segments = new[] { MakeSegment("Hello.", TimeSpan.Zero, TimeSpan.FromSeconds(1)) };
+        var sut = new CapturingFakeParser(new AudioParserOptions(), segments, path => capturedTempPath = path);
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.wav" };
+
+        using var stream = new MemoryStream(new byte[] { 0x00, 0x01 });
+        _ = await sut.ParseAsync(stream, metadata, ct).ToListAsync(ct);
+
+        Assert.NotNull(capturedTempPath);
+        Assert.False(File.Exists(capturedTempPath), "Temp file should be deleted after successful parse");
+    }
+
+    [Fact]
+    public async Task ParseAsync_TempFileDeletedAfterException()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        string? capturedTempPath = null;
+
+        var sut = new ThrowingFakeParser(new AudioParserOptions(), path => capturedTempPath = path);
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "test.wav" };
+
+        using var stream = new MemoryStream(new byte[] { 0x00 });
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.ParseAsync(stream, metadata, ct).ToListAsync(ct).AsTask());
+
+        Assert.NotNull(capturedTempPath);
+        Assert.False(File.Exists(capturedTempPath), "Temp file should be deleted even when transcription throws");
     }
 }
