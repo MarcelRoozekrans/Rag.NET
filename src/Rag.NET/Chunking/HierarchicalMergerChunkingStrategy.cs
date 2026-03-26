@@ -1,0 +1,137 @@
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using Rag.NET.Abstractions;
+using Rag.NET.Models;
+using Rag.NET.Models.Options;
+
+namespace Rag.NET.Chunking;
+
+/// <summary>
+/// Merges document sections into heading-subtree chunks using a streaming heading-stack algorithm.
+/// Each chunk covers one heading and all body text under it up to <see cref="HierarchicalMergerOptions.MaxDepth"/>.
+/// Implements <see cref="IDocumentChunkingStrategy"/> for pipeline use and
+/// <see cref="IChunkingStrategy"/> as a per-section fallback.
+/// </summary>
+public sealed class HierarchicalMergerChunkingStrategy(HierarchicalMergerOptions options)
+    : IDocumentChunkingStrategy, IChunkingStrategy
+{
+    private readonly Regex[][]? _compiledPatterns = options.HeadingPatterns is null ? null :
+        options.HeadingPatterns
+            .Select(level => level
+                .Select(p => new Regex(p, RegexOptions.Compiled | RegexOptions.Multiline, TimeSpan.FromSeconds(1)))
+                .ToArray())
+            .ToArray();
+
+    public async IAsyncEnumerable<TextChunk> ChunkDocumentAsync(
+        IAsyncEnumerable<DocumentSection> sections,
+        ChunkingOptions _,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var buffer = new StringBuilder();
+        var currentHeading = string.Empty;
+        var currentLevel = int.MaxValue;
+        var chunkIndex = 0;
+        DocumentId? documentId = null;
+
+        await foreach (var section in sections.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            documentId ??= section.DocumentId;
+            var level = DetectLevel(section);
+
+            if (level is not null && level <= options.MaxDepth)
+            {
+                // Flush accumulated buffer as a chunk before starting the new heading
+                if (buffer.Length > 0 || currentHeading.Length > 0)
+                    yield return BuildChunk(documentId, chunkIndex++, currentHeading, currentLevel, buffer);
+
+                currentHeading = section.Heading ?? StripMarkdownPrefix(section.Text);
+                currentLevel = level.Value;
+                buffer.Clear();
+            }
+            else
+            {
+                // Body text or heading deeper than MaxDepth — fold into current chunk
+                if (buffer.Length > 0)
+                    buffer.AppendLine();
+                buffer.Append(section.Text.Trim());
+            }
+        }
+
+        // Flush the final accumulated chunk
+        if (buffer.Length > 0 || currentHeading.Length > 0)
+            yield return BuildChunk(documentId ?? new DocumentId("unknown"), chunkIndex, currentHeading, currentLevel, buffer);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Fallback implementation: emits each section as a single chunk without merging.</remarks>
+    public IAsyncEnumerable<TextChunk> ChunkAsync(
+        DocumentSection section,
+        ChunkingOptions _,
+        CancellationToken cancellationToken = default)
+    {
+        TextChunk[] result =
+        [
+            new TextChunk
+            {
+                Text = section.Text,
+                DocumentId = section.DocumentId,
+                ChunkIndex = section.SectionIndex,
+            }
+        ];
+        return result.ToAsyncEnumerable();
+    }
+
+    private int? DetectLevel(DocumentSection section)
+    {
+        // Prefer parser-supplied heading level
+        if (section.HeadingLevel.HasValue)
+            return section.HeadingLevel;
+
+        // Fall back to user-supplied regex patterns
+        if (_compiledPatterns is null)
+            return null;
+
+        for (var i = 0; i < _compiledPatterns.Length; i++)
+            foreach (var regex in _compiledPatterns[i])
+                if (regex.IsMatch(section.Text))
+                    return i + 1;
+
+        return null;
+    }
+
+    private static TextChunk BuildChunk(DocumentId docId, int index, string heading, int level, StringBuilder body)
+    {
+        var bodyText = body.ToString().Trim();
+        var text = heading.Length > 0
+            ? $"{heading}\n\n{bodyText}"
+            : bodyText;
+
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (heading.Length > 0)
+        {
+            metadata["heading"] = heading;
+            if (level < int.MaxValue)
+                metadata["heading_level"] = level.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return new TextChunk
+        {
+            Text = text,
+            DocumentId = docId,
+            ChunkIndex = index,
+            Metadata = metadata,
+        };
+    }
+
+    private static string StripMarkdownPrefix(string text)
+    {
+        foreach (var line in text.Split('\n'))
+        {
+            var trimmed = line.Trim().TrimStart('#').Trim();
+            if (trimmed.Length > 0) return trimmed;
+        }
+        return text.Trim();
+    }
+}
