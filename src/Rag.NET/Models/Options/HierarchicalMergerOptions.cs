@@ -1,3 +1,5 @@
+using Rag.NET.Models;
+
 namespace Rag.NET.Models.Options;
 
 public sealed class HierarchicalMergerOptions
