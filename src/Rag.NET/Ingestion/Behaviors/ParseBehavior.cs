@@ -19,29 +19,39 @@ public sealed class ParseBehavior : IIngestionBehavior
         var parser = Parsers.FirstOrDefault(p => p.CanParse(ctx.Metadata.ContentType ?? "text/plain"))
             ?? throw new NoParserFoundException(ctx.Metadata.ContentType ?? "text/plain");
 
+        if (ChunkingStrategy is IDocumentChunkingStrategy docStrategy)
+            await ChunkDocumentAsync(ctx, parser, docStrategy, ct).ConfigureAwait(false);
+        else
+            await ChunkPerSectionAsync(ctx, parser, ct).ConfigureAwait(false);
+
+        ctx.Progress?.Report(new()
+        {
+            Stage = IngestionProgressStage.Parsing,
+            DocumentId = ctx.Metadata.DocumentId,
+            Message = "Parsing complete",
+        });
+
+        return await next(ctx, ct).ConfigureAwait(false);
+    }
+
+    private async Task ChunkDocumentAsync(
+        IngestionContext ctx, IDocumentParser parser, IDocumentChunkingStrategy docStrategy, CancellationToken ct)
+    {
+        await foreach (var section in parser.ParseAsync(ctx.Stream, ctx.Metadata, ct).ConfigureAwait(false))
+            ctx.Sections.Add(section);
+
+        await foreach (var chunk in docStrategy.ChunkDocumentAsync(
+            ctx.Sections.ToAsyncEnumerable(), ChunkingOptions, ct).ConfigureAwait(false))
+            ctx.Chunks.Add(chunk);
+    }
+
+    private async Task ChunkPerSectionAsync(IngestionContext ctx, IDocumentParser parser, CancellationToken ct)
+    {
         var headingBreadcrumbs = new string?[6];
 
         await foreach (var section in parser.ParseAsync(ctx.Stream, ctx.Metadata, ct).ConfigureAwait(false))
         {
-            Dictionary<string, string>? headingMetadata = null;
-
-            if (section.HeadingLevel is { } level && level >= 1 && level <= 6 && section.Heading is not null)
-            {
-                headingBreadcrumbs[level - 1] = section.Heading;
-                foreach (ref var slot in headingBreadcrumbs.AsSpan(level))
-                    slot = null;
-
-                var parts = new List<string>(level);
-                foreach (var h in headingBreadcrumbs[..level])
-                    if (h is not null) parts.Add(h);
-
-                headingMetadata = new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    ["heading"] = section.Heading,
-                    ["heading_level"] = level.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    ["heading_breadcrumb"] = string.Join(" > ", parts),
-                };
-            }
+            var headingMetadata = BuildHeadingMetadata(section, headingBreadcrumbs);
 
             await foreach (var chunk in ChunkingStrategy.ChunkAsync(section, ChunkingOptions, ct).ConfigureAwait(false))
             {
@@ -54,14 +64,26 @@ public sealed class ParseBehavior : IIngestionBehavior
 
             ctx.Sections.Add(section);
         }
+    }
 
-        ctx.Progress?.Report(new()
+    private static Dictionary<string, string>? BuildHeadingMetadata(DocumentSection section, string?[] breadcrumbs)
+    {
+        if (section.HeadingLevel is not { } level || level < 1 || level > 6 || section.Heading is null)
+            return null;
+
+        breadcrumbs[level - 1] = section.Heading;
+        foreach (ref var slot in breadcrumbs.AsSpan(level))
+            slot = null;
+
+        var parts = new List<string>(level);
+        foreach (var h in breadcrumbs[..level])
+            if (h is not null) parts.Add(h);
+
+        return new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            Stage = IngestionProgressStage.Parsing,
-            DocumentId = ctx.Metadata.DocumentId,
-            Message = "Parsing complete",
-        });
-
-        return await next(ctx, ct).ConfigureAwait(false);
+            ["heading"] = section.Heading,
+            ["heading_level"] = level.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["heading_breadcrumb"] = string.Join(" > ", parts),
+        };
     }
 }
