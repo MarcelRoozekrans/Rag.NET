@@ -82,6 +82,21 @@ public sealed class RagBuilder(IServiceCollection services)
     }
 
     /// <summary>
+    /// Registers <see cref="HierarchicalMergerChunkingStrategy"/> which merges document sections
+    /// into heading-subtree chunks. Each chunk covers one heading and all body text under it
+    /// down to <paramref name="options"/>.<see cref="HierarchicalMergerOptions.MaxDepth"/>.
+    /// Uses <see cref="DocumentSection.HeadingLevel"/> when available; falls back to
+    /// <see cref="HierarchicalMergerOptions.HeadingPatterns"/> for formats without heading metadata.
+    /// </summary>
+    public RagBuilder UseHierarchicalMerging(HierarchicalMergerOptions? options = null)
+    {
+        var opts = options ?? new HierarchicalMergerOptions();
+        Services.AddSingleton(opts);
+        Services.AddSingleton<IChunkingStrategy>(_ => new HierarchicalMergerChunkingStrategy(opts));
+        return this;
+    }
+
+    /// <summary>
     /// Registers a document parser. Multiple parsers can be registered; the pipeline
     /// selects the first one whose <c>CanParse</c> returns <see langword="true"/> for a given content type.
     /// </summary>
