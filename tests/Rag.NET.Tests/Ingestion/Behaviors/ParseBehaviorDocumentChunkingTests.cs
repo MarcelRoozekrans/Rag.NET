@@ -6,7 +6,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
 
-namespace Rag.NET.Tests.Ingestion;
+namespace Rag.NET.Tests.Ingestion.Behaviors;
 
 public class ParseBehaviorDocumentChunkingTests
 {
@@ -42,6 +42,9 @@ public class ParseBehaviorDocumentChunkingTests
         // Assert: chunks were produced (one per section from the plain-text parser)
         Assert.NotEmpty(ctx.Chunks);
         Assert.NotEmpty(ctx.Sections);
+        // HierarchicalMergerChunkingStrategy uses the document-level path, which never
+        // adds heading_breadcrumb metadata (only the per-section path does).
+        Assert.All(ctx.Chunks, c => Assert.False(c.Metadata.ContainsKey("heading_breadcrumb")));
     }
 
     [Fact]
