@@ -366,6 +366,8 @@ public sealed class RagBuilder(IServiceCollection services)
 
     /// <summary>
     /// Registers <see cref="ConversationMemoryPipeline"/> as the <see cref="IConversationMemory"/>.
+    /// When registered, answer engines automatically trim conversation history before each call
+    /// using the configured sliding-window, token-budget, and optional summary strategies.
     /// Use the optional <paramref name="configure"/> delegate to wrap the pipeline with additional
     /// decorators, such as <see cref="ConversationMemoryBuilder.UsePersistentMemory"/>.
     /// </summary>
