@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Rag.NET.Abstractions;
 using Rag.NET.Memory;
 using Rag.NET.Models;
@@ -47,9 +48,9 @@ public class PersistentConversationMemoryTests
 
         var result = await sut.ProcessAsync([new ChatMessage(ChatRole.User, "Hello")], ct);
 
-        Assert.Contains(result, m =>
-            m.Role == ChatRole.System &&
-            m.Text!.Contains("From a previous conversation", StringComparison.Ordinal));
+        Assert.True(result.Count >= 2);
+        Assert.Equal(ChatRole.System, result[0].Role);
+        Assert.Contains("From a previous conversation", result[0].Text, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -81,7 +82,7 @@ public class PersistentConversationMemoryTests
 
         var sut = new PersistentConversationMemory(
             PassthroughInner(), vectorStore, MockEmbedder([0.1f]),
-            new PersistentMemoryOptions { MinScore = 0.7f });
+            new PersistentMemoryOptions { MinScore = 0.7 });
 
         var result = await sut.ProcessAsync([new ChatMessage(ChatRole.User, "Hi")], ct);
 
@@ -107,5 +108,24 @@ public class PersistentConversationMemoryTests
                 chunks[0].Chunk.Text.Contains("Assistant: Hi there", StringComparison.Ordinal) &&
                 chunks[0].Chunk.DocumentId.Value == "session-42"),
             ct);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_SearchFails_CallsInnerWithOriginalHistory()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var vectorStore = Substitute.For<IVectorStore>();
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), ct)
+                   .ThrowsAsync(new InvalidOperationException("vector store down"));
+        var inner = PassthroughInner();
+
+        var sut = new PersistentConversationMemory(
+            inner, vectorStore, MockEmbedder([0.1f]), new PersistentMemoryOptions());
+
+        var history = new[] { new ChatMessage(ChatRole.User, "Hi") };
+        var result = await sut.ProcessAsync(history, ct);
+
+        Assert.DoesNotContain(result, m => m.Role == ChatRole.System);
+        await inner.Received(1).ProcessAsync(history, ct);
     }
 }

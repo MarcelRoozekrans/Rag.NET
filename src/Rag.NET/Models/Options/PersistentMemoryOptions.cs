@@ -6,5 +6,5 @@ public sealed class PersistentMemoryOptions
     public int TopK { get; set; } = 3;
 
     /// <summary>Minimum similarity score threshold. Matches below this value are not injected.</summary>
-    public float MinScore { get; set; } = 0.7f;
+    public double MinScore { get; set; } = 0.7;
 }
