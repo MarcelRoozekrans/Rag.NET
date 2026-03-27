@@ -28,6 +28,8 @@ Configurable chunking stage driven by user-supplied regex patterns for each head
 
 **Why:** Many enterprise document types (legal codes, technical specs, internal wikis) use non-standard heading structures. Regex-driven depth chunking lets operators tune chunking without writing a custom `IChunker`.
 
+**Status:** ✅ Done
+
 ---
 
 ### Multi-Language Code Splitting (Heuristic)
@@ -98,9 +100,11 @@ Combine semantic similarity score with a recency decay factor. Fresher documents
 ### BM25 Synonym Expansion
 **Package:** `Rag.NET` (core)
 
-Augment BM25 retrieval with runtime-updatable domain-specific synonym dictionaries (e.g., "MI" → "myocardial infarction", "k8s" → "kubernetes"). Synonyms receive a configurable boost weight lower than the original token. Dictionary updatable at runtime without restart.
+Augment BM25 retrieval with runtime-updatable domain-specific synonym dictionaries (e.g., "MI" → "myocardial infarction", "k8s" → "kubernetes"). Synonyms are bidirectional: any term in a group expands to all other terms. Dictionary updatable at runtime without restart via `SynonymMap.AddGroup` / `RemoveGroup`.
 
 **Why:** Domain terminology mismatches silently reduce BM25 recall in specialised corpora (medical, legal, engineering).
+
+**Status:** ✅ Done
 
 ---
 
@@ -355,13 +359,13 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Token-Aware Splitting | Low | `Microsoft.ML.Tokenizers` |
 | [x] | Audio Transcription | Medium | `Whisper.net` |
 | [x] | BM25 Keyword Retrieval | Medium | None |
-| [ ] | BM25 Synonym Expansion | Medium | BM25 retriever |
+| [x] | BM25 Synonym Expansion | Medium | BM25 retriever |
 | [x] | Content-Hash Record Manager | Medium | Persistence store |
 | [x] | Cross-Encoder Reranking | Medium | Model or API |
 | [x] | Data Management API | Medium | `IVectorStore` extension |
 | [x] | Data Provider Abstraction | Medium | Existing `IDocumentParser` |
 | [x] | Decorator Pipeline Refactoring | Medium | None |
-| [ ] | Hierarchical Merger | Medium | None |
+| [x] | Hierarchical Merger | Medium | None |
 | [x] | HyDE | Medium | `IChatClient` |
 | [x] | LLM-as-Judge Evaluation | Medium | `IChatClient` |
 | [x] | Map-Reduce / Refine Synthesis | Medium | `IChatClient` |

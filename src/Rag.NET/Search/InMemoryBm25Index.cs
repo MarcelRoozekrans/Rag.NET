@@ -168,7 +168,8 @@ public sealed class InMemoryBm25Index : IBm25Index
 
     internal static List<string> Tokenize(string text, SynonymMap? synonymMap = null)
     {
-        var tokens = new List<string>();
+        // Pass 1: extract base tokens (char loop — no allocations beyond the token slices).
+        var baseTokens = new List<string>();
         var lower = text.ToLowerInvariant();
         var start = -1;
         for (int i = 0; i <= lower.Length; i++)
@@ -177,29 +178,30 @@ public sealed class InMemoryBm25Index : IBm25Index
             if (isAlnum && start == -1) start = i;
             else if (!isAlnum && start != -1)
             {
-                var token = lower[start..i];
-                tokens.Add(token);
-                if (synonymMap is not null)
-                    foreach (var syn in synonymMap.Expand(token))
-                        tokens.AddRange(Tokenize(syn));
+                baseTokens.Add(lower[start..i]);
                 start = -1;
             }
         }
 
-        // Second pass: expand multi-word synonym phrases found among consecutive base tokens.
-        if (synonymMap is not null && tokens.Count > 1)
+        if (synonymMap is null) return baseTokens;
+
+        // Pass 2: expand single base tokens.
+        var tokens = new List<string>(baseTokens);
+        foreach (ref readonly var token in CollectionsMarshal.AsSpan(baseTokens))
+            foreach (var syn in synonymMap.Expand(token))
+                tokens.AddRange(Tokenize(syn));
+
+        // Pass 3: expand multi-word phrases formed by consecutive *base* tokens only.
+        // Using baseTokens (not tokens) prevents spurious phrases from synonym-expanded tokens.
+        if (baseTokens.Count > 1)
         {
-            var extras = new List<string>();
-            for (int i = 0; i < tokens.Count; i++)
-            {
-                for (int len = 2; i + len <= tokens.Count; len++)
+            for (int i = 0; i < baseTokens.Count; i++)
+                for (int len = 2; i + len <= baseTokens.Count; len++)
                 {
-                    var phrase = string.Join(" ", tokens.GetRange(i, len));
+                    var phrase = string.Join(" ", baseTokens.GetRange(i, len));
                     foreach (var syn in synonymMap.Expand(phrase))
-                        extras.AddRange(Tokenize(syn));
+                        tokens.AddRange(Tokenize(syn));
                 }
-            }
-            tokens.AddRange(extras);
         }
 
         return tokens;
