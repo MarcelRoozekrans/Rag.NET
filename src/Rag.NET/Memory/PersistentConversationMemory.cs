@@ -14,12 +14,16 @@ public sealed class PersistentConversationMemory(
     PersistentMemoryOptions options,
     ILogger<PersistentConversationMemory>? logger = null) : IConversationMemory
 {
+    // ChunkIndex is tracked per-session for this process lifetime.
+    // The counter resets on restart; index collisions are possible for
+    // sessions with existing entries in the vector store.
     private readonly ConcurrentDictionary<string, int> _sessionCounters = new(StringComparer.Ordinal);
 
     public async Task<IReadOnlyList<ChatMessage>> ProcessAsync(
         IReadOnlyList<ChatMessage> history,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var query = history.LastOrDefault(m => m.Role == ChatRole.User)?.Text;
         if (!string.IsNullOrEmpty(query))
         {
@@ -43,6 +47,8 @@ public sealed class PersistentConversationMemory(
         string sessionId,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentException.ThrowIfNullOrEmpty(sessionId);
         var text = $"User: {userMessage}\nAssistant: {assistantMessage}";
         try
         {

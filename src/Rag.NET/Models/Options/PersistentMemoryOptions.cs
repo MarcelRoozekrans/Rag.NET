@@ -3,8 +3,8 @@ namespace Rag.NET.Models.Options;
 public sealed class PersistentMemoryOptions
 {
     /// <summary>Maximum number of past exchange pairs to retrieve from the vector store per query.</summary>
-    public int TopK { get; set; } = 3;
+    public int TopK { get; init; } = 3;
 
     /// <summary>Minimum similarity score threshold. Matches below this value are not injected.</summary>
-    public double MinScore { get; set; } = 0.7;
+    public double MinScore { get; init; } = 0.7;
 }

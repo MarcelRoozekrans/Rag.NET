@@ -111,6 +111,31 @@ public class PersistentConversationMemoryTests
     }
 
     [Fact]
+    public async Task ProcessAsync_CancelledToken_Throws()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var sut = new PersistentConversationMemory(
+            PassthroughInner(), Substitute.For<IVectorStore>(),
+            MockEmbedder([0.1f]), new PersistentMemoryOptions());
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            sut.ProcessAsync([new ChatMessage(ChatRole.User, "Hi")], cts.Token));
+    }
+
+    [Fact]
+    public async Task StoreAsync_EmptySessionId_Throws()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = new PersistentConversationMemory(
+            Substitute.For<IConversationMemory>(), Substitute.For<IVectorStore>(),
+            MockEmbedder([0.1f]), new PersistentMemoryOptions());
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            sut.StoreAsync("Hello", "Hi", string.Empty, ct));
+    }
+
+    [Fact]
     public async Task ProcessAsync_SearchFails_CallsInnerWithOriginalHistory()
     {
         var ct = TestContext.Current.CancellationToken;
