@@ -8,11 +8,14 @@ namespace Rag.NET.DependencyInjection;
 /// </summary>
 public sealed class ConversationMemoryBuilder
 {
+    internal ConversationMemoryBuilder() { }
+
     private bool _usePersistentMemory;
     private PersistentMemoryOptions? _persistentMemoryOptions;
 
     internal bool HasPersistentMemory => _usePersistentMemory;
-    internal PersistentMemoryOptions PersistentMemoryOptions => _persistentMemoryOptions ?? new PersistentMemoryOptions();
+    internal PersistentMemoryOptions PersistentMemoryOptions =>
+        _persistentMemoryOptions ??= new PersistentMemoryOptions();
 
     /// <summary>
     /// Wraps the conversation memory pipeline with
