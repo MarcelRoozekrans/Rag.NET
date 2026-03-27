@@ -19,6 +19,13 @@ public interface IConversationMemory
     /// Persists a completed exchange pair for future recall.
     /// Implementations that do not support persistence return <see cref="Task.CompletedTask"/>.
     /// </summary>
+    /// <param name="userMessage">The user turn text to persist.</param>
+    /// <param name="assistantMessage">The assistant response text to persist.</param>
+    /// <param name="sessionId">
+    /// Scoping key for the exchange. Used by persistent implementations to
+    /// namespace stored vectors (e.g., per-user or per-conversation).
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     Task StoreAsync(
         string userMessage,
         string assistantMessage,

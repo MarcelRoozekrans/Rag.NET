@@ -160,7 +160,11 @@ public sealed class ConversationMemoryPipeline : IConversationMemory
         string userMessage,
         string assistantMessage,
         string sessionId,
-        CancellationToken cancellationToken = default) => Task.CompletedTask;
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
 
     private int CountTokens(ChatMessage message)
     {

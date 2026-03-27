@@ -15,4 +15,15 @@ public class ConversationMemoryStoreTests
 
         await sut.StoreAsync("Hello", "Hi there", "session-1", ct);
     }
+
+    [Fact]
+    public async Task StoreAsync_CancelledToken_Throws()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        IConversationMemory sut = new ConversationMemoryPipeline(new ConversationMemoryOptions(), chatClient: null);
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            sut.StoreAsync("Hello", "Hi there", "session-1", cts.Token));
+    }
 }
