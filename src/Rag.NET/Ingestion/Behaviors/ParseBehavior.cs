@@ -12,6 +12,13 @@ public sealed class ParseBehavior : IIngestionBehavior
     [Inject] public IChunkingStrategy ChunkingStrategy { get; set; } = null!;
     [Inject] public ChunkingOptions ChunkingOptions { get; set; } = null!;
 
+    /// <summary>
+    /// Optional post-processing strategy applied after chunking.
+    /// Set by the DI composition root (e.g. RagBuilder) when a refinement strategy is registered.
+    /// Not decorated with [Inject] because ZeroAlloc.Inject does not support nullable optional properties.
+    /// </summary>
+    public IChunkRefinementStrategy? RefinementStrategy { get; set; }
+
     public async ValueTask<IngestionResult> HandleAsync(
         IngestionContext ctx, CancellationToken ct,
         Func<IngestionContext, CancellationToken, ValueTask<IngestionResult>> next)
@@ -24,6 +31,9 @@ public sealed class ParseBehavior : IIngestionBehavior
         else
             await ChunkPerSectionAsync(ctx, parser, ct).ConfigureAwait(false);
 
+        if (RefinementStrategy is not null)
+            await ApplyRefinementAsync(ctx, ct).ConfigureAwait(false);
+
         ctx.Progress?.Report(new()
         {
             Stage = IngestionProgressStage.Parsing,
@@ -32,6 +42,16 @@ public sealed class ParseBehavior : IIngestionBehavior
         });
 
         return await next(ctx, ct).ConfigureAwait(false);
+    }
+
+    private async Task ApplyRefinementAsync(IngestionContext ctx, CancellationToken ct)
+    {
+        var raw = ctx.Chunks.ToAsyncEnumerable();
+        var refined = new List<TextChunk>();
+        await foreach (var chunk in RefinementStrategy!.RefineAsync(raw, ct).ConfigureAwait(false))
+            refined.Add(chunk);
+        ctx.Chunks.Clear();
+        ctx.Chunks.AddRange(refined);
     }
 
     private async Task ChunkDocumentAsync(
