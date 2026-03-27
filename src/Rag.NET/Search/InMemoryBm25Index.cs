@@ -16,10 +16,16 @@ public sealed class InMemoryBm25Index : IBm25Index
     private readonly Dictionary<string, List<(int docId, int tf)>> _postings = new(StringComparer.Ordinal);
     private readonly Dictionary<int, (TextChunk chunk, int length)> _docs = [];
     private readonly ReaderWriterLockSlim _lock = new();
+    private readonly SynonymMap? _synonymMap;
+
+    public InMemoryBm25Index(SynonymMap? synonymMap = null)
+    {
+        _synonymMap = synonymMap;
+    }
 
     public void Add(int docId, TextChunk chunk)
     {
-        var tokens = Tokenize(chunk.Text);
+        var tokens = Tokenize(chunk.Text, _synonymMap);
         var tf = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (ref readonly var token in CollectionsMarshal.AsSpan(tokens))
             tf[token] = tf.TryGetValue(token, out var count) ? count + 1 : 1;
@@ -83,7 +89,7 @@ public sealed class InMemoryBm25Index : IBm25Index
 
     public IReadOnlyList<(TextChunk chunk, double score)> Search(string query, int topK)
     {
-        var queryTokens = Tokenize(query);
+        var queryTokens = Tokenize(query, _synonymMap);
         if (queryTokens.Count == 0) return [];
         if (topK <= 0) return [];
 
@@ -160,7 +166,7 @@ public sealed class InMemoryBm25Index : IBm25Index
         return ValueTask.CompletedTask;
     }
 
-    internal static List<string> Tokenize(string text)
+    internal static List<string> Tokenize(string text, SynonymMap? synonymMap = null)
     {
         var tokens = new List<string>();
         var lower = text.ToLowerInvariant();
@@ -171,10 +177,31 @@ public sealed class InMemoryBm25Index : IBm25Index
             if (isAlnum && start == -1) start = i;
             else if (!isAlnum && start != -1)
             {
-                tokens.Add(lower[start..i]);
+                var token = lower[start..i];
+                tokens.Add(token);
+                if (synonymMap is not null)
+                    foreach (var syn in synonymMap.Expand(token))
+                        tokens.AddRange(Tokenize(syn));
                 start = -1;
             }
         }
+
+        // Second pass: expand multi-word synonym phrases found among consecutive base tokens.
+        if (synonymMap is not null && tokens.Count > 1)
+        {
+            var extras = new List<string>();
+            for (int i = 0; i < tokens.Count; i++)
+            {
+                for (int len = 2; i + len <= tokens.Count; len++)
+                {
+                    var phrase = string.Join(" ", tokens.GetRange(i, len));
+                    foreach (var syn in synonymMap.Expand(phrase))
+                        extras.AddRange(Tokenize(syn));
+                }
+            }
+            tokens.AddRange(extras);
+        }
+
         return tokens;
     }
 }

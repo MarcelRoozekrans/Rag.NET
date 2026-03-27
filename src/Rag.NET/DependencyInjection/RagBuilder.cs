@@ -17,6 +17,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
 using Rag.NET.Retrieval;
+using Rag.NET.Search;
 using Rag.NET.Storage;
 
 namespace Rag.NET.DependencyInjection;
@@ -262,7 +263,7 @@ public sealed class RagBuilder(IServiceCollection services)
     /// </param>
     public RagBuilder UseSqlitePersistence(string dbPath, string? collectionName = null)
     {
-        Services.AddSingleton<SqliteBm25Index>(_ => new SqliteBm25Index(dbPath, collectionName));
+        Services.AddSingleton<SqliteBm25Index>(sp => new SqliteBm25Index(dbPath, collectionName, sp.GetService<SynonymMap>()));
         Services.AddSingleton<IBm25Index>(sp => sp.GetRequiredService<SqliteBm25Index>());
 
         Services.AddSingleton<SqliteParentChunkStore>(_ => new SqliteParentChunkStore(dbPath, collectionName));

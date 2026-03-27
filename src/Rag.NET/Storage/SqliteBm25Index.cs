@@ -13,18 +13,19 @@ namespace Rag.NET.Storage;
 /// </summary>
 public sealed class SqliteBm25Index : IBm25Index
 {
-    private readonly InMemoryBm25Index _memory = new();
+    private readonly InMemoryBm25Index _memory;
     private readonly string _dbPath;
     private readonly string? _collectionName;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private volatile bool _initialised;
     private bool _disposed;
 
-    public SqliteBm25Index(string dbPath, string? collectionName = null)
+    public SqliteBm25Index(string dbPath, string? collectionName = null, SynonymMap? synonymMap = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dbPath);
         _dbPath = dbPath;
         _collectionName = collectionName;
+        _memory = new InMemoryBm25Index(synonymMap);
     }
 
     public void Add(int docId, TextChunk chunk)

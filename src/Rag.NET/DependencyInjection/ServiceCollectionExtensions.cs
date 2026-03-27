@@ -24,7 +24,7 @@ public static class ServiceCollectionExtensions
         services.AddRagNETServices();
 
         services.TryAddSingleton<ChunkingOptions>();
-        services.AddSingleton<InMemoryBm25Index>();
+        services.AddSingleton<InMemoryBm25Index>(sp => new InMemoryBm25Index(sp.GetService<SynonymMap>()));
 
         // Build and register pipelines — behaviors are resolved from the container by builders
         var ingestionBuilder = new IngestionPipelineBuilder();
