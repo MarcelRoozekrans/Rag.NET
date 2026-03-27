@@ -92,6 +92,10 @@ public static class ServiceCollectionExtensions
 
         // PipelineRetriever is registered only as IRetriever by ZeroAlloc ([Singleton(As = typeof(IRetriever))]).
         // Register it by its concrete type with manually-wired [Inject] properties so the decorator can wrap it.
+        // NOTE: This registers a second PipelineRetriever instance separate from the one
+        // ZeroAlloc registered as IRetriever. The generated IRetriever→PipelineRetriever
+        // registration is superseded by the decorator below, so the orphaned instance is
+        // never used — but two singletons of PipelineRetriever will exist in the container.
         services.AddSingleton<PipelineRetriever>(sp => new PipelineRetriever
         {
             Pipeline = sp.GetRequiredService<Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>>(),
