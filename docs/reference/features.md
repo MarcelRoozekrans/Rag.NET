@@ -172,6 +172,8 @@ After initial retrieval, use an LLM to judge whether the retrieved information i
 
 **Why:** Answers complex questions that require discovering what is missing and forming follow-up questions — moves Rag.NET from single-pass retrieval toward autonomous research capability.
 
+**Status:** ✅ Done
+
 ---
 
 ## Post-Retrieval
@@ -364,9 +366,11 @@ A read/delete surface for browsing and managing ingested data via `IRagDataManag
 ### Conversational Memory Management
 **Package:** `Rag.NET` (core)
 
-Automatic conversation history management for multi-turn RAG. Three composable strategies: (1) **Sliding window** — keep only the last N exchanges; (2) **Token-budget truncation** — trim oldest messages to stay within a configurable token budget; (3) **Summary memory** — LLM-summarize older messages into a compact system-message prefix when the window overflows. Plugs into `RagOptions.ConversationHistory` so callers don't need to manage truncation themselves. Optional persistent memory store for cross-session recall via hybrid search.
+Automatic conversation history management for multi-turn RAG. `ConversationMemoryPipeline` handles windowed trimming and optional LLM summarization. `PersistentConversationMemory` wraps the pipeline and adds cross-session recall: each exchange is embedded and stored in the vector store; relevant past exchanges are retrieved by similarity and injected as a system prefix.
 
 **Why:** Multi-turn RAG is the dominant use case, but `ConversationHistory` is currently a raw list the caller must manage. Without auto-summarization and windowing, conversations either blow the context window or lose important context through naive truncation.
+
+**Status:** ✅ Done
 
 ---
 
@@ -417,12 +421,12 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
 | [x] | Semantic Chunking (Embedding-Based) | Medium | `IEmbeddingGenerator` |
 | [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
-| [ ] | Deep Research Loop | High | `IChatClient` |
+| [x] | Deep Research Loop | High | `IChatClient` |
 | [ ] | Domain-Specific Chunking Templates | High | Per-domain logic |
 | [x] | Ensemble / RRF | High | Multiple retrievers |
 | [ ] | Image / Video Description | High | Vision LLM |
 | [x] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
-| [ ] | Conversational Memory Management | High | `IChatClient` + tokenizer |
+| [x] | Conversational Memory Management | High | `IChatClient` + tokenizer |
 | [x] | Parent-Document Retrieval | High | Dual index |
 | [ ] | RAPTOR | High | UMAP + GMM + `IChatClient` |
 | [x] | Self-Query Filtering | High | `IChatClient` + schema |

@@ -314,6 +314,70 @@ var results = await pipeline.RetrieveAsync("exact phrase lookup", new RetrievalO
 });
 ```
 
+## Deep Research Loop
+
+Deep Research iteratively refines retrieval by asking an LLM whether the current context is sufficient to answer the query. If not, the LLM produces focused sub-queries that are retrieved and merged into the result set. This repeats up to `MaxDepth` times.
+
+### Enabling
+
+Register `UseDeepResearch()` on the builder. An `IChatClient` must already be registered.
+
+```csharp
+services.AddRagNet(b => b
+    .UseDeepResearch());
+```
+
+Configure depth and sub-query count:
+
+```csharp
+services.AddRagNet(b => b
+    .UseDeepResearch(new DeepResearchOptions
+    {
+        MaxDepth       = 2,
+        SubQueryCount  = 3,
+    }));
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `MaxDepth` | `3` | Maximum number of sufficiency-check iterations |
+| `SubQueryCount` | `3` | Maximum sub-queries generated per iteration |
+| `SufficiencyPrompt` | `null` | Custom prompt; `null` uses the built-in default |
+
+### How it works
+
+```mermaid
+flowchart TD
+    Q["User query"] --> INNER["Inner IRetriever<br>initial retrieval (depth 0)"]
+    INNER --> JUDGE["LLM sufficiency check<br>{sufficient, subQueries}"]
+    JUDGE -- "sufficient = true OR depth ≥ MaxDepth" --> DEDUP["Deduplicate by DocumentId+ChunkIndex<br>keep highest score per chunk"]
+    DEDUP --> OUT["IReadOnlyList&lt;SearchResult&gt;"]
+    JUDGE -- "sufficient = false" --> FAN["Retrieve each sub-query<br>in sequence"]
+    FAN --> MERGE["Merge + deduplicate<br>depth++"]
+    MERGE --> JUDGE
+
+    style JUDGE fill:#e8f4fd,stroke:#4a90d9
+```
+
+The LLM responds with a small JSON payload:
+
+```json
+{ "sufficient": false, "subQueries": ["sub-query 1", "sub-query 2"] }
+```
+
+If the LLM returns malformed JSON or fails entirely (network error, timeout), the loop stops and the current accumulated results are returned — no data is lost.
+
+### Error handling
+
+| Condition | Behaviour |
+|-----------|-----------|
+| LLM returns malformed JSON | Treated as `sufficient = true`; loop stops, current results returned |
+| LLM call fails (network error) | Treated as `sufficient = true`; current results returned |
+| Sub-query retrieval fails | Sub-query logged as warning and skipped; other sub-queries continue |
+| Inner retriever fails on first call | Failure propagated immediately; no LLM call made |
+
+---
+
 ## Parent-Document Retrieval
 
 Parent-document retrieval indexes small child chunks for precise embedding matching but returns their larger parent documents to the LLM. This resolves a fundamental tension: embedding precision favors small chunks (sharp semantic signal), while answer quality favors large context (rich surrounding text). Child chunks are matched at retrieval time; the pipeline then swaps each child for its pre-stored parent before returning results.

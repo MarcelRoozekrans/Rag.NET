@@ -21,6 +21,7 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 | [Chunking](chunking.md) | `FixedSize`, `Recursive`, and `TokenAware` strategies with trade-off table |
 | [Retrieval](retrieval.md) | `RetrievalOptions`, semantic search, hybrid BM25+RRF search, metadata filtering |
 | [Post-Retrieval](post-retrieval.md) | Lost-in-the-Middle reordering and redundancy filtering |
+| [Conversational Memory](memory.md) | In-session history trimming, token-budget management, and persistent cross-session recall |
 | [Vector Stores](vector-stores.md) | pgvector, Qdrant, Azure AI Search; hybrid search support matrix |
 | [Evaluation](evaluation.md) | `EmbeddingDistanceEvaluator`, `EvaluationSample`, score interpretation |
 | [Observability](observability.md) | `ILogger` structured logging, OpenTelemetry `ActivitySource`, Polly resilience |

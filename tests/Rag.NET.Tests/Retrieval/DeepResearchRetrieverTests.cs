@@ -183,4 +183,29 @@ public class DeepResearchRetrieverTests
         Assert.Single(result.Value);
         _ = await inner.Received(1).RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct);
     }
+
+    [Fact]
+    public async Task SubQueryCountCap_Respected_OnlySubQueryCountQueriesIssued()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
+             .Returns(Ok(MakeResult("doc1", 0)));
+        // LLM returns 4 sub-queries but SubQueryCount = 2 → only 2 should be retrieved
+        chatClient
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                    "{\"sufficient\":false,\"subQueries\":[\"s1\",\"s2\",\"s3\",\"s4\"]}")),
+                new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                    "{\"sufficient\":true,\"subQueries\":[]}")));
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions { SubQueryCount = 2 });
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.True(result.IsSuccess);
+        // Original query + 2 capped sub-queries = 3 total retrieve calls
+        _ = await inner.Received(3).RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct);
+    }
 }

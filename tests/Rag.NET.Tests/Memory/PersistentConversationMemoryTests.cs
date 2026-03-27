@@ -153,4 +153,37 @@ public class PersistentConversationMemoryTests
         Assert.DoesNotContain(result, m => m.Role == ChatRole.System);
         await inner.Received(1).ProcessAsync(history, ct);
     }
+
+    [Fact]
+    public async Task StoreAsync_EmbeddingFails_NonFatal_DoesNotThrow()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder
+            .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("embedder down"));
+        var vectorStore = Substitute.For<IVectorStore>();
+
+        var sut = new PersistentConversationMemory(
+            Substitute.For<IConversationMemory>(), vectorStore, embedder, new PersistentMemoryOptions());
+
+        // Should not throw — embedding failure is logged and swallowed
+        await sut.StoreAsync("Hello", "Hi there", "session-1", ct);
+
+        // Vector store must not have been called because embedding failed
+        await vectorStore.DidNotReceive().StoreAsync(Arg.Any<IReadOnlyList<EmbeddedChunk>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task StoreAsync_CancelledToken_Throws()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var sut = new PersistentConversationMemory(
+            Substitute.For<IConversationMemory>(), Substitute.For<IVectorStore>(),
+            MockEmbedder([0.1f]), new PersistentMemoryOptions());
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            sut.StoreAsync("Hello", "Hi there", "session-1", cts.Token));
+    }
 }
