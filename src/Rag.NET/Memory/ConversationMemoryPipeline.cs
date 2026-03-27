@@ -156,6 +156,12 @@ public sealed class ConversationMemoryPipeline : IConversationMemory
         return (result, trimmed);
     }
 
+    public Task StoreAsync(
+        string userMessage,
+        string assistantMessage,
+        string sessionId,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
+
     private int CountTokens(ChatMessage message)
     {
         var text = message.Text ?? string.Empty;

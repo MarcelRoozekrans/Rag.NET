@@ -14,4 +14,14 @@ public interface IConversationMemory
     Task<IReadOnlyList<ChatMessage>> ProcessAsync(
         IReadOnlyList<ChatMessage> history,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists a completed exchange pair for future recall.
+    /// Implementations that do not support persistence return <see cref="Task.CompletedTask"/>.
+    /// </summary>
+    Task StoreAsync(
+        string userMessage,
+        string assistantMessage,
+        string sessionId,
+        CancellationToken cancellationToken = default);
 }
