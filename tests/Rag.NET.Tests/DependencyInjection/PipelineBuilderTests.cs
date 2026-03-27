@@ -13,11 +13,11 @@ public class PipelineBuilderTests
     // ── IngestionPipelineBuilder ─────────────────────────────────────────
 
     [Fact]
-    public void IngestionBuilder_DefaultContainsAllEightBehaviors()
+    public void IngestionBuilder_DefaultContainsAllNineBehaviors()
     {
         var builder = new IngestionPipelineBuilder();
         var types = builder.GetBehaviorTypes();
-        Assert.Equal(8, types.Count);
+        Assert.Equal(9, types.Count);
         Assert.Equal(typeof(StorageBehavior), types[^1]);
     }
 
@@ -29,7 +29,7 @@ public class PipelineBuilderTests
         var types = builder.GetBehaviorTypes();
         var parseIdx = types.ToList().IndexOf(typeof(ParseBehavior));
         Assert.Equal(typeof(NoOpIngestionBehavior), types[parseIdx + 1]);
-        Assert.Equal(9, types.Count); // 8 defaults + 1 inserted
+        Assert.Equal(10, types.Count); // 9 defaults + 1 inserted
     }
 
     [Fact]
@@ -40,8 +40,8 @@ public class PipelineBuilderTests
         var types = builder.GetBehaviorTypes();
         Assert.DoesNotContain(typeof(EmbeddingBehavior), types);
         Assert.Contains(typeof(NoOpIngestionBehavior), types);
-        Assert.Equal(8, types.Count); // count unchanged
-        var embeddingIdx = 6; // EmbeddingBehavior was at index 6 (0-based: Overwrite=0, Parse=1, Chunking=2, LlmMetadataExtraction=3, Metadata=4, ParentDoc=5, Embedding=6)
+        Assert.Equal(9, types.Count); // count unchanged
+        var embeddingIdx = 7; // EmbeddingBehavior was at index 7 (0-based: Overwrite=0, Parse=1, Chunking=2, LlmMetadataExtraction=3, Metadata=4, TagIngestion=5, ParentDoc=6, Embedding=7)
         Assert.Equal(typeof(NoOpIngestionBehavior), types.ToList()[embeddingIdx]);
     }
 
