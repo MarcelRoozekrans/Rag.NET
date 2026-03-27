@@ -4,7 +4,7 @@ namespace Rag.NET.Abstractions;
 /// In-memory index of tag value embeddings used by <c>TagRetriever</c> for automatic
 /// metadata filter injection. Populated during ingestion by <c>TagIngestionBehavior</c>.
 /// </summary>
-public interface ITagIndex
+public interface ITagIndex : IDisposable
 {
     /// <summary>Returns true if <paramref name="key"/>+<paramref name="value"/> is already indexed.</summary>
     bool Contains(string key, string value);

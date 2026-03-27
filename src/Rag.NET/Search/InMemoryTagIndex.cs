@@ -45,10 +45,16 @@ public sealed class InMemoryTagIndex : ITagIndex
         finally { _lock.ExitReadLock(); }
     }
 
+    public void Dispose() => _lock.Dispose();
+
     private static double CosineSimilarity(ReadOnlySpan<float> a, float[] b)
     {
+        if (a.Length != b.Length)
+            throw new ArgumentException(
+                $"Query embedding length ({a.Length}) does not match index embedding length ({b.Length}).",
+                nameof(a));
         double dot = 0, normA = 0, normB = 0;
-        for (int i = 0; i < a.Length && i < b.Length; i++)
+        for (int i = 0; i < a.Length; i++)
         {
             dot   += a[i] * b[i];
             normA += a[i] * a[i];
