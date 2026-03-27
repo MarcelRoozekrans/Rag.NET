@@ -366,22 +366,48 @@ public sealed class RagBuilder(IServiceCollection services)
 
     /// <summary>
     /// Registers <see cref="ConversationMemoryPipeline"/> as the <see cref="IConversationMemory"/>.
-    /// When registered, answer engines automatically trim conversation history before each call
-    /// using the configured sliding-window, token-budget, and optional summary strategies.
+    /// Use the optional <paramref name="configure"/> delegate to wrap the pipeline with additional
+    /// decorators, such as <see cref="ConversationMemoryBuilder.UsePersistentMemory"/>.
     /// </summary>
-    /// <param name="options">
-    /// Optional memory options. When null, a default <see cref="ConversationMemoryOptions"/> is used
-    /// (no window or token limits — history passes through unchanged until configured).
-    /// </param>
-    public RagBuilder UseConversationMemory(ConversationMemoryOptions? options = null)
+    /// <param name="options">Optional memory options. Defaults to pass-through (no trimming).</param>
+    /// <param name="configure">Optional delegate to configure memory decorators.</param>
+    public RagBuilder UseConversationMemory(
+        ConversationMemoryOptions? options = null,
+        Action<ConversationMemoryBuilder>? configure = null)
     {
         var opts = options ?? new ConversationMemoryOptions();
         Services.AddSingleton(opts);
-        Services.AddSingleton<IConversationMemory>(sp =>
-            new ConversationMemoryPipeline(
-                opts,
-                sp.GetService<IChatClient>(),
-                sp.GetService<ILogger<ConversationMemoryPipeline>>() ?? NullLogger<ConversationMemoryPipeline>.Instance));
+
+        var memBuilder = new ConversationMemoryBuilder();
+        configure?.Invoke(memBuilder);
+
+        if (memBuilder.HasPersistentMemory)
+        {
+            var persistentOpts = memBuilder.PersistentMemoryOptions;
+            Services.AddSingleton(persistentOpts);
+            Services.AddSingleton<IConversationMemory>(sp =>
+            {
+                IConversationMemory pipeline = new ConversationMemoryPipeline(
+                    opts,
+                    sp.GetService<IChatClient>(),
+                    sp.GetService<ILogger<ConversationMemoryPipeline>>() ?? NullLogger<ConversationMemoryPipeline>.Instance);
+                return new PersistentConversationMemory(
+                    pipeline,
+                    sp.GetRequiredService<IVectorStore>(),
+                    sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
+                    persistentOpts,
+                    sp.GetService<ILogger<PersistentConversationMemory>>());
+            });
+        }
+        else
+        {
+            Services.AddSingleton<IConversationMemory>(sp =>
+                new ConversationMemoryPipeline(
+                    opts,
+                    sp.GetService<IChatClient>(),
+                    sp.GetService<ILogger<ConversationMemoryPipeline>>() ?? NullLogger<ConversationMemoryPipeline>.Instance));
+        }
+
         return this;
     }
 }
