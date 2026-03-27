@@ -153,4 +153,38 @@ public class SemanticRefinementStrategyTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await strategy.RefineAsync(ToAsync([chunk]), cts.Token).ToListAsync(cts.Token));
     }
+
+    [Fact]
+    public async Task RefineAsync_MixedShortAndLongChunks_ReindexesSequentially()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // short (pass-through) + long (sub-split into 2) + short (pass-through)
+        // Expected output indices: 0, 1, 2, 3
+        var opts = new SemanticChunkingOptions { MinChunkSize = 5, MaxChunkSize = 5000, BreakpointPercentile = 0.95f };
+        var strategy = new SemanticChunkingStrategy(
+            MockEmbedder([1f, 0f], [0f, 1f], [0f, 1f]),
+            opts);
+
+        var longText = "First sentence here. Second sentence there. Third sentence ok.";
+        var chunks = new[]
+        {
+            new TextChunk { Text = "Hi.", DocumentId = new DocumentId("doc1"), ChunkIndex = 0, StartPosition = 0, EndPosition = 3 },
+            new TextChunk { Text = longText, DocumentId = new DocumentId("doc1"), ChunkIndex = 1, StartPosition = 0, EndPosition = longText.Length },
+            new TextChunk { Text = "Bye.", DocumentId = new DocumentId("doc1"), ChunkIndex = 2, StartPosition = 0, EndPosition = 4 },
+        };
+
+        var result = await strategy.RefineAsync(ToAsync(chunks), ct).ToListAsync(ct);
+
+        // "Hi." passes through (index 0)
+        // longText sub-splits into ≥2 chunks (indices 1, 2, ...)
+        // "Bye." passes through (last index)
+        Assert.True(result.Count >= 4); // at least 4 chunks: 1 + 2+ + 1
+        // ChunkIndex must be globally sequential: 0, 1, 2, ...
+        for (int i = 0; i < result.Count; i++)
+            Assert.Equal(i, result[i].ChunkIndex);
+        // First chunk is "Hi."
+        Assert.Equal("Hi.", result[0].Text);
+        // Last chunk is "Bye."
+        Assert.Equal("Bye.", result[^1].Text);
+    }
 }

@@ -39,4 +39,19 @@ public class UseSemanticRefinementTests
         var sp = BaseServices().AddRagNet(rag => rag.UseSemanticRefinement()).BuildServiceProvider();
         Assert.Null(sp.GetService<IDocumentChunkingStrategy>());
     }
+
+    [Fact]
+    public void UseHierarchicalMerging_ThenUseSemanticRefinement_BothRegistered()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag => rag
+                .UseHierarchicalMerging()
+                .UseSemanticRefinement())
+            .BuildServiceProvider();
+
+        // IChunkingStrategy resolves to HierarchicalMergerChunkingStrategy (not SemanticChunkingStrategy)
+        Assert.IsType<HierarchicalMergerChunkingStrategy>(sp.GetRequiredService<IChunkingStrategy>());
+        // IChunkRefinementStrategy resolves to SemanticChunkingStrategy
+        Assert.IsType<SemanticChunkingStrategy>(sp.GetRequiredService<IChunkRefinementStrategy>());
+    }
 }

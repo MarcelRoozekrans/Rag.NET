@@ -157,4 +157,22 @@ public class SemanticChunkingStrategyDocumentTests
         // Tiny sections should have been merged; expect fewer than 3 chunks
         Assert.True(chunks.Count < 3);
     }
+
+    [Fact]
+    public async Task ChunkDocumentAsync_SingleSection_ProducesOneChunk()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var strategy = new SemanticChunkingStrategy(
+            MockEmbedder([1f, 0f]),
+            new SemanticChunkingOptions { MinChunkSize = 1 });
+
+        var sections = new[] { Section("doc1", "Only one section here.") };
+
+        var chunks = await strategy.ChunkDocumentAsync(
+            ToAsync(sections), new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.Single(chunks);
+        Assert.Equal("Only one section here.", chunks[0].Text);
+        Assert.Equal(new DocumentId("doc1"), chunks[0].DocumentId);
+    }
 }
