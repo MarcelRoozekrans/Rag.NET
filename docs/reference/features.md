@@ -106,6 +106,24 @@ Augment BM25 retrieval with runtime-updatable domain-specific synonym dictionari
 
 **Status:** ✅ Done
 
+**Performance** (BenchmarkDotNet, .NET 10, i9-12900HK, Release):
+
+*Index time (`Add`)*
+
+| Scenario | No synonyms | +10 single-word groups | +100 single-word groups | +10 phrase groups |
+|---|---|---|---|---|
+| Short text (~40 tokens) | 2.9 µs | 3.5 µs | 3.5 µs | — |
+| Medium text (~200 tokens) | 7.6 µs | 11.9 µs | 12.1 µs | 52 µs |
+| Long text (~800 tokens) | 29 µs | 48 µs | 55 µs | — |
+
+*Query time (`Search`, 50-doc index)*
+
+| Scenario | No synonyms | +10 groups | +100 groups |
+|---|---|---|---|
+| Query expansion | 3.6 µs | 4.6 µs | 5.3 µs |
+
+Synonym expansion overhead is sub-linear for single-word groups (phrase-scan window bounded by `SynonymMap.MaxKeyTokenCount`). Multi-word groups (e.g. `"heart attack"`) engage the phrase-scan and add cost proportional to the longest phrase length × token count.
+
 ---
 
 ### Ensemble / Reciprocal Rank Fusion (RRF)
