@@ -131,7 +131,12 @@ public sealed class RagBuilder(IServiceCollection services)
     /// result is sufficient, and if not generate focused sub-queries and retrieve again.
     /// Results are merged and deduplicated across all iterations.
     /// </summary>
-    /// <remarks>Requires <c>IChatClient</c> to be registered in DI.</remarks>
+    /// <remarks>
+    /// Requires <c>IChatClient</c> to be registered in DI.
+    /// The decorator is wired by <c>AddRagNet</c> after the
+    /// builder delegate returns — calling this method outside of <c>AddRagNet</c>'s configure
+    /// delegate has no effect.
+    /// </remarks>
     /// <param name="options">Optional options; defaults to <see cref="DeepResearchOptions"/> defaults.</param>
     public RagBuilder UseDeepResearch(DeepResearchOptions? options = null)
     {

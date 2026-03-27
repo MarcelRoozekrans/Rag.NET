@@ -95,7 +95,9 @@ public static class ServiceCollectionExtensions
         // NOTE: This registers a second PipelineRetriever instance separate from the one
         // ZeroAlloc registered as IRetriever. The generated IRetriever→PipelineRetriever
         // registration is superseded by the decorator below, so the orphaned instance is
-        // never used — but two singletons of PipelineRetriever will exist in the container.
+        // never used. This is a known limitation of decorating ZeroAlloc-generated
+        // registrations; PipelineRetriever holds only a Pipeline<> reference so the
+        // extra instance carries no cost beyond memory.
         services.AddSingleton<PipelineRetriever>(sp => new PipelineRetriever
         {
             Pipeline = sp.GetRequiredService<Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>>(),
