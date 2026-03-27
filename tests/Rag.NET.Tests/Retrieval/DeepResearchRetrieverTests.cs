@@ -129,6 +129,24 @@ public class DeepResearchRetrieverTests
     }
 
     [Fact]
+    public async Task InnerRetrieverFails_PropagatesFailureWithoutCallingLlm()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        var failure = Result<IReadOnlyList<SearchResult>, RagError>.Failure(
+            new RagError.StorageFailed(new InvalidOperationException("storage error")));
+        inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct).Returns(failure);
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.False(result.IsSuccess);
+        await chatClient.DidNotReceive()
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task MalformedLlmJson_TreatedAsSufficient_Passthrough()
     {
         var ct = TestContext.Current.CancellationToken;
