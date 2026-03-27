@@ -1,0 +1,149 @@
+using Microsoft.Extensions.AI;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
+using Rag.NET.Abstractions;
+using Rag.NET.Models;
+using Rag.NET.Models.Options;
+using Rag.NET.Retrieval;
+using Xunit;
+using ZeroAlloc.Results;
+
+namespace Rag.NET.Tests.Retrieval;
+
+public class DeepResearchRetrieverTests
+{
+    private static SearchResult MakeResult(string docId, int chunkIndex, double score = 1.0) =>
+        new()
+        {
+            Chunk = new TextChunk { Text = "text", DocumentId = new DocumentId(docId), ChunkIndex = chunkIndex },
+            Score = score,
+        };
+
+    private static Result<IReadOnlyList<SearchResult>, RagError> Ok(params SearchResult[] results) =>
+        Result<IReadOnlyList<SearchResult>, RagError>.Success(results);
+
+    private static void ReturnSufficient(IChatClient chatClient) =>
+        chatClient
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "{\"sufficient\":true,\"subQueries\":[]}")));
+
+    private static void ReturnInsufficientThenSufficient(IChatClient chatClient, params string[] subQueries)
+    {
+        var list = string.Join(",", subQueries.Select(q => $"\"{q}\""));
+        chatClient
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, $"{{\"sufficient\":false,\"subQueries\":[{list}]}}")),
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, "{\"sufficient\":true,\"subQueries\":[]}")));
+    }
+
+    [Fact]
+    public async Task SufficientOnFirstPass_ReturnsChunks_NoSubQueries()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0)));
+        ReturnSufficient(chatClient);
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value);
+        _ = await inner.Received(1).RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct);
+    }
+
+    [Fact]
+    public async Task InsufficientThenSufficient_MergesSubQueryResults()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync("q",    Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0)));
+        inner.RetrieveAsync("sub1", Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc2", 0)));
+        ReturnInsufficientThenSufficient(chatClient, "sub1");
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value.Count);
+    }
+
+    [Fact]
+    public async Task MaxDepthReached_StopsLoop_ReturnsAccumulatedChunks()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(Ok(MakeResult("doc1", 0)));
+        // Always insufficient
+        chatClient
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "{\"sufficient\":false,\"subQueries\":[\"sub1\"]}")));
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions { MaxDepth = 2 });
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.True(result.IsSuccess);
+        // Exactly MaxDepth sufficiency checks — loop stopped
+        await chatClient.Received(2)
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task DuplicateChunks_Deduplicated_HighestScoreKept()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync("q",    Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0, 0.9)));
+        inner.RetrieveAsync("sub1", Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0, 0.7)));
+        ReturnInsufficientThenSufficient(chatClient, "sub1");
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value);
+        Assert.Equal(0.9, result.Value[0].Score);
+    }
+
+    [Fact]
+    public async Task SubQueryRetrievalThrows_LoggedAndSkipped_OtherResultsReturned()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync("q",    Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0)));
+        inner.RetrieveAsync("sub1", Arg.Any<RetrievalOptions?>(), ct).ThrowsAsync(new HttpRequestException("down"));
+        ReturnInsufficientThenSufficient(chatClient, "sub1");
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value); // sub1 threw, doc1 still present
+    }
+
+    [Fact]
+    public async Task MalformedLlmJson_TreatedAsSufficient_Passthrough()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0)));
+        chatClient
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "not json {{{")));
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value);
+        _ = await inner.Received(1).RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct);
+    }
+}
