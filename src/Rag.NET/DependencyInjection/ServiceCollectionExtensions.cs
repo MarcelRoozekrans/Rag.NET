@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
+using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using Rag.NET.Search;
@@ -56,10 +57,28 @@ public static class ServiceCollectionExtensions
 
         var builder = new RagBuilder(services);
         configure?.Invoke(builder);
+        WireRefinementStrategy(services);
 
         // Default fallback — no-op when UseSqlitePersistence() has already registered IBm25Index.
         services.TryAddSingleton<IBm25Index>(sp => sp.GetRequiredService<InMemoryBm25Index>());
 
         return services;
     }
+
+    /// <summary>
+    /// Replaces the ZeroAlloc-generated <see cref="ParseBehavior"/> singleton registration with a
+    /// factory that wires <see cref="ParseBehavior.RefinementStrategy"/> from DI when an
+    /// <see cref="IChunkRefinementStrategy"/> is registered.
+    /// <see cref="ParseBehavior.RefinementStrategy"/> cannot use <c>[Inject]</c> because
+    /// ZeroAlloc.Inject calls <c>GetRequiredService</c> for all injected properties, which
+    /// would throw when no refinement strategy is configured.
+    /// </summary>
+    private static void WireRefinementStrategy(IServiceCollection services) =>
+        services.AddSingleton<ParseBehavior>(sp => new ParseBehavior
+        {
+            Parsers = sp.GetRequiredService<IEnumerable<IDocumentParser>>(),
+            ChunkingStrategy = sp.GetRequiredService<IChunkingStrategy>(),
+            ChunkingOptions = sp.GetRequiredService<ChunkingOptions>(),
+            RefinementStrategy = sp.GetService<IChunkRefinementStrategy>(),
+        });
 }

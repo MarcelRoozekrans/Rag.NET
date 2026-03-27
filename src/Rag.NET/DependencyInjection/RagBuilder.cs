@@ -32,16 +32,33 @@ public sealed class RagBuilder(IServiceCollection services)
     public IServiceCollection Services { get; } = services;
 
     /// <summary>
-    /// Registers <see cref="SemanticChunkingStrategy"/> which splits text at meaning
-    /// boundaries using embedding similarity between consecutive sentences.
-    /// Uses the same <see cref="IEmbeddingGenerator{TInput,TEmbedding}"/> registered for
-    /// retrieval by default. Override via <see cref="SemanticChunkingOptions.ChunkingEmbedder"/>
-    /// when you want a smaller/faster model for chunking only.
+    /// Registers <see cref="SemanticChunkingStrategy"/> as <see cref="IChunkingStrategy"/>,
+    /// <see cref="IDocumentChunkingStrategy"/>, and <see cref="IChunkRefinementStrategy"/>.
+    /// All three interfaces resolve to the same singleton instance.
+    /// Uses the same <see cref="IEmbeddingGenerator{TInput,TEmbedding}"/> registered for retrieval
+    /// by default. Override via <see cref="SemanticChunkingOptions.ChunkingEmbedder"/> for a
+    /// smaller/faster model at chunking time.
     /// </summary>
     public RagBuilder UseSemanticChunking(SemanticChunkingOptions? options = null)
     {
         Services.AddSingleton(options ?? new SemanticChunkingOptions());
-        Services.AddSingleton<IChunkingStrategy, SemanticChunkingStrategy>();
+        Services.AddSingleton<SemanticChunkingStrategy>();
+        Services.AddSingleton<IChunkingStrategy>(sp => sp.GetRequiredService<SemanticChunkingStrategy>());
+        Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<SemanticChunkingStrategy>());
+        Services.AddSingleton<IChunkRefinementStrategy>(sp => sp.GetRequiredService<SemanticChunkingStrategy>());
+        return this;
+    }
+
+    /// <summary>
+    /// Registers <see cref="SemanticChunkingStrategy"/> as only <see cref="IChunkRefinementStrategy"/>.
+    /// Use with <c>UseHierarchicalMerging()</c> to add semantic sub-splitting to a hierarchical pipeline
+    /// without replacing the primary chunking strategy.
+    /// </summary>
+    public RagBuilder UseSemanticRefinement(SemanticChunkingOptions? options = null)
+    {
+        Services.AddSingleton(options ?? new SemanticChunkingOptions());
+        Services.AddSingleton<SemanticChunkingStrategy>();
+        Services.AddSingleton<IChunkRefinementStrategy>(sp => sp.GetRequiredService<SemanticChunkingStrategy>());
         return this;
     }
 
