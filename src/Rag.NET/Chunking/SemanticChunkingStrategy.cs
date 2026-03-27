@@ -9,7 +9,7 @@ namespace Rag.NET.Chunking;
 
 public sealed partial class SemanticChunkingStrategy(
     IEmbeddingGenerator<string, Embedding<float>> embedder,
-    SemanticChunkingOptions options) : IChunkingStrategy
+    SemanticChunkingOptions options) : IChunkingStrategy, IDocumentChunkingStrategy
 {
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder = embedder;
     private readonly SemanticChunkingOptions _options = options;
@@ -96,6 +96,71 @@ public sealed partial class SemanticChunkingStrategy(
             chunkIndex++;
             cursor = chunk.EndPosition;
             yield return chunk;
+        }
+    }
+
+    public async IAsyncEnumerable<TextChunk> ChunkDocumentAsync(
+        IAsyncEnumerable<DocumentSection> sections,
+        ChunkingOptions chunkingOptions,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var sectionList = new List<DocumentSection>();
+        await foreach (var section in sections.WithCancellation(cancellationToken).ConfigureAwait(false))
+            sectionList.Add(section);
+
+        if (sectionList.Count == 0)
+            yield break;
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var activeEmbedder = _options.ChunkingEmbedder ?? _embedder;
+        var texts = sectionList.ConvertAll(s => s.Text);
+        var embeddings = await activeEmbedder.GenerateAsync(texts, cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        // Consecutive cosine similarities between adjacent section embeddings
+        var similarities = new double[sectionList.Count - 1];
+        for (int i = 0; i < similarities.Length; i++)
+            similarities[i] = CosineSimilarity(embeddings[i].Vector.Span, embeddings[i + 1].Vector.Span);
+
+        // Group adjacent sections using the same percentile breakpoint logic as sentence path
+        var percentile = Math.Clamp(_options.BreakpointPercentile, 0.01f, 0.99f);
+        var sorted = similarities.OrderBy(s => s).ToArray();
+        var thresholdIndex = (int)Math.Floor(percentile * sorted.Length);
+        var threshold = sorted.Length > 0 ? sorted[Math.Min(thresholdIndex, sorted.Length - 1)] : 0;
+
+        var groups = new List<List<DocumentSection>> { new() { sectionList[0] } };
+        for (int i = 0; i < similarities.Length; i++)
+        {
+            if (similarities[i] < threshold)
+                groups.Add(new List<DocumentSection>());
+            groups[^1].Add(sectionList[i + 1]);
+        }
+
+        // Merge/split groups based on total text length — reuse sentence-level helpers via adapter
+        var textGroups = groups.ConvertAll(g => g.ConvertAll(s => s.Text));
+        MergeUndersizedGroups(textGroups);
+        SplitOversizedGroups(textGroups);
+
+        var documentId = sectionList[0].DocumentId;
+        int chunkIndex = 0;
+#pragma warning disable HLQ012 // Plain foreach is clearer here; no perf-critical path
+        foreach (var group in textGroups)
+        {
+#pragma warning restore HLQ012
+            cancellationToken.ThrowIfCancellationRequested();
+            var text = string.Join("\n\n", group);
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            yield return new TextChunk
+            {
+                Text = text,
+                DocumentId = documentId,
+                ChunkIndex = chunkIndex++,
+                StartPosition = 0,
+                EndPosition = text.Length,
+            };
         }
     }
 
