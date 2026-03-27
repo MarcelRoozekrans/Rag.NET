@@ -10,7 +10,7 @@ namespace Rag.NET.Chunking;
 
 public sealed partial class SemanticChunkingStrategy(
     IEmbeddingGenerator<string, Embedding<float>> embedder,
-    SemanticChunkingOptions options) : IChunkingStrategy, IDocumentChunkingStrategy
+    SemanticChunkingOptions options) : IChunkingStrategy, IDocumentChunkingStrategy, IChunkRefinementStrategy
 {
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder = embedder;
     private readonly SemanticChunkingOptions _options = options;
@@ -156,6 +156,31 @@ public sealed partial class SemanticChunkingStrategy(
                 StartPosition = 0,
                 EndPosition = text.Length,
             };
+        }
+    }
+
+    public async IAsyncEnumerable<TextChunk> RefineAsync(
+        IAsyncEnumerable<TextChunk> chunks,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        int chunkIndex = 0;
+        await foreach (var chunk in chunks.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            if (chunk.Text.Length <= _options.MinChunkSize)
+            {
+                yield return chunk with { ChunkIndex = chunkIndex++ };
+                continue;
+            }
+
+            // Treat the oversized chunk text as a single-section document and re-split at
+            // sentence boundaries using the existing per-section path.
+            var syntheticSection = new DocumentSection { DocumentId = chunk.DocumentId, Text = chunk.Text };
+
+            await foreach (var sub in ChunkAsync(syntheticSection, new ChunkingOptions(), cancellationToken)
+                               .ConfigureAwait(false))
+            {
+                yield return sub with { ChunkIndex = chunkIndex++ };
+            }
         }
     }
 
