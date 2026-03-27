@@ -10,7 +10,7 @@ Embedding models have a finite token budget (typically 512–8192 tokens). If a 
 
 ## `ChunkingOptions`
 
-All three built-in strategies share the same options type:
+The fixed-size, recursive, and token-aware strategies share the same options type:
 
 ```csharp
 public sealed class ChunkingOptions
@@ -36,17 +36,17 @@ The default strategy when nothing is configured is `RecursiveChunkingStrategy` w
 
 ## Strategy comparison
 
-| | `FixedSizeChunkingStrategy` | `RecursiveChunkingStrategy` | `TokenAwareChunkingStrategy` |
-|---|---|---|---|
-| Unit | Characters | Characters | Tokens |
-| Split logic | Hard cut at word boundary | Hierarchical separators (`\n\n`, `\n`, `. `, ` `) | Tiktoken encode → slice → decode |
-| Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window |
-| Heading awareness | No | No | No |
-| Respects token limits | No — character count ≠ tokens | No | Yes |
-| Chunking overhead (50 KB) | ~29 µs | ~94 µs | ~1,750 µs |
-| Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text where token precision matters |
+| | `FixedSizeChunkingStrategy` | `RecursiveChunkingStrategy` | `TokenAwareChunkingStrategy` | `SemanticChunkingStrategy` | `HierarchicalMergerChunkingStrategy` |
+|---|---|---|---|---|---|
+| Unit | Characters | Characters | Tokens | Characters (min/max) | Characters (max) |
+| Split logic | Hard cut at word boundary | Hierarchical separators | Tiktoken encode → slice → decode | Embedding cosine similarity breakpoints | Heading subtree merge |
+| Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window | None | None |
+| Heading awareness | No | No | No | No (sentence-level) | Yes |
+| Respects token limits | No | No | Yes | Approximate (min/max chars) | Approximate (max chars) |
+| Chunking overhead (50 KB) | ~29 µs | ~94 µs | ~1,750 µs | Embedding-latency-bound | ~50 µs |
+| Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text | Coherent meaning boundaries, QA systems | Structured documents with headings |
 
-See [benchmarks](benchmarks.md) for full throughput numbers.
+See [benchmarks](benchmarks.md) for full throughput numbers. Semantic chunking overhead is embedding-latency-bound (50–500 ms per batch), not CPU-bound — CPU processing is negligible.
 
 ## `FixedSizeChunkingStrategy`
 
@@ -134,12 +134,71 @@ services.AddSingleton(new ChunkingOptions { MaxChunkSize = 256, Overlap = 25 });
 
 **Overhead:** Tiktoken encoding/decoding adds ~20–60× CPU overhead compared to character-based strategies on 50 KB input (~1,750 µs vs. ~29–94 µs). This is negligible relative to embedding API latency (typically 50–500 ms per batch).
 
+## `SemanticChunkingStrategy`
+
+Splits text at meaning boundaries using sentence embeddings and cosine similarity. Sentences in the same semantic group are merged; a new chunk starts where similarity drops below the configured percentile threshold.
+
+```csharp
+services.AddRagNet(rag => rag.UseSemanticChunking());
+```
+
+Or with custom options:
+
+```csharp
+services.AddRagNet(rag => rag.UseSemanticChunking(new SemanticChunkingOptions
+{
+    BreakpointPercentile = 0.25f,  // lower = more chunks; higher = fewer, larger chunks
+    MinChunkSize = 100,            // characters; undersized groups merge with neighbors
+    MaxChunkSize = 1500,           // characters; oversized groups split at sentence boundaries
+    ChunkingEmbedder = myFastEmbedder,  // optional: override the embedder for chunking only
+}));
+```
+
+`UseSemanticChunking` registers `SemanticChunkingStrategy` for all three interfaces — `IChunkingStrategy`, `IDocumentChunkingStrategy`, and `IChunkRefinementStrategy` — all pointing to the same singleton instance.
+
+**Document-level path:** When `SemanticChunkingStrategy` is the active chunking strategy, `ParseBehavior` automatically uses the document-level path (`IDocumentChunkingStrategy`): all sections from a document are batch-embedded in one call, adjacent similar sections are merged into groups, and min/max size constraints are applied across groups. This is more coherent than processing each section independently.
+
+**Overhead:** All processing is embedding-latency-bound. The local similarity computation and grouping add negligible overhead (< 1 ms for typical documents) relative to embedding API latency (50–500 ms per batch).
+
+## `HierarchicalMergerChunkingStrategy`
+
+Merges document sections into heading-subtree chunks. Each chunk covers one heading and all body text beneath it down to a configurable depth. Best for documents with a clear heading hierarchy (Markdown, Word, HTML).
+
+```csharp
+services.AddRagNet(rag => rag.UseHierarchicalMerging());
+```
+
+See `HierarchicalMergerOptions` for depth and regex pattern configuration.
+
+## Chunk refinement (`IChunkRefinementStrategy`)
+
+Chunk refinement is a post-processing pass that runs after chunking (both per-section and document-level paths). `SemanticChunkingStrategy` implements `IChunkRefinementStrategy` to sub-split oversized chunks at sentence boundaries.
+
+Use `UseSemanticRefinement()` to add semantic sub-splitting on top of any base chunking strategy without replacing it:
+
+```csharp
+// Hierarchical structure first, semantic sub-splitting after
+services.AddRagNet(rag => rag
+    .UseHierarchicalMerging()
+    .UseSemanticRefinement());
+
+// Full semantic pipeline (document-level grouping + per-chunk refinement)
+services.AddRagNet(rag => rag.UseSemanticChunking());
+// IChunkRefinementStrategy is registered automatically — refinement runs for both paths
+```
+
+`UseSemanticRefinement` registers `SemanticChunkingStrategy` as **only** `IChunkRefinementStrategy`, leaving the primary `IChunkingStrategy` unchanged.
+
 ## Implementing a custom strategy
 
 See [Extending](extending.md#implementing-ichunkingstrategy) for the full guide on implementing `IChunkingStrategy`.
 
+To implement a document-level strategy (receives all sections at once), implement `IDocumentChunkingStrategy`. `ParseBehavior` automatically routes to it when the active `IChunkingStrategy` also implements `IDocumentChunkingStrategy`.
+
+To implement a post-processing refinement step, implement `IChunkRefinementStrategy`. Register it in DI as a singleton; `ParseBehavior` resolves it optionally and applies it after chunking.
+
 ## Relationship to ingestion
 
-The chunking strategy is invoked once per `DocumentSection` yielded by the parser. Each `DocumentSection` can produce zero or more `TextChunk` objects. After chunking, the pipeline applies heading metadata (from the parser) and `DocumentMetadata.Tags` to every chunk's `Metadata` dictionary before embedding.
+The chunking strategy is invoked once per `DocumentSection` yielded by the parser (per-section path) or once per document (document-level path when `IDocumentChunkingStrategy` is active). Each section or document produces zero or more `TextChunk` objects. After chunking, the optional refinement pass runs, then the pipeline applies heading metadata and `DocumentMetadata.Tags` to every chunk's `Metadata` dictionary before embedding.
 
 See [Ingestion](ingestion.md) for the full pipeline flow and [Retrieval](retrieval.md) for how chunk metadata is used at query time.

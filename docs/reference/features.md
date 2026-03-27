@@ -15,9 +15,28 @@ Candidate features for future design and implementation. Completed features are 
 ### Semantic Chunking (Embedding-Based Boundary Detection)
 **Package:** `Rag.NET` (core)
 
-Split text by meaning boundaries rather than fixed sizes. Embed each sentence, compute cosine similarity between consecutive sentence embeddings, and break where similarity drops below a configurable threshold (breakpoint detection). Produces chunks that are coherent units of meaning — no more splitting mid-thought. Configurable minimum/maximum chunk size and similarity threshold.
+Split text by meaning boundaries rather than fixed sizes. Embed each sentence, compute cosine similarity between consecutive sentence embeddings, and break where similarity drops below a configurable percentile threshold (breakpoint detection). Produces chunks that are coherent units of meaning — no more splitting mid-thought.
 
-**Why:** The single biggest quality lever for retrieval. Fixed-size and recursive splitting regularly break mid-paragraph or mid-argument, producing chunks where context is lost. Semantic chunking ensures each chunk is a self-contained unit of meaning, directly improving retrieval precision across all use cases.
+`SemanticChunkingStrategy` implements three interfaces:
+- `IChunkingStrategy` — per-section sentence-level splitting (existing path)
+- `IDocumentChunkingStrategy` — document-level section merging: batch-embeds all sections, groups adjacent similar sections, then applies min/max size constraints
+- `IChunkRefinementStrategy` — post-processing decorator: passes short chunks through unchanged; re-splits oversized chunks at sentence boundaries
+
+`RagBuilder` registration:
+
+```csharp
+// All three interfaces → same SemanticChunkingStrategy instance
+services.AddRagNet(rag => rag.UseSemanticChunking());
+
+// Semantic refinement only — pairs with any base chunking strategy
+services.AddRagNet(rag => rag
+    .UseHierarchicalMerging()
+    .UseSemanticRefinement());
+```
+
+**Why:** The single biggest quality lever for retrieval. Fixed-size and recursive splitting regularly break mid-paragraph or mid-argument. Semantic chunking ensures each chunk is a self-contained unit of meaning, directly improving retrieval precision.
+
+**Status:** ✅ Done
 
 ---
 
