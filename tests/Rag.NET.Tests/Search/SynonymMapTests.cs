@@ -84,4 +84,36 @@ public class SynonymMapTests
         Assert.Contains("kubernetes", map.Expand("k8s"));
         Assert.Contains("js", map.Expand("javascript"));
     }
+
+    [Fact]
+    public void RemoveGroup_PartialRemoval_BackReferencesCleared()
+    {
+        var map = new SynonymMap();
+        map.AddGroup("k8s", "kubernetes", "kube");
+
+        // Remove only "kube" — the other terms must no longer expand to it.
+        map.RemoveGroup("kube");
+
+        Assert.DoesNotContain("kube", map.Expand("k8s"));
+        Assert.DoesNotContain("kube", map.Expand("kubernetes"));
+
+        // The remaining pair must still expand to each other.
+        Assert.Contains("kubernetes", map.Expand("k8s"));
+        Assert.Contains("k8s", map.Expand("kubernetes"));
+    }
+
+    [Fact]
+    public void Expand_ReturnedSetIsSnapshot_NotAffectedBySubsequentWrite()
+    {
+        var map = new SynonymMap();
+        map.AddGroup("k8s", "kubernetes");
+
+        // Capture the set before modifying the map.
+        var snapshot = map.Expand("k8s");
+
+        map.RemoveGroup("kubernetes");
+
+        // The snapshot must still contain the value; no live reference leak.
+        Assert.Contains("kubernetes", snapshot);
+    }
 }

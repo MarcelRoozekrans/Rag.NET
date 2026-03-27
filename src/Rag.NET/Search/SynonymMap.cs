@@ -53,15 +53,24 @@ public sealed class SynonymMap : IDisposable
     }
 
     /// <summary>
-    /// Removes all listed terms from the lookup. Unknown terms are silently ignored.
+    /// Removes all listed terms from the lookup, including back-references from any remaining synonyms.
+    /// Unknown terms are silently ignored.
     /// </summary>
     public void RemoveGroup(params string[] terms)
     {
+        var normalized = Array.ConvertAll(terms, t => t.ToLowerInvariant());
+
         _lock.EnterWriteLock();
         try
         {
-            foreach (var term in terms)
-                _lookup.Remove(term.ToLowerInvariant());
+            foreach (var term in normalized)
+            {
+                _lookup.Remove(term);
+
+                // Remove back-references from any surviving synonym sets.
+                foreach (var set in _lookup.Values)
+                    set.Remove(term);
+            }
         }
         finally
         {
@@ -71,6 +80,7 @@ public sealed class SynonymMap : IDisposable
 
     /// <summary>
     /// Returns all synonyms for <paramref name="term"/>. Returns an empty set when the term has no synonyms.
+    /// The returned set is a snapshot — safe to iterate after this call returns.
     /// </summary>
     public IReadOnlySet<string> Expand(string term)
     {
@@ -78,7 +88,7 @@ public sealed class SynonymMap : IDisposable
         try
         {
             return _lookup.TryGetValue(term.ToLowerInvariant(), out var synonyms)
-                ? synonyms
+                ? new HashSet<string>(synonyms, StringComparer.OrdinalIgnoreCase)
                 : EmptySet;
         }
         finally
