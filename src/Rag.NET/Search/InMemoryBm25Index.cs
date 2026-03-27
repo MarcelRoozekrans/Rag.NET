@@ -192,11 +192,14 @@ public sealed class InMemoryBm25Index : IBm25Index
                 tokens.AddRange(Tokenize(syn));
 
         // Pass 3: expand multi-word phrases formed by consecutive *base* tokens only.
-        // Using baseTokens (not tokens) prevents spurious phrases from synonym-expanded tokens.
-        if (baseTokens.Count > 1)
+        // The inner window is capped at MaxKeyTokenCount so the scan is
+        // O(n * maxPhraseLen) rather than O(n²). When all keys are single-word
+        // (MaxKeyTokenCount <= 1) this pass is skipped entirely.
+        var maxPhraseLen = synonymMap.MaxKeyTokenCount;
+        if (baseTokens.Count > 1 && maxPhraseLen > 1)
         {
             for (int i = 0; i < baseTokens.Count; i++)
-                for (int len = 2; i + len <= baseTokens.Count; len++)
+                for (int len = 2; len <= maxPhraseLen && i + len <= baseTokens.Count; len++)
                 {
                     var phrase = string.Join(" ", baseTokens.GetRange(i, len));
                     foreach (var syn in synonymMap.Expand(phrase))

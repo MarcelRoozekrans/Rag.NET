@@ -86,6 +86,33 @@ public class SynonymMapTests
     }
 
     [Fact]
+    public void MaxKeyTokenCount_SingleWordTerms_Returns1()
+    {
+        var map = new SynonymMap([["k8s", "kubernetes"]]);
+        Assert.Equal(1, map.MaxKeyTokenCount);
+    }
+
+    [Fact]
+    public void MaxKeyTokenCount_MultiWordTerms_ReturnsLongest()
+    {
+        var map = new SynonymMap();
+        map.AddGroup("MI", "myocardial infarction", "heart attack event");
+
+        // "heart attack event" = 3 tokens
+        Assert.Equal(3, map.MaxKeyTokenCount);
+    }
+
+    [Fact]
+    public void MaxKeyTokenCount_AfterRemoveGroup_Recomputed()
+    {
+        var map = new SynonymMap();
+        map.AddGroup("MI", "myocardial infarction");  // 2 tokens max
+        map.RemoveGroup("myocardial infarction", "mi");
+
+        Assert.Equal(0, map.MaxKeyTokenCount);
+    }
+
+    [Fact]
     public void RemoveGroup_PartialRemoval_BackReferencesCleared()
     {
         var map = new SynonymMap();

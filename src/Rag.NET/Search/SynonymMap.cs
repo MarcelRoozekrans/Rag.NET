@@ -11,6 +11,25 @@ public sealed class SynonymMap : IDisposable
 
     private readonly ReaderWriterLockSlim _lock = new();
 
+    // Maximum number of whitespace-separated tokens among all registered keys.
+    // Used by Tokenize to bound the phrase-scan window to O(n * maxPhraseLen)
+    // instead of O(n²). Zero means no multi-word keys are registered.
+    private int _maxKeyTokenCount;
+
+    /// <summary>
+    /// The maximum number of tokens (space-separated words) among all registered synonym keys.
+    /// <see cref="InMemoryBm25Index"/> uses this to bound the phrase-scan window during tokenization.
+    /// </summary>
+    public int MaxKeyTokenCount
+    {
+        get
+        {
+            _lock.EnterReadLock();
+            try { return _maxKeyTokenCount; }
+            finally { _lock.ExitReadLock(); }
+        }
+    }
+
     public SynonymMap() { }
 
     public SynonymMap(IEnumerable<IReadOnlyCollection<string>> groups)
@@ -44,6 +63,11 @@ public sealed class SynonymMap : IDisposable
                 foreach (var other in normalized)
                     if (!string.Equals(term, other, StringComparison.OrdinalIgnoreCase))
                         synonyms.Add(other);
+
+                // Track the longest key so Tokenize can bound its phrase-scan window.
+                var tokenCount = CountTokens(term);
+                if (tokenCount > _maxKeyTokenCount)
+                    _maxKeyTokenCount = tokenCount;
             }
         }
         finally
@@ -70,6 +94,15 @@ public sealed class SynonymMap : IDisposable
                 // Remove back-references from any surviving synonym sets.
                 foreach (var set in _lookup.Values)
                     set.Remove(term);
+            }
+
+            // Recompute max phrase length since a key may have been removed.
+            _maxKeyTokenCount = 0;
+            foreach (var key in _lookup.Keys)
+            {
+                var count = CountTokens(key);
+                if (count > _maxKeyTokenCount)
+                    _maxKeyTokenCount = count;
             }
         }
         finally
@@ -98,6 +131,18 @@ public sealed class SynonymMap : IDisposable
     }
 
     public void Dispose() => _lock.Dispose();
+
+    private static int CountTokens(string term)
+    {
+        var count = 0;
+        var inToken = false;
+        foreach (var c in term)
+        {
+            if (char.IsWhiteSpace(c)) { inToken = false; }
+            else if (!inToken) { inToken = true; count++; }
+        }
+        return count;
+    }
 
 #pragma warning disable HLQ001 // IReadOnlySet<T> is the correct abstraction here; boxing the empty sentinel is a one-time, non-hot-path cost
     private static readonly IReadOnlySet<string> EmptySet =
