@@ -415,7 +415,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
 | [ ] | Tag-Based Retrieval | Medium | Hybrid search |
 | [x] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
-| [ ] | Semantic Chunking (Embedding-Based) | Medium | `IEmbeddingGenerator` |
+| [x] | Semantic Chunking (Embedding-Based) | Medium | `IEmbeddingGenerator` |
 | [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
 | [ ] | Deep Research Loop | High | `IChatClient` |
 | [ ] | Domain-Specific Chunking Templates | High | Per-domain logic |
