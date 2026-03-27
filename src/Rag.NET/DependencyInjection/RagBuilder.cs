@@ -273,6 +273,18 @@ public sealed class RagBuilder(IServiceCollection services)
     }
 
     /// <summary>
+    /// Registers a <see cref="SynonymMap"/> that expands tokens at both BM25 index time and query time.
+    /// Synonyms are bidirectional: any term in a group matches all other terms in that group.
+    /// The map is a singleton — call <see cref="SynonymMap.AddGroup"/> or
+    /// <see cref="SynonymMap.RemoveGroup"/> at runtime for live updates without restart.
+    /// </summary>
+    public RagBuilder UseBm25Synonyms(SynonymMap synonymMap)
+    {
+        Services.AddSingleton(synonymMap);
+        return this;
+    }
+
+    /// <summary>
     /// Registers <see cref="SqliteContentHashStore"/> as the <see cref="IContentHashStore"/>.
     /// When registered, <see cref="RagPipelineExtensions.IngestFromProviderAsync"/> automatically skips
     /// files that have not changed since the last ingestion run.
