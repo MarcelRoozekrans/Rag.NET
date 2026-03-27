@@ -126,6 +126,20 @@ public sealed class RagBuilder(IServiceCollection services)
     }
 
     /// <summary>
+    /// Wraps the registered <see cref="IRetriever"/> with <see cref="DeepResearchRetriever"/>.
+    /// On each retrieval call, runs a sufficiency-gated loop: retrieve, ask the LLM whether the
+    /// result is sufficient, and if not generate focused sub-queries and retrieve again.
+    /// Results are merged and deduplicated across all iterations.
+    /// </summary>
+    /// <remarks>Requires <c>IChatClient</c> to be registered in DI.</remarks>
+    /// <param name="options">Optional options; defaults to <see cref="DeepResearchOptions"/> defaults.</param>
+    public RagBuilder UseDeepResearch(DeepResearchOptions? options = null)
+    {
+        Services.AddSingleton(options ?? new DeepResearchOptions());
+        return this;
+    }
+
+    /// <summary>
     /// Registers <see cref="LlmQueryExpander"/> as the <see cref="IQueryExpander"/>.
     /// When registered, <see cref="RagPipeline"/> expands each query into
     /// <see cref="MultiQueryOptions.VariantCount"/> alternatives, fans out to the vector store

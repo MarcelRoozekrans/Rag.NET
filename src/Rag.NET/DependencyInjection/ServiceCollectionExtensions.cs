@@ -5,8 +5,10 @@ using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
 using Rag.NET.Ingestion.Behaviors;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
+using Rag.NET.Retrieval;
 using Rag.NET.Search;
 
 namespace Rag.NET.DependencyInjection;
@@ -58,6 +60,7 @@ public static class ServiceCollectionExtensions
         var builder = new RagBuilder(services);
         configure?.Invoke(builder);
         WireRefinementStrategy(services);
+        WireDeepResearch(services);
 
         // Default fallback — no-op when UseSqlitePersistence() has already registered IBm25Index.
         services.TryAddSingleton<IBm25Index>(sp => sp.GetRequiredService<InMemoryBm25Index>());
@@ -81,4 +84,25 @@ public static class ServiceCollectionExtensions
             ChunkingOptions = sp.GetRequiredService<ChunkingOptions>(),
             RefinementStrategy = sp.GetService<IChunkRefinementStrategy>(),
         });
+
+    private static void WireDeepResearch(IServiceCollection services)
+    {
+        if (!services.Any(d => d.ServiceType == typeof(DeepResearchOptions)))
+            return;
+
+        // PipelineRetriever is registered only as IRetriever by ZeroAlloc ([Singleton(As = typeof(IRetriever))]).
+        // Register it by its concrete type with manually-wired [Inject] properties so the decorator can wrap it.
+        services.AddSingleton<PipelineRetriever>(sp => new PipelineRetriever
+        {
+            Pipeline = sp.GetRequiredService<Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>>(),
+            Logger   = sp.GetService<ILogger<PipelineRetriever>>(),
+        });
+
+        // Replace IRetriever with the decorator (last AddSingleton<IRetriever> wins).
+        services.AddSingleton<IRetriever>(sp => new DeepResearchRetriever(
+            sp.GetRequiredService<PipelineRetriever>(),
+            sp.GetRequiredService<IChatClient>(),
+            sp.GetRequiredService<DeepResearchOptions>(),
+            sp.GetService<ILogger<DeepResearchRetriever>>()));
+    }
 }
