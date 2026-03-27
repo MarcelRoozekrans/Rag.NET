@@ -2,9 +2,16 @@ namespace Rag.NET.Models.Options;
 
 public sealed class DeepResearchOptions
 {
-    public int MaxDepth { get; init; } = 3;
-    public int SubQueryCount { get; init; } = 3;
+    /// <summary>Maximum number of sufficiency-check iterations before returning accumulated results.</summary>
+    public int MaxDepth { get; set; } = 3;
 
-    /// <summary>Custom sufficiency prompt. When null the built-in default is used.</summary>
-    public string? SufficiencyPrompt { get; init; }
+    /// <summary>Maximum number of sub-queries generated per insufficiency response.</summary>
+    public int SubQueryCount { get; set; } = 3;
+
+    /// <summary>
+    /// Custom sufficiency-check prompt sent to the LLM. When null the built-in default is used.
+    /// The custom prompt is sent verbatim — the caller is responsible for embedding the query
+    /// and context when using a custom prompt.
+    /// </summary>
+    public string? SufficiencyPrompt { get; set; }
 }

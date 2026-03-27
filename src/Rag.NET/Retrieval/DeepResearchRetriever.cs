@@ -61,7 +61,7 @@ public sealed class DeepResearchRetriever : IRetriever
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
-                    _logger?.LogWarning(ex, "Sub-query retrieval failed for '{SubQuery}'", subQuery);
+                    _logger?.LogWarning(ex, "Sub-query retrieval failed for '{SubQuery}'; skipping and continuing", subQuery);
                 }
             }
 
@@ -80,7 +80,7 @@ public sealed class DeepResearchRetriever : IRetriever
             if (!seen.TryGetValue(key, out var existing) || r.Score > existing.Score)
                 seen[key] = r;
         }
-        return [.. seen.Values];
+        return [.. seen.Values.OrderByDescending(r => r.Score)];
     }
 
     private sealed record SufficiencyResponse(bool Sufficient, string[] SubQueries);

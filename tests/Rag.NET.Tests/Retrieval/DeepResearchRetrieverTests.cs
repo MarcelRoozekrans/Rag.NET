@@ -164,4 +164,23 @@ public class DeepResearchRetrieverTests
         Assert.Single(result.Value);
         _ = await inner.Received(1).RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct);
     }
+
+    [Fact]
+    public async Task LlmTransportFails_TreatedAsSufficient_Passthrough()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync("q", Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0)));
+        chatClient
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("connection refused"));
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(result.Value);
+        _ = await inner.Received(1).RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct);
+    }
 }
