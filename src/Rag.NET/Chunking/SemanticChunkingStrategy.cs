@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
@@ -99,6 +100,10 @@ public sealed partial class SemanticChunkingStrategy(
         }
     }
 
+    /// <remarks>
+    /// All sections are expected to belong to the same document. This method stamps every
+    /// chunk with the first section's DocumentId.
+    /// </remarks>
     public async IAsyncEnumerable<TextChunk> ChunkDocumentAsync(
         IAsyncEnumerable<DocumentSection> sections,
         ChunkingOptions chunkingOptions,
@@ -111,6 +116,10 @@ public sealed partial class SemanticChunkingStrategy(
         if (sectionList.Count == 0)
             yield break;
 
+        Debug.Assert(
+            sectionList.All(s => s.DocumentId == sectionList[0].DocumentId),
+            "ChunkDocumentAsync expects all sections to belong to the same document.");
+
         cancellationToken.ThrowIfCancellationRequested();
 
         var activeEmbedder = _options.ChunkingEmbedder ?? _embedder;
@@ -118,6 +127,42 @@ public sealed partial class SemanticChunkingStrategy(
         var embeddings = await activeEmbedder.GenerateAsync(texts, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
+        var groups = GroupSectionsByBreakpoints(sectionList, embeddings);
+
+        // Merge/split groups based on total text length — reuse sentence-level helpers via adapter
+        var textGroups = groups.ConvertAll(g => g.ConvertAll(s => s.Text));
+        MergeUndersizedGroups(textGroups);
+        SplitOversizedGroups(textGroups);
+
+        var documentId = sectionList[0].DocumentId;
+        int chunkIndex = 0;
+#pragma warning disable HLQ012 // Plain foreach is clearer here; no perf-critical path
+        foreach (var group in textGroups)
+        {
+#pragma warning restore HLQ012
+            cancellationToken.ThrowIfCancellationRequested();
+            var text = string.Join("\n\n", group);
+            // GroupCharLength uses " " as separator (1 char) but we join with "\n\n" (2 chars).
+            // This means MaxChunkSize is slightly under-enforced (by at most count-1 chars per group).
+            // Acceptable: chunking constraints are heuristics, not hard limits.
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+
+            yield return new TextChunk
+            {
+                Text = text,
+                DocumentId = documentId,
+                ChunkIndex = chunkIndex++,
+                StartPosition = 0,
+                EndPosition = text.Length,
+            };
+        }
+    }
+
+    private List<List<DocumentSection>> GroupSectionsByBreakpoints(
+        List<DocumentSection> sectionList,
+        GeneratedEmbeddings<Embedding<float>> embeddings)
+    {
         // Consecutive cosine similarities between adjacent section embeddings
         var similarities = new double[sectionList.Count - 1];
         for (int i = 0; i < similarities.Length; i++)
@@ -136,32 +181,7 @@ public sealed partial class SemanticChunkingStrategy(
                 groups.Add(new List<DocumentSection>());
             groups[^1].Add(sectionList[i + 1]);
         }
-
-        // Merge/split groups based on total text length — reuse sentence-level helpers via adapter
-        var textGroups = groups.ConvertAll(g => g.ConvertAll(s => s.Text));
-        MergeUndersizedGroups(textGroups);
-        SplitOversizedGroups(textGroups);
-
-        var documentId = sectionList[0].DocumentId;
-        int chunkIndex = 0;
-#pragma warning disable HLQ012 // Plain foreach is clearer here; no perf-critical path
-        foreach (var group in textGroups)
-        {
-#pragma warning restore HLQ012
-            cancellationToken.ThrowIfCancellationRequested();
-            var text = string.Join("\n\n", group);
-            if (string.IsNullOrWhiteSpace(text))
-                continue;
-
-            yield return new TextChunk
-            {
-                Text = text,
-                DocumentId = documentId,
-                ChunkIndex = chunkIndex++,
-                StartPosition = 0,
-                EndPosition = text.Length,
-            };
-        }
+        return groups;
     }
 
     private static double[] ComputeConsecutiveSimilarities(
