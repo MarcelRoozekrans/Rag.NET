@@ -86,7 +86,7 @@ public class SemanticRefinementStrategyTests
         // consecutive pair is orthogonal (similarity=0) and the second is identical (similarity=1).
         // With a high BreakpointPercentile the threshold equals the max similarity (1.0),
         // so the low-similarity boundary triggers a split.
-        var opts = new SemanticChunkingOptions { MinChunkSize = 5, BreakpointPercentile = 0.95f };
+        var opts = new SemanticChunkingOptions { MinChunkSize = 5, MaxChunkSize = 5000, BreakpointPercentile = 0.95f };
         var strategy = new SemanticChunkingStrategy(
             MockEmbedder([1f, 0f], [0f, 1f], [0f, 1f]),
             opts);
@@ -107,5 +107,50 @@ public class SemanticRefinementStrategyTests
         // Must produce more than 1 chunk when text is sub-split
         Assert.True(result.Count > 1);
         Assert.All(result, c => Assert.Equal(new DocumentId("doc1"), c.DocumentId));
+    }
+
+    [Fact]
+    public async Task RefineAsync_MultipleChunks_ChunkIndexIsGloballySequential()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // Short chunk (passes through) + short chunk (passes through) = indices 0, 1
+        var opts = new SemanticChunkingOptions { MinChunkSize = 1000 };
+        var strategy = new SemanticChunkingStrategy(MockEmbedder([1f, 0f]), opts);
+
+        var chunks = new[]
+        {
+            new TextChunk { Text = "First.", DocumentId = new DocumentId("doc1"), ChunkIndex = 0, StartPosition = 0, EndPosition = 6 },
+            new TextChunk { Text = "Second.", DocumentId = new DocumentId("doc1"), ChunkIndex = 0, StartPosition = 0, EndPosition = 7 },
+        };
+
+        var result = await strategy.RefineAsync(ToAsync(chunks), ct).ToListAsync(ct);
+
+        Assert.Equal(2, result.Count);
+        Assert.Equal(0, result[0].ChunkIndex);
+        Assert.Equal(1, result[1].ChunkIndex);
+    }
+
+    [Fact]
+    public async Task RefineAsync_CancelledToken_ThrowsOperationCanceledException()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var strategy = new SemanticChunkingStrategy(
+            MockEmbedder([1f, 0f]),
+            new SemanticChunkingOptions { MinChunkSize = 5 });
+
+        var text = "First sentence here. Second sentence there. Third sentence ok.";
+        var chunk = new TextChunk
+        {
+            Text = text,
+            DocumentId = new DocumentId("doc1"),
+            ChunkIndex = 0,
+            StartPosition = 0,
+            EndPosition = text.Length,
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await strategy.RefineAsync(ToAsync([chunk]), cts.Token).ToListAsync(cts.Token));
     }
 }

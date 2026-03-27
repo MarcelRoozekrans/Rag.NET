@@ -166,7 +166,7 @@ public sealed partial class SemanticChunkingStrategy(
         int chunkIndex = 0;
         await foreach (var chunk in chunks.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
-            if (chunk.Text.Length <= _options.MinChunkSize)
+            if (chunk.Text.Length < _options.MinChunkSize)
             {
                 yield return chunk with { ChunkIndex = chunkIndex++ };
                 continue;
