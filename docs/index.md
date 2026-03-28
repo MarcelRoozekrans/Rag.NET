@@ -18,6 +18,7 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 | [Getting Started](getting-started.md) | Dependency injection setup, ingesting a document, and running a Q&A loop |
 | [Architecture](architecture.md) | Pipeline internals, data-flow diagram, all interfaces and core models |
 | [Ingestion](ingestion.md) | Parsers, `DocumentMetadata`, `IngestionOptions`, progress reporting |
+| [Data Providers](data-providers.md) | Cloud storage and web connectors; OAuth token management; delta ingestion |
 | [Chunking](chunking.md) | `FixedSize`, `Recursive`, and `TokenAware` strategies with trade-off table |
 | [Retrieval](retrieval.md) | `RetrievalOptions`, semantic search, hybrid BM25+RRF search, metadata filtering |
 | [Post-Retrieval](post-retrieval.md) | Lost-in-the-Middle reordering and redundancy filtering |
