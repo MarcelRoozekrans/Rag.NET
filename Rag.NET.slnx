@@ -24,6 +24,7 @@
     <Project Path="src/Rag.NET.Evaluation/Rag.NET.Evaluation.csproj" />
     <Project Path="src/Rag.NET.Reranking.Onnx/Rag.NET.Reranking.Onnx.csproj" />
     <Project Path="src/Rag.NET.DataProviders.SharePoint/Rag.NET.DataProviders.SharePoint.csproj" />
+    <Project Path="src/Rag.NET.DataProviders.OneDrive/Rag.NET.DataProviders.OneDrive.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -47,6 +48,7 @@
     <Project Path="tests/Rag.NET.Evaluation.Tests/Rag.NET.Evaluation.Tests.csproj" />
     <Project Path="tests/Rag.NET.Reranking.Onnx.Tests/Rag.NET.Reranking.Onnx.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.SharePoint.Tests/Rag.NET.DataProviders.SharePoint.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.OneDrive.Tests/Rag.NET.DataProviders.OneDrive.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
