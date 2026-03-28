@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.DataProviders.OneDrive</RootNamespace>
+    <PackageId>Rag.NET.DataProviders.OneDrive</PackageId>
+    <Description>OneDrive data provider for Rag.NET via Microsoft Graph</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
+    <PackageReference Include="Microsoft.Graph" Version="5.*" />
+    <PackageReference Include="Azure.Identity" Version="1.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.*" />
+  </ItemGroup>
+</Project>
