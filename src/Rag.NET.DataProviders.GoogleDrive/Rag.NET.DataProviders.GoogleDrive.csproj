@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.DataProviders.GoogleDrive</RootNamespace>
+    <PackageId>Rag.NET.DataProviders.GoogleDrive</PackageId>
+    <Description>Google Drive data provider for Rag.NET</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
+    <PackageReference Include="Google.Apis.Drive.v3" Version="1.*" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+  </ItemGroup>
+</Project>
