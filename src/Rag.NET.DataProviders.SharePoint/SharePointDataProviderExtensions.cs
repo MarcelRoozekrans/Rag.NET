@@ -5,7 +5,6 @@ using Rag.NET.DataProviders;
 
 namespace Rag.NET.DataProviders.SharePoint;
 
-/// <summary>DI registration extensions for <see cref="SharePointDataProvider"/>.</summary>
 public static class SharePointDataProviderExtensions
 {
     public static IServiceCollection AddSharePointDataProvider(
@@ -26,14 +25,15 @@ public static class SharePointDataProviderExtensions
 
         services.AddDataProviderHttpClient("SharePoint");
 
-        var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-        var graph = new GraphServiceClient(
-            services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>().CreateClient("SharePoint"),
-            credential);
-
         var opts = new SharePointOptions { SiteId = siteId, DriveId = driveId };
         configure?.Invoke(opts);
 
-        return services.AddSingleton<IFileContentProvider>(new SharePointDataProvider(graph, opts));
+        return services.AddSingleton<IFileContentProvider>(sp =>
+        {
+            var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("SharePoint");
+            var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+            var graph = new GraphServiceClient(httpClient, credential);
+            return new SharePointDataProvider(graph, opts);
+        });
     }
 }

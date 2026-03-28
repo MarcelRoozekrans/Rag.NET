@@ -5,7 +5,6 @@ using Rag.NET.DataProviders;
 
 namespace Rag.NET.DataProviders.OneDrive;
 
-/// <summary>DI registration extensions for <see cref="OneDriveDataProvider"/>.</summary>
 public static class OneDriveDataProviderExtensions
 {
     public static IServiceCollection AddOneDriveDataProvider(
@@ -24,14 +23,15 @@ public static class OneDriveDataProviderExtensions
 
         services.AddDataProviderHttpClient("OneDrive");
 
-        var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-        var graph = new GraphServiceClient(
-            services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>().CreateClient("OneDrive"),
-            credential);
-
         var opts = new OneDriveOptions { UserId = userId };
         configure?.Invoke(opts);
 
-        return services.AddSingleton<IFileContentProvider>(new OneDriveDataProvider(graph, opts));
+        return services.AddSingleton<IFileContentProvider>(sp =>
+        {
+            var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient("OneDrive");
+            var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+            var graph = new GraphServiceClient(httpClient, credential);
+            return new OneDriveDataProvider(graph, opts);
+        });
     }
 }
