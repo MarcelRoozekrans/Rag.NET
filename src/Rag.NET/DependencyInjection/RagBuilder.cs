@@ -159,7 +159,7 @@ public sealed class RagBuilder(IServiceCollection services)
     public RagBuilder UseTagRetrieval(TagRetrievalOptions? options = null)
     {
         Services.AddSingleton(options ?? new TagRetrievalOptions());
-        Services.AddSingleton<ITagIndex, InMemoryTagIndex>();
+        Services.TryAddSingleton<ITagIndex, InMemoryTagIndex>();
         return this;
     }
 

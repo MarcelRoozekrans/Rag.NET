@@ -121,6 +121,8 @@ public static class ServiceCollectionExtensions
         if (!services.Any(d => d.ServiceType == typeof(TagRetrievalOptions)))
             return;
 
+        // DeepResearchRetriever descriptor is registered by WireDeepResearch (called above in AddRagNet).
+        // Ordering is load-bearing: WireDeepResearch must run before WireTagRetrieval.
         bool hasDeepResearch = services.Any(d => d.ServiceType == typeof(DeepResearchRetriever));
 
         // When DeepResearch is not wired, PipelineRetriever was never registered as its concrete

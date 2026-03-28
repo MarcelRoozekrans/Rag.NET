@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Retrieval;
 using Rag.NET.Search;
@@ -69,5 +70,31 @@ public class UseTagRetrievalTests
         Assert.IsType<TagRetriever>(sp.GetRequiredService<IRetriever>());
         // DeepResearchRetriever is registered as concrete
         Assert.IsType<DeepResearchRetriever>(sp.GetRequiredService<DeepResearchRetriever>());
+    }
+
+    [Fact]
+    public async Task UseTagRetrieval_RetrieveAsync_InvokesEmbedder()
+    {
+        var ct      = TestContext.Current.CancellationToken;
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+                .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+
+        var vectorStore = Substitute.For<IVectorStore>();
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+                   .Returns(new List<SearchResult>());
+
+        var services = new ServiceCollection();
+        services.AddSingleton(embedder);
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(Substitute.For<IChatClient>());
+        var sp = services.AddRagNet(rag => rag.UseTagRetrieval()).BuildServiceProvider();
+
+        var retriever = sp.GetRequiredService<IRetriever>();
+        _ = await retriever.RetrieveAsync("what is the budget?", null, ct);
+
+        // TagRetriever must have called the embedder for tag lookup (may be called again by the inner pipeline)
+        await embedder.Received()
+            .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
     }
 }
