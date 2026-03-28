@@ -34,6 +34,7 @@
     <Project Path="src/Rag.NET.DataProviders.Asana/Rag.NET.DataProviders.Asana.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Slack/Rag.NET.DataProviders.Slack.csproj" />
     <Project Path="src/Rag.NET.DataProviders.MicrosoftTeams/Rag.NET.DataProviders.MicrosoftTeams.csproj" />
+    <Project Path="src/Rag.NET.DataProviders.Gmail/Rag.NET.DataProviders.Gmail.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -67,6 +68,7 @@
     <Project Path="tests/Rag.NET.DataProviders.Asana.Tests/Rag.NET.DataProviders.Asana.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Slack.Tests/Rag.NET.DataProviders.Slack.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.MicrosoftTeams.Tests/Rag.NET.DataProviders.MicrosoftTeams.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.Gmail.Tests/Rag.NET.DataProviders.Gmail.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
