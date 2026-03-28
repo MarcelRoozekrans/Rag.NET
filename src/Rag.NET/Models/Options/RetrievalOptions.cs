@@ -108,6 +108,13 @@ public sealed record RetrievalOptions
     public bool UseParentDocument { get; init; } = true;
 
     /// <summary>
+    /// Set to <see langword="false"/> to skip automatic tag filter injection for this call,
+    /// even when <c>RagBuilder.UseTagRetrieval()</c> is registered.
+    /// Has no effect when tag retrieval is not registered.
+    /// </summary>
+    public bool UseTagRetrieval { get; init; } = true;
+
+    /// <summary>
     /// Internal override for the text to embed instead of the query.
     /// Set by <see cref="Rag.NET.Retrieval.HydeRetriever"/> to pass the hypothetical document
     /// to <see cref="Rag.NET.Retrieval.VectorStoreRetriever"/> while preserving the original query for BM25.
