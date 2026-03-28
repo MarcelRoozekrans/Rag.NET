@@ -20,8 +20,10 @@
     <Project Path="src/Rag.NET.DataProviders/Rag.NET.DataProviders.csproj" />
     <Project Path="src/Rag.NET.DataProviders.GitHub/Rag.NET.DataProviders.GitHub.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Web/Rag.NET.DataProviders.Web.csproj" />
+    <Project Path="src/Rag.NET.DataProviders.AzureBlob/Rag.NET.DataProviders.AzureBlob.csproj" />
     <Project Path="src/Rag.NET.Evaluation/Rag.NET.Evaluation.csproj" />
     <Project Path="src/Rag.NET.Reranking.Onnx/Rag.NET.Reranking.Onnx.csproj" />
+    <Project Path="src/Rag.NET.DataProviders.SharePoint/Rag.NET.DataProviders.SharePoint.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -41,8 +43,10 @@
     <Project Path="tests/Rag.NET.DataProviders.GitHub.Tests/Rag.NET.DataProviders.GitHub.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Tests/Rag.NET.DataProviders.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Web.Tests/Rag.NET.DataProviders.Web.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.AzureBlob.Tests/Rag.NET.DataProviders.AzureBlob.Tests.csproj" />
     <Project Path="tests/Rag.NET.Evaluation.Tests/Rag.NET.Evaluation.Tests.csproj" />
     <Project Path="tests/Rag.NET.Reranking.Onnx.Tests/Rag.NET.Reranking.Onnx.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.SharePoint.Tests/Rag.NET.DataProviders.SharePoint.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.DataProviders.AzureBlob</RootNamespace>
+    <PackageId>Rag.NET.DataProviders.AzureBlob</PackageId>
+    <Description>Azure Blob Storage data provider for Rag.NET</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+  </ItemGroup>
+</Project>
