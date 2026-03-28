@@ -2,7 +2,6 @@ using System.Net;
 using System.Text;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Asana;
-using Refit;
 using Xunit;
 
 namespace Rag.NET.DataProviders.Asana.Tests;
@@ -15,8 +14,10 @@ public sealed class AsanaDataProviderTests
     {
         var handler = new FakeHandler(responses);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com") };
-        var api = RestService.For<IAsanaApi>(http);
-        return new AsanaDataProvider(api, options ?? new AsanaOptions { WorkspaceGid = "ws-1" });
+        return new AsanaDataProvider(
+            http,
+            new StaticTokenProvider("test-token"),
+            options ?? new AsanaOptions { WorkspaceGid = "ws-1" });
     }
 
     private static async Task<string> ReadContentAsync(FileEntry entry)
@@ -83,13 +84,12 @@ public sealed class AsanaDataProviderTests
 
         var capturer = new FakeCapturingHandler(tasksJson);
         var http = new HttpClient(capturer) { BaseAddress = new Uri("https://app.asana.com") };
-        var api = RestService.For<IAsanaApi>(http);
         var opts = new AsanaOptions
         {
             WorkspaceGid = "ws-1",
             DeltaToken   = "2026-03-01T00:00:00Z"
         };
-        var sut = new AsanaDataProvider(api, opts);
+        var sut = new AsanaDataProvider(http, new StaticTokenProvider("test-token"), opts);
 
         await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -138,10 +138,19 @@ public sealed class AsanaDataProviderTests
     }
 
     [Fact]
-    public void Constructor_NullApi_Throws()
+    public void Constructor_NullHttp_Throws()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new AsanaDataProvider(null!, new AsanaOptions { WorkspaceGid = "ws-1" }));
+            new AsanaDataProvider(null!, new StaticTokenProvider("tok"),
+                new AsanaOptions { WorkspaceGid = "ws-1" }));
+    }
+
+    [Fact]
+    public void Constructor_NullTokenProvider_Throws()
+    {
+        var http = new HttpClient { BaseAddress = new Uri("https://app.asana.com") };
+        Assert.Throws<ArgumentNullException>(() =>
+            new AsanaDataProvider(http, null!, new AsanaOptions { WorkspaceGid = "ws-1" }));
     }
 }
 

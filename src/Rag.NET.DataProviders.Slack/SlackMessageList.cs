@@ -7,6 +7,9 @@ internal sealed class SlackMessageList
     [JsonPropertyName("ok")]
     public bool Ok { get; init; }
 
+    [JsonPropertyName("error")]
+    public string? Error { get; init; }
+
     [JsonPropertyName("messages")]
     public List<SlackMessage> Messages { get; init; } = [];
 

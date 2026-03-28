@@ -88,6 +88,10 @@ public sealed class SlackDataProvider : FileContentProviderBase
         {
             var result = await _api.ListChannelsAsync(cursor: cursor, cancellationToken: ct)
                 .ConfigureAwait(false);
+            if (!result.Ok)
+                throw new InvalidOperationException(
+                    string.Create(CultureInfo.InvariantCulture,
+                        $"Slack API error: {result.Error}"));
             channels.AddRange(result.Channels);
             cursor = string.IsNullOrEmpty(result.ResponseMetadata?.NextCursor)
                 ? null : result.ResponseMetadata.NextCursor;
@@ -107,6 +111,10 @@ public sealed class SlackDataProvider : FileContentProviderBase
             var result = await _api.GetHistoryAsync(
                 channelId, _options.MessageLimit, oldest, cursor, ct)
                 .ConfigureAwait(false);
+            if (!result.Ok)
+                throw new InvalidOperationException(
+                    string.Create(CultureInfo.InvariantCulture,
+                        $"Slack API error: {result.Error}"));
             messages.AddRange(result.Messages);
             cursor = string.IsNullOrEmpty(result.ResponseMetadata?.NextCursor)
                 ? null : result.ResponseMetadata.NextCursor;
@@ -145,6 +153,10 @@ public sealed class SlackDataProvider : FileContentProviderBase
             {
                 var replies = await _api.GetRepliesAsync(channelId, msg.ThreadTs, ct)
                     .ConfigureAwait(false);
+                if (!replies.Ok)
+                    throw new InvalidOperationException(
+                        string.Create(CultureInfo.InvariantCulture,
+                            $"Slack API error: {replies.Error}"));
 
                 for (int ri = 1; ri < replies.Messages.Count; ri++)  // skip parent (index 0)
                 {

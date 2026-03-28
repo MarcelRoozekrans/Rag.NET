@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Rag.NET.DataProviders;
+using Refit;
 
 namespace Rag.NET.DataProviders.Confluence;
 
@@ -60,6 +61,11 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
         while (cursor is not null);
     }
 
+    /// <summary>
+    /// Delta traversal using a CQL <c>lastModified&gt;</c> filter.
+    /// Falls back to a full traversal when the Atlassian API returns HTTP 400,
+    /// which indicates a stale or otherwise invalid <see cref="ConfluenceOptions.DeltaToken"/>.
+    /// </summary>
     private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -67,8 +73,40 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
             ? $"space=\"{_options.SpaceKey}\" AND lastModified>\"{_options.DeltaToken}\""
             : $"lastModified>\"{_options.DeltaToken}\"";
 
-        string? cursor = null;
-        do
+        // Attempt the first page before entering the yield-loop so we can catch API errors
+        // before any items have been emitted. C# does not allow yield inside catch blocks,
+        // so we use a flag to switch to full traversal after the try/catch.
+        ConfluencePageList? firstPage = null;
+        bool staleDeltaToken = false;
+        try
+        {
+            firstPage = await _api.SearchPagesAsync(
+                cql, limit: 50, cursor: null,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (ApiException ex)
+            when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+        {
+            // Stale or invalid token — signal a fall back to full traversal.
+            staleDeltaToken = true;
+        }
+
+        if (staleDeltaToken)
+        {
+            await foreach (var h in GetFullHandlesAsync(cancellationToken).ConfigureAwait(false))
+                yield return h;
+            yield break;
+        }
+
+        // Emit results from the first (already-fetched) page and then continue paging.
+        string? cursor = ExtractCursor(firstPage!.Links.Next);
+        for (int i = 0; i < firstPage.Results.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            yield return ToHandle(firstPage.Results[i]);
+        }
+
+        while (cursor is not null)
         {
             var page = await _api.SearchPagesAsync(
                 cql, limit: 50, cursor: cursor,
@@ -82,7 +120,6 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
 
             cursor = ExtractCursor(page.Links.Next);
         }
-        while (cursor is not null);
     }
 
     private static FileHandle ToHandle(ConfluencePage p)

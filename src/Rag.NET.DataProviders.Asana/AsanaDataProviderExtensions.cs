@@ -1,7 +1,5 @@
-using System.Net.Http.Headers;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
-using Refit;
 
 namespace Rag.NET.DataProviders.Asana;
 
@@ -38,10 +36,9 @@ public static class AsanaDataProviderExtensions
         {
             var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("Asana");
             http.BaseAddress = new Uri("https://app.asana.com");
-            var token = tokenProvider.GetTokenAsync().AsTask().GetAwaiter().GetResult();
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", token);
-            return new AsanaDataProvider(RestService.For<IAsanaApi>(http), opts);
+            // Token is resolved per-request inside AsanaDataProvider.GetHandlesAsync
+            // to avoid sync-over-async in the factory and to handle token expiry correctly.
+            return new AsanaDataProvider(http, tokenProvider, opts);
         });
     }
 }

@@ -28,6 +28,7 @@ public sealed class NotionDataProvider : FileContentProviderBase
             : null;
 
         string? cursor = null;
+        bool stopPaging = false;
         do
         {
             var filter = new NotionFilter("object", "page");
@@ -41,11 +42,17 @@ public sealed class NotionDataProvider : FileContentProviderBase
                 cancellationToken.ThrowIfCancellationRequested();
                 var page = result.Results[i];
 
-                // Delta: skip pages not modified after DeltaToken
+                // Delta: results are sorted descending by last_edited_time.
+                // Once we encounter a page that is not newer than DeltaToken, all
+                // subsequent pages in this and future batches will also be older —
+                // stop pagination entirely rather than continuing to fetch.
                 if (_options.DeltaToken is not null
                     && string.Compare(page.LastEditedTime, _options.DeltaToken,
                         StringComparison.Ordinal) <= 0)
-                    continue;
+                {
+                    stopPaging = true;
+                    break;
+                }
 
                 var blocks   = await FetchBlocksAsync(page.Id, cancellationToken).ConfigureAwait(false);
                 var title    = GetTitle(page);
@@ -59,7 +66,7 @@ public sealed class NotionDataProvider : FileContentProviderBase
                         new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
             }
 
-            cursor = result.HasMore ? result.NextCursor : null;
+            cursor = (!stopPaging && result.HasMore) ? result.NextCursor : null;
         }
         while (cursor is not null);
     }

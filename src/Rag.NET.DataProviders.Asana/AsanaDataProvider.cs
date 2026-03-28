@@ -1,22 +1,28 @@
+using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Rag.NET.DataProviders;
+using Refit;
 
 namespace Rag.NET.DataProviders.Asana;
 
 public sealed class AsanaDataProvider : FileContentProviderBase
 {
-    private readonly IAsanaApi _api;
+    private readonly HttpClient _http;
+    private readonly ITokenProvider _tokenProvider;
     private readonly AsanaOptions _options;
 
     private const string OptFields =
         "gid,name,notes,due_on,completed,assignee.name,modified_at";
 
-    internal AsanaDataProvider(IAsanaApi api, AsanaOptions options) : base(options)
+    internal AsanaDataProvider(HttpClient http, ITokenProvider tokenProvider, AsanaOptions options)
+        : base(options)
     {
-        ArgumentNullException.ThrowIfNull(api);
-        _api     = api;
-        _options = options;
+        ArgumentNullException.ThrowIfNull(http);
+        ArgumentNullException.ThrowIfNull(tokenProvider);
+        _http          = http;
+        _tokenProvider = tokenProvider;
+        _options       = options;
     }
 
     protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
@@ -26,6 +32,12 @@ public sealed class AsanaDataProvider : FileContentProviderBase
     private async IAsyncEnumerable<FileHandle> GetHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        // Resolve token per-call so expiring tokens are always fresh.
+        var token = await _tokenProvider.GetTokenAsync(cancellationToken).ConfigureAwait(false);
+        _http.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", token);
+        var api = RestService.For<IAsanaApi>(_http);
+
         string? offset = null;
         var modifiedSince = _options.DeltaToken;
 
@@ -33,11 +45,11 @@ public sealed class AsanaDataProvider : FileContentProviderBase
         {
             AsanaTaskList result;
             if (_options.ProjectGid is not null)
-                result = await _api.GetProjectTasksAsync(
+                result = await api.GetProjectTasksAsync(
                     _options.ProjectGid, OptFields, 100, offset, modifiedSince,
                     cancellationToken).ConfigureAwait(false);
             else
-                result = await _api.GetWorkspaceTasksAsync(
+                result = await api.GetWorkspaceTasksAsync(
                     _options.WorkspaceGid, OptFields, 100, offset, modifiedSince,
                     cancellationToken).ConfigureAwait(false);
 
@@ -45,7 +57,7 @@ public sealed class AsanaDataProvider : FileContentProviderBase
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var task = result.Data[i];
-                var subtasks = await _api.GetSubtasksAsync(task.Gid,
+                var subtasks = await api.GetSubtasksAsync(task.Gid,
                     cancellationToken: cancellationToken).ConfigureAwait(false);
                 yield return ToHandle(task, subtasks.Data);
             }
