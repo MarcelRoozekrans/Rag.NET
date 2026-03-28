@@ -27,6 +27,7 @@
     <Project Path="src/Rag.NET.DataProviders.OneDrive/Rag.NET.DataProviders.OneDrive.csproj" />
     <Project Path="src/Rag.NET.DataProviders.GoogleDrive/Rag.NET.DataProviders.GoogleDrive.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Dropbox/Rag.NET.DataProviders.Dropbox.csproj" />
+    <Project Path="src/Rag.NET.DataProviders.Box/Rag.NET.DataProviders.Box.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -53,6 +54,7 @@
     <Project Path="tests/Rag.NET.DataProviders.OneDrive.Tests/Rag.NET.DataProviders.OneDrive.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.GoogleDrive.Tests/Rag.NET.DataProviders.GoogleDrive.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Dropbox.Tests/Rag.NET.DataProviders.Dropbox.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.Box.Tests/Rag.NET.DataProviders.Box.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
