@@ -169,7 +169,7 @@ public static class ServiceCollectionExtensions
         // Register it here so TagRetriever can wrap it — same pattern as WireDeepResearch.
         if (!hasDeepResearch && !hasTimeWeighted)
         {
-            services.AddSingleton<PipelineRetriever>(sp => new PipelineRetriever
+            services.TryAddSingleton<PipelineRetriever>(sp => new PipelineRetriever
             {
                 Pipeline = sp.GetRequiredService<Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>>(),
                 Logger   = sp.GetService<ILogger<PipelineRetriever>>(),
