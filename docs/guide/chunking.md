@@ -36,15 +36,15 @@ The default strategy when nothing is configured is `RecursiveChunkingStrategy` w
 
 ## Strategy comparison
 
-| | `FixedSizeChunkingStrategy` | `RecursiveChunkingStrategy` | `TokenAwareChunkingStrategy` | `SemanticChunkingStrategy` | `HierarchicalMergerChunkingStrategy` |
-|---|---|---|---|---|---|
-| Unit | Characters | Characters | Tokens | Characters (min/max) | Characters (max) |
-| Split logic | Hard cut at word boundary | Hierarchical separators | Tiktoken encode → slice → decode | Embedding cosine similarity breakpoints | Heading subtree merge |
-| Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window | None | None |
-| Heading awareness | No | No | No | No (sentence-level) | Yes |
-| Respects token limits | No | No | Yes | Approximate (min/max chars) | Approximate (max chars) |
-| Chunking overhead (50 KB) | ~29 µs | ~94 µs | ~1,750 µs | Embedding-latency-bound | ~50 µs |
-| Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text | Coherent meaning boundaries, QA systems | Structured documents with headings |
+| | `FixedSizeChunkingStrategy` | `RecursiveChunkingStrategy` | `TokenAwareChunkingStrategy` | `SemanticChunkingStrategy` | `HierarchicalMergerChunkingStrategy` | `CodeChunkingStrategy` |
+|---|---|---|---|---|---|---|
+| Unit | Characters | Characters | Tokens | Characters (min/max) | Characters (max) | Characters |
+| Split logic | Hard cut at word boundary | Hierarchical separators | Tiktoken encode → slice → decode | Embedding cosine similarity breakpoints | Heading subtree merge | Language-specific (class/func/method) |
+| Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window | None | None | Optional |
+| Heading awareness | No | No | No | No (sentence-level) | Yes | No |
+| Respects token limits | No | No | Yes | Approximate (min/max chars) | Approximate (max chars) | No |
+| Chunking overhead (50 KB) | ~29 µs | ~94 µs | ~1,750 µs | Embedding-latency-bound | ~50 µs | ~50 µs |
+| Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text | Coherent meaning boundaries, QA systems | Structured documents with headings | Code files (Python, JS/TS, Go, Rust, C#, …) |
 
 See [benchmarks](benchmarks.md) for full throughput numbers. Semantic chunking overhead is embedding-latency-bound (50–500 ms per batch), not CPU-bound — CPU processing is negligible.
 
@@ -202,3 +202,42 @@ To implement a post-processing refinement step, implement `IChunkRefinementStrat
 The chunking strategy is invoked once per `DocumentSection` yielded by the parser (per-section path) or once per document (document-level path when `IDocumentChunkingStrategy` is active). Each section or document produces zero or more `TextChunk` objects. After chunking, the optional refinement pass runs, then the pipeline applies heading metadata and `DocumentMetadata.Tags` to every chunk's `Metadata` dictionary before embedding.
 
 See [Ingestion](ingestion.md) for the full pipeline flow and [Retrieval](retrieval.md) for how chunk metadata is used at query time.
+
+## `CodeChunkingStrategy`
+
+Splits code files at language-appropriate boundaries using per-language separator hierarchies. Each language tries to split at the highest semantic boundary first (class → function → method) before falling back to paragraph and line breaks.
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseCodeChunking());             // auto-detect language from file extension
+```
+
+With explicit language override:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseCodeChunking(new CodeChunkingOptions { Language = "python" }));
+```
+
+**Supported languages and extensions:**
+
+| Language | Extensions |
+|---|---|
+| `python` | `.py` |
+| `javascript` | `.js`, `.mjs`, `.cjs` |
+| `typescript` | `.ts`, `.tsx` |
+| `java` | `.java` |
+| `go` | `.go` |
+| `rust` | `.rs` |
+| `ruby` | `.rb` |
+| `csharp` | `.cs` |
+| `cpp` | `.cpp`, `.cc`, `.cxx`, `.h`, `.hpp` |
+| `php` | `.php` |
+| `swift` | `.swift` |
+
+Unknown extensions fall back to generic code separators (`\n\n` → `\n` → space).
+
+**Caveats:**
+- Uses heuristic string matching — it is not a parser. A `\ndef ` separator will split at any string starting with that pattern, including comments or strings containing `def `.
+- Overlap is typically 0 for code. Set `ChunkingOptions.Overlap = 0` explicitly (default is 50 characters).
+- For C# specifically, the Roslyn-based chunker (`Rag.NET.Parsers.CSharp`) produces semantically richer chunks with namespace, type, and member metadata.

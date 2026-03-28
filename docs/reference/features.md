@@ -58,6 +58,8 @@ Language-specific separator hierarchies for Python, JS/TS, Java, Go, Ruby, Rust,
 
 **Why:** Generic character splitting ignores code structure. Heuristic splitters work for all languages without per-language compiler dependencies.
 
+**Status:** ✅ Done
+
 ---
 
 ### C# Semantic Chunking (Roslyn)
@@ -104,6 +106,8 @@ Use an LLM to translate a natural-language question into a vector search query p
 Maintain a "tag knowledge base" of content-tag pairs. At query time, match the user's question against all known tags via hybrid search and inject top-k matching tags as keyword filters for the primary retrieval. Two-stage funnel: tag filtering narrows candidates before full semantic search.
 
 **Why:** Lightweight scoping alternative to self-query — useful when documents carry human-assigned categories (product names, departments, issue types) without requiring an LLM call.
+
+**Status:** ✅ Done
 
 ---
 
@@ -412,12 +416,12 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Map-Reduce / Refine Synthesis | Medium | `IChatClient` |
 | [x] | MCP Server | Medium | MCP SDK |
 | [x] | MMR Retrieval | Medium | Embedding access |
-| [ ] | Multi-Language Code Splitting | Medium | None (regex) |
+| [x] | Multi-Language Code Splitting | Medium | None (regex) |
 | [x] | Multi-Query Retrieval | Medium | `IChatClient` |
 | [ ] | SaaS Connectors | Medium | Per-platform SDK |
 | [x] | Search Result Caching | Medium | None |
 | [x] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
-| [ ] | Tag-Based Retrieval | Medium | Hybrid search |
+| [x] | Tag-Based Retrieval | Medium | Hybrid search |
 | [x] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
 | [x] | Semantic Chunking (Embedding-Based) | Medium | `IEmbeddingGenerator` |
 | [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |

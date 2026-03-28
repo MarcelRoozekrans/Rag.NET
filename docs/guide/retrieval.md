@@ -378,6 +378,81 @@ If the LLM returns malformed JSON or fails entirely (network error, timeout), th
 
 ---
 
+## Tag-Based Retrieval
+
+Tag-based retrieval automatically narrows the search space by injecting `MetadataFilter` entries derived from semantic tag matching. At ingest time, `TagIngestionBehavior` embeds each unique tag value from `DocumentMetadata.Tags` and stores it in an in-memory index. At query time, `TagRetriever` embeds the query, cosine-scans the tag index, and merges the best-matching tags into the `MetadataFilter` before the vector search runs.
+
+**Why it differs from `MetadataFilter`:** `MetadataFilter` requires the caller to know which tag to filter on. Tag-based retrieval discovers it automatically — a query about "budget targets" can automatically resolve to `department=finance` without the caller knowing about that tag value.
+
+### Enabling
+
+```csharp
+services.AddRagNet(b => b
+    .UseTagRetrieval());
+```
+
+With custom options:
+
+```csharp
+services.AddRagNet(b => b
+    .UseTagRetrieval(new TagRetrievalOptions
+    {
+        TopK     = 2,     // inject up to 2 tag keys
+        MinScore = 0.85,  // stricter similarity threshold
+    }));
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `TopK` | `1` | Maximum number of distinct tag keys to inject |
+| `MinScore` | `0.82` | Minimum cosine similarity for a tag to be injected |
+
+### How it works
+
+Tags are populated at ingest time — pass tags on `DocumentMetadata`:
+
+```csharp
+await pipeline.IngestAsync(stream, new DocumentMetadata
+{
+    DocumentId = new DocumentId("report-q4"),
+    FileName   = "report-q4.pdf",
+    Tags       = new Dictionary<string, string>
+    {
+        ["department"] = "finance",
+        ["year"]       = "2024",
+    },
+});
+```
+
+`TagIngestionBehavior` embeds each unique `(key, value)` pair once. The same tag value appearing in 1000 documents is embedded only once.
+
+At query time:
+
+```mermaid
+flowchart TD
+    Q["User query"] --> EMB["Embed query"]
+    EMB --> SCAN["Cosine-scan ITagIndex<br>(in-memory, negligible latency)"]
+    SCAN -- "matches above MinScore" --> INJECT["Inject as MetadataFilter<br>(caller's existing entries win)"]
+    SCAN -- "no matches" --> PASS["Pass options unchanged"]
+    INJECT --> INNER["Inner IRetriever"]
+    PASS --> INNER
+
+    style SCAN fill:#e8f4fd,stroke:#4a90d9
+```
+
+At most one tag value is injected per key — the highest-scoring match wins. When `TagRetriever` and `DeepResearchRetriever` are both registered, the stacking order is `TagRetriever → DeepResearchRetriever → PipelineRetriever`.
+
+### Disabling per call
+
+```csharp
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    UseTagRetrieval = false,
+});
+```
+
+---
+
 ## Parent-Document Retrieval
 
 Parent-document retrieval indexes small child chunks for precise embedding matching but returns their larger parent documents to the LLM. This resolves a fundamental tension: embedding precision favors small chunks (sharp semantic signal), while answer quality favors large context (rich surrounding text). Child chunks are matched at retrieval time; the pipeline then swaps each child for its pre-stored parent before returning results.
