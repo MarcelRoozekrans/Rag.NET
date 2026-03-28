@@ -165,15 +165,3 @@ file sealed class FakeGraphHandler(Dictionary<string, string> responses) : HttpM
         });
     }
 }
-
-/// <summary>Minimal stub to satisfy the <see cref="GraphServiceClient"/> constructor.</summary>
-file sealed class FakeTokenCredential : Azure.Core.TokenCredential
-{
-    public override Azure.Core.AccessToken GetToken(
-        Azure.Core.TokenRequestContext requestContext, CancellationToken cancellationToken)
-        => new(string.Empty, DateTimeOffset.MaxValue);
-
-    public override ValueTask<Azure.Core.AccessToken> GetTokenAsync(
-        Azure.Core.TokenRequestContext requestContext, CancellationToken cancellationToken)
-        => ValueTask.FromResult(new Azure.Core.AccessToken(string.Empty, DateTimeOffset.MaxValue));
-}
