@@ -68,15 +68,23 @@ public sealed class TimeWeightedRetriever : IRetriever
 
     private DateTime? ResolveTimestamp(TextChunk chunk)
     {
-        if (chunk.Metadata.TryGetValue(CreatedAtKey, out var raw) &&
-            DateTime.TryParse(raw, null, DateTimeStyles.RoundtripKind, out var dt))
-            return dt;
+        if (chunk.Metadata.TryGetValue(CreatedAtKey, out var raw))
+        {
+            if (DateTime.TryParse(raw, null, DateTimeStyles.RoundtripKind, out var dt))
+                return dt;
+            _logger?.LogWarning("Chunk {DocumentId}[{ChunkIndex}] has unparseable \"{Key}\" value \"{Value}\"; treating as no timestamp",
+                chunk.DocumentId, chunk.ChunkIndex, CreatedAtKey, raw);
+        }
 
         foreach (var key in _options.FallbackMetadataKeys)
         {
-            if (chunk.Metadata.TryGetValue(key, out var fallback) &&
-                DateTime.TryParse(fallback, null, DateTimeStyles.RoundtripKind, out var fdt))
-                return fdt;
+            if (chunk.Metadata.TryGetValue(key, out var fallback))
+            {
+                if (DateTime.TryParse(fallback, null, DateTimeStyles.RoundtripKind, out var fdt))
+                    return fdt;
+                _logger?.LogWarning("Chunk {DocumentId}[{ChunkIndex}] has unparseable fallback key \"{Key}\" value \"{Value}\"; skipping",
+                    chunk.DocumentId, chunk.ChunkIndex, key, fallback);
+            }
         }
 
         return null;

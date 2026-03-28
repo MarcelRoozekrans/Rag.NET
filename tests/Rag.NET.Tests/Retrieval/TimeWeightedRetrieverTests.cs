@@ -192,4 +192,28 @@ public class TimeWeightedRetrieverTests
         // Future timestamp → age clamped to 0 → decay = 1.0 → score unchanged
         Assert.Equal(0.8, result.Value[0].Score);
     }
+
+    [Fact]
+    public async Task UnparseableCreatedAt_LogsWarning()
+    {
+        var ct     = TestContext.Current.CancellationToken;
+        var chunk  = MakeChunk("not-a-date");
+        var inner  = MockInner([new SearchResult { Chunk = chunk, Score = 0.75 }]);
+        var logger = new FakeLogger<TimeWeightedRetriever>();
+
+        var sut    = new TimeWeightedRetriever(inner, new TimeWeightedOptions(), logger);
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.Equal(0.75, result.Value[0].Score); // score unchanged
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning);
+    }
+
+    private sealed class FakeLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, formatter(state, exception)));
+    }
 }
