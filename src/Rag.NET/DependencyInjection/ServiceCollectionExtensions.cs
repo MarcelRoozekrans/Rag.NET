@@ -61,6 +61,7 @@ public static class ServiceCollectionExtensions
         configure?.Invoke(builder);
         WireRefinementStrategy(services);
         WireDeepResearch(services);
+        WireTimeWeighting(services);
         WireTagRetrieval(services);
 
         // Default fallback — no-op when UseSqlitePersistence() has already registered IBm25Index.
@@ -116,19 +117,57 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRetriever>(sp => sp.GetRequiredService<DeepResearchRetriever>());
     }
 
+    private static void WireTimeWeighting(IServiceCollection services)
+    {
+        if (!services.Any(d => d.ServiceType == typeof(TimeWeightedOptions)))
+            return;
+
+        // DeepResearchRetriever descriptor is registered by WireDeepResearch (called above in AddRagNet).
+        // Ordering is load-bearing: WireDeepResearch must run before WireTimeWeighting.
+        bool hasDeepResearch = services.Any(d => d.ServiceType == typeof(DeepResearchRetriever));
+
+        // When DeepResearch is not wired, PipelineRetriever may not be registered as its own
+        // concrete type. Register it here so TimeWeightedRetriever can wrap it — same pattern
+        // as WireDeepResearch.
+        if (!hasDeepResearch)
+        {
+            services.TryAddSingleton<PipelineRetriever>(sp => new PipelineRetriever
+            {
+                Pipeline = sp.GetRequiredService<Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>>(),
+                Logger   = sp.GetService<ILogger<PipelineRetriever>>(),
+            });
+        }
+
+        services.AddSingleton<TimeWeightedRetriever>(sp =>
+        {
+            IRetriever inner = hasDeepResearch
+                ? sp.GetRequiredService<DeepResearchRetriever>()
+                : (IRetriever)sp.GetRequiredService<PipelineRetriever>();
+
+            return new TimeWeightedRetriever(
+                inner,
+                sp.GetRequiredService<TimeWeightedOptions>(),
+                sp.GetService<ILogger<TimeWeightedRetriever>>());
+        });
+
+        services.AddSingleton<IRetriever>(sp => sp.GetRequiredService<TimeWeightedRetriever>());
+    }
+
     private static void WireTagRetrieval(IServiceCollection services)
     {
         if (!services.Any(d => d.ServiceType == typeof(TagRetrievalOptions)))
             return;
 
-        // DeepResearchRetriever descriptor is registered by WireDeepResearch (called above in AddRagNet).
-        // Ordering is load-bearing: WireDeepResearch must run before WireTagRetrieval.
+        // DeepResearchRetriever and TimeWeightedRetriever descriptors are registered by their
+        // respective Wire* methods (called above in AddRagNet).
+        // Ordering is load-bearing: WireDeepResearch and WireTimeWeighting must run before WireTagRetrieval.
         bool hasDeepResearch = services.Any(d => d.ServiceType == typeof(DeepResearchRetriever));
+        bool hasTimeWeighted = services.Any(d => d.ServiceType == typeof(TimeWeightedRetriever));
 
-        // When DeepResearch is not wired, PipelineRetriever was never registered as its concrete
-        // type (ZeroAlloc registers it only as IRetriever). Register it here so TagRetriever can
-        // wrap it — same pattern as WireDeepResearch.
-        if (!hasDeepResearch)
+        // When neither DeepResearch nor TimeWeighted is wired, PipelineRetriever was never
+        // registered as its concrete type (ZeroAlloc registers it only as IRetriever).
+        // Register it here so TagRetriever can wrap it — same pattern as WireDeepResearch.
+        if (!hasDeepResearch && !hasTimeWeighted)
         {
             services.AddSingleton<PipelineRetriever>(sp => new PipelineRetriever
             {
@@ -137,12 +176,17 @@ public static class ServiceCollectionExtensions
             });
         }
 
-        // Stack on top of DeepResearchRetriever if present, otherwise PipelineRetriever
+        // Stacking order (outermost first):
+        // TagRetriever → TimeWeightedRetriever → DeepResearchRetriever → PipelineRetriever
         services.AddSingleton<TagRetriever>(sp =>
         {
-            IRetriever inner = hasDeepResearch
-                ? sp.GetRequiredService<DeepResearchRetriever>()
-                : (IRetriever)sp.GetRequiredService<PipelineRetriever>();
+            IRetriever inner;
+            if (hasTimeWeighted)
+                inner = sp.GetRequiredService<TimeWeightedRetriever>();
+            else if (hasDeepResearch)
+                inner = sp.GetRequiredService<DeepResearchRetriever>();
+            else
+                inner = sp.GetRequiredService<PipelineRetriever>();
 
             return new TagRetriever(
                 inner,

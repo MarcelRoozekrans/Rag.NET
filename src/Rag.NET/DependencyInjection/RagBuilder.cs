@@ -183,6 +183,26 @@ public sealed class RagBuilder(IServiceCollection services)
     }
 
     /// <summary>
+    /// Registers <see cref="Rag.NET.Retrieval.TimeWeightedRetriever"/> as a decorator over the
+    /// existing <see cref="IRetriever"/>. After retrieval, each result's similarity score is
+    /// multiplied by <c>e^(−DecayRate × age_hours)</c> where age is derived from
+    /// <c>chunk.Metadata["created_at"]</c> written at ingest time by
+    /// <see cref="Rag.NET.Ingestion.Behaviors.MetadataBehavior"/>.
+    /// Results are re-sorted by the combined score before being returned.
+    /// </summary>
+    /// <remarks>
+    /// The decorator is wired by <c>AddRagNet</c> after the builder delegate returns.
+    /// When combined with other decorators, stacking order (outermost first) is:
+    /// <c>TagRetriever → TimeWeightedRetriever → DeepResearchRetriever → PipelineRetriever</c>.
+    /// Per-call opt-out: pass <c>new RetrievalOptions { UseTimeWeighting = false }</c>.
+    /// </remarks>
+    public RagBuilder UseTimeWeighting(TimeWeightedOptions? options = null)
+    {
+        Services.AddSingleton(options ?? new TimeWeightedOptions());
+        return this;
+    }
+
+    /// <summary>
     /// Registers <see cref="LlmQueryExpander"/> as the <see cref="IQueryExpander"/>.
     /// When registered, <see cref="RagPipeline"/> expands each query into
     /// <see cref="MultiQueryOptions.VariantCount"/> alternatives, fans out to the vector store
