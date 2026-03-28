@@ -65,6 +65,19 @@ public class UseTimeWeightingTests
     }
 
     [Fact]
+    public void UseTimeWeighting_And_UseDeepResearch_TimeWeightedWrapsDeepResearch()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag => rag.UseDeepResearch().UseTimeWeighting())
+            .BuildServiceProvider();
+
+        // TimeWeightedRetriever is outermost
+        Assert.IsType<TimeWeightedRetriever>(sp.GetRequiredService<IRetriever>());
+        // DeepResearchRetriever is registered as concrete
+        Assert.IsType<DeepResearchRetriever>(sp.GetRequiredService<DeepResearchRetriever>());
+    }
+
+    [Fact]
     public void UseTimeWeighting_And_UseDeepResearch_And_UseTagRetrieval_FullStack()
     {
         var sp = BaseServices()
