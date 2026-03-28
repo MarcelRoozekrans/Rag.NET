@@ -10,7 +10,7 @@ namespace Rag.NET.DataProviders.GitHub;
 /// On subsequent runs: only files changed since <c>LastIngestedCommitSha</c> via compare API.
 /// ETag is the blob SHA — Git's own content hash, so ETag matches guarantee byte-identical content.
 /// </summary>
-public sealed class GitHubDataProvider : IFileContentProvider
+public sealed class GitHubDataProvider : FileContentProviderBase
 {
     private readonly string _owner;
     private readonly string _repo;
@@ -22,6 +22,7 @@ public sealed class GitHubDataProvider : IFileContentProvider
         string repo,
         IGitHubClient client,
         GitHubDataProviderOptions? options = null)
+        : base(options ?? new GitHubDataProviderOptions())
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(owner);
         ArgumentException.ThrowIfNullOrWhiteSpace(repo);
@@ -31,78 +32,60 @@ public sealed class GitHubDataProvider : IFileContentProvider
         _options = options ?? new GitHubDataProviderOptions();
     }
 
-    public async IAsyncEnumerable<FileEntry> GetFilesAsync(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        if (_options.LastIngestedCommitSha is not null)
-        {
-            await foreach (var entry in GetDeltaFilesAsync(cancellationToken).ConfigureAwait(false))
-                yield return entry;
-        }
-        else
-        {
-            await foreach (var entry in GetFullTreeFilesAsync(cancellationToken).ConfigureAwait(false))
-                yield return entry;
-        }
-    }
+    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+        CancellationToken cancellationToken)
+        => _options.LastIngestedCommitSha is not null
+            ? GetDeltaHandlesAsync(cancellationToken)
+            : GetFullTreeHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileEntry> GetFullTreeFilesAsync(
+    private async IAsyncEnumerable<FileHandle> GetFullTreeHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var tree = await _client.Git.Tree.GetRecursive(_owner, _repo, _options.Branch).ConfigureAwait(false);
+        var tree = await _client.Git.Tree
+            .GetRecursive(_owner, _repo, _options.Branch).ConfigureAwait(false);
 
         foreach (var item in tree.Tree)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (item.Type != TreeType.Blob) continue;
-            if (!MatchesExtension(item.Path)) continue;
-            if (_options.Filter is not null && !_options.Filter(item.Path)) continue;
 
             var capturedPath = item.Path;
-            yield return new FileEntry(
-                Id: item.Path,
-                FileName: Path.GetFileName(item.Path),
+            yield return new FileHandle(
+                Id:               item.Path,
+                FileName:         Path.GetFileName(item.Path),
+                ETag:             item.Sha,
                 OpenContentAsync: async ct =>
                 {
-                    var bytes = await _client.Repository.Content.GetRawContent(_owner, _repo, capturedPath).ConfigureAwait(false);
+                    var bytes = await _client.Repository.Content
+                        .GetRawContent(_owner, _repo, capturedPath).ConfigureAwait(false);
                     return (Stream)new MemoryStream(bytes);
-                },
-                ETag: item.Sha);
+                });
         }
     }
 
-    private async IAsyncEnumerable<FileEntry> GetDeltaFilesAsync(
+    private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var comparison = await _client.Repository.Commit
-            .Compare(_owner, _repo, _options.LastIngestedCommitSha!, _options.Branch).ConfigureAwait(false);
+            .Compare(_owner, _repo, _options.LastIngestedCommitSha!, _options.Branch)
+            .ConfigureAwait(false);
 
         foreach (var file in comparison.Files)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (string.Equals(file.Status, "removed", StringComparison.Ordinal)) continue;
-            if (!MatchesExtension(file.Filename)) continue;
-            if (_options.Filter is not null && !_options.Filter(file.Filename)) continue;
 
             var capturedPath = file.Filename;
-            yield return new FileEntry(
-                Id: file.Filename,
-                FileName: Path.GetFileName(file.Filename),
+            yield return new FileHandle(
+                Id:               file.Filename,
+                FileName:         Path.GetFileName(file.Filename),
+                ETag:             file.Sha,
                 OpenContentAsync: async ct =>
                 {
-                    var bytes = await _client.Repository.Content.GetRawContent(_owner, _repo, capturedPath).ConfigureAwait(false);
+                    var bytes = await _client.Repository.Content
+                        .GetRawContent(_owner, _repo, capturedPath).ConfigureAwait(false);
                     return (Stream)new MemoryStream(bytes);
-                },
-                ETag: file.Sha);
+                });
         }
-    }
-
-    private bool MatchesExtension(string path)
-    {
-        if (_options.Extensions is ["*"]) return true;
-        var ext = Path.GetExtension(path);
-        return _options.Extensions.Any(e =>
-            string.Equals(e, ext, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(e, "*", StringComparison.Ordinal));
     }
 }
