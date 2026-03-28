@@ -157,6 +157,32 @@ public class TagRetrieverTests
         index.DidNotReceive().Search(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<double>());
     }
 
+    [Fact]
+    public async Task TopK_EnforcesMaxKeys()
+    {
+        var ct    = TestContext.Current.CancellationToken;
+        var index = Substitute.For<ITagIndex>();
+        // Two different keys returned, both above threshold
+        index.Search(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<double>())
+             .Returns([
+                 (Key: "dept",   Value: "finance", Score: 0.95),
+                 (Key: "region", Value: "emea",    Score: 0.90),
+             ]);
+
+        RetrievalOptions? captured = null;
+        var inner = Substitute.For<IRetriever>();
+        inner.RetrieveAsync(Arg.Any<string>(), Arg.Do<RetrievalOptions?>(o => captured = o), ct)
+             .Returns(Result<IReadOnlyList<SearchResult>, RagError>.Success([]));
+
+        // TopK = 1 — only the highest-scoring key should be injected
+        var sut = new TagRetriever(inner, index, MockEmbedder([0.5f]), new TagRetrievalOptions { TopK = 1 });
+        _ = await sut.RetrieveAsync("query", null, ct);
+
+        Assert.NotNull(captured?.MetadataFilter);
+        Assert.Single(captured!.MetadataFilter!);
+        Assert.Equal("finance", captured.MetadataFilter["dept"]);
+    }
+
     private sealed class FakeLogger<T> : ILogger<T>
     {
         public List<(LogLevel Level, string Message)> Entries { get; } = [];

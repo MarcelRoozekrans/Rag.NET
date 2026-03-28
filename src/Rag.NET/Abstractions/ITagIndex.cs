@@ -20,6 +20,11 @@ public interface ITagIndex : IDisposable
     /// <paramref name="queryEmbedding"/> is at least <paramref name="minScore"/>,
     /// ordered by score descending. Thread-safe.
     /// </summary>
+    /// <remarks>
+    /// <c>TopK</c> (max keys to inject per retrieval call) is enforced by
+    /// <see cref="Rag.NET.Retrieval.TagRetriever"/> after calling this method,
+    /// not by the index itself. The index returns all entries above <paramref name="minScore"/>.
+    /// </remarks>
     IReadOnlyList<(string Key, string Value, double Score)> Search(
         ReadOnlyMemory<float> queryEmbedding, double minScore);
 }
