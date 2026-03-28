@@ -127,7 +127,8 @@ public class TimeWeightedRetrieverTests
         var result = await sut.RetrieveAsync("q", opts, ct);
 
         Assert.Equal(0.9, result.Value[0].Score);  // score unchanged
-        Assert.False(captured?.UseTimeWeighting);   // original options passed through
+        Assert.NotNull(captured);
+        Assert.False(captured.UseTimeWeighting);    // original options passed through
     }
 
     [Fact]
@@ -176,5 +177,19 @@ public class TimeWeightedRetrieverTests
         var result = await sut.RetrieveAsync("q", null, ct);
 
         Assert.InRange(result.Value[0].Score, 0.35, 0.39); // key_b used
+    }
+
+    [Fact]
+    public async Task FutureDatedDocument_DecayFactorClampedToOne()
+    {
+        var ct    = TestContext.Current.CancellationToken;
+        var chunk = MakeChunk(DateTime.UtcNow.AddHours(24).ToString("O")); // 24 hours in the future
+        var inner = MockInner([new SearchResult { Chunk = chunk, Score = 0.8 }]);
+
+        var sut    = new TimeWeightedRetriever(inner, new TimeWeightedOptions { DecayRate = 0.01 });
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        // Future timestamp → age clamped to 0 → decay = 1.0 → score unchanged
+        Assert.Equal(0.8, result.Value[0].Score);
     }
 }

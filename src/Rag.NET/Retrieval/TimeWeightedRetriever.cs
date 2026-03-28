@@ -62,7 +62,7 @@ public sealed class TimeWeightedRetriever : IRetriever
         if (timestamp is null)
             return 1.0;
 
-        var ageHours = (now - timestamp.Value).TotalHours;
+        var ageHours = Math.Max(0.0, (now - timestamp.Value).TotalHours);
         return Math.Exp(-_options.DecayRate * ageHours);
     }
 
