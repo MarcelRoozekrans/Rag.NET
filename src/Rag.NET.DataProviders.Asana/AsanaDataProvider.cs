@@ -33,6 +33,9 @@ public sealed class AsanaDataProvider : FileContentProviderBase
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Resolve token per-call so expiring tokens are always fresh.
+        // Note: DefaultRequestHeaders.Authorization is mutated here, so concurrent enumeration
+        // on the same provider instance is not safe. Provider is registered as singleton and
+        // consumers are expected to enumerate sequentially.
         var token = await _tokenProvider.GetTokenAsync(cancellationToken).ConfigureAwait(false);
         _http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", token);

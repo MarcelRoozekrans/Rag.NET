@@ -134,7 +134,7 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
             }
 
             startAt += result.Issues.Count;
-            if (startAt >= result.Total) break;
+            if (result.Issues.Count == 0 || startAt >= result.Total) break;
         }
     }
 

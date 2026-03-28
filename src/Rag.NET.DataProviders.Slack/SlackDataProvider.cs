@@ -180,6 +180,8 @@ public sealed class SlackDataProvider : FileContentProviderBase
     {
         if (_userCache.TryGetValue(userId, out var name)) return name;
         var info = await _api.GetUserAsync(userId, ct).ConfigureAwait(false);
+        // ok: false for user lookups is treated as a soft-fail; fall back to userId rather
+        // than throwing — an unresolvable display name should not abort document processing.
         name = info.User?.RealName ?? userId;
         _userCache[userId] = name;
         return name;
