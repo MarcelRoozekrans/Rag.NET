@@ -26,7 +26,7 @@ public sealed class BoxDataProviderTests
     public void Constructor_WithOptions_Succeeds()
     {
         var client = MakeBoxClient();
-        var opts = new BoxDataProviderOptions { RootFolderId = "123", Extensions = [".pdf"] };
+        var opts = new BoxOptions { RootFolderId = "123", Extensions = [".pdf"] };
 
         var sut = new BoxDataProvider(client, opts);
 

@@ -59,7 +59,11 @@ public sealed class DropboxDataProvider : FileContentProviderBase
                     {
                         using var c = await CreateClientAsync(ct).ConfigureAwait(false);
                         var dl = await c.Files.DownloadAsync(capturedPath).ConfigureAwait(false);
-                        return await dl.GetContentAsStreamAsync().ConfigureAwait(false);
+                        var ms = new MemoryStream();
+                        using var content = await dl.GetContentAsStreamAsync().ConfigureAwait(false);
+                        await content.CopyToAsync(ms, ct).ConfigureAwait(false);
+                        ms.Seek(0, SeekOrigin.Begin);
+                        return (Stream)ms;
                     });
             }
 
@@ -91,7 +95,11 @@ public sealed class DropboxDataProvider : FileContentProviderBase
                     {
                         using var c = await CreateClientAsync(ct).ConfigureAwait(false);
                         var dl = await c.Files.DownloadAsync(capturedPath).ConfigureAwait(false);
-                        return await dl.GetContentAsStreamAsync().ConfigureAwait(false);
+                        var ms = new MemoryStream();
+                        using var content = await dl.GetContentAsStreamAsync().ConfigureAwait(false);
+                        await content.CopyToAsync(ms, ct).ConfigureAwait(false);
+                        ms.Seek(0, SeekOrigin.Begin);
+                        return (Stream)ms;
                     });
             }
 

@@ -14,31 +14,33 @@ public static class BoxDataProviderExtensions
     public static IServiceCollection AddBoxDataProvider(
         this IServiceCollection services,
         string jwtConfigJson,
-        Action<BoxDataProviderOptions>? configure = null)
+        Action<BoxOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(jwtConfigJson);
 
-        var config  = BoxConfig.CreateFromJsonString(jwtConfigJson);
-        var session = new BoxJWTAuth(config);
-        var token   = session.AdminToken();
-        var client  = session.AdminClient(token);
-
-        var opts = new BoxDataProviderOptions();
+        var opts = new BoxOptions();
         configure?.Invoke(opts);
-        return services.AddSingleton<IFileContentProvider>(new BoxDataProvider(client, opts));
+        return services.AddSingleton<IFileContentProvider>(_ =>
+        {
+            var config  = BoxConfig.CreateFromJsonString(jwtConfigJson);
+            var session = new BoxJWTAuth(config);
+            var token   = session.AdminToken();
+            var client  = session.AdminClient(token);
+            return new BoxDataProvider(client, opts);
+        });
     }
 
     /// <summary>Registers using an existing <see cref="BoxClient"/> instance.</summary>
     public static IServiceCollection AddBoxDataProvider(
         this IServiceCollection services,
         BoxClient boxClient,
-        Action<BoxDataProviderOptions>? configure = null)
+        Action<BoxOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(boxClient);
 
-        var opts = new BoxDataProviderOptions();
+        var opts = new BoxOptions();
         configure?.Invoke(opts);
         return services.AddSingleton<IFileContentProvider>(new BoxDataProvider(boxClient, opts));
     }
