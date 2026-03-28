@@ -47,6 +47,12 @@ public sealed class InMemoryTagIndex : ITagIndex
 
     public void Dispose() => _lock.Dispose();
 
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
+    }
+
     private static double CosineSimilarity(ReadOnlySpan<float> a, float[] b)
     {
         if (a.Length != b.Length)

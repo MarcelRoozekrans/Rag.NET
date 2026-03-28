@@ -63,4 +63,14 @@ public class InMemoryTagIndexTests
         var results = index.Search(Vec(1f, 0f), minScore: 0.5);
         Assert.Empty(results);
     }
+
+    [Fact]
+    public void Search_MismatchedVectorLength_ThrowsArgumentException()
+    {
+        var index = new InMemoryTagIndex();
+        index.Add("dept", "finance", Vec(1f, 0f)); // 2-dimensional
+
+        Assert.Throws<ArgumentException>(() =>
+            index.Search(Vec(1f, 0f, 0f), minScore: 0.0)); // 3-dimensional — mismatch
+    }
 }
