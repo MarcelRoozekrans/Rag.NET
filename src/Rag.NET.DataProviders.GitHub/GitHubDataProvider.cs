@@ -22,14 +22,14 @@ public sealed class GitHubDataProvider : FileContentProviderBase
         string repo,
         IGitHubClient client,
         GitHubDataProviderOptions? options = null)
-        : base(options ?? new GitHubDataProviderOptions())
+        : base(options ??= new GitHubDataProviderOptions())
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(owner);
         ArgumentException.ThrowIfNullOrWhiteSpace(repo);
         _owner = owner;
         _repo = repo;
         _client = client;
-        _options = options ?? new GitHubDataProviderOptions();
+        _options = options;  // options is now guaranteed non-null by ??= above
     }
 
     protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
