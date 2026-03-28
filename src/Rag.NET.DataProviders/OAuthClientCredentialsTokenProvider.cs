@@ -17,8 +17,8 @@ public sealed partial class OAuthClientCredentialsTokenProvider : ITokenProvider
     private readonly bool _ownsHttp;
     private readonly SemaphoreSlim _lock = new(1, 1);
 
-    private string? _cachedToken;
-    private DateTimeOffset _expiresAt = DateTimeOffset.MinValue;
+    private sealed record CachedEntry(string Token, DateTimeOffset ExpiresAt);
+    private volatile CachedEntry? _cache;
 
     public OAuthClientCredentialsTokenProvider(
         string tokenEndpoint,
@@ -51,15 +51,15 @@ public sealed partial class OAuthClientCredentialsTokenProvider : ITokenProvider
     public async ValueTask<string> GetTokenAsync(CancellationToken cancellationToken = default)
     {
         // Fast path — token still valid
-        if (_cachedToken is not null && DateTimeOffset.UtcNow < _expiresAt)
-            return _cachedToken;
+        var c = _cache;
+        if (c is not null && DateTimeOffset.UtcNow < c.ExpiresAt) return c.Token;
 
         await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             // Re-check inside lock
-            if (_cachedToken is not null && DateTimeOffset.UtcNow < _expiresAt)
-                return _cachedToken;
+            c = _cache;
+            if (c is not null && DateTimeOffset.UtcNow < c.ExpiresAt) return c.Token;
 
             var form = new Dictionary<string, string>(StringComparer.Ordinal)
             {
@@ -82,10 +82,8 @@ public sealed partial class OAuthClientCredentialsTokenProvider : ITokenProvider
                 cancellationToken).ConfigureAwait(false)
                 ?? throw new InvalidOperationException("OAuth token response was empty.");
 
-            _cachedToken = result.AccessToken;
-            // Refresh 60 seconds before expiry
-            _expiresAt = DateTimeOffset.UtcNow.AddSeconds(result.ExpiresIn - 60);
-            return _cachedToken;
+            _cache = new CachedEntry(result.AccessToken, DateTimeOffset.UtcNow.AddSeconds(Math.Max(result.ExpiresIn - 60, 0)));
+            return _cache.Token;
         }
         finally
         {

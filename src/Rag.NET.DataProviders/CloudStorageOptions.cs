@@ -9,7 +9,7 @@ public abstract class CloudStorageOptions
     /// </summary>
     public IReadOnlyList<string> Extensions { get; init; } = ["*"];
 
-    /// <summary>Optional predicate to exclude files by path. Return <c>false</c> to exclude.</summary>
+    /// <summary>Optional predicate to include files by provider-specific ID (may be a path or opaque key depending on the connector). Return <c>false</c> to exclude.</summary>
     public Func<string, bool>? Filter { get; init; }
 
     /// <summary>

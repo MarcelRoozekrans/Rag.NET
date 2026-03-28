@@ -37,17 +37,11 @@ public abstract class FileContentProviderBase : IFileContentProvider
             yield return new FileEntry(
                 Id:               handle.Id,
                 FileName:         handle.FileName,
-                OpenContentAsync: handle.OpenAsync,
+                OpenContentAsync: handle.OpenContentAsync,
                 ETag:             handle.ETag);
         }
     }
 
     private bool MatchesExtension(string fileName)
-    {
-        if (_options.Extensions is ["*"]) return true;
-        var ext = Path.GetExtension(fileName);
-        return _options.Extensions.Any(e =>
-            string.Equals(e, ext, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(e, "*", StringComparison.Ordinal));
-    }
+        => FileExtensionMatcher.Matches(fileName, _options.Extensions);
 }

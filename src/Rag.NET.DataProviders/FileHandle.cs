@@ -7,4 +7,4 @@ public sealed record FileHandle(
     string Id,
     string FileName,
     string? ETag,
-    Func<CancellationToken, Task<Stream>> OpenAsync);
+    Func<CancellationToken, Task<Stream>> OpenContentAsync);

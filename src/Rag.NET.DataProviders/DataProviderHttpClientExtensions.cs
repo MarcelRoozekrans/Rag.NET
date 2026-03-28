@@ -9,5 +9,9 @@ public static class DataProviderHttpClientExtensions
     public static IHttpStandardResiliencePipelineBuilder AddDataProviderHttpClient(
         this IServiceCollection services,
         string name)
-        => services.AddHttpClient(name).AddStandardResilienceHandler();
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        return services.AddHttpClient(name).AddStandardResilienceHandler();
+    }
 }
