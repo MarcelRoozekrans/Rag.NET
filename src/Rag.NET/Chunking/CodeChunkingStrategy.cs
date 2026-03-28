@@ -122,7 +122,7 @@ public sealed class CodeChunkingStrategy : IChunkingStrategy
         // Split while keeping separator prefix with subsequent chunks
         var segments = SplitKeepingSeparator(trimmed, sep);
 
-        if (segments.Count <= 1)
+        if (segments.Length <= 1)
         {
             // This separator didn't divide the text; try the next
             foreach (var chunk in SplitRecursively(trimmed, maxSize, separators, sepIndex + 1))
@@ -130,7 +130,7 @@ public sealed class CodeChunkingStrategy : IChunkingStrategy
             yield break;
         }
 
-        foreach (var segment in segments.ToArray())
+        foreach (var segment in segments)
         {
             var s = segment.Trim();
             if (s.Length == 0) continue;
@@ -151,7 +151,7 @@ public sealed class CodeChunkingStrategy : IChunkingStrategy
     /// Splits <paramref name="text"/> on <paramref name="separator"/>, keeping the separator
     /// as a prefix of each subsequent segment (so boundary keywords are preserved).
     /// </summary>
-    private static List<string> SplitKeepingSeparator(string text, string separator)
+    private static string[] SplitKeepingSeparator(string text, string separator)
     {
         var result = new List<string>();
         int idx;
@@ -160,8 +160,7 @@ public sealed class CodeChunkingStrategy : IChunkingStrategy
         idx = text.IndexOf(separator, StringComparison.Ordinal);
         if (idx < 0)
         {
-            result.Add(text);
-            return result;
+            return [text];
         }
 
         // First chunk: everything before the first separator
@@ -177,6 +176,6 @@ public sealed class CodeChunkingStrategy : IChunkingStrategy
             idx = next;
         }
 
-        return result;
+        return result.ToArray();
     }
 }
