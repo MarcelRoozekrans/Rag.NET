@@ -7,7 +7,7 @@ internal interface IConfluenceApi
 {
     [Get("/wiki/rest/api/content")]
     Task<ConfluencePageList> GetPagesAsync(
-        [Query] string? spaceKey,
+        [Query("spaceKey")] string? spaceKey,
         [Query] int limit,
         [Query] string? cursor,
         [Query("expand")] string expand = "body.storage,version",

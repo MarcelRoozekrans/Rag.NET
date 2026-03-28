@@ -109,6 +109,70 @@ public sealed class ConfluenceDataProviderTests
                 Email   = "t@t.com"
             }));
     }
+
+    [Fact]
+    public async Task GetFilesAsync_Pagination_FetchesAllPages()
+    {
+        const string page1Json = """
+            {
+              "results": [
+                { "id": "1", "title": "PageOne", "body": { "storage": { "value": "a" } }, "version": { "number": 1 } }
+              ],
+              "_links": { "next": "/wiki/rest/api/content?cursor=abc123&limit=50" }
+            }
+            """;
+        const string page2Json = """
+            {
+              "results": [
+                { "id": "2", "title": "PageTwo", "body": { "storage": { "value": "b" } }, "version": { "number": 1 } }
+              ],
+              "_links": {}
+            }
+            """;
+        var handler = new FakeSequentialHandler(page1Json, page2Json);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
+        var api = RestService.For<IConfluenceApi>(http);
+        var sut = new ConfluenceDataProvider(api, new ConfluenceOptions
+        {
+            BaseUrl = "https://test.atlassian.net",
+            Email   = "test@test.com"
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal("PageOne.md", results[0].FileName);
+        Assert.Equal("PageTwo.md", results[1].FileName);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_HtmlBody_IsStrippedToMarkdown()
+    {
+        const string json = """
+            {
+              "results": [
+                { "id": "1", "title": "Doc", "body": { "storage": { "value": "<p>Hello &amp; World</p>" } }, "version": { "number": 1 } }
+              ],
+              "_links": {}
+            }
+            """;
+        var sut = MakeProvider(json);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var content = await ReadContentAsync(results[0]);
+        Assert.Contains("Hello & World", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("<p>", content, StringComparison.Ordinal);
+    }
+
+    private static async Task<string> ReadContentAsync(Rag.NET.DataProviders.FileEntry entry)
+    {
+        await using var stream = await entry.OpenContentAsync(CancellationToken.None);
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +195,24 @@ file sealed class FakeHandler(Dictionary<string, string> responses) : HttpMessag
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(responses[key], Encoding.UTF8, "application/json")
+        });
+    }
+}
+
+/// <summary>
+/// Returns responses in order for each successive request, regardless of URL.
+/// </summary>
+file sealed class FakeSequentialHandler(params string[] responses) : HttpMessageHandler
+{
+    private int _index;
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var json = _index < responses.Length ? responses[_index++] : "{}";
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
         });
     }
 }

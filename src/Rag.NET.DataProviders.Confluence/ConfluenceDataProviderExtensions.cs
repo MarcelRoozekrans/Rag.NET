@@ -15,6 +15,7 @@ public static class ConfluenceDataProviderExtensions
         string apiToken,
         Action<ConfluenceOptions>? configure = null)
     {
+        ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl);
         ArgumentException.ThrowIfNullOrWhiteSpace(email);
         ArgumentException.ThrowIfNullOrWhiteSpace(apiToken);

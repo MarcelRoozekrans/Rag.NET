@@ -10,6 +10,12 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
     [GeneratedRegex("<[^>]+>", RegexOptions.NonBacktracking)]
     private static partial Regex HtmlTagRegex();
 
+    [GeneratedRegex(@"^[A-Za-z0-9\-_]+$", RegexOptions.NonBacktracking)]
+    private static partial Regex SpaceKeyRegex();
+
+    [GeneratedRegex(@"^[A-Za-z0-9:\-\.TZ\+]+$", RegexOptions.NonBacktracking)]
+    private static partial Regex DeltaTokenRegex();
+
     private readonly IConfluenceApi _api;
     private readonly ConfluenceOptions _options;
 
@@ -17,6 +23,12 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
         : base(options)
     {
         ArgumentNullException.ThrowIfNull(api);
+        if (options.DeltaToken is not null && !DeltaTokenRegex().IsMatch(options.DeltaToken))
+            throw new ArgumentException(
+                $"DeltaToken contains invalid characters: '{options.DeltaToken}'.", nameof(options));
+        if (options.SpaceKey is not null && !SpaceKeyRegex().IsMatch(options.SpaceKey))
+            throw new ArgumentException(
+                $"SpaceKey contains invalid characters: '{options.SpaceKey}'.", nameof(options));
         _api     = api;
         _options = options;
     }
@@ -95,6 +107,8 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
     {
         if (next is null) return null;
         var idx = next.IndexOf("cursor=", StringComparison.Ordinal);
-        return idx < 0 ? null : next[(idx + 7)..];
+        if (idx < 0) return null;
+        var end = next.IndexOf('&', idx + 7);
+        return end < 0 ? next[(idx + 7)..] : next[(idx + 7)..end];
     }
 }
