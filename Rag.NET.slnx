@@ -31,6 +31,7 @@
     <Project Path="src/Rag.NET.DataProviders.Confluence/Rag.NET.DataProviders.Confluence.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Jira/Rag.NET.DataProviders.Jira.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Notion/Rag.NET.DataProviders.Notion.csproj" />
+    <Project Path="src/Rag.NET.DataProviders.Asana/Rag.NET.DataProviders.Asana.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -61,6 +62,7 @@
     <Project Path="tests/Rag.NET.DataProviders.Confluence.Tests/Rag.NET.DataProviders.Confluence.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Jira.Tests/Rag.NET.DataProviders.Jira.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Notion.Tests/Rag.NET.DataProviders.Notion.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.Asana.Tests/Rag.NET.DataProviders.Asana.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
