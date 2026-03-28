@@ -289,15 +289,51 @@ Ingest documents from RSS/Atom feeds, enabling near-real-time ingestion of news,
 ### SaaS Connectors
 **Package:** Various `Rag.NET.DataProviders.*`
 
-Production connectors for cloud and enterprise systems, each exposing `IFileContentProvider` with delta sync where the platform supports it:
-
-- **Collaboration**: Confluence, Notion, Jira, Asana, Airtable
-- **Communication**: Slack, Microsoft Teams, Gmail / IMAP
-- **Cloud Storage**: Google Drive, Dropbox, Box, Azure Blob, SharePoint, OneDrive
-- **Source Control**: GitLab, Bitbucket (incremental delta sync)
-- **Support**: Zendesk
+Production connectors for cloud and enterprise systems, each exposing `IFileContentProvider` with delta sync where the platform supports it. Each connector is an independent package and implementation task.
 
 **Why:** Enterprise customers store knowledge in Confluence, Notion, SharePoint, and Slack — not on disk. Without connectors, every enterprise deployment requires a custom integration layer.
+
+#### Group 1 — Cloud Storage
+
+| Package | SDK | Delta sync |
+|---|---|---|
+| `Rag.NET.DataProviders.AzureBlob` | `Azure.Storage.Blobs` | ETag / `LastModified` watermark |
+| `Rag.NET.DataProviders.SharePoint` | Microsoft Graph SDK | `deltaLink` token |
+| `Rag.NET.DataProviders.OneDrive` | Microsoft Graph SDK | `deltaLink` token |
+| `Rag.NET.DataProviders.GoogleDrive` | `Google.Apis.Drive.v3` | `pageToken` change stream |
+| `Rag.NET.DataProviders.Dropbox` | `Dropbox.Api` | cursor-based delta |
+| `Rag.NET.DataProviders.Box` | `Box.V2` | events cursor |
+
+#### Group 2 — Collaboration
+
+| Package | SDK | Delta sync |
+|---|---|---|
+| `Rag.NET.DataProviders.Confluence` | Confluence REST API + CQL | `lastModified` filter |
+| `Rag.NET.DataProviders.Notion` | Notion REST API | `last_edited_time` filter |
+| `Rag.NET.DataProviders.Jira` | Jira REST API + JQL | `updated >` JQL clause |
+| `Rag.NET.DataProviders.Asana` | Asana REST API | sync token |
+| `Rag.NET.DataProviders.Airtable` | Airtable REST API | `filterByFormula` on modified time |
+
+#### Group 3 — Communication
+
+| Package | SDK | Delta sync |
+|---|---|---|
+| `Rag.NET.DataProviders.Slack` | Slack Web API | cursor + `oldest` timestamp |
+| `Rag.NET.DataProviders.MicrosoftTeams` | Microsoft Graph SDK | `deltaLink` token |
+| `Rag.NET.DataProviders.Gmail` | MailKit (IMAP) | UID watermark |
+
+#### Group 4 — Source Control
+
+| Package | SDK | Delta sync |
+|---|---|---|
+| `Rag.NET.DataProviders.GitLab` | `GitLabApiClient` | compare API (same pattern as GitHub) |
+| `Rag.NET.DataProviders.Bitbucket` | Bitbucket REST API | compare API |
+
+#### Group 5 — Support
+
+| Package | SDK | Delta sync |
+|---|---|---|
+| `Rag.NET.DataProviders.Zendesk` | Zendesk REST API | incremental export cursor |
 
 ---
 
@@ -420,7 +456,23 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | MMR Retrieval | Medium | Embedding access |
 | [x] | Multi-Language Code Splitting | Medium | None (regex) |
 | [x] | Multi-Query Retrieval | Medium | `IChatClient` |
-| [ ] | SaaS Connectors | Medium | Per-platform SDK |
+| [ ] | SaaS: Azure Blob Storage | Low | `Azure.Storage.Blobs` |
+| [ ] | SaaS: GitLab | Low | `GitLabApiClient` |
+| [ ] | SaaS: Bitbucket | Low | Bitbucket REST API |
+| [ ] | SaaS: Zendesk | Low | Zendesk REST API |
+| [ ] | SaaS: Confluence | Medium | Confluence REST API |
+| [ ] | SaaS: Notion | Medium | Notion REST API |
+| [ ] | SaaS: Jira | Medium | Jira REST API |
+| [ ] | SaaS: Asana | Medium | Asana REST API |
+| [ ] | SaaS: Airtable | Medium | Airtable REST API |
+| [ ] | SaaS: Slack | Medium | Slack Web API |
+| [ ] | SaaS: Gmail / IMAP | Medium | MailKit |
+| [ ] | SaaS: Google Drive | Medium | `Google.Apis.Drive.v3` |
+| [ ] | SaaS: Dropbox | Medium | `Dropbox.Api` |
+| [ ] | SaaS: Box | Medium | `Box.V2` |
+| [ ] | SaaS: SharePoint | Medium | Microsoft Graph SDK |
+| [ ] | SaaS: OneDrive | Medium | Microsoft Graph SDK |
+| [ ] | SaaS: Microsoft Teams | Medium | Microsoft Graph SDK |
 | [x] | Search Result Caching | Medium | None |
 | [x] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
 | [x] | Tag-Based Retrieval | Medium | Hybrid search |
