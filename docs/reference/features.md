@@ -295,6 +295,8 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 
 #### Group 1 — Cloud Storage
 
+**Status:** ✅ Done
+
 | Package | SDK | Delta sync |
 |---|---|---|
 | `Rag.NET.DataProviders.AzureBlob` | `Azure.Storage.Blobs` | ETag / `LastModified` watermark |
@@ -456,7 +458,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | MMR Retrieval | Medium | Embedding access |
 | [x] | Multi-Language Code Splitting | Medium | None (regex) |
 | [x] | Multi-Query Retrieval | Medium | `IChatClient` |
-| [ ] | SaaS: Azure Blob Storage | Low | `Azure.Storage.Blobs` |
+| [x] | SaaS: Azure Blob Storage | Low | `Azure.Storage.Blobs` |
 | [ ] | SaaS: GitLab | Low | `GitLabApiClient` |
 | [ ] | SaaS: Bitbucket | Low | Bitbucket REST API |
 | [ ] | SaaS: Zendesk | Low | Zendesk REST API |
@@ -467,11 +469,11 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [ ] | SaaS: Airtable | Medium | Airtable REST API |
 | [ ] | SaaS: Slack | Medium | Slack Web API |
 | [ ] | SaaS: Gmail / IMAP | Medium | MailKit |
-| [ ] | SaaS: Google Drive | Medium | `Google.Apis.Drive.v3` |
-| [ ] | SaaS: Dropbox | Medium | `Dropbox.Api` |
-| [ ] | SaaS: Box | Medium | `Box.V2` |
-| [ ] | SaaS: SharePoint | Medium | Microsoft Graph SDK |
-| [ ] | SaaS: OneDrive | Medium | Microsoft Graph SDK |
+| [x] | SaaS: Google Drive | Medium | `Google.Apis.Drive.v3` |
+| [x] | SaaS: Dropbox | Medium | `Dropbox.Api` |
+| [x] | SaaS: Box | Medium | `Box.V2` |
+| [x] | SaaS: SharePoint | Medium | Microsoft Graph SDK |
+| [x] | SaaS: OneDrive | Medium | Microsoft Graph SDK |
 | [ ] | SaaS: Microsoft Teams | Medium | Microsoft Graph SDK |
 | [x] | Search Result Caching | Medium | None |
 | [x] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
