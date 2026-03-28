@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.DataProviders.Confluence</RootNamespace>
+    <PackageId>Rag.NET.DataProviders.Confluence</PackageId>
+    <Description>Confluence data provider for Rag.NET</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
+    <PackageReference Include="Refit" Version="8.*" />
+    <PackageReference Include="Refit.HttpClientFactory" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.DataProviders.Confluence.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>
