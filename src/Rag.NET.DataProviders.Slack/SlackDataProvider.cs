@@ -153,7 +153,10 @@ public sealed class SlackDataProvider : FileContentProviderBase
                         .FromUnixTimeMilliseconds(
                             (long)(double.Parse(reply.Ts, CultureInfo.InvariantCulture) * 1000))
                         .ToString("HH:mm", CultureInfo.InvariantCulture);
-                    sb.AppendLine($"> **unknown** ({replyTime}): {reply.Text}");
+                    var replyUserName = reply.User is not null
+                        ? await GetUserNameAsync(reply.User, ct).ConfigureAwait(false)
+                        : "unknown";
+                    sb.AppendLine($"> **{replyUserName}** ({replyTime}): {reply.Text}");
                 }
             }
         }
