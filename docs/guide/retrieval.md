@@ -453,6 +453,69 @@ var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 
 ---
 
+## Time-Weighted Retrieval
+
+Rag.NET can automatically discount older documents by multiplying each result's similarity score by an exponential decay factor. Fresher documents retain their original score; documents older than a few days decay toward zero.
+
+### Enabling
+
+```csharp
+services.AddRagNet(rag => rag.UseTimeWeighting());
+```
+
+With custom decay rate:
+
+```csharp
+services.AddRagNet(rag => rag.UseTimeWeighting(new TimeWeightedOptions
+{
+    DecayRate            = 0.005,                          // slower decay — ~6 days to halve
+    FallbackMetadataKeys = ["published_at", "event_date"], // external timestamp fields
+}));
+```
+
+### `TimeWeightedOptions`
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `DecayRate` | `0.01` | λ in `score × e^(−λ × age_hours)`. Default halves relevance at ~69 hours (~3 days). |
+| `FallbackMetadataKeys` | `[]` | Metadata keys to try (in order) when `"created_at"` is absent. First parseable ISO 8601 value wins. |
+
+### How timestamps are set
+
+`DocumentMetadata.CreatedAt` defaults to `DateTime.UtcNow` at ingest time. Override it for documents with a known publication date:
+
+```csharp
+await pipeline.IngestAsync(stream, new DocumentMetadata
+{
+    DocumentId = new DocumentId("release-notes-v3"),
+    FileName   = "release-notes-v3.md",
+    CreatedAt  = new DateTime(2024, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+});
+```
+
+`MetadataBehavior` serialises `CreatedAt` into each chunk's metadata as `"created_at"` (ISO 8601). `TimeWeightedRetriever` reads this key at query time.
+
+### Per-call opt-out
+
+```csharp
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    UseTimeWeighting = false,
+});
+```
+
+### Decorator stacking
+
+When combined with other decorators, the call order is:
+
+```
+TagRetriever → TimeWeightedRetriever → DeepResearchRetriever → PipelineRetriever
+```
+
+Tag filtering narrows candidates first; time-weighted re-scoring is applied to the final result set.
+
+---
+
 ## Parent-Document Retrieval
 
 Parent-document retrieval indexes small child chunks for precise embedding matching but returns their larger parent documents to the LLM. This resolves a fundamental tension: embedding precision favors small chunks (sharp semantic signal), while answer quality favors large context (rich surrounding text). Child chunks are matched at retrieval time; the pipeline then swaps each child for its pre-stored parent before returning results.

@@ -118,6 +118,8 @@ Combine semantic similarity score with a recency decay factor. Fresher documents
 
 **Why:** Pure semantic similarity ignores document age entirely.
 
+**Status:** ✅ Done
+
 ---
 
 ### BM25 Synonym Expansion
@@ -422,6 +424,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Search Result Caching | Medium | None |
 | [x] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
 | [x] | Tag-Based Retrieval | Medium | Hybrid search |
+| [x] | Time-Weighted Retrieval | Medium | None |
 | [x] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
 | [x] | Semantic Chunking (Embedding-Based) | Medium | `IEmbeddingGenerator` |
 | [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
