@@ -308,6 +308,8 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 
 #### Group 2 — Collaboration
 
+**Status:** ✅ Done
+
 | Package | SDK | Delta sync |
 |---|---|---|
 | `Rag.NET.DataProviders.Confluence` | Confluence REST API + CQL | `lastModified` filter |
@@ -317,6 +319,8 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 | `Rag.NET.DataProviders.Airtable` | Airtable REST API | `filterByFormula` on modified time |
 
 #### Group 3 — Communication
+
+**Status:** ✅ Done
 
 | Package | SDK | Delta sync |
 |---|---|---|
@@ -462,19 +466,19 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [ ] | SaaS: GitLab | Low | `GitLabApiClient` |
 | [ ] | SaaS: Bitbucket | Low | Bitbucket REST API |
 | [ ] | SaaS: Zendesk | Low | Zendesk REST API |
-| [ ] | SaaS: Confluence | Medium | Confluence REST API |
-| [ ] | SaaS: Notion | Medium | Notion REST API |
-| [ ] | SaaS: Jira | Medium | Jira REST API |
-| [ ] | SaaS: Asana | Medium | Asana REST API |
+| [x] | SaaS: Confluence | Medium | Confluence REST API |
+| [x] | SaaS: Notion | Medium | Notion REST API |
+| [x] | SaaS: Jira | Medium | Jira REST API |
+| [x] | SaaS: Asana | Medium | Asana REST API |
 | [ ] | SaaS: Airtable | Medium | Airtable REST API |
-| [ ] | SaaS: Slack | Medium | Slack Web API |
-| [ ] | SaaS: Gmail / IMAP | Medium | MailKit |
+| [x] | SaaS: Slack | Medium | Slack Web API |
+| [x] | SaaS: Gmail / IMAP | Medium | MailKit |
 | [x] | SaaS: Google Drive | Medium | `Google.Apis.Drive.v3` |
 | [x] | SaaS: Dropbox | Medium | `Dropbox.Api` |
 | [x] | SaaS: Box | Medium | `Box.V2` |
 | [x] | SaaS: SharePoint | Medium | Microsoft Graph SDK |
 | [x] | SaaS: OneDrive | Medium | Microsoft Graph SDK |
-| [ ] | SaaS: Microsoft Teams | Medium | Microsoft Graph SDK |
+| [x] | SaaS: Microsoft Teams | Medium | Microsoft Graph SDK |
 | [x] | Search Result Caching | Medium | None |
 | [x] | SQLite Persistence for In-Memory Indexes | Medium | `Microsoft.Data.Sqlite` |
 | [x] | Tag-Based Retrieval | Medium | Hybrid search |
