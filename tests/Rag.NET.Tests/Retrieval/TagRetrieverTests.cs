@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Rag.NET.Abstractions;
@@ -91,6 +92,32 @@ public class TagRetrieverTests
     }
 
     [Fact]
+    public async Task ExistingCallerFilter_DifferentKey_BothPresent()
+    {
+        var ct    = TestContext.Current.CancellationToken;
+        var index = Substitute.For<ITagIndex>();
+        index.Search(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<double>())
+             .Returns([(Key: "dept", Value: "finance", Score: 0.95)]);
+
+        RetrievalOptions? captured = null;
+        var inner = Substitute.For<IRetriever>();
+        inner.RetrieveAsync(Arg.Any<string>(), Arg.Do<RetrievalOptions?>(o => captured = o), ct)
+             .Returns(Result<IReadOnlyList<SearchResult>, RagError>.Success([]));
+
+        // Caller has a different key ("region") — tag match adds "dept"
+        var options = new RetrievalOptions
+        {
+            MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["region"] = "emea" },
+        };
+        var sut = new TagRetriever(inner, index, MockEmbedder([0.5f]), new TagRetrievalOptions());
+        _ = await sut.RetrieveAsync("query", options, ct);
+
+        // Both caller's key and injected key must be present
+        Assert.Equal("emea",    captured!.MetadataFilter!["region"]);
+        Assert.Equal("finance", captured!.MetadataFilter!["dept"]);
+    }
+
+    [Fact]
     public async Task EmbeddingFailure_OriginalOptionsPassedThrough()
     {
         var ct      = TestContext.Current.CancellationToken;
@@ -99,16 +126,19 @@ public class TagRetrieverTests
         embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
                 .ThrowsAsync(new HttpRequestException("embedder down"));
 
+        var logger = new FakeLogger<TagRetriever>();
+
         RetrievalOptions? captured = null;
         var inner = Substitute.For<IRetriever>();
         inner.RetrieveAsync(Arg.Any<string>(), Arg.Do<RetrievalOptions?>(o => captured = o), ct)
              .Returns(Result<IReadOnlyList<SearchResult>, RagError>.Success([]));
 
-        var sut = new TagRetriever(inner, index, embedder, new TagRetrievalOptions());
+        var sut = new TagRetriever(inner, index, embedder, new TagRetrievalOptions(), logger);
         var result = await sut.RetrieveAsync("query", null, ct);
 
         Assert.True(result.IsSuccess);
         Assert.Null(captured?.MetadataFilter);
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning);
     }
 
     [Fact]
@@ -125,5 +155,14 @@ public class TagRetrieverTests
         await embedder.DidNotReceive()
             .GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
         index.DidNotReceive().Search(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<double>());
+    }
+
+    private sealed class FakeLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, formatter(state, exception)));
     }
 }
