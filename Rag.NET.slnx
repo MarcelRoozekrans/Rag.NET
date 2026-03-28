@@ -29,6 +29,7 @@
     <Project Path="src/Rag.NET.DataProviders.Dropbox/Rag.NET.DataProviders.Dropbox.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Box/Rag.NET.DataProviders.Box.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Confluence/Rag.NET.DataProviders.Confluence.csproj" />
+    <Project Path="src/Rag.NET.DataProviders.Jira/Rag.NET.DataProviders.Jira.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -57,6 +58,7 @@
     <Project Path="tests/Rag.NET.DataProviders.Dropbox.Tests/Rag.NET.DataProviders.Dropbox.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Box.Tests/Rag.NET.DataProviders.Box.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Confluence.Tests/Rag.NET.DataProviders.Confluence.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.Jira.Tests/Rag.NET.DataProviders.Jira.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
