@@ -145,6 +145,25 @@ public sealed class RagBuilder(IServiceCollection services)
     }
 
     /// <summary>
+    /// Registers <see cref="Rag.NET.Retrieval.TagRetriever"/> as a decorator over the existing
+    /// <see cref="IRetriever"/>. At query time, the decorator embeds the query, cosine-scans
+    /// the tag index populated during ingestion, and injects matching tag key-value pairs
+    /// as <see cref="Rag.NET.Models.Options.RetrievalOptions.MetadataFilter"/> entries.
+    /// Requires <c>IEmbeddingGenerator</c> to be registered.
+    /// </summary>
+    /// <remarks>
+    /// The decorator is wired by <c>AddRagNet</c> after the builder delegate returns.
+    /// When both <c>UseDeepResearch</c> and <c>UseTagRetrieval</c> are configured,
+    /// the stacking order is <c>TagRetriever → DeepResearchRetriever → PipelineRetriever</c>.
+    /// </remarks>
+    public RagBuilder UseTagRetrieval(TagRetrievalOptions? options = null)
+    {
+        Services.AddSingleton(options ?? new TagRetrievalOptions());
+        Services.AddSingleton<ITagIndex, InMemoryTagIndex>();
+        return this;
+    }
+
+    /// <summary>
     /// Registers <see cref="LlmQueryExpander"/> as the <see cref="IQueryExpander"/>.
     /// When registered, <see cref="RagPipeline"/> expands each query into
     /// <see cref="MultiQueryOptions.VariantCount"/> alternatives, fans out to the vector store

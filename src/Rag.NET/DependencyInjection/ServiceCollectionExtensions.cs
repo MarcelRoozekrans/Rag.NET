@@ -61,6 +61,7 @@ public static class ServiceCollectionExtensions
         configure?.Invoke(builder);
         WireRefinementStrategy(services);
         WireDeepResearch(services);
+        WireTagRetrieval(services);
 
         // Default fallback — no-op when UseSqlitePersistence() has already registered IBm25Index.
         services.TryAddSingleton<IBm25Index>(sp => sp.GetRequiredService<InMemoryBm25Index>());
@@ -104,11 +105,51 @@ public static class ServiceCollectionExtensions
             Logger   = sp.GetService<ILogger<PipelineRetriever>>(),
         });
 
-        // Replace IRetriever with the decorator (last AddSingleton<IRetriever> wins).
-        services.AddSingleton<IRetriever>(sp => new DeepResearchRetriever(
+        // Register as concrete type so WireTagRetrieval can resolve it for stacking
+        services.AddSingleton<DeepResearchRetriever>(sp => new DeepResearchRetriever(
             sp.GetRequiredService<PipelineRetriever>(),
             sp.GetRequiredService<IChatClient>(),
             sp.GetRequiredService<DeepResearchOptions>(),
             sp.GetService<ILogger<DeepResearchRetriever>>()));
+
+        // Replace IRetriever with the decorator (superseded by WireTagRetrieval if both are used)
+        services.AddSingleton<IRetriever>(sp => sp.GetRequiredService<DeepResearchRetriever>());
+    }
+
+    private static void WireTagRetrieval(IServiceCollection services)
+    {
+        if (!services.Any(d => d.ServiceType == typeof(TagRetrievalOptions)))
+            return;
+
+        bool hasDeepResearch = services.Any(d => d.ServiceType == typeof(DeepResearchRetriever));
+
+        // When DeepResearch is not wired, PipelineRetriever was never registered as its concrete
+        // type (ZeroAlloc registers it only as IRetriever). Register it here so TagRetriever can
+        // wrap it — same pattern as WireDeepResearch.
+        if (!hasDeepResearch)
+        {
+            services.AddSingleton<PipelineRetriever>(sp => new PipelineRetriever
+            {
+                Pipeline = sp.GetRequiredService<Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>>(),
+                Logger   = sp.GetService<ILogger<PipelineRetriever>>(),
+            });
+        }
+
+        // Stack on top of DeepResearchRetriever if present, otherwise PipelineRetriever
+        services.AddSingleton<TagRetriever>(sp =>
+        {
+            IRetriever inner = hasDeepResearch
+                ? sp.GetRequiredService<DeepResearchRetriever>()
+                : (IRetriever)sp.GetRequiredService<PipelineRetriever>();
+
+            return new TagRetriever(
+                inner,
+                sp.GetRequiredService<ITagIndex>(),
+                sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
+                sp.GetRequiredService<TagRetrievalOptions>(),
+                sp.GetService<ILogger<TagRetriever>>());
+        });
+
+        services.AddSingleton<IRetriever>(sp => sp.GetRequiredService<TagRetriever>());
     }
 }
