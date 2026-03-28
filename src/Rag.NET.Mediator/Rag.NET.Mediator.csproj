@@ -15,6 +15,12 @@
   <ItemGroup>
     <PackageReference Include="ZeroAlloc.Mediator" Version="1.1.7" GeneratePathProperty="true" />
     <PackageReference Include="ZeroAlloc.Mediator.Generator" Version="1.1.7" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <!-- ZeroAlloc.Pipeline.Generators is an indirect dependency of ZeroAlloc.Mediator.Generator.
+         Roslyn loads source generators in an isolated context and cannot resolve transitive
+         dependencies automatically, so we must register this DLL as an explicit Analyzer.
+         PrivateAssets="all" keeps it off the public API surface; GeneratePathProperty provides
+         the $(PkgZeroAlloc_Pipeline_Generators) MSBuild property used in the Analyzer item. -->
+    <PackageReference Include="ZeroAlloc.Pipeline.Generators" Version="0.1.1" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
   </ItemGroup>
 
@@ -26,5 +32,6 @@
          item the source generator never runs and all generated types (IMediator, MediatorService,
          etc.) are absent, causing CS0246/CS0234 build errors. -->
     <Analyzer Include="$(PkgZeroAlloc_Mediator_Generator)\lib\netstandard2.0\ZeroAlloc.Mediator.Generator.dll" />
+    <Analyzer Include="$(PkgZeroAlloc_Pipeline_Generators)\lib\netstandard2.0\ZeroAlloc.Pipeline.Generators.dll" />
   </ItemGroup>
 </Project>
