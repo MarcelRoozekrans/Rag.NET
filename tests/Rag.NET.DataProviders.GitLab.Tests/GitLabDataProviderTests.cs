@@ -171,6 +171,190 @@ public sealed class GitLabDataProviderTests
             await sut.GetFilesAsync(cts.Token).ToListAsync(cts.Token));
     }
 
+    [Fact]
+    public async Task GetFilesAsync_FullTraversal_SkipsNonBlobs()
+    {
+        var items = new[]
+        {
+            MakeTreeItem("src/main.cs", "aaa111", ObjectType.blob),
+            MakeTreeItem("src/utils", "bbb222", ObjectType.tree),
+            MakeTreeItem("vendor/lib", "ccc333", ObjectType.commit), // submodule
+        };
+        var (client, _) = MakeClient(treeItems: items);
+        var sut = new GitLabDataProvider(client, MakeOptions());
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal("src/main.cs", entries[0].Id);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_FullTraversal_FileNameIsLastSegment()
+    {
+        var items = new[]
+        {
+            MakeTreeItem("src/utils/helper.cs", "aaa111"),
+        };
+        var (client, _) = MakeClient(treeItems: items);
+        var sut = new GitLabDataProvider(client, MakeOptions());
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal("helper.cs", entries[0].FileName);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_FullTraversal_ETagIsBlobSha()
+    {
+        var sha = "abcdef1234567890abcdef1234567890abcdef12";
+        var items = new[]
+        {
+            MakeTreeItem("readme.md", sha),
+        };
+        var (client, _) = MakeClient(treeItems: items);
+        var sut = new GitLabDataProvider(client, MakeOptions());
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        Assert.Equal(sha, entries[0].ETag, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_DeltaTraversal_SkipsDeletedAndRenamedOldPath()
+    {
+        var comparison = new CompareResults
+        {
+            Diff =
+            [
+                new Diff { NewPath = "new-name.cs", OldPath = "old-name.cs", IsDeletedFile = false, IsRenamedFile = true },
+                new Diff { NewPath = "removed.cs", OldPath = "removed.cs", IsDeletedFile = true },
+                new Diff { NewPath = "modified.cs", OldPath = "modified.cs", IsDeletedFile = false },
+            ],
+        };
+        var (client, _) = MakeClient(compareResults: comparison);
+        var sut = new GitLabDataProvider(client,
+            MakeOptions(lastIngestedCommitSha: "old-sha"));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // Deleted file is skipped; renamed file yields the new path
+        Assert.Equal(2, entries.Count);
+        Assert.Contains(entries, e => string.Equals(e.Id, "new-name.cs", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Id, "modified.cs", StringComparison.Ordinal));
+        Assert.DoesNotContain(entries, e => string.Equals(e.Id, "removed.cs", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_EmptyTree_YieldsNothing()
+    {
+        var (client, _) = MakeClient(treeItems: []);
+        var sut = new GitLabDataProvider(client, MakeOptions());
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_EmptyDelta_YieldsNothing()
+    {
+        var comparison = new CompareResults
+        {
+            Diff = [],
+        };
+        var (client, _) = MakeClient(compareResults: comparison);
+        var sut = new GitLabDataProvider(client,
+            MakeOptions(lastIngestedCommitSha: "old-sha"));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ContentReadable()
+    {
+        var expectedBytes = "hello world"u8.ToArray();
+        var items = new[]
+        {
+            MakeTreeItem("file.txt", "aaa111"),
+        };
+        var (client, repo) = MakeClient(treeItems: items);
+
+        // Override the default GetRawAsync stub to write actual content
+        repo.Files.GetRawAsync(
+            Arg.Is("file.txt"),
+            Arg.Any<Func<Stream, Task>>(),
+            Arg.Any<GetRawFileRequest>(),
+            Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var callback = callInfo.ArgAt<Func<Stream, Task>>(1);
+                return callback(new MemoryStream(expectedBytes));
+            });
+
+        var sut = new GitLabDataProvider(client, MakeOptions());
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(entries);
+        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms, TestContext.Current.CancellationToken);
+        Assert.Equal(expectedBytes, ms.ToArray());
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_CustomRef_UsesSpecifiedBranch()
+    {
+        var items = new[]
+        {
+            MakeTreeItem("file.md", "aaa111"),
+        };
+        var (client, repo) = MakeClient(treeItems: items);
+        var opts = new GitLabOptions
+        {
+            BaseUrl = "https://gitlab.com",
+            ProjectIdOrPath = Project,
+            Ref = "develop",
+        };
+        var sut = new GitLabDataProvider(client, opts);
+
+        _ = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        repo.Received(1).GetTreeAsync(Arg.Is<RepositoryGetTreeOptions>(o =>
+            o.Ref == "develop" && o.Recursive == true));
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_MultipleItems_YieldsAll()
+    {
+        var items = Enumerable.Range(0, 25)
+            .Select(i => MakeTreeItem($"dir/file{i}.cs", $"sha{i}"))
+            .ToArray();
+        var (client, _) = MakeClient(treeItems: items);
+        var sut = new GitLabDataProvider(client, MakeOptions());
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(25, entries.Count);
+        for (var i = 0; i < 25; i++)
+        {
+            Assert.Contains(entries, e => string.Equals(e.Id, $"dir/file{i}.cs", StringComparison.Ordinal));
+        }
+    }
+
     /// <summary>Simple async enumerator over an array for test mocking.</summary>
     private sealed class ArrayAsyncEnumerator<T>(T[] items) : IAsyncEnumerator<T>
     {
