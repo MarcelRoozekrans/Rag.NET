@@ -184,6 +184,11 @@ Benchmarks measure `GetFilesAsync()` enumeration throughput with mocked HTTP/IMA
 | Slack | TBD | TBD |
 | Teams | TBD | TBD |
 | Gmail | TBD | TBD |
+| GitLab | TBD | TBD |
+| Bitbucket | TBD | TBD |
+| Zendesk Tickets | TBD | TBD |
+| Zendesk Articles | TBD | TBD |
+| Airtable | TBD | TBD |
 
 ### Connector-Specific
 
@@ -208,6 +213,16 @@ Benchmarks measure `GetFilesAsync()` enumeration throughput with mocked HTTP/IMA
 | Gmail — FullTraversal | 20 | TBD | TBD |
 | Gmail — TextBodyOnly | 5 | TBD | TBD |
 | Gmail — HtmlBodyOnly | 5 | TBD | TBD |
+| GitLab — FullTraversal | 20 | TBD | TBD |
+| GitLab — DeltaTraversal | 20 | TBD | TBD |
+| Bitbucket — FullTraversal | 20 | TBD | TBD |
+| Bitbucket — DeltaTraversal | 20 | TBD | TBD |
+| Zendesk — TicketsFullTraversal | 20 (2 comments) | TBD | TBD |
+| Zendesk — ArticlesFullTraversal | 20 | TBD | TBD |
+| Zendesk — ArticlesHtmlStripping | 5 (~10 KB HTML) | TBD | TBD |
+| Airtable — FullTraversal | 20 | TBD | TBD |
+| Airtable — WithAttachments | 10 (2 attachments) | TBD | TBD |
+| Airtable — DeltaWithFilter | 20 | TBD | TBD |
 
 **Note:** Run `dotnet run -c Release --project benchmarks/Rag.NET.Benchmarks` to populate.
 
