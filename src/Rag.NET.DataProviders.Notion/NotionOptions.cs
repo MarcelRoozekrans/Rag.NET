@@ -2,6 +2,7 @@ using Rag.NET.DataProviders;
 
 namespace Rag.NET.DataProviders.Notion;
 
+/// <summary>Configuration for <see cref="NotionDataProvider"/>.</summary>
 public sealed class NotionOptions : CloudStorageOptions
 {
     /// <summary>

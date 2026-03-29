@@ -6,6 +6,19 @@ using Refit;
 
 namespace Rag.NET.DataProviders.Confluence;
 
+/// <summary>
+/// Enumerates Confluence pages as Markdown documents via the Confluence REST API.
+/// <para>
+/// A full run fetches all pages, optionally filtered by
+/// <see cref="ConfluenceOptions.SpaceKey"/>. A delta run appends a CQL
+/// <c>lastModified&gt;</c> filter using <see cref="ConfluenceOptions.DeltaToken"/>.
+/// When the Atlassian API returns HTTP 400 (stale or invalid token) the provider
+/// falls back to a full traversal automatically.
+/// </para>
+/// <para>
+/// Each page is emitted as a <c>.md</c> file with the HTML body stripped to plain text.
+/// </para>
+/// </summary>
 public sealed partial class ConfluenceDataProvider : FileContentProviderBase
 {
     [GeneratedRegex("<[^>]+>", RegexOptions.NonBacktracking)]

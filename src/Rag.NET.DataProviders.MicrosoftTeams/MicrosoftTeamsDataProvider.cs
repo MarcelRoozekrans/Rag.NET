@@ -7,6 +7,14 @@ using Rag.NET.DataProviders;
 
 namespace Rag.NET.DataProviders.MicrosoftTeams;
 
+/// <summary>
+/// Enumerates Microsoft Teams channel messages as Markdown documents grouped by UTC
+/// calendar day via the Microsoft Graph SDK.
+/// <para>
+/// HTML message bodies are stripped to plain text. Delta synchronisation is not yet
+/// supported; every run performs a full traversal of all messages.
+/// </para>
+/// </summary>
 public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
 {
     private readonly GraphServiceClient    _graph;

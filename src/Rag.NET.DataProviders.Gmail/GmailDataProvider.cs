@@ -9,6 +9,17 @@ using Rag.NET.DataProviders;
 
 namespace Rag.NET.DataProviders.Gmail;
 
+/// <summary>
+/// Enumerates Gmail messages as Markdown documents via IMAP using MailKit.
+/// <para>
+/// Authentication uses OAuth2 with a token obtained from the registered
+/// <see cref="ITokenProvider"/>. A delta run uses <see cref="GmailOptions.DeltaToken"/>
+/// as a <see cref="MailKit.UniqueId"/> watermark, fetching only messages with a higher UID.
+/// </para>
+/// <para>
+/// The plain-text body is preferred; when unavailable the HTML body is stripped of tags.
+/// </para>
+/// </summary>
 public sealed partial class GmailDataProvider : FileContentProviderBase
 {
     private readonly ITokenProvider    _tokenProvider;

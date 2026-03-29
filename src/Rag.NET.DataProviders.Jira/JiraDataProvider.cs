@@ -6,6 +6,20 @@ using Refit;
 
 namespace Rag.NET.DataProviders.Jira;
 
+/// <summary>
+/// Enumerates Jira issues as Markdown documents via the Jira REST API.
+/// <para>
+/// A full run executes the configured JQL query, optionally scoped to
+/// <see cref="JiraOptions.ProjectKey"/>. A delta run prepends a
+/// <c>updated &gt;</c> clause using <see cref="JiraOptions.DeltaToken"/>.
+/// When the Atlassian API returns HTTP 400 (stale or invalid token) the provider
+/// falls back to a full traversal automatically.
+/// </para>
+/// <para>
+/// Each issue is emitted as a <c>.md</c> file containing status, priority,
+/// assignee, description, and comments.
+/// </para>
+/// </summary>
 public sealed partial class JiraDataProvider : FileContentProviderBase
 {
     [GeneratedRegex(@"^[A-Za-z0-9\-_]+$", RegexOptions.NonBacktracking)]

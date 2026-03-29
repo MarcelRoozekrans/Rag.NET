@@ -6,6 +6,19 @@ using Refit;
 
 namespace Rag.NET.DataProviders.Asana;
 
+/// <summary>
+/// Enumerates Asana tasks as Markdown documents via the Asana REST API.
+/// <para>
+/// Tasks are scoped to <see cref="AsanaOptions.ProjectGid"/> when set, otherwise to
+/// <see cref="AsanaOptions.WorkspaceGid"/>. Subtasks are fetched per task.
+/// The bearer token is refreshed on every enumeration via the registered
+/// <see cref="ITokenProvider"/>.
+/// </para>
+/// <para>
+/// Delta support uses the <c>modified_since</c> query parameter through
+/// <see cref="AsanaOptions.DeltaToken"/>.
+/// </para>
+/// </summary>
 public sealed class AsanaDataProvider : FileContentProviderBase
 {
     private readonly HttpClient _http;

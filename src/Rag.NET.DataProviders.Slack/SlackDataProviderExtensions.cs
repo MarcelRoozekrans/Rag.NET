@@ -5,8 +5,16 @@ using Refit;
 
 namespace Rag.NET.DataProviders.Slack;
 
+/// <summary>Extension methods for registering <see cref="SlackDataProvider"/> with dependency injection.</summary>
 public static class SlackDataProviderExtensions
 {
+    /// <summary>
+    /// Registers a <see cref="SlackDataProvider"/> as an <see cref="IFileContentProvider"/> singleton.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="botToken">Slack bot OAuth token (e.g. <c>xoxb-...</c>).</param>
+    /// <param name="configure">Optional callback to further configure <see cref="SlackOptions"/>.</param>
+    /// <returns>The same <see cref="IServiceCollection"/> for chaining.</returns>
     public static IServiceCollection AddSlackDataProvider(
         this IServiceCollection services,
         string botToken,

@@ -6,8 +6,18 @@ using Refit;
 
 namespace Rag.NET.DataProviders.Confluence;
 
+/// <summary>Extension methods for registering <see cref="ConfluenceDataProvider"/> with dependency injection.</summary>
 public static class ConfluenceDataProviderExtensions
 {
+    /// <summary>
+    /// Registers a <see cref="ConfluenceDataProvider"/> as an <see cref="IFileContentProvider"/> singleton.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="baseUrl">Base URL of the Confluence instance.</param>
+    /// <param name="email">Email address for Basic authentication.</param>
+    /// <param name="apiToken">Atlassian API token.</param>
+    /// <param name="configure">Optional callback to further configure <see cref="ConfluenceOptions"/>.</param>
+    /// <returns>The same <see cref="IServiceCollection"/> for chaining.</returns>
     public static IServiceCollection AddConfluenceDataProvider(
         this IServiceCollection services,
         string baseUrl,

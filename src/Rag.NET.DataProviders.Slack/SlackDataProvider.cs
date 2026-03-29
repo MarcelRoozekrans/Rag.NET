@@ -5,6 +5,19 @@ using Rag.NET.DataProviders;
 
 namespace Rag.NET.DataProviders.Slack;
 
+/// <summary>
+/// Enumerates Slack channel messages as Markdown documents grouped by UTC calendar day.
+/// <para>
+/// Thread replies are expanded inline beneath their parent message. User display names
+/// are resolved via the <c>users.info</c> API and cached for the lifetime of the provider.
+/// When the Slack API returns <c>ok: false</c>, an <see cref="InvalidOperationException"/>
+/// is thrown.
+/// </para>
+/// <para>
+/// Delta support uses <see cref="SlackOptions.DeltaToken"/> as the <c>oldest</c> timestamp
+/// parameter in the <c>conversations.history</c> call.
+/// </para>
+/// </summary>
 public sealed class SlackDataProvider : FileContentProviderBase
 {
     private readonly ISlackApi    _api;

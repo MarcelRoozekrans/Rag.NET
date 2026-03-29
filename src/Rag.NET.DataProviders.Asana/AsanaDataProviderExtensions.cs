@@ -3,8 +3,18 @@ using Rag.NET.DataProviders;
 
 namespace Rag.NET.DataProviders.Asana;
 
+/// <summary>Extension methods for registering <see cref="AsanaDataProvider"/> with dependency injection.</summary>
 public static class AsanaDataProviderExtensions
 {
+    /// <summary>
+    /// Registers an <see cref="AsanaDataProvider"/> as an <see cref="IFileContentProvider"/> singleton
+    /// using a static personal access token.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="personalAccessToken">Asana personal access token.</param>
+    /// <param name="workspaceGid">Asana workspace GID.</param>
+    /// <param name="configure">Optional callback to further configure <see cref="AsanaOptions"/>.</param>
+    /// <returns>The same <see cref="IServiceCollection"/> for chaining.</returns>
     public static IServiceCollection AddAsanaDataProvider(
         this IServiceCollection services,
         string personalAccessToken,
@@ -17,6 +27,15 @@ public static class AsanaDataProviderExtensions
             new StaticTokenProvider(personalAccessToken), workspaceGid, configure);
     }
 
+    /// <summary>
+    /// Registers an <see cref="AsanaDataProvider"/> as an <see cref="IFileContentProvider"/> singleton
+    /// using a custom <see cref="ITokenProvider"/> for token refresh.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="tokenProvider">Provider that supplies (and optionally refreshes) the bearer token.</param>
+    /// <param name="workspaceGid">Asana workspace GID.</param>
+    /// <param name="configure">Optional callback to further configure <see cref="AsanaOptions"/>.</param>
+    /// <returns>The same <see cref="IServiceCollection"/> for chaining.</returns>
     public static IServiceCollection AddAsanaDataProvider(
         this IServiceCollection services,
         ITokenProvider tokenProvider,

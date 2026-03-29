@@ -4,6 +4,19 @@ using Rag.NET.DataProviders;
 
 namespace Rag.NET.DataProviders.Notion;
 
+/// <summary>
+/// Enumerates Notion pages as Markdown documents via the Notion API.
+/// <para>
+/// Uses <c>POST /v1/search</c> to discover pages and
+/// <c>GET /v1/blocks/{id}/children</c> to fetch block content.
+/// A delta run sorts results descending by <c>last_edited_time</c> and applies a
+/// client-side time filter using <see cref="NotionOptions.DeltaToken"/>, stopping
+/// pagination once older pages are encountered.
+/// </para>
+/// <para>
+/// Supports paragraphs, headings, bulleted and numbered lists, code blocks, and quotes.
+/// </para>
+/// </summary>
 public sealed class NotionDataProvider : FileContentProviderBase
 {
     private readonly INotionApi _api;

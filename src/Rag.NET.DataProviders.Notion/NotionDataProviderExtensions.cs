@@ -5,8 +5,16 @@ using Refit;
 
 namespace Rag.NET.DataProviders.Notion;
 
+/// <summary>Extension methods for registering <see cref="NotionDataProvider"/> with dependency injection.</summary>
 public static class NotionDataProviderExtensions
 {
+    /// <summary>
+    /// Registers a <see cref="NotionDataProvider"/> as an <see cref="IFileContentProvider"/> singleton.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="integrationToken">Notion internal integration token.</param>
+    /// <param name="configure">Optional callback to further configure <see cref="NotionOptions"/>.</param>
+    /// <returns>The same <see cref="IServiceCollection"/> for chaining.</returns>
     public static IServiceCollection AddNotionDataProvider(
         this IServiceCollection services,
         string integrationToken,
