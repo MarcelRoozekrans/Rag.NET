@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.DataProviders.Airtable</RootNamespace>
+    <PackageId>Rag.NET.DataProviders.Airtable</PackageId>
+    <Description>Airtable data provider for Rag.NET</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
+    <PackageReference Include="Airtable" Version="1.*" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.DataProviders.Airtable.Tests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>DynamicProxyGenAssembly2</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Benchmarks</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>
