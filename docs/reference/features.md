@@ -497,6 +497,6 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
 | [x] | Conversational Memory Management | High | `IChatClient` + tokenizer |
 | [x] | Parent-Document Retrieval | High | Dual index |
-| [ ] | RAPTOR | High | UMAP + GMM + `IChatClient` |
+| [x] | RAPTOR | High | UMAP + GMM + `IChatClient` |
 | [x] | Self-Query Filtering | High | `IChatClient` + schema |
 | [ ] | GraphRAG | Very High | Graph DB + `IChatClient` |
