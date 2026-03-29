@@ -180,6 +180,244 @@ public sealed class ZendeskTicketsDataProviderTests
         Assert.Empty(results);
     }
 
+    [Fact]
+    public async Task GetFilesAsync_NullOptionalFields_MarkdownOmitsThem()
+    {
+        const string ticketsJson = """
+            {
+              "tickets": [
+                { "id": 5, "subject": "Minimal ticket", "description": null, "status": "new", "priority": null, "updated_at": "2026-01-05T00:00:00Z" }
+              ],
+              "after_cursor": null,
+              "end_of_stream": true,
+              "end_time": 1735700000
+            }
+            """;
+        const string commentsJson = """{ "comments": [] }""";
+
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v2/incremental/tickets/cursor.json"] = ticketsJson,
+            ["/api/v2/tickets/"] = commentsJson
+        });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        var content = await ReadContentAsync(results[0]);
+        Assert.StartsWith("# Minimal ticket", content, StringComparison.Ordinal);
+        Assert.Contains("**Status:** new", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("Priority", content, StringComparison.Ordinal);
+        // Description is null, so it should not appear as text between status and comments
+        Assert.DoesNotContain("## Comments", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Pagination_FetchesAllPages()
+    {
+        const string page1Json = """
+            {
+              "tickets": [
+                { "id": 1, "subject": "First", "description": "Desc1", "status": "open", "priority": null, "updated_at": "2026-01-01T00:00:00Z" }
+              ],
+              "after_cursor": "cursor_abc",
+              "end_of_stream": false,
+              "end_time": 1735600000
+            }
+            """;
+        const string page2Json = """
+            {
+              "tickets": [
+                { "id": 2, "subject": "Second", "description": "Desc2", "status": "solved", "priority": null, "updated_at": "2026-01-02T00:00:00Z" }
+              ],
+              "after_cursor": null,
+              "end_of_stream": true,
+              "end_time": 1735700000
+            }
+            """;
+        const string commentsJson = """{ "comments": [] }""";
+
+        var handler = new FakeSequentialHandler(
+            ticketPages: [page1Json, page2Json],
+            commentsJson: commentsJson);
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal("ticket-1.md", results[0].FileName);
+        Assert.Equal("ticket-2.md", results[1].FileName);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_EmptyTickets_YieldsNothing()
+    {
+        const string ticketsJson = """
+            {
+              "tickets": [],
+              "after_cursor": null,
+              "end_of_stream": true,
+              "end_time": 1735700000
+            }
+            """;
+
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v2/incremental/tickets/cursor.json"] = ticketsJson
+        });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_CancellationRequested_Throws()
+    {
+        // Two tickets so cancellation fires between them.
+        const string ticketsJson = """
+            {
+              "tickets": [
+                { "id": 1, "subject": "First", "description": "Desc1", "status": "open", "priority": null, "updated_at": "2026-01-01T00:00:00Z" },
+                { "id": 2, "subject": "Second", "description": "Desc2", "status": "open", "priority": null, "updated_at": "2026-01-02T00:00:00Z" }
+              ],
+              "after_cursor": null,
+              "end_of_stream": true,
+              "end_time": 1735700000
+            }
+            """;
+        const string commentsJson = """{ "comments": [] }""";
+
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v2/incremental/tickets/cursor.json"] = ticketsJson,
+            ["/api/v2/tickets/"] = commentsJson
+        });
+        var sut = MakeProvider(handler);
+
+        using var cts = new CancellationTokenSource();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var item in sut.GetFilesAsync(cts.Token))
+            {
+                // Cancel after consuming the first item
+                cts.Cancel();
+            }
+        });
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ContentReadable_MarkdownCorrect()
+    {
+        const string ticketsJson = """
+            {
+              "tickets": [
+                { "id": 7, "subject": "Login broken", "description": "Cannot log in at all", "status": "open", "priority": "high", "updated_at": "2026-02-10T00:00:00Z" }
+              ],
+              "after_cursor": null,
+              "end_of_stream": true,
+              "end_time": 1739000000
+            }
+            """;
+        const string commentsJson = """{ "comments": [] }""";
+
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v2/incremental/tickets/cursor.json"] = ticketsJson,
+            ["/api/v2/tickets/"] = commentsJson
+        });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        var content = await ReadContentAsync(results[0]);
+        Assert.StartsWith("# Login broken", content, StringComparison.Ordinal);
+        Assert.Contains("**Status:** open", content, StringComparison.Ordinal);
+        Assert.Contains("**Priority:** high", content, StringComparison.Ordinal);
+        Assert.Contains("Cannot log in at all", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ETagIsUpdatedAt()
+    {
+        const string ticketsJson = """
+            {
+              "tickets": [
+                { "id": 9, "subject": "ETag test", "description": "Check etag", "status": "closed", "priority": null, "updated_at": "2026-03-15T12:30:00Z" }
+              ],
+              "after_cursor": null,
+              "end_of_stream": true,
+              "end_time": 1742000000
+            }
+            """;
+        const string commentsJson = """{ "comments": [] }""";
+
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v2/incremental/tickets/cursor.json"] = ticketsJson,
+            ["/api/v2/tickets/"] = commentsJson
+        });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("2026-03-15T12:30:00Z", results[0].ETag);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_MultipleComments_AllRendered()
+    {
+        const string ticketsJson = """
+            {
+              "tickets": [
+                { "id": 50, "subject": "Multi-comment ticket", "description": "Original issue", "status": "open", "priority": "low", "updated_at": "2026-02-20T00:00:00Z" }
+              ],
+              "after_cursor": null,
+              "end_of_stream": true,
+              "end_time": 1740000000
+            }
+            """;
+        const string commentsJson = """
+            {
+              "comments": [
+                { "id": 201, "body": "First comment body", "author_id": 10, "created_at": "2026-02-20T01:00:00Z" },
+                { "id": 202, "body": "Second comment body", "author_id": 20, "created_at": "2026-02-20T02:00:00Z" },
+                { "id": 203, "body": "Third comment body", "author_id": 30, "created_at": "2026-02-20T03:00:00Z" }
+              ]
+            }
+            """;
+
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v2/incremental/tickets/cursor.json"] = ticketsJson,
+            ["/api/v2/tickets/"] = commentsJson
+        });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        var content = await ReadContentAsync(results[0]);
+        Assert.Contains("## Comments", content, StringComparison.Ordinal);
+        Assert.Contains("First comment body", content, StringComparison.Ordinal);
+        Assert.Contains("Second comment body", content, StringComparison.Ordinal);
+        Assert.Contains("Third comment body", content, StringComparison.Ordinal);
+        Assert.Contains("**10**", content, StringComparison.Ordinal);
+        Assert.Contains("**20**", content, StringComparison.Ordinal);
+        Assert.Contains("**30**", content, StringComparison.Ordinal);
+    }
+
     private static async Task<string> ReadContentAsync(Rag.NET.DataProviders.FileEntry entry)
     {
         await using var stream = await entry.OpenContentAsync(CancellationToken.None);
@@ -232,6 +470,37 @@ file sealed class FakeCapturingHandler(Dictionary<string, string> responses) : H
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new StringContent(responses[key], Encoding.UTF8, "application/json")
+        });
+    }
+}
+
+/// <summary>
+/// Returns sequential ticket page responses for pagination tests, and a fixed comments response.
+/// </summary>
+file sealed class FakeSequentialHandler(List<string> ticketPages, string commentsJson) : HttpMessageHandler
+{
+    private int _ticketPageIndex;
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var url = request.RequestUri!.ToString();
+
+        string json;
+        if (url.Contains("incremental/tickets", StringComparison.Ordinal))
+        {
+            json = _ticketPageIndex < ticketPages.Count
+                ? ticketPages[_ticketPageIndex++]
+                : ticketPages[^1];
+        }
+        else
+        {
+            json = commentsJson;
+        }
+
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
         });
     }
 }
