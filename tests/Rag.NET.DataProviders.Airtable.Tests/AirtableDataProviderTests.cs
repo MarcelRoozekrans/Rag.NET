@@ -234,6 +234,269 @@ public sealed class AirtableDataProviderTests
         Assert.Equal("Page one.md", results[0].FileName);
         Assert.Equal("Page two.md", results[1].FileName);
     }
+
+    [Fact]
+    public async Task GetFilesAsync_RowMarkdown_ContainsFieldTable()
+    {
+        var record = MakeRecord("rec100", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"]   = Json("\"My Task\""),
+            ["Status"] = Json("\"Done\""),
+            ["Priority"] = Json("\"High\"")
+        });
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        var sut = MakeProvider(client);
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var markdown = await ReadContentAsync(results[0]);
+        Assert.Contains("| Field | Value |", markdown, StringComparison.Ordinal);
+        Assert.Contains("| --- | --- |", markdown, StringComparison.Ordinal);
+        Assert.Contains("| Status | Done |", markdown, StringComparison.Ordinal);
+        Assert.Contains("| Priority | High |", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_RowMarkdown_LongTextAsSeparateSection()
+    {
+        var record = MakeRecord("rec101", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"]  = Json("\"Doc Title\""),
+            ["Notes"] = Json("\"Line one\\nLine two\\nLine three\"")
+        });
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        var sut = MakeProvider(client);
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var markdown = await ReadContentAsync(results[0]);
+        Assert.Contains("## Notes", markdown, StringComparison.Ordinal);
+        Assert.Contains("Line one", markdown, StringComparison.Ordinal);
+        // Long text should NOT appear in the table.
+        Assert.DoesNotContain("| Notes |", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_RowMarkdown_FirstFieldAsTitle()
+    {
+        var record = MakeRecord("rec102", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Title"]  = Json("\"Project Alpha\""),
+            ["Status"] = Json("\"Active\"")
+        });
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        var sut = MakeProvider(client);
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var markdown = await ReadContentAsync(results[0]);
+        Assert.StartsWith("# Project Alpha", markdown, StringComparison.Ordinal);
+        Assert.Equal("Project Alpha.md", results[0].FileName);
+        // The first field should NOT appear again in the table body.
+        Assert.DoesNotContain("| Title |", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_NullFieldValues_Handled()
+    {
+        var record = MakeRecord("rec103", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"]    = Json("\"Has Nulls\""),
+            ["Empty"]   = Json("null"),
+            ["Blank"]   = Json("\"\"")
+        });
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        var sut = MakeProvider(client);
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        var markdown = await ReadContentAsync(results[0]);
+        Assert.Contains("# Has Nulls", markdown, StringComparison.Ordinal);
+        // Should not crash — null/empty values handled gracefully.
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_MultipleAttachments_AllYielded()
+    {
+        var attachmentJson = Json("""
+            [
+                { "id": "att1", "url": "https://dl.test/a.png", "filename": "a.png" },
+                { "id": "att2", "url": "https://dl.test/b.pdf", "filename": "b.pdf" },
+                { "id": "att3", "url": "https://dl.test/c.docx", "filename": "c.docx" }
+            ]
+            """);
+
+        var record = MakeRecord("rec104", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"]  = Json("\"Multi Attach\""),
+            ["Files"] = attachmentJson
+        });
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        var handler = new FakeDownloadHandler("data");
+        using var http = new HttpClient(handler);
+        var sut = MakeProvider(client, http: http);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // 1 markdown row + 3 attachments = 4 entries.
+        Assert.Equal(4, results.Count);
+        Assert.Equal("rec104", results[0].Id);
+        Assert.Equal("a.png", results[1].FileName);
+        Assert.Equal("b.pdf", results[2].FileName);
+        Assert.Equal("c.docx", results[3].FileName);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_AttachmentFileHandleId_CorrectFormat()
+    {
+        var attachmentJson = Json("""
+            [
+                { "id": "attX", "url": "https://dl.test/report.xlsx", "filename": "report.xlsx" }
+            ]
+            """);
+
+        var record = MakeRecord("rec105", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"]    = Json("\"Report Row\""),
+            ["Uploads"] = attachmentJson
+        });
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        var handler = new FakeDownloadHandler("data");
+        using var http = new HttpClient(handler);
+        var sut = MakeProvider(client, http: http);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var attachment = results[1];
+        Assert.Equal("rec105/Uploads/report.xlsx", attachment.Id);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_EmptyRecords_YieldsNothing()
+    {
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([]));
+
+        var sut = MakeProvider(client);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_CancellationRequested_Throws()
+    {
+        var client = Substitute.For<IAirtableClient>();
+        // Return a page with offset so the provider loops — cancellation fires on second iteration.
+        var record = MakeRecord("rec106", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"] = Json("\"Cancel me\"")
+        });
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record], offset: "next"));
+        client.ListRecordsAsync("Tasks", "next", null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record], offset: "next2"));
+
+        var sut = MakeProvider(client);
+        using var cts = new CancellationTokenSource();
+
+        var enumerator = sut.GetFilesAsync(cts.Token).GetAsyncEnumerator(cts.Token);
+        // Consume the first item, then cancel.
+        Assert.True(await enumerator.MoveNextAsync());
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            while (await enumerator.MoveNextAsync()) { }
+        });
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ViewOption_PassedToClient()
+    {
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, "Grid view", Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([]));
+
+        var opts = new AirtableOptions
+        {
+            BaseId    = "appTEST",
+            TableName = "Tasks",
+            View      = "Grid view"
+        };
+        var sut = MakeProvider(client, opts);
+
+        await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        await client.Received(1).ListRecordsAsync(
+            "Tasks",
+            null,
+            null,
+            "Grid view",
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ETagIsContentHash()
+    {
+        var record = MakeRecord("rec108", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"]   = Json("\"Hash Test\""),
+            ["Status"] = Json("\"Open\"")
+        });
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        var sut = MakeProvider(client);
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var etag = results[0].ETag;
+        Assert.NotNull(etag);
+        // ETag should be a 64-char lowercase hex string (SHA256).
+        Assert.Equal(64, etag.Length);
+        Assert.Matches("^[0-9a-f]{64}$", etag);
+
+        // Verify it matches the expected SHA256 of the serialized fields.
+        var expectedJson = JsonSerializer.Serialize(record.Fields);
+        var expectedHash = System.Security.Cryptography.SHA256.HashData(
+            Encoding.UTF8.GetBytes(expectedJson));
+        var expectedEtag = Convert.ToHexStringLower(expectedHash);
+        Assert.Equal(expectedEtag, etag);
+    }
 }
 
 /// <summary>Fake HTTP handler that returns a fixed string body for any request.</summary>
