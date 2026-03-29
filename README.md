@@ -35,6 +35,13 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 | `Rag.NET.Evaluation` | Answer quality evaluation via embedding cosine similarity |
 | `Rag.NET.Reranking.Onnx` | ONNX Runtime cross-encoder reranking |
 | `Rag.NET.Mediator` | ZeroAlloc.Mediator integration — dispatch ingest/retrieve/delete via `IMediator` |
+| [Rag.NET.DataProviders.Confluence](src/Rag.NET.DataProviders.Confluence) | Confluence pages via REST API |
+| [Rag.NET.DataProviders.Jira](src/Rag.NET.DataProviders.Jira) | Jira issues via REST API |
+| [Rag.NET.DataProviders.Notion](src/Rag.NET.DataProviders.Notion) | Notion pages and blocks via REST API |
+| [Rag.NET.DataProviders.Asana](src/Rag.NET.DataProviders.Asana) | Asana tasks and subtasks via REST API |
+| [Rag.NET.DataProviders.Slack](src/Rag.NET.DataProviders.Slack) | Slack channel messages via REST API |
+| [Rag.NET.DataProviders.MicrosoftTeams](src/Rag.NET.DataProviders.MicrosoftTeams) | Teams channel messages via Microsoft Graph |
+| [Rag.NET.DataProviders.Gmail](src/Rag.NET.DataProviders.Gmail) | Gmail messages via IMAP (MailKit) |
 
 ## Quick Start
 

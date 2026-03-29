@@ -64,6 +64,18 @@ try
         Console.WriteLine($"Using Ollama at {ollamaEndpoint} (chat: {chatModel}, embeddings: {embeddingModel})");
     }
 
+    // --- Optional: SaaS connector examples ---
+    // Uncomment to ingest from Confluence or Slack instead of local files.
+    //
+    // services.AddConfluenceDataProvider(
+    //     baseUrl:  "https://your-org.atlassian.net",
+    //     email:    "user@your-org.com",
+    //     apiToken: Environment.GetEnvironmentVariable("CONFLUENCE_API_TOKEN")!);
+    //
+    // services.AddSlackDataProvider(
+    //     botToken: Environment.GetEnvironmentVariable("SLACK_BOT_TOKEN")!,
+    //     configure: opts => opts.ChannelId = "C01234ABCDE");
+
     var serviceProvider = services.BuildServiceProvider();
 
     // --- Initialize vector store ---

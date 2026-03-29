@@ -56,6 +56,14 @@ flowchart TD
     CORE --> EVAL["Rag.NET.Evaluation<br>Embedding-based answer quality"]
     CORE --> MED["Rag.NET.Mediator<br>ZeroAlloc.Mediator integration"]
 
+    CORE --> CONFLUENCE["Rag.NET.DataProviders.Confluence<br>Confluence pages"]
+    CORE --> JIRA["Rag.NET.DataProviders.Jira<br>Jira issues"]
+    CORE --> NOTION["Rag.NET.DataProviders.Notion<br>Notion pages"]
+    CORE --> ASANA["Rag.NET.DataProviders.Asana<br>Asana tasks"]
+    CORE --> SLACK["Rag.NET.DataProviders.Slack<br>Slack messages"]
+    CORE --> TEAMS["Rag.NET.DataProviders.MicrosoftTeams<br>Teams messages"]
+    CORE --> GMAIL["Rag.NET.DataProviders.Gmail<br>Gmail messages"]
+
     style PG fill:#e8f4fd,stroke:#4a90d9
     style QD fill:#e8f4fd,stroke:#4a90d9
     style AZ fill:#e8f4fd,stroke:#4a90d9
@@ -76,6 +84,13 @@ flowchart TD
 | `Rag.NET.Parsers.PowerPoint` | PowerPoint `.pptx` parser (OpenXml) |
 | `Rag.NET.Evaluation` | Answer-quality evaluation via embedding cosine similarity |
 | `Rag.NET.Mediator` | ZeroAlloc.Mediator integration — dispatch ingest/retrieve/delete via `IMediator` |
+| `Rag.NET.DataProviders.Confluence` | Confluence pages via REST API |
+| `Rag.NET.DataProviders.Jira` | Jira issues via REST API |
+| `Rag.NET.DataProviders.Notion` | Notion pages and blocks via REST API |
+| `Rag.NET.DataProviders.Asana` | Asana tasks and subtasks via REST API |
+| `Rag.NET.DataProviders.Slack` | Slack channel messages via REST API |
+| `Rag.NET.DataProviders.MicrosoftTeams` | Teams channel messages via Microsoft Graph |
+| `Rag.NET.DataProviders.Gmail` | Gmail messages via IMAP (MailKit) |
 
 ## Requirements
 
