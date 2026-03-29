@@ -11,8 +11,17 @@
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Excel\Rag.NET.Parsers.Excel.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.PowerPoint\Rag.NET.Parsers.PowerPoint.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Confluence\Rag.NET.DataProviders.Confluence.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Jira\Rag.NET.DataProviders.Jira.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Notion\Rag.NET.DataProviders.Notion.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Asana\Rag.NET.DataProviders.Asana.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Slack\Rag.NET.DataProviders.Slack.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.MicrosoftTeams\Rag.NET.DataProviders.MicrosoftTeams.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Gmail\Rag.NET.DataProviders.Gmail.csproj" />
     <PackageReference Include="BenchmarkDotNet" Version="0.*" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.*" />
+    <PackageReference Include="NSubstitute" Version="5.*" />
+    <PackageReference Include="Refit" Version="8.*" />
   </ItemGroup>
 
 </Project>

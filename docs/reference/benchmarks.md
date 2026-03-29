@@ -169,6 +169,50 @@ CPU-only overhead of the `ParentDocumentRetriever` decorator. The inner retrieve
 
 ---
 
+## Data Connectors
+
+Benchmarks measure `GetFilesAsync()` enumeration throughput with mocked HTTP/IMAP backends (no network I/O).
+
+### Shared Ingestion (20 items)
+
+| Connector | Mean | Allocated |
+|-----------|-----:|----------:|
+| Confluence | TBD | TBD |
+| Jira | TBD | TBD |
+| Notion | TBD | TBD |
+| Asana | TBD | TBD |
+| Slack | TBD | TBD |
+| Teams | TBD | TBD |
+| Gmail | TBD | TBD |
+
+### Connector-Specific
+
+| Benchmark | Items | Mean | Allocated |
+|-----------|------:|-----:|----------:|
+| Confluence — FullTraversal | 20 | TBD | TBD |
+| Confluence — DeltaTraversal | 20 | TBD | TBD |
+| Confluence — LargeHtmlBodies | 5 | TBD | TBD |
+| Jira — FullTraversal | 20 | TBD | TBD |
+| Jira — DeltaTraversal | 20 | TBD | TBD |
+| Jira — IssueWithManyComments | 5 (10 comments) | TBD | TBD |
+| Notion — FullTraversal | 20 | TBD | TBD |
+| Notion — ManyBlocksPerPage | 5 (50 blocks) | TBD | TBD |
+| Asana — FullTraversal | 20 | TBD | TBD |
+| Asana — ManySubtasks | 5 (20 subtasks) | TBD | TBD |
+| Slack — SingleDayBatch | 20 | TBD | TBD |
+| Slack — MultiDayBatch | 20 (5 days) | TBD | TBD |
+| Slack — WithThreadReplies | 10 (3 replies) | TBD | TBD |
+| Teams — SingleDayBatch | 20 | TBD | TBD |
+| Teams — MultiDayBatch | 20 (5 days) | TBD | TBD |
+| Teams — HtmlStripping | 20 | TBD | TBD |
+| Gmail — FullTraversal | 20 | TBD | TBD |
+| Gmail — TextBodyOnly | 5 | TBD | TBD |
+| Gmail — HtmlBodyOnly | 5 | TBD | TBD |
+
+**Note:** Run `dotnet run -c Release --project benchmarks/Rag.NET.Benchmarks` to populate.
+
+---
+
 ## Search Result Caching
 
 CPU-only overhead of the `EmbeddingCacheRetriever` and `ResultCacheRetriever` decorators backed by `HybridCache`. Both the embedder and vector store are mocked (zero I/O) to isolate the cache lookup and serialization overhead.
