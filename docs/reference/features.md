@@ -330,12 +330,16 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 
 #### Group 4 — Source Control
 
+**Status:** ✅ Done
+
 | Package | SDK | Delta sync |
 |---|---|---|
 | `Rag.NET.DataProviders.GitLab` | `GitLabApiClient` | compare API (same pattern as GitHub) |
 | `Rag.NET.DataProviders.Bitbucket` | Bitbucket REST API | compare API |
 
 #### Group 5 — Support
+
+**Status:** ✅ Done
 
 | Package | SDK | Delta sync |
 |---|---|---|
@@ -463,14 +467,14 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Multi-Language Code Splitting | Medium | None (regex) |
 | [x] | Multi-Query Retrieval | Medium | `IChatClient` |
 | [x] | SaaS: Azure Blob Storage | Low | `Azure.Storage.Blobs` |
-| [ ] | SaaS: GitLab | Low | `GitLabApiClient` |
-| [ ] | SaaS: Bitbucket | Low | Bitbucket REST API |
-| [ ] | SaaS: Zendesk | Low | Zendesk REST API |
+| [x] | SaaS: GitLab | Low | `GitLabApiClient` |
+| [x] | SaaS: Bitbucket | Low | Bitbucket REST API |
+| [x] | SaaS: Zendesk | Low | Zendesk REST API |
 | [x] | SaaS: Confluence | Medium | Confluence REST API |
 | [x] | SaaS: Notion | Medium | Notion REST API |
 | [x] | SaaS: Jira | Medium | Jira REST API |
 | [x] | SaaS: Asana | Medium | Asana REST API |
-| [ ] | SaaS: Airtable | Medium | Airtable REST API |
+| [x] | SaaS: Airtable | Medium | Airtable REST API |
 | [x] | SaaS: Slack | Medium | Slack Web API |
 | [x] | SaaS: Gmail / IMAP | Medium | MailKit |
 | [x] | SaaS: Google Drive | Medium | `Google.Apis.Drive.v3` |

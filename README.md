@@ -42,6 +42,10 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 | [Rag.NET.DataProviders.Slack](src/Rag.NET.DataProviders.Slack) | Slack channel messages via REST API |
 | [Rag.NET.DataProviders.MicrosoftTeams](src/Rag.NET.DataProviders.MicrosoftTeams) | Teams channel messages via Microsoft Graph |
 | [Rag.NET.DataProviders.Gmail](src/Rag.NET.DataProviders.Gmail) | Gmail messages via IMAP (MailKit) |
+| [Rag.NET.DataProviders.GitLab](src/Rag.NET.DataProviders.GitLab) | GitLab repository files via NGitLab |
+| [Rag.NET.DataProviders.Bitbucket](src/Rag.NET.DataProviders.Bitbucket) | Bitbucket repository files via REST API |
+| [Rag.NET.DataProviders.Zendesk](src/Rag.NET.DataProviders.Zendesk) | Zendesk tickets and help center articles |
+| [Rag.NET.DataProviders.Airtable](src/Rag.NET.DataProviders.Airtable) | Airtable rows and attachments |
 
 ## Quick Start
 

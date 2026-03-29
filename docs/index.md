@@ -63,6 +63,10 @@ flowchart TD
     CORE --> SLACK["Rag.NET.DataProviders.Slack<br>Slack messages"]
     CORE --> TEAMS["Rag.NET.DataProviders.MicrosoftTeams<br>Teams messages"]
     CORE --> GMAIL["Rag.NET.DataProviders.Gmail<br>Gmail messages"]
+    CORE --> GITLAB["Rag.NET.DataProviders.GitLab<br>GitLab repository files"]
+    CORE --> BITBUCKET["Rag.NET.DataProviders.Bitbucket<br>Bitbucket repository files"]
+    CORE --> ZENDESK["Rag.NET.DataProviders.Zendesk<br>Zendesk tickets &amp; articles"]
+    CORE --> AIRTABLE["Rag.NET.DataProviders.Airtable<br>Airtable rows"]
 
     style PG fill:#e8f4fd,stroke:#4a90d9
     style QD fill:#e8f4fd,stroke:#4a90d9
@@ -91,6 +95,10 @@ flowchart TD
 | `Rag.NET.DataProviders.Slack` | Slack channel messages via REST API |
 | `Rag.NET.DataProviders.MicrosoftTeams` | Teams channel messages via Microsoft Graph |
 | `Rag.NET.DataProviders.Gmail` | Gmail messages via IMAP (MailKit) |
+| `Rag.NET.DataProviders.GitLab` | GitLab repository files via NGitLab |
+| `Rag.NET.DataProviders.Bitbucket` | Bitbucket repository files via REST API |
+| `Rag.NET.DataProviders.Zendesk` | Zendesk tickets and help center articles |
+| `Rag.NET.DataProviders.Airtable` | Airtable rows and attachments |
 
 ## Requirements
 

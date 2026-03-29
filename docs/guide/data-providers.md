@@ -87,6 +87,11 @@ var tokenProvider = new OAuthClientCredentialsTokenProvider(
 | Slack | `Rag.NET.DataProviders.Slack` | Bearer bot token | `oldest` Unix timestamp | Channel messages exported as plain text |
 | Microsoft Teams | `Rag.NET.DataProviders.MicrosoftTeams` | OAuth2 client credentials | Not yet supported | Graph SDK; messages exported as HTML |
 | Gmail | `Rag.NET.DataProviders.Gmail` | OAuth2 (`SaslMechanismOAuth2`) | IMAP UniqueId watermark | MailKit IMAP; emails exported as plain text |
+| GitLab | `Rag.NET.DataProviders.GitLab` | PAT (`PRIVATE-TOKEN` header) | Commit SHA compare | Repository files; same delta pattern as GitHub |
+| Bitbucket | `Rag.NET.DataProviders.Bitbucket` | App Password (Basic Auth) | Commit hash diffstat | Repository files via REST API |
+| Zendesk (Tickets) | `Rag.NET.DataProviders.Zendesk` | API Token (Basic Auth `email/token:key`) | Incremental cursor (`start_time`) | Tickets exported as HTML |
+| Zendesk (Articles) | `Rag.NET.DataProviders.Zendesk` | API Token (Basic Auth) | Incremental (`start_time`) | Help Center articles exported as HTML |
+| Airtable | `Rag.NET.DataProviders.Airtable` | PAT (Bearer token) | `filterByFormula` on Last Modified field | Rows and attachments |
 | Web (Sitemap / RSS / Crawler) | `Rag.NET.DataProviders.Web` | None | None | Construct directly; no DI extension method |
 
 ---
@@ -334,6 +339,76 @@ services.AddGmailDataProvider(tokenProvider, opts =>
 });
 ```
 
+### GitLab
+
+```csharp
+services.AddGitLabDataProvider(
+    baseUrl:           "https://gitlab.com",
+    projectIdOrPath:   "my-org/my-repo",
+    token:             "glpat-xxxxxxxxxxxxxxxxxxxx",
+    configure: opts =>
+    {
+        opts.Branch     = "main";
+        opts.Extensions = [".md", ".cs"];
+        opts.DeltaToken = settings.GitLabDeltaToken; // commit SHA; null on first run
+    });
+```
+
+### Bitbucket
+
+```csharp
+services.AddBitbucketDataProvider(
+    workspace:   "my-workspace",
+    repoSlug:    "my-repo",
+    username:    "my-username",
+    appPassword: "my-app-password",
+    configure: opts =>
+    {
+        opts.Branch     = "main";
+        opts.Extensions = [".md", ".cs"];
+        opts.DeltaToken = settings.BitbucketDeltaToken; // commit hash; null on first run
+    });
+```
+
+### Zendesk — Tickets
+
+```csharp
+services.AddZendeskTicketsDataProvider(
+    subdomain: "mycompany",
+    email:     "agent@example.com",
+    apiToken:  "my-zendesk-api-token",
+    configure: opts =>
+    {
+        opts.DeltaToken = settings.ZendeskTicketsDeltaToken; // Unix epoch; null on first run
+    });
+```
+
+### Zendesk — Articles
+
+```csharp
+services.AddZendeskArticlesDataProvider(
+    subdomain: "mycompany",
+    email:     "agent@example.com",
+    apiToken:  "my-zendesk-api-token",
+    configure: opts =>
+    {
+        opts.DeltaToken = settings.ZendeskArticlesDeltaToken; // Unix epoch; null on first run
+    });
+```
+
+### Airtable
+
+```csharp
+services.AddAirtableDataProvider(
+    baseId:              "appXXXXXXXXXXXXXX",
+    tableName:           "My Table",
+    personalAccessToken: "patXXXXXXXXXXXXXX",
+    configure: opts =>
+    {
+        opts.DeltaToken = settings.AirtableDeltaToken; // ISO 8601 timestamp; null on first run
+    });
+```
+
 ### Web — Sitemap
 
 ```csharp
@@ -408,6 +483,10 @@ services.AddSharePointDataProvider(tenantId, clientId, clientSecret, siteId, dri
 | Slack | Unix timestamp (string) | Passed as `oldest` to `conversations.history` |
 | Microsoft Teams | Not yet supported | Delta ingestion is not yet implemented for this connector |
 | Gmail | IMAP UniqueId (string) | Messages with a UID greater than the watermark are fetched |
+| GitLab | Commit SHA (string) | HEAD commit SHA at last successful ingest; compare API returns changed files |
+| Bitbucket | Commit hash (string) | HEAD commit hash at last successful ingest; diffstat API returns changed files |
+| Zendesk | Unix epoch (string) | Passed as `start_time` to the incremental export API |
+| Airtable | ISO 8601 timestamp (string) | Used in `filterByFormula` against the Last Modified field |
 | Azure Blob | Not applicable | Uses per-file ETag comparison rather than a cursor |
 
 > Azure Blob Storage does not use a `DeltaToken` cursor. Instead, the pipeline's content hash store compares each blob's ETag against the stored value. A stale ETag simply means the blob is re-ingested — no data is lost.
@@ -457,4 +536,13 @@ Both filters are applied before the file content is downloaded, so excluded file
 | Slack `invalid_auth` / `token_revoked` | Exception propagated; re-issue the bot token and redeploy |
 | Microsoft Teams Graph errors | Handled the same way as SharePoint/OneDrive Graph errors; check app permissions (`ChannelMessage.Read.All`) |
 | Gmail IMAP connection refused | Check that IMAP is enabled for the mailbox and that the OAuth2 token has the `https://mail.google.com/` scope |
+| 429 Too Many Requests (GitLab) | GitLab rate-limits at 300–2000 requests/min depending on tier; the resilience pipeline retries with back-off |
+| 401 Unauthorized (GitLab) | Verify the `PRIVATE-TOKEN` is valid and has `read_repository` scope |
+| 429 Too Many Requests (Bitbucket) | Bitbucket Cloud rate-limits at 1000 requests/hour; the resilience pipeline retries with back-off |
+| 401 Unauthorized (Bitbucket) | Verify the app password is valid and has `repository:read` permission |
+| 429 Too Many Requests (Zendesk) | Zendesk rate-limits vary by plan; the resilience pipeline retries with back-off |
+| 401 Unauthorized (Zendesk) | Verify the `email/token:apiToken` combination is correct |
+| 422 Unprocessable Entity (Airtable) | Check `filterByFormula` syntax and field names; the Last Modified field name must match exactly |
+| 429 Too Many Requests (Airtable) | Airtable rate-limits at 5 requests/second per base; the resilience pipeline retries with back-off |
+| 401 Unauthorized (Airtable) | Verify the personal access token is valid and has access to the specified base |
 | LLM / embedding failures during ingestion | Propagated from the core pipeline — not connector-specific |
