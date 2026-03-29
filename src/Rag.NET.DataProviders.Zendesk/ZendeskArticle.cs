@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Rag.NET.DataProviders.Zendesk;
 
-/// <summary>A Zendesk Help Center article (placeholder for future use).</summary>
+/// <summary>A Zendesk Help Center article.</summary>
 internal sealed class ZendeskArticle
 {
     [JsonPropertyName("id")]
@@ -16,4 +16,7 @@ internal sealed class ZendeskArticle
 
     [JsonPropertyName("updated_at")]
     public string UpdatedAt { get; set; } = string.Empty;
+
+    [JsonPropertyName("section_id")]
+    public long? SectionId { get; set; }
 }
