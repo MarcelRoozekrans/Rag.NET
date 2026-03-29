@@ -37,6 +37,7 @@
     <Project Path="src/Rag.NET.DataProviders.Gmail/Rag.NET.DataProviders.Gmail.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Bitbucket/Rag.NET.DataProviders.Bitbucket.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Zendesk/Rag.NET.DataProviders.Zendesk.csproj" />
+    <Project Path="src/Rag.NET.DataProviders.GitLab/Rag.NET.DataProviders.GitLab.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -73,6 +74,7 @@
     <Project Path="tests/Rag.NET.DataProviders.Gmail.Tests/Rag.NET.DataProviders.Gmail.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Bitbucket.Tests/Rag.NET.DataProviders.Bitbucket.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Zendesk.Tests/Rag.NET.DataProviders.Zendesk.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.GitLab.Tests/Rag.NET.DataProviders.GitLab.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
