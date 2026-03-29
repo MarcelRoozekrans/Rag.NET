@@ -80,6 +80,13 @@ var tokenProvider = new OAuthClientCredentialsTokenProvider(
 | Dropbox | `Rag.NET.DataProviders.Dropbox` | Access token or `ITokenProvider` | ListFolder cursor | Cursors do not expire |
 | Box | `Rag.NET.DataProviders.Box` | JWT config JSON or `BoxClient` | Events stream position | Root folder configurable via `RootFolderId` |
 | GitHub | `Rag.NET.DataProviders.GitHub` | PAT via `StaticTokenProvider` | Commit SHA (`LastIngestedCommitSha`) | ETag is the blob SHA — byte-identical content is guaranteed |
+| Confluence | `Rag.NET.DataProviders.Confluence` | Basic Auth (email + API token) | CQL `lastModified>` cursor | Atlassian Cloud; pages exported as HTML |
+| Jira | `Rag.NET.DataProviders.Jira` | Basic Auth (email + API token) | JQL `updated >` timestamp | Atlassian Cloud; issues exported as HTML |
+| Notion | `Rag.NET.DataProviders.Notion` | Bearer integration token | Client-side `last_edited_time` | Exports pages as Markdown |
+| Asana | `Rag.NET.DataProviders.Asana` | Bearer PAT or OAuth2 | `modified_since` parameter | Requires `workspaceGid`; tasks exported as HTML |
+| Slack | `Rag.NET.DataProviders.Slack` | Bearer bot token | `oldest` Unix timestamp | Channel messages exported as plain text |
+| Microsoft Teams | `Rag.NET.DataProviders.MicrosoftTeams` | OAuth2 client credentials | Not yet supported | Graph SDK; messages exported as HTML |
+| Gmail | `Rag.NET.DataProviders.Gmail` | OAuth2 (`SaslMechanismOAuth2`) | IMAP UniqueId watermark | MailKit IMAP; emails exported as plain text |
 | Web (Sitemap / RSS / Crawler) | `Rag.NET.DataProviders.Web` | None | None | Construct directly; no DI extension method |
 
 ---
@@ -214,6 +221,119 @@ var provider = new GitHubDataProvider(
 services.AddSingleton<IFileContentProvider>(provider);
 ```
 
+### Confluence
+
+```csharp
+services.AddConfluenceDataProvider(
+    baseUrl:  "https://your-domain.atlassian.net/wiki",
+    email:    "user@example.com",
+    apiToken: "ATATT3xFfGF0...",
+    configure: opts =>
+    {
+        opts.SpaceKeys  = ["ENG", "OPS"];         // null = all spaces
+        opts.Extensions = [".html"];
+        opts.DeltaToken = settings.ConfluenceDeltaToken;
+    });
+```
+
+### Jira
+
+```csharp
+services.AddJiraDataProvider(
+    baseUrl:  "https://your-domain.atlassian.net",
+    email:    "user@example.com",
+    apiToken: "ATATT3xFfGF0...",
+    configure: opts =>
+    {
+        opts.Jql        = "project = ENG";         // null = all issues
+        opts.Extensions = [".html"];
+        opts.DeltaToken = settings.JiraDeltaToken;
+    });
+```
+
+### Notion
+
+```csharp
+services.AddNotionDataProvider(
+    integrationToken: "ntn_...",
+    configure: opts =>
+    {
+        opts.Extensions = [".md"];
+        opts.DeltaToken = settings.NotionDeltaToken;
+    });
+```
+
+### Asana — PAT
+
+```csharp
+services.AddAsanaDataProvider(
+    personalAccessToken: "1/12345:abcdef...",
+    workspaceGid:        "1234567890",
+    configure: opts =>
+    {
+        opts.ProjectGid = "9876543210";            // null = all projects in workspace
+        opts.DeltaToken = settings.AsanaDeltaToken;
+    });
+```
+
+### Asana — `ITokenProvider` (OAuth2)
+
+```csharp
+var tokenProvider = new OAuthClientCredentialsTokenProvider(
+    tokenEndpoint: "https://app.asana.com/-/oauth_token",
+    clientId:      "my-client-id",
+    clientSecret:  "my-client-secret");
+
+services.AddAsanaDataProvider(tokenProvider, workspaceGid: "1234567890", opts =>
+{
+    opts.DeltaToken = settings.AsanaDeltaToken;
+});
+```
+
+### Slack
+
+```csharp
+services.AddSlackDataProvider(
+    botToken: "xoxb-...",
+    configure: opts =>
+    {
+        opts.ChannelIds = ["C01ABCDEF", "C02GHIJKL"]; // null = all public channels
+        opts.DeltaToken = settings.SlackDeltaToken;
+    });
+```
+
+### Microsoft Teams
+
+```csharp
+services.AddMicrosoftTeamsDataProvider(
+    tenantId:     "00000000-0000-0000-0000-000000000000",
+    clientId:     "my-app-client-id",
+    clientSecret: "my-app-client-secret",
+    configure: opts =>
+    {
+        opts.TeamId   = "team-guid";               // required
+        opts.ChannelId = "channel-guid";           // null = all channels in the team
+    });
+```
+
+### Gmail
+
+```csharp
+var tokenProvider = new OAuthClientCredentialsTokenProvider(
+    tokenEndpoint: "https://oauth2.googleapis.com/token",
+    clientId:      "my-client-id.apps.googleusercontent.com",
+    clientSecret:  "my-client-secret",
+    scopes:        ["https://mail.google.com/"]);
+
+services.AddGmailDataProvider(tokenProvider, opts =>
+{
+    opts.ImapHost   = "imap.gmail.com";            // default
+    opts.ImapPort   = 993;                         // default
+    opts.EmailAddress = "user@example.com";
+    opts.DeltaToken = settings.GmailDeltaToken;    // IMAP UniqueId watermark
+});
+```
+
 ### Web — Sitemap
 
 ```csharp
@@ -281,6 +401,13 @@ services.AddSharePointDataProvider(tenantId, clientId, clientSecret, siteId, dri
 | Dropbox | ListFolder cursor | Does not expire; safe to store indefinitely |
 | Box | Events stream position (string) | Numeric position in the Box events stream |
 | GitHub | Commit SHA | The HEAD commit SHA at the time of the last successful ingest |
+| Confluence | CQL `lastModified>` ISO date-time | Stored as the last-seen `lastModified` value; pass back via `DeltaToken` |
+| Jira | JQL `updated >` ISO date-time | Stored as the last-seen `updated` value |
+| Notion | ISO 8601 `last_edited_time` | Client-side filter; all pages are listed but only recently edited ones are returned |
+| Asana | ISO 8601 `modified_since` | Passed to the API as a query parameter |
+| Slack | Unix timestamp (string) | Passed as `oldest` to `conversations.history` |
+| Microsoft Teams | Not yet supported | Delta ingestion is not yet implemented for this connector |
+| Gmail | IMAP UniqueId (string) | Messages with a UID greater than the watermark are fetched |
 | Azure Blob | Not applicable | Uses per-file ETag comparison rather than a cursor |
 
 > Azure Blob Storage does not use a `DeltaToken` cursor. Instead, the pipeline's content hash store compares each blob's ETag against the stored value. A stale ETag simply means the blob is re-ingested — no data is lost.
@@ -324,4 +451,10 @@ Both filters are applied before the file content is downloaded, so excluded file
 | Stale delta token (other connectors) | Provider-specific behaviour; refer to the SDK documentation for the connector |
 | Stale ETag (Azure Blob) | No special handling needed — a changed or absent ETag causes the blob to be re-ingested, not skipped |
 | Azure SDK transient errors | Handled by the Azure SDK's built-in retry policy; do not add an external retry policy on top |
+| 429 Too Many Requests (Confluence / Jira) | Atlassian rate limits; the Refit HTTP client retries automatically via the resilience pipeline |
+| 429 Too Many Requests (Notion) | Notion API rate-limits at ~3 requests/second; the resilience pipeline retries with back-off |
+| 429 Too Many Requests (Asana / Slack) | Handled by the resilience pipeline; consider reducing concurrency if limits are hit frequently |
+| Slack `invalid_auth` / `token_revoked` | Exception propagated; re-issue the bot token and redeploy |
+| Microsoft Teams Graph errors | Handled the same way as SharePoint/OneDrive Graph errors; check app permissions (`ChannelMessage.Read.All`) |
+| Gmail IMAP connection refused | Check that IMAP is enabled for the mailbox and that the OAuth2 token has the `https://mail.google.com/` scope |
 | LLM / embedding failures during ingestion | Propagated from the core pipeline — not connector-specific |
