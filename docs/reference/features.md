@@ -499,4 +499,4 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Parent-Document Retrieval | High | Dual index |
 | [x] | RAPTOR | High | UMAP + GMM + `IChatClient` |
 | [x] | Self-Query Filtering | High | `IChatClient` + schema |
-| [ ] | GraphRAG | Very High | Graph DB + `IChatClient` |
+| [x] | GraphRAG | Very High | Graph DB + `IChatClient` |
