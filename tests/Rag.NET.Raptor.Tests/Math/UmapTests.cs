@@ -44,6 +44,37 @@ public class UmapTests
         Assert.Equal(3, result[0].Length);
     }
 
+    [Fact]
+    public void Fit_EmptyData_ReturnsEmptyArray()
+    {
+        var result = Umap.Fit([], targetDimensions: 2);
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void Fit_SinglePoint_ReturnsResult()
+    {
+        var data = new[] { new[] { 1f, 2f, 3f } };
+        var result = Umap.Fit(data, targetDimensions: 2);
+        Assert.Single(result);
+        Assert.Equal(2, result[0].Length);
+    }
+
+    [Fact]
+    public void Fit_NullData_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() => Umap.Fit(null!, 2));
+    }
+
+    [Fact]
+    public void Fit_TargetDimensionsGreaterThanInput_PadsWithZeros()
+    {
+        var data = CreateRandomData(5, 3, seed: 42);
+        var result = Umap.Fit(data, targetDimensions: 5);
+        Assert.Equal(5, result.Length);
+        Assert.Equal(5, result[0].Length);
+    }
+
     private static float[][] CreateRandomData(int count, int dims, int seed)
     {
         var rng = new Random(seed);

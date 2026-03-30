@@ -68,6 +68,33 @@ public class GaussianMixtureModelTests
         Assert.All(result.Assignments, a => Assert.Equal(0, a));
     }
 
+    [Fact]
+    public void Fit_SinglePoint_DoesNotThrow()
+    {
+        var data = new[] { new[] { 0f, 0f } };
+        var result = GaussianMixtureModel.Fit(data, k: 1);
+        Assert.Single(result.Assignments);
+        Assert.Equal(0, result.Assignments[0]);
+    }
+
+    [Fact]
+    public void Fit_AllIdenticalPoints_DoesNotThrow()
+    {
+        var data = Enumerable.Range(0, 10)
+            .Select(_ => new[] { 5f, 5f })
+            .ToArray();
+        var result = GaussianMixtureModel.Fit(data, k: 2);
+        Assert.Equal(10, result.Assignments.Length);
+    }
+
+    [Fact]
+    public void Fit_MoreClustersThanPoints_DoesNotThrow()
+    {
+        var data = new[] { new[] { 0f, 0f }, new[] { 1f, 1f } };
+        var result = GaussianMixtureModel.Fit(data, k: 5);
+        Assert.Equal(2, result.Assignments.Length);
+    }
+
     private static float[][] CreateCluster(float[] center, int count, float spread, int seed)
     {
         var rng = new Random(seed);

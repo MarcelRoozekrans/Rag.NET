@@ -56,6 +56,17 @@ public class RagBuilderExtensionsTests
     }
 
     [Fact]
+    public void UseRaptor_ReturnsBuilderForChaining()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        var result = builder.UseRaptor();
+
+        Assert.Same(builder, result);
+    }
+
+    [Fact]
     public void UseRaptor_RegistersRetrievalBehavior()
     {
         var services = new ServiceCollection();

@@ -79,6 +79,62 @@ public class RaptorRetrievalBehaviorTests
             Assert.True(actual[i - 1].Score >= actual[i].Score, "Results should be sorted descending by score");
     }
 
+    [Fact]
+    public async Task HandleAsync_FilterMode_MaxLevelOnly_ExcludesHigherLevels()
+    {
+        var options = new RaptorRetrievalOptions { Mode = RaptorRetrievalMode.Filter, MaxRaptorLevel = 1 };
+        var sut = new RaptorRetrievalBehavior(options);
+        var results = CreateResults();
+        var ctx = CreateContext();
+
+        var actual = await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
+
+        Assert.Equal(2, actual.Count); // leaf (level 0) + level 1
+        Assert.DoesNotContain(actual, r => r.Chunk.Metadata.TryGetValue("raptor_level", out var l) && string.Equals(l, "2", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task HandleAsync_AllModes_WithEmptyResults_ReturnsEmpty()
+    {
+        var empty = (IReadOnlyList<SearchResult>)new List<SearchResult>().AsReadOnly();
+        var ctx = CreateContext();
+
+        foreach (var mode in Enum.GetValues<RaptorRetrievalMode>())
+        {
+            var options = new RaptorRetrievalOptions { Mode = mode };
+            var sut = new RaptorRetrievalBehavior(options);
+            var actual = await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(empty));
+            Assert.Empty(actual);
+        }
+    }
+
+    [Fact]
+    public async Task HandleAsync_BoostMode_MalformedRaptorLevel_TreatedAsLeaf()
+    {
+        var options = new RaptorRetrievalOptions { Mode = RaptorRetrievalMode.Boost, SummaryBoostFactor = 2.0 };
+        var sut = new RaptorRetrievalBehavior(options);
+        var ctx = CreateContext();
+        var results = (IReadOnlyList<SearchResult>)new List<SearchResult>
+        {
+            new SearchResult
+            {
+                Chunk = new TextChunk
+                {
+                    Text = "bad metadata",
+                    DocumentId = new DocumentId("doc"),
+                    ChunkIndex = 0,
+                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["raptor_level"] = "not-a-number" },
+                },
+                Score = 0.5,
+            },
+        }.AsReadOnly();
+
+        var actual = await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
+
+        Assert.Single(actual);
+        Assert.Equal(0.5, actual[0].Score); // no boost — treated as level 0
+    }
+
     private static RetrievalContext CreateContext() => new()
     {
         Query = "test query",
