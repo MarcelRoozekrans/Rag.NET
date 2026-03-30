@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Bitbucket\Rag.NET.DataProviders.Bitbucket.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Zendesk\Rag.NET.DataProviders.Zendesk.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Airtable\Rag.NET.DataProviders.Airtable.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Raptor\Rag.NET.Raptor.csproj" />
     <PackageReference Include="BenchmarkDotNet" Version="0.*" />
     <PackageReference Include="NGitLab" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.*" />
