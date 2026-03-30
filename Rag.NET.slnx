@@ -40,6 +40,8 @@
     <Project Path="src/Rag.NET.DataProviders.GitLab/Rag.NET.DataProviders.GitLab.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Airtable/Rag.NET.DataProviders.Airtable.csproj" />
     <Project Path="src/Rag.NET.Raptor/Rag.NET.Raptor.csproj" />
+    <Project Path="src/Rag.NET.Graph/Rag.NET.Graph.csproj" />
+    <Project Path="src/Rag.NET.GraphRag/Rag.NET.GraphRag.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -79,6 +81,8 @@
     <Project Path="tests/Rag.NET.DataProviders.GitLab.Tests/Rag.NET.DataProviders.GitLab.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Airtable.Tests/Rag.NET.DataProviders.Airtable.Tests.csproj" />
     <Project Path="tests/Rag.NET.Raptor.Tests/Rag.NET.Raptor.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Graph.Tests/Rag.NET.Graph.Tests.csproj" />
+    <Project Path="tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />

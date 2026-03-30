@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.GraphRag</RootNamespace>
+    <PackageId>Rag.NET.GraphRag</PackageId>
+    <Description>GraphRAG — entity extraction, community detection, local + global search for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <ProjectReference Include="..\Rag.NET.Graph\Rag.NET.Graph.csproj" />
+  </ItemGroup>
+
+</Project>
