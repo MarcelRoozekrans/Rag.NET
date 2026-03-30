@@ -122,6 +122,39 @@ public class GraphLocalSearchBehaviorTests
         await _graphStore.Received(1).GetNeighborsAsync("Alice", 3, Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task HandleAsync_EntitiesWithZeroPageRank_BlendingStable()
+    {
+        var options = new GraphRagRetrievalOptions
+        {
+            LocalTopEntities = 10,
+            LocalSearchDepth = 1,
+            PageRankWeight = 0.4,
+        };
+        var sut = new GraphLocalSearchBehavior(_graphStore, options);
+
+        var results = CreateEntityResults(); // Alice entity has score 0.9
+        var ctx = CreateContext();
+
+        // Entity with PageRankScore = 0.0
+        _graphStore.GetNeighborsAsync("Alice", 1, Arg.Any<CancellationToken>())
+            .Returns([new GraphEntity("Alice", "Person", "Alice desc") { PageRankScore = 0.0 }]);
+        _graphStore.GetRelationshipsAsync("Alice", Arg.Any<CancellationToken>())
+            .Returns([]);
+        _graphStore.GetCommunitiesForEntityAsync("Alice", Arg.Any<CancellationToken>())
+            .Returns([]);
+
+        var actual = await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
+
+        // Find the Alice entity result
+        var aliceResult = actual.First(r =>
+            r.Chunk.Metadata.TryGetValue("graph_entity_name", out var n)
+            && string.Equals(n, "Alice", StringComparison.Ordinal));
+
+        // Expected: (1 - 0.4) * 0.9 + 0.4 * 0.0 = 0.54 + 0.0 = 0.54
+        Assert.Equal(0.54, aliceResult.Score, precision: 5);
+    }
+
     private static IReadOnlyList<SearchResult> CreateEntityResults() =>
         new List<SearchResult>
         {

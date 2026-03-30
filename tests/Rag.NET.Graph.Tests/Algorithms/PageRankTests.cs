@@ -77,4 +77,34 @@ public class PageRankTests
         foreach (var key in run1.Keys)
             Assert.Equal(run1[key], run2[key], precision: 10);
     }
+
+    [Fact]
+    public void Compute_WithSelfLoops_IgnoresSelfLoops()
+    {
+        var entities = new[] { new GraphEntity("A", "Node", "A"), new GraphEntity("B", "Node", "B") };
+        var relationships = new List<GraphRelationship>
+        {
+            new("A", "A", "self-loop"),
+            new("A", "B", "points to"),
+        };
+        var graph = new GraphSnapshot(entities, relationships, []);
+        var ranks = PageRank.Compute(graph);
+        Assert.Equal(2, ranks.Count);
+        Assert.InRange(ranks.Values.Sum(), 0.99, 1.01);
+    }
+
+    [Fact]
+    public void Compute_AllDanglingNodes_DistributesEqualRank()
+    {
+        // Nodes with no outgoing edges
+        var entities = Enumerable.Range(0, 5)
+            .Select(i => new GraphEntity($"E{i}", "Node", $"E{i}"))
+            .ToList();
+        var graph = new GraphSnapshot(entities, [], []);
+        var ranks = PageRank.Compute(graph);
+        // All nodes should have equal rank
+        var expected = 1.0 / 5;
+        foreach (var rank in ranks.Values)
+            Assert.Equal(expected, rank, precision: 3);
+    }
 }

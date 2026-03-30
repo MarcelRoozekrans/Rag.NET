@@ -132,4 +132,55 @@ public class LeidenTests
         for (int i = 0; i < sorted1.Count; i++)
             Assert.Equal(sorted1[i], sorted2[i]);
     }
+
+    [Fact]
+    public void Detect_WithSelfLoops_IgnoresSelfLoops()
+    {
+        var entities = new[] { new GraphEntity("A", "Node", "A"), new GraphEntity("B", "Node", "B") };
+        var relationships = new List<GraphRelationship>
+        {
+            new("A", "A", "self-loop"),  // self-loop
+            new("A", "B", "connected"),
+        };
+        var graph = new GraphSnapshot(entities, relationships, []);
+        var communities = Leiden.Detect(graph);
+        // Should not crash; should still find communities
+        Assert.NotEmpty(communities);
+        Assert.Equal(2, communities.SelectMany(c => c.MemberEntities).Count());
+    }
+
+    [Fact]
+    public void Detect_IsolatedNodes_EachGetsCommunity()
+    {
+        var entities = new[]
+        {
+            new GraphEntity("A", "Node", "A"), new GraphEntity("B", "Node", "B"),
+            new GraphEntity("C", "Node", "C"),
+        };
+        // No relationships at all
+        var graph = new GraphSnapshot(entities, [], []);
+        var communities = Leiden.Detect(graph);
+        var allMembers = communities.SelectMany(c => c.MemberEntities).ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(3, allMembers.Count); // all entities assigned
+    }
+
+    [Fact]
+    public void Detect_MaxLevelsOne_StopsAfterOneLevel()
+    {
+        var entities = Enumerable.Range(0, 8)
+            .Select(i => new GraphEntity($"E{i}", "Node", $"Entity {i}"))
+            .ToList();
+        var relationships = new List<GraphRelationship>();
+        for (int i = 0; i < 4; i++)
+            for (int j = i + 1; j < 4; j++)
+                relationships.Add(new GraphRelationship($"E{i}", $"E{j}", "connected"));
+        for (int i = 4; i < 8; i++)
+            for (int j = i + 1; j < 8; j++)
+                relationships.Add(new GraphRelationship($"E{i}", $"E{j}", "connected"));
+
+        var graph = new GraphSnapshot(entities, relationships, []);
+        var communities = Leiden.Detect(graph, new LeidenOptions { MaxLevels = 1 });
+        // Should still find communities, MaxLevels caps recursion
+        Assert.NotEmpty(communities);
+    }
 }

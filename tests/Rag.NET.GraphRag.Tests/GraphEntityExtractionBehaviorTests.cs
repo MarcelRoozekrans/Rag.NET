@@ -175,6 +175,51 @@ public class GraphEntityExtractionBehaviorTests : IAsyncDisposable
         Assert.Equal("GraphRAG", relChunks[0].Chunk.Metadata["graph_target_entity"]);
     }
 
+    [Fact]
+    public async Task HandleAsync_MalformedJsonFromLLM_ContinuesGracefully()
+    {
+        // Setup LLM to return non-JSON text
+        var options = new GraphRagOptions { GleaningPasses = 0 };
+        var sut = new GraphEntityExtractionBehavior(_chatClient, _embedder, _graphStore, options);
+        var ctx = CreateContext();
+
+        SetupChatClient("This is not valid JSON at all!");
+        SetupEmbedder(4);
+
+        var nextCalled = false;
+        await sut.HandleAsync(ctx, TestContext.Current.CancellationToken,
+            (c, ct) => { nextCalled = true; return ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }); });
+
+        // The behavior should log a warning and continue without crashing
+        Assert.True(nextCalled);
+        var snapshot = await _graphStore.GetFullGraphAsync(TestContext.Current.CancellationToken);
+        Assert.Empty(snapshot.Entities);
+    }
+
+    [Fact]
+    public async Task HandleAsync_EmptyChunks_SkipsWithoutError()
+    {
+        // Setup context with zero chunks
+        var options = new GraphRagOptions { GleaningPasses = 0 };
+        var sut = new GraphEntityExtractionBehavior(_chatClient, _embedder, _graphStore, options);
+        var ctx = new IngestionContext
+        {
+            Stream = Stream.Null,
+            Metadata = new DocumentMetadata { DocumentId = new DocumentId("empty-doc"), FileName = "empty.txt" },
+            GetNextBm25DocId = () => 0,
+        };
+        // No chunks added to ctx
+
+        var nextCalled = false;
+        await sut.HandleAsync(ctx, TestContext.Current.CancellationToken,
+            (c, ct) => { nextCalled = true; return ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }); });
+
+        // Verify: next() is called, no LLM calls made
+        Assert.True(nextCalled);
+        await _chatClient.DidNotReceive().GetResponseAsync(
+            Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private static IngestionContext CreateContext()

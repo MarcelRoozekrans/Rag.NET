@@ -166,6 +166,32 @@ public class GraphGlobalSearchBehaviorTests
         Assert.Equal("regular chunk", actual[1].Chunk.Text);
     }
 
+    [Fact]
+    public async Task HandleAsync_SingleCommunityReport_StillProcesses()
+    {
+        var options = new GraphRagRetrievalOptions { GlobalBatchSize = 5 };
+        var sut = new GraphGlobalSearchBehavior(_chatClient, options);
+        var ctx = CreateContext();
+        var results = CreateCommunityResults(1);
+
+        _chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
+                Arg.Any<ChatOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "single community answer")]));
+
+        var actual = await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
+
+        // 1 report => 1 map call + 1 reduce call = 2 total
+        await _chatClient.Received(2).GetResponseAsync(
+            Arg.Any<IEnumerable<ChatMessage>>(),
+            Arg.Any<ChatOptions?>(),
+            Arg.Any<CancellationToken>());
+
+        Assert.NotEmpty(actual);
+        Assert.Equal("single community answer", actual[0].Chunk.Text);
+    }
+
     private static IReadOnlyList<SearchResult> CreateCommunityResults(int count)
     {
         var results = new List<SearchResult>();
