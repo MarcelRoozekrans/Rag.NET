@@ -310,7 +310,7 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// When registered, answer engines automatically trim conversation history before each call
     /// using the configured sliding-window, token-budget, and optional summary strategies.
     /// Use the optional <paramref name="configure"/> delegate to wrap the pipeline with additional
-    /// decorators, such as <see cref="ConversationMemoryBuilder.UsePersistentMemory"/>.
+    /// decorators (e.g. <c>Rag.NET.Memory.RagBuilderExtensions.UsePersistentMemory</c>).
     /// </summary>
     /// <param name="options">Optional memory options. Defaults to pass-through (no trimming).</param>
     /// <param name="configure">Optional delegate to configure memory decorators.</param>
@@ -321,25 +321,18 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
         var opts = options ?? new ConversationMemoryOptions();
         Services.AddSingleton(opts);
 
-        var memBuilder = new ConversationMemoryBuilder();
+        var memBuilder = new ConversationMemoryBuilder(Services);
         configure?.Invoke(memBuilder);
 
-        if (memBuilder.HasPersistentMemory)
+        if (memBuilder.DecoratorFactory is { } factory)
         {
-            var persistentOpts = memBuilder.PersistentMemoryOptions;
-            Services.AddSingleton(persistentOpts);
             Services.AddSingleton<IConversationMemory>(sp =>
             {
                 IConversationMemory pipeline = new ConversationMemoryPipeline(
                     opts,
                     sp.GetService<IChatClient>(),
                     sp.GetService<ILogger<ConversationMemoryPipeline>>() ?? NullLogger<ConversationMemoryPipeline>.Instance);
-                return new PersistentConversationMemory(
-                    pipeline,
-                    sp.GetRequiredService<IVectorStore>(),
-                    sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
-                    persistentOpts,
-                    sp.GetService<ILogger<PersistentConversationMemory>>());
+                return factory(sp, pipeline);
             });
         }
         else

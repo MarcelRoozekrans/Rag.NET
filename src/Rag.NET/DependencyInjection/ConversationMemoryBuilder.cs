@@ -1,4 +1,4 @@
-using Rag.NET.Models.Options;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Rag.NET.DependencyInjection;
 
@@ -8,29 +8,16 @@ namespace Rag.NET.DependencyInjection;
 /// </summary>
 public sealed class ConversationMemoryBuilder
 {
-    internal ConversationMemoryBuilder() { }
+    internal ConversationMemoryBuilder(IServiceCollection services) { Services = services; }
 
-    private bool _usePersistentMemory;
-    private PersistentMemoryOptions? _persistentMemoryOptions;
-
-    internal bool HasPersistentMemory => _usePersistentMemory;
-    internal PersistentMemoryOptions PersistentMemoryOptions =>
-        _persistentMemoryOptions ??= new PersistentMemoryOptions();
+    /// <summary>Gets the underlying <see cref="IServiceCollection"/> for additional registrations.</summary>
+    public IServiceCollection Services { get; }
 
     /// <summary>
-    /// Wraps the conversation memory pipeline with
-    /// <see cref="Rag.NET.Memory.PersistentConversationMemory"/>, which retrieves relevant past
-    /// exchange pairs from the vector store and injects them as a system-message prefix before
-    /// delegating to the inner pipeline.
+    /// Optional factory set by external packages (e.g. <c>Rag.NET.Memory</c>) to wrap the
+    /// inner <see cref="Rag.NET.Abstractions.IConversationMemory"/> pipeline with a decorator.
+    /// When set, <see cref="RagBuilder.UseConversationMemory"/> delegates final registration
+    /// to this factory instead of registering the bare pipeline.
     /// </summary>
-    /// <remarks>
-    /// Requires <see cref="Rag.NET.Abstractions.IVectorStore"/> and
-    /// <c>IEmbeddingGenerator&lt;string, Embedding&lt;float&gt;&gt;</c> to be registered in DI.
-    /// </remarks>
-    public ConversationMemoryBuilder UsePersistentMemory(PersistentMemoryOptions? options = null)
-    {
-        _usePersistentMemory = true;
-        _persistentMemoryOptions = options;
-        return this;
-    }
+    public Func<IServiceProvider, Rag.NET.Abstractions.IConversationMemory, Rag.NET.Abstractions.IConversationMemory>? DecoratorFactory { get; set; }
 }
