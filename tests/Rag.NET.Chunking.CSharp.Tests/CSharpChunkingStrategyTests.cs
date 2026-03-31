@@ -86,4 +86,99 @@ public class CSharpChunkingStrategyTests
         Assert.Equal("method", methodChunk.Metadata["csharp.kind"]);
         Assert.Equal("public", methodChunk.Metadata["csharp.accessibility"]);
     }
+
+    [Fact]
+    public async Task ChunkAsync_PrivateMember_ExcludedByDefault()
+    {
+        const string source = """
+            public class Foo
+            {
+                public void Public() { }
+                private void Private() { }
+            }
+            """;
+
+        var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(chunks, c =>
+            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "Private", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ChunkAsync_PrivateMember_IncludedWhenOptionSet()
+    {
+        const string source = """
+            public class Foo
+            {
+                public void Public() { }
+                private void Private() { }
+            }
+            """;
+
+        var chunks = await Strategy(new CSharpChunkingOptions { IncludePrivateMembers = true })
+            .ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains(chunks, c =>
+            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "Private", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ChunkAsync_XmlDoc_ExtractedToSummaryMetadata()
+    {
+        const string source = """
+            public class Greeter
+            {
+                /// <summary>Says hello to the given name.</summary>
+                public string Greet(string name) => $"Hello {name}";
+            }
+            """;
+
+        var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        var greet = chunks.Single(c =>
+            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "Greet", StringComparison.Ordinal));
+
+        Assert.Equal("Says hello to the given name.", greet.Metadata["csharp.summary"]);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_NestedClass_YieldsOuterAndInnerSeparately()
+    {
+        const string source = """
+            public class Outer
+            {
+                public class Inner
+                {
+                    public void InnerMethod() { }
+                }
+            }
+            """;
+
+        var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        var names = chunks.Select(c => c.Metadata["csharp.name"]).ToList();
+
+        Assert.Contains("Outer", names);
+        Assert.Contains("Inner", names);
+        Assert.Contains("InnerMethod", names);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_OversizedMember_YieldsWithOversizedFlag()
+    {
+        var body = string.Join("\n", Enumerable.Range(0, 200).Select(i => $"    var x{i} = {i};"));
+        var source = $$"""
+            public class Big
+            {
+                public void HugeMethod()
+                {
+            {{body}}
+                }
+            }
+            """;
+
+        var tinyOptions = new ChunkingOptions { MaxChunkSize = 50 };
+        var chunks = await Strategy().ChunkAsync(Section(source), tinyOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        var huge = chunks.Single(c =>
+            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "HugeMethod", StringComparison.Ordinal));
+
+        Assert.Equal("true", huge.Metadata["csharp.oversized"]);
+    }
 }
