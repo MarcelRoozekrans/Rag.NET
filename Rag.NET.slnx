@@ -23,6 +23,7 @@
     <Project Path="src/Rag.NET.DataProviders.AzureBlob/Rag.NET.DataProviders.AzureBlob.csproj" />
     <Project Path="src/Rag.NET.Evaluation/Rag.NET.Evaluation.csproj" />
     <Project Path="src/Rag.NET.Reranking.Onnx/Rag.NET.Reranking.Onnx.csproj" />
+    <Project Path="src/Rag.NET.Reranking.Cohere/Rag.NET.Reranking.Cohere.csproj" />
     <Project Path="src/Rag.NET.DataProviders.SharePoint/Rag.NET.DataProviders.SharePoint.csproj" />
     <Project Path="src/Rag.NET.DataProviders.OneDrive/Rag.NET.DataProviders.OneDrive.csproj" />
     <Project Path="src/Rag.NET.DataProviders.GoogleDrive/Rag.NET.DataProviders.GoogleDrive.csproj" />

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Reranking.Cohere</RootNamespace>
+    <PackageId>Rag.NET.Reranking.Cohere</PackageId>
+    <Description>Cohere Rerank API integration for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Cohere" Version="1.*" />
+  </ItemGroup>
+
+</Project>
