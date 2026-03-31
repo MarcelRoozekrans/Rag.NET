@@ -13,6 +13,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.*" />
     <PackageReference Include="NSubstitute" Version="5.*" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.*" />
   </ItemGroup>
