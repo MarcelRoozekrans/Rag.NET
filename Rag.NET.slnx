@@ -48,6 +48,7 @@
     <Project Path="src/Rag.NET.Chunking.Semantic/Rag.NET.Chunking.Semantic.csproj" />
     <Project Path="src/Rag.NET.Chunking.TokenAware/Rag.NET.Chunking.TokenAware.csproj" />
     <Project Path="src/Rag.NET.AnswerEngines/Rag.NET.AnswerEngines.csproj" />
+    <Project Path="src/Rag.NET.QueryTechniques/Rag.NET.QueryTechniques.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
