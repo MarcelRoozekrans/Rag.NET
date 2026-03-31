@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Rag.NET.Models;
 using Rag.NET.Reranking.Cohere;
 using WireMock.RequestBuilders;
@@ -10,10 +11,18 @@ namespace Rag.NET.Reranking.Cohere.Tests;
 public sealed class CohereRerankerTests : IDisposable
 {
     private readonly WireMockServer _server;
+    private readonly CohereRerankerOptions _defaultOptions;
 
     public CohereRerankerTests()
     {
         _server = WireMockServer.Start();
+        _defaultOptions = new CohereRerankerOptions
+        {
+            ApiKey = "test-key",
+            Endpoint = _server.Url,
+            MaxDocumentsPerBatch = 1000,
+            TopN = 100,
+        };
     }
 
     public void Dispose() => _server.Stop();
@@ -210,5 +219,200 @@ public sealed class CohereRerankerTests : IDisposable
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             reranker.RerankAsync("query", [doc], cts.Token));
+    }
+
+    // -------------------------------------------------------------------------
+    // Constructor – whitespace ApiKey
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Constructor_WhenApiKeyIsWhitespace_ThrowsArgumentException()
+    {
+        var options = new CohereRerankerOptions { ApiKey = "   ", Endpoint = _server.Url };
+        Assert.Throws<ArgumentException>(() => new CohereReranker(options));
+    }
+
+    // -------------------------------------------------------------------------
+    // RerankAsync – null guard: query
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RerankAsync_WhenQueryIsNull_ThrowsArgumentNullException()
+    {
+        using var reranker = new CohereReranker(_defaultOptions);
+        var docs = new[] { MakeSearchResult("doc") };
+
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => reranker.RerankAsync(null!, docs, TestContext.Current.CancellationToken));
+    }
+
+    // -------------------------------------------------------------------------
+    // RerankAsync – null guard: results
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RerankAsync_WhenResultsIsNull_ThrowsArgumentNullException()
+    {
+        using var reranker = new CohereReranker(_defaultOptions);
+
+        await Assert.ThrowsAsync<ArgumentNullException>(
+            () => reranker.RerankAsync("query", null!, TestContext.Current.CancellationToken));
+    }
+
+    // -------------------------------------------------------------------------
+    // RerankAsync – TopN cap applied after multi-batch merge
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RerankAsync_TopNCapAppliedAfterBatchMerge()
+    {
+        var opts = new CohereRerankerOptions
+        {
+            ApiKey = "test-key",
+            Endpoint = _server.Url,
+            MaxDocumentsPerBatch = 2,
+            TopN = 1,
+        };
+
+        _server
+            .Given(Request.Create().WithPath("/v1/rerank").UsingPost())
+            .InScenario("topn-cap")
+            .WillSetStateTo("batch2")
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(RerankJson(new[] { new { index = 0, relevance_score = 0.5f }, new { index = 1, relevance_score = 0.4f } })));
+        _server
+            .Given(Request.Create().WithPath("/v1/rerank").UsingPost())
+            .InScenario("topn-cap")
+            .WhenStateIs("batch2")
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(RerankJson(new[] { new { index = 0, relevance_score = 0.9f } })));
+
+        var docs = new[]
+        {
+            MakeSearchResult("doc 0"),
+            MakeSearchResult("doc 1"),
+            MakeSearchResult("doc 2"),
+        };
+        using var reranker = new CohereReranker(opts);
+
+        var results = await reranker.RerankAsync("query", docs, TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal(docs[2], results[0].SearchResult); // score 0.9 wins
+    }
+
+    // -------------------------------------------------------------------------
+    // RerankAsync – ReturnDocuments=true is sent on wire
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RerankAsync_WhenReturnDocumentsTrue_SentInRequest()
+    {
+        var opts = new CohereRerankerOptions
+        {
+            ApiKey = "test-key",
+            Endpoint = _server.Url,
+            ReturnDocuments = true,
+        };
+
+        _server
+            .Given(Request.Create()
+                .WithPath("/v1/rerank")
+                .UsingPost()
+                .WithBody(new WireMock.Matchers.JsonPartialMatcher("{\"return_documents\":true}")))
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(RerankJson(new[] { new { index = 0, relevance_score = 0.7f } })));
+
+        using var reranker = new CohereReranker(opts);
+        var results = await reranker.RerankAsync("query", new[] { MakeSearchResult("doc") }, TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+    }
+
+    // -------------------------------------------------------------------------
+    // RerankAsync – Model option is sent on wire
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RerankAsync_ModelSentInRequest()
+    {
+        var opts = new CohereRerankerOptions
+        {
+            ApiKey = "test-key",
+            Endpoint = _server.Url,
+            Model = "rerank-v3.5",
+        };
+
+        _server
+            .Given(Request.Create()
+                .WithPath("/v1/rerank")
+                .UsingPost()
+                .WithBody(new WireMock.Matchers.JsonPartialMatcher("{\"model\":\"rerank-v3.5\"}")))
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(RerankJson(new[] { new { index = 0, relevance_score = 0.8f } })));
+
+        using var reranker = new CohereReranker(opts);
+        var results = await reranker.RerankAsync("query", new[] { MakeSearchResult("doc") }, TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+    }
+
+    // -------------------------------------------------------------------------
+    // RerankAsync – MaxDocumentsPerBatch=1 edge case
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task RerankAsync_WhenMaxDocumentsPerBatchIsOne_EachDocInOwnBatch()
+    {
+        var opts = new CohereRerankerOptions
+        {
+            ApiKey = "test-key",
+            Endpoint = _server.Url,
+            MaxDocumentsPerBatch = 1,
+            TopN = 10,
+        };
+
+        // Each batch of 1 doc: Cohere returns index 0 with different scores
+        _server
+            .Given(Request.Create().WithPath("/v1/rerank").UsingPost())
+            .InScenario("one-per-batch")
+            .WillSetStateTo("second")
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(RerankJson(new[] { new { index = 0, relevance_score = 0.3f } })));
+        _server
+            .Given(Request.Create().WithPath("/v1/rerank").UsingPost())
+            .InScenario("one-per-batch")
+            .WhenStateIs("second")
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(RerankJson(new[] { new { index = 0, relevance_score = 0.8f } })));
+
+        var docs = new[]
+        {
+            MakeSearchResult("doc 0"),
+            MakeSearchResult("doc 1"),
+        };
+        using var reranker = new CohereReranker(opts);
+
+        var results = await reranker.RerankAsync("query", docs, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(docs[1], results[0].SearchResult); // 0.8 wins
+        Assert.Equal(docs[0], results[1].SearchResult); // 0.3
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private static string RerankJson<T>(T[] items)
+    {
+        var results = JsonSerializer.Serialize(items);
+        return $"{{\"id\":\"x\",\"results\":{results}}}";
     }
 }
