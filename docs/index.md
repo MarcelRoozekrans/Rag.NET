@@ -29,6 +29,8 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 | [Extending](extending.md) | Implementing `IDocumentParser`, `IVectorStore`, `IChunkingStrategy` |
 | [Mediator](mediator.md) | Dispatching ingest/retrieve/delete commands via `Rag.NET.Mediator` and ZeroAlloc.Mediator |
 | [OSS Libraries](oss-libraries.md) | Every open-source dependency used, where it is used, and why |
+| [Answer Engines](answer-engines.md) | MapReduce, Refine, and Dispatching answer engine strategies |
+| [Query Techniques](query-techniques.md) | HyDE and Multi-Query retrieval expansion |
 
 ## Quick links
 
@@ -41,6 +43,14 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 
 ```mermaid
 flowchart TD
+    ABSTRACTIONS["Rag.NET.Abstractions<br>Interfaces · Models · Options · IRagBuilder"] --> CORE
+    ABSTRACTIONS --> CHUNKING["Rag.NET.Chunking<br>HierarchicalMerger · CodeChunking"]
+    ABSTRACTIONS --> CHUNKING_SEM["Rag.NET.Chunking.Semantic<br>Semantic chunking"]
+    ABSTRACTIONS --> CHUNKING_TOK["Rag.NET.Chunking.TokenAware<br>Token-count chunking"]
+    ABSTRACTIONS --> AE["Rag.NET.AnswerEngines<br>MapReduce · Refine · Dispatching"]
+    ABSTRACTIONS --> QT["Rag.NET.QueryTechniques<br>HyDE · MultiQuery"]
+    ABSTRACTIONS --> MEM["Rag.NET.Memory<br>Persistent cross-session memory"]
+
     CORE["Rag.NET<br>Core pipeline · Text/Markdown/CSV/JSON parsers · Recursive chunking"]
 
     CORE --> PG["Rag.NET.VectorStores.PgVector<br>PostgreSQL + pgvector"]
@@ -73,11 +83,25 @@ flowchart TD
     style AZ fill:#e8f4fd,stroke:#4a90d9
     style EVAL fill:#e8f4fd,stroke:#4a90d9
     style MED fill:#e8f4fd,stroke:#4a90d9
+    style ABSTRACTIONS fill:#fff3cd,stroke:#f0ad4e
+    style CHUNKING fill:#e8f4fd,stroke:#4a90d9
+    style CHUNKING_SEM fill:#e8f4fd,stroke:#4a90d9
+    style CHUNKING_TOK fill:#e8f4fd,stroke:#4a90d9
+    style AE fill:#e8f4fd,stroke:#4a90d9
+    style QT fill:#e8f4fd,stroke:#4a90d9
+    style MEM fill:#e8f4fd,stroke:#4a90d9
 ```
 
 | NuGet package | Contents |
 |--------------|----------|
 | `Rag.NET` | Core pipeline, abstractions, Text/Markdown/CSV/JSON parsers, Recursive chunking |
+| `Rag.NET.Abstractions` | All 20+ interfaces, models, and options — no implementations, no heavy dependencies |
+| `Rag.NET.Chunking` | `HierarchicalMergerChunkingStrategy`, `CodeChunkingStrategy` |
+| `Rag.NET.Chunking.Semantic` | `SemanticChunkingStrategy` — splits at semantic boundaries using embeddings |
+| `Rag.NET.Chunking.TokenAware` | `TokenAwareChunkingStrategy` — splits by token count rather than characters |
+| `Rag.NET.AnswerEngines` | `MapReduceAnswerEngine`, `RefineAnswerEngine`, `DispatchingAnswerEngine` |
+| `Rag.NET.QueryTechniques` | `LlmHypotheticalDocumentGenerator` (HyDE), `LlmQueryExpander` (MultiQuery) |
+| `Rag.NET.Memory` | `PersistentConversationMemory` — SQLite-backed cross-session memory |
 | `Rag.NET.VectorStores.PgVector` | PostgreSQL + pgvector vector store |
 | `Rag.NET.VectorStores.Qdrant` | Qdrant vector store |
 | `Rag.NET.VectorStores.AzureAISearch` | Azure AI Search vector store with native hybrid search |
