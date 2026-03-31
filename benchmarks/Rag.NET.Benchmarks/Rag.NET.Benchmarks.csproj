@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.GraphRag\Rag.NET.GraphRag.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Reranking.Cohere\Rag.NET.Reranking.Cohere.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Chunking.TokenAware\Rag.NET.Chunking.TokenAware.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.AnswerEngines\Rag.NET.AnswerEngines.csproj" />
     <PackageReference Include="BenchmarkDotNet" Version="0.*" />
     <PackageReference Include="WireMock.Net" Version="1.*" />
     <PackageReference Include="NGitLab" Version="10.*" />
