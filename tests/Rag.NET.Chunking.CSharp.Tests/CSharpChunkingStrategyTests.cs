@@ -44,4 +44,46 @@ public class CSharpChunkingStrategyTests
         Assert.Single(chunks);
         Assert.Equal("this is not valid C# @@@", chunks[0].Text);
     }
+
+    [Fact]
+    public async Task ChunkAsync_SimpleClass_YieldsOneChunkPerMember()
+    {
+        const string source = """
+            namespace MyApp;
+
+            public class Calculator
+            {
+                public int Add(int a, int b) => a + b;
+
+                public string Name { get; set; } = "calc";
+            }
+            """;
+
+        var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+
+        // class + method + property = 3 chunks
+        Assert.Equal(3, chunks.Count);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_SimpleClass_MetadataKeys_CorrectNamespaceAndKind()
+    {
+        const string source = """
+            namespace MyApp.Core;
+
+            public class Greeter
+            {
+                public string Greet(string name) => $"Hello {name}";
+            }
+            """;
+
+        var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+        var methodChunk = chunks.Single(c => c.Metadata.TryGetValue("csharp.kind", out var k) && string.Equals(k, "method", StringComparison.Ordinal));
+
+        Assert.Equal("MyApp.Core", methodChunk.Metadata["csharp.namespace"]);
+        Assert.Equal("Greeter", methodChunk.Metadata["csharp.type"]);
+        Assert.Equal("Greet", methodChunk.Metadata["csharp.name"]);
+        Assert.Equal("method", methodChunk.Metadata["csharp.kind"]);
+        Assert.Equal("public", methodChunk.Metadata["csharp.accessibility"]);
+    }
 }
