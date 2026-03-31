@@ -154,7 +154,7 @@ Pure .NET PDF text extraction. Reads PDF content streams to extract text with po
 
 ### Npgsql + Pgvector
 
-**Used in:** `Rag.NET.PgVector`
+**Used in:** `Rag.NET.VectorStores.PgVector`
 
 `Npgsql` is the standard .NET PostgreSQL driver. `Pgvector` adds pgvector extension support — the `Vector` type, distance operator bindings, and index hints. Together they power `PgVectorStore`.
 
@@ -162,7 +162,7 @@ Pure .NET PDF text extraction. Reads PDF content streams to extract text with po
 
 ### Qdrant.Client
 
-**Used in:** `Rag.NET.Qdrant`
+**Used in:** `Rag.NET.VectorStores.Qdrant`
 
 Official gRPC client for Qdrant vector database. Used by `QdrantVectorStore` for upsert, search, and delete operations against a Qdrant collection.
 
@@ -170,7 +170,7 @@ Official gRPC client for Qdrant vector database. Used by `QdrantVectorStore` for
 
 ### Azure.Search.Documents
 
-**Used in:** `Rag.NET.AzureAISearch`
+**Used in:** `Rag.NET.VectorStores.AzureAISearch`
 
 Official Azure SDK client for Azure AI Search (formerly Cognitive Search). Used by `AzureAISearchVectorStore` for index management, document upload, vector search, and native hybrid search (BM25 + vector via `SemanticSearch`).
 

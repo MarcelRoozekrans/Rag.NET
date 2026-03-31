@@ -12,7 +12,7 @@ The vector store is the persistence layer for embedded chunks. Rag.NET ships thr
 
 | Feature | `PgVectorStore` | `QdrantVectorStore` | `AzureAISearchVectorStore` |
 |---------|:-:|:-:|:-:|
-| Package | `Rag.NET.PgVector` | `Rag.NET.Qdrant` | `Rag.NET.AzureAISearch` |
+| Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` |
 | Dense (semantic) search | Yes | Yes | Yes |
 | Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) |
 | Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) |
@@ -98,7 +98,7 @@ if (!await manageable.CollectionExistsAsync("rag-index"))
 
 ## PostgreSQL + pgvector
 
-**Package:** `Rag.NET.PgVector`
+**Package:** `Rag.NET.VectorStores.PgVector`
 
 Stores chunks in a `rag_chunks` table. Uses the `pgvector` extension for ANN search via the `<=>` cosine distance operator. Metadata is stored as `JSONB` and filtered using PostgreSQL's containment operator.
 
@@ -158,7 +158,7 @@ pgvector returns `1 - (embedding <=> query)` as the score, which is cosine simil
 
 ## Qdrant
 
-**Package:** `Rag.NET.Qdrant`
+**Package:** `Rag.NET.VectorStores.Qdrant`
 
 Stores chunks as Qdrant points with a payload. Metadata is stored both as a serialised JSON string in `metadata` and as individual `meta_{key}` payload fields to enable Qdrant's native payload filtering.
 
@@ -204,7 +204,7 @@ var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 
 ## Azure AI Search
 
-**Package:** `Rag.NET.AzureAISearch`
+**Package:** `Rag.NET.VectorStores.AzureAISearch`
 
 Stores chunks as Azure AI Search documents. Implements both `IVectorStore` and `IHybridSearchable` — it is the only built-in store with **native** hybrid search, combining BM25 full-text search with HNSW vector search at the service level.
 
@@ -212,7 +212,7 @@ Stores chunks as Azure AI Search documents. Implements both `IVectorStore` and `
 
 ```csharp
 using Azure;
-using Rag.NET.AzureAISearch;
+using Rag.NET.VectorStores.AzureAISearch;
 
 services.AddRagNet(rag => rag
     .UseAzureAISearch(

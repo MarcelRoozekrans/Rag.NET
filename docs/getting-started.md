@@ -22,7 +22,7 @@ flowchart LR
 
 ```bash
 dotnet add package Rag.NET
-dotnet add package Rag.NET.PgVector          # or Rag.NET.Qdrant / Rag.NET.AzureAISearch
+dotnet add package Rag.NET.VectorStores.PgVector          # or Rag.NET.VectorStores.Qdrant / Rag.NET.VectorStores.AzureAISearch
 dotnet add package Rag.NET.Parsers.Pdf       # add as many format parsers as you need
 ```
 
@@ -48,7 +48,7 @@ Any provider that implements `IChatClient` and `IEmbeddingGenerator<string, Embe
 
 ```csharp
 using Rag.NET.DependencyInjection;
-using Rag.NET.PgVector;
+using Rag.NET.VectorStores.PgVector;
 using Rag.NET.Parsers.Pdf;
 
 services.AddRagNet(rag => rag

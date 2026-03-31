@@ -43,9 +43,9 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 flowchart TD
     CORE["Rag.NET<br>Core pipeline · Text/Markdown/CSV/JSON parsers · Recursive chunking"]
 
-    CORE --> PG["Rag.NET.PgVector<br>PostgreSQL + pgvector"]
-    CORE --> QD["Rag.NET.Qdrant<br>Qdrant"]
-    CORE --> AZ["Rag.NET.AzureAISearch<br>Azure AI Search (native hybrid)"]
+    CORE --> PG["Rag.NET.VectorStores.PgVector<br>PostgreSQL + pgvector"]
+    CORE --> QD["Rag.NET.VectorStores.Qdrant<br>Qdrant"]
+    CORE --> AZ["Rag.NET.VectorStores.AzureAISearch<br>Azure AI Search (native hybrid)"]
 
     CORE --> PDF["Rag.NET.Parsers.Pdf"]
     CORE --> HTML["Rag.NET.Parsers.Html"]
@@ -78,9 +78,9 @@ flowchart TD
 | NuGet package | Contents |
 |--------------|----------|
 | `Rag.NET` | Core pipeline, abstractions, Text/Markdown/CSV/JSON parsers, Recursive chunking |
-| `Rag.NET.PgVector` | PostgreSQL + pgvector vector store |
-| `Rag.NET.Qdrant` | Qdrant vector store |
-| `Rag.NET.AzureAISearch` | Azure AI Search vector store with native hybrid search |
+| `Rag.NET.VectorStores.PgVector` | PostgreSQL + pgvector vector store |
+| `Rag.NET.VectorStores.Qdrant` | Qdrant vector store |
+| `Rag.NET.VectorStores.AzureAISearch` | Azure AI Search vector store with native hybrid search |
 | `Rag.NET.Parsers.Pdf` | PDF parser |
 | `Rag.NET.Parsers.Html` | HTML parser (AngleSharp) |
 | `Rag.NET.Parsers.Word` | Word `.docx` parser (OpenXml) |
