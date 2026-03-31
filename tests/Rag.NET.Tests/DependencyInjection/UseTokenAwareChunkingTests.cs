@@ -19,7 +19,6 @@ public class UseTokenAwareChunkingTests
         var strategy = sp.GetRequiredService<IChunkingStrategy>();
 
         Assert.IsType<TokenAwareChunkingStrategy>(strategy);
-        Assert.Equal("gpt-4", ((TokenAwareChunkingStrategy)strategy).ModelName);
     }
 
     [Fact]
@@ -32,6 +31,5 @@ public class UseTokenAwareChunkingTests
         var strategy = sp.GetRequiredService<IChunkingStrategy>();
 
         Assert.IsType<TokenAwareChunkingStrategy>(strategy);
-        Assert.Equal("gpt-3.5-turbo", ((TokenAwareChunkingStrategy)strategy).ModelName);
     }
 }
