@@ -8,7 +8,6 @@ using Microsoft.Extensions.Resilience;
 using Polly;
 using Polly.Retry;
 using Rag.NET.Abstractions;
-using Rag.NET.Chunking;
 using Rag.NET.HyDE;
 using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Memory;
@@ -49,22 +48,6 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
             Services.AddSingleton(options);
         }
 
-        return this;
-    }
-
-    /// <summary>
-    /// Registers <see cref="TokenAwareChunkingStrategy"/>, which splits text by token count
-    /// rather than character count using the specified model's tokenizer.
-    /// <see cref="ChunkingOptions.MaxChunkSize"/> and <see cref="ChunkingOptions.Overlap"/>
-    /// are interpreted as token counts when this strategy is active.
-    /// </summary>
-    /// <param name="modelName">
-    /// The model name used to select the tokenizer encoding (e.g., <c>"gpt-4"</c>, <c>"gpt-3.5-turbo"</c>).
-    /// Defaults to <c>"gpt-4"</c> (cl100k_base encoding, compatible with most modern embedding models).
-    /// </param>
-    public RagBuilder UseTokenAwareChunking(string modelName = "gpt-4")
-    {
-        Services.AddSingleton<IChunkingStrategy>(_ => new TokenAwareChunkingStrategy(modelName));
         return this;
     }
 
