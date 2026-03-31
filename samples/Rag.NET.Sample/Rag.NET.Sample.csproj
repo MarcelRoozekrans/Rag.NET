@@ -6,7 +6,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.PgVector\Rag.NET.PgVector.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.VectorStores.PgVector\Rag.NET.VectorStores.PgVector.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
     <PackageReference Include="Microsoft.Extensions.AI" Version="9.*" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="9.*" />
