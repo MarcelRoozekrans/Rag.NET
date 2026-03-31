@@ -4,7 +4,7 @@
     <Project Path="src/Rag.NET/Rag.NET.csproj" />
     <Project Path="src/Rag.NET.VectorStores.PgVector/Rag.NET.VectorStores.PgVector.csproj" />
     <Project Path="src/Rag.NET.Parsers.Pdf/Rag.NET.Parsers.Pdf.csproj" />
-    <Project Path="src/Rag.NET.Qdrant/Rag.NET.Qdrant.csproj" />
+    <Project Path="src/Rag.NET.VectorStores.Qdrant/Rag.NET.VectorStores.Qdrant.csproj" />
     <Project Path="src/Rag.NET.Api.Client/Rag.NET.Api.Client.csproj" />
     <Project Path="src/Rag.NET.Api.Grpc.Client/Rag.NET.Api.Grpc.Client.csproj" />
     <Project Path="src/Rag.NET.Api.Grpc/Rag.NET.Api.Grpc.csproj" />
@@ -51,7 +51,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.PgVector.Tests/Rag.NET.VectorStores.PgVector.Tests.csproj" />
-    <Project Path="tests/Rag.NET.Qdrant.Tests/Rag.NET.Qdrant.Tests.csproj" />
+    <Project Path="tests/Rag.NET.VectorStores.Qdrant.Tests/Rag.NET.VectorStores.Qdrant.Tests.csproj" />
     <Project Path="tests/Rag.NET.Api.Client.Tests/Rag.NET.Api.Client.Tests.csproj" />
     <Project Path="tests/Rag.NET.Api.Grpc.Client.Tests/Rag.NET.Api.Grpc.Client.Tests.csproj" />
     <Project Path="tests/Rag.NET.Api.Grpc.Tests/Rag.NET.Api.Grpc.Tests.csproj" />

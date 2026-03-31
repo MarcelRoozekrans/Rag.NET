@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Rag.NET.Qdrant</RootNamespace>
-    <PackageId>Rag.NET.Qdrant</PackageId>
+    <RootNamespace>Rag.NET.VectorStores.Qdrant</RootNamespace>
+    <PackageId>Rag.NET.VectorStores.Qdrant</PackageId>
     <Description>Qdrant vector store for Rag.NET</Description>
   </PropertyGroup>
 
