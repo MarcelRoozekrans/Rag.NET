@@ -26,7 +26,7 @@ namespace Rag.NET.DependencyInjection;
 /// Fluent builder for configuring the Rag.NET pipeline services.
 /// Obtain an instance via <c>services.AddRagNet(rag => ...)</c>.
 /// </summary>
-public sealed class RagBuilder(IServiceCollection services)
+public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
 {
     /// <summary>Gets the underlying <see cref="IServiceCollection"/> for advanced registrations.</summary>
     public IServiceCollection Services { get; } = services;
@@ -143,6 +143,12 @@ public sealed class RagBuilder(IServiceCollection services)
         Services.AddSingleton<IDocumentParser, TParser>();
         return this;
     }
+
+    /// <inheritdoc/>
+    IRagBuilder IRagBuilder.AddParser<TParser>() => AddParser<TParser>();
+
+    /// <inheritdoc/>
+    IRagBuilder IRagBuilder.UseReranking<TReranker>() => UseReranking<TReranker>();
 
     /// <summary>
     /// Wraps the registered <see cref="IRetriever"/> with <see cref="DeepResearchRetriever"/>.

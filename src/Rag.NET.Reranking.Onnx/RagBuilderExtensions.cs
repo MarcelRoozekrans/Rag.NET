@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
-using Rag.NET.DependencyInjection;
 
 namespace Rag.NET.Reranking.Onnx;
 
@@ -10,7 +9,8 @@ public static class RagBuilderExtensions
     /// Registers <see cref="OnnxReranker"/> as the <see cref="IReranker"/>,
     /// using a local ONNX cross-encoder model for reranking.
     /// </summary>
-    public static RagBuilder UseOnnxReranking(this RagBuilder builder, Action<OnnxRerankerOptions> configure)
+    public static TBuilder UseOnnxReranking<TBuilder>(this TBuilder builder, Action<OnnxRerankerOptions> configure)
+        where TBuilder : IRagBuilder
     {
         ArgumentNullException.ThrowIfNull(configure);
 
@@ -18,7 +18,7 @@ public static class RagBuilderExtensions
         configure(options);
 
         builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton<IReranker, OnnxReranker>();
+        builder.UseReranking<OnnxReranker>();
 
         return builder;
     }

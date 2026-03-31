@@ -1,10 +1,11 @@
-using Rag.NET.DependencyInjection;
+using Rag.NET.Abstractions;
 
 namespace Rag.NET.Parsers.Pdf;
 
 public static class PdfParserBuilderExtensions
 {
-    public static RagBuilder AddPdfParser(this RagBuilder builder)
+    public static TBuilder AddPdfParser<TBuilder>(this TBuilder builder)
+        where TBuilder : IRagBuilder
     {
         builder.AddParser<PdfDocumentParser>();
         return builder;

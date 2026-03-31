@@ -1,6 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
-using Rag.NET.DependencyInjection;
 
 namespace Rag.NET.Reranking.Cohere;
 
@@ -11,7 +10,8 @@ public static class RagBuilderExtensions
     /// using the Cohere Rerank API for reranking.
     /// Switch <see cref="CohereRerankerOptions.Model"/> to <c>rerank-v3.5</c> for multilingual workloads.
     /// </summary>
-    public static RagBuilder UseCohereReranking(this RagBuilder builder, Action<CohereRerankerOptions> configure)
+    public static TBuilder UseCohereReranking<TBuilder>(this TBuilder builder, Action<CohereRerankerOptions> configure)
+        where TBuilder : IRagBuilder
     {
         ArgumentNullException.ThrowIfNull(configure);
 
@@ -19,7 +19,7 @@ public static class RagBuilderExtensions
         configure(options);
 
         builder.Services.AddSingleton(options);
-        builder.Services.AddSingleton<IReranker, CohereReranker>();
+        builder.UseReranking<CohereReranker>();
 
         return builder;
     }

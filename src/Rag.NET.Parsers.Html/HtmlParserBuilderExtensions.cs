@@ -1,10 +1,11 @@
-using Rag.NET.DependencyInjection;
+using Rag.NET.Abstractions;
 
 namespace Rag.NET.Parsers.Html;
 
 public static class HtmlParserBuilderExtensions
 {
-    public static RagBuilder AddHtmlParser(this RagBuilder builder)
+    public static TBuilder AddHtmlParser<TBuilder>(this TBuilder builder)
+        where TBuilder : IRagBuilder
     {
         builder.AddParser<HtmlDocumentParser>();
         return builder;
