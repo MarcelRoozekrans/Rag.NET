@@ -169,6 +169,61 @@ await pipeline.DeleteAsync("report-2024-q4");
 
 Removes all stored chunks associated with the given document ID from both the vector store and the in-memory BM25 index.
 
+## Optional extension packages
+
+The core `Rag.NET` package includes `RecursiveChunkingStrategy` and `ChatAnswerEngine` out of the box. Install additional packages for more advanced capabilities:
+
+### Semantic chunking
+
+```bash
+dotnet add package Rag.NET.Chunking.Semantic
+```
+
+```csharp
+services.AddRagNet(rag => rag.UseSemanticChunking());
+```
+
+### Token-aware chunking
+
+```bash
+dotnet add package Rag.NET.Chunking.TokenAware
+```
+
+```csharp
+services.AddRagNet(rag => rag.UseTokenAwareChunking());
+```
+
+### HyDE query expansion
+
+```bash
+dotnet add package Rag.NET.QueryTechniques
+```
+
+```csharp
+services.AddRagNet(rag => rag.UseHyde());
+```
+
+### MapReduce answer engine
+
+```bash
+dotnet add package Rag.NET.AnswerEngines
+```
+
+```csharp
+services.AddRagNet(rag => rag.UseMapReduceAnswerEngine());
+```
+
+### Persistent cross-session memory
+
+```bash
+dotnet add package Rag.NET.Memory
+```
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseConversationMemory(configure: mem => mem.UsePersistentMemory()));
+```
+
 ## Next steps
 
 - [Architecture](architecture.md) — understand how the pipeline works internally
