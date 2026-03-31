@@ -13,7 +13,7 @@ Candidate features for future design and implementation. Completed features are 
 ## Chunking
 
 ### Semantic Chunking (Embedding-Based Boundary Detection)
-**Package:** `Rag.NET` (core)
+**Package:** `Rag.NET.Chunking.Semantic`
 
 Split text by meaning boundaries rather than fixed sizes. Embed each sentence, compute cosine similarity between consecutive sentence embeddings, and break where similarity drops below a configurable percentile threshold (breakpoint detection). Produces chunks that are coherent units of meaning — no more splitting mid-thought.
 
@@ -41,7 +41,7 @@ services.AddRagNet(rag => rag
 ---
 
 ### Hierarchical Merger (Regex-Driven Tree Chunking)
-**Package:** `Rag.NET` (core)
+**Package:** `Rag.NET.Chunking`
 
 Configurable chunking stage driven by user-supplied regex patterns for each heading level and an integer hierarchy depth. Builds a heading tree and extracts subtrees up to the specified depth as chunks — each chunk starts with its section heading and contains all body text within that section. Applicable to any document format.
 
@@ -52,7 +52,7 @@ Configurable chunking stage driven by user-supplied regex patterns for each head
 ---
 
 ### Multi-Language Code Splitting (Heuristic)
-**Package:** `Rag.NET` (core)
+**Package:** `Rag.NET.Chunking`
 
 Language-specific separator hierarchies for Python, JS/TS, Java, Go, Ruby, Rust, C#, and more — splitting at class/function/method boundaries before falling back to line/block. Works via regex-based heuristics; no compiler infrastructure required. Complements the Roslyn-based C# chunker for other languages.
 
@@ -220,7 +220,7 @@ rag.UseCohereReranking(o =>
 ## Answer Generation
 
 ### Map-Reduce Synthesis
-**Package:** `Rag.NET` (core)
+**Package:** `Rag.NET.AnswerEngines`
 
 Answer questions over large document sets by first mapping an LLM call over each retrieved chunk (partial answers), then reducing with a second LLM call into a final answer. Handles cases where retrieved text collectively exceeds the model's context window. Rag.NET's `AskAsync` currently stuffs all chunks into a single context.
 
@@ -231,7 +231,7 @@ Answer questions over large document sets by first mapping an LLM call over each
 ---
 
 ### Refine (Iterative Synthesis)
-**Package:** `Rag.NET` (core)
+**Package:** `Rag.NET.AnswerEngines`
 
 Process chunks sequentially: generate an initial answer from the first chunk, then iteratively refine by feeding each subsequent chunk plus the running answer to the LLM. More token-efficient than map-reduce for sequential coherence tasks.
 
@@ -440,7 +440,7 @@ A read/delete surface for browsing and managing ingested data via `IRagDataManag
 ---
 
 ### Conversational Memory Management
-**Package:** `Rag.NET` (core)
+**Package:** `Rag.NET` (core) · `PersistentConversationMemory` → `Rag.NET.Memory`
 
 Automatic conversation history management for multi-turn RAG. `ConversationMemoryPipeline` handles windowed trimming and optional LLM summarization. `PersistentConversationMemory` wraps the pipeline and adds cross-session recall: each exchange is embedded and stored in the vector store; relevant past exchanges are retrieved by similarity and injected as a system prefix.
 

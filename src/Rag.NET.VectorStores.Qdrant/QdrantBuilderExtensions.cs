@@ -1,17 +1,17 @@
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
-using Rag.NET.DependencyInjection;
 
 namespace Rag.NET.Qdrant;
 
 public static class QdrantBuilderExtensions
 {
-    public static RagBuilder UseQdrant(
-        this RagBuilder builder,
+    public static TBuilder UseQdrant<TBuilder>(
+        this TBuilder builder,
         string host,
         int port,
         string collectionName,
         int vectorDimensions = 1536)
+        where TBuilder : IRagBuilder
     {
         var store = new QdrantVectorStore(host, port, collectionName, vectorDimensions);
         builder.Services.AddSingleton<IVectorStore>(store);
