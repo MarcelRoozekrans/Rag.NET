@@ -9,7 +9,7 @@
     <Project Path="src/Rag.NET.Api.Grpc.Client/Rag.NET.Api.Grpc.Client.csproj" />
     <Project Path="src/Rag.NET.Api.Grpc/Rag.NET.Api.Grpc.csproj" />
     <Project Path="src/Rag.NET.Api/Rag.NET.Api.csproj" />
-    <Project Path="src/Rag.NET.AzureAISearch/Rag.NET.AzureAISearch.csproj" />
+    <Project Path="src/Rag.NET.VectorStores.AzureAISearch/Rag.NET.VectorStores.AzureAISearch.csproj" />
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
     <Project Path="src/Rag.NET.Parsers.Word/Rag.NET.Parsers.Word.csproj" />
     <Project Path="src/Rag.NET.Mcp.Tool/Rag.NET.Mcp.Tool.csproj" />
@@ -56,7 +56,7 @@
     <Project Path="tests/Rag.NET.Api.Grpc.Client.Tests/Rag.NET.Api.Grpc.Client.Tests.csproj" />
     <Project Path="tests/Rag.NET.Api.Grpc.Tests/Rag.NET.Api.Grpc.Tests.csproj" />
     <Project Path="tests/Rag.NET.Api.Tests/Rag.NET.Api.Tests.csproj" />
-    <Project Path="tests/Rag.NET.AzureAISearch.Tests/Rag.NET.AzureAISearch.Tests.csproj" />
+    <Project Path="tests/Rag.NET.VectorStores.AzureAISearch.Tests/Rag.NET.VectorStores.AzureAISearch.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Html.Tests/Rag.NET.Parsers.Html.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Word.Tests/Rag.NET.Parsers.Word.Tests.csproj" />
     <Project Path="tests/Rag.NET.Mcp.Tests/Rag.NET.Mcp.Tests.csproj" />
