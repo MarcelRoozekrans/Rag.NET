@@ -111,11 +111,15 @@ public sealed partial class CSharpChunkingStrategy : IChunkingStrategy
     private static string StripBody(SyntaxNode node, SyntaxNode? body1, SyntaxNode? body2)
     {
         var text = node.ToFullString();
-        foreach (var body in new[] { body1, body2 })
+        if (body1 is not null)
         {
-            if (body is null) continue;
-            var bodyText = body.ToFullString();
-            var idx = text.IndexOf(bodyText, StringComparison.Ordinal);
+            var idx = text.IndexOf(body1.ToFullString(), StringComparison.Ordinal);
+            if (idx >= 0)
+                text = text[..idx].TrimEnd() + ";";
+        }
+        if (body2 is not null)
+        {
+            var idx = text.IndexOf(body2.ToFullString(), StringComparison.Ordinal);
             if (idx >= 0)
                 text = text[..idx].TrimEnd() + ";";
         }

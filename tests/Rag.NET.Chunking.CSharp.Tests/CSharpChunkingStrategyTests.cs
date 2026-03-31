@@ -161,6 +161,25 @@ public class CSharpChunkingStrategyTests
     }
 
     [Fact]
+    public async Task ChunkAsync_InternalMember_ExcludedWhenOptionSet()
+    {
+        const string source = """
+            public class Foo
+            {
+                public void Public() { }
+                internal void Internal() { }
+            }
+            """;
+
+        var ct = TestContext.Current.CancellationToken;
+        var chunks = await Strategy(new CSharpChunkingOptions { IncludeInternalMembers = false })
+            .ChunkAsync(Section(source), DefaultOptions, ct).ToListAsync(ct);
+
+        Assert.DoesNotContain(chunks, c =>
+            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "Internal", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ChunkAsync_OversizedMember_YieldsWithOversizedFlag()
     {
         var body = string.Join("\n", Enumerable.Range(0, 200).Select(i => $"    var x{i} = {i};"));

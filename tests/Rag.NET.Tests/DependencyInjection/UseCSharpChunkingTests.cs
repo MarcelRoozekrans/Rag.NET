@@ -34,9 +34,8 @@ public class UseCSharpChunkingTests
     [Fact]
     public void UseCSharpChunking_CustomOptions_Applied()
     {
-        var opts = new CSharpChunkingOptions { IncludePrivateMembers = true };
         var sp = BaseServices()
-            .AddRagNet(rag => rag.UseCSharpChunking(opts))
+            .AddRagNet(rag => rag.UseCSharpChunking(o => o.IncludePrivateMembers = true))
             .BuildServiceProvider();
         Assert.True(sp.GetRequiredService<CSharpChunkingOptions>().IncludePrivateMembers);
     }

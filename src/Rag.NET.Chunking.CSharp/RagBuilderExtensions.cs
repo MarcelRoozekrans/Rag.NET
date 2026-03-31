@@ -12,10 +12,11 @@ public static class RagBuilderExtensions
     /// Uses Roslyn to split C# source files at AST member boundaries (class, method, property, etc.),
     /// carrying structured metadata per chunk.
     /// </summary>
-    public static TBuilder UseCSharpChunking<TBuilder>(this TBuilder builder, CSharpChunkingOptions? options = null)
+    public static TBuilder UseCSharpChunking<TBuilder>(this TBuilder builder, Action<CSharpChunkingOptions>? configure = null)
         where TBuilder : IRagBuilder
     {
-        var opts = options ?? new CSharpChunkingOptions();
+        var opts = new CSharpChunkingOptions();
+        configure?.Invoke(opts);
         builder.Services.AddSingleton(opts);
         builder.Services.AddSingleton<IChunkingStrategy>(sp =>
         {
