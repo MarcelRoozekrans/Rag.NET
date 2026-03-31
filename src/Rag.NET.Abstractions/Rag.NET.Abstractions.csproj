@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Abstractions</RootNamespace>
+    <PackageId>Rag.NET.Abstractions</PackageId>
+    <Description>Interfaces and models for the Rag.NET library</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+    <PackageReference Include="ZeroAlloc.Results" Version="0.*" />
+    <PackageReference Include="ZeroAlloc.Specification" Version="0.*" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.Specification.Generator" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.ValueObjects" Version="1.*" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Analyzer Include="$(PkgZeroAlloc_Specification_Generator)\analyzers\dotnet\cs\ZeroAlloc.Specification.Generator.dll" />
+    <Analyzer Include="$(PkgZeroAlloc_ValueObjects)\analyzers\dotnet\cs\ZeroAlloc.ValueObjects.Generator.dll" />
+  </ItemGroup>
+
+</Project>
