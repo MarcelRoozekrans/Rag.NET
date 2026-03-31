@@ -7,16 +7,31 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="9.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
     <PackageReference Include="ZeroAlloc.Results" Version="0.*" />
     <PackageReference Include="ZeroAlloc.Specification" Version="0.*" GeneratePathProperty="true" />
     <PackageReference Include="ZeroAlloc.Specification.Generator" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.Validation" Version="0.*" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.Pipeline.Generators" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
     <PackageReference Include="ZeroAlloc.ValueObjects" Version="1.*" GeneratePathProperty="true" />
   </ItemGroup>
 
   <ItemGroup>
     <Analyzer Include="$(PkgZeroAlloc_Specification_Generator)\analyzers\dotnet\cs\ZeroAlloc.Specification.Generator.dll" />
+    <!-- ZeroAlloc.Validation.Generator is not yet published to NuGet (IsPackable=false).
+         Build it locally from src/ZeroAlloc.Validation.Generator and update this path. -->
+    <Analyzer Include="C:\Projects\Prive\ZeroAlloc.Validation\src\ZeroAlloc.Validation.Generator\bin\Release\netstandard2.0\ZeroAlloc.Validation.Generator.dll" />
+    <Analyzer Include="$(PkgZeroAlloc_Pipeline_Generators)\lib\netstandard2.0\ZeroAlloc.Pipeline.Generators.dll" />
     <Analyzer Include="$(PkgZeroAlloc_ValueObjects)\analyzers\dotnet\cs\ZeroAlloc.ValueObjects.Generator.dll" />
   </ItemGroup>
 
