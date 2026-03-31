@@ -100,40 +100,6 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     }
 
     /// <summary>
-    /// Registers <see cref="HierarchicalMergerChunkingStrategy"/> which merges document sections
-    /// into heading-subtree chunks. Each chunk covers one heading and all body text under it
-    /// down to <paramref name="options"/>.<see cref="HierarchicalMergerOptions.MaxDepth"/>.
-    /// Uses <see cref="DocumentSection.HeadingLevel"/> when available; falls back to
-    /// <see cref="HierarchicalMergerOptions.HeadingPatterns"/> for formats without heading metadata.
-    /// </summary>
-    public RagBuilder UseHierarchicalMerging(HierarchicalMergerOptions? options = null)
-    {
-        var opts = options ?? new HierarchicalMergerOptions();
-        Services.AddSingleton(opts);
-        Services.AddSingleton<IChunkingStrategy>(_ => new HierarchicalMergerChunkingStrategy(opts));
-        return this;
-    }
-
-    /// <summary>
-    /// Registers <see cref="Rag.NET.Chunking.CodeChunkingStrategy"/> as <see cref="IChunkingStrategy"/>.
-    /// Splits code files at language-appropriate boundaries (class, function, method level) using
-    /// per-language separator hierarchies. Language is auto-detected from the file extension in
-    /// <c>DocumentSection.DocumentId.Value</c> when <see cref="CodeChunkingOptions.Language"/> is null.
-    /// </summary>
-    /// <param name="options">
-    /// Optional options. Set <see cref="CodeChunkingOptions.Language"/> to override extension detection.
-    /// Throws <see cref="ArgumentException"/> immediately for unrecognised language values.
-    /// </param>
-    public RagBuilder UseCodeChunking(CodeChunkingOptions? options = null)
-    {
-        var opts     = options ?? new CodeChunkingOptions();
-        var strategy = new CodeChunkingStrategy(opts); // validates Language immediately
-        Services.AddSingleton(opts);
-        Services.AddSingleton<IChunkingStrategy>(_ => strategy);
-        return this;
-    }
-
-    /// <summary>
     /// Registers a document parser. Multiple parsers can be registered; the pipeline
     /// selects the first one whose <c>CanParse</c> returns <see langword="true"/> for a given content type.
     /// </summary>

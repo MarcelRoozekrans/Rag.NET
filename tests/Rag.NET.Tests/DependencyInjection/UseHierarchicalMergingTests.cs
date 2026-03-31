@@ -35,7 +35,7 @@ public class UseHierarchicalMergingTests
     }
 
     [Fact]
-    public void UseHierarchicalMerging_StrategyAlsoImplementsIDocumentChunkingStrategy()
+    public void Strategy_ImplementsIDocumentChunkingStrategy_TypeCheck()
     {
         var services = new ServiceCollection();
         services.AddRagNet(rag => rag.UseHierarchicalMerging());
@@ -43,6 +43,8 @@ public class UseHierarchicalMergingTests
         var sp = services.BuildServiceProvider();
         var strategy = sp.GetRequiredService<IChunkingStrategy>();
 
+        // Type-check only — UseHierarchicalMerging registers IChunkingStrategy, not IDocumentChunkingStrategy.
+        // ParseBehavior discovers document-level chunking via a runtime cast, not DI resolution.
         Assert.IsAssignableFrom<IDocumentChunkingStrategy>(strategy);
     }
 }
