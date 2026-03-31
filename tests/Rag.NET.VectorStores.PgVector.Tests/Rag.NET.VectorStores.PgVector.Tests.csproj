@@ -5,7 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Rag.NET.PgVector\Rag.NET.PgVector.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.VectorStores.PgVector\Rag.NET.VectorStores.PgVector.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />

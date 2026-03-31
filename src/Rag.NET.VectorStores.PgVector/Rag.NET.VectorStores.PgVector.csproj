@@ -1,9 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>Rag.NET.PgVector</RootNamespace>
-    <PackageId>Rag.NET.PgVector</PackageId>
-    <Description>pgvector vector store for Rag.NET</Description>
+    <RootNamespace>Rag.NET.VectorStores.PgVector</RootNamespace>
+    <PackageId>Rag.NET.VectorStores.PgVector</PackageId>
+    <Description>PostgreSQL pgvector store for Rag.NET</Description>
   </PropertyGroup>
 
   <ItemGroup>
