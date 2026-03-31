@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Chunking.CSharp</RootNamespace>
+    <PackageId>Rag.NET.Chunking.CSharp</PackageId>
+    <Description>Roslyn-based C# semantic chunking strategy for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Chunking.CSharp.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.*" />
+  </ItemGroup>
+
+</Project>
