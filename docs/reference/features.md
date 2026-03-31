@@ -185,11 +185,35 @@ After initial retrieval, use an LLM to judge whether the retrieved information i
 ## Post-Retrieval
 
 ### Cohere Rerank
+**Status:** ✅ Done
+
 **Package:** `Rag.NET.Reranking.Cohere`
 
-Call Cohere's hosted reranking API as a post-retrieval step. Production-grade managed reranker requiring no local model hosting.
+Call Cohere's hosted reranking API as a post-retrieval step. `CohereReranker` batches candidate chunks against the user query, scores each with Cohere's cross-encoder model, and returns the top-N results by relevance score. When the candidate list exceeds `MaxDocumentsPerBatch`, calls are issued sequentially and results are merged before final ranking. No local model hosting or GPU required.
 
 **Why:** Highest-quality managed reranking with a simple API key — no GPU required.
+
+**Options**
+
+| Option | Default | Description |
+|---|---|---|
+| `ApiKey` | *(required)* | Cohere API key. |
+| `Model` | `rerank-english-v3.0` | Reranking model. Use `rerank-v3.5` for multilingual workloads. |
+| `TopN` | `5` | Number of top results to return after reranking. |
+| `ReturnDocuments` | `false` | Whether Cohere echoes document text back in the response. |
+| `MaxDocumentsPerBatch` | `1000` | Maximum documents per API call (Cohere hard limit). Larger lists are batched sequentially. |
+| `Endpoint` | `null` | Optional API endpoint override. Useful for testing with a local stub server. |
+
+**Usage**
+
+```csharp
+rag.UseCohereReranking(o =>
+{
+    o.ApiKey = configuration["Cohere:ApiKey"]!;
+    // o.Model = "rerank-v3.5"; // multilingual
+    o.TopN  = 5;
+});
+```
 
 ---
 
