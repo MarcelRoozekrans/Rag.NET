@@ -443,7 +443,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | Done | Feature | Complexity | Dependencies |
 |------|---------|------------|--------------|
 | [x] | Azure AI Search Tests via Simulator | Low | `Testcontainers` + simulator Docker image |
-| [ ] | Cohere Rerank | Low | Cohere API key |
+| [x] | Cohere Rerank | Low | Cohere API key |
 | [x] | Embedding Distance Evaluation | Low | `IEmbeddingGenerator` |
 | [x] | Header-Aware Markdown/HTML Splitting | Low | Existing Markdown parser |
 | [x] | Lost-in-the-Middle Reordering | Low | None |
