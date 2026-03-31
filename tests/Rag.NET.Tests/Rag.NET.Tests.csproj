@@ -8,6 +8,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Chunking\Rag.NET.Chunking.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Chunking.Semantic\Rag.NET.Chunking.Semantic.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Mediator\Rag.NET.Mediator.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />

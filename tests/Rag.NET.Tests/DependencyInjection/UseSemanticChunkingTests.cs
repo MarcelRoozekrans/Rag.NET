@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Chunking;
+using Rag.NET.Chunking.Semantic;
 using Rag.NET.DependencyInjection;
 using Xunit;
 

@@ -45,6 +45,7 @@
     <Project Path="src/Rag.NET.Graph/Rag.NET.Graph.csproj" />
     <Project Path="src/Rag.NET.GraphRag/Rag.NET.GraphRag.csproj" />
     <Project Path="src/Rag.NET.Chunking/Rag.NET.Chunking.csproj" />
+    <Project Path="src/Rag.NET.Chunking.Semantic/Rag.NET.Chunking.Semantic.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
