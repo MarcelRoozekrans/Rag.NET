@@ -69,6 +69,8 @@ Split C# source files into semantically meaningful chunks using Roslyn. Each chu
 
 **Why:** Generic text chunking splits code mid-method or mid-class, destroying semantic meaning.
 
+**Status:** ✅ Done
+
 ---
 
 ### Domain-Specific Chunking Templates
@@ -513,7 +515,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Time-Weighted Retrieval | Medium | None |
 | [x] | Web Crawler / Sitemap / RSS | Medium | HTTP client |
 | [x] | Semantic Chunking (Embedding-Based) | Medium | `IEmbeddingGenerator` |
-| [ ] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
+| [x] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
 | [x] | Deep Research Loop | High | `IChatClient` |
 | [ ] | Domain-Specific Chunking Templates | High | Per-domain logic |
 | [x] | Ensemble / RRF | High | Multiple retrievers |
