@@ -25,7 +25,9 @@
     <ProjectReference Include="..\..\src\Rag.NET.Raptor\Rag.NET.Raptor.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Graph\Rag.NET.Graph.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.GraphRag\Rag.NET.GraphRag.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Reranking.Cohere\Rag.NET.Reranking.Cohere.csproj" />
     <PackageReference Include="BenchmarkDotNet" Version="0.*" />
+    <PackageReference Include="WireMock.Net" Version="1.*" />
     <PackageReference Include="NGitLab" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.*" />
     <PackageReference Include="NSubstitute" Version="5.*" />
