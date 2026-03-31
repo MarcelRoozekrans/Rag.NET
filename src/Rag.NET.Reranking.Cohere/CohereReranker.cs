@@ -10,6 +10,7 @@ namespace Rag.NET.Reranking.Cohere;
 public sealed class CohereReranker : IReranker, IDisposable
 {
     private readonly CohereClient _client;
+    private readonly HttpClient? _httpClient;
     private readonly CohereRerankerOptions _options;
 
     public CohereReranker(CohereRerankerOptions options)
@@ -19,9 +20,15 @@ public sealed class CohereReranker : IReranker, IDisposable
             throw new ArgumentException("ApiKey must not be null or whitespace.", nameof(options));
 
         _options = options;
-        _client = options.Endpoint is { } endpoint
-            ? new CohereClient(options.ApiKey, new HttpClient(), new Uri(endpoint))
-            : new CohereClient(options.ApiKey);
+        if (options.Endpoint is { } endpoint)
+        {
+            _httpClient = new HttpClient();
+            _client = new CohereClient(options.ApiKey, _httpClient, new Uri(endpoint));
+        }
+        else
+        {
+            _client = new CohereClient(options.ApiKey);
+        }
     }
 
     /// <inheritdoc/>
@@ -78,8 +85,14 @@ public sealed class CohereReranker : IReranker, IDisposable
 
         // Sort descending by score (Cohere returns pre-sorted per batch; re-sort after merge)
         allRerankResults.Sort(static (a, b) => b.RelevanceScore.CompareTo(a.RelevanceScore));
+        if (allRerankResults.Count > _options.TopN)
+            allRerankResults.RemoveRange(_options.TopN, allRerankResults.Count - _options.TopN);
         return allRerankResults;
     }
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        _client.Dispose();
+        _httpClient?.Dispose();
+    }
 }

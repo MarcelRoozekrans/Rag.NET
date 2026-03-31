@@ -28,7 +28,7 @@ public sealed class CohereRerankerOptions
 
     /// <summary>
     /// Maximum documents per API call. Cohere's hard limit is 1,000. Default: 1000.
-    /// When <paramref name="results"/> exceeds this, calls are batched sequentially and merged.
+    /// When the document list exceeds this, calls are batched sequentially and merged.
     /// </summary>
     public int MaxDocumentsPerBatch { get; init; } = 1000;
 
