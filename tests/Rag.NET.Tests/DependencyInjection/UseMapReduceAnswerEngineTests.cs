@@ -28,4 +28,11 @@ public class UseMapReduceAnswerEngineTests
         var sp = BaseServices().AddRagNet(rag => rag.UseMapReduceAnswerEngine()).BuildServiceProvider();
         Assert.IsType<MapReduceAnswerEngine>(sp.GetRequiredService<IAnswerEngine>());
     }
+
+    [Fact]
+    public void WithoutUseMapReduceAnswerEngine_DefaultIsChatAnswerEngine()
+    {
+        var sp = BaseServices().AddRagNet().BuildServiceProvider();
+        Assert.Null(sp.GetService<IAnswerEngine>());
+    }
 }

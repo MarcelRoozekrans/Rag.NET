@@ -28,4 +28,11 @@ public class UseRefineAnswerEngineTests
         var sp = BaseServices().AddRagNet(rag => rag.UseRefineAnswerEngine()).BuildServiceProvider();
         Assert.IsType<RefineAnswerEngine>(sp.GetRequiredService<IAnswerEngine>());
     }
+
+    [Fact]
+    public void WithoutUseRefineAnswerEngine_DefaultIsChatAnswerEngine()
+    {
+        var sp = BaseServices().AddRagNet().BuildServiceProvider();
+        Assert.Null(sp.GetService<IAnswerEngine>());
+    }
 }

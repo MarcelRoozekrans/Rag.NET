@@ -6,6 +6,11 @@ using Rag.NET.Models.Options;
 
 namespace Rag.NET.Benchmarks;
 
+/// <summary>
+/// Benchmarks the CPU and allocation overhead of SemanticChunkingStrategy.
+/// The embedding generator is mocked (returns fixed zero vectors) to isolate the
+/// chunking coordination cost. Real-world cost is dominated by embedding model calls.
+/// </summary>
 [MemoryDiagnoser]
 public class SemanticChunkingBenchmarks
 {

@@ -29,4 +29,11 @@ public class UseDispatchingAnswerEngineTests
         var sp = BaseServices().AddRagNet(rag => rag.UseDispatchingAnswerEngine()).BuildServiceProvider();
         Assert.IsType<DispatchingAnswerEngine>(sp.GetRequiredService<IAnswerEngine>());
     }
+
+    [Fact]
+    public void WithoutUseDispatchingAnswerEngine_DefaultIsChatAnswerEngine()
+    {
+        var sp = BaseServices().AddRagNet().BuildServiceProvider();
+        Assert.Null(sp.GetService<IAnswerEngine>());
+    }
 }
