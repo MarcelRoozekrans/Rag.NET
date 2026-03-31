@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.AnswerEngines</RootNamespace>
+    <PackageId>Rag.NET.AnswerEngines</PackageId>
+    <Description>MapReduce, Refine, and Dispatching answer engines for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+  </ItemGroup>
+
+</Project>

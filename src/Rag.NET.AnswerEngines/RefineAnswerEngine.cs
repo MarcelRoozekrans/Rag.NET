@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
-using Rag.NET.Logging;
+using Rag.NET.AnswerEngines;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 
@@ -74,7 +74,7 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
             }
             catch (Exception ex)
             {
-                RagPipelineLog.RefineStepFailed(logger, source.Chunk.DocumentId.ToString(), ex);
+                AnswerEngineLog.RefineStepFailed(logger, source.Chunk.DocumentId.ToString(), ex);
             }
         }
 

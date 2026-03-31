@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
-using Rag.NET.Logging;
+using Rag.NET.AnswerEngines;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 
@@ -108,7 +108,7 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         }
         catch (Exception ex)
         {
-            RagPipelineLog.MapReduceMapFailed(logger, source.Chunk.DocumentId.ToString(), ex);
+            AnswerEngineLog.MapReduceMapFailed(logger, source.Chunk.DocumentId.ToString(), ex);
             return null;
         }
         finally

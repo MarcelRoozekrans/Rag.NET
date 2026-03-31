@@ -43,16 +43,11 @@ public static class ServiceCollectionExtensions
             var r = sp.GetRequiredService<IRetriever>();
             var i = sp.GetRequiredService<IIngestor>();
             var chatClient = sp.GetService<IChatClient>();
-            IAnswerEngine? answerEngine = null;
-            if (chatClient is not null)
+            IAnswerEngine? answerEngine = sp.GetService<IAnswerEngine>();
+            if (answerEngine is null && chatClient is not null)
             {
                 var conversationMemory = sp.GetService<IConversationMemory>();
-                var chatEngine = new ChatAnswerEngine(chatClient, conversationMemory);
-                var mapReduceEngine = new MapReduceAnswerEngine(chatClient,
-                    sp.GetRequiredService<ILogger<MapReduceAnswerEngine>>(), conversationMemory);
-                var refineEngine = new RefineAnswerEngine(chatClient,
-                    sp.GetRequiredService<ILogger<RefineAnswerEngine>>(), conversationMemory);
-                answerEngine = new DispatchingAnswerEngine(chatEngine, mapReduceEngine, refineEngine);
+                answerEngine = new ChatAnswerEngine(chatClient, conversationMemory);
             }
             return new RagPipeline(r, i, answerEngine);
         });
