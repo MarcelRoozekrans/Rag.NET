@@ -62,9 +62,15 @@ public sealed class AcademicPaperChunkingStrategy : IDocumentChunkingStrategy, I
         var chunkIndex = _options.IncludeAbstract && abstractIndex >= 0 ? 1 : 0;
         await foreach (var chunk in _inner.ChunkDocumentAsync(ToAsync(bodySections), chunkingOptions, cancellationToken).ConfigureAwait(false))
         {
-            chunk.Metadata["template"] = "academic_paper";
-            chunk.Metadata["section_type"] = "body";
-            yield return chunk with { ChunkIndex = chunkIndex++ };
+            yield return chunk with
+            {
+                ChunkIndex = chunkIndex++,
+                Metadata = new Dictionary<string, string>(chunk.Metadata, StringComparer.Ordinal)
+                {
+                    ["template"] = "academic_paper",
+                    ["section_type"] = "body",
+                },
+            };
         }
     }
 
@@ -75,15 +81,21 @@ public sealed class AcademicPaperChunkingStrategy : IDocumentChunkingStrategy, I
     {
         await foreach (var chunk in _inner.ChunkAsync(section, chunkingOptions, cancellationToken).ConfigureAwait(false))
         {
-            chunk.Metadata["template"] = "academic_paper";
-            yield return chunk;
+            yield return chunk with
+            {
+                Metadata = new Dictionary<string, string>(chunk.Metadata, StringComparer.Ordinal)
+                {
+                    ["template"] = "academic_paper",
+                },
+            };
         }
     }
 
+#pragma warning disable CS1998 // async method lacks await — intentional: converts sync enumerable to async stream
     private static async IAsyncEnumerable<DocumentSection> ToAsync(IEnumerable<DocumentSection> source)
     {
         foreach (var item in source)
             yield return item;
-        await Task.CompletedTask.ConfigureAwait(false);
     }
+#pragma warning restore CS1998
 }

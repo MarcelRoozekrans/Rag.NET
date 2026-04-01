@@ -104,6 +104,23 @@ public class AcademicPaperChunkingStrategyTests
     }
 
     [Fact]
+    public async Task ChunkDocumentAsync_SuppressesAbstractWhenDisabled()
+    {
+        var sut = new AcademicPaperChunkingStrategy(new AcademicPaperChunkingOptions { IncludeAbstract = false });
+        var sections = new[]
+        {
+            Section("This paper examines...", "Abstract", headingLevel: 1, index: 0),
+            Section("Background.", "Introduction", headingLevel: 1, index: 1),
+        };
+
+        var chunks = await ChunkAsync(sut, sections);
+
+        Assert.DoesNotContain(chunks, c =>
+            c.Metadata.TryGetValue("section_type", out var t) &&
+            string.Equals(t, "abstract", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ChunkDocumentAsync_FallsBackToFullDocumentWhenNoAbstract()
     {
         var sut = new AcademicPaperChunkingStrategy(new AcademicPaperChunkingOptions());
