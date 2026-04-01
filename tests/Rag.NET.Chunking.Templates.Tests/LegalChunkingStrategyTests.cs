@@ -52,7 +52,8 @@ public class LegalChunkingStrategyTests
 
         var chunks = await ChunkAsync(sut, sections);
 
-        Assert.Contains(chunks, c => c.Metadata.ContainsKey("clause"));
+        var chunk = Assert.Single(chunks);
+        Assert.Equal("1. General Provisions", chunk.Metadata["clause"]);
     }
 
     [Fact]
