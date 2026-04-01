@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace Rag.NET.GraphRag.Tests;
@@ -87,6 +88,20 @@ public class MindMapExtractorTests
                               m.Text.Contains("5", StringComparison.Ordinal))),
             Arg.Any<ChatOptions?>(),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ExtractAsync_WhenLlmThrows_ReturnsEmptyRoot()
+    {
+        _chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("LLM unavailable"));
+        var sut = CreateSut();
+
+        var result = await sut.ExtractAsync("Some text.", "doc-1", TestContext.Current.CancellationToken);
+
+        Assert.Equal(string.Empty, result.Title);
+        Assert.Empty(result.Children);
     }
 
     [Fact]

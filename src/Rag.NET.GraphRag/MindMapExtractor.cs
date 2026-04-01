@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Graph;
 
 namespace Rag.NET.GraphRag;
@@ -9,12 +11,29 @@ namespace Rag.NET.GraphRag;
 /// Extracts a hierarchical mind-map tree from document text using an LLM.
 /// Optionally persists nodes and edges to an IGraphStore.
 /// </summary>
-public sealed class MindMapExtractor(IChatClient chatClient, IGraphStore? graphStore, MindMapOptions options)
+public sealed partial class MindMapExtractor
 {
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
     };
+
+    private readonly IChatClient _chatClient;
+    private readonly IGraphStore? _graphStore;
+    private readonly MindMapOptions _options;
+    private readonly ILogger _logger;
+
+    public MindMapExtractor(
+        IChatClient chatClient,
+        IGraphStore? graphStore,
+        MindMapOptions options,
+        ILogger<MindMapExtractor>? logger = null)
+    {
+        _chatClient = chatClient;
+        _graphStore = graphStore;
+        _options = options;
+        _logger = (ILogger?)logger ?? NullLogger.Instance;
+    }
 
     /// <summary>
     /// Extract a mind-map tree from <paramref name="text"/>. If an IGraphStore was provided,
@@ -24,10 +43,10 @@ public sealed class MindMapExtractor(IChatClient chatClient, IGraphStore? graphS
     /// </summary>
     public async Task<MindMapNode> ExtractAsync(string text, string documentId, CancellationToken ct)
     {
-        var client = options.ChatClient ?? chatClient;
-        var prompt = options.Prompt
+        var client = _options.ChatClient ?? _chatClient;
+        var prompt = _options.Prompt
             .Replace("{text}", text, StringComparison.Ordinal)
-            .Replace("{depth}", options.MaxDepth.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+            .Replace("{depth}", _options.MaxDepth.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
 
         var messages = new List<ChatMessage> { new(ChatRole.User, prompt) };
 
@@ -37,12 +56,13 @@ public sealed class MindMapExtractor(IChatClient chatClient, IGraphStore? graphS
             var response = await client.GetResponseAsync(messages, options: null, ct).ConfigureAwait(false);
             responseText = response.Text;
         }
-        catch (InvalidOperationException)
+        catch (OperationCanceledException)
         {
-            return EmptyRoot();
+            throw;
         }
-        catch (HttpRequestException)
+        catch (Exception ex)
         {
+            LogLlmCallFailed(_logger, ex);
             return EmptyRoot();
         }
 
@@ -50,7 +70,7 @@ public sealed class MindMapExtractor(IChatClient chatClient, IGraphStore? graphS
         if (root is null)
             return EmptyRoot();
 
-        if (graphStore is not null)
+        if (_graphStore is not null)
             await PersistAsync(root, parentName: null, documentId, ct).ConfigureAwait(false);
 
         return root;
@@ -62,19 +82,19 @@ public sealed class MindMapExtractor(IChatClient chatClient, IGraphStore? graphS
         {
             SourceDocumentId = documentId,
         };
-        await graphStore!.AddEntitiesAsync([entity], ct).ConfigureAwait(false);
+        await _graphStore!.AddEntitiesAsync([entity], ct).ConfigureAwait(false);
 
         if (parentName is not null)
         {
             var rel = new GraphRelationship(parentName, node.Title, "has_subtopic", Weight: 1.0);
-            await graphStore.AddRelationshipsAsync([rel], ct).ConfigureAwait(false);
+            await _graphStore.AddRelationshipsAsync([rel], ct).ConfigureAwait(false);
         }
 
         foreach (var child in node.Children)
             await PersistAsync(child, node.Title, documentId, ct).ConfigureAwait(false);
     }
 
-    private static MindMapNode? TryParse(string? json)
+    private MindMapNode? TryParse(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
             return null;
@@ -82,11 +102,18 @@ public sealed class MindMapExtractor(IChatClient chatClient, IGraphStore? graphS
         {
             return JsonSerializer.Deserialize<MindMapNode>(json, s_jsonOptions);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
+            LogJsonParseFailed(_logger, ex);
             return null;
         }
     }
 
     private static MindMapNode EmptyRoot() => new(string.Empty, string.Empty, []);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM call failed during mind-map extraction")]
+    private static partial void LogLlmCallFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse mind-map JSON from LLM response")]
+    private static partial void LogJsonParseFailed(ILogger logger, Exception ex);
 }
