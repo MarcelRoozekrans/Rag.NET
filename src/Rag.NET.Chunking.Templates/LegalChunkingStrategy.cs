@@ -38,9 +38,15 @@ public sealed class LegalChunkingStrategy : IDocumentChunkingStrategy, IChunking
         }
     }
 
-    public IAsyncEnumerable<TextChunk> ChunkAsync(
+    public async IAsyncEnumerable<TextChunk> ChunkAsync(
         DocumentSection section,
         ChunkingOptions chunkingOptions,
-        CancellationToken cancellationToken = default)
-        => _inner.ChunkAsync(section, chunkingOptions, cancellationToken);
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var chunk in _inner.ChunkAsync(section, chunkingOptions, cancellationToken).ConfigureAwait(false))
+        {
+            chunk.Metadata["template"] = "legal";
+            yield return chunk;
+        }
+    }
 }
