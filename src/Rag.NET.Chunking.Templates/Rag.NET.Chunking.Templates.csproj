@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Chunking.Templates</RootNamespace>
+    <PackageId>Rag.NET.Chunking.Templates</PackageId>
+    <Description>Domain-specific chunking templates for Rag.NET (Legal, Book, Academic Paper, Q&amp;A Pairs, Email, Resume)</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Chunking.Templates.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <ProjectReference Include="..\Rag.NET.Chunking\Rag.NET.Chunking.csproj" />
+    <PackageReference Include="MimeKit" Version="4.*" />
+    <PackageReference Include="CsvHelper" Version="33.*" />
+    <PackageReference Include="ClosedXML" Version="0.*" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+  </ItemGroup>
+
+</Project>
