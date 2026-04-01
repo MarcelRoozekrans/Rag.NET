@@ -180,6 +180,29 @@ public class CSharpChunkingStrategyTests
     }
 
     [Fact]
+    public async Task ChunkAsync_IncludeBodiesFalse_StripsMethodBody()
+    {
+        const string source = """
+            public class Foo
+            {
+                public int Add(int a, int b)
+                {
+                    return a + b;
+                }
+            }
+            """;
+
+        var ct = TestContext.Current.CancellationToken;
+        var chunks = await Strategy(new CSharpChunkingOptions { IncludeBodies = false })
+            .ChunkAsync(Section(source), DefaultOptions, ct).ToListAsync(ct);
+
+        var method = chunks.Single(c =>
+            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "Add", StringComparison.Ordinal));
+
+        Assert.DoesNotContain("return a + b", method.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ChunkAsync_OversizedMember_YieldsWithOversizedFlag()
     {
         var body = string.Join("\n", Enumerable.Range(0, 200).Select(i => $"    var x{i} = {i};"));

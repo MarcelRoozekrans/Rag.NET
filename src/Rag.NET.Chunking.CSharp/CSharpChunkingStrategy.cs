@@ -93,6 +93,8 @@ public sealed partial class CSharpChunkingStrategy : IChunkingStrategy
                 DocumentId = section.DocumentId,
                 ChunkIndex = chunkIndex++,
                 Metadata = chunkMetadata,
+                StartPosition = node.FullSpan.Start,
+                EndPosition = node.FullSpan.End,
             };
         }
     }

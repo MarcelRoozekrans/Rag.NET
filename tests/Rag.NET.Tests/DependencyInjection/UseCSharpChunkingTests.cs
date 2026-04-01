@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Chunking.CSharp;
@@ -13,6 +14,7 @@ public class UseCSharpChunkingTests
     private static IServiceCollection BaseServices()
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
         return services;
     }
