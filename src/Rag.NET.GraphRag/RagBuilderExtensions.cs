@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Graph;
 
@@ -78,7 +79,8 @@ public static class RagBuilderExtensions
             new MindMapExtractor(
                 options.ChatClient ?? sp.GetRequiredService<IChatClient>(),
                 sp.GetService<IGraphStore>(),
-                options));
+                options,
+                sp.GetService<ILogger<MindMapExtractor>>()));
 
         builder.Services.AddSingleton<MindMapExtractionBehavior>(sp =>
             new MindMapExtractionBehavior(
