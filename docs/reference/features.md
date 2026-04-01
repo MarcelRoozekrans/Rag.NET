@@ -418,9 +418,35 @@ Full Microsoft GraphRAG pipeline: LLM-driven entity and relationship extraction 
 ### Mind-Map Extractor
 **Package:** `Rag.NET.GraphRag`
 
-Build a hierarchical JSON tree from document content representing the document's conceptual structure. Useful as a structured knowledge representation alongside flat chunk retrieval.
+**Status:** ✅ Done
 
-**Why:** Provides a navigable overview of large documents for display, summarization, and structured retrieval.
+Build a hierarchical concept tree from document content using a single LLM call. Nodes are stored as `GraphEntity` (Type = `"mind_map_node"`) and parent→child edges as `GraphRelationship` (Description = `"has_subtopic"`) in the existing `IGraphStore`. Retrieve via `GetFullGraphAsync()` and filter on type. Optionally runs automatically at ingestion time.
+
+**Options**
+
+| Option | Default | Description |
+|---|---|---|
+| `ExtractAtIngestion` | `false` | When true, runs automatically during ingestion. |
+| `MaxDepth` | `3` | Maximum depth of the generated concept tree. |
+| `ChatClient` | `null` | Optional cheaper model override. Null uses the DI-registered `IChatClient`. |
+| `Prompt` | *(built-in)* | LLM prompt template. `{text}` and `{depth}` are replaced at runtime. |
+
+**Usage**
+
+```csharp
+// On-demand extraction (inject MindMapExtractor directly):
+services.AddRagNet(rag => rag.UseMindMapExtraction());
+var extractor = sp.GetRequiredService<MindMapExtractor>();
+var tree = await extractor.ExtractAsync(documentText, documentId, ct);
+
+// With automatic ingestion-time extraction + IGraphStore persistence:
+services.AddRagNet(rag => rag
+    .UseGraphRag()
+    .UseMindMapExtraction(o => {
+        o.ExtractAtIngestion = true;
+        o.MaxDepth = 3;
+    }));
+```
 
 ---
 
@@ -526,3 +552,4 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | RAPTOR | High | UMAP + GMM + `IChatClient` |
 | [x] | Self-Query Filtering | High | `IChatClient` + schema |
 | [x] | GraphRAG | Very High | Graph DB + `IChatClient` |
+| [x] | Mind-Map Extractor | Medium | `IChatClient` + `IGraphStore` |
