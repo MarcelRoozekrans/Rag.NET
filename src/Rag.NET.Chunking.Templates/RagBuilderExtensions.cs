@@ -68,6 +68,9 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton(opts);
         builder.Services.AddSingleton<EmailDocumentParser>();
         builder.Services.AddSingleton<IDocumentParser>(sp => sp.GetRequiredService<EmailDocumentParser>());
+        builder.Services.AddSingleton<EmailChunkingStrategy>();
+        builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<EmailChunkingStrategy>());
+        builder.Services.AddSingleton<IChunkingStrategy>(sp => sp.GetRequiredService<EmailChunkingStrategy>());
         return builder;
     }
 

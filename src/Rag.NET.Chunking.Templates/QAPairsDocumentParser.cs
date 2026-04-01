@@ -44,7 +44,7 @@ public sealed partial class QAPairsDocumentParser(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var reader = new StreamReader(stream, leaveOpen: true);
-        var config = new CsvConfiguration(CultureInfo.InvariantCulture) { HasHeaderRecord = true };
+        var config = new CsvConfiguration(CultureInfo.InvariantCulture) { HasHeaderRecord = options.SkipHeader };
         using var csv = new CsvReader(reader, config);
 
         await csv.ReadAsync().ConfigureAwait(false);
@@ -75,6 +75,9 @@ public sealed partial class QAPairsDocumentParser(
                 LogSkippingEmptyQuestion(_logger, index + 1);
                 continue;
             }
+
+            if (string.IsNullOrWhiteSpace(answer))
+                LogEmptyAnswer(_logger, index + 1);
 
             yield return new DocumentSection
             {
@@ -120,6 +123,9 @@ public sealed partial class QAPairsDocumentParser(
                 continue;
             }
 
+            if (string.IsNullOrWhiteSpace(answer))
+                LogEmptyAnswer(_logger, index + 1);
+
             yield return new DocumentSection
             {
                 Text = question,
@@ -146,4 +152,7 @@ public sealed partial class QAPairsDocumentParser(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping row {Row} — empty question column.")]
     private static partial void LogSkippingEmptyQuestion(ILogger logger, int row);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Row {Row} has an empty answer column — chunk will be stored with no answer text.")]
+    private static partial void LogEmptyAnswer(ILogger logger, int row);
 }

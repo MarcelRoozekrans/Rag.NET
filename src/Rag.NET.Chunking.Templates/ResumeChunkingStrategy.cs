@@ -59,7 +59,7 @@ public sealed partial class ResumeChunkingStrategy(
 
         var index = 0;
 
-        if (parsed["contact_info"]?.GetValue<string>() is { Length: > 0 } contact)
+        if (TryGetString(parsed["contact_info"]) is { Length: > 0 } contact)
             yield return MakeChunk(contact, id, index++, "contact_info");
 
         if (parsed["work_history"] is JsonArray workHistory)
@@ -78,9 +78,18 @@ public sealed partial class ResumeChunkingStrategy(
                     yield return MakeChunk(eduText, id, index++, "education");
             }
 
-        if (parsed["skills"]?.GetValue<string>() is { Length: > 0 } skills)
+        if (TryGetString(parsed["skills"]) is { Length: > 0 } skills)
             yield return MakeChunk(skills, id, index++, "skills");
     }
+
+    /// <summary>
+    /// Safely extracts a string value from a <see cref="JsonNode"/>.
+    /// Returns <c>null</c> if the node is <c>null</c>, an array, an object,
+    /// or any non-string scalar — guarding against LLM responses that return
+    /// unexpected types for fields declared as strings in the prompt.
+    /// </summary>
+    private static string? TryGetString(JsonNode? node) =>
+        node is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
     private static TextChunk MakeChunk(string text, DocumentId docId, int index, string section) =>
         new()

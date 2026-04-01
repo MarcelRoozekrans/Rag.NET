@@ -62,6 +62,13 @@ public class UseChunkingTemplatesTests
     }
 
     [Fact]
+    public void UseEmailChunking_RegistersIDocumentChunkingStrategy()
+    {
+        var sp = BaseServices().AddRagNet(rag => rag.UseEmailChunking()).BuildServiceProvider();
+        Assert.IsType<EmailChunkingStrategy>(sp.GetRequiredService<IDocumentChunkingStrategy>());
+    }
+
+    [Fact]
     public void UseResumeChunking_RegistersIDocumentChunkingStrategy()
     {
         var sp = BaseServices().AddRagNet(rag => rag.UseResumeChunking()).BuildServiceProvider();

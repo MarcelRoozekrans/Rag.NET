@@ -86,6 +86,7 @@ public sealed class AcademicPaperChunkingStrategy : IDocumentChunkingStrategy, I
                 Metadata = new Dictionary<string, string>(chunk.Metadata, StringComparer.Ordinal)
                 {
                     ["template"] = "academic_paper",
+                    ["section_type"] = "body",
                 },
             };
         }
