@@ -1,0 +1,89 @@
+using Rag.NET.Abstractions;
+using Rag.NET.Chunking;
+using Rag.NET.Models;
+using Rag.NET.Models.Options;
+using System.Runtime.CompilerServices;
+
+namespace Rag.NET.Chunking.Templates;
+
+public sealed class AcademicPaperChunkingStrategy : IDocumentChunkingStrategy, IChunkingStrategy
+{
+    private static readonly string[] AbstractHeadings = ["abstract"];
+    private static readonly string[] ReferencesHeadings = ["references", "bibliography", "works cited"];
+
+    private readonly HierarchicalMergerChunkingStrategy _inner;
+    private readonly AcademicPaperChunkingOptions _options;
+
+    public AcademicPaperChunkingStrategy(AcademicPaperChunkingOptions options)
+    {
+        _options = options;
+        _inner = new HierarchicalMergerChunkingStrategy(new HierarchicalMergerOptions());
+    }
+
+    public async IAsyncEnumerable<TextChunk> ChunkDocumentAsync(
+        IAsyncEnumerable<DocumentSection> sections,
+        ChunkingOptions chunkingOptions,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var allSections = new List<DocumentSection>();
+        await foreach (var s in sections.WithCancellation(cancellationToken).ConfigureAwait(false))
+            allSections.Add(s);
+
+        var abstractIndex = allSections.FindIndex(s =>
+            s.Heading is { } h &&
+            AbstractHeadings.Any(a => h.Trim().Equals(a, StringComparison.OrdinalIgnoreCase)));
+
+        var startIndex = abstractIndex >= 0 ? abstractIndex : 0;
+
+        if (abstractIndex >= 0 && _options.IncludeAbstract)
+        {
+            var abstractSection = allSections[abstractIndex];
+            yield return new TextChunk
+            {
+                Text = abstractSection.Text,
+                DocumentId = abstractSection.DocumentId,
+                ChunkIndex = 0,
+                Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["template"] = "academic_paper",
+                    ["section_type"] = "abstract",
+                },
+            };
+            startIndex = abstractIndex + 1;
+        }
+
+        var bodySections = allSections
+            .Skip(startIndex)
+            .Where(s => _options.IncludeReferences ||
+                        s.Heading is null ||
+                        !ReferencesHeadings.Any(r =>
+                            s.Heading.Trim().Equals(r, StringComparison.OrdinalIgnoreCase)));
+
+        var chunkIndex = _options.IncludeAbstract && abstractIndex >= 0 ? 1 : 0;
+        await foreach (var chunk in _inner.ChunkDocumentAsync(ToAsync(bodySections), chunkingOptions, cancellationToken).ConfigureAwait(false))
+        {
+            chunk.Metadata["template"] = "academic_paper";
+            chunk.Metadata["section_type"] = "body";
+            yield return chunk with { ChunkIndex = chunkIndex++ };
+        }
+    }
+
+    public async IAsyncEnumerable<TextChunk> ChunkAsync(
+        DocumentSection section,
+        ChunkingOptions chunkingOptions,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await foreach (var chunk in _inner.ChunkAsync(section, chunkingOptions, cancellationToken).ConfigureAwait(false))
+        {
+            chunk.Metadata["template"] = "academic_paper";
+            yield return chunk;
+        }
+    }
+
+    private static async IAsyncEnumerable<DocumentSection> ToAsync(IEnumerable<DocumentSection> source)
+    {
+        foreach (var item in source)
+            yield return item;
+        await Task.CompletedTask.ConfigureAwait(false);
+    }
+}
