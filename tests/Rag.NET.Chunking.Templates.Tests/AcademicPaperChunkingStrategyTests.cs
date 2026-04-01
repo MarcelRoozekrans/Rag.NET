@@ -89,4 +89,35 @@ public class AcademicPaperChunkingStrategyTests
 
         Assert.All(chunks, c => Assert.Equal("academic_paper", c.Metadata["template"]));
     }
+
+    [Fact]
+    public async Task ChunkAsync_AddsTemplateMetadata()
+    {
+        var sut = new AcademicPaperChunkingStrategy(new AcademicPaperChunkingOptions());
+        var section = Section("Introduction text.", "Introduction", headingLevel: 1);
+
+        var chunks = new List<TextChunk>();
+        await foreach (var chunk in sut.ChunkAsync(section, new ChunkingOptions(), TestContext.Current.CancellationToken))
+            chunks.Add(chunk);
+
+        Assert.All(chunks, c => Assert.Equal("academic_paper", c.Metadata["template"]));
+    }
+
+    [Fact]
+    public async Task ChunkDocumentAsync_FallsBackToFullDocumentWhenNoAbstract()
+    {
+        var sut = new AcademicPaperChunkingStrategy(new AcademicPaperChunkingOptions());
+        var sections = new[]
+        {
+            Section("Introduction text.", "Introduction", headingLevel: 1, index: 0),
+            Section("Discussion text.", "Discussion", headingLevel: 1, index: 1),
+        };
+
+        var chunks = await ChunkAsync(sut, sections);
+
+        Assert.NotEmpty(chunks);
+        Assert.DoesNotContain(chunks, c =>
+            c.Metadata.TryGetValue("section_type", out var t) &&
+            string.Equals(t, "abstract", StringComparison.Ordinal));
+    }
 }
