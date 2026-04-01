@@ -82,6 +82,37 @@ public class BookChunkingStrategyTests
     }
 
     [Fact]
+    public async Task ChunkDocumentAsync_PropagatesChapterToSubSections()
+    {
+        var sut = new BookChunkingStrategy(new BookChunkingOptions { MaxDepth = 2 });
+        var sections = new[]
+        {
+            Section("Part One heading.", "Part One", headingLevel: 1, index: 0),
+            Section("Section 1.1 body.", "Section 1.1", headingLevel: 2, index: 1),
+        };
+
+        var chunks = await ChunkAsync(sut, sections);
+
+        Assert.All(chunks, c => Assert.Equal("Part One", c.Metadata["chapter"]));
+    }
+
+    [Fact]
+    public async Task ChunkDocumentAsync_FiltersTocByPageNumberHeuristic()
+    {
+        var sut = new BookChunkingStrategy(new BookChunkingOptions());
+        var sections = new[]
+        {
+            // No heading but >50% of lines match page-number pattern → should be filtered
+            Section("Introduction    1\nChapter One    5\nChapter Two    12", index: 0),
+            Section("Real chapter content.", "Chapter One", headingLevel: 1, index: 1),
+        };
+
+        var chunks = await ChunkAsync(sut, sections);
+
+        Assert.DoesNotContain(chunks, c => c.Text.Contains("Introduction    1", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ChunkDocumentAsync_FiltersIndexWhenDisabled()
     {
         var sut = new BookChunkingStrategy(new BookChunkingOptions { IncludeIndex = false });

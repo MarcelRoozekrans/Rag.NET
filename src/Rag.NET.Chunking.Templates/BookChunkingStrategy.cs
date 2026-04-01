@@ -10,7 +10,7 @@ namespace Rag.NET.Chunking.Templates;
 public sealed class BookChunkingStrategy : IDocumentChunkingStrategy, IChunkingStrategy
 {
     private static readonly Regex PageNumberLine =
-        new(@"\s+\d+\s*$", RegexOptions.Compiled, TimeSpan.FromMilliseconds(100));
+        new(@"\s+\d+\s*$", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     private static readonly string[] TocHeadings =
         ["table of contents", "contents"];
