@@ -74,7 +74,8 @@ Split C# source files into semantically meaningful chunks using Roslyn. Each chu
 ---
 
 ### Domain-Specific Chunking Templates
-**Package:** `Rag.NET` (core)
+**Status:** ✅ Done
+**Package:** `Rag.NET.Chunking.Templates`
 
 Pre-built chunking templates for common vertical document types:
 
@@ -543,7 +544,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Semantic Chunking (Embedding-Based) | Medium | `IEmbeddingGenerator` |
 | [x] | C# Semantic Chunking (Roslyn) | High | `Microsoft.CodeAnalysis.CSharp` |
 | [x] | Deep Research Loop | High | `IChatClient` |
-| [ ] | Domain-Specific Chunking Templates | High | Per-domain logic |
+| [x] | Domain-Specific Chunking Templates | High | Per-domain logic |
 | [x] | Ensemble / RRF | High | Multiple retrievers |
 | [ ] | Image / Video Description | High | Vision LLM |
 | [x] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
