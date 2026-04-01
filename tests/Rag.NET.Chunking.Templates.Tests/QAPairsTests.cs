@@ -1,0 +1,75 @@
+using Rag.NET.Chunking.Templates;
+using Rag.NET.Models;
+using Rag.NET.Models.Options;
+using System.Text;
+using Xunit;
+
+namespace Rag.NET.Chunking.Templates.Tests;
+
+public class QAPairsTests
+{
+    private static readonly DocumentMetadata Metadata =
+        new() { DocumentId = new DocumentId("doc.csv"), FileName = "doc.csv" };
+
+    private static async IAsyncEnumerable<T> ToAsync<T>(IEnumerable<T> source)
+    {
+        foreach (var item in source)
+            yield return item;
+        await Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task QAPairsDocumentParser_ParsesCsvRows()
+    {
+        var csv = "question,answer\nWhat is the capital of France?,Paris\nWhat is 2+2?,4";
+        var stream = new MemoryStream(Encoding.UTF8.GetBytes(csv));
+        var parser = new QAPairsDocumentParser(new QAPairsChunkingOptions());
+
+        var sections = new List<DocumentSection>();
+        await foreach (var section in parser.ParseAsync(stream, Metadata, TestContext.Current.CancellationToken))
+            sections.Add(section);
+
+        Assert.Equal(2, sections.Count);
+        Assert.Equal("What is the capital of France?", sections[0].Text);
+    }
+
+    [Fact]
+    public async Task QAPairsDocumentParser_CanParseCsv()
+    {
+        var parser = new QAPairsDocumentParser(new QAPairsChunkingOptions());
+        Assert.True(parser.CanParse("text/csv"));
+    }
+
+    [Fact]
+    public async Task QAPairsChunkingStrategy_StoresAnswerInMetadata()
+    {
+        var strategy = new QAPairsChunkingStrategy();
+        var sections = new[]
+        {
+            new DocumentSection { Text = "What is Paris?", Heading = "Capital of France", DocumentId = new DocumentId("doc"), SectionIndex = 0 },
+        };
+
+        var chunks = new List<TextChunk>();
+        await foreach (var chunk in strategy.ChunkDocumentAsync(ToAsync(sections), new ChunkingOptions(), TestContext.Current.CancellationToken))
+            chunks.Add(chunk);
+
+        var single = Assert.Single(chunks);
+        Assert.Equal("What is Paris?", single.Text);
+        Assert.Equal("Capital of France", single.Metadata["answer"]);
+        Assert.Equal("qa_pairs", single.Metadata["template"]);
+    }
+
+    [Fact]
+    public async Task QAPairsDocumentParser_SkipsRowsMissingQuestion()
+    {
+        var csv = "question,answer\n,Paris\nWhat is 2+2?,4";
+        var stream = new MemoryStream(Encoding.UTF8.GetBytes(csv));
+        var parser = new QAPairsDocumentParser(new QAPairsChunkingOptions());
+
+        var sections = new List<DocumentSection>();
+        await foreach (var section in parser.ParseAsync(stream, Metadata, TestContext.Current.CancellationToken))
+            sections.Add(section);
+
+        Assert.Single(sections);
+    }
+}
