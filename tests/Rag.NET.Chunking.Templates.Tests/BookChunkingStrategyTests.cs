@@ -71,6 +71,17 @@ public class BookChunkingStrategyTests
     }
 
     [Fact]
+    public async Task ChunkDocumentAsync_AddsChapterMetadata()
+    {
+        var sut = new BookChunkingStrategy(new BookChunkingOptions());
+        var sections = new[] { Section("Chapter content.", "Chapter 1", headingLevel: 1) };
+
+        var chunks = await ChunkAsync(sut, sections);
+
+        Assert.All(chunks, c => Assert.Equal("Chapter 1", c.Metadata["chapter"]));
+    }
+
+    [Fact]
     public async Task ChunkDocumentAsync_FiltersIndexWhenDisabled()
     {
         var sut = new BookChunkingStrategy(new BookChunkingOptions { IncludeIndex = false });

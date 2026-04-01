@@ -39,11 +39,16 @@ public sealed class BookChunkingStrategy : IDocumentChunkingStrategy, IChunkingS
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var filtered = Filter(sections, cancellationToken);
+        var currentChapter = string.Empty;
         await foreach (var chunk in _inner.ChunkDocumentAsync(filtered, chunkingOptions, cancellationToken).ConfigureAwait(false))
         {
             chunk.Metadata["template"] = "book";
-            if (chunk.Metadata.TryGetValue("heading", out var h))
-                chunk.Metadata["chapter"] = h;
+            // Track the top-level (level-1) heading as the chapter for all sub-chunks
+            if (chunk.Metadata.TryGetValue("heading_level", out var lvl) && string.Equals(lvl, "1", StringComparison.Ordinal)
+                && chunk.Metadata.TryGetValue("heading", out var h))
+                currentChapter = h;
+            if (currentChapter.Length > 0)
+                chunk.Metadata["chapter"] = currentChapter;
             yield return chunk;
         }
     }
