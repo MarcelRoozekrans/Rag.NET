@@ -53,6 +53,7 @@ public static class RagBuilderExtensions
         configure?.Invoke(opts);
         builder.Services.AddSingleton(opts);
         builder.Services.AddSingleton<QAPairsDocumentParser>();
+        builder.Services.AddSingleton<IDocumentParser>(sp => sp.GetRequiredService<QAPairsDocumentParser>());
         builder.Services.AddSingleton<QAPairsChunkingStrategy>();
         builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<QAPairsChunkingStrategy>());
         return builder;
@@ -66,6 +67,7 @@ public static class RagBuilderExtensions
         configure?.Invoke(opts);
         builder.Services.AddSingleton(opts);
         builder.Services.AddSingleton<EmailDocumentParser>();
+        builder.Services.AddSingleton<IDocumentParser>(sp => sp.GetRequiredService<EmailDocumentParser>());
         return builder;
     }
 

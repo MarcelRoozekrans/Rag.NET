@@ -48,17 +48,17 @@ public class UseChunkingTemplatesTests
     }
 
     [Fact]
-    public void UseQAPairsChunking_RegistersQAPairsDocumentParser()
+    public void UseQAPairsChunking_RegistersIDocumentParser()
     {
         var sp = BaseServices().AddRagNet(rag => rag.UseQAPairsChunking()).BuildServiceProvider();
-        Assert.NotNull(sp.GetService<QAPairsDocumentParser>());
+        Assert.IsType<QAPairsDocumentParser>(sp.GetRequiredService<IDocumentParser>());
     }
 
     [Fact]
-    public void UseEmailChunking_RegistersEmailDocumentParser()
+    public void UseEmailChunking_RegistersIDocumentParser()
     {
         var sp = BaseServices().AddRagNet(rag => rag.UseEmailChunking()).BuildServiceProvider();
-        Assert.NotNull(sp.GetService<EmailDocumentParser>());
+        Assert.IsType<EmailDocumentParser>(sp.GetRequiredService<IDocumentParser>());
     }
 
     [Fact]
