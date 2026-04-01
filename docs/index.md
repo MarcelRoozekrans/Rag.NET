@@ -50,6 +50,7 @@ flowchart TD
     ABSTRACTIONS --> AE["Rag.NET.AnswerEngines<br>MapReduce · Refine · Dispatching"]
     ABSTRACTIONS --> QT["Rag.NET.QueryTechniques<br>HyDE · MultiQuery"]
     ABSTRACTIONS --> MEM["Rag.NET.Memory<br>Persistent cross-session memory"]
+    ABSTRACTIONS --> CHUNKING_CS["Rag.NET.Chunking.CSharp<br>Roslyn-based C# chunking"]
 
     CORE["Rag.NET<br>Core pipeline · Text/Markdown/CSV/JSON parsers · Recursive chunking"]
 
@@ -77,6 +78,17 @@ flowchart TD
     CORE --> BITBUCKET["Rag.NET.DataProviders.Bitbucket<br>Bitbucket repository files"]
     CORE --> ZENDESK["Rag.NET.DataProviders.Zendesk<br>Zendesk tickets &amp; articles"]
     CORE --> AIRTABLE["Rag.NET.DataProviders.Airtable<br>Airtable rows"]
+    CORE --> GRAPHRAG["Rag.NET.GraphRag<br>GraphRAG · Mind-Map Extractor"]
+    CORE --> RERANK_CO["Rag.NET.Reranking.Cohere<br>Cohere reranking API"]
+    CORE --> RERANK_ON["Rag.NET.Reranking.Onnx<br>Local ONNX cross-encoder"]
+    CORE --> AUDIO["Rag.NET.Parsers.Audio<br>Whisper.net transcription"]
+    CORE --> AZBLOB["Rag.NET.DataProviders.AzureBlob<br>Azure Blob Storage"]
+    CORE --> BOX["Rag.NET.DataProviders.Box<br>Box"]
+    CORE --> DROPBOX["Rag.NET.DataProviders.Dropbox<br>Dropbox"]
+    CORE --> GDRIVE["Rag.NET.DataProviders.GoogleDrive<br>Google Drive"]
+    CORE --> ONEDRIVE["Rag.NET.DataProviders.OneDrive<br>OneDrive"]
+    CORE --> SHAREPOINT["Rag.NET.DataProviders.SharePoint<br>SharePoint"]
+    CORE --> WEB["Rag.NET.DataProviders.Web<br>Web crawler · Sitemap · RSS"]
 
     style PG fill:#e8f4fd,stroke:#4a90d9
     style QD fill:#e8f4fd,stroke:#4a90d9
@@ -90,6 +102,18 @@ flowchart TD
     style AE fill:#e8f4fd,stroke:#4a90d9
     style QT fill:#e8f4fd,stroke:#4a90d9
     style MEM fill:#e8f4fd,stroke:#4a90d9
+    style CHUNKING_CS fill:#e8f4fd,stroke:#4a90d9
+    style GRAPHRAG fill:#e8f4fd,stroke:#4a90d9
+    style RERANK_CO fill:#e8f4fd,stroke:#4a90d9
+    style RERANK_ON fill:#e8f4fd,stroke:#4a90d9
+    style AUDIO fill:#e8f4fd,stroke:#4a90d9
+    style AZBLOB fill:#e8f4fd,stroke:#4a90d9
+    style BOX fill:#e8f4fd,stroke:#4a90d9
+    style DROPBOX fill:#e8f4fd,stroke:#4a90d9
+    style GDRIVE fill:#e8f4fd,stroke:#4a90d9
+    style ONEDRIVE fill:#e8f4fd,stroke:#4a90d9
+    style SHAREPOINT fill:#e8f4fd,stroke:#4a90d9
+    style WEB fill:#e8f4fd,stroke:#4a90d9
 ```
 
 | NuGet package | Contents |
@@ -99,6 +123,7 @@ flowchart TD
 | `Rag.NET.Chunking` | `HierarchicalMergerChunkingStrategy`, `CodeChunkingStrategy` |
 | `Rag.NET.Chunking.Semantic` | `SemanticChunkingStrategy` — splits at semantic boundaries using embeddings |
 | `Rag.NET.Chunking.TokenAware` | `TokenAwareChunkingStrategy` — splits by token count rather than characters |
+| `Rag.NET.Chunking.CSharp` | `CSharpChunkingStrategy` — Roslyn-based semantic chunking for C# source files |
 | `Rag.NET.AnswerEngines` | `MapReduceAnswerEngine`, `RefineAnswerEngine`, `DispatchingAnswerEngine` |
 | `Rag.NET.QueryTechniques` | `LlmHypotheticalDocumentGenerator` (HyDE), `LlmQueryExpander` (MultiQuery) |
 | `Rag.NET.Memory` | `PersistentConversationMemory` — SQLite-backed cross-session memory |
@@ -110,8 +135,12 @@ flowchart TD
 | `Rag.NET.Parsers.Word` | Word `.docx` parser (OpenXml) |
 | `Rag.NET.Parsers.Excel` | Excel `.xlsx` parser (OpenXml) |
 | `Rag.NET.Parsers.PowerPoint` | PowerPoint `.pptx` parser (OpenXml) |
+| `Rag.NET.Parsers.Audio` | WAV/MP3/FLAC transcription via Whisper.net (local, no API key required) |
 | `Rag.NET.Evaluation` | Answer-quality evaluation via embedding cosine similarity |
 | `Rag.NET.Mediator` | ZeroAlloc.Mediator integration — dispatch ingest/retrieve/delete via `IMediator` |
+| `Rag.NET.GraphRag` | GraphRAG entity extraction, community detection, local/global search, Mind-Map Extractor |
+| `Rag.NET.Reranking.Cohere` | `CohereReranker` — hosted cross-encoder reranking via Cohere API |
+| `Rag.NET.Reranking.Onnx` | `OnnxReranker` — local ONNX cross-encoder reranking (no API key) |
 | `Rag.NET.DataProviders.Confluence` | Confluence pages via REST API |
 | `Rag.NET.DataProviders.Jira` | Jira issues via REST API |
 | `Rag.NET.DataProviders.Notion` | Notion pages and blocks via REST API |
@@ -123,6 +152,13 @@ flowchart TD
 | `Rag.NET.DataProviders.Bitbucket` | Bitbucket repository files via REST API |
 | `Rag.NET.DataProviders.Zendesk` | Zendesk tickets and help center articles |
 | `Rag.NET.DataProviders.Airtable` | Airtable rows and attachments |
+| `Rag.NET.DataProviders.AzureBlob` | Azure Blob Storage — ETag/LastModified delta sync |
+| `Rag.NET.DataProviders.Box` | Box — events cursor delta sync |
+| `Rag.NET.DataProviders.Dropbox` | Dropbox — cursor-based delta sync |
+| `Rag.NET.DataProviders.GoogleDrive` | Google Drive — pageToken change stream |
+| `Rag.NET.DataProviders.OneDrive` | OneDrive via Microsoft Graph — deltaLink token |
+| `Rag.NET.DataProviders.SharePoint` | SharePoint via Microsoft Graph — deltaLink token |
+| `Rag.NET.DataProviders.Web` | Web crawler, Sitemap loader, RSS/Atom feed loader |
 
 ## Requirements
 
