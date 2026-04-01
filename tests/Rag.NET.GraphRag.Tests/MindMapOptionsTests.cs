@@ -47,4 +47,22 @@ public class MindMapOptionsTests
         Assert.Single(root.Children);
         Assert.Equal("Child", root.Children[0].Title);
     }
+
+    [Fact]
+    public void MindMapNode_CanBeDeserializedFromJson()
+    {
+        const string json = """
+            {"title":"Root","summary":"Root summary.","children":[
+              {"title":"Child","summary":"Child summary.","children":[]}
+            ]}
+            """;
+
+        var node = System.Text.Json.JsonSerializer.Deserialize<MindMapNode>(json,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        Assert.NotNull(node);
+        Assert.Equal("Root", node!.Title);
+        Assert.Single(node.Children);
+        Assert.Equal("Child", node.Children[0].Title);
+    }
 }
