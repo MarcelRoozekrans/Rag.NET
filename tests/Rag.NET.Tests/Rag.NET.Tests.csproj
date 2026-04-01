@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.Mediator\Rag.NET.Mediator.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.GraphRag\Rag.NET.GraphRag.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.VectorStores.PgVector\Rag.NET.VectorStores.PgVector.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.VectorStores.Qdrant\Rag.NET.VectorStores.Qdrant.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
