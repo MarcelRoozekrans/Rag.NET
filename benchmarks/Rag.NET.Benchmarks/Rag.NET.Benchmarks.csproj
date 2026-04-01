@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.Reranking.Cohere\Rag.NET.Reranking.Cohere.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Chunking.TokenAware\Rag.NET.Chunking.TokenAware.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Chunking.Semantic\Rag.NET.Chunking.Semantic.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Chunking.CSharp\Rag.NET.Chunking.CSharp.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.AnswerEngines\Rag.NET.AnswerEngines.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Memory\Rag.NET.Memory.csproj" />
     <PackageReference Include="BenchmarkDotNet" Version="0.*" />

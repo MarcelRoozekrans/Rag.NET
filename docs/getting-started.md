@@ -193,6 +193,18 @@ dotnet add package Rag.NET.Chunking.TokenAware
 services.AddRagNet(rag => rag.UseTokenAwareChunking());
 ```
 
+### C# semantic chunking
+
+```bash
+dotnet add package Rag.NET.Chunking.CSharp
+```
+
+```csharp
+services.AddRagNet(rag => rag.UseCSharpChunking());
+```
+
+Uses Roslyn to split C# source files at real AST boundaries — each class, method, property, interface etc. becomes its own chunk with structured metadata (`csharp.kind`, `csharp.namespace`, `csharp.name`, etc.).
+
 ### HyDE query expansion
 
 ```bash

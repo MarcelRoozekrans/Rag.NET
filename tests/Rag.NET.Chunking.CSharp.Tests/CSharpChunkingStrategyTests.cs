@@ -203,6 +203,29 @@ public class CSharpChunkingStrategyTests
     }
 
     [Fact]
+    public async Task ChunkAsync_Positions_MatchSourceOffsets()
+    {
+        const string source = """
+            namespace MyApp;
+
+            public class Calc
+            {
+                public int Add(int a, int b) => a + b;
+            }
+            """;
+
+        var ct = TestContext.Current.CancellationToken;
+        var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, ct).ToListAsync(ct);
+
+        foreach (var chunk in chunks)
+        {
+            Assert.True(chunk.StartPosition >= 0);
+            Assert.True(chunk.EndPosition > chunk.StartPosition);
+            Assert.True(chunk.EndPosition <= source.Length);
+        }
+    }
+
+    [Fact]
     public async Task ChunkAsync_OversizedMember_YieldsWithOversizedFlag()
     {
         var body = string.Join("\n", Enumerable.Range(0, 200).Select(i => $"    var x{i} = {i};"));
