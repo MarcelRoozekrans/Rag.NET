@@ -92,4 +92,34 @@ public class MindMapExtractorGraphPersistenceTests : IAsyncDisposable
 
         Assert.Equal("Root", result.Title);
     }
+
+    [Fact]
+    public async Task ExtractAsync_TagsRelationshipsWithDocumentId()
+    {
+        SetupChatClient(NestedJson);
+        var sut = new MindMapExtractor(_chatClient, _graphStore, new MindMapOptions());
+
+        await sut.ExtractAsync("text", "my-doc", TestContext.Current.CancellationToken);
+
+        var snapshot = await _graphStore.GetFullGraphAsync(TestContext.Current.CancellationToken);
+        Assert.All(
+            snapshot.Relationships.Where(r => string.Equals(r.Description, "has_subtopic", StringComparison.Ordinal)),
+            r => Assert.Equal("my-doc", r.SourceDocumentId));
+    }
+
+    [Fact]
+    public async Task DeleteByDocumentId_RemovesBothEntitiesAndRelationships()
+    {
+        SetupChatClient(NestedJson);
+        var sut = new MindMapExtractor(_chatClient, _graphStore, new MindMapOptions());
+        await sut.ExtractAsync("text", "doc-to-delete", TestContext.Current.CancellationToken);
+
+        await _graphStore.DeleteByDocumentIdAsync("doc-to-delete", TestContext.Current.CancellationToken);
+
+        var snapshot = await _graphStore.GetFullGraphAsync(TestContext.Current.CancellationToken);
+        var mindMapEntities = snapshot.Entities.Where(e => string.Equals(e.Type, "mind_map_node", StringComparison.Ordinal)).ToList();
+        var hasSubtopicEdges = snapshot.Relationships.Where(r => string.Equals(r.Description, "has_subtopic", StringComparison.Ordinal)).ToList();
+        Assert.Empty(mindMapEntities);
+        Assert.Empty(hasSubtopicEdges);
+    }
 }

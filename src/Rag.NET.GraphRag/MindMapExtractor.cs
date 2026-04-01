@@ -86,7 +86,10 @@ public sealed partial class MindMapExtractor
 
         if (parentName is not null)
         {
-            var rel = new GraphRelationship(parentName, node.Title, "has_subtopic", Weight: 1.0);
+            var rel = new GraphRelationship(parentName, node.Title, "has_subtopic", Weight: 1.0)
+            {
+                SourceDocumentId = documentId,
+            };
             await _graphStore.AddRelationshipsAsync([rel], ct).ConfigureAwait(false);
         }
 
