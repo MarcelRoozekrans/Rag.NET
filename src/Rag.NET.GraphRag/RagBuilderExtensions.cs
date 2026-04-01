@@ -60,4 +60,31 @@ public static class RagBuilderExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Enables mind-map extraction — builds a hierarchical concept tree from document content
+    /// via a single LLM call. Nodes are stored in IGraphStore (if registered) as GraphEntity
+    /// with Type = "mind_map_node".
+    /// </summary>
+    public static RagBuilder UseMindMapExtraction(
+        this RagBuilder builder,
+        Action<MindMapOptions>? configure = null)
+    {
+        var options = new MindMapOptions();
+        configure?.Invoke(options);
+        builder.Services.AddSingleton(options);
+
+        builder.Services.AddSingleton<MindMapExtractor>(sp =>
+            new MindMapExtractor(
+                options.ChatClient ?? sp.GetRequiredService<IChatClient>(),
+                sp.GetService<IGraphStore>(),
+                options));
+
+        builder.Services.AddSingleton<MindMapExtractionBehavior>(sp =>
+            new MindMapExtractionBehavior(
+                sp.GetRequiredService<MindMapExtractor>(),
+                options));
+
+        return builder;
+    }
 }

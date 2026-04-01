@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.Chunking.CSharp\Rag.NET.Chunking.CSharp.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Chunking.TokenAware\Rag.NET.Chunking.TokenAware.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Mediator\Rag.NET.Mediator.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.GraphRag\Rag.NET.GraphRag.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
