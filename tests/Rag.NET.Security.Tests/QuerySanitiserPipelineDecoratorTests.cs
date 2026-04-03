@@ -53,4 +53,27 @@ public class QuerySanitiserPipelineDecoratorTests
         _ = await sut.AskAsync("clean query", cancellationToken: TestContext.Current.CancellationToken);
         _ = await inner.Received().AskAsync("clean query", Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task AskStreamingAsync_QuerySanitisedBeforeDelegate()
+    {
+        var sanitiser = new CapturingQuerySanitiser();
+        var inner = Substitute.For<IRagPipeline>();
+        inner.AskStreamingAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+             .Returns(AsyncEnum());
+        var sut = new QuerySanitiserPipelineDecorator(inner, [sanitiser]);
+
+        var updates = new List<RagStreamingUpdate>();
+        await foreach (var update in sut.AskStreamingAsync("original query", cancellationToken: TestContext.Current.CancellationToken))
+            updates.Add(update);
+
+        Assert.Equal("original query", sanitiser.LastQuery);
+        inner.Received().AskStreamingAsync("original query-sanitised", Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>());
+
+        static async IAsyncEnumerable<RagStreamingUpdate> AsyncEnum()
+        {
+            await Task.Yield();
+            yield break;
+        }
+    }
 }
