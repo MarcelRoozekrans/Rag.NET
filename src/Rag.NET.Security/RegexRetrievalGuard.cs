@@ -19,9 +19,7 @@ public sealed partial class RegexRetrievalGuard(
             var result = results[i];
             try
             {
-                var docId = result.Chunk.Metadata.TryGetValue("document_id", out var id)
-                    ? id
-                    : result.Chunk.DocumentId.Value;
+                var docId = result.Chunk.DocumentId.Value;
                 var sanitised = InjectionPatterns.InjectionPattern().Replace(result.Chunk.Text, m =>
                 {
                     LogInjectionDetected(_logger, docId, m.Value);
