@@ -52,6 +52,7 @@
     <Project Path="src/Rag.NET.AnswerEngines/Rag.NET.AnswerEngines.csproj" />
     <Project Path="src/Rag.NET.QueryTechniques/Rag.NET.QueryTechniques.csproj" />
     <Project Path="src/Rag.NET.Memory/Rag.NET.Memory.csproj" />
+    <Project Path="src/Rag.NET.Parsers.Vision/Rag.NET.Parsers.Vision.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
@@ -96,6 +97,7 @@
     <Project Path="tests/Rag.NET.Raptor.Tests/Rag.NET.Raptor.Tests.csproj" />
     <Project Path="tests/Rag.NET.Graph.Tests/Rag.NET.Graph.Tests.csproj" />
     <Project Path="tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Parsers.Vision.Tests/Rag.NET.Parsers.Vision.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />

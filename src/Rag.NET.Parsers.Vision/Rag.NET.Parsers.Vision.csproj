@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Parsers.Vision</RootNamespace>
+    <PackageId>Rag.NET.Parsers.Vision</PackageId>
+    <Description>Image and video description parsers for Rag.NET using a vision LLM and FFMpeg</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FFMpegCore" Version="5.*" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+    <PackageReference Include="Tesseract" Version="5.*" />
+  </ItemGroup>
+
+</Project>
