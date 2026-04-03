@@ -18,6 +18,7 @@ public sealed class RetrievalPipelineBuilder
         typeof(RedundancyFilterBehavior),
         typeof(ParentDocumentRetrievalBehavior),
         typeof(RerankingBehavior),
+        typeof(RetrievalGuardBehavior),
         typeof(MultiQueryBehavior),
         typeof(HydeBehavior),
         typeof(EmbeddingCacheBehavior),
