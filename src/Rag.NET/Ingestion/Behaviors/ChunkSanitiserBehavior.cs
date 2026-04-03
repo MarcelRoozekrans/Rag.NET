@@ -1,0 +1,32 @@
+using Rag.NET.Abstractions;
+using Rag.NET.Models;
+using ZeroAlloc.Inject;
+
+namespace Rag.NET.Ingestion.Behaviors;
+
+[Singleton]
+public sealed class ChunkSanitiserBehavior : IIngestionBehavior
+{
+    [Inject] public IEnumerable<IChunkSanitiser> Sanitisers { get; set; } = null!;
+
+    public ValueTask<IngestionResult> HandleAsync(
+        IngestionContext ctx, CancellationToken ct,
+        Func<IngestionContext, CancellationToken, ValueTask<IngestionResult>> next)
+    {
+        var sanitiserList = Sanitisers as IList<IChunkSanitiser> ?? [..Sanitisers];
+        if (sanitiserList.Count == 0)
+            return next(ctx, ct);
+
+        for (var i = 0; i < ctx.Chunks.Count; i++)
+        {
+            var text = ctx.Chunks[i].Text;
+            var metadata = (IDictionary<string, string>)ctx.Chunks[i].Metadata;
+            foreach (var sanitiser in sanitiserList)
+                text = sanitiser.Sanitise(text, metadata);
+            if (!ReferenceEquals(text, ctx.Chunks[i].Text))
+                ctx.Chunks[i] = ctx.Chunks[i] with { Text = text };
+        }
+
+        return next(ctx, ct);
+    }
+}
