@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Rag.NET.AnswerGeneration;
 using Rag.NET.Models;
@@ -94,7 +95,7 @@ public class PromptHardeningTests
         // With empty prefix the hardening system message should NOT appear; the normal system message still exists
         Assert.DoesNotContain(capturedMessages, m =>
             m.Role == ChatRole.System &&
-            m.Text!.Contains("strictly as data", StringComparison.Ordinal));
+            m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true);
     }
 
     [Fact]
@@ -146,6 +147,8 @@ public class PromptHardeningTests
         Assert.Contains(capturedMessages, m =>
             m.Role == ChatRole.System &&
             m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true);
+        Assert.Equal(ChatRole.System, capturedMessages![0].Role);
+        Assert.Contains("strictly as data", capturedMessages[0].Text ?? "", StringComparison.Ordinal);
     }
 
     [Fact]
@@ -181,5 +184,33 @@ public class PromptHardeningTests
         Assert.Contains(capturedMessages, m =>
             m.Role == ChatRole.System &&
             m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true);
+        Assert.Equal(ChatRole.System, capturedMessages![0].Role);
+        Assert.Contains("strictly as data", capturedMessages[0].Text ?? "", StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MapReduceAnswerEngine_WithHardeningPrefix_MapStepAlsoHaresSystemMessage()
+    {
+        IList<ChatMessage>? capturedMessages = null;
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(
+            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
+
+        var engine = new MapReduceAnswerEngine(client, NullLogger<MapReduceAnswerEngine>.Instance);
+        var opts = new RagOptions { PromptHardeningPrefix = PromptHardeningOptions.DefaultSystemPrefix };
+        var source = new SearchResult
+        {
+            Score = 1.0,
+            Chunk = new TextChunk { Text = "source text", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 },
+        };
+
+        await engine.AskAsync("question", [source], opts, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(capturedMessages);
+        Assert.Contains(capturedMessages, m =>
+            m.Role == ChatRole.System &&
+            (m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true));
     }
 }
