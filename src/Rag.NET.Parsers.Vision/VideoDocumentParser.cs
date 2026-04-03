@@ -107,7 +107,8 @@ public partial class VideoDocumentParser(
                 .WithCustomArgument($"-vf \"select=gt(scene\\,{threshold}),showinfo\"")
                 .WithCustomArgument("-vsync 0")
                 .ForceFormat("null"))
-            .NotifyOnOutput(line =>
+            // showinfo writes to stderr, not stdout — use NotifyOnError to capture its output
+            .NotifyOnError(line =>
             {
                 if (line.Contains("pts_time:", StringComparison.Ordinal))
                 {
@@ -165,6 +166,7 @@ public partial class VideoDocumentParser(
     private static IReadOnlyList<(double, byte[])> CapScenes(
         IReadOnlyList<(double TimestampSeconds, byte[] FrameBytes)> scenes, int maxScenes)
     {
+        if (maxScenes <= 0) throw new ArgumentOutOfRangeException(nameof(maxScenes), maxScenes, "MaxScenes must be greater than zero.");
         if (scenes.Count <= maxScenes) return scenes;
 
         var step = (double)scenes.Count / maxScenes;

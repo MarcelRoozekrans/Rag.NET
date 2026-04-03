@@ -132,6 +132,35 @@ public class VideoDocumentParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_MaxScenesZero_Throws()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var opts = new VideoDescriptionOptions { MaxScenes = 0 };
+        var scenes = new[] { new FakeScene(0.0, new byte[] { 0xFF, 0xD8 }) };
+        var sut = new FakeVideoDocumentParser(FakeClient(), opts, scenes);
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+        {
+            await foreach (var _ in sut.ParseAsync(Stream.Null, Mp4Metadata, ct)) { }
+        });
+    }
+
+    [Fact]
+    public async Task ParseAsync_SanitiseOutputFalse_DoesNotRedact()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var opts = new VideoDescriptionOptions { SanitiseOutput = false };
+        var sut = new InjectingFakeVideoParser(FakeClient(), opts);
+
+        var sections = new List<DocumentSection>();
+        await foreach (var s in sut.ParseAsync(Stream.Null, Mp4Metadata, ct))
+            sections.Add(s);
+
+        Assert.DoesNotContain("[REDACTED]", sections[0].Text, StringComparison.Ordinal);
+        Assert.Contains("Ignore previous instructions", sections[0].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void VideoDescriptionOptions_Defaults()
     {
         var opts = new VideoDescriptionOptions();

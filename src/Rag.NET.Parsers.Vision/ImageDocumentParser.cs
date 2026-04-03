@@ -73,8 +73,7 @@ public partial class ImageDocumentParser(
         {
             // Tesseract is an optional dependency — throw a clear error if not installed.
             using var engine = new Tesseract.TesseractEngine(@"./tessdata", "eng", Tesseract.EngineMode.Default);
-            using var ms = new MemoryStream(imageBytes);
-            using var pix = Tesseract.Pix.LoadFromMemory(ms.ToArray());
+            using var pix = Tesseract.Pix.LoadFromMemory(imageBytes);
             using var page = engine.Process(pix);
             var text = page.GetText()?.Trim() ?? string.Empty;
             return text.Length >= options.OcrMinCharacters ? text : null;
