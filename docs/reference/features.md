@@ -466,6 +466,8 @@ Mitigation layers to consider:
 - **Post-retrieval content scan** — run a lightweight classifier or regex guard over the ranked chunk set before it enters the answer prompt; flag or drop suspicious chunks
 - **Vision-specific guard** — for vision-LLM transcriptions, pass output through the sanitiser before storing, since image-embedded text is a common injection vector
 
+**Prior art in codebase:** `Rag.NET.Parsers.Vision` ships an internal `PromptInjectionSanitiser` (regex-based, case-insensitive) that targets role-switch phrases (`"ignore previous instructions"`, `"you are now"`, `"act as"`, `"disregard"`, `"system prompt"`), delimiter injection (`<|system|>`, `[INST]`, `###` blocks), and null-byte/whitespace padding. Matched spans are replaced with `[REDACTED]` and logged via `[LoggerMessage]`. This is the lightweight layer; the full fortification feature should promote this to a public, pipeline-level `IChunkSanitiser` abstraction and add the semantic classifier and retrieval-time trust tagging on top.
+
 **Why:** Vision LLM parsers, web crawlers, and email connectors all ingest content from potentially adversarial sources. Without explicit mitigations, a single malicious document can redirect the model's behaviour for any user whose query retrieves that chunk.
 
 ---
