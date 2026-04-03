@@ -9,6 +9,7 @@
     <Project Path="src/Rag.NET.Api.Grpc.Client/Rag.NET.Api.Grpc.Client.csproj" />
     <Project Path="src/Rag.NET.Api.Grpc/Rag.NET.Api.Grpc.csproj" />
     <Project Path="src/Rag.NET.Api/Rag.NET.Api.csproj" />
+    <Project Path="src/Rag.NET.Security/Rag.NET.Security.csproj" />
     <Project Path="src/Rag.NET.VectorStores.AzureAISearch/Rag.NET.VectorStores.AzureAISearch.csproj" />
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
     <Project Path="src/Rag.NET.Parsers.Word/Rag.NET.Parsers.Word.csproj" />
@@ -55,6 +56,7 @@
     <Project Path="src/Rag.NET.Parsers.Vision/Rag.NET.Parsers.Vision.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Rag.NET.Security.Tests/Rag.NET.Security.Tests.csproj" />
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.PgVector.Tests/Rag.NET.VectorStores.PgVector.Tests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.Qdrant.Tests/Rag.NET.VectorStores.Qdrant.Tests.csproj" />
