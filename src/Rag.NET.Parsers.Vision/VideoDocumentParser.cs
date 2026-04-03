@@ -85,6 +85,8 @@ public partial class VideoDocumentParser(
             var frameBytes = await ExtractFrameAsync(videoFilePath, ts, ct).ConfigureAwait(false);
             if (frameBytes is not null)
                 results.Add((ts, frameBytes));
+            else
+                LogFrameExtractionFailed(_logger, ts, videoFilePath);
         }
 
         return results;
@@ -169,7 +171,7 @@ public partial class VideoDocumentParser(
     }
 
     [LoggerMessage(Level = LogLevel.Warning,
-        Message = "Failed to extract frame at {TimestampSeconds}s from '{FileName}'; skipping.")]
+        Message = "Failed to extract frame at {TimestampSeconds}s from '{FileName}'.")]
     private static partial void LogFrameExtractionFailed(
-        ILogger logger, double timestampSeconds, string fileName, Exception ex);
+        ILogger logger, double timestampSeconds, string fileName);
 }
