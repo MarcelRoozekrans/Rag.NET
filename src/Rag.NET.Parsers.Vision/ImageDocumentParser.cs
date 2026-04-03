@@ -43,7 +43,7 @@ public partial class ImageDocumentParser(
             }
         }
 
-        description = await DescribeImageAsync(imageBytes, fileName, cancellationToken).ConfigureAwait(false);
+        description = await DescribeImageAsync(imageBytes, fileName, metadata.ContentType ?? "application/octet-stream", cancellationToken).ConfigureAwait(false);
 
         yield_section:
         if (options.SanitiseOutput)
@@ -59,14 +59,14 @@ public partial class ImageDocumentParser(
     }
 
     protected virtual async Task<string> DescribeImageAsync(
-        byte[] imageBytes, string fileName, CancellationToken ct)
+        byte[] imageBytes, string fileName, string contentType, CancellationToken ct)
     {
         var activeClient = options.ChatClient ?? chatClient;
         var prompt = options.Prompt.Replace("{fileName}", fileName, StringComparison.Ordinal);
 
         var message = new ChatMessage(ChatRole.User,
         [
-            new DataContent(imageBytes, "image/jpeg"),
+            new DataContent(imageBytes, contentType),
             new TextContent(prompt),
         ]);
 
@@ -77,7 +77,7 @@ public partial class ImageDocumentParser(
         return response.Text ?? string.Empty;
     }
 
-    private string? TryOcr(byte[] imageBytes, string fileName)
+    protected virtual string? TryOcr(byte[] imageBytes, string fileName)
     {
         try
         {
