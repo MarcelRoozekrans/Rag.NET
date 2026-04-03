@@ -38,7 +38,7 @@ public static class ServiceCollectionExtensions
         retrieval?.Invoke(retrievalBuilder);
         services.AddSingleton(sp => retrievalBuilder.Build(sp));
 
-        services.AddSingleton<IRagPipeline>(sp =>
+        services.AddSingleton<RagPipeline>(sp =>
         {
             var r = sp.GetRequiredService<IRetriever>();
             var i = sp.GetRequiredService<IIngestor>();
@@ -51,6 +51,7 @@ public static class ServiceCollectionExtensions
             }
             return new RagPipeline(r, i, answerEngine);
         });
+        services.AddSingleton<IRagPipeline>(sp => sp.GetRequiredService<RagPipeline>());
 
         var builder = new RagBuilder(services);
         configure?.Invoke(builder);
