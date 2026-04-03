@@ -45,10 +45,10 @@ public partial class ImageDocumentParser(
 
         description = await DescribeImageAsync(imageBytes, fileName, cancellationToken).ConfigureAwait(false);
 
+        yield_section:
         if (options.SanitiseOutput)
             description = PromptInjectionSanitiser.Sanitise(description);
 
-        yield_section:
         yield return new DocumentSection
         {
             Text = description,
