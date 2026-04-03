@@ -91,4 +91,11 @@ public class UseSecurityTests
         var opts = sp.GetRequiredService<PromptHardeningOptions>();
         Assert.NotEmpty(opts.SystemPrefix);
     }
+
+    [Fact]
+    public void UsePromptHardening_WrapsIAnswerEngineWithDecorator()
+    {
+        var sp = BaseServices().AddRagNet(rag => rag.UsePromptHardening()).BuildServiceProvider();
+        Assert.IsType<PromptHardeningAnswerEngineDecorator>(sp.GetRequiredService<IAnswerEngine>());
+    }
 }

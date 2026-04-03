@@ -65,9 +65,6 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
 
         var messages = new List<ChatMessage>();
 
-        if (!string.IsNullOrEmpty(opts.PromptHardeningPrefix))
-            messages.Add(new ChatMessage(ChatRole.System, opts.PromptHardeningPrefix));
-
         messages.Add(new ChatMessage(ChatRole.System, systemPrompt));
 
         if (opts.ConversationHistory is { Count: > 0 })

@@ -1,8 +1,6 @@
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using Rag.NET.AnswerGeneration;
+using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Security;
@@ -14,203 +12,163 @@ public class PromptHardeningTests
 {
     private static IReadOnlyList<SearchResult> EmptySources() => [];
 
-    [Fact]
-    public async Task AskAsync_WithHardeningPrefix_SystemMessagePrepended()
+    private static async IAsyncEnumerable<RagStreamingUpdate> EmptyAsyncEnumerable()
     {
-        IList<ChatMessage>? capturedMessages = null;
-        var client = Substitute.For<IChatClient>();
-        client.GetResponseAsync(
-            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
-            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
+        await Task.CompletedTask;
+        yield break;
+    }
 
-        var sut = new ChatAnswerEngine(client);
-        var opts = new RagOptions { PromptHardeningPrefix = PromptHardeningOptions.DefaultSystemPrefix };
-
-        await sut.AskAsync("What is X?", EmptySources(), opts, TestContext.Current.CancellationToken);
-
-        Assert.NotNull(capturedMessages);
-        Assert.Contains(capturedMessages, m =>
-            m.Role == ChatRole.System &&
-            m.Text!.Contains("strictly as data", StringComparison.Ordinal));
+    private static PromptHardeningAnswerEngineDecorator BuildDecorator(
+        IAnswerEngine inner,
+        string? prefix = null)
+    {
+        var opts = new PromptHardeningOptions();
+        if (prefix is not null)
+            opts.SystemPrefix = prefix;
+        return new PromptHardeningAnswerEngineDecorator(inner, opts);
     }
 
     [Fact]
-    public async Task AskAsync_WithHardeningPrefix_SystemMessageIsFirst()
+    public async Task AskAsync_PrependsPrefixAsFirstConversationHistoryMessage()
     {
-        IList<ChatMessage>? capturedMessages = null;
-        var client = Substitute.For<IChatClient>();
-        client.GetResponseAsync(
-            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
-            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
+        RagOptions? captured = null;
+        var inner = Substitute.For<IAnswerEngine>();
+        inner.AskAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<SearchResult>>(),
+            Arg.Do<RagOptions?>(o => captured = o),
+            Arg.Any<CancellationToken>())
+            .Returns(new RagResponse { Answer = "ok", Sources = [] });
 
-        var sut = new ChatAnswerEngine(client);
-        var opts = new RagOptions { PromptHardeningPrefix = PromptHardeningOptions.DefaultSystemPrefix };
+        var sut = BuildDecorator(inner);
 
-        await sut.AskAsync("What is X?", EmptySources(), opts, TestContext.Current.CancellationToken);
-
-        Assert.NotNull(capturedMessages);
-        Assert.True(capturedMessages!.Count >= 1);
-        Assert.Equal(ChatRole.System, capturedMessages[0].Role);
-        Assert.Contains("strictly as data", capturedMessages[0].Text!, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task AskAsync_WithoutHardeningPrefix_NoHardeningSystemMessage()
-    {
-        IList<ChatMessage>? capturedMessages = null;
-        var client = Substitute.For<IChatClient>();
-        client.GetResponseAsync(
-            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
-            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
-
-        var sut = new ChatAnswerEngine(client);
-        // No PromptHardeningPrefix set
         await sut.AskAsync("What is X?", EmptySources(), null, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(capturedMessages);
-        Assert.DoesNotContain(capturedMessages, m =>
-            m.Role == ChatRole.System &&
-            m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true);
+        Assert.NotNull(captured);
+        Assert.NotNull(captured!.ConversationHistory);
+        Assert.True(captured.ConversationHistory!.Count >= 1);
+        Assert.Equal(ChatRole.System, captured.ConversationHistory[0].Role);
+        Assert.Contains("strictly as data", captured.ConversationHistory[0].Text!, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task AskAsync_WithEmptyHardeningPrefix_NoHardeningSystemMessage()
+    public async Task AskAsync_PreservesExistingHistoryAfterPrefix()
     {
-        IList<ChatMessage>? capturedMessages = null;
-        var client = Substitute.For<IChatClient>();
-        client.GetResponseAsync(
-            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
-            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
+        RagOptions? captured = null;
+        var inner = Substitute.For<IAnswerEngine>();
+        inner.AskAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<SearchResult>>(),
+            Arg.Do<RagOptions?>(o => captured = o),
+            Arg.Any<CancellationToken>())
+            .Returns(new RagResponse { Answer = "ok", Sources = [] });
 
-        var sut = new ChatAnswerEngine(client);
-        var opts = new RagOptions { PromptHardeningPrefix = "" };
+        var sut = BuildDecorator(inner);
+        var existingHistory = new List<ChatMessage>
+        {
+            new(ChatRole.User, "prior question"),
+            new(ChatRole.Assistant, "prior answer"),
+        };
+        var opts = new RagOptions { ConversationHistory = existingHistory };
 
         await sut.AskAsync("What is X?", EmptySources(), opts, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(capturedMessages);
-        // With empty prefix the hardening system message should NOT appear; the normal system message still exists
-        Assert.DoesNotContain(capturedMessages, m =>
-            m.Role == ChatRole.System &&
-            m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true);
+        Assert.NotNull(captured);
+        Assert.NotNull(captured!.ConversationHistory);
+        // prefix + 2 existing = 3
+        Assert.Equal(3, captured.ConversationHistory!.Count);
+        Assert.Equal(ChatRole.System, captured.ConversationHistory[0].Role);
+        Assert.Contains("strictly as data", captured.ConversationHistory[0].Text!, StringComparison.Ordinal);
+        Assert.Equal("prior question", captured.ConversationHistory[1].Text);
+        Assert.Equal("prior answer", captured.ConversationHistory[2].Text);
     }
 
     [Fact]
-    public async Task AskAsync_WithHardeningPrefix_NormalSystemPromptStillPresent()
+    public async Task AskAsync_EmptyPrefix_DoesNotInjectSystemMessage()
     {
-        IList<ChatMessage>? capturedMessages = null;
-        var client = Substitute.For<IChatClient>();
-        client.GetResponseAsync(
-            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
-            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
+        RagOptions? captured = null;
+        var inner = Substitute.For<IAnswerEngine>();
+        inner.AskAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<SearchResult>>(),
+            Arg.Do<RagOptions?>(o => captured = o),
+            Arg.Any<CancellationToken>())
+            .Returns(new RagResponse { Answer = "ok", Sources = [] });
 
-        var sut = new ChatAnswerEngine(client);
-        var opts = new RagOptions
-        {
-            PromptHardeningPrefix = PromptHardeningOptions.DefaultSystemPrefix,
-            SystemPrompt = "Custom domain prompt",
-        };
+        var sut = BuildDecorator(inner, prefix: "");
+
+        await sut.AskAsync("What is X?", EmptySources(), null, TestContext.Current.CancellationToken);
+
+        // With empty prefix, ConversationHistory should remain null (no injection)
+        Assert.True(captured?.ConversationHistory is null || !captured.ConversationHistory.Any(m =>
+            m.Role == ChatRole.System &&
+            (m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true)));
+    }
+
+    [Fact]
+    public async Task AskAsync_CustomPrefix_UsesCustomText()
+    {
+        RagOptions? captured = null;
+        var inner = Substitute.For<IAnswerEngine>();
+        inner.AskAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<SearchResult>>(),
+            Arg.Do<RagOptions?>(o => captured = o),
+            Arg.Any<CancellationToken>())
+            .Returns(new RagResponse { Answer = "ok", Sources = [] });
+
+        var sut = BuildDecorator(inner, prefix: "My custom hardening instruction.");
+
+        await sut.AskAsync("What is X?", EmptySources(), null, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(captured?.ConversationHistory);
+        Assert.Equal(ChatRole.System, captured!.ConversationHistory![0].Role);
+        Assert.Contains("My custom hardening instruction.", captured.ConversationHistory[0].Text!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AskAsync_PassesThroughOtherRagOptions()
+    {
+        RagOptions? captured = null;
+        var inner = Substitute.For<IAnswerEngine>();
+        inner.AskAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<SearchResult>>(),
+            Arg.Do<RagOptions?>(o => captured = o),
+            Arg.Any<CancellationToken>())
+            .Returns(new RagResponse { Answer = "ok", Sources = [] });
+
+        var sut = BuildDecorator(inner);
+        var opts = new RagOptions { SystemPrompt = "Custom domain prompt", TopK = 10 };
 
         await sut.AskAsync("What is X?", EmptySources(), opts, TestContext.Current.CancellationToken);
 
-        Assert.NotNull(capturedMessages);
-        Assert.Contains(capturedMessages, m =>
-            m.Role == ChatRole.System &&
-            m.Text!.Contains("strictly as data", StringComparison.Ordinal));
-        Assert.Contains(capturedMessages, m =>
-            m.Role == ChatRole.System &&
-            m.Text!.Contains("Custom domain prompt", StringComparison.Ordinal));
+        Assert.NotNull(captured);
+        Assert.Equal("Custom domain prompt", captured!.SystemPrompt);
+        Assert.Equal(10, captured.TopK);
     }
 
     [Fact]
-    public async Task MapReduceAnswerEngine_WithHardeningPrefix_SystemMessagePrepended()
+    public async Task AskStreamingAsync_PrependsPrefixAsFirstConversationHistoryMessage()
     {
-        IList<ChatMessage>? capturedMessages = null;
-        var client = Substitute.For<IChatClient>();
-        client.GetResponseAsync(
-            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
-            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
+        RagOptions? captured = null;
+        var inner = Substitute.For<IAnswerEngine>();
+        inner.AskStreamingAsync(
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<SearchResult>>(),
+            Arg.Do<RagOptions?>(o => captured = o),
+            Arg.Any<CancellationToken>())
+            .Returns(EmptyAsyncEnumerable());
 
-        var logger = Substitute.For<ILogger<MapReduceAnswerEngine>>();
-        var engine = new MapReduceAnswerEngine(client, logger);
-        var opts = new RagOptions { PromptHardeningPrefix = PromptHardeningOptions.DefaultSystemPrefix };
-        var results = new List<SearchResult>();
+        var sut = BuildDecorator(inner);
 
-        await engine.AskAsync("question", results, opts, TestContext.Current.CancellationToken);
-
-        Assert.NotNull(capturedMessages);
-        Assert.Contains(capturedMessages, m =>
-            m.Role == ChatRole.System &&
-            m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true);
-        Assert.Equal(ChatRole.System, capturedMessages![0].Role);
-        Assert.Contains("strictly as data", capturedMessages[0].Text ?? "", StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task RefineAnswerEngine_WithHardeningPrefix_SystemMessagePrepended()
-    {
-        IList<ChatMessage>? capturedMessages = null;
-        var client = Substitute.For<IChatClient>();
-        client.GetResponseAsync(
-            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
-            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
-
-        var logger = Substitute.For<ILogger<RefineAnswerEngine>>();
-        var engine = new RefineAnswerEngine(client, logger);
-        var opts = new RagOptions { PromptHardeningPrefix = PromptHardeningOptions.DefaultSystemPrefix };
-        var results = new List<SearchResult>
+        await foreach (var _ in sut.AskStreamingAsync("What is X?", EmptySources(), null, TestContext.Current.CancellationToken))
         {
-            new()
-            {
-                Chunk = new TextChunk
-                {
-                    Text = "context",
-                    DocumentId = new DocumentId("doc-1"),
-                    ChunkIndex = 0,
-                },
-                Score = 1.0,
-            },
-        };
+        }
 
-        await engine.AskAsync("question", results, opts, TestContext.Current.CancellationToken);
-
-        Assert.NotNull(capturedMessages);
-        Assert.Contains(capturedMessages, m =>
-            m.Role == ChatRole.System &&
-            m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true);
-        Assert.Equal(ChatRole.System, capturedMessages![0].Role);
-        Assert.Contains("strictly as data", capturedMessages[0].Text ?? "", StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task MapReduceAnswerEngine_WithHardeningPrefix_MapStepAlsoHaresSystemMessage()
-    {
-        IList<ChatMessage>? capturedMessages = null;
-        var client = Substitute.For<IChatClient>();
-        client.GetResponseAsync(
-            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
-            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
-
-        var engine = new MapReduceAnswerEngine(client, NullLogger<MapReduceAnswerEngine>.Instance);
-        var opts = new RagOptions { PromptHardeningPrefix = PromptHardeningOptions.DefaultSystemPrefix };
-        var source = new SearchResult
-        {
-            Score = 1.0,
-            Chunk = new TextChunk { Text = "source text", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 },
-        };
-
-        await engine.AskAsync("question", [source], opts, TestContext.Current.CancellationToken);
-
-        Assert.NotNull(capturedMessages);
-        Assert.Contains(capturedMessages, m =>
-            m.Role == ChatRole.System &&
-            (m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true));
+        Assert.NotNull(captured);
+        Assert.NotNull(captured!.ConversationHistory);
+        Assert.Equal(ChatRole.System, captured.ConversationHistory![0].Role);
+        Assert.Contains("strictly as data", captured.ConversationHistory[0].Text!, StringComparison.Ordinal);
     }
 }

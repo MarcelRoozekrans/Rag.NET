@@ -113,8 +113,6 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
     private static List<ChatMessage> BuildMessages(string userText, RagOptions opts, IReadOnlyList<ChatMessage>? processedHistory)
     {
         var messages = new List<ChatMessage>();
-        if (!string.IsNullOrEmpty(opts.PromptHardeningPrefix))
-            messages.Add(new ChatMessage(ChatRole.System, opts.PromptHardeningPrefix));
         if (opts.SystemPrompt is not null)
             messages.Add(new ChatMessage(ChatRole.System, opts.SystemPrompt));
         if (processedHistory is { Count: > 0 })

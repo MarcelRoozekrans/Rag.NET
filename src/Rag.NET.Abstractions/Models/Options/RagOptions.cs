@@ -17,10 +17,4 @@ public sealed class RagOptions
     public SynthesisStrategy SynthesisStrategy { get; set; } = SynthesisStrategy.Default;
     public MapReduceOptions? MapReduceOptions { get; set; }
     public RefineOptions? RefineOptions { get; set; }
-
-    /// <summary>
-    /// When set, prepends a hardened system prompt to every LLM answer engine call.
-    /// Use PromptHardeningOptions.DefaultSystemPrefix or set via UsePromptHardening() in Rag.NET.Security.
-    /// </summary>
-    public string? PromptHardeningPrefix { get; set; }
 }

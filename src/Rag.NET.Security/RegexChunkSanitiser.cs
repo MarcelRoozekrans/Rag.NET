@@ -10,7 +10,7 @@ public sealed partial class RegexChunkSanitiser(
     private readonly ILogger<RegexChunkSanitiser> _logger =
         logger ?? NullLogger<RegexChunkSanitiser>.Instance;
 
-    public string Sanitise(string text, IDictionary<string, string> metadata)
+    public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata)
     {
         if (text is null) return string.Empty;
         try

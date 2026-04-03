@@ -9,5 +9,5 @@ namespace Rag.NET.Abstractions;
 /// </summary>
 public interface IChunkSanitiser
 {
-    string Sanitise(string text, IDictionary<string, string> metadata);
+    string Sanitise(string text, IReadOnlyDictionary<string, string> metadata);
 }
