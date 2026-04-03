@@ -456,7 +456,9 @@ services.AddRagNet(rag => rag
 ## Security
 
 ### Prompt Injection Fortification
-**Package:** `Rag.NET` (core)
+**Status:** ✅ Done
+**Package:** `Rag.NET.Security`
+
 
 Defence-in-depth against indirect prompt injection — the primary RAG security risk where attacker-controlled content (documents, images, web pages) contains embedded instructions that hijack the LLM's behaviour at query time.
 
@@ -570,7 +572,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Domain-Specific Chunking Templates | High | Per-domain logic |
 | [x] | Ensemble / RRF | High | Multiple retrievers |
 | [x] | Image / Video Description | High | Vision LLM |
-| [ ] | Prompt Injection Fortification | Medium | None (sanitiser) / `IChatClient` (classifier) |
+| [x] | Prompt Injection Fortification | Medium | None (sanitiser) / `IChatClient` (classifier) |
 | [x] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
 | [x] | Conversational Memory Management | High | `IChatClient` + tokenizer |
 | [x] | Parent-Document Retrieval | High | Dual index |
