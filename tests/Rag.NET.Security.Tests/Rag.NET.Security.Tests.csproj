@@ -5,6 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.AnswerEngines\Rag.NET.AnswerEngines.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Security\Rag.NET.Security.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
   </ItemGroup>

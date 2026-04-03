@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Rag.NET.AnswerGeneration;
 using Rag.NET.Models;
@@ -71,7 +72,7 @@ public class PromptHardeningTests
         Assert.NotNull(capturedMessages);
         Assert.DoesNotContain(capturedMessages, m =>
             m.Role == ChatRole.System &&
-            m.Text!.Contains("strictly as data", StringComparison.Ordinal));
+            m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true);
     }
 
     [Fact]
@@ -122,5 +123,63 @@ public class PromptHardeningTests
         Assert.Contains(capturedMessages, m =>
             m.Role == ChatRole.System &&
             m.Text!.Contains("Custom domain prompt", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task MapReduceAnswerEngine_WithHardeningPrefix_SystemMessagePrepended()
+    {
+        IList<ChatMessage>? capturedMessages = null;
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(
+            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
+
+        var logger = Substitute.For<ILogger<MapReduceAnswerEngine>>();
+        var engine = new MapReduceAnswerEngine(client, logger);
+        var opts = new RagOptions { PromptHardeningPrefix = PromptHardeningOptions.DefaultSystemPrefix };
+        var results = new List<SearchResult>();
+
+        await engine.AskAsync("question", results, opts, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(capturedMessages);
+        Assert.Contains(capturedMessages, m =>
+            m.Role == ChatRole.System &&
+            m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public async Task RefineAnswerEngine_WithHardeningPrefix_SystemMessagePrepended()
+    {
+        IList<ChatMessage>? capturedMessages = null;
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(
+            Arg.Do<IList<ChatMessage>>(m => capturedMessages = m),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "answer")]));
+
+        var logger = Substitute.For<ILogger<RefineAnswerEngine>>();
+        var engine = new RefineAnswerEngine(client, logger);
+        var opts = new RagOptions { PromptHardeningPrefix = PromptHardeningOptions.DefaultSystemPrefix };
+        var results = new List<SearchResult>
+        {
+            new()
+            {
+                Chunk = new TextChunk
+                {
+                    Text = "context",
+                    DocumentId = new DocumentId("doc-1"),
+                    ChunkIndex = 0,
+                },
+                Score = 1.0,
+            },
+        };
+
+        await engine.AskAsync("question", results, opts, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(capturedMessages);
+        Assert.Contains(capturedMessages, m =>
+            m.Role == ChatRole.System &&
+            m.Text?.Contains("strictly as data", StringComparison.Ordinal) == true);
     }
 }
