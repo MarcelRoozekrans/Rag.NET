@@ -37,6 +37,7 @@ public sealed class VideoChunkingStrategy : IDocumentChunkingStrategy, IChunking
             Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["template"] = "video",
+                ["source_type"] = "video",
                 ["part"] = section.Heading ?? "video_scene",
                 ["timestamp_seconds"] = (section.PageNumber ?? 0)
                     .ToString(CultureInfo.InvariantCulture),

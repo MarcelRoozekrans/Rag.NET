@@ -36,6 +36,7 @@ public sealed class ImageChunkingStrategy : IDocumentChunkingStrategy, IChunking
             Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["template"] = "image",
+                ["source_type"] = "image",
                 ["part"] = section.Heading ?? "image_description",
             },
         };

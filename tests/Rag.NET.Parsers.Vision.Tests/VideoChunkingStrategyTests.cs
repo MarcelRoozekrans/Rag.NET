@@ -29,6 +29,7 @@ public class VideoChunkingStrategyTests
             chunks.Add(c);
 
         Assert.All(chunks, c => Assert.Equal("video", c.Metadata["template"]));
+        Assert.All(chunks, c => Assert.Equal("video", c.Metadata["source_type"]));
     }
 
     [Fact]
@@ -78,6 +79,7 @@ public class VideoChunkingStrategyTests
 
         Assert.Single(chunks);
         Assert.Equal("video", chunks[0].Metadata["template"]);
+        Assert.Equal("video", chunks[0].Metadata["source_type"]);
         Assert.Equal("video_scene_0", chunks[0].Metadata["part"]);
         Assert.Equal("5", chunks[0].Metadata["timestamp_seconds"]);
     }

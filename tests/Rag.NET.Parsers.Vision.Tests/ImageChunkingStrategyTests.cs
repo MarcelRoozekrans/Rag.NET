@@ -29,6 +29,7 @@ public class ImageChunkingStrategyTests
             chunks.Add(c);
 
         Assert.All(chunks, c => Assert.Equal("image", c.Metadata["template"]));
+        Assert.All(chunks, c => Assert.Equal("image", c.Metadata["source_type"]));
         Assert.All(chunks, c => Assert.Equal("image_description", c.Metadata["part"]));
     }
 
@@ -47,6 +48,7 @@ public class ImageChunkingStrategyTests
 
         Assert.Single(chunks);
         Assert.Equal("image", chunks[0].Metadata["template"]);
+        Assert.Equal("image", chunks[0].Metadata["source_type"]);
         Assert.Equal("image_description", chunks[0].Metadata["part"]);
         Assert.Equal("A pie chart.", chunks[0].Text);
     }

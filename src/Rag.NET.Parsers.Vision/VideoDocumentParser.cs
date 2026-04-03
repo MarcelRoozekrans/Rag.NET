@@ -33,6 +33,9 @@ public partial class VideoDocumentParser(
         var tempFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.tmp");
         try
         {
+            // Stream.Null is a test seam: subclasses that override ExtractScenesAsync
+            // (e.g. FakeVideoDocumentParser) never call FFMpeg, so no real file is needed.
+            // In production a null stream would cause FFMpeg to fail with a missing-file error.
             if (stream != Stream.Null)
             {
                 var fs = File.Create(tempFile);
@@ -53,7 +56,7 @@ public partial class VideoDocumentParser(
                     .ConfigureAwait(false);
 
                 if (options.SanitiseOutput)
-                    description = PromptInjectionSanitiser.Sanitise(description);
+                    description = PromptInjectionSanitiser.Sanitise(description, _logger, metadata.FileName);
 
                 yield return new DocumentSection
                 {

@@ -35,6 +35,13 @@ public class RagBuilderExtensionsTests
     }
 
     [Fact]
+    public void UseImageDescription_RegistersIChunkingStrategy()
+    {
+        var sp = BaseServices().AddRagNet(rag => rag.UseImageDescription()).BuildServiceProvider();
+        Assert.IsType<ImageChunkingStrategy>(sp.GetRequiredService<IChunkingStrategy>());
+    }
+
+    [Fact]
     public void UseImageDescription_CustomOptions_Applied()
     {
         var sp = BaseServices()
@@ -56,6 +63,13 @@ public class RagBuilderExtensionsTests
     {
         var sp = BaseServices().AddRagNet(rag => rag.UseVideoDescription()).BuildServiceProvider();
         Assert.IsType<VideoChunkingStrategy>(sp.GetRequiredService<IDocumentChunkingStrategy>());
+    }
+
+    [Fact]
+    public void UseVideoDescription_RegistersIChunkingStrategy()
+    {
+        var sp = BaseServices().AddRagNet(rag => rag.UseVideoDescription()).BuildServiceProvider();
+        Assert.IsType<VideoChunkingStrategy>(sp.GetRequiredService<IChunkingStrategy>());
     }
 
     [Fact]

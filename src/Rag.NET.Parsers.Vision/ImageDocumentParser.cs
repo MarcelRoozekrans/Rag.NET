@@ -31,23 +31,13 @@ public partial class ImageDocumentParser(
         var imageBytes = await ReadAllBytesAsync(stream, cancellationToken).ConfigureAwait(false);
         var fileName = metadata.FileName;
 
-        string description;
+        var description = options.TryOcrBeforeVision
+            ? TryOcr(imageBytes, fileName)
+                ?? await DescribeImageAsync(imageBytes, fileName, metadata.ContentType ?? "application/octet-stream", cancellationToken).ConfigureAwait(false)
+            : await DescribeImageAsync(imageBytes, fileName, metadata.ContentType ?? "application/octet-stream", cancellationToken).ConfigureAwait(false);
 
-        if (options.TryOcrBeforeVision)
-        {
-            var ocrText = TryOcr(imageBytes, fileName);
-            if (ocrText is not null)
-            {
-                description = ocrText;
-                goto yield_section;
-            }
-        }
-
-        description = await DescribeImageAsync(imageBytes, fileName, metadata.ContentType ?? "application/octet-stream", cancellationToken).ConfigureAwait(false);
-
-        yield_section:
         if (options.SanitiseOutput)
-            description = PromptInjectionSanitiser.Sanitise(description);
+            description = PromptInjectionSanitiser.Sanitise(description, _logger, fileName);
 
         yield return new DocumentSection
         {
