@@ -9,9 +9,9 @@ namespace Rag.NET.Parsers.Vision;
 /// </summary>
 internal static partial class PromptInjectionSanitiser
 {
-    internal static string Sanitise(string text, string fileName)
+    internal static string Sanitise(string text)
     {
-        _ = fileName; // reserved for future logging
+        if (text is null) return string.Empty;
         return InjectionPattern().Replace(text, "[REDACTED]");
     }
 
@@ -20,7 +20,7 @@ internal static partial class PromptInjectionSanitiser
     //     "disregard", "new instructions", "system prompt"
     //   - Delimiter injection: <|system|>, <|user|>, [INST], ### instruction blocks
     [GeneratedRegex(
-        @"(?:ignore\s+previous\s+instructions|you\s+are\s+now|act\s+as|disregard|new\s+instructions|system\s+prompt|<\|system\|>|<\|user\|>|\[INST\]|###\s*[Ii]nstruction)",
+        @"(?:ignore\s+previous\s+instructions|you\s+are\s+now|act\s+as|disregard|new\s+instructions|system\s+prompt|<\|system\|>|<\|user\|>|\[INST\]|###\s*instruction)",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000)]
     private static partial Regex InjectionPattern();
