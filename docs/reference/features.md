@@ -378,6 +378,7 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 
 ### Image Description via Vision LLM
 **Package:** `Rag.NET.Parsers.Vision`
+**Status:** ✅ Done
 
 For image files (PNG, JPG, etc.) and embedded figures in PDFs/DOCX: if OCR yields too little text, call a vision LLM (e.g., GPT-4o) to generate a natural-language description. Inject the description as a chunk adjacent to surrounding document text with position metadata. A context-aware variant passes surrounding paragraph text to ground the description.
 
@@ -387,6 +388,7 @@ For image files (PNG, JPG, etc.) and embedded figures in PDFs/DOCX: if OCR yield
 
 ### Video Description via Vision LLM
 **Package:** `Rag.NET.Parsers.Vision`
+**Status:** ✅ Done
 
 Pass video files (MP4, MOV, MKV) to a vision LLM that generates a textual description of the content, stored as chunks for retrieval.
 
@@ -567,7 +569,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Deep Research Loop | High | `IChatClient` |
 | [x] | Domain-Specific Chunking Templates | High | Per-domain logic |
 | [x] | Ensemble / RRF | High | Multiple retrievers |
-| [ ] | Image / Video Description | High | Vision LLM |
+| [x] | Image / Video Description | High | Vision LLM |
 | [ ] | Prompt Injection Fortification | Medium | None (sanitiser) / `IChatClient` (classifier) |
 | [x] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
 | [x] | Conversational Memory Management | High | `IChatClient` + tokenizer |
