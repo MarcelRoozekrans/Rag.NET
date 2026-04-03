@@ -55,7 +55,26 @@ public class UseSecurityTests
     public void UseRetrievalGuard_RegistersIRetrievalGuard()
     {
         var sp = BaseServices().AddRagNet(rag => rag.UseRetrievalGuard()).BuildServiceProvider();
-        Assert.IsType<RegexRetrievalGuard>(sp.GetRequiredService<IRetrievalGuard>());
+        Assert.Contains(sp.GetServices<IRetrievalGuard>(), g => g is RegexRetrievalGuard);
+    }
+
+    [Fact]
+    public void UseLlmQuerySanitiser_Composed_DecoratorReceivesBothSanitisers()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag => rag.UseQuerySanitiser().UseLlmQuerySanitiser())
+            .BuildServiceProvider();
+        Assert.IsType<QuerySanitiserPipelineDecorator>(sp.GetRequiredService<IRagPipeline>());
+        Assert.Equal(2, sp.GetServices<IQuerySanitiser>().Count());
+    }
+
+    [Fact]
+    public void UseLlmQuerySanitiser_Standalone_StillWrapsIRagPipeline()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag => rag.UseLlmQuerySanitiser())
+            .BuildServiceProvider();
+        Assert.IsType<QuerySanitiserPipelineDecorator>(sp.GetRequiredService<IRagPipeline>());
     }
 
     [Fact]

@@ -31,12 +31,7 @@ public static class RagBuilderExtensions
     {
         builder.Services.AddSingleton<IQuerySanitiser>(sp =>
             new RegexQuerySanitiser(sp.GetRequiredService<ILogger<RegexQuerySanitiser>>()));
-        builder.Services.AddSingleton<QuerySanitiserPipelineDecorator>(sp =>
-            new QuerySanitiserPipelineDecorator(
-                sp.GetRequiredService<RagPipeline>(),
-                sp.GetServices<IQuerySanitiser>()));
-        builder.Services.AddSingleton<IRagPipeline>(sp =>
-            sp.GetRequiredService<QuerySanitiserPipelineDecorator>());
+        EnsureQuerySanitiserDecorator(builder);
         return builder;
     }
 
@@ -47,7 +42,21 @@ public static class RagBuilderExtensions
             new LlmQuerySanitiser(
                 sp.GetRequiredService<IChatClient>(),
                 sp.GetRequiredService<ILogger<LlmQuerySanitiser>>()));
+        EnsureQuerySanitiserDecorator(builder);
         return builder;
+    }
+
+    private static void EnsureQuerySanitiserDecorator<TBuilder>(TBuilder builder)
+        where TBuilder : IRagBuilder
+    {
+        if (builder.Services.Any(d => d.ServiceType == typeof(QuerySanitiserPipelineDecorator)))
+            return;
+        builder.Services.AddSingleton<QuerySanitiserPipelineDecorator>(sp =>
+            new QuerySanitiserPipelineDecorator(
+                sp.GetRequiredService<RagPipeline>(),
+                sp.GetServices<IQuerySanitiser>()));
+        builder.Services.AddSingleton<IRagPipeline>(sp =>
+            sp.GetRequiredService<QuerySanitiserPipelineDecorator>());
     }
 
     public static TBuilder UseRetrievalGuard<TBuilder>(this TBuilder builder)
