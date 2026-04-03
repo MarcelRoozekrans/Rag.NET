@@ -32,7 +32,8 @@ public class TrustLevelRetrievalGuardTests
         var results = new[] { MakeResult("untrusted"), MakeResult("internal") };
         var inspected = Sut().Inspect(results);
         Assert.Single(inspected);
-        Assert.True(inspected[0].Chunk.Metadata.TryGetValue("trust_level", out var tl) ? string.Equals(tl, "internal", StringComparison.Ordinal) : true);
+        Assert.True(inspected[0].Chunk.Metadata.TryGetValue("trust_level", out var tl));
+        Assert.Equal("internal", tl);
     }
 
     [Fact]
@@ -119,5 +120,15 @@ public class TrustLevelRetrievalGuardTests
         sut.Inspect([MakeResult("untrusted", "dropped-doc")]);
         Assert.Contains(logger.Entries, e =>
             e.Level == LogLevel.Warning && e.Message.Contains("dropped-doc", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Inspect_ExternalChunk_NoLogWhenWarnOnExternalFalse()
+    {
+        var logger = new TestLogger();
+        var sut = new TrustLevelRetrievalGuard(
+            new TrustLevelGuardOptions { WarnOnExternal = false }, logger);
+        sut.Inspect([MakeResult("external", "doc-x")]);
+        Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Warning);
     }
 }
