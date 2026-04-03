@@ -49,4 +49,14 @@ public class LlmQuerySanitiserTests
         var sut = new LlmQuerySanitiser(FakeClient("safe"), NullLogger<LlmQuerySanitiser>.Instance);
         Assert.Equal(string.Empty, sut.Sanitise(null!));
     }
+
+    [Fact]
+    public void Sanitise_OperationCanceledException_Rethrown()
+    {
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+              .Returns<ChatResponse>(_ => throw new OperationCanceledException("cancelled"));
+        var sut = new LlmQuerySanitiser(client, NullLogger<LlmQuerySanitiser>.Instance);
+        Assert.Throws<OperationCanceledException>(() => sut.Sanitise("any query"));
+    }
 }

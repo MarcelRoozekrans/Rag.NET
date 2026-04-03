@@ -52,4 +52,14 @@ public class LlmChunkSanitiserTests
         var sut = new LlmChunkSanitiser(FakeClient("safe"), NullLogger<LlmChunkSanitiser>.Instance);
         Assert.Equal(string.Empty, sut.Sanitise(null!, Meta));
     }
+
+    [Fact]
+    public void Sanitise_OperationCanceledException_Rethrown()
+    {
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+              .Returns<ChatResponse>(_ => throw new OperationCanceledException("cancelled"));
+        var sut = new LlmChunkSanitiser(client, NullLogger<LlmChunkSanitiser>.Instance);
+        Assert.Throws<OperationCanceledException>(() => sut.Sanitise("any text", new Dictionary<string, string>(StringComparer.Ordinal)));
+    }
 }

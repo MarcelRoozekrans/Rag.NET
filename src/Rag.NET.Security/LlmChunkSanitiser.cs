@@ -5,6 +5,11 @@ using Rag.NET.Abstractions;
 
 namespace Rag.NET.Security;
 
+/// <remarks>
+/// The <see cref="Sanitise"/> method runs an async LLM call synchronously via
+/// <c>GetAwaiter().GetResult()</c>. This is safe in .NET 9 / ASP.NET Core which
+/// does not have a synchronisation context, but may deadlock in classic ASP.NET.
+/// </remarks>
 public sealed partial class LlmChunkSanitiser(
     IChatClient chatClient,
     ILogger<LlmChunkSanitiser>? logger = null) : IChunkSanitiser
