@@ -7,7 +7,11 @@ namespace Rag.NET.Ingestion.Behaviors;
 [Singleton]
 public sealed class ChunkSanitiserBehavior : IIngestionBehavior
 {
-    [Inject] public IEnumerable<IChunkSanitiser> Sanitisers { get; set; } = null!;
+    // Note: [Inject] rather than [Inject(Required = false)] — ZeroAlloc.Inject does not
+    // generate correct code for Required=false on IEnumerable<T> properties.
+    // Microsoft DI always resolves IEnumerable<T> as an empty collection when no
+    // implementations are registered, so this is effectively optional at runtime.
+    [Inject] public IEnumerable<IChunkSanitiser> Sanitisers { get; set; } = [];
 
     public ValueTask<IngestionResult> HandleAsync(
         IngestionContext ctx, CancellationToken ct,
