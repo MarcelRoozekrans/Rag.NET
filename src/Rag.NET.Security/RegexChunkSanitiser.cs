@@ -22,6 +22,8 @@ public sealed partial class RegexChunkSanitiser(
                 return "[REDACTED]";
             });
         }
+        // Non-blocking by design: RegexMatchTimeoutException and other infrastructure failures
+        // return the original text unmodified. OperationCanceledException propagates as normal.
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogSanitiseFailed(_logger, ex);
