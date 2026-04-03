@@ -43,7 +43,7 @@ PNG, JPG, JPEG, GIF, WEBP, BMP — matched by file extension and `image/*` conte
 5. Yield one `DocumentSection`:
    - `Text` = sanitised description
    - `Heading = "image_description"`
-   - `Metadata`: `source_type=image`, `file_name=<name>`
+   - `Metadata`: `source_type=image` (stamped by `ImageChunkingStrategy`). `file_name` is added by `MetadataBehavior` at ingestion time via `TryAdd` — `DocumentSection` carries no `Metadata` dict, so the chunking strategy cannot own it.
 
 ### Options
 
@@ -78,7 +78,7 @@ MP4, MOV, MKV, AVI, WEBM — matched by file extension.
 6. Yield one `DocumentSection` per scene:
    - `Text` = sanitised description
    - `Heading = "video_scene_{index}"`
-   - `Metadata`: `source_type=video`, `file_name=<name>`, `timestamp_seconds=<t>`
+   - `Metadata`: `source_type=video`, `timestamp_seconds=<t>` (stamped by `VideoChunkingStrategy`). `file_name` is added by `MetadataBehavior` at ingestion time — see Image section note.
 7. Delete temp file in `finally` block
 
 ### Options
@@ -126,7 +126,7 @@ Regex-based guard applied to all vision LLM output before storage. Not publicly 
 <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
 ```
 
-`Tesseract` is an opt-in concern — callers only need the package if `TryOcrBeforeVision = true`. The code compiles without it; a runtime check throws a clear `InvalidOperationException` if Tesseract is unavailable when the option is enabled.
+`Tesseract` is opt-in — controlled by the `EnableOcr` MSBuild property. When `EnableOcr=true`, the package is included and `#if ENABLE_OCR` unlocks the implementation in `TryOcr`. Without it, calling `TryOcr` (i.e. setting `TryOcrBeforeVision = true`) throws a clear `InvalidOperationException` at runtime.
 
 ## Testing Strategy
 

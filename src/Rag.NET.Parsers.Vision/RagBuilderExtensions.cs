@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 
 namespace Rag.NET.Parsers.Vision;
@@ -17,7 +18,7 @@ public static class RagBuilderExtensions
             new ImageDocumentParser(
                 opts.ChatClient ?? sp.GetRequiredService<IChatClient>(),
                 opts,
-                sp.GetService<Microsoft.Extensions.Logging.ILogger<ImageDocumentParser>>()));
+                sp.GetRequiredService<ILogger<ImageDocumentParser>>()));
         builder.Services.AddSingleton<IDocumentParser>(sp => sp.GetRequiredService<ImageDocumentParser>());
         builder.Services.AddSingleton<ImageChunkingStrategy>();
         builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<ImageChunkingStrategy>());
@@ -36,7 +37,7 @@ public static class RagBuilderExtensions
             new VideoDocumentParser(
                 opts.ChatClient ?? sp.GetRequiredService<IChatClient>(),
                 opts,
-                sp.GetService<Microsoft.Extensions.Logging.ILogger<VideoDocumentParser>>()));
+                sp.GetRequiredService<ILogger<VideoDocumentParser>>()));
         builder.Services.AddSingleton<IDocumentParser>(sp => sp.GetRequiredService<VideoDocumentParser>());
         builder.Services.AddSingleton<VideoChunkingStrategy>();
         builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<VideoChunkingStrategy>());

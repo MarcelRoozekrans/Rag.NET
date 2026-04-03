@@ -69,9 +69,9 @@ public partial class ImageDocumentParser(
 
     protected virtual string? TryOcr(byte[] imageBytes, string fileName)
     {
+#if ENABLE_OCR
         try
         {
-            // Tesseract is an optional dependency — throw a clear error if not installed.
             using var engine = new Tesseract.TesseractEngine(@"./tessdata", "eng", Tesseract.EngineMode.Default);
             using var pix = Tesseract.Pix.LoadFromMemory(imageBytes);
             using var page = engine.Process(pix);
@@ -83,6 +83,10 @@ public partial class ImageDocumentParser(
             LogOcrFailed(_logger, fileName, ex);
             return null;
         }
+#else
+        throw new InvalidOperationException(
+            "OCR support requires the Tesseract package. Add <EnableOcr>true</EnableOcr> to your project file to enable it.");
+#endif
     }
 
     private static async Task<byte[]> ReadAllBytesAsync(Stream stream, CancellationToken ct)
