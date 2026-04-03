@@ -451,6 +451,25 @@ services.AddRagNet(rag => rag
 
 ---
 
+## Security
+
+### Prompt Injection Fortification
+**Package:** `Rag.NET` (core)
+
+Defence-in-depth against indirect prompt injection — the primary RAG security risk where attacker-controlled content (documents, images, web pages) contains embedded instructions that hijack the LLM's behaviour at query time.
+
+Mitigation layers to consider:
+
+- **Chunk-time sanitisation** — strip or flag known injection patterns (role-switch phrases, instruction delimiters) from ingested text and vision-LLM transcriptions before storing
+- **Retrieval-time tagging** — propagate a `trust_level` metadata field (e.g. `internal` / `external` / `untrusted`) set at ingestion; surfaced to the answer engine so it can apply stricter system prompts for low-trust chunks
+- **Prompt hardening at answer time** — inject a system prompt prefix that instructs the model to treat all retrieved content as data, never as instructions; configurable per-pipeline
+- **Post-retrieval content scan** — run a lightweight classifier or regex guard over the ranked chunk set before it enters the answer prompt; flag or drop suspicious chunks
+- **Vision-specific guard** — for vision-LLM transcriptions, pass output through the sanitiser before storing, since image-embedded text is a common injection vector
+
+**Why:** Vision LLM parsers, web crawlers, and email connectors all ingest content from potentially adversarial sources. Without explicit mitigations, a single malicious document can redirect the model's behaviour for any user whose query retrieves that chunk.
+
+---
+
 ## Management & Observability
 
 ### Data Management API
@@ -547,6 +566,7 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Domain-Specific Chunking Templates | High | Per-domain logic |
 | [x] | Ensemble / RRF | High | Multiple retrievers |
 | [ ] | Image / Video Description | High | Vision LLM |
+| [ ] | Prompt Injection Fortification | Medium | None (sanitiser) / `IChatClient` (classifier) |
 | [x] | LLM Metadata Extraction at Ingest | High | `IChatClient` |
 | [x] | Conversational Memory Management | High | `IChatClient` + tokenizer |
 | [x] | Parent-Document Retrieval | High | Dual index |
