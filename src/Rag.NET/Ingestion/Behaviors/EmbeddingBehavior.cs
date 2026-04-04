@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using Microsoft.Extensions.AI;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 using ZeroAlloc.Inject;
 
 namespace Rag.NET.Ingestion.Behaviors;
@@ -14,7 +16,16 @@ public sealed class EmbeddingBehavior : IIngestionBehavior
         Func<IngestionContext, CancellationToken, ValueTask<IngestionResult>> next)
     {
         var texts = ctx.Chunks.Select(c => c.Text).ToList();
+
+        using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.embed");
+        activity?.SetTag("document.id", ctx.Metadata.DocumentId.Value);
+        activity?.SetTag("chunk.count", texts.Count);
+
+        var sw = Stopwatch.StartNew();
         var embeddings = await Embedder.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
+        sw.Stop();
+
+        RagTelemetry.EmbedDuration.Record(sw.Elapsed.TotalMilliseconds);
 
         ctx.EmbeddedChunks.AddRange(
             ctx.Chunks.Zip(embeddings, (chunk, embedding) =>
