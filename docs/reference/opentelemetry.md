@@ -32,7 +32,7 @@ That is all. No opt-in call inside `AddRagNet(...)` is needed — instrumentatio
 | `ragnet.retrieve` | Top-level retrieval call | `query.hash`, `top_k`, `result.count` |
 | `ragnet.ask` | Answer generation engine | `source.count`, `synthesis.strategy` |
 
-All spans are nested under their parent in the same trace, so a single `IngestAsync` call produces a tree:
+The ingest spans are nested under their parent, so a single `IngestAsync` call produces a tree:
 
 ```
 ragnet.ingest
@@ -42,13 +42,15 @@ ragnet.ingest
   ragnet.store
 ```
 
-And a single `AskAsync` call produces:
+`ragnet.retrieve` and `ragnet.ask` are **not** nested inside each other. `PipelineRetriever.RetrieveAsync` and `ChatAnswerEngine.AskAsync` each start their own top-level span from the ambient `Activity` context. When the caller holds an ambient span, both appear as siblings beneath it:
 
 ```
-ragnet.retrieve
-  (vector store / retrieval behaviors)
-ragnet.ask
+[caller span]
+  ragnet.retrieve
+  ragnet.ask
 ```
+
+If no ambient span exists they are emitted as two independent root spans. The parent-child relationship is determined entirely by the caller's `Activity` context at the time each method is invoked.
 
 ### PII note
 
