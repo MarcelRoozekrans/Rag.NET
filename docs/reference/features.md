@@ -270,6 +270,35 @@ Track which document content hashes have been written to which vector store name
 
 ---
 
+## Vector Stores
+
+### Weaviate Vector Store
+**Package:** `Rag.NET.VectorStores.Weaviate`
+
+Implement `IVectorStore` and `ICollectionManageable` backed by Weaviate via the official `WeaviateSharp` or REST client. Supports hybrid search (BM25 + vector), metadata filtering via Weaviate's `where` filter, and multi-tenancy. Registration: `.UseWeaviate(endpoint, collection, vectorDimensions)`.
+
+**Why:** Weaviate is a popular managed vector store with native hybrid search and a generous free tier. Adds a third open-source option alongside PgVector and Qdrant.
+
+---
+
+### Chroma Vector Store
+**Package:** `Rag.NET.VectorStores.Chroma`
+
+Implement `IVectorStore` backed by ChromaDB via its REST API. Chroma is the most widely used embedded/local vector store in Python RAG tutorials — a .NET adapter lowers the barrier for teams already running Chroma.
+
+**Why:** Chroma is commonly used in prototyping and local development. A lightweight adapter makes Rag.NET accessible to teams already invested in Chroma.
+
+---
+
+### Pinecone Vector Store
+**Package:** `Rag.NET.VectorStores.Pinecone`
+
+Implement `IVectorStore` backed by Pinecone's serverless index via the official REST API. Supports namespace-based collection isolation (maps to `collectionName`), metadata filtering, and sparse-dense hybrid search via Pinecone's native sparse vectors.
+
+**Why:** Pinecone is the dominant managed vector store in production enterprise deployments. Many teams choose Rag.NET for the pipeline but already have Pinecone in their stack.
+
+---
+
 ## Ingestion Sources
 
 ### Data Provider Abstraction
@@ -380,6 +409,37 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 
 ---
 
+### Webhook / Event-Driven Ingestion
+**Package:** `Rag.NET.DataProviders`
+
+An `IIngestionTrigger` abstraction that lets connectors push documents to the pipeline reactively rather than polling. Implementations:
+
+- `WebhookIngestionEndpoint` — a minimal ASP.NET Core endpoint that accepts connector webhook payloads (GitHub push events, Notion page updates, Slack message events) and dispatches them as ingestion jobs
+- `AzureServiceBusIngestionTrigger` — consumes messages from a Service Bus queue/topic and ingests the referenced documents
+- `BackgroundPollingTrigger` — wraps any `IFileContentProvider` in a `BackgroundService` that polls on a configurable schedule (cron expression via `NCrontab`)
+
+**Why:** The current data providers are pull-only — a scheduler or human must kick off re-ingestion. Event-driven ingestion keeps the index current without polling overhead or operator intervention.
+
+---
+
+### Email Connectors (Outlook / Exchange)
+**Package:** `Rag.NET.DataProviders.Exchange`
+
+Ingest emails and attachments from Outlook/Exchange via Microsoft Graph (`/me/messages`, `/me/mailFolders`). Supports folder filtering, date-range watermarks, and attachment parsing (delegates to existing parsers for PDF/Word/Excel attachments). Complements the existing Gmail connector.
+
+**Why:** Exchange/Outlook is the dominant enterprise email system. Enterprise RAG over internal communications requires both Gmail and Exchange coverage.
+
+---
+
+### Linear Issue Tracker
+**Package:** `Rag.NET.DataProviders.Linear`
+
+Ingest issues, comments, and projects from Linear via the GraphQL API. Supports team filtering, state filtering (active/completed/cancelled), and delta ingestion via `updatedAt` watermark.
+
+**Why:** Linear is the issue tracker of choice for many engineering teams. Ingesting it alongside GitHub and Jira gives complete engineering knowledge coverage.
+
+---
+
 ## Multimodal Ingestion
 
 ### Image Description via Vision LLM
@@ -410,6 +470,37 @@ Transcribe WAV, MP3, FLAC, OGG, and other audio files using [Whisper.net](https:
 **Why:** Meeting recordings, podcasts, and voice notes are a growing source of enterprise knowledge that text-only pipelines cannot reach.
 
 **Status:** ✅ Done
+
+---
+
+## Document Parsing
+
+### PDF Table Extraction
+**Package:** `Rag.NET.Parsers.Pdf`
+
+Detect and extract tables from PDFs as structured text rather than flowing prose. Use heuristic line/column detection (via PdfPig's geometry primitives) to reconstruct table rows as pipe-delimited Markdown tables. Each table becomes its own `DocumentSection` with `Heading = "table"` so chunking and retrieval can treat them distinctly.
+
+**Why:** The current PDF parser treats all content as flowing text — tables become garbled sequences of cell values with no row/column structure. This is a known quality gap for financial reports, legal contracts, and technical specifications.
+
+---
+
+### Markdown Parser
+**Package:** `Rag.NET` (core)
+
+A dedicated `MarkdownDocumentParser` that splits on ATX headings (`#`, `##`, `###`) and produces `DocumentSection` objects with `Heading` set to the heading text and `Text` set to the body beneath it. Handles fenced code blocks as atomic sections. Replaces the current plain-text fallback path for `.md` files.
+
+**Why:** Markdown is ubiquitous in documentation repos and GitHub wikis. The current plain-text parser ignores heading structure — heading-aware parsing dramatically improves chunking coherence for documentation corpora.
+
+---
+
+### CSV / JSON / JSONL Parser
+**Package:** `Rag.NET` (core)
+
+- **CSV:** Each row becomes a `DocumentSection` with column headers embedded as `key: value` pairs, making individual records retrievable.
+- **JSON:** Flatten nested objects into sections by top-level key; arrays of objects produce one section per element.
+- **JSONL:** One section per newline-delimited JSON object.
+
+**Why:** Structured data files are commonly indexed for product catalogues, FAQ databases, and log analytics. Row-level chunking gives semantically coherent units rather than arbitrary character splits.
 
 ---
 
@@ -483,6 +574,32 @@ Mitigation layers to consider:
 
 ---
 
+## Observability
+
+### OpenTelemetry Tracing & Metrics
+**Package:** `Rag.NET.Telemetry`
+
+Instrument the full pipeline with OpenTelemetry `ActivitySource` spans and `Meter` metrics:
+
+- **Spans:** `ragnet.ingest`, `ragnet.chunk`, `ragnet.embed`, `ragnet.store`, `ragnet.retrieve`, `ragnet.rerank`, `ragnet.answer` — each with standard attributes (`document_id`, `chunk_count`, `vector_store`, `model`)
+- **Metrics:** `ragnet.ingest.duration`, `ragnet.retrieve.latency`, `ragnet.chunks.retrieved` (histogram), `ragnet.answer.tokens` (counter), `ragnet.embed.batch_size`
+- **Semantic Conventions:** follow OpenTelemetry GenAI semantic conventions (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, etc.)
+
+Registration via `.UseTelemetry()` on the `RagBuilder` — zero overhead when no listener is attached.
+
+**Why:** Production RAG systems need latency breakdowns to answer "is it slow at retrieval or at generation?" and cost visibility via token counters. Currently there is no way to observe what the pipeline is doing without custom logging.
+
+---
+
+### Structured Logging Enrichment
+**Package:** `Rag.NET` (core)
+
+Enrich all existing `[LoggerMessage]` log entries with structured properties (`document_id`, `chunk_index`, `vector_store`, `strategy`) using log scopes. Standardise log event names to snake_case so logs are queryable in Seq/Loki/Datadog without parsing.
+
+**Why:** The existing logs are present but not structured consistently — searching for all events related to a specific document ID requires string matching rather than a structured query.
+
+---
+
 ## Management & Observability
 
 ### Data Management API
@@ -514,6 +631,31 @@ Automatic conversation history management for multi-turn RAG. `ConversationMemor
 
 ## Evaluation
 
+### RAGAS-Style Metrics
+**Package:** `Rag.NET.Evaluation`
+
+Implement the four core RAGAS metrics as `IRagEvaluator` implementations alongside the existing `LlmJudgeEvaluator`:
+
+- **Faithfulness** — are all claims in the answer supported by the retrieved chunks? LLM extracts atomic claims and verifies each against sources.
+- **Answer Relevance** — does the answer address the question? Generate `n` synthetic questions from the answer, embed them, average cosine similarity to the original question embedding.
+- **Context Precision** — are the retrieved chunks relevant? LLM classifies each chunk as relevant/irrelevant to the ground-truth answer; precision = relevant / total.
+- **Context Recall** — do the retrieved chunks cover the ground-truth answer? LLM maps each ground-truth statement to a supporting chunk; recall = covered / total.
+
+Each metric is a standalone `IRagEvaluator<T>` so they can be composed into a `RagasEvaluationSuite` that runs all four concurrently and returns a `RagasReport` with per-metric scores and an overall score.
+
+**Why:** LLM-as-judge grades answer quality holistically. RAGAS metrics decompose quality into retrieval and generation components — essential for pinpointing whether failures are retrieval misses or generation errors.
+
+---
+
+### Evaluation Dataset Builder
+**Package:** `Rag.NET.Evaluation`
+
+Generate synthetic question-answer pairs from an existing document corpus for offline evaluation. Samples `k` chunks, uses an LLM to generate a question whose answer is grounded in the chunk, optionally generates a ground-truth answer. Output: `IReadOnlyList<EvaluationSample>` ready to feed into any `IRagEvaluator`.
+
+**Why:** Bootstrapping an evaluation dataset from scratch requires manual annotation. Synthetic generation is imperfect but enables rapid iteration — run a bulk eval before/after a retrieval change to detect regressions.
+
+---
+
 ### LLM-as-Judge Evaluation
 **Package:** `Rag.NET.Evaluation`
 **Status:** ✅ Done
@@ -521,6 +663,71 @@ Automatic conversation history management for multi-turn RAG. `ConversationMemor
 Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (correctness, faithfulness, relevance) using any `IChatClient`. One LLM call per sample, all evaluated concurrently. Results carry per-criterion scores (0–1) and reasoning strings. `LlmJudgeResult.MeanScore(criterion)` and `AllPass(criterion, threshold)` support CI gate patterns. When `SourceChunks` is null or empty, faithfulness is automatically excluded. Custom criteria can be passed to the constructor.
 
 **Why:** Embedding distance gives a single blunt signal that cannot detect hallucinations, factual errors, or off-topic answers. LLM-as-judge closes this gap with interpretable, per-criterion verdicts.
+
+---
+
+## Retrieval Techniques
+
+### Contextual Compression
+**Package:** `Rag.NET` (core)
+
+Post-retrieval step that compresses each retrieved chunk to only the sentences most relevant to the query, using a lightweight LLM call (or extractive approach with embedding similarity). The compressed chunk is passed to the answer engine instead of the full chunk, reducing prompt tokens without reducing relevance.
+
+**Why:** Retrieved chunks often contain boilerplate or tangential sentences that waste context window space and dilute the signal for the LLM. Compression can halve token usage with minimal faithfulness loss.
+
+---
+
+### Hypothetical Document Embeddings v2 — Multi-Hypothesis
+**Package:** `Rag.NET.QueryTechniques`
+
+Extend the existing `HydeQueryTechnique` to generate `n` hypothetical documents (configurable, default 3) and merge their embeddings by averaging before searching. More hypotheses improve recall at low `n` values and reduce the variance introduced by a single bad hypothesis.
+
+**Why:** Single-hypothesis HyDE can degrade when the generated document takes a wrong angle on the query. Multi-hypothesis averaging is more robust and costs only `n` extra embedding calls.
+
+---
+
+### Adaptive Retrieval (Query Complexity Routing)
+**Package:** `Rag.NET.QueryTechniques`
+
+Classify incoming queries by complexity — simple factoid, multi-hop, or summarization — using a lightweight LLM call or embedding classifier, then route to the appropriate retrieval strategy:
+
+- Simple → standard top-K vector search
+- Multi-hop → deep research loop or multi-query retrieval
+- Summarization → RAPTOR cluster retrieval
+
+**Why:** Running RAPTOR or multi-query on every query is expensive. Routing based on query type preserves quality for complex queries while keeping simple lookups fast and cheap.
+
+---
+
+## Packaging & Distribution
+
+### NuGet Publishing Pipeline
+**Package:** N/A (CI/CD)
+
+Automated NuGet publishing on git tag push:
+
+- Multi-package `.nupkg` generation from all `src/` projects via `dotnet pack`
+- Version stamped from git tag (e.g. `v1.0.0` → `1.0.0`) using `MinVer` or `Nerdbank.GitVersioning`
+- GitHub Actions workflow: build → test → pack → push to `nuget.org`
+- Package icons, `README.md` embedded per package, license expression (`MIT`)
+- Symbol packages (`.snupkg`) for source-linked debugging
+
+**Why:** Rag.NET has no NuGet packages today — consuming it requires a git submodule or local project reference. Publishing to NuGet is the single highest-leverage action for adoption.
+
+---
+
+### Sample Applications
+**Package:** `samples/`
+
+Curated, runnable sample projects demonstrating real-world Rag.NET usage:
+
+- `samples/QuickStart` — minimal console app: ingest a folder of `.txt` files, ask a question, print the answer
+- `samples/WebApi` — ASP.NET Core minimal API wrapping the RAG pipeline with swagger UI
+- `samples/MultiModal` — ingest PDFs + images, ask questions that require visual understanding
+- `samples/DataProvider` — schedule-based re-ingestion from GitHub using the content-hash record manager
+- `samples/Evaluation` — run RAGAS metrics against a synthetic dataset
+
+**Why:** The library is feature-rich but the learning curve is steep. Runnable samples reduce time-to-first-answer from hours to minutes.
 
 ---
 
@@ -588,3 +795,21 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 | [x] | Self-Query Filtering | High | `IChatClient` + schema |
 | [x] | GraphRAG | Very High | Graph DB + `IChatClient` |
 | [x] | Mind-Map Extractor | Medium | `IChatClient` + `IGraphStore` |
+| [ ] | NuGet Publishing Pipeline | Low | GitHub Actions + MinVer |
+| [ ] | Markdown Parser | Low | None |
+| [ ] | Structured Logging Enrichment | Low | None |
+| [ ] | CSV / JSON / JSONL Parser | Low | None |
+| [ ] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
+| [ ] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
+| [ ] | Evaluation Dataset Builder | Medium | `IChatClient` |
+| [ ] | Weaviate Vector Store | Medium | `WeaviateSharp` |
+| [ ] | Chroma Vector Store | Medium | Chroma REST API |
+| [ ] | Pinecone Vector Store | Medium | Pinecone REST API |
+| [ ] | PDF Table Extraction | Medium | PdfPig geometry |
+| [ ] | Contextual Compression | Medium | `IChatClient` or embeddings |
+| [ ] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core / Service Bus |
+| [ ] | OpenTelemetry Tracing & Metrics | Medium | `System.Diagnostics.ActivitySource` |
+| [ ] | Email Connector (Outlook/Exchange) | Medium | Microsoft Graph SDK |
+| [ ] | Linear Issue Tracker | Low | Linear GraphQL API |
+| [ ] | Sample Applications | Medium | All packages |
+| [ ] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
