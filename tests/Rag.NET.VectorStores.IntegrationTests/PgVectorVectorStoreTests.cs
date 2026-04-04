@@ -49,17 +49,22 @@ public class PgVectorVectorStoreTests : IAsyncLifetime
             },
         };
 
-        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
 
-        var results = await _sut.SearchAsync(
-            new float[] { 1.0f, 0.0f, 0.0f },
-            new SearchOptions { TopK = 1 },
-            TestContext.Current.CancellationToken);
+            var results = await _sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 1 },
+                TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("cats are great", results[0].Chunk.Text);
-
-        await _sut.DeleteByDocumentIdAsync(docId, TestContext.Current.CancellationToken);
+            Assert.Single(results);
+            Assert.Equal("cats are great", results[0].Chunk.Text);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
     }
 
     [Fact]
@@ -119,22 +124,27 @@ public class PgVectorVectorStoreTests : IAsyncLifetime
             },
         };
 
-        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
 
-        var results = await _sut.SearchAsync(
-            new float[] { 1.0f, 0.0f, 0.0f },
-            new SearchOptions
-            {
-                TopK = 10,
-                MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
-            },
-            TestContext.Current.CancellationToken);
+            var results = await _sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions
+                {
+                    TopK = 10,
+                    MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                },
+                TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("engineering doc", results[0].Chunk.Text);
-
-        await _sut.DeleteByDocumentIdAsync(docId1, TestContext.Current.CancellationToken);
-        await _sut.DeleteByDocumentIdAsync(docId2, TestContext.Current.CancellationToken);
+            Assert.Single(results);
+            Assert.Equal("engineering doc", results[0].Chunk.Text);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId1, CancellationToken.None);
+            await _sut.DeleteByDocumentIdAsync(docId2, CancellationToken.None);
+        }
     }
 
     [Fact]

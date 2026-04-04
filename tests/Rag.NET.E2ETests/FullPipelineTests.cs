@@ -21,6 +21,9 @@ public sealed class FullPipelineTests : IAsyncLifetime
     private readonly PgVectorFixture _pgVector = new();
     private IRagPipeline _pipeline = null!;
     private ServiceProvider _sp = null!;
+    private readonly string _doc1Id = $"e2e-{Guid.NewGuid():N}";
+    private readonly string _doc2Id = $"e2e-{Guid.NewGuid():N}";
+    private readonly string _doc3Id = $"e2e-{Guid.NewGuid():N}";
 
     public FullPipelineTests(OllamaFixture ollama)
     {
@@ -56,7 +59,12 @@ public sealed class FullPipelineTests : IAsyncLifetime
     public async ValueTask DisposeAsync()
     {
         if (_sp is not null)
+        {
+            await _pipeline.DeleteAsync(_doc1Id, CancellationToken.None);
+            await _pipeline.DeleteAsync(_doc2Id, CancellationToken.None);
+            await _pipeline.DeleteAsync(_doc3Id, CancellationToken.None);
             await _sp.DisposeAsync();
+        }
 
         await _pgVector.DisposeAsync();
     }
@@ -100,6 +108,20 @@ public sealed class FullPipelineTests : IAsyncLifetime
         Assert.Contains("Eiffel", response.Answer, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task FullPipeline_Dispatching_AnswersQuestion()
+    {
+        var options = new RagOptions { SynthesisStrategy = SynthesisStrategy.Default };
+
+        var response = await _pipeline.AskAsync(
+            "What programming language was created by Guido van Rossum?",
+            options,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(string.IsNullOrWhiteSpace(response.Answer), "Expected a non-empty answer.");
+        Assert.Contains("Python", response.Answer, StringComparison.OrdinalIgnoreCase);
+    }
+
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
@@ -109,9 +131,9 @@ public sealed class FullPipelineTests : IAsyncLifetime
         var assembly = typeof(FullPipelineTests).Assembly;
         var resources = new[]
         {
-            ("doc1", "doc1.txt"),
-            ("doc2", "doc2.txt"),
-            ("doc3", "doc3.txt"),
+            (_doc1Id, "doc1.txt"),
+            (_doc2Id, "doc2.txt"),
+            (_doc3Id, "doc3.txt"),
         };
 
         foreach (var (docId, fileName) in resources)

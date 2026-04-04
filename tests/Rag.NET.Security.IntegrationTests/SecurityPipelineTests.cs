@@ -82,7 +82,7 @@ public class SecurityPipelineTests : IAsyncLifetime
         }
         finally
         {
-            await _pipeline.DeleteAsync(docId, TestContext.Current.CancellationToken);
+            await _pipeline.DeleteAsync(docId, CancellationToken.None);
         }
     }
 
@@ -123,7 +123,103 @@ public class SecurityPipelineTests : IAsyncLifetime
         }
         finally
         {
-            await _pipeline.DeleteAsync(docId, TestContext.Current.CancellationToken);
+            await _pipeline.DeleteAsync(docId, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task UntrustedChunk_IsDroppedByTrustLevelGuard()
+    {
+        var docId = $"sec-untrusted-{Guid.NewGuid():N}";
+
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new FakeEmbeddingGenerator());
+        services.AddRagNet(rag => rag
+            .UsePgVector(_fixture.ConnectionString, vectorDimensions: 3)
+            .UseTrustLevelGuard());
+
+        await using var sp = services.BuildServiceProvider();
+        var store = (PgVectorStore)sp.GetRequiredService<IVectorStore>();
+        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        try
+        {
+            var ingestResult = await pipeline.IngestAsync(
+                new MemoryStream(Encoding.UTF8.GetBytes("secret untrusted content")),
+                new DocumentMetadata
+                {
+                    DocumentId = new DocumentId(docId),
+                    FileName = "untrusted.txt",
+                    ContentType = "text/plain",
+                    Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+                    {
+                        ["trust_level"] = "untrusted",
+                    },
+                },
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.True(ingestResult.IsSuccess, $"IngestAsync failed: {ingestResult}");
+
+            var retrieveResult = await pipeline.RetrieveAsync(
+                "secret untrusted content",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.True(retrieveResult.IsSuccess, $"RetrieveAsync failed: {retrieveResult}");
+            Assert.Empty(retrieveResult.Value);
+        }
+        finally
+        {
+            await pipeline.DeleteAsync(docId, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task PromptHardening_SystemPrefixPresentInLlmCall()
+    {
+        var docId = $"sec-harden-{Guid.NewGuid():N}";
+        var capturingClient = new CapturingChatClient();
+
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new FakeEmbeddingGenerator());
+        services.AddSingleton<IChatClient>(capturingClient);
+        services.AddRagNet(rag => rag
+            .UsePgVector(_fixture.ConnectionString, vectorDimensions: 3)
+            .UsePromptHardening());
+
+        await using var sp = services.BuildServiceProvider();
+        var store = (PgVectorStore)sp.GetRequiredService<IVectorStore>();
+        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        try
+        {
+            var ingestResult = await pipeline.IngestAsync(
+                new MemoryStream(Encoding.UTF8.GetBytes("The capital of France is Paris.")),
+                new DocumentMetadata
+                {
+                    DocumentId = new DocumentId(docId),
+                    FileName = "france.txt",
+                    ContentType = "text/plain",
+                },
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.True(ingestResult.IsSuccess, $"IngestAsync failed: {ingestResult}");
+
+            await pipeline.AskAsync(
+                "What is the capital of France?",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotEmpty(capturingClient.CapturedMessages);
+            Assert.Contains(capturingClient.CapturedMessages,
+                m => m.Role == ChatRole.System &&
+                     (m.Text ?? string.Empty).Contains("retrieval assistant", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            await pipeline.DeleteAsync(docId, CancellationToken.None);
         }
     }
 
@@ -147,6 +243,31 @@ public class SecurityPipelineTests : IAsyncLifetime
         public EmbeddingGeneratorMetadata Metadata => new("fake", null, null, 3);
 
         public TService? GetService<TService>(object? key = null) where TService : class => null;
+
+        public object? GetService(Type serviceType, object? key = null) => null;
+
+        public void Dispose() { }
+    }
+
+    private sealed class CapturingChatClient : IChatClient
+    {
+        public List<ChatMessage> CapturedMessages { get; } = new();
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> chatMessages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            CapturedMessages.AddRange(chatMessages);
+            var response = new ChatResponse(new ChatMessage(ChatRole.Assistant, "Paris."));
+            return Task.FromResult(response);
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> chatMessages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
 
         public object? GetService(Type serviceType, object? key = null) => null;
 
