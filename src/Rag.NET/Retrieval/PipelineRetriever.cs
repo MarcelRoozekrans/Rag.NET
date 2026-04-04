@@ -55,9 +55,7 @@ public sealed class PipelineRetriever : IRetriever
         try
         {
             var result = await Pipeline.ExecuteAsync(ctx, cancellationToken).ConfigureAwait(false);
-            sw.Stop();
             activity?.SetTag("result.count", result.Count);
-            RagTelemetry.RetrieveDuration.Record(sw.Elapsed.TotalMilliseconds);
             RagTelemetry.ChunksRetrieved.Add(result.Count);
             return Result<IReadOnlyList<SearchResult>, RagError>.Success(result);
         }
@@ -67,6 +65,11 @@ public sealed class PipelineRetriever : IRetriever
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             RagTelemetry.RetrieveErrors.Add(1);
             return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(ex));
+        }
+        finally
+        {
+            sw.Stop();
+            RagTelemetry.RetrieveDuration.Record(sw.Elapsed.TotalMilliseconds);
         }
     }
 
