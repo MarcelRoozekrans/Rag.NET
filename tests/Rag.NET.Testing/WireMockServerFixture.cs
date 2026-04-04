@@ -1,3 +1,4 @@
+using WireMock.Handlers;
 using WireMock.Server;
 using WireMock.Settings;
 using Xunit;
@@ -29,12 +30,34 @@ public sealed class WireMockServerFixture : IAsyncLifetime
         return ValueTask.CompletedTask;
     }
 
-    public void LoadCassettes(string connectorName)
+    public void LoadCassettes(string connectorName, string? proxyBaseUrl = null)
     {
         Server.ResetMappings();          // clear all previous stubs before loading new ones
         var path = GetCassettePath(connectorName);
-        if (Directory.Exists(path))
+
+        if (RecordMode && proxyBaseUrl is not null)
+        {
+            // Restart on the same port so BaseUrl remains valid for tests that captured it.
+            var port = Server.Ports[0];
+            Server.Dispose();
+            Directory.CreateDirectory(path);
+            Server = WireMockServer.Start(new WireMockServerSettings
+            {
+                UseSSL = false,
+                Port = port,
+                FileSystemHandler = new LocalFileSystemHandler(path),
+                ProxyAndRecordSettings = new ProxyAndRecordSettings
+                {
+                    Url = proxyBaseUrl,
+                    SaveMapping = true,
+                    SaveMappingToFile = true,
+                },
+            });
+        }
+        else if (Directory.Exists(path))
+        {
             Server.ReadStaticMappings(path);
+        }
     }
 
     public void SaveCassettes(string connectorName)

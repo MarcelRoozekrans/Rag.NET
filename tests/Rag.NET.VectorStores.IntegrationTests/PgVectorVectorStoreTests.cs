@@ -81,15 +81,22 @@ public class PgVectorVectorStoreTests : IAsyncLifetime
             },
         };
 
-        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-        await _sut.DeleteByDocumentIdAsync(docId, TestContext.Current.CancellationToken);
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await _sut.DeleteByDocumentIdAsync(docId, TestContext.Current.CancellationToken);
 
-        var results = await _sut.SearchAsync(
-            new float[] { 1.0f, 0.0f, 0.0f },
-            new SearchOptions { TopK = 10 },
-            TestContext.Current.CancellationToken);
+            var results = await _sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 10 },
+                TestContext.Current.CancellationToken);
 
-        Assert.Empty(results);
+            Assert.Empty(results);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
     }
 
     [Fact]

@@ -18,7 +18,7 @@ public sealed class GitHubDataProviderTests
     public GitHubDataProviderTests(WireMockServerFixture fixture)
     {
         _fixture = fixture;
-        _fixture.LoadCassettes("GitHub");
+        _fixture.LoadCassettes("GitHub", "https://api.github.com");
     }
 
     private IGitHubClient CreateClient()

@@ -5,6 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Testing\Rag.NET.Testing.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Chunking.TokenAware\Rag.NET.Chunking.TokenAware.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Chunking.CSharp\Rag.NET.Chunking.CSharp.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
