@@ -12,6 +12,7 @@
     <PackageReference Include="xunit.v3.extensibility.core" Version="2.*" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.*" />
+    <!-- No stable release exists yet for Microsoft.Extensions.AI.Ollama; pinned to latest preview. Update when stable is released. -->
     <PackageReference Include="Microsoft.Extensions.AI.Ollama" Version="9.7.0-preview.1.25356.2" />
   </ItemGroup>
 
