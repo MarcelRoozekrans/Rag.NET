@@ -166,6 +166,7 @@ Combine results from multiple retrievers (e.g., BM25 + dense vector) using Recip
 ---
 
 ### RAPTOR — Recursive Abstractive Tree Summarization
+**Status:** ✅ Done
 **Package:** `Rag.NET` (core)
 
 Embed chunks, dimensionality-reduce with UMAP, soft-cluster with a Gaussian Mixture Model (BIC selects optimal cluster count), then LLM-summarize each cluster into a new higher-level chunk. Recurse until one cluster remains, building a full summary tree. Store all intermediate summary chunks alongside originals; all levels participate in retrieval simultaneously.
@@ -260,6 +261,7 @@ Run an LLM over each ingested document to generate representative Q&A pairs or s
 ## Indexing Infrastructure
 
 ### Content-Hash Record Manager
+**Status:** ✅ Done
 **Package:** `Rag.NET` (core)
 
 Track which document content hashes have been written to which vector store namespace, persisted to a SQL/file store. On re-ingestion: skip truly unchanged documents, re-index modified ones, optionally delete documents whose sources have disappeared (`CleanupMode.Full`). Goes beyond `IngestionOptions.Overwrite` — that flag re-ingests unconditionally; this skips unchanged content.
@@ -271,6 +273,7 @@ Track which document content hashes have been written to which vector store name
 ## Ingestion Sources
 
 ### Data Provider Abstraction
+**Status:** ✅ Done
 **Package:** `Rag.NET` (core) + `Rag.NET.DataProviders.GitHub`
 
 Decouple "where files come from" from "how to ingest them" via an `IFileContentProvider` abstraction.
@@ -287,6 +290,7 @@ await pipeline.IngestFromProviderAsync(provider, source, metadata, options);
 ---
 
 ### Recursive Web Crawler
+**Status:** ✅ Done
 **Package:** `Rag.NET.DataProviders.Web`
 
 Fetch a seed URL and follow links up to a configurable depth, loading all discovered pages as documents.
@@ -296,6 +300,7 @@ Fetch a seed URL and follow links up to a configurable depth, loading all discov
 ---
 
 ### Sitemap Loader
+**Status:** ✅ Done
 **Package:** `Rag.NET.DataProviders.Web`
 
 Read a `sitemap.xml` and load all listed URLs. A structured, polite alternative to recursive crawling for sites that publish sitemaps.
@@ -305,6 +310,7 @@ Read a `sitemap.xml` and load all listed URLs. A structured, polite alternative 
 ---
 
 ### RSS Feed Loader
+**Status:** ✅ Done
 **Package:** `Rag.NET.DataProviders.Web`
 
 Ingest documents from RSS/Atom feeds, enabling near-real-time ingestion of news, blog posts, and update streams.
@@ -410,6 +416,7 @@ Transcribe WAV, MP3, FLAC, OGG, and other audio files using [Whisper.net](https:
 ## Knowledge Graph
 
 ### GraphRAG — Entity Extraction + Community Summarization
+**Status:** ✅ Done
 **Package:** `Rag.NET.GraphRag`
 
 Full Microsoft GraphRAG pipeline: LLM-driven entity and relationship extraction from chunks using iterative "gleaning", Leiden community detection (hierarchical graph clustering), PageRank-weighted entity scoring, and LLM-generated community summary reports. At query time, combines dense entity retrieval, relation retrieval by text similarity, and community report retrieval — merged and scored by cosine similarity and PageRank.
@@ -479,6 +486,7 @@ Mitigation layers to consider:
 ## Management & Observability
 
 ### Data Management API
+**Status:** ✅ Done
 **Package:** `Rag.NET` (core)
 
 A read/delete surface for browsing and managing ingested data via `IRagDataManager`.
