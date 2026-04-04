@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
+using Rag.NET.Telemetry;
 using ZeroAlloc.Inject;
 using ZeroAlloc.Results;
 using ZeroAlloc.Validation;
@@ -53,18 +55,30 @@ public sealed class PipelineIngestor : IIngestor
             GetNextBm25DocId = () => System.Threading.Interlocked.Increment(ref _nextBm25DocId),
         };
 
+        using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.ingest");
+        activity?.SetTag("document.id", metadata.DocumentId.Value);
+        activity?.SetTag("content.type", metadata.ContentType);
+
+        var sw = Stopwatch.StartNew();
         try
         {
             var result = await Pipeline.ExecuteAsync(ctx, cancellationToken).ConfigureAwait(false);
+            sw.Stop();
+            RagTelemetry.IngestDuration.Record(sw.Elapsed.TotalMilliseconds);
+            activity?.SetTag("chunk.count", result.ChunksStored);
             return Result<IngestionResult, RagError>.Success(result);
         }
         catch (NoParserFoundException ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            RagTelemetry.IngestErrors.Add(1);
             return Result<IngestionResult, RagError>.Failure(new RagError.NoParserFound(ex.ContentType));
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            RagTelemetry.IngestErrors.Add(1);
             return Result<IngestionResult, RagError>.Failure(new RagError.StorageFailed(ex));
         }
     }
