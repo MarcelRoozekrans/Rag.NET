@@ -63,8 +63,6 @@ public sealed class PipelineIngestor : IIngestor
         try
         {
             var result = await Pipeline.ExecuteAsync(ctx, cancellationToken).ConfigureAwait(false);
-            sw.Stop();
-            RagTelemetry.IngestDuration.Record(sw.Elapsed.TotalMilliseconds);
             activity?.SetTag("chunk.count", result.ChunksStored);
             return Result<IngestionResult, RagError>.Success(result);
         }
@@ -80,6 +78,11 @@ public sealed class PipelineIngestor : IIngestor
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             RagTelemetry.IngestErrors.Add(1);
             return Result<IngestionResult, RagError>.Failure(new RagError.StorageFailed(ex));
+        }
+        finally
+        {
+            sw.Stop();
+            RagTelemetry.IngestDuration.Record(sw.Elapsed.TotalMilliseconds);
         }
     }
 

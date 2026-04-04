@@ -27,8 +27,13 @@ public sealed class ParseBehavior : IIngestionBehavior
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.parse");
         activity?.SetTag("document.id", ctx.Metadata.DocumentId.Value);
 
-        var parser = Parsers.FirstOrDefault(p => p.CanParse(ctx.Metadata.ContentType ?? "text/plain"))
-            ?? throw new NoParserFoundException(ctx.Metadata.ContentType ?? "text/plain");
+        var contentType = ctx.Metadata.ContentType ?? "text/plain";
+        var parser = Parsers.FirstOrDefault(p => p.CanParse(contentType));
+        if (parser is null)
+        {
+            activity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, $"No parser for {contentType}");
+            throw new NoParserFoundException(contentType);
+        }
 
         activity?.SetTag("parser.type", parser.GetType().Name);
 

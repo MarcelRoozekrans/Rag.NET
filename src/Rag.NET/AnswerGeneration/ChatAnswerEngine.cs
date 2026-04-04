@@ -33,15 +33,22 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
         var (messages, chatOptions) = await BuildMessagesAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
 
         var sw = Stopwatch.StartNew();
-        var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
-        sw.Stop();
-        RagTelemetry.AskDuration.Record(sw.Elapsed.TotalMilliseconds);
-
-        return new RagResponse
+        try
         {
-            Answer = response.Text ?? string.Empty,
-            Sources = sources,
-        };
+            var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
+            sw.Stop();
+            RagTelemetry.AskDuration.Record(sw.Elapsed.TotalMilliseconds);
+            return new RagResponse
+            {
+                Answer = response.Text ?? string.Empty,
+                Sources = sources,
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
     }
 
     public async IAsyncEnumerable<RagStreamingUpdate> AskStreamingAsync(
