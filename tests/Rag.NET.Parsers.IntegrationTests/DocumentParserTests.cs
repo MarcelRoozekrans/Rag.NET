@@ -78,6 +78,7 @@ public sealed class DocumentParserTests
 
         Assert.NotEmpty(sections);
         Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+        Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
     }
 
     // ── Excel ────────────────────────────────────────────────────────────────
@@ -94,6 +95,25 @@ public sealed class DocumentParserTests
         };
 
         using var stream = CreateXlsx("Sheet1", [["Title", "Description"], ["Integration Test Document", "This document is used for integration testing."]]);
+        var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(sections);
+        Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+    }
+
+    [Fact]
+    public async Task ExcelParser_ParsesSharedStringXlsx_ReturnsNonEmptySections()
+    {
+        var sut = new ExcelDocumentParser();
+        var meta = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("excel-2"),
+            FileName = "sample-shared.xlsx",
+            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        };
+
+        using var stream = CreateXlsxWithSharedStrings();
         var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
@@ -190,6 +210,56 @@ public sealed class DocumentParserTests
                 Id = workbookPart.GetIdOfPart(worksheetPart),
                 SheetId = 1,
                 Name = sheetName,
+            });
+
+            workbookPart.Workbook.Save();
+        }
+
+        stream.Position = 0;
+        return stream;
+    }
+
+    private static MemoryStream CreateXlsxWithSharedStrings()
+    {
+        var stream = new MemoryStream();
+        using (var doc = SpreadsheetDocument.Create(stream, SpreadsheetDocumentType.Workbook))
+        {
+            var workbookPart = doc.AddWorkbookPart();
+            workbookPart.Workbook = new Workbook(new Sheets());
+            var docSheets = workbookPart.Workbook.GetFirstChild<Sheets>()!;
+
+            // Build shared string table with two entries: index 0 = "Header", index 1 = "Integration Test data"
+            var sharedStringPart = workbookPart.AddNewPart<SharedStringTablePart>();
+            sharedStringPart.SharedStringTable = new SharedStringTable(
+                new SharedStringItem(new DocumentFormat.OpenXml.Spreadsheet.Text("Header")),
+                new SharedStringItem(new DocumentFormat.OpenXml.Spreadsheet.Text("Integration Test data")));
+            sharedStringPart.SharedStringTable.Save();
+
+            var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
+            var sheetData = new SheetData(
+                // Row 1: header row using shared string index 0
+                new Row(new Cell
+                {
+                    CellReference = "A1",
+                    DataType = CellValues.SharedString,
+                    CellValue = new CellValue("0"),
+                }) { RowIndex = 1U },
+                // Row 2: data row using shared string index 1
+                new Row(new Cell
+                {
+                    CellReference = "A2",
+                    DataType = CellValues.SharedString,
+                    CellValue = new CellValue("1"),
+                }) { RowIndex = 2U });
+
+            worksheetPart.Worksheet = new Worksheet(sheetData);
+            worksheetPart.Worksheet.Save();
+
+            docSheets.AppendChild(new Sheet
+            {
+                Id = workbookPart.GetIdOfPart(worksheetPart),
+                SheetId = 1,
+                Name = "SharedStrings",
             });
 
             workbookPart.Workbook.Save();
