@@ -1,0 +1,32 @@
+using System.Diagnostics;
+using System.Diagnostics.Metrics;
+
+namespace Rag.NET.Telemetry;
+
+internal static class RagTelemetry
+{
+    internal const string SourceName = "Rag.NET";
+
+    internal static readonly ActivitySource ActivitySource = new(SourceName, "1.0.0");
+    internal static readonly Meter Meter = new(SourceName, "1.0.0");
+
+    // Histograms
+    internal static readonly Histogram<double> IngestDuration =
+        Meter.CreateHistogram<double>("ragnet.ingest.duration", "ms", "Total ingestion time per document");
+    internal static readonly Histogram<double> EmbedDuration =
+        Meter.CreateHistogram<double>("ragnet.embed.duration", "ms", "Embedding generation time per batch");
+    internal static readonly Histogram<double> RetrieveDuration =
+        Meter.CreateHistogram<double>("ragnet.retrieve.duration", "ms", "End-to-end retrieval time per query");
+    internal static readonly Histogram<double> AskDuration =
+        Meter.CreateHistogram<double>("ragnet.ask.duration", "ms", "Answer generation time per query");
+
+    // Counters
+    internal static readonly Counter<long> ChunksStored =
+        Meter.CreateCounter<long>("ragnet.chunks.stored", "chunks", "Total chunks written to the vector store");
+    internal static readonly Counter<long> ChunksRetrieved =
+        Meter.CreateCounter<long>("ragnet.chunks.retrieved", "chunks", "Total chunks returned by retrieval");
+    internal static readonly Counter<long> IngestErrors =
+        Meter.CreateCounter<long>("ragnet.ingest.errors", "errors", "Total ingestion failures");
+    internal static readonly Counter<long> RetrieveErrors =
+        Meter.CreateCounter<long>("ragnet.retrieve.errors", "errors", "Total retrieval failures");
+}
