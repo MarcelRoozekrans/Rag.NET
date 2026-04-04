@@ -1,0 +1,22 @@
+{
+  "Guid": "f6a7b8c9-d0e1-2345-fabc-456789012345",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/robots.txt",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "text/plain; charset=utf-8"
+    },
+    "Body": "User-agent: *\nDisallow: /private/\n"
+  }
+}

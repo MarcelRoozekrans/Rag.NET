@@ -1,0 +1,22 @@
+{
+  "Guid": "d4e5f6a7-b8c9-0123-defa-234567890123",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/page1",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "text/html; charset=utf-8"
+    },
+    "Body": "<html><head><title>Page 1</title></head><body><h1>Page One</h1><p>This is the first page.</p></body></html>"
+  }
+}

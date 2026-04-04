@@ -1,0 +1,22 @@
+{
+  "Guid": "a7b8c9d0-e1f2-3456-abcd-567890123456",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/start",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "text/html; charset=utf-8"
+    },
+    "Body": "<html><head><title>Start Page</title></head><body><h1>Welcome</h1><p>This is the starting page.</p></body></html>"
+  }
+}

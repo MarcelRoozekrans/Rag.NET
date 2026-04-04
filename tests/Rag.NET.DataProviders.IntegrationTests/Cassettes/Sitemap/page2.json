@@ -1,0 +1,22 @@
+{
+  "Guid": "e5f6a7b8-c9d0-1234-efab-345678901234",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/page2",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "text/html; charset=utf-8"
+    },
+    "Body": "<html><head><title>Page 2</title></head><body><h1>Page Two</h1><p>This is the second page.</p></body></html>"
+  }
+}

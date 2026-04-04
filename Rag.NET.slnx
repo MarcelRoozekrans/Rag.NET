@@ -87,6 +87,7 @@
     <Project Path="tests/Rag.NET.DataProviders.Dropbox.Tests/Rag.NET.DataProviders.Dropbox.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Box.Tests/Rag.NET.DataProviders.Box.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Confluence.Tests/Rag.NET.DataProviders.Confluence.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.IntegrationTests/Rag.NET.DataProviders.IntegrationTests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Jira.Tests/Rag.NET.DataProviders.Jira.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Notion.Tests/Rag.NET.DataProviders.Notion.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Asana.Tests/Rag.NET.DataProviders.Asana.Tests.csproj" />
