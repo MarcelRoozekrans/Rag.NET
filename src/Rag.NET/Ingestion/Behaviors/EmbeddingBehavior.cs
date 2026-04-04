@@ -22,10 +22,16 @@ public sealed class EmbeddingBehavior : IIngestionBehavior
         activity?.SetTag("chunk.count", texts.Count);
 
         var sw = Stopwatch.StartNew();
-        var embeddings = await Embedder.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
-        sw.Stop();
-
-        RagTelemetry.EmbedDuration.Record(sw.Elapsed.TotalMilliseconds);
+        GeneratedEmbeddings<Embedding<float>> embeddings;
+        try
+        {
+            embeddings = await Embedder.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            sw.Stop();
+            RagTelemetry.EmbedDuration.Record(sw.Elapsed.TotalMilliseconds);
+        }
 
         ctx.EmbeddedChunks.AddRange(
             ctx.Chunks.Zip(embeddings, (chunk, embedding) =>

@@ -29,4 +29,7 @@ internal static class RagTelemetry
         Meter.CreateCounter<long>("ragnet.ingest.errors", "errors", "Total ingestion failures");
     internal static readonly Counter<long> RetrieveErrors =
         Meter.CreateCounter<long>("ragnet.retrieve.errors", "errors", "Total retrieval failures");
+    // ragnet.ask.errors is intentionally omitted: answer-generation failures are observable through
+    // the ragnet.ask span status (ActivityStatusCode.Error) and the caller's exception handling.
+    // An error counter would require exposing a public metric surface for a single call site.
 }

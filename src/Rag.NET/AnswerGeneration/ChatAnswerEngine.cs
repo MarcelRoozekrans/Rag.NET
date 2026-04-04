@@ -36,8 +36,6 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
         try
         {
             var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
-            sw.Stop();
-            RagTelemetry.AskDuration.Record(sw.Elapsed.TotalMilliseconds);
             return new RagResponse
             {
                 Answer = response.Text ?? string.Empty,
@@ -48,6 +46,11 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
             throw;
+        }
+        finally
+        {
+            sw.Stop();
+            RagTelemetry.AskDuration.Record(sw.Elapsed.TotalMilliseconds);
         }
     }
 
@@ -77,22 +80,6 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
         bool hasNext;
         try
         {
-            hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            throw;
-        }
-
-        while (hasNext)
-        {
-            var update = enumerator.Current;
-            if (update.Text is not null)
-            {
-                yield return new RagStreamingUpdate { TextDelta = update.Text };
-            }
-
             try
             {
                 hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
@@ -102,10 +89,31 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
                 activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
                 throw;
             }
-        }
 
-        sw.Stop();
-        RagTelemetry.AskDuration.Record(sw.Elapsed.TotalMilliseconds);
+            while (hasNext)
+            {
+                var update = enumerator.Current;
+                if (update.Text is not null)
+                {
+                    yield return new RagStreamingUpdate { TextDelta = update.Text };
+                }
+
+                try
+                {
+                    hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                    throw;
+                }
+            }
+        }
+        finally
+        {
+            sw.Stop();
+            RagTelemetry.AskDuration.Record(sw.Elapsed.TotalMilliseconds);
+        }
     }
 
     private async Task<(List<ChatMessage> Messages, ChatOptions Options)> BuildMessagesAsync(
