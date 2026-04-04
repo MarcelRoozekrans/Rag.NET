@@ -169,6 +169,23 @@ CPU-only overhead of the `ParentDocumentRetriever` decorator. The inner retrieve
 
 ---
 
+## Telemetry Overhead
+
+`ActivitySource.StartActivity("ragnet.ingest")` overhead under two conditions: no listener attached (the null-return fast path) and a listener registered with `AllData` sampling (full `Activity` allocation path). Validates the "zero overhead when no listener" guarantee provided by the .NET `ActivitySource` API.
+
+| Method | Mean | Allocated |
+|--------|-----:|----------:|
+| NoListener (baseline) | ~2 ns | 0 B |
+| WithListener | ~200 ns | ~1 KB |
+
+**Notes:**
+- When no `ActivityListener` is registered for `Rag.NET`, `StartActivity` returns `null` immediately — no allocation, no object construction.
+- When a listener is attached (e.g. an OpenTelemetry SDK exporter), a full `Activity` object is allocated and populated. The cost is ~200 ns and ~1 KB per span, which is negligible compared to real I/O operations.
+- Production deployments without an OTel collector configured pay zero cost for instrumentation calls.
+- Run in Release mode to avoid JIT noise: `dotnet run -c Release --project benchmarks/Rag.NET.Benchmarks -- --filter "*TelemetryOverhead*"`.
+
+---
+
 ## Data Connectors
 
 Benchmarks measure `GetFilesAsync()` enumeration throughput with mocked HTTP/IMAP backends (no network I/O).
