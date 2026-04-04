@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
+using Rag.NET.Telemetry;
 using ZeroAlloc.Inject;
 using ZeroAlloc.Results;
 
@@ -37,22 +39,40 @@ public sealed class PipelineRetriever : IRetriever
                     new RagError.ValidationFailed([new Models.ValidationFailure("MmrLambda", "MmrLambda must be between 0.0 and 1.0.")]));
         }
 
+        var resolvedOptions = options ?? new RetrievalOptions();
         var ctx = new RetrievalContext
         {
             Query = query,
-            Options = options ?? new RetrievalOptions(),
+            Options = resolvedOptions,
             Logger = (ILogger?)Logger ?? NullLogger.Instance,
         };
 
+        using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.retrieve");
+        activity?.SetTag("query.hash", HashQuery(query));
+        activity?.SetTag("top_k", resolvedOptions.TopK);
+
+        var sw = Stopwatch.StartNew();
         try
         {
             var result = await Pipeline.ExecuteAsync(ctx, cancellationToken).ConfigureAwait(false);
+            sw.Stop();
+            activity?.SetTag("result.count", result.Count);
+            RagTelemetry.RetrieveDuration.Record(sw.Elapsed.TotalMilliseconds);
+            RagTelemetry.ChunksRetrieved.Add(result.Count);
             return Result<IReadOnlyList<SearchResult>, RagError>.Success(result);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            RagTelemetry.RetrieveErrors.Add(1);
             return Result<IReadOnlyList<SearchResult>, RagError>.Failure(new RagError.StorageFailed(ex));
         }
+    }
+
+    private static string HashQuery(string query)
+    {
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(query));
+        return Convert.ToHexString(bytes)[..8].ToLowerInvariant();
     }
 }
