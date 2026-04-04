@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.AI;
 using NSubstitute;
@@ -11,9 +12,9 @@ namespace Rag.NET.Tests.Telemetry;
 
 public class AskTelemetryTests
 {
-    private static (List<Activity> activities, ActivityListener listener) CreateListener()
+    private static (ConcurrentBag<Activity> activities, ActivityListener listener) CreateListener()
     {
-        var activities = new List<Activity>();
+        var activities = new ConcurrentBag<Activity>();
         var listener = new ActivityListener
         {
             ShouldListenTo = s => string.Equals(s.Name, RagTelemetry.SourceName, StringComparison.Ordinal),

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.AI;
 using NSubstitute;
@@ -191,9 +192,9 @@ public class IngestTelemetryTests
         Assert.NotNull(storeSpan.GetTagItem("vector_store")); // proxy type name, not stable to assert exactly
     }
 
-    private static (List<Activity> activities, ActivityListener listener) CreateListener()
+    private static (ConcurrentBag<Activity> activities, ActivityListener listener) CreateListener()
     {
-        var activities = new List<Activity>();
+        var activities = new ConcurrentBag<Activity>();
         var listener = new ActivityListener
         {
             ShouldListenTo = s => string.Equals(s.Name, RagTelemetry.SourceName, StringComparison.Ordinal),
