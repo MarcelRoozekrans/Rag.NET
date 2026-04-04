@@ -28,14 +28,8 @@ public class IngestTelemetryTests
     [Fact]
     public async Task IngestAsync_EmitsIngestSpan()
     {
-        var activities = new List<Activity>();
-        using var listener = new ActivityListener
-        {
-            ShouldListenTo = s => string.Equals(s.Name, RagTelemetry.SourceName, StringComparison.Ordinal),
-            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
-            ActivityStopped = activities.Add,
-        };
-        ActivitySource.AddActivityListener(listener);
+        var (activities, listener) = CreateListener();
+        using var _ = listener;
 
         var sut = CreateSut();
 
@@ -60,14 +54,8 @@ public class IngestTelemetryTests
     [Fact]
     public async Task IngestAsync_EmitsEmbedSpan()
     {
-        var activities = new List<Activity>();
-        using var listener = new ActivityListener
-        {
-            ShouldListenTo = s => string.Equals(s.Name, RagTelemetry.SourceName, StringComparison.Ordinal),
-            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
-            ActivityStopped = activities.Add,
-        };
-        ActivitySource.AddActivityListener(listener);
+        var (activities, listener) = CreateListener();
+        using var _ = listener;
 
         var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
         embedder.GenerateAsync(
@@ -103,14 +91,8 @@ public class IngestTelemetryTests
     [Fact]
     public async Task IngestAsync_EmitsParseAndChunkSpans()
     {
-        var activities = new List<Activity>();
-        using var listener = new ActivityListener
-        {
-            ShouldListenTo = s => string.Equals(s.Name, RagTelemetry.SourceName, StringComparison.Ordinal),
-            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
-            ActivityStopped = activities.Add,
-        };
-        ActivitySource.AddActivityListener(listener);
+        var (activities, listener) = CreateListener();
+        using var _ = listener;
 
         // Build a stub parser that yields one section
         var parser = Substitute.For<IDocumentParser>();
@@ -158,8 +140,26 @@ public class IngestTelemetryTests
             (c, ct) => chunkingBehavior.HandleAsync(c, ct,
                 (c2, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c2.Metadata.DocumentId, ChunksStored = c2.Chunks.Count })));
 
-        Assert.Contains(activities, a => string.Equals(a.OperationName, "ragnet.parse", StringComparison.Ordinal));
+        var parseSpan = activities.FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.parse", StringComparison.Ordinal));
+        Assert.NotNull(parseSpan);
+        Assert.Equal("parse-chunk-doc", parseSpan.GetTagItem("document.id"));
+        Assert.NotNull(parseSpan.GetTagItem("parser.type"));
+        Assert.Equal("1", parseSpan.GetTagItem("chunk.count")?.ToString());
+
         Assert.Contains(activities, a => string.Equals(a.OperationName, "ragnet.chunk", StringComparison.Ordinal));
+    }
+
+    private static (List<Activity> activities, ActivityListener listener) CreateListener()
+    {
+        var activities = new List<Activity>();
+        var listener = new ActivityListener
+        {
+            ShouldListenTo = s => string.Equals(s.Name, RagTelemetry.SourceName, StringComparison.Ordinal),
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = activities.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+        return (activities, listener);
     }
 
     private static async IAsyncEnumerable<DocumentSection> YieldSections(

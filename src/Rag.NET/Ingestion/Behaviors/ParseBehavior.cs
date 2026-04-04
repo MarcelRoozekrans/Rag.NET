@@ -37,6 +37,7 @@ public sealed class ParseBehavior : IIngestionBehavior
         else
             await ChunkPerSectionAsync(ctx, parser, ct).ConfigureAwait(false);
 
+        activity?.SetTag("section.count", ctx.Sections.Count);
         activity?.SetTag("chunk.count", ctx.Chunks.Count);
 
         if (RefinementStrategy is not null)
