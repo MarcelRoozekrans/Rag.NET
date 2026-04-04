@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using NSubstitute;
 using Rag.NET.AnswerGeneration;
 using Rag.NET.Models;
+using Rag.NET.Models.Options;
 using Rag.NET.Telemetry;
 using Xunit;
 
