@@ -57,68 +57,86 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     [Fact]
     public async Task StoreAndSearch_ReturnsRelevantResults()
     {
+        var docId = $"ais-{Guid.NewGuid():N}";
         var chunks = new List<EmbeddedChunk>
         {
             new()
             {
-                Chunk = new TextChunk { Text = "cats are great", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 },
+                Chunk = new TextChunk { Text = "cats are great", DocumentId = new DocumentId(docId), ChunkIndex = 0 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
             },
             new()
             {
-                Chunk = new TextChunk { Text = "dogs are great", DocumentId = new DocumentId("doc-1"), ChunkIndex = 1 },
+                Chunk = new TextChunk { Text = "dogs are great", DocumentId = new DocumentId(docId), ChunkIndex = 1 },
                 Embedding = new float[] { 0.0f, 1.0f, 0.0f },
             },
         };
 
-        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
-        var results = await _sut.SearchAsync(
-            new float[] { 1.0f, 0.0f, 0.0f },
-            new SearchOptions { TopK = 1 },
-            TestContext.Current.CancellationToken);
+            var results = await _sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 1 },
+                TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("cats are great", results[0].Chunk.Text);
+            Assert.Single(results);
+            Assert.Equal("cats are great", results[0].Chunk.Text);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
     }
 
     [Fact]
     public async Task DeleteByDocumentId_RemovesAllChunksForDocument()
     {
+        var docId = $"ais-{Guid.NewGuid():N}";
         var chunks = new List<EmbeddedChunk>
         {
             new()
             {
-                Chunk = new TextChunk { Text = "text1", DocumentId = new DocumentId("doc-to-delete"), ChunkIndex = 0 },
+                Chunk = new TextChunk { Text = "text1", DocumentId = new DocumentId(docId), ChunkIndex = 0 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
             },
         };
 
-        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
-        await _sut.DeleteByDocumentIdAsync("doc-to-delete", TestContext.Current.CancellationToken);
-        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            await _sut.DeleteByDocumentIdAsync(docId, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
-        var results = await _sut.SearchAsync(
-            new float[] { 1.0f, 0.0f, 0.0f },
-            new SearchOptions { TopK = 10 },
-            TestContext.Current.CancellationToken);
+            var results = await _sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 10 },
+                TestContext.Current.CancellationToken);
 
-        Assert.Empty(results);
+            Assert.Empty(results);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
     }
 
     [Fact(Skip = "azure-ai-search-simulator does not implement OData filter expressions")]
     public async Task Search_WithMetadataFilter_FiltersResults()
     {
+        var docId1 = $"ais-{Guid.NewGuid():N}";
+        var docId2 = $"ais-{Guid.NewGuid():N}";
         var chunks = new List<EmbeddedChunk>
         {
             new()
             {
                 Chunk = new TextChunk
                 {
-                    Text = "engineering doc", DocumentId = new DocumentId("doc-filter-1"), ChunkIndex = 0,
+                    Text = "engineering doc", DocumentId = new DocumentId(docId1), ChunkIndex = 0,
                     Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
                 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
@@ -127,27 +145,35 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
             {
                 Chunk = new TextChunk
                 {
-                    Text = "marketing doc", DocumentId = new DocumentId("doc-filter-2"), ChunkIndex = 0,
+                    Text = "marketing doc", DocumentId = new DocumentId(docId2), ChunkIndex = 0,
                     Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "marketing" },
                 },
                 Embedding = new float[] { 0.9f, 0.1f, 0.0f },
             },
         };
 
-        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
-        var results = await _sut.SearchAsync(
-            new float[] { 1.0f, 0.0f, 0.0f },
-            new SearchOptions
-            {
-                TopK = 10,
-                MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
-            },
-            TestContext.Current.CancellationToken);
+            var results = await _sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions
+                {
+                    TopK = 10,
+                    MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                },
+                TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("engineering doc", results[0].Chunk.Text);
+            Assert.Single(results);
+            Assert.Equal("engineering doc", results[0].Chunk.Text);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId1, CancellationToken.None);
+            await _sut.DeleteByDocumentIdAsync(docId2, CancellationToken.None);
+        }
     }
 
     [Fact]
@@ -213,26 +239,33 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         // With 5 chunks and pageSize=2 the loop must execute at least 3 times (pages of 2, 2, 1).
         // A single-page implementation could never remove all 5 chunks in one shot, so this
         // setup makes it impossible to pass on a broken single-iteration implementation.
-        const string documentId = "doc-pagination-test";
+        var docId = $"ais-{Guid.NewGuid():N}";
         var chunks = Enumerable.Range(0, 5).Select(i => new EmbeddedChunk
         {
-            Chunk = new TextChunk { Text = $"chunk {i}", DocumentId = new DocumentId(documentId), ChunkIndex = i },
+            Chunk = new TextChunk { Text = $"chunk {i}", DocumentId = new DocumentId(docId), ChunkIndex = i },
             Embedding = new float[] { 1.0f, 0.0f, 0.0f },
         }).ToList();
 
-        await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
-        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
-        // Act: delete with pageSize=2 to exercise the pagination loop (3 fetches required for 5 chunks)
-        await _sut.DeleteByDocumentIdAsync(documentId, pageSize: 2, TestContext.Current.CancellationToken);
-        await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            // Act: delete with pageSize=2 to exercise the pagination loop (3 fetches required for 5 chunks)
+            await _sut.DeleteByDocumentIdAsync(docId, pageSize: 2, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
-        // Assert: no chunks remain for the document
-        var results = await _sut.SearchAsync(
-            new float[] { 1.0f, 0.0f, 0.0f },
-            new SearchOptions { TopK = 10 },
-            TestContext.Current.CancellationToken);
+            // Assert: no chunks remain for the document
+            var results = await _sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 10 },
+                TestContext.Current.CancellationToken);
 
-        Assert.Empty(results);
+            Assert.Empty(results);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
     }
 }
