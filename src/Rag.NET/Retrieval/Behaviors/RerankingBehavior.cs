@@ -31,7 +31,6 @@ public sealed class RerankingBehavior : IRetrievalBehavior
                 .Select(r => r.SearchResult)
                 .ToList()
                 .AsReadOnly();
-            RagPipelineLog.RerankingCompleted(ctx.Logger, searchResults.Count, results.Count);
             return results;
         }
         catch (OperationCanceledException) { throw; }

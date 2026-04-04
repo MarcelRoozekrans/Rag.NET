@@ -62,7 +62,6 @@ public sealed class ParentDocumentRetrievalBehavior : IRetrievalBehavior
             if (results.Count > ctx.Options.TopK)
                 results.RemoveRange(ctx.Options.TopK, results.Count - ctx.Options.TopK);
 
-            RagPipelineLog.ParentDocumentRetrieved(ctx.Logger, ctx.Query, childResults.Count, results.Count);
             return results;
         }
         catch (OperationCanceledException) { throw; }

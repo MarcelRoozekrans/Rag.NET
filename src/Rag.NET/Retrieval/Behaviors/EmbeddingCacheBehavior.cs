@@ -29,7 +29,6 @@ public sealed class EmbeddingCacheBehavior : IRetrievalBehavior
                 cacheKey,
                 async ct2 =>
                 {
-                    RagPipelineLog.EmbeddingCacheMiss(ctx.Logger, ctx.Query);
                     var inner = await next(ctx, ct2).ConfigureAwait(false);
                     return inner as List<SearchResult> ?? inner.ToList();
                 },

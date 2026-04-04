@@ -28,7 +28,6 @@ public sealed class ResultCacheBehavior : IRetrievalBehavior
                 cacheKey,
                 async ct2 =>
                 {
-                    RagPipelineLog.ResultCacheMiss(ctx.Logger, ctx.Query);
                     var inner = await next(ctx, ct2).ConfigureAwait(false);
                     return inner as List<SearchResult> ?? inner.ToList();
                 },

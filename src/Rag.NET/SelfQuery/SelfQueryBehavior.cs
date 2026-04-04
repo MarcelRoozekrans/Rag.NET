@@ -34,7 +34,6 @@ public sealed class SelfQueryBehavior : IRetrievalBehavior
         {
             var output = result.Value;
             var filter = BuildFilter(output.Filters);
-            RagPipelineLog.SelfQueryCompleted(ctx.Logger, ctx.Query, output.Filters.Count);
 
             return await next(ctx with
             {

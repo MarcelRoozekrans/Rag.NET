@@ -57,7 +57,6 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
         var denseResults = await denseTask.ConfigureAwait(false);
         var merged = RrfMerger.Merge(denseResults, bm25Hits, opts.TopK, ensembleOpts);
 
-        RagPipelineLog.VectorStoreSearchCompleted(ctx.Logger, "ensemble-rrf", merged.Count);
         return merged;
     }
 }

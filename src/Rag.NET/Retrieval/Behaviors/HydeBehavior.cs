@@ -20,7 +20,6 @@ public sealed class HydeBehavior : IRetrievalBehavior
         try
         {
             var doc = await HydeGenerator.GenerateAsync(ctx.Query, ct).ConfigureAwait(false);
-            RagPipelineLog.HydeDocumentGenerated(ctx.Logger, ctx.Query, doc.Length);
             return await next(
                 ctx with { Options = ctx.Options with { UseHyde = false, EmbeddingTextOverride = doc } },
                 ct).ConfigureAwait(false);

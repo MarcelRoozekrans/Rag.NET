@@ -24,7 +24,6 @@ public sealed class MultiQueryBehavior : IRetrievalBehavior
         {
             var variantCount = MultiQueryOptions?.VariantCount ?? new MultiQueryOptions().VariantCount;
             variants = await QueryExpander.ExpandAsync(ctx.Query, variantCount, ct).ConfigureAwait(false);
-            RagPipelineLog.QueryExpansionCompleted(ctx.Logger, ctx.Query, variants.Count);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)

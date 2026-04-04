@@ -1,6 +1,5 @@
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
-using Rag.NET.Logging;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using ZeroAlloc.Inject;
@@ -30,7 +29,6 @@ public sealed class VectorStoreBehavior : IRetrievalBehavior
         var queryEmbeddings = await Embedder.GenerateAsync([textToEmbed], cancellationToken: ct).ConfigureAwait(false);
 
         var results = await VectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, ct).ConfigureAwait(false);
-        RagPipelineLog.VectorStoreSearchCompleted(ctx.Logger, "dense", results.Count);
         // Terminal — does not call next
         return results;
     }

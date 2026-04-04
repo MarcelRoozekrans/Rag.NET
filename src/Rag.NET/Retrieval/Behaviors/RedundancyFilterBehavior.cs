@@ -23,7 +23,6 @@ public sealed class RedundancyFilterBehavior : IRetrievalBehavior
         {
             var filtered = await RedundancyFilter.FilterAsync(results, Embedder, ctx.Options.RedundancyThreshold, ct)
                 .ConfigureAwait(false);
-            RagPipelineLog.RedundancyFilterCompleted(ctx.Logger, results.Count, filtered.Count);
             return filtered;
         }
         catch (OperationCanceledException) { throw; }

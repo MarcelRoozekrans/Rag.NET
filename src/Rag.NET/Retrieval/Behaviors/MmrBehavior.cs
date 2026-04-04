@@ -35,7 +35,6 @@ public sealed class MmrBehavior : IRetrievalBehavior
                 lambda: ctx.Options.MmrLambda,
                 cancellationToken: ct).ConfigureAwait(false);
 
-            RagPipelineLog.MmrSelectionCompleted(ctx.Logger, candidates.Count, selected.Count);
             return selected;
         }
         catch (OperationCanceledException) { throw; }
