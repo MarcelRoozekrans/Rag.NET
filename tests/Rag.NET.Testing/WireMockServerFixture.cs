@@ -47,7 +47,7 @@ public sealed class WireMockServerFixture : IAsyncLifetime
     public static string GetCassettePath(string connectorName) =>
         Path.Combine(
             AppContext.BaseDirectory,
-            "..", "..", "..", "..",
+            "..", "..", "..",    // up to tests/Rag.NET.DataProviders.IntegrationTests/
             "Cassettes",
             connectorName);
 
