@@ -584,6 +584,7 @@ Mitigation layers to consider:
 ## Observability
 
 ### OpenTelemetry Tracing & Metrics
+**Status:** ✅ Done
 **Package:** `Rag.NET.Telemetry`
 
 Instrument the full pipeline with OpenTelemetry `ActivitySource` spans and `Meter` metrics:
