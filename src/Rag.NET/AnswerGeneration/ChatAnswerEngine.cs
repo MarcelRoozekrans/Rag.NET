@@ -1,8 +1,10 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.AnswerGeneration;
 
@@ -22,9 +24,18 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
         RagOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var (messages, chatOptions) = await BuildMessagesAsync(sources, query, options ?? new RagOptions(), cancellationToken).ConfigureAwait(false);
+        var opts = options ?? new RagOptions();
 
+        using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.ask");
+        activity?.SetTag("source.count", sources.Count);
+        activity?.SetTag("synthesis.strategy", opts.SynthesisStrategy.ToString());
+
+        var (messages, chatOptions) = await BuildMessagesAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
+
+        var sw = Stopwatch.StartNew();
         var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
+        sw.Stop();
+        RagTelemetry.AskDuration.Record(sw.Elapsed.TotalMilliseconds);
 
         return new RagResponse
         {
