@@ -68,7 +68,8 @@ public sealed class WebCrawlerDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.NotEmpty(entries);
+        Assert.Equal(2, entries.Count);
+        Assert.Contains(entries, e => e.Id.Contains("/start", StringComparison.Ordinal));
     }
 
     [Fact]

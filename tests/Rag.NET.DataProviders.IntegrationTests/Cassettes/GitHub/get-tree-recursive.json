@@ -29,6 +29,6 @@
     "Headers": {
       "Content-Type": "application/json; charset=utf-8"
     },
-    "Body": "{\"sha\":\"abc123def456\",\"url\":\"http://localhost/repos/test-owner/test-repo/git/trees/abc123def456\",\"tree\":[{\"path\":\"README.md\",\"mode\":\"100644\",\"type\":\"blob\",\"size\":128,\"sha\":\"blobsha001\",\"url\":\"http://localhost/repos/test-owner/test-repo/git/blobs/blobsha001\"},{\"path\":\"src/main.cs\",\"mode\":\"100644\",\"type\":\"blob\",\"size\":512,\"sha\":\"blobsha002\",\"url\":\"http://localhost/repos/test-owner/test-repo/git/blobs/blobsha002\"},{\"path\":\"src\",\"mode\":\"040000\",\"type\":\"tree\",\"sha\":\"treesha001\",\"url\":\"http://localhost/repos/test-owner/test-repo/git/trees/treesha001\"}],\"truncated\":false}"
+    "Body": "{\"sha\":\"abc123def456\",\"url\":\"http://unused/repos/test-owner/test-repo/git/trees/abc123def456\",\"tree\":[{\"path\":\"README.md\",\"mode\":\"100644\",\"type\":\"blob\",\"size\":128,\"sha\":\"blobsha001\",\"url\":\"http://unused/repos/test-owner/test-repo/git/blobs/blobsha001\"},{\"path\":\"src/main.cs\",\"mode\":\"100644\",\"type\":\"blob\",\"size\":512,\"sha\":\"blobsha002\",\"url\":\"http://unused/repos/test-owner/test-repo/git/blobs/blobsha002\"},{\"path\":\"src\",\"mode\":\"040000\",\"type\":\"tree\",\"sha\":\"treesha001\",\"url\":\"http://unused/repos/test-owner/test-repo/git/trees/treesha001\"}],\"truncated\":false}"
   }
 }

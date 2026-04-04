@@ -31,6 +31,7 @@ public sealed class WireMockServerFixture : IAsyncLifetime
 
     public void LoadCassettes(string connectorName)
     {
+        Server.ResetMappings();          // clear all previous stubs before loading new ones
         var path = GetCassettePath(connectorName);
         if (Directory.Exists(path))
             Server.ReadStaticMappings(path);
