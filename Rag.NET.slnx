@@ -97,6 +97,7 @@
     <Project Path="tests/Rag.NET.DataProviders.Zendesk.Tests/Rag.NET.DataProviders.Zendesk.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.GitLab.Tests/Rag.NET.DataProviders.GitLab.Tests.csproj" />
     <Project Path="tests/Rag.NET.Chunking.CSharp.Tests/Rag.NET.Chunking.CSharp.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Chunking.IntegrationTests/Rag.NET.Chunking.IntegrationTests.csproj" />
     <Project Path="tests/Rag.NET.Chunking.Templates.Tests/Rag.NET.Chunking.Templates.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Airtable.Tests/Rag.NET.DataProviders.Airtable.Tests.csproj" />
     <Project Path="tests/Rag.NET.Raptor.Tests/Rag.NET.Raptor.Tests.csproj" />
