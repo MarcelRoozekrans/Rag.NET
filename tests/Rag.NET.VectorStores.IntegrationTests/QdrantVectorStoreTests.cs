@@ -28,6 +28,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
     public async ValueTask DisposeAsync()
     {
         var manageable = (ICollectionManageable)_sut;
+        // CancellationToken.None: cleanup must run even when the test was cancelled.
         await manageable.DeleteCollectionAsync(_collectionName, CancellationToken.None);
         _sut.Dispose();
     }
