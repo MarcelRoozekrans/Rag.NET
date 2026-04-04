@@ -56,6 +56,7 @@
     <Project Path="src/Rag.NET.Parsers.Vision/Rag.NET.Parsers.Vision.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Rag.NET.Security.IntegrationTests/Rag.NET.Security.IntegrationTests.csproj" />
     <Project Path="tests/Rag.NET.Security.Tests/Rag.NET.Security.Tests.csproj" />
     <Project Path="tests/Rag.NET.Testing/Rag.NET.Testing.csproj" />
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
