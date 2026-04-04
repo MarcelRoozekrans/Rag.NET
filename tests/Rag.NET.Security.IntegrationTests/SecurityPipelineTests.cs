@@ -213,9 +213,17 @@ public class SecurityPipelineTests : IAsyncLifetime
                 cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.NotEmpty(capturingClient.CapturedMessages);
-            Assert.Contains(capturingClient.CapturedMessages,
-                m => m.Role == ChatRole.System &&
-                     (m.Text ?? string.Empty).Contains("retrieval assistant", StringComparison.OrdinalIgnoreCase));
+
+            // Verify the hardening prefix is the FIRST system message, not merely present somewhere.
+            // PromptHardeningAnswerEngineDecorator prepends it to ConversationHistory so it leads
+            // the message list and cannot be overridden by subsequent context.
+            var systemMessages = capturingClient.CapturedMessages
+                .Where(m => m.Role == ChatRole.System)
+                .ToList();
+            Assert.NotEmpty(systemMessages);
+            Assert.Contains("retrieval assistant",
+                systemMessages[0].Text ?? string.Empty,
+                StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
