@@ -186,9 +186,9 @@ public class IngestTelemetryTests
 
         var storeSpan = activities.FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.store", StringComparison.Ordinal));
         Assert.NotNull(storeSpan);
-        Assert.NotNull(storeSpan.GetTagItem("document.id"));
-        Assert.NotNull(storeSpan.GetTagItem("chunk.count"));
-        Assert.NotNull(storeSpan.GetTagItem("vector_store"));
+        Assert.Equal("store-doc", storeSpan.GetTagItem("document.id"));
+        Assert.Equal("1", storeSpan.GetTagItem("chunk.count")?.ToString());
+        Assert.NotNull(storeSpan.GetTagItem("vector_store")); // proxy type name, not stable to assert exactly
     }
 
     private static (List<Activity> activities, ActivityListener listener) CreateListener()
