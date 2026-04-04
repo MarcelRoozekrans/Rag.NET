@@ -484,23 +484,30 @@ Detect and extract tables from PDFs as structured text rather than flowing prose
 
 ---
 
-### Markdown Parser
-**Package:** `Rag.NET` (core)
+### OCR for Scanned PDFs
+**Package:** `Rag.NET.Parsers.Pdf`
 
-A dedicated `MarkdownDocumentParser` that splits on ATX headings (`#`, `##`, `###`) and produces `DocumentSection` objects with `Heading` set to the heading text and `Text` set to the body beneath it. Handles fenced code blocks as atomic sections. Replaces the current plain-text fallback path for `.md` files.
+Add an OCR pass for PDFs where `PdfPig` extracts no text (scanned documents). Integrate `Tesseract` (via `Tesseract.Net`) or delegate to `Azure Document Intelligence` for higher accuracy. Falls back automatically when text extraction yields fewer than a configurable minimum character count per page.
 
-**Why:** Markdown is ubiquitous in documentation repos and GitHub wikis. The current plain-text parser ignores heading structure — heading-aware parsing dramatically improves chunking coherence for documentation corpora.
+**Why:** A significant portion of enterprise PDFs are scanned — contracts, invoices, legacy reports. The current parser silently produces empty sections for these, with no indication to the caller.
 
 ---
 
-### CSV / JSON / JSONL Parser
-**Package:** `Rag.NET` (core)
+### EPUB Parser
+**Package:** `Rag.NET.Parsers.Epub`
 
-- **CSV:** Each row becomes a `DocumentSection` with column headers embedded as `key: value` pairs, making individual records retrievable.
-- **JSON:** Flatten nested objects into sections by top-level key; arrays of objects produce one section per element.
-- **JSONL:** One section per newline-delimited JSON object.
+Parse EPUB files (e-books, exported docs from tools like Notion, Bear, Obsidian) into `DocumentSection` objects by chapter/spine item. Extracts embedded HTML via `VersOne.Epub` and delegates to `HtmlDocumentParser` per chapter.
 
-**Why:** Structured data files are commonly indexed for product catalogues, FAQ databases, and log analytics. Row-level chunking gives semantically coherent units rather than arbitrary character splits.
+**Why:** EPUB is common for exported documentation, e-books, and long-form content. There's no parser today.
+
+---
+
+### Email File Parser (EML / MSG)
+**Package:** `Rag.NET.Parsers.Email`
+
+Parse `.eml` (RFC 5322) and `.msg` (Outlook) files into sections: subject → heading, body → text, attachments dispatched to the registered parser by content type. Uses `MimeKit` for EML and `MsgReader` for MSG.
+
+**Why:** Email archives are a major enterprise knowledge source. The existing Gmail/Exchange connectors ingest live mailboxes, but `.eml`/`.msg` exports from archives or migrations are unaddressed.
 
 ---
 
@@ -666,6 +673,35 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 
 ---
 
+## Chunking
+
+### Late Chunking
+**Package:** `Rag.NET.Chunking`
+
+Embed the full document (or section) first to capture global context, then split the resulting token-level embeddings into chunks — instead of splitting text first and embedding each chunk independently. Requires a model that exposes token-level embeddings (e.g. `jina-embeddings-v2`). Implements `IDocumentChunkingStrategy`.
+
+**Why:** Standard chunk-then-embed loses cross-chunk context. Late chunking preserves full-document attention during embedding, improving retrieval for references, pronouns, and cross-paragraph reasoning.
+
+---
+
+### Proposition Extraction Chunking
+**Package:** `Rag.NET.Chunking`
+
+LLM-driven chunking that decomposes document text into atomic, self-contained propositions — each a single factual claim expressed as a complete sentence. Each proposition becomes its own chunk, making it highly retrievable for specific questions. Implements `IDocumentChunkingStrategy`.
+
+**Why:** Traditional chunks are paragraph-shaped and contain multiple ideas. Proposition chunks are query-shaped — one chunk, one fact — maximising precision at the cost of more chunks and an LLM pass at ingest time.
+
+---
+
+### Sliding Window Chunking with Overlap
+**Package:** `Rag.NET.Chunking`
+
+Fixed-size chunks with configurable token overlap between adjacent chunks. The simplest baseline chunking strategy — no LLM, no regex, O(n) time. Useful as a fast fallback or comparison baseline.
+
+**Why:** Despite being the oldest technique, sliding window is still the default in many frameworks and serves as an important performance baseline. Rag.NET currently lacks a first-class implementation.
+
+---
+
 ## Retrieval Techniques
 
 ### Contextual Compression
@@ -696,6 +732,142 @@ Classify incoming queries by complexity — simple factoid, multi-hop, or summar
 - Summarization → RAPTOR cluster retrieval
 
 **Why:** Running RAPTOR or multi-query on every query is expensive. Routing based on query type preserves quality for complex queries while keeping simple lookups fast and cheap.
+
+---
+
+### Corrective RAG (CRAG)
+**Package:** `Rag.NET.QueryTechniques`
+
+After standard retrieval, evaluate each chunk's relevance to the query using a lightweight LLM or cross-encoder. If all chunks score below a confidence threshold, fall back to a web search (`IWebSearchProvider`) to supplement or replace retrieved context before answer generation.
+
+**Why:** Standard RAG has no awareness of whether its retrieved context actually answers the question. CRAG adds a self-correction loop — if the index doesn't know, search the web rather than hallucinate.
+
+---
+
+### FLARE — Forward-Looking Active Retrieval
+**Package:** `Rag.NET.QueryTechniques`
+
+Generate the answer incrementally sentence by sentence. When the model produces a low-confidence token (detected via logprob threshold), pause generation, reformulate a query from the partial answer so far, retrieve fresh context, and continue generation with the new context injected.
+
+**Why:** A single retrieval at query time misses information needed mid-answer. FLARE retrieves exactly when and what is needed — especially useful for long-form generation and multi-step reasoning.
+
+---
+
+### Sparse Embedding Retrieval (SPLADE)
+**Package:** `Rag.NET.VectorStores.PgVector` / `Rag.NET.VectorStores.Qdrant`
+
+Generate sparse embedding vectors via SPLADE (Sparse Lexical and Expansion Model) using an ONNX model, stored alongside dense vectors. Retrieval combines sparse and dense scores natively in the vector store (Qdrant supports this natively; PgVector via separate column + RRF merge).
+
+**Why:** SPLADE outperforms BM25 on out-of-vocabulary terms while remaining sparse enough for efficient retrieval. Pairs with dense embeddings for state-of-the-art hybrid search without a separate BM25 index.
+
+---
+
+### Multi-Index Federation
+**Package:** `Rag.NET` (core)
+
+A `FederatedVectorStore` that wraps multiple `IVectorStore` instances and merges results via RRF. Enables searching across collections in different vector stores simultaneously — e.g. a private PgVector index plus a shared Qdrant index.
+
+**Why:** Enterprise deployments often have multiple vector stores for different data domains (HR docs in one, engineering docs in another). Federation enables unified search without data migration.
+
+---
+
+## Security & Compliance
+
+### PII Detection and Redaction
+**Package:** `Rag.NET.Security`
+
+Detect and redact personally identifiable information (names, emails, phone numbers, SSNs, credit card numbers, IP addresses) from chunks before storage. Two modes: regex-based (`IChunkSanitiser` extension using named capture groups) and LLM-based (higher accuracy, slower). Redacted spans replaced with typed placeholders (`[EMAIL]`, `[PHONE]`, etc.) with optional reversible tokenisation for authorised retrieval.
+
+**Why:** Ingesting CRM data, HR documents, or customer emails without PII scrubbing creates compliance risk (GDPR, HIPAA). Chunk-time redaction is the correct interception point — once embedded and stored, PII is hard to purge.
+
+---
+
+### Role-Based Access Control (RBAC) on Chunks
+**Package:** `Rag.NET.Security`
+
+Store an `allowed_roles` metadata field on each chunk at ingest time (sourced from `DocumentMetadata.Tags`). `RbacRetrievalGuard` (implements `IRetrievalGuard`) filters retrieved chunks to only those whose `allowed_roles` intersect with the caller's roles, passed via `RagOptions.MetadataFilter` or a new `RagOptions.CallerRoles` property.
+
+**Why:** Multi-tenant or multi-department deployments need document-level access control. Without it, a query from a junior employee could surface HR performance reviews or M&A documents.
+
+---
+
+### Audit Log
+**Package:** `Rag.NET.Security`
+
+Structured audit trail of every pipeline operation: who asked what, which chunks were retrieved (document ID + chunk index), what answer was generated, and any sanitiser/guard actions taken. Implemented as an `IAuditLog` abstraction with a `SqliteAuditLog` default and a `NoOpAuditLog` for opt-out. Integrates as an `IRetrievalBehavior` and answer engine decorator.
+
+**Why:** Regulated industries (finance, healthcare, legal) require demonstrable audit trails for AI-generated answers. Without logging, there's no way to investigate complaints or demonstrate compliance.
+
+---
+
+## Infrastructure & Reliability
+
+### LLM Fallback Chain
+**Package:** `Rag.NET` (core)
+
+A `FallbackChatClient` (implements `IChatClient`) that tries a primary client, catches transient failures or rate limits, and retries with a secondary client. Configurable fallback list with per-client timeout and error classification. Wraps any `IChatClient` transparently.
+
+**Why:** Production RAG systems cannot tolerate a single LLM provider as a hard dependency. A fallback chain from OpenAI → Anthropic → local Ollama gives resilience without changing pipeline code.
+
+---
+
+### Embedding Versioning & Re-indexing
+**Package:** `Rag.NET` (core)
+
+Track which embedding model (name + version) produced each stored vector, persisted alongside the content hash. When the embedding model changes, detect stale vectors and re-embed only affected documents. Exposes `RagManager.ReindexStaleCllectionsAsync()` and a CLI command.
+
+**Why:** Switching embedding models (a common upgrade path) currently requires wiping and re-ingesting the entire corpus. Version tracking makes incremental re-indexing possible.
+
+---
+
+### Rate Limiting & Cost Budgeting
+**Package:** `Rag.NET` (core)
+
+An `IRateLimiter` abstraction with a token-bucket implementation that throttles embedding and LLM calls to stay within API rate limits. A `ICostBudget` abstraction tracks estimated spend (tokens × price per token) and throws `BudgetExceededException` when a configured daily/monthly limit is reached.
+
+**Why:** Uncontrolled LLM API usage in production can produce surprise invoices. Rate limiting prevents 429 cascades; budgeting provides a hard guardrail for cost-sensitive deployments.
+
+---
+
+### Batch Ingestion Optimiser
+**Package:** `Rag.NET` (core)
+
+Parallelise the embedding and storage steps during bulk ingestion: embed chunks in configurable batches (default 100) with `Parallel.ForEachAsync`, bulk-upsert to the vector store rather than one-by-one. Reduces large-corpus ingestion time from O(n) sequential API calls to O(n/batch) parallel calls.
+
+**Why:** Ingesting 100,000 chunks one-at-a-time can take hours. Batched parallel embedding with bulk upsert can reduce this to minutes. The current pipeline is sequential.
+
+---
+
+## Developer Experience
+
+### Rag.NET CLI Tool
+**Package:** `Rag.NET.Cli` (dotnet tool)
+
+A `dotnet tool` (`ragnet`) providing:
+- `ragnet ingest <path> --store pgvector --connection <cs>` — ingest a folder
+- `ragnet ask "<question>"` — interactive query
+- `ragnet eval <dataset.json>` — run RAGAS metrics against a dataset
+- `ragnet reindex --stale` — re-embed documents with outdated embedding model versions
+
+**Why:** The library is code-first, but operations tasks (ad-hoc ingestion, health checks, re-indexing) are painful to script. A CLI tool makes these accessible without writing a custom harness.
+
+---
+
+### Pipeline Debugger / Trace Viewer
+**Package:** `Rag.NET.Diagnostics`
+
+A lightweight `RagDebugMiddleware` for ASP.NET Core that exposes a `/ragnet/trace` endpoint returning a structured JSON trace of the last N pipeline executions: which chunks were retrieved, their scores, what the answer engine received, sanitiser/guard actions, and latency breakdown per stage.
+
+**Why:** Diagnosing why a RAG pipeline gave a bad answer currently requires adding debug logging and re-running. A persistent in-memory trace ring buffer with a JSON viewer endpoint lets developers inspect production traces without code changes.
+
+---
+
+### A/B Testing Framework
+**Package:** `Rag.NET.Evaluation`
+
+A `RagAbTester` that runs the same query through two pipeline configurations simultaneously and records results for offline comparison. Supports shadow mode (primary answer returned to caller, secondary run async for evaluation only) and side-by-side mode (both results returned for human review). Integrates with `IRagEvaluator` to score both results automatically.
+
+**Why:** Changing retrieval strategy, chunking size, or reranking has unpredictable quality effects. A/B testing with automatic evaluation scores makes it safe to iterate on pipeline configuration in production.
 
 ---
 
@@ -796,20 +968,38 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | GraphRAG | Very High | Graph DB + `IChatClient` |
 | [x] | Mind-Map Extractor | Medium | `IChatClient` + `IGraphStore` |
 | [ ] | NuGet Publishing Pipeline | Low | GitHub Actions + MinVer |
-| [ ] | Markdown Parser | Low | None |
 | [ ] | Structured Logging Enrichment | Low | None |
-| [ ] | CSV / JSON / JSONL Parser | Low | None |
+| [ ] | Sliding Window Chunking with Overlap | Low | None |
 | [ ] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
+| [ ] | EPUB Parser | Low | `VersOne.Epub` |
+| [ ] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
+| [ ] | Linear Issue Tracker | Low | Linear GraphQL API |
 | [ ] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | Evaluation Dataset Builder | Medium | `IChatClient` |
+| [ ] | A/B Testing Framework | Medium | `IRagEvaluator` |
 | [ ] | Weaviate Vector Store | Medium | `WeaviateSharp` |
 | [ ] | Chroma Vector Store | Medium | Chroma REST API |
 | [ ] | Pinecone Vector Store | Medium | Pinecone REST API |
+| [ ] | Multi-Index Federation | Medium | `IVectorStore` composition |
 | [ ] | PDF Table Extraction | Medium | PdfPig geometry |
+| [ ] | OCR for Scanned PDFs | Medium | Tesseract / Azure Doc Intelligence |
 | [ ] | Contextual Compression | Medium | `IChatClient` or embeddings |
+| [ ] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
+| [ ] | Proposition Extraction Chunking | Medium | `IChatClient` |
 | [ ] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core / Service Bus |
 | [ ] | OpenTelemetry Tracing & Metrics | Medium | `System.Diagnostics.ActivitySource` |
 | [ ] | Email Connector (Outlook/Exchange) | Medium | Microsoft Graph SDK |
-| [ ] | Linear Issue Tracker | Low | Linear GraphQL API |
+| [ ] | PII Detection and Redaction | Medium | Regex / `IChatClient` |
+| [ ] | Role-Based Access Control (RBAC) | Medium | `IRetrievalGuard` extension |
+| [ ] | Audit Log | Medium | `IAuditLog` + SQLite |
+| [ ] | LLM Fallback Chain | Medium | `IChatClient` decorator |
+| [ ] | Rate Limiting & Cost Budgeting | Medium | Token bucket |
+| [ ] | Batch Ingestion Optimiser | Medium | `Parallel.ForEachAsync` |
 | [ ] | Sample Applications | Medium | All packages |
+| [ ] | Rag.NET CLI Tool | Medium | `dotnet tool` |
+| [ ] | Pipeline Debugger / Trace Viewer | Medium | ASP.NET Core middleware |
 | [ ] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
+| [ ] | FLARE | High | `IChatClient` + logprobs |
+| [ ] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store |
+| [ ] | Late Chunking | High | Token-level embedding model |
+| [ ] | Embedding Versioning & Re-indexing | High | Content hash store |
