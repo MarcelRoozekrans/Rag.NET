@@ -1,6 +1,7 @@
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Telemetry;
 using ZeroAlloc.Inject;
 
 namespace Rag.NET.Ingestion.Behaviors;
@@ -23,13 +24,20 @@ public sealed class ParseBehavior : IIngestionBehavior
         IngestionContext ctx, CancellationToken ct,
         Func<IngestionContext, CancellationToken, ValueTask<IngestionResult>> next)
     {
+        using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.parse");
+        activity?.SetTag("document.id", ctx.Metadata.DocumentId.Value);
+
         var parser = Parsers.FirstOrDefault(p => p.CanParse(ctx.Metadata.ContentType ?? "text/plain"))
             ?? throw new NoParserFoundException(ctx.Metadata.ContentType ?? "text/plain");
+
+        activity?.SetTag("parser.type", parser.GetType().Name);
 
         if (ChunkingStrategy is IDocumentChunkingStrategy docStrategy)
             await ChunkDocumentAsync(ctx, parser, docStrategy, ct).ConfigureAwait(false);
         else
             await ChunkPerSectionAsync(ctx, parser, ct).ConfigureAwait(false);
+
+        activity?.SetTag("chunk.count", ctx.Chunks.Count);
 
         if (RefinementStrategy is not null)
             await ApplyRefinementAsync(ctx, ct).ConfigureAwait(false);

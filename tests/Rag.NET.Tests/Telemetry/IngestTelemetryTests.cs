@@ -9,6 +9,7 @@ using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using Rag.NET.Telemetry;
 using Xunit;
+using System.Runtime.CompilerServices;
 
 namespace Rag.NET.Tests.Telemetry;
 
@@ -97,5 +98,83 @@ public class IngestTelemetryTests
             (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 1 }));
 
         Assert.Contains(activities, a => string.Equals(a.OperationName, "ragnet.embed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task IngestAsync_EmitsParseAndChunkSpans()
+    {
+        var activities = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = s => string.Equals(s.Name, RagTelemetry.SourceName, StringComparison.Ordinal),
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = activities.Add,
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        // Build a stub parser that yields one section
+        var parser = Substitute.For<IDocumentParser>();
+        parser.CanParse("text/plain").Returns(true);
+        parser.ParseAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<CancellationToken>())
+            .Returns(YieldSections(new DocumentSection
+            {
+                Text = "hello world",
+                DocumentId = new DocumentId("parse-chunk-doc"),
+            }, TestContext.Current.CancellationToken));
+
+        // Build a stub chunking strategy that yields one chunk per section
+        var chunkingStrategy = Substitute.For<IChunkingStrategy>();
+        chunkingStrategy.ChunkAsync(Arg.Any<DocumentSection>(), Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ci => YieldChunks(new TextChunk
+            {
+                Text = ci.Arg<DocumentSection>().Text,
+                DocumentId = new DocumentId("parse-chunk-doc"),
+                ChunkIndex = 0,
+            }, TestContext.Current.CancellationToken));
+
+        var parseBehavior = new ParseBehavior
+        {
+            Parsers = [parser],
+            ChunkingStrategy = chunkingStrategy,
+            ChunkingOptions = new ChunkingOptions(),
+        };
+
+        var chunkingBehavior = new ChunkingBehavior();
+
+        var ctx = new IngestionContext
+        {
+            Stream = new MemoryStream("hello world"u8.ToArray()),
+            Metadata = new DocumentMetadata
+            {
+                DocumentId = new DocumentId("parse-chunk-doc"),
+                FileName = "test.txt",
+                ContentType = "text/plain",
+            },
+            GetNextBm25DocId = () => 1,
+        };
+
+        // Run ParseBehavior (which populates ctx.Chunks), then ChunkingBehavior
+        await parseBehavior.HandleAsync(ctx, TestContext.Current.CancellationToken,
+            (c, ct) => chunkingBehavior.HandleAsync(c, ct,
+                (c2, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c2.Metadata.DocumentId, ChunksStored = c2.Chunks.Count })));
+
+        Assert.Contains(activities, a => string.Equals(a.OperationName, "ragnet.parse", StringComparison.Ordinal));
+        Assert.Contains(activities, a => string.Equals(a.OperationName, "ragnet.chunk", StringComparison.Ordinal));
+    }
+
+    private static async IAsyncEnumerable<DocumentSection> YieldSections(
+        DocumentSection section,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.Yield();
+        yield return section;
+    }
+
+    private static async IAsyncEnumerable<TextChunk> YieldChunks(
+        TextChunk chunk,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        await Task.Yield();
+        yield return chunk;
     }
 }

@@ -1,4 +1,5 @@
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 using ZeroAlloc.Inject;
 
 namespace Rag.NET.Ingestion.Behaviors;
@@ -6,16 +7,20 @@ namespace Rag.NET.Ingestion.Behaviors;
 [Singleton]
 public sealed class ChunkingBehavior : IIngestionBehavior
 {
-    public ValueTask<IngestionResult> HandleAsync(
+    public async ValueTask<IngestionResult> HandleAsync(
         IngestionContext ctx, CancellationToken ct,
         Func<IngestionContext, CancellationToken, ValueTask<IngestionResult>> next)
     {
+        using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.chunk");
+        activity?.SetTag("document.id", ctx.Metadata.DocumentId.Value);
+        activity?.SetTag("chunk.count", ctx.Chunks.Count);
+
         if (ctx.Chunks.Count == 0)
-            return ValueTask.FromResult(new IngestionResult
+            return new IngestionResult
             {
                 DocumentId = ctx.Metadata.DocumentId,
                 ChunksStored = 0,
-            });
+            };
 
         ctx.Progress?.Report(new()
         {
@@ -26,6 +31,6 @@ public sealed class ChunkingBehavior : IIngestionBehavior
             Message = $"Chunked into {ctx.Chunks.Count} chunks",
         });
 
-        return next(ctx, ct);
+        return await next(ctx, ct).ConfigureAwait(false);
     }
 }
