@@ -59,6 +59,7 @@
     <Project Path="tests/Rag.NET.Security.Tests/Rag.NET.Security.Tests.csproj" />
     <Project Path="tests/Rag.NET.Testing/Rag.NET.Testing.csproj" />
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
+    <Project Path="tests/Rag.NET.VectorStores.IntegrationTests/Rag.NET.VectorStores.IntegrationTests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.PgVector.Tests/Rag.NET.VectorStores.PgVector.Tests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.Qdrant.Tests/Rag.NET.VectorStores.Qdrant.Tests.csproj" />
     <Project Path="tests/Rag.NET.Api.Client.Tests/Rag.NET.Api.Client.Tests.csproj" />

@@ -5,7 +5,7 @@ namespace Rag.NET.Testing;
 
 public sealed class PgVectorFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("ankane/pgvector:pg16")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("pgvector/pgvector:pg17")
         .WithDatabase("ragnet_test")
         .WithUsername("postgres")
         .WithPassword("postgres_test")
