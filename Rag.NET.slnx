@@ -79,6 +79,7 @@
     <Project Path="tests/Rag.NET.DataProviders.Tests/Rag.NET.DataProviders.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Web.Tests/Rag.NET.DataProviders.Web.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.AzureBlob.Tests/Rag.NET.DataProviders.AzureBlob.Tests.csproj" />
+    <Project Path="tests/Rag.NET.E2ETests/Rag.NET.E2ETests.csproj" />
     <Project Path="tests/Rag.NET.Evaluation.Tests/Rag.NET.Evaluation.Tests.csproj" />
     <Project Path="tests/Rag.NET.Reranking.Onnx.Tests/Rag.NET.Reranking.Onnx.Tests.csproj" />
     <Project Path="tests/Rag.NET.Reranking.Cohere.Tests/Rag.NET.Reranking.Cohere.Tests.csproj" />

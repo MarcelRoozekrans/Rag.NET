@@ -1,0 +1,3 @@
+The Eiffel Tower is located in Paris, France.
+It was constructed between 1887 and 1889 as the entrance arch for the 1889 World's Fair.
+The tower stands 330 meters tall and was designed by Gustave Eiffel.

@@ -1,0 +1,3 @@
+Python is a high-level, interpreted programming language created by Guido van Rossum.
+It was first released in 1991 and emphasizes code readability.
+Python supports multiple programming paradigms including procedural, object-oriented, and functional programming.
