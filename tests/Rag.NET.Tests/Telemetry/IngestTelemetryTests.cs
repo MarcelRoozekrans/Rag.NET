@@ -149,6 +149,48 @@ public class IngestTelemetryTests
         Assert.Contains(activities, a => string.Equals(a.OperationName, "ragnet.chunk", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task IngestAsync_EmitsStoreSpan()
+    {
+        var (activities, listener) = CreateListener();
+        using var _ = listener;
+
+        var vectorStore = Substitute.For<IVectorStore>();
+        var bm25Index = Substitute.For<IBm25Index>();
+
+        var sut = new StorageBehavior
+        {
+            VectorStore = vectorStore,
+            Bm25Index = bm25Index,
+        };
+
+        var ctx = new IngestionContext
+        {
+            Stream = new MemoryStream(),
+            Metadata = new DocumentMetadata
+            {
+                DocumentId = new DocumentId("store-doc"),
+                FileName = "test.txt",
+                ContentType = "text/plain",
+            },
+            GetNextBm25DocId = () => 1,
+        };
+        ctx.EmbeddedChunks.Add(new EmbeddedChunk
+        {
+            Chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId("store-doc"), ChunkIndex = 0 },
+            Embedding = new float[] { 0.1f, 0.2f },
+        });
+
+        await sut.HandleAsync(ctx, TestContext.Current.CancellationToken,
+            (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
+
+        var storeSpan = activities.FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.store", StringComparison.Ordinal));
+        Assert.NotNull(storeSpan);
+        Assert.NotNull(storeSpan.GetTagItem("document.id"));
+        Assert.NotNull(storeSpan.GetTagItem("chunk.count"));
+        Assert.NotNull(storeSpan.GetTagItem("vector_store"));
+    }
+
     private static (List<Activity> activities, ActivityListener listener) CreateListener()
     {
         var activities = new List<Activity>();
