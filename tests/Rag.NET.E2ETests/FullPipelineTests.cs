@@ -21,9 +21,9 @@ public sealed class FullPipelineTests : IAsyncLifetime
     private readonly PgVectorFixture _pgVector = new();
     private IRagPipeline _pipeline = null!;
     private ServiceProvider _sp = null!;
-    private readonly string _doc1Id = $"e2e-{Guid.NewGuid():N}";
-    private readonly string _doc2Id = $"e2e-{Guid.NewGuid():N}";
-    private readonly string _doc3Id = $"e2e-{Guid.NewGuid():N}";
+    private readonly string _doc1Id = $"e2e-{Guid.CreateVersion7():N}";
+    private readonly string _doc2Id = $"e2e-{Guid.CreateVersion7():N}";
+    private readonly string _doc3Id = $"e2e-{Guid.CreateVersion7():N}";
 
     public FullPipelineTests(OllamaFixture ollama)
     {

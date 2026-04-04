@@ -20,7 +20,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         .Build();
 
     private AzureAISearchVectorStore _sut = null!;
-    private readonly string _indexName = $"ragnet-test-{Guid.NewGuid():N}"[..24];
+    private readonly string _indexName = $"ragnet-test-{Guid.CreateVersion7():N}"[..24];
 
     public async ValueTask InitializeAsync()
     {
@@ -57,7 +57,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     [Fact]
     public async Task StoreAndSearch_ReturnsRelevantResults()
     {
-        var docId = $"ais-{Guid.NewGuid():N}";
+        var docId = $"ais-{Guid.CreateVersion7():N}";
         var chunks = new List<EmbeddedChunk>
         {
             new()
@@ -94,7 +94,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     [Fact]
     public async Task DeleteByDocumentId_RemovesAllChunksForDocument()
     {
-        var docId = $"ais-{Guid.NewGuid():N}";
+        var docId = $"ais-{Guid.CreateVersion7():N}";
         var chunks = new List<EmbeddedChunk>
         {
             new()
@@ -128,8 +128,8 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     [Fact(Skip = "azure-ai-search-simulator does not implement OData filter expressions")]
     public async Task Search_WithMetadataFilter_FiltersResults()
     {
-        var docId1 = $"ais-{Guid.NewGuid():N}";
-        var docId2 = $"ais-{Guid.NewGuid():N}";
+        var docId1 = $"ais-{Guid.CreateVersion7():N}";
+        var docId2 = $"ais-{Guid.CreateVersion7():N}";
         var chunks = new List<EmbeddedChunk>
         {
             new()
@@ -180,7 +180,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     public async Task CollectionManageable_CreateAndDeleteCollection()
     {
         ICollectionManageable manageable = (ICollectionManageable)_sut;
-        var tempIndex = $"temp-{Guid.NewGuid():N}"[..24];
+        var tempIndex = $"temp-{Guid.CreateVersion7():N}"[..24];
 
         await manageable.CreateCollectionAsync(tempIndex, 3, TestContext.Current.CancellationToken);
         Assert.True(await manageable.CollectionExistsAsync(tempIndex, TestContext.Current.CancellationToken));
@@ -239,7 +239,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         // With 5 chunks and pageSize=2 the loop must execute at least 3 times (pages of 2, 2, 1).
         // A single-page implementation could never remove all 5 chunks in one shot, so this
         // setup makes it impossible to pass on a broken single-iteration implementation.
-        var docId = $"ais-{Guid.NewGuid():N}";
+        var docId = $"ais-{Guid.CreateVersion7():N}";
         var chunks = Enumerable.Range(0, 5).Select(i => new EmbeddedChunk
         {
             Chunk = new TextChunk { Text = $"chunk {i}", DocumentId = new DocumentId(docId), ChunkIndex = i },

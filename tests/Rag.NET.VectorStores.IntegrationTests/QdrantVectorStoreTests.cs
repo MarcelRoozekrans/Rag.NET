@@ -11,7 +11,7 @@ namespace Rag.NET.VectorStores.IntegrationTests;
 public class QdrantVectorStoreTests : IAsyncLifetime
 {
     private readonly QdrantFixture _fixture;
-    private readonly string _collectionName = $"ragnet-test-{Guid.NewGuid():N}"[..24];
+    private readonly string _collectionName = $"ragnet-test-{Guid.CreateVersion7():N}"[..24];
     private QdrantVectorStore _sut = null!;
 
     public QdrantVectorStoreTests(QdrantFixture fixture)
@@ -36,7 +36,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
     [Fact]
     public async Task StoreAndSearch_ReturnsRelevantResults()
     {
-        var docId = $"qdrant-{Guid.NewGuid():N}";
+        var docId = $"qdrant-{Guid.CreateVersion7():N}";
 
         var chunks = new List<EmbeddedChunk>
         {
@@ -73,7 +73,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
     [Fact]
     public async Task DeleteByDocumentId_RemovesAllChunksForDocument()
     {
-        var docId = $"qdrant-{Guid.NewGuid():N}";
+        var docId = $"qdrant-{Guid.CreateVersion7():N}";
 
         var chunks = new List<EmbeddedChunk>
         {
@@ -105,8 +105,8 @@ public class QdrantVectorStoreTests : IAsyncLifetime
     [Fact]
     public async Task Search_WithMetadataFilter_FiltersResults()
     {
-        var docId1 = $"qdrant-{Guid.NewGuid():N}";
-        var docId2 = $"qdrant-{Guid.NewGuid():N}";
+        var docId1 = $"qdrant-{Guid.CreateVersion7():N}";
+        var docId2 = $"qdrant-{Guid.CreateVersion7():N}";
 
         var chunks = new List<EmbeddedChunk>
         {
@@ -161,7 +161,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
     public async Task CollectionManageable_CreateAndDeleteCollection()
     {
         ICollectionManageable manageable = (ICollectionManageable)_sut;
-        var tempCollection = $"temp_{Guid.NewGuid():N}"[..20];
+        var tempCollection = $"temp_{Guid.CreateVersion7():N}"[..20];
 
         await manageable.CreateCollectionAsync(tempCollection, 3, TestContext.Current.CancellationToken);
         Assert.True(await manageable.CollectionExistsAsync(tempCollection, TestContext.Current.CancellationToken));
