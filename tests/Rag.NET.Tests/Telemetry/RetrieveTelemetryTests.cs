@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
@@ -47,5 +48,44 @@ public class RetrieveTelemetryTests
         Assert.NotNull(span.GetTagItem("query.hash")); // 8-char hex SHA-256 prefix — don't assert exact value
         Assert.NotNull(span.GetTagItem("top_k"));
         Assert.Equal("0", span.GetTagItem("result.count")?.ToString()); // empty result from fake store
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_OnError_SetsSpanStatusAndIncrementsCounter()
+    {
+        using var errorsCollector = new MetricCollector<long>(RagTelemetry.Meter, "ragnet.retrieve.errors");
+        var (activities, listener) = CreateListener();
+        using var _ = listener;
+
+        var throwingPipeline = new Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>(
+            (_, _) => throw new InvalidOperationException("vector store unavailable"));
+        var retriever = CreateSut(throwingPipeline);
+
+        var result = await retriever.RetrieveAsync("failing query",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+
+        var span = activities.FirstOrDefault(a =>
+            string.Equals(a.OperationName, "ragnet.retrieve", StringComparison.Ordinal));
+        Assert.NotNull(span);
+        Assert.Equal(ActivityStatusCode.Error, span.Status);
+
+        Assert.Equal(1, errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value));
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_RecordsRetrieveDuration()
+    {
+        using var durationCollector = new MetricCollector<double>(RagTelemetry.Meter, "ragnet.retrieve.duration");
+
+        var retriever = CreateSut();
+
+        var _ = await retriever.RetrieveAsync("what is RAG?",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var measurements = durationCollector.GetMeasurementSnapshot();
+        Assert.Single(measurements);
+        Assert.True(measurements[0].Value >= 0);
     }
 }

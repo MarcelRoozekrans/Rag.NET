@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using NSubstitute;
 using Rag.NET.Abstractions;
@@ -10,7 +12,6 @@ using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using Rag.NET.Telemetry;
 using Xunit;
-using System.Runtime.CompilerServices;
 
 namespace Rag.NET.Tests.Telemetry;
 
@@ -190,6 +191,97 @@ public class IngestTelemetryTests
         Assert.Equal("store-doc", storeSpan.GetTagItem("document.id"));
         Assert.Equal("1", storeSpan.GetTagItem("chunk.count")?.ToString());
         Assert.NotNull(storeSpan.GetTagItem("vector_store")); // proxy type name, not stable to assert exactly
+    }
+
+    [Fact]
+    public async Task IngestAsync_OnError_SetsSpanStatusAndIncrementsCounter()
+    {
+        using var errorsCollector = new MetricCollector<long>(RagTelemetry.Meter, "ragnet.ingest.errors");
+        var (activities, listener) = CreateListener();
+        using var _ = listener;
+
+        var throwingPipeline = new Pipeline<IngestionContext, IngestionResult>(
+            (_, _) => throw new NoParserFoundException("text/rtf"));
+        var sut = CreateSut(throwingPipeline);
+
+        var metadata = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("err-doc"),
+            FileName = "err.rtf",
+            ContentType = "text/rtf",
+        };
+
+        var result = await sut.IngestAsync(new MemoryStream([1]), metadata,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+
+        var span = activities.FirstOrDefault(a =>
+            string.Equals(a.OperationName, "ragnet.ingest", StringComparison.Ordinal));
+        Assert.NotNull(span);
+        Assert.Equal(ActivityStatusCode.Error, span.Status);
+
+        Assert.Equal(1, errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value));
+    }
+
+    [Fact]
+    public async Task IngestAsync_RecordsIngestDuration()
+    {
+        using var durationCollector = new MetricCollector<double>(RagTelemetry.Meter, "ragnet.ingest.duration");
+
+        var sut = CreateSut();
+        var stream = new MemoryStream("hello"u8.ToArray());
+        var metadata = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("dur-doc"),
+            FileName = "dur.txt",
+            ContentType = "text/plain",
+        };
+
+        var _ = await sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        var measurements = durationCollector.GetMeasurementSnapshot();
+        Assert.Single(measurements);
+        Assert.True(measurements[0].Value >= 0);
+    }
+
+    [Fact]
+    public async Task IngestAsync_EmitsStoreSpan_RecordsChunksStored()
+    {
+        using var chunksCollector = new MetricCollector<long>(RagTelemetry.Meter, "ragnet.chunks.stored");
+
+        var vectorStore = Substitute.For<IVectorStore>();
+        var bm25Index = Substitute.For<IBm25Index>();
+
+        var sut = new StorageBehavior
+        {
+            VectorStore = vectorStore,
+            Bm25Index = bm25Index,
+        };
+
+        var ctx = new IngestionContext
+        {
+            Stream = new MemoryStream(),
+            Metadata = new DocumentMetadata
+            {
+                DocumentId = new DocumentId("chunks-doc"),
+                FileName = "chunks.txt",
+                ContentType = "text/plain",
+            },
+            GetNextBm25DocId = () => 1,
+        };
+        ctx.EmbeddedChunks.Add(new EmbeddedChunk
+        {
+            Chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId("chunks-doc"), ChunkIndex = 0 },
+            Embedding = new float[] { 0.1f, 0.2f },
+        });
+
+        await sut.HandleAsync(ctx, TestContext.Current.CancellationToken,
+            (c, _) => ValueTask.FromResult(
+                new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
+
+        var measurements = chunksCollector.GetMeasurementSnapshot();
+        Assert.Equal(1, measurements.Sum(m => m.Value));
     }
 
     private static (ConcurrentBag<Activity> activities, ActivityListener listener) CreateListener()
