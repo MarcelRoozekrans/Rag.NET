@@ -46,6 +46,6 @@ public class AskTelemetryTests
         var span = activities.FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.ask", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.Equal("0", span.GetTagItem("source.count")?.ToString());
-        Assert.NotNull(span.GetTagItem("synthesis.strategy"));
+        Assert.Equal(SynthesisStrategy.Default.ToString(), span.GetTagItem("synthesis.strategy"));
     }
 }
