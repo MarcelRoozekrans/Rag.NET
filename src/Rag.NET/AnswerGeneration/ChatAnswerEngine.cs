@@ -57,17 +57,55 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
         RagOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        var opts = options ?? new RagOptions();
+
+        using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.ask");
+        activity?.SetTag("source.count", sources.Count);
+        activity?.SetTag("synthesis.strategy", opts.SynthesisStrategy.ToString());
+
         yield return new RagStreamingUpdate { Sources = sources };
 
-        var (messages, chatOptions) = await BuildMessagesAsync(sources, query, options ?? new RagOptions(), cancellationToken).ConfigureAwait(false);
+        var (messages, chatOptions) = await BuildMessagesAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
 
-        await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false))
+        // C# async iterators cannot yield inside a try/catch, so we drive the enumerator manually:
+        // MoveNextAsync() and Current are accessed outside yield, keeping yield clean.
+        var enumerator = chatClient
+            .GetStreamingResponseAsync(messages, chatOptions, cancellationToken)
+            .GetAsyncEnumerator(cancellationToken);
+
+        var sw = Stopwatch.StartNew();
+        bool hasNext;
+        try
         {
+            hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            throw;
+        }
+
+        while (hasNext)
+        {
+            var update = enumerator.Current;
             if (update.Text is not null)
             {
                 yield return new RagStreamingUpdate { TextDelta = update.Text };
             }
+
+            try
+            {
+                hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+                throw;
+            }
         }
+
+        sw.Stop();
+        RagTelemetry.AskDuration.Record(sw.Elapsed.TotalMilliseconds);
     }
 
     private async Task<(List<ChatMessage> Messages, ChatOptions Options)> BuildMessagesAsync(

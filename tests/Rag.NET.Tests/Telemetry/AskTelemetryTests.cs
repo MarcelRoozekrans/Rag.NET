@@ -49,4 +49,43 @@ public class AskTelemetryTests
         Assert.Equal("0", span.GetTagItem("source.count")?.ToString());
         Assert.Equal(SynthesisStrategy.Default.ToString(), span.GetTagItem("synthesis.strategy"));
     }
+
+    [Fact]
+    public async Task AskStreamingAsync_EmitsAskSpan()
+    {
+        var (activities, listener) = CreateListener();
+        using var _ = listener;
+
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetStreamingResponseAsync(
+                Arg.Any<IList<ChatMessage>>(),
+                Arg.Any<ChatOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ToAsyncEnumerable(
+                new ChatResponseUpdate { Contents = [new TextContent("Paris.")] }));
+
+        var engine = new ChatAnswerEngine(chatClient);
+        var sources = Array.Empty<SearchResult>();
+
+        await foreach (var update in engine.AskStreamingAsync("Where is the Eiffel Tower?", sources,
+            cancellationToken: TestContext.Current.CancellationToken))
+        {
+            // consume the stream fully so the span is stopped
+        }
+
+        var span = activities.FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.ask", StringComparison.Ordinal));
+        Assert.NotNull(span);
+        Assert.Equal("0", span.GetTagItem("source.count")?.ToString());
+        Assert.Equal(SynthesisStrategy.Default.ToString(), span.GetTagItem("synthesis.strategy"));
+    }
+
+    private static async IAsyncEnumerable<ChatResponseUpdate> ToAsyncEnumerable(
+        params ChatResponseUpdate[] items)
+    {
+        foreach (var item in items)
+        {
+            yield return item;
+            await Task.CompletedTask;
+        }
+    }
 }
