@@ -84,6 +84,7 @@ public class EmailDocumentParserTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Contains(sections, s => s.Text.Contains("attachment content", StringComparison.Ordinal));
+        Assert.Equal(3, sections.Count); // subject + body + attachment
     }
 
     [Fact]
