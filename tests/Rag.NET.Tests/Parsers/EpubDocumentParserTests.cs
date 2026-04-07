@@ -32,6 +32,12 @@ public class EpubDocumentParserTests
     }
 
     [Fact]
+    public void CanParse_EpubMimeTypeMixedCase_ReturnsTrue()
+    {
+        Assert.True(CreateSut().CanParse("Application/Epub+Zip"));
+    }
+
+    [Fact]
     public async Task ParseAsync_SingleChapterWithHeadings_YieldsSectionsPerHeading()
     {
         // Build an in-memory EPUB with one chapter containing two headings

@@ -10,6 +10,14 @@ namespace Rag.NET.Parsers.Epub;
 
 public sealed class EpubDocumentParser(HtmlDocumentParser htmlParser) : IDocumentParser
 {
+    private static readonly EpubReaderOptions s_readerOptions = new(EpubReaderOptionsPreset.RELAXED)
+    {
+        Epub3NavDocumentReaderOptions = new Epub3NavDocumentReaderOptions(EpubReaderOptionsPreset.RELAXED)
+        {
+            IgnoreMissingNavManifestItemError = true,
+        },
+    };
+
     public bool CanParse(string contentType) =>
         contentType.Equals("application/epub+zip", StringComparison.OrdinalIgnoreCase);
 
@@ -18,14 +26,7 @@ public sealed class EpubDocumentParser(HtmlDocumentParser htmlParser) : IDocumen
         DocumentMetadata metadata,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var options = new EpubReaderOptions(EpubReaderOptionsPreset.RELAXED)
-        {
-            Epub3NavDocumentReaderOptions = new Epub3NavDocumentReaderOptions(EpubReaderOptionsPreset.RELAXED)
-            {
-                IgnoreMissingNavManifestItemError = true,
-            },
-        };
-        var book = await EpubReader.ReadBookAsync(stream, options).ConfigureAwait(false);
+        var book = await EpubReader.ReadBookAsync(stream, s_readerOptions).ConfigureAwait(false);
         if (book is null)
             yield break;
 
