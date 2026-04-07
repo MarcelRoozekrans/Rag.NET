@@ -9,6 +9,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Epub\Rag.NET.Parsers.Epub.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Email\Rag.NET.Parsers.Email.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Memory\Rag.NET.Memory.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.QueryTechniques\Rag.NET.QueryTechniques.csproj" />

@@ -13,6 +13,7 @@
     <Project Path="src/Rag.NET.VectorStores.AzureAISearch/Rag.NET.VectorStores.AzureAISearch.csproj" />
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
     <Project Path="src/Rag.NET.Parsers.Epub/Rag.NET.Parsers.Epub.csproj" />
+    <Project Path="src/Rag.NET.Parsers.Email/Rag.NET.Parsers.Email.csproj" />
     <Project Path="src/Rag.NET.Parsers.Word/Rag.NET.Parsers.Word.csproj" />
     <Project Path="src/Rag.NET.Mcp.Tool/Rag.NET.Mcp.Tool.csproj" />
     <Project Path="src/Rag.NET.Mcp/Rag.NET.Mcp.csproj" />
