@@ -20,6 +20,7 @@ public class ProviderIngestionBenchmarks
     private string _warmDbPath = null!;
     private string _coldDbPath = null!;
     private IRagPipeline _pipeline = null!;
+    private IRagPipeline _pipeline5ms = null!;
 
     [Params(20)]
     public int FileCount { get; set; }
@@ -28,6 +29,7 @@ public class ProviderIngestionBenchmarks
     public async Task Setup()
     {
         _pipeline = new NoOpRagPipeline();
+        _pipeline5ms = new DelayedNoOpRagPipeline(TimeSpan.FromMilliseconds(5));
 
         // Create a temp directory with FileCount small text files
         _tempDir = Path.Combine(Path.GetTempPath(), $"ragnet-bench-{Guid.NewGuid():N}");
@@ -90,6 +92,26 @@ public class ProviderIngestionBenchmarks
         return result.Ingested;
     }
 
+    /// <summary>Sequential ingestion with a simulated 5 ms per-document processing delay.</summary>
+    [Benchmark]
+    public async Task<int> IngestFromProviderAsync_Sequential_WithDelay()
+    {
+        var provider = new LocalFilesDataProvider(_tempDir);
+        var result = await _pipeline5ms.IngestFromProviderAsync(provider, "bench",
+            options: new IngestionOptions { MaxDegreeOfParallelism = 1 }).ConfigureAwait(false);
+        return result.Ingested;
+    }
+
+    /// <summary>Parallel ingestion (4 workers) with a simulated 5 ms per-document processing delay.</summary>
+    [Benchmark]
+    public async Task<int> IngestFromProviderAsync_Parallel4_WithDelay()
+    {
+        var provider = new LocalFilesDataProvider(_tempDir);
+        var result = await _pipeline5ms.IngestFromProviderAsync(provider, "bench",
+            options: new IngestionOptions { MaxDegreeOfParallelism = 4 }).ConfigureAwait(false);
+        return result.Ingested;
+    }
+
     private sealed class NoOpRagPipeline : IRagPipeline
     {
         public Task<Result<IngestionResult, RagError>> IngestAsync(
@@ -100,6 +122,43 @@ public class ProviderIngestionBenchmarks
             CancellationToken cancellationToken = default)
             => Task.FromResult(Result<IngestionResult, RagError>.Success(
                 new IngestionResult { DocumentId = metadata.DocumentId, ChunksStored = 1 }));
+
+        public Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
+            string query,
+            RetrievalOptions? options = null,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
+                (IReadOnlyList<SearchResult>)[]));
+
+        public Task<RagResponse> AskAsync(
+            string query,
+            RagOptions? options = null,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public IAsyncEnumerable<RagStreamingUpdate> AskStreamingAsync(
+            string query,
+            RagOptions? options = null,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task DeleteAsync(string documentId, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
+    private sealed class DelayedNoOpRagPipeline(TimeSpan delay) : IRagPipeline
+    {
+        public async Task<Result<IngestionResult, RagError>> IngestAsync(
+            Stream document,
+            DocumentMetadata metadata,
+            IngestionOptions? options = null,
+            IProgress<IngestionProgress>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+            return Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = metadata.DocumentId, ChunksStored = 1 });
+        }
 
         public Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
             string query,
