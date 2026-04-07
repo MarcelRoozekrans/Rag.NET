@@ -30,7 +30,7 @@ public class FallbackChatClientTests
         var primary = Substitute.For<IChatClient>();
         var secondary = Substitute.For<IChatClient>();
         primary.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .ThrowsAsync(new HttpRequestException("rate limit exceeded", null, System.Net.HttpStatusCode.TooManyRequests));
+            .ThrowsAsync(new HttpRequestException("upstream error", null, System.Net.HttpStatusCode.TooManyRequests));
         secondary.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "fallback ok")));
 
@@ -49,8 +49,9 @@ public class FallbackChatClientTests
             .ThrowsAsync(new InvalidOperationException("bad config"));
 
         var sut = new FallbackChatClient([primary, secondary]);
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             sut.GetResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Contains("bad config", ex.Message, StringComparison.Ordinal);
 
         await secondary.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
@@ -69,7 +70,7 @@ public class FallbackChatClientTests
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
             sut.GetResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Contains("unavailable", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("unavailable", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -116,8 +117,8 @@ public class FallbackChatClientTests
 
         var sut = new FallbackChatClient([primary, secondary]);
         var updates = new List<ChatResponseUpdate>();
-        await foreach (var u in sut.GetStreamingResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken))
-            updates.Add(u);
+        await foreach (var update in sut.GetStreamingResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken))
+            updates.Add(update);
 
         Assert.Single(updates);
         Assert.Equal("streamed", updates[0].Text);
@@ -128,7 +129,6 @@ public class FallbackChatClientTests
     {
         await Task.Yield();
         throw ex;
-        yield break; // unreachable, satisfies compiler
     }
 
     // Helper: async enumerable yielding items
