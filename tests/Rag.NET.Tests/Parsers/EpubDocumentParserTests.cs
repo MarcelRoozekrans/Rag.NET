@@ -76,6 +76,21 @@ public class EpubDocumentParserTests
     }
 
     [Fact]
+    public async Task ParseAsync_ChapterWithNoHeadings_YieldsSingleSection()
+    {
+        // A chapter with body text but no heading tags — HtmlDocumentParser returns one flat section
+        var html = "<html><body><p>Just a paragraph with no headings.</p></body></html>";
+        using var stream = BuildEpub([html]);
+
+        var sections = await CreateSut()
+            .ParseAsync(stream, CreateMetadata(), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Single(sections);
+        Assert.Contains("Just a paragraph", sections[0].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ParseAsync_AllSectionsCarryDocumentId()
     {
         var html = "<html><body><h1>Title</h1><p>Text.</p></body></html>";
