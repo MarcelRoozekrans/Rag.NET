@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using System.Threading;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -30,22 +32,36 @@ public static class RagPipelineExtensions
         var ingested = 0;
         var skipped = 0;
         var deleted = 0;
-        var errors = new List<string>();
+        var errors = new ConcurrentBag<string>();
 
         IReadOnlySet<string> knownIds = hashStore is not null && cleanupMode == CleanupMode.Full
             ? await hashStore.GetAllIdsAsync(providerId, cancellationToken).ConfigureAwait(false)
             : (IReadOnlySet<string>)new HashSet<string>(StringComparer.Ordinal);
 
-        var seenIds = new HashSet<string>(StringComparer.Ordinal);
+        var seenIds = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
 
+        // Collect entries first — IAsyncEnumerable cannot be iterated in parallel directly
+        var entries = new List<FileEntry>();
         await foreach (var entry in provider.GetFilesAsync(cancellationToken).ConfigureAwait(false))
+            entries.Add(entry);
+
+        var maxParallelism = options?.MaxDegreeOfParallelism ?? 1;
+        var parallelOptions = new ParallelOptions
         {
-            seenIds.Add(entry.Id);
+            MaxDegreeOfParallelism = maxParallelism,
+            CancellationToken = cancellationToken,
+        };
+
+        await Parallel.ForEachAsync(entries, parallelOptions, async (entry, _) =>
+        {
+            seenIds.TryAdd(entry.Id, 0);
             var outcome = await ProcessEntryAsync(pipeline, providerId, entry, hashStore, baseMetadata,
                 options, progress, errors, cancellationToken).ConfigureAwait(false);
-            if (outcome == EntryOutcome.Ingested) ingested++;
-            else skipped++;
-        }
+            if (outcome == EntryOutcome.Ingested)
+                Interlocked.Increment(ref ingested);
+            else
+                Interlocked.Increment(ref skipped);
+        }).ConfigureAwait(false);
 
         if (cleanupMode == CleanupMode.Full && hashStore is not null)
         {
@@ -53,7 +69,7 @@ public static class RagPipelineExtensions
                 errors, cancellationToken).ConfigureAwait(false);
         }
 
-        return new ProviderIngestionResult(ingested, skipped, deleted, errors);
+        return new ProviderIngestionResult(ingested, skipped, deleted, errors.ToList());
     }
 
     private static async Task<EntryOutcome> ProcessEntryAsync(
@@ -64,7 +80,7 @@ public static class RagPipelineExtensions
         DocumentMetadata? baseMetadata,
         IngestionOptions? options,
         IProgress<IngestionProgress>? progress,
-        List<string> errors,
+        ConcurrentBag<string> errors,
         CancellationToken cancellationToken)
     {
         try
@@ -137,14 +153,14 @@ public static class RagPipelineExtensions
         string providerId,
         IContentHashStore hashStore,
         IReadOnlySet<string> knownIds,
-        HashSet<string> seenIds,
-        List<string> errors,
+        ConcurrentDictionary<string, byte> seenIds,
+        ConcurrentBag<string> errors,
         CancellationToken cancellationToken)
     {
         var deleted = 0;
         foreach (var id in knownIds)
         {
-            if (seenIds.Contains(id)) continue;
+            if (seenIds.ContainsKey(id)) continue;
 
             try
             {

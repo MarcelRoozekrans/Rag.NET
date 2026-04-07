@@ -1,4 +1,5 @@
 using System.Text;
+using System.Threading;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.DataProviders;
@@ -267,6 +268,50 @@ public sealed class IngestFromProviderTests : IDisposable
 
         Assert.Equal(4, result.Ingested);
         Assert.Equal(0, result.Skipped);
+    }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_ParallelIngestion_RunsConcurrently()
+    {
+        var concurrentCount = 0;
+        var maxConcurrent = 0;
+        var gate = new SemaphoreSlim(0);
+
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(),
+                Arg.Any<DocumentMetadata>(),
+                Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                var current = Interlocked.Increment(ref concurrentCount);
+                Interlocked.Exchange(ref maxConcurrent, Math.Max(maxConcurrent, current));
+                await gate.WaitAsync();
+                Interlocked.Decrement(ref concurrentCount);
+                return Result<IngestionResult, RagError>.Success(
+                    new IngestionResult { DocumentId = new DocumentId("x"), ChunksStored = 1 });
+            });
+
+        var provider = MakeProvider(
+            ("id-1", "a.txt", "hello", null),
+            ("id-2", "b.txt", "world", null),
+            ("id-3", "c.txt", "foo", null));
+
+        var ingestTask = _pipeline.IngestFromProviderAsync(provider, "prov",
+            options: new IngestionOptions { MaxDegreeOfParallelism = 3 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Give tasks time to start and block on the gate
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+
+        // Release all
+        gate.Release(3);
+
+        var result = await ingestTask;
+
+        Assert.Equal(3, result.Ingested);
+        Assert.True(maxConcurrent > 1, $"Expected concurrent ingestion but maxConcurrent was {maxConcurrent}");
     }
 
     [Fact]
