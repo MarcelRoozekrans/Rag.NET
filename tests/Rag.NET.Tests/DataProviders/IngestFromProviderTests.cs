@@ -252,6 +252,24 @@ public sealed class IngestFromProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task IngestFromProviderAsync_ParallelIngestion_AllFilesIngested()
+    {
+        var provider = MakeProvider(
+            ("id-1", "a.txt", "hello", null),
+            ("id-2", "b.txt", "world", null),
+            ("id-3", "c.txt", "foo", null),
+            ("id-4", "d.txt", "bar", null));
+
+        var options = new IngestionOptions { MaxDegreeOfParallelism = 4 };
+        var result = await _pipeline.IngestFromProviderAsync(provider, "prov",
+            options: options,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, result.Ingested);
+        Assert.Equal(0, result.Skipped);
+    }
+
+    [Fact]
     public async Task IngestFromProviderAsync_MergesBaseAndEntryMetadataTags()
     {
         var capturedMetadata = new List<DocumentMetadata>();
