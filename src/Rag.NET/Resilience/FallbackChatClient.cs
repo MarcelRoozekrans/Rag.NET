@@ -15,6 +15,10 @@ public sealed class FallbackChatClient(
     IReadOnlyList<IChatClient> clients,
     ILogger<FallbackChatClient>? logger = null) : IChatClient
 {
+    private readonly IReadOnlyList<IChatClient> _clients = clients.Count > 0
+        ? clients
+        : throw new ArgumentOutOfRangeException(nameof(clients), "At least one client is required.");
+
     private static readonly string[] s_transientKeywords = ["rate limit", "throttl", "timeout", "unavailable"];
 
     public async Task<ChatResponse> GetResponseAsync(
@@ -23,11 +27,11 @@ public sealed class FallbackChatClient(
         CancellationToken cancellationToken = default)
     {
         Exception? last = null;
-        for (int i = 0; i < clients.Count; i++)
+        for (int i = 0; i < _clients.Count; i++)
         {
             try
             {
-                return await clients[i].GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+                return await _clients[i].GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -36,8 +40,8 @@ public sealed class FallbackChatClient(
             catch (Exception ex) when (IsTransient(ex))
             {
                 last = ex;
-                if (i < clients.Count - 1)
-                    logger?.LogWarning(ex, "Client {Index} failed transiently ({Message}); trying next client.", i.ToString(CultureInfo.InvariantCulture), ex.Message);
+                if (i < _clients.Count - 1)
+                    logger?.LogWarning(ex, "Client {Index} failed transiently; trying next client.", i.ToString(CultureInfo.InvariantCulture));
             }
         }
         throw last!;
@@ -49,7 +53,7 @@ public sealed class FallbackChatClient(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         Exception? last = null;
-        for (int i = 0; i < clients.Count; i++)
+        for (int i = 0; i < _clients.Count; i++)
         {
             var state = new StreamState();
             await foreach (var update in TryStreamClientAsync(i, messages, options, cancellationToken, state).ConfigureAwait(false))
@@ -74,7 +78,7 @@ public sealed class FallbackChatClient(
         [EnumeratorCancellation] CancellationToken cancellationToken,
         StreamState state)
     {
-        var enumerator = clients[clientIndex]
+        var enumerator = _clients[clientIndex]
             .GetStreamingResponseAsync(messages, options, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
 
@@ -87,14 +91,16 @@ public sealed class FallbackChatClient(
         catch (Exception ex) when (IsTransient(ex))
         {
             state.TransientException = ex;
-            if (clientIndex < clients.Count - 1)
-                logger?.LogWarning(ex, "Streaming client {Index} failed transiently; trying next client.", clientIndex.ToString(CultureInfo.InvariantCulture));
+            if (clientIndex < _clients.Count - 1)
+                logger?.LogWarning(ex, "Streaming client {Index} failed before first token; trying next client.", clientIndex.ToString(CultureInfo.InvariantCulture));
             yield break;
         }
 
+        int itemsYielded = 0;
         while (hasNext)
         {
             yield return enumerator.Current;
+            itemsYielded++;
             try
             {
                 hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
@@ -103,15 +109,23 @@ public sealed class FallbackChatClient(
             catch (Exception ex) when (IsTransient(ex))
             {
                 state.TransientException = ex;
-                if (clientIndex < clients.Count - 1)
-                    logger?.LogWarning(ex, "Streaming client {Index} failed mid-stream; trying next client.", clientIndex.ToString(CultureInfo.InvariantCulture));
+                if (clientIndex < _clients.Count - 1)
+                    logger?.LogWarning(ex, "Streaming client {Index} failed mid-stream after {Count} token(s); restarting with next client.",
+                        clientIndex.ToString(CultureInfo.InvariantCulture), itemsYielded.ToString(CultureInfo.InvariantCulture));
                 yield break;
             }
         }
     }
 
-    public object? GetService(Type serviceType, object? serviceKey = null) =>
-        clients[0].GetService(serviceType, serviceKey);
+    public object? GetService(Type serviceType, object? serviceKey = null)
+    {
+        foreach (var client in _clients)
+        {
+            var svc = client.GetService(serviceType, serviceKey);
+            if (svc is not null) return svc;
+        }
+        return null;
+    }
 
     public void Dispose() { /* clients are externally owned */ }
 
