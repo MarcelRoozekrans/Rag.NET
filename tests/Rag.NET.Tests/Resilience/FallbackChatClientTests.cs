@@ -129,6 +129,9 @@ public class FallbackChatClientTests
     {
         await Task.Yield();
         throw ex;
+#pragma warning disable CS0162 // Unreachable code detected
+        yield break;
+#pragma warning restore CS0162
     }
 
     // Helper: async enumerable yielding items
