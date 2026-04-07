@@ -814,6 +814,8 @@ A `FallbackChatClient` (implements `IChatClient`) that tries a primary client, c
 
 **Why:** Production RAG systems cannot tolerate a single LLM provider as a hard dependency. A fallback chain from OpenAI → Anthropic → local Ollama gives resilience without changing pipeline code.
 
+**Status:** ✅ Done
+
 ---
 
 ### Embedding Versioning & Re-indexing
@@ -840,6 +842,8 @@ An `IRateLimiter` abstraction with a token-bucket implementation that throttles 
 Parallelise the embedding and storage steps during bulk ingestion: embed chunks in configurable batches (default 100) with `Parallel.ForEachAsync`, bulk-upsert to the vector store rather than one-by-one. Reduces large-corpus ingestion time from O(n) sequential API calls to O(n/batch) parallel calls.
 
 **Why:** Ingesting 100,000 chunks one-at-a-time can take hours. Batched parallel embedding with bulk upsert can reduce this to minutes. The current pipeline is sequential.
+
+**Status:** ✅ Done
 
 ---
 
