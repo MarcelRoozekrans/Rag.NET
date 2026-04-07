@@ -130,8 +130,8 @@ public class EpubDocumentParserTests
             var spineItems = new StringBuilder();
             for (int i = 0; i < chapterHtmls.Length; i++)
             {
-                manifestItems.AppendLine($"""    <item id="chapter{i + 1}" href="chapter{i + 1}.html" media-type="application/xhtml+xml"/>""");
-                spineItems.AppendLine($"""    <itemref idref="chapter{i + 1}"/>""");
+                manifestItems.Append(System.Globalization.CultureInfo.InvariantCulture, $"""    <item id="chapter{i + 1}" href="chapter{i + 1}.html" media-type="application/xhtml+xml"/>""").AppendLine();
+                spineItems.Append(System.Globalization.CultureInfo.InvariantCulture, $"""    <itemref idref="chapter{i + 1}"/>""").AppendLine();
             }
 
             // OEBPS/content.opf
