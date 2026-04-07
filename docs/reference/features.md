@@ -500,6 +500,8 @@ Parse EPUB files (e-books, exported docs from tools like Notion, Bear, Obsidian)
 
 **Why:** EPUB is common for exported documentation, e-books, and long-form content. There's no parser today.
 
+**Status:** ✅ Done
+
 ---
 
 ### Email File Parser (EML / MSG)
@@ -508,6 +510,8 @@ Parse EPUB files (e-books, exported docs from tools like Notion, Bear, Obsidian)
 Parse `.eml` (RFC 5322) and `.msg` (Outlook) files into sections: subject → heading, body → text, attachments dispatched to the registered parser by content type. Uses `MimeKit` for EML and `MsgReader` for MSG.
 
 **Why:** Email archives are a major enterprise knowledge source. The existing Gmail/Exchange connectors ingest live mailboxes, but `.eml`/`.msg` exports from archives or migrations are unaddressed.
+
+**Status:** ✅ Done (EML only; MSG is a follow-up)
 
 ---
 
