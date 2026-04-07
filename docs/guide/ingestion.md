@@ -78,6 +78,12 @@ After ingestion, every `TextChunk.Metadata` for this document will contain:
 public sealed class IngestionOptions
 {
     public bool Overwrite { get; set; }
+
+    /// <summary>
+    /// Maximum number of documents to ingest concurrently
+    /// when using IngestFromProviderAsync. Default is 1 (sequential).
+    /// </summary>
+    public int MaxDegreeOfParallelism { get; init; } = 1;
 }
 ```
 
@@ -89,6 +95,16 @@ await pipeline.IngestAsync(stream, metadata,
 ```
 
 Without `Overwrite`, re-ingesting the same `DocumentId` accumulates duplicate chunks. Set it on every refresh operation.
+
+`MaxDegreeOfParallelism` controls how many documents `IngestFromProviderAsync` processes concurrently. The default `1` preserves the previous sequential behaviour. Increase it when your vector store and embedding service can handle concurrent requests:
+
+```csharp
+var result = await pipeline.IngestFromProviderAsync(provider, "my-corpus",
+    options: new IngestionOptions { MaxDegreeOfParallelism = 4 },
+    hashStore: hashStore);
+```
+
+A value of `4` is a reasonable starting point for most cloud embedding APIs. The optimal value depends on your embedding service's rate limits and your vector store's connection pool size.
 
 > Concurrent ingestion of the same `DocumentId` is not supported. The BM25 index update and vector store write are not transactional. Serialise ingestion per document at the application layer.
 
@@ -219,7 +235,7 @@ See [benchmarks](benchmarks.md) for detailed measurements. Key takeaways:
 
 ## Data providers
 
-For batch ingestion from a directory, website, or GitHub repository, use `IngestFromProviderAsync` instead of calling `IngestAsync` in a loop. It handles ETag/hash deduplication and optional cleanup automatically.
+For batch ingestion from a directory, website, or GitHub repository, use `IngestFromProviderAsync` instead of calling `IngestAsync` in a loop. It handles ETag/hash deduplication, optional cleanup, and — via `IngestionOptions.MaxDegreeOfParallelism` — parallel processing of multiple documents.
 
 ### `LocalFilesDataProvider`
 
