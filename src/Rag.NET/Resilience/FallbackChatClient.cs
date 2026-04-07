@@ -82,25 +82,9 @@ public sealed class FallbackChatClient(
             .GetStreamingResponseAsync(messages, options, cancellationToken)
             .GetAsyncEnumerator(cancellationToken);
 
-        bool hasNext;
         try
         {
-            hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception ex) when (IsTransient(ex))
-        {
-            state.TransientException = ex;
-            if (clientIndex < _clients.Count - 1)
-                logger?.LogWarning(ex, "Streaming client {Index} failed before first token; trying next client.", clientIndex.ToString(CultureInfo.InvariantCulture));
-            yield break;
-        }
-
-        int itemsYielded = 0;
-        while (hasNext)
-        {
-            yield return enumerator.Current;
-            itemsYielded++;
+            bool hasNext;
             try
             {
                 hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
@@ -110,10 +94,33 @@ public sealed class FallbackChatClient(
             {
                 state.TransientException = ex;
                 if (clientIndex < _clients.Count - 1)
-                    logger?.LogWarning(ex, "Streaming client {Index} failed mid-stream after {Count} token(s); restarting with next client.",
-                        clientIndex.ToString(CultureInfo.InvariantCulture), itemsYielded.ToString(CultureInfo.InvariantCulture));
+                    logger?.LogWarning(ex, "Streaming client {Index} failed before first token; trying next client.", clientIndex.ToString(CultureInfo.InvariantCulture));
                 yield break;
             }
+
+            int itemsYielded = 0;
+            while (hasNext)
+            {
+                yield return enumerator.Current;
+                itemsYielded++;
+                try
+                {
+                    hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) when (IsTransient(ex))
+                {
+                    state.TransientException = ex;
+                    if (clientIndex < _clients.Count - 1)
+                        logger?.LogWarning(ex, "Streaming client {Index} failed mid-stream after {Count} token(s); restarting with next client.",
+                            clientIndex.ToString(CultureInfo.InvariantCulture), itemsYielded.ToString(CultureInfo.InvariantCulture));
+                    yield break;
+                }
+            }
+        }
+        finally
+        {
+            await enumerator.DisposeAsync().ConfigureAwait(false);
         }
     }
 
