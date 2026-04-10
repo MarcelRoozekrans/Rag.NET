@@ -221,6 +221,37 @@ rag.UseCohereReranking(o =>
 
 ---
 
+### ONNX Cross-Encoder Reranking (Local)
+**Status:** ✅ Done
+
+**Package:** `Rag.NET.Reranking.Onnx`
+
+Run a BERT-based cross-encoder reranker fully locally via `Microsoft.ML.OnnxRuntime`. `OnnxReranker` tokenises each query-passage pair using a BERT whitespace tokeniser, runs inference through the ONNX model, and ranks results by the sigmoid-transformed logit score. No API key or network access required — suitable for air-gapped environments or cost-sensitive deployments.
+
+**Why:** Highest-quality reranking without API cost or data-egress concerns; works offline with any ONNX-compatible cross-encoder model (e.g., `ms-marco-MiniLM-L-6-v2` exported to ONNX).
+
+**Options**
+
+| Option | Default | Description |
+|---|---|---|
+| `ModelPath` | *(required)* | Path to the `.onnx` cross-encoder model file. |
+| `VocabPath` | *(required)* | Path to the BERT `vocab.txt` vocabulary file. |
+| `MaxLength` | `512` | Maximum token sequence length; query + passage pairs are truncated to this limit. |
+
+**Usage**
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseOnnxReranking(o =>
+    {
+        o.ModelPath = "models/cross-encoder.onnx";
+        o.VocabPath = "models/vocab.txt";
+        o.MaxLength = 512;
+    }));
+```
+
+---
+
 ## Answer Generation
 
 ### Map-Reduce Synthesis
