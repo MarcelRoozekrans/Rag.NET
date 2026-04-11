@@ -1,5 +1,6 @@
 using Rag.NET.Abstractions;
 using Rag.NET.Memory;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
 
@@ -13,7 +14,7 @@ public class ConversationMemoryStoreTests
         var ct = TestContext.Current.CancellationToken;
         IConversationMemory sut = new ConversationMemoryPipeline(new ConversationMemoryOptions(), chatClient: null);
 
-        await sut.StoreAsync("Hello", "Hi there", "session-1", ct);
+        await sut.StoreAsync("Hello", "Hi there", new SessionId("session-1"), ct);
     }
 
     [Fact]
@@ -24,6 +25,6 @@ public class ConversationMemoryStoreTests
         IConversationMemory sut = new ConversationMemoryPipeline(new ConversationMemoryOptions(), chatClient: null);
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            sut.StoreAsync("Hello", "Hi there", "session-1", cts.Token));
+            sut.StoreAsync("Hello", "Hi there", new SessionId("session-1"), cts.Token));
     }
 }

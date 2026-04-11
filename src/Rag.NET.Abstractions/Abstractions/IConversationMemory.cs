@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Rag.NET.Models;
 
 namespace Rag.NET.Abstractions;
 
@@ -29,6 +30,6 @@ public interface IConversationMemory
     Task StoreAsync(
         string userMessage,
         string assistantMessage,
-        string sessionId,
+        SessionId sessionId,
         CancellationToken cancellationToken = default);
 }

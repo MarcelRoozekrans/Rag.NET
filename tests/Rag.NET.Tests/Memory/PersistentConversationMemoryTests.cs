@@ -99,7 +99,7 @@ public class PersistentConversationMemoryTests
             Substitute.For<IConversationMemory>(), vectorStore,
             MockEmbedder([0.5f]), new PersistentMemoryOptions());
 
-        await sut.StoreAsync("Hello", "Hi there", "session-42", ct);
+        await sut.StoreAsync("Hello", "Hi there", new SessionId("session-42"), ct);
 
         await vectorStore.Received(1).StoreAsync(
             Arg.Is<IReadOnlyList<EmbeddedChunk>>(chunks =>
@@ -124,15 +124,9 @@ public class PersistentConversationMemoryTests
     }
 
     [Fact]
-    public async Task StoreAsync_EmptySessionId_Throws()
+    public void SessionId_EmptyValue_Throws()
     {
-        var ct = TestContext.Current.CancellationToken;
-        var sut = new PersistentConversationMemory(
-            Substitute.For<IConversationMemory>(), Substitute.For<IVectorStore>(),
-            MockEmbedder([0.1f]), new PersistentMemoryOptions());
-
-        await Assert.ThrowsAsync<ArgumentException>(() =>
-            sut.StoreAsync("Hello", "Hi", string.Empty, ct));
+        Assert.Throws<ArgumentException>(() => new SessionId(string.Empty));
     }
 
     [Fact]
@@ -168,7 +162,7 @@ public class PersistentConversationMemoryTests
             Substitute.For<IConversationMemory>(), vectorStore, embedder, new PersistentMemoryOptions());
 
         // Should not throw — embedding failure is logged and swallowed
-        await sut.StoreAsync("Hello", "Hi there", "session-1", ct);
+        await sut.StoreAsync("Hello", "Hi there", new SessionId("session-1"), ct);
 
         // Vector store must not have been called because embedding failed
         await vectorStore.DidNotReceive().StoreAsync(Arg.Any<IReadOnlyList<EmbeddedChunk>>(), Arg.Any<CancellationToken>());
@@ -184,6 +178,6 @@ public class PersistentConversationMemoryTests
             MockEmbedder([0.1f]), new PersistentMemoryOptions());
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            sut.StoreAsync("Hello", "Hi there", "session-1", cts.Token));
+            sut.StoreAsync("Hello", "Hi there", new SessionId("session-1"), cts.Token));
     }
 }

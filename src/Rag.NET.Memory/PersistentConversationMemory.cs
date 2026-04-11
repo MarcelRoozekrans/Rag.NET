@@ -17,7 +17,7 @@ public sealed class PersistentConversationMemory(
     // ChunkIndex is tracked per-session for this process lifetime.
     // The counter resets on restart; index collisions are possible for
     // sessions with existing entries in the vector store.
-    private readonly ConcurrentDictionary<string, int> _sessionCounters = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<SessionId, int> _sessionCounters = new();
 
     public async Task<IReadOnlyList<ChatMessage>> ProcessAsync(
         IReadOnlyList<ChatMessage> history,
@@ -44,11 +44,11 @@ public sealed class PersistentConversationMemory(
     public async Task StoreAsync(
         string userMessage,
         string assistantMessage,
-        string sessionId,
+        SessionId sessionId,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        ArgumentException.ThrowIfNullOrEmpty(sessionId);
+        ArgumentNullException.ThrowIfNull(sessionId);
         var text = $"User: {userMessage}\nAssistant: {assistantMessage}";
         try
         {
@@ -61,7 +61,7 @@ public sealed class PersistentConversationMemory(
                 Chunk = new TextChunk
                 {
                     Text = text,
-                    DocumentId = new DocumentId(sessionId),
+                    DocumentId = new DocumentId(sessionId.Value),
                     ChunkIndex = chunkIndex,
                 },
                 Embedding = embeddings[0].Vector,

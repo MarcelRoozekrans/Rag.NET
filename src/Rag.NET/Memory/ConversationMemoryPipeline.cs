@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.ML.Tokenizers;
 using Rag.NET.Abstractions;
 using Rag.NET.Logging;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 
 namespace Rag.NET.Memory;
@@ -159,7 +160,7 @@ public sealed class ConversationMemoryPipeline : IConversationMemory
     public Task StoreAsync(
         string userMessage,
         string assistantMessage,
-        string sessionId,
+        SessionId sessionId,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
