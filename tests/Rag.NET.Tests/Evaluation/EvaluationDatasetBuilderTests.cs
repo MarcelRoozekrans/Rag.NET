@@ -17,7 +17,7 @@ public class EvaluationDatasetBuilderTests
         {
             DocumentId = docId, FileName = "test.txt",
             ChunkCount = chunkTexts.Length,
-            IngestedAt = DateTimeOffset.UtcNow,
+            IngestedAt = DateTimeOffset.UnixEpoch,
         };
         manager.GetDocumentsAsync(Arg.Any<CancellationToken>())
             .Returns(new List<DocumentSummary> { summary });
@@ -66,6 +66,38 @@ public class EvaluationDatasetBuilderTests
 
         Assert.Single(samples);
         Assert.NotEmpty(samples[0].ReferenceAnswer);
+        Assert.NotEqual(samples[0].Question, samples[0].ReferenceAnswer);
+    }
+
+    [Fact]
+    public async Task BuildAsync_WhenSampleCountIsZero_ReturnsEmpty()
+    {
+        var manager = MakeDataManager("Chunk A");
+        var client = Substitute.For<IChatClient>();
+
+        var builder = new EvaluationDatasetBuilder(manager, client);
+        var samples = await builder.BuildAsync(
+            new EvaluationDatasetBuilderOptions { SampleCount = 0 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Empty(samples);
+    }
+
+    [Fact]
+    public async Task BuildAsync_WhenLlmReturnsEmptyText_HandlesGracefully()
+    {
+        var manager = MakeDataManager("Chunk A");
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, string.Empty)));
+
+        var builder = new EvaluationDatasetBuilder(manager, client);
+        var samples = await builder.BuildAsync(
+            new EvaluationDatasetBuilderOptions { SampleCount = 1, Mode = DatasetGenerationMode.QuestionOnly },
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(samples);
+        Assert.Equal(string.Empty, samples[0].Question);
     }
 
     [Fact]
