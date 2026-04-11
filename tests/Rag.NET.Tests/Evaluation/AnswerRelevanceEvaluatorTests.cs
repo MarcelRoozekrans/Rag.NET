@@ -54,7 +54,7 @@ public class AnswerRelevanceEvaluatorTests
                 new ChatResponse(new ChatMessage(ChatRole.Assistant, "Q2?")),
                 new ChatResponse(new ChatMessage(ChatRole.Assistant, "Q3?")));
 
-        var callCount = 0;
+        var totalEmbeddings = 0;
         var gen = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
         gen.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
@@ -63,8 +63,8 @@ public class AnswerRelevanceEvaluatorTests
                 var embeddings = new GeneratedEmbeddings<Embedding<float>>();
                 foreach (var _ in inputs)
                 {
-                    // Alternate between orthogonal vectors
-                    embeddings.Add(callCount++ % 2 == 0
+                    // First embedding = original question [1,0]; rest = synthetic questions [0,1] (orthogonal)
+                    embeddings.Add(totalEmbeddings++ == 0
                         ? new Embedding<float>(new float[] { 1f, 0f })
                         : new Embedding<float>(new float[] { 0f, 1f }));
                 }
