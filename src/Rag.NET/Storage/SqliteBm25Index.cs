@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
@@ -47,7 +46,7 @@ public sealed class SqliteBm25Index : IBm25Index
         cmd.Parameters.AddWithValue("$startPos", chunk.StartPosition);
         cmd.Parameters.AddWithValue("$endPos", chunk.EndPosition);
         cmd.Parameters.AddWithValue("$text", chunk.Text);
-        cmd.Parameters.AddWithValue("$meta", JsonSerializer.Serialize(chunk.Metadata));
+        cmd.Parameters.AddWithValue("$meta", MetadataSerializer.SerializeMetadata(chunk.Metadata));
         cmd.ExecuteNonQuery();
     }
 
@@ -188,8 +187,10 @@ public sealed class SqliteBm25Index : IBm25Index
         while (reader.Read())
         {
             var docId = reader.GetInt32(0);
-            var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(6))
-                           ?? new Dictionary<string, string>(StringComparer.Ordinal);
+            var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(6));
+            var metadata = metadataResult.IsSuccess
+                           ? metadataResult.Value
+                           : new Dictionary<string, string>(StringComparer.Ordinal);
 
             var chunk = new TextChunk
             {

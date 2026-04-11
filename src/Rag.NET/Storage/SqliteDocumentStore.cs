@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
@@ -44,7 +43,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
         docCmd.Parameters.AddWithValue("$docId",       (string)metadata.DocumentId);
         docCmd.Parameters.AddWithValue("$fileName",    metadata.FileName);
         docCmd.Parameters.AddWithValue("$contentType", (object?)metadata.ContentType ?? DBNull.Value);
-        docCmd.Parameters.AddWithValue("$tagsJson",    JsonSerializer.Serialize(metadata.Tags));
+        docCmd.Parameters.AddWithValue("$tagsJson",    MetadataSerializer.SerializeMetadata(metadata.Tags));
         docCmd.Parameters.AddWithValue("$ingestedAt",  now);
         docCmd.Parameters.AddWithValue("$chunkCount",  chunks.Count);
         docCmd.ExecuteNonQuery();
@@ -69,7 +68,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
             pStartPos.Value   = chunk.StartPosition;
             pEndPos.Value     = chunk.EndPosition;
             pText.Value       = chunk.Text;
-            pMeta.Value       = JsonSerializer.Serialize(chunk.Metadata);
+            pMeta.Value       = MetadataSerializer.SerializeMetadata(chunk.Metadata);
             chunkCmd.ExecuteNonQuery();
         }
 
@@ -109,8 +108,10 @@ public sealed class SqliteDocumentStore : IRagDataManager
             var results = new List<DocumentSummary>();
             while (reader.Read())
             {
-                var tags = JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(3))
-                           ?? new Dictionary<string, string>(StringComparer.Ordinal);
+                var tagsResult = MetadataSerializer.DeserializeMetadata(reader.GetString(3));
+                var tags = tagsResult.IsSuccess
+                           ? tagsResult.Value
+                           : new Dictionary<string, string>(StringComparer.Ordinal);
                 results.Add(new DocumentSummary
                 {
                     DocumentId  = new DocumentId(reader.GetString(0)),
@@ -145,8 +146,10 @@ public sealed class SqliteDocumentStore : IRagDataManager
             var results = new List<TextChunk>();
             while (reader.Read())
             {
-                var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(4))
-                               ?? new Dictionary<string, string>(StringComparer.Ordinal);
+                var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(4));
+                var metadata = metadataResult.IsSuccess
+                               ? metadataResult.Value
+                               : new Dictionary<string, string>(StringComparer.Ordinal);
                 results.Add(new TextChunk
                 {
                     DocumentId    = new DocumentId(documentId),

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 using Rag.NET.Abstractions;
@@ -54,7 +53,7 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
                     ["text"] = chunk.Chunk.Text,
                     ["document_id"] = (string)chunk.Chunk.DocumentId,
                     ["chunk_index"] = chunk.Chunk.ChunkIndex,
-                    ["metadata"] = JsonSerializer.Serialize(chunk.Chunk.Metadata),
+                    ["metadata"] = MetadataSerializer.SerializeMetadata(chunk.Chunk.Metadata),
                 },
             });
 
@@ -94,9 +93,18 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
         return results
             .Select(point =>
             {
-                var metadata = point.Payload.TryGetValue("metadata", out var metaValue)
-                    ? JsonSerializer.Deserialize<Dictionary<string, string>>(metaValue.StringValue) ?? []
-                    : [];
+                Dictionary<string, string> metadata;
+                if (point.Payload.TryGetValue("metadata", out var metaValue))
+                {
+                    var metadataResult = MetadataSerializer.DeserializeMetadata(metaValue.StringValue);
+                    metadata = metadataResult.IsSuccess
+                        ? metadataResult.Value
+                        : new Dictionary<string, string>(StringComparer.Ordinal);
+                }
+                else
+                {
+                    metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+                }
 
                 return new SearchResult
                 {

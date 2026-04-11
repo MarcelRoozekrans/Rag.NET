@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Npgsql;
 using Pgvector;
 using Pgvector.Npgsql;
@@ -80,7 +79,7 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
                     cmd.Parameters.Add(new NpgsqlParameter<int> { TypedValue = chunk.Chunk.ChunkIndex });
                     cmd.Parameters.AddWithValue(chunk.Chunk.Text);
                     cmd.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Jsonb,
-                        JsonSerializer.Serialize(chunk.Chunk.Metadata));
+                        MetadataSerializer.SerializeMetadata(chunk.Chunk.Metadata));
                     cmd.Parameters.AddWithValue(new Vector(chunk.Embedding.ToArray()));
 
                     await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -123,7 +122,7 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
                 if (hasFilter)
                 {
                     cmd.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Jsonb,
-                        JsonSerializer.Serialize(options.MetadataFilter));
+                        MetadataSerializer.SerializeMetadata(options.MetadataFilter!));
                 }
 
                 var results = new List<SearchResult>();
@@ -133,18 +132,9 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
                 {
                     while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     {
-                        var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(
-                            reader.GetString(3)) ?? [];
-
                         results.Add(new SearchResult
                         {
-                            Chunk = new TextChunk
-                            {
-                                DocumentId = new DocumentId(reader.GetString(0)),
-                                ChunkIndex = reader.GetInt32(1),
-                                Text = reader.GetString(2),
-                                Metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal),
-                            },
+                            Chunk = ReadChunk(reader),
                             Score = reader.GetDouble(4),
                         });
                     }
@@ -257,6 +247,22 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
                 return result is true;
             }
         }
+    }
+
+    private static TextChunk ReadChunk(Npgsql.NpgsqlDataReader reader)
+    {
+        var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(3));
+        var metadata = metadataResult.IsSuccess
+            ? metadataResult.Value
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+
+        return new TextChunk
+        {
+            DocumentId = new DocumentId(reader.GetString(0)),
+            ChunkIndex = reader.GetInt32(1),
+            Text = reader.GetString(2),
+            Metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal),
+        };
     }
 
     public void Dispose() => _dataSource.Dispose();

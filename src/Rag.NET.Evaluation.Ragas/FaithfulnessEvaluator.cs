@@ -44,7 +44,7 @@ public sealed class FaithfulnessEvaluator(IChatClient chatClient) : IRagasMetric
         var raw = response.Messages.LastOrDefault()?.Text?.Trim() ?? "[]";
         try
         {
-            return JsonSerializer.Deserialize<List<string>>(raw) ?? [];
+            return JsonSerializer.Deserialize(raw, RagJsonSerializerContext.Default.ListString) ?? [];
         }
         catch (JsonException)
         {

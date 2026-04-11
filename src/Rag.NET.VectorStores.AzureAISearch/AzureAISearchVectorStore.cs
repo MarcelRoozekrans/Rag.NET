@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Azure;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
@@ -83,7 +82,7 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             ["document_id"] = chunk.Chunk.DocumentId,
             ["chunk_index"] = chunk.Chunk.ChunkIndex,
             ["text"] = chunk.Chunk.Text,
-            ["metadata"] = JsonSerializer.Serialize(chunk.Chunk.Metadata),
+            ["metadata"] = MetadataSerializer.SerializeMetadata(chunk.Chunk.Metadata),
             ["embedding"] = chunk.Embedding.ToArray(),
         })).ToList();
 
@@ -287,7 +286,10 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             }
 
             var metadataJson = result.Document.GetString("metadata");
-            var metadata = JsonSerializer.Deserialize<Dictionary<string, string>>(metadataJson) ?? [];
+            var metadataResult = MetadataSerializer.DeserializeMetadata(metadataJson);
+            var metadata = metadataResult.IsSuccess
+                ? metadataResult.Value
+                : new Dictionary<string, string>(StringComparer.Ordinal);
 
             results.Add(new SearchResult
             {

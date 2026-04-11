@@ -24,6 +24,10 @@ internal static class MetadataSerializer
         }
     }
 
-    public static string SerializeMetadata(Dictionary<string, string> metadata)
-        => JsonSerializer.Serialize(metadata, RagJsonSerializerContext.Default.DictionaryStringString);
+    public static string SerializeMetadata(IDictionary<string, string> metadata)
+    {
+        var dict = metadata as Dictionary<string, string>
+            ?? new Dictionary<string, string>(metadata, StringComparer.Ordinal);
+        return JsonSerializer.Serialize(dict, RagJsonSerializerContext.Default.DictionaryStringString);
+    }
 }

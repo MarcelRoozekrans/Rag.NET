@@ -47,7 +47,7 @@ public sealed class ContextRecallEvaluator(IChatClient chatClient) : IRagasMetri
         };
         var response = await chatClient.GetResponseAsync(messages, cancellationToken: cancellationToken).ConfigureAwait(false);
         var raw = response.Messages.LastOrDefault()?.Text?.Trim() ?? "[]";
-        try { return JsonSerializer.Deserialize<List<string>>(raw) ?? []; }
+        try { return JsonSerializer.Deserialize(raw, RagJsonSerializerContext.Default.ListString) ?? []; }
         catch (JsonException) { return []; }
     }
 
