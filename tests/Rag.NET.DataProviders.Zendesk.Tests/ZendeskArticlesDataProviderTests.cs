@@ -1,19 +1,23 @@
 using System.Net;
 using System.Text;
 using Rag.NET.DataProviders.Zendesk;
-using Refit;
+using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Rest;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.Zendesk.Tests;
 
 public sealed class ZendeskArticlesDataProviderTests
 {
+    private static readonly IRestSerializer JsonSerializer = new SystemTextJsonSerializer();
+
     private static ZendeskArticlesDataProvider MakeProvider(
         HttpMessageHandler handler,
         ZendeskArticlesOptions? options = null)
     {
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.zendesk.com") };
-        var api = RestService.For<IZendeskApi>(http);
+        var api = new ZendeskApiClient(http, JsonSerializer);
         return new ZendeskArticlesDataProvider(api, options ?? new ZendeskArticlesOptions
         {
             Subdomain = "test",
@@ -364,6 +368,21 @@ public sealed class ZendeskArticlesDataProviderTests
         Assert.Equal("2026-03-20T08:15:00Z", results[0].Value.ETag);
     }
 
+    [Fact]
+    public async Task GetFilesAsync_HttpError_PropagatesFailure()
+    {
+        var handler = new ArticleErrorHandler(HttpStatusCode.ServiceUnavailable);
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.True(results[0].IsFailure);
+        var err = Assert.IsType<RagError.HttpFailed>(results[0].Error);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, err.StatusCode);
+    }
+
     private static async Task<string> ReadContentAsync(Rag.NET.DataProviders.FileEntry entry)
     {
         await using var stream = await entry.OpenContentAsync(CancellationToken.None);
@@ -439,4 +458,14 @@ file sealed class ArticleSequentialHandler(List<string> pages) : HttpMessageHand
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         });
     }
+}
+
+/// <summary>
+/// Always returns an HTTP error for all requests.
+/// </summary>
+file sealed class ArticleErrorHandler(HttpStatusCode statusCode) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(new HttpResponseMessage(statusCode));
 }

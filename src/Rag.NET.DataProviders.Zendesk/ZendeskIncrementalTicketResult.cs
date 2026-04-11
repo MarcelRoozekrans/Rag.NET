@@ -3,10 +3,10 @@ using System.Text.Json.Serialization;
 namespace Rag.NET.DataProviders.Zendesk;
 
 /// <summary>Response from the Zendesk incremental tickets cursor endpoint.</summary>
-internal sealed class ZendeskIncrementalTicketResult
+public sealed class ZendeskIncrementalTicketResult
 {
     [JsonPropertyName("tickets")]
-    public List<ZendeskTicket> Tickets { get; set; } = [];
+    public IReadOnlyList<ZendeskTicket> Tickets { get; set; } = [];
 
     [JsonPropertyName("after_cursor")]
     public string? AfterCursor { get; set; }

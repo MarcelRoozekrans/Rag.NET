@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace Rag.NET.DataProviders.Zendesk;
 
 /// <summary>A Zendesk Help Center article.</summary>
-internal sealed class ZendeskArticle
+public sealed class ZendeskArticle
 {
     [JsonPropertyName("id")]
     public long Id { get; set; }

@@ -1,19 +1,23 @@
 using System.Net;
 using System.Text;
 using Rag.NET.DataProviders.Zendesk;
-using Refit;
+using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Rest;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.Zendesk.Tests;
 
 public sealed class ZendeskTicketsDataProviderTests
 {
+    private static readonly IRestSerializer JsonSerializer = new SystemTextJsonSerializer();
+
     private static ZendeskTicketsDataProvider MakeProvider(
         HttpMessageHandler handler,
         ZendeskTicketsOptions? options = null)
     {
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.zendesk.com") };
-        var api = RestService.For<IZendeskApi>(http);
+        var api = new ZendeskApiClient(http, JsonSerializer);
         return new ZendeskTicketsDataProvider(api, options ?? new ZendeskTicketsOptions
         {
             Subdomain = "test",
@@ -418,6 +422,49 @@ public sealed class ZendeskTicketsDataProviderTests
         Assert.Contains("**30**", content, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task GetFilesAsync_TicketsHttpError_PropagatesFailure()
+    {
+        var handler = new FakeErrorHandler(HttpStatusCode.ServiceUnavailable);
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.True(results[0].IsFailure);
+        var err = Assert.IsType<RagError.HttpFailed>(results[0].Error);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, err.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_CommentsHttpError_PropagatesFailure()
+    {
+        const string ticketsJson = """
+            {
+              "tickets": [
+                { "id": 1, "subject": "Test", "description": "Desc", "status": "open", "priority": null, "updated_at": "2026-01-01T00:00:00Z" }
+              ],
+              "after_cursor": null,
+              "end_of_stream": true,
+              "end_time": 1735700000
+            }
+            """;
+
+        var handler = new FakePartialErrorHandler(
+            ticketsJson: ticketsJson,
+            commentsStatusCode: HttpStatusCode.Forbidden);
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.True(results[0].IsFailure);
+        var err = Assert.IsType<RagError.HttpFailed>(results[0].Error);
+        Assert.Equal(HttpStatusCode.Forbidden, err.StatusCode);
+    }
+
     private static async Task<string> ReadContentAsync(Rag.NET.DataProviders.FileEntry entry)
     {
         await using var stream = await entry.OpenContentAsync(CancellationToken.None);
@@ -502,5 +549,34 @@ file sealed class FakeSequentialHandler(List<string> ticketPages, string comment
         {
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         });
+    }
+}
+
+/// <summary>
+/// Always returns an HTTP error for all requests.
+/// </summary>
+file sealed class FakeErrorHandler(HttpStatusCode statusCode) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(new HttpResponseMessage(statusCode));
+}
+
+/// <summary>
+/// Returns a successful tickets response but an HTTP error for comments requests.
+/// </summary>
+file sealed class FakePartialErrorHandler(string ticketsJson, HttpStatusCode commentsStatusCode) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var url = request.RequestUri!.ToString();
+        if (url.Contains("incremental/tickets", StringComparison.Ordinal))
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(ticketsJson, Encoding.UTF8, "application/json")
+            });
+
+        return Task.FromResult(new HttpResponseMessage(commentsStatusCode));
     }
 }

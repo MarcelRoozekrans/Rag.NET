@@ -44,14 +44,34 @@ public sealed class ZendeskTicketsDataProvider : FileContentProviderBase
 
         while (!endOfStream)
         {
-            var result = await _api.GetIncrementalTicketsAsync(
+            var ticketsResult = await _api.GetIncrementalTicketsAsync(
                 startTime, cursor, cancellationToken).ConfigureAwait(false);
+
+            if (ticketsResult.IsFailure)
+            {
+                yield return Result<FileHandle, RagError>.Failure(
+                    new RagError.HttpFailed(ticketsResult.Error.StatusCode, ticketsResult.Error.Message));
+                yield break;
+            }
+
+            var result = ticketsResult.Value;
 
             for (int i = 0; i < result.Tickets.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                var commentsResult = await _api.GetTicketCommentsAsync(
+                    result.Tickets[i].Id, cancellationToken).ConfigureAwait(false);
+
+                if (commentsResult.IsFailure)
+                {
+                    yield return Result<FileHandle, RagError>.Failure(
+                        new RagError.HttpFailed(commentsResult.Error.StatusCode, commentsResult.Error.Message));
+                    yield break;
+                }
+
                 yield return Result<FileHandle, RagError>.Success(
-                    await ToHandleAsync(result.Tickets[i], cancellationToken).ConfigureAwait(false));
+                    ToHandle(result.Tickets[i], commentsResult.Value.Comments));
             }
 
             endOfStream = result.EndOfStream;
@@ -73,12 +93,9 @@ public sealed class ZendeskTicketsDataProvider : FileContentProviderBase
     public string? GetDeltaToken() =>
         _lastEndTime > 0 ? _lastEndTime.ToString(CultureInfo.InvariantCulture) : null;
 
-    private async Task<FileHandle> ToHandleAsync(ZendeskTicket ticket, CancellationToken cancellationToken)
+    private static FileHandle ToHandle(ZendeskTicket ticket, IReadOnlyList<ZendeskComment> comments)
     {
-        var commentsPage = await _api.GetTicketCommentsAsync(
-            ticket.Id, cancellationToken).ConfigureAwait(false);
-
-        var markdown = ToMarkdown(ticket, commentsPage.Comments);
+        var markdown = ToMarkdown(ticket, comments);
         return new FileHandle(
             Id: ticket.Id.ToString(CultureInfo.InvariantCulture),
             FileName: $"ticket-{ticket.Id}.md",
@@ -87,7 +104,7 @@ public sealed class ZendeskTicketsDataProvider : FileContentProviderBase
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
     }
 
-    private static string ToMarkdown(ZendeskTicket ticket, List<ZendeskComment> comments)
+    private static string ToMarkdown(ZendeskTicket ticket, IReadOnlyList<ZendeskComment> comments)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# {ticket.Subject}");

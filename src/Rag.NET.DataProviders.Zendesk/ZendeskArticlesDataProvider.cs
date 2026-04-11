@@ -46,8 +46,17 @@ public sealed partial class ZendeskArticlesDataProvider : FileContentProviderBas
 
         while (hasMore)
         {
-            var result = await _api.GetIncrementalArticlesAsync(
+            var articlesResult = await _api.GetIncrementalArticlesAsync(
                 startTime, cancellationToken).ConfigureAwait(false);
+
+            if (articlesResult.IsFailure)
+            {
+                yield return Result<FileHandle, RagError>.Failure(
+                    new RagError.HttpFailed(articlesResult.Error.StatusCode, articlesResult.Error.Message));
+                yield break;
+            }
+
+            var result = articlesResult.Value;
 
             for (int i = 0; i < result.Articles.Count; i++)
             {

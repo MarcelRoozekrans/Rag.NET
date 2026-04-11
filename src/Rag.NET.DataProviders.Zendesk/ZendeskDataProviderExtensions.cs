@@ -1,8 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using Rag.NET.DataProviders;
-using Refit;
 
 namespace Rag.NET.DataProviders.Zendesk;
 
@@ -33,19 +33,25 @@ public static class ZendeskDataProviderExtensions
         var opts = new ZendeskTicketsOptions { Subdomain = subdomain, Email = email };
         configure?.Invoke(opts);
 
-        services.AddDataProviderHttpClient("ZendeskTickets");
+        var baseUrl = $"https://{subdomain}.zendesk.com";
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{email}/token:{apiToken}"));
+
+        services.AddIZendeskApi(options =>
+            {
+                options.BaseAddress = new Uri(baseUrl);
+                options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
+            })
+            .ConfigureHttpClient(client =>
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Basic", credentials);
+                client.DefaultRequestHeaders.Accept.Add(
+                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            })
+            .AddStandardResilienceHandler();
 
         return services.AddSingleton<IFileContentProvider>(sp =>
-        {
-            var credentials = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes($"{email}/token:{apiToken}"));
-            var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ZendeskTickets");
-            http.BaseAddress = new Uri($"https://{subdomain}.zendesk.com");
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Basic", credentials);
-            var api = RestService.For<IZendeskApi>(http);
-            return new ZendeskTicketsDataProvider(api, opts);
-        });
+            new ZendeskTicketsDataProvider(sp.GetRequiredService<IZendeskApi>(), opts));
     }
 
     /// <summary>
@@ -72,18 +78,24 @@ public static class ZendeskDataProviderExtensions
         var opts = new ZendeskArticlesOptions { Subdomain = subdomain, Email = email };
         configure?.Invoke(opts);
 
-        services.AddDataProviderHttpClient("ZendeskArticles");
+        var baseUrl = $"https://{subdomain}.zendesk.com";
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{email}/token:{apiToken}"));
+
+        services.AddIZendeskApi(options =>
+            {
+                options.BaseAddress = new Uri(baseUrl);
+                options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
+            })
+            .ConfigureHttpClient(client =>
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Basic", credentials);
+                client.DefaultRequestHeaders.Accept.Add(
+                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            })
+            .AddStandardResilienceHandler();
 
         return services.AddSingleton<IFileContentProvider>(sp =>
-        {
-            var credentials = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes($"{email}/token:{apiToken}"));
-            var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("ZendeskArticles");
-            http.BaseAddress = new Uri($"https://{subdomain}.zendesk.com");
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Basic", credentials);
-            var api = RestService.For<IZendeskApi>(http);
-            return new ZendeskArticlesDataProvider(api, opts);
-        });
+            new ZendeskArticlesDataProvider(sp.GetRequiredService<IZendeskApi>(), opts));
     }
 }
