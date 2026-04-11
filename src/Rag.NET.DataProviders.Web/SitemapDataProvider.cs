@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
 
 namespace Rag.NET.DataProviders.Web;
 
@@ -57,7 +58,7 @@ public sealed class SitemapDataProvider : IFileContentProvider
                 var capturedLoc = loc;
 
                 yield return new FileEntry(
-                    Id: loc,
+                    Id: new EntryId(loc),
                     FileName: InferFileName(loc),
                     OpenContentAsync: async ct =>
                     {

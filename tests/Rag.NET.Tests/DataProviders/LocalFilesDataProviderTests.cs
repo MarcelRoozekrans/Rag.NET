@@ -53,7 +53,7 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("readme.md", entries[0].Id);
+        Assert.Equal("readme.md", entries[0].Id.Value);
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public sealed class LocalFilesDataProviderTests : IDisposable
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Path.GetRelativePath uses the platform separator — normalise for the assertion
-        var id = entries[0].Id.Replace('\\', '/');
+        var id = entries[0].Id.Value.Replace('\\', '/');
         Assert.Equal("docs/guide.md", id);
     }
 
@@ -161,6 +161,6 @@ public sealed class LocalFilesDataProviderTests : IDisposable
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(entries);
-        Assert.EndsWith("keep.txt", entries[0].Id, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("keep.txt", entries[0].Id.Value, StringComparison.OrdinalIgnoreCase);
     }
 }

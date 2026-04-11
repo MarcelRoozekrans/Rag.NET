@@ -39,7 +39,7 @@ public sealed class IngestFromProviderTests : IDisposable
         var provider = Substitute.For<IFileContentProvider>();
         provider.GetFilesAsync(Arg.Any<CancellationToken>())
             .Returns(entries.Select(e => new FileEntry(
-                Id: e.id,
+                Id: new EntryId(e.id),
                 FileName: e.fileName,
                 OpenContentAsync: _ => Task.FromResult<Stream>(
                     new MemoryStream(Encoding.UTF8.GetBytes(e.content))),
@@ -54,7 +54,7 @@ public sealed class IngestFromProviderTests : IDisposable
             ("id-1", "a.txt", "hello", null),
             ("id-2", "b.txt", "world", null));
 
-        var result = await _pipeline.IngestFromProviderAsync(provider, "prov",
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.Ingested);
@@ -70,7 +70,7 @@ public sealed class IngestFromProviderTests : IDisposable
         await hashStore.SetAsync(new ProviderId("prov"), new EntryId("id-1"), etag: "etag-abc", hash: "any", TestContext.Current.CancellationToken);
         var provider = MakeProvider(("id-1", "a.txt", "hello", "etag-abc"));
 
-        var result = await _pipeline.IngestFromProviderAsync(provider, "prov", hashStore: hashStore,
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"), hashStore: hashStore,
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.Ingested);
@@ -88,7 +88,7 @@ public sealed class IngestFromProviderTests : IDisposable
         await hashStore.SetAsync(new ProviderId("prov"), new EntryId("id-1"), etag: "old-etag", hash: helloHash, TestContext.Current.CancellationToken);
 
         var provider = MakeProvider(("id-1", "a.txt", "hello", "new-etag"));
-        var result = await _pipeline.IngestFromProviderAsync(provider, "prov", hashStore: hashStore,
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"), hashStore: hashStore,
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.Ingested);
@@ -103,7 +103,7 @@ public sealed class IngestFromProviderTests : IDisposable
         var hashStore = new SqliteContentHashStore(_dbPath);
         var provider = MakeProvider(("id-1", "a.txt", "hello", null));
 
-        await _pipeline.IngestFromProviderAsync(provider, "prov", hashStore: hashStore,
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"), hashStore: hashStore,
             cancellationToken: TestContext.Current.CancellationToken);
 
         var hash = await hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("id-1"), TestContext.Current.CancellationToken);
@@ -120,7 +120,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         var provider = MakeProvider(("new-id", "new.txt", "content", null));
         var result = await _pipeline.IngestFromProviderAsync(
-            provider, "prov", hashStore: hashStore, cleanupMode: CleanupMode.Full,
+            provider, new ProviderId("prov"), hashStore: hashStore, cleanupMode: CleanupMode.Full,
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, result.Deleted);
@@ -138,7 +138,7 @@ public sealed class IngestFromProviderTests : IDisposable
                 new IngestionResult { DocumentId = new DocumentId("id-1"), ChunksStored = 1 })));
 
         var provider = MakeProvider(("id-1", "report.pdf", "content", null));
-        await _pipeline.IngestFromProviderAsync(provider, "prov",
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Single(capturedMetadata);
@@ -172,7 +172,7 @@ public sealed class IngestFromProviderTests : IDisposable
             ("id-1", "fail.txt", "hello", null),
             ("id-2", "ok.txt",   "world", null));
 
-        var result = await _pipeline.IngestFromProviderAsync(provider, "prov",
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, result.Ingested);                                     // id-2 ingested
@@ -190,7 +190,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         var provider = MakeProvider(("new-id", "new.txt", "content", null));
 
-        var result = await _pipeline.IngestFromProviderAsync(provider, "prov",
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             hashStore: hashStore,
             cleanupMode: CleanupMode.None,
             cancellationToken: TestContext.Current.CancellationToken);
@@ -214,7 +214,7 @@ public sealed class IngestFromProviderTests : IDisposable
         // Provider returns null ETag — content unchanged (hash matches)
         var provider = MakeProvider(("id-1", "a.txt", "hello", null));
 
-        await _pipeline.IngestFromProviderAsync(provider, "prov",
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             hashStore: hashStore,
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -239,7 +239,7 @@ public sealed class IngestFromProviderTests : IDisposable
         _pipeline.DeleteAsync("id-old", Arg.Any<CancellationToken>())
             .Returns(Task.FromException(new InvalidOperationException("delete failed")));
 
-        var result = await _pipeline.IngestFromProviderAsync(provider, "prov",
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             hashStore: hashStore,
             cleanupMode: CleanupMode.Full,
             cancellationToken: ct);
@@ -262,7 +262,7 @@ public sealed class IngestFromProviderTests : IDisposable
             ("id-4", "d.txt", "bar", null));
 
         var options = new IngestionOptions { MaxDegreeOfParallelism = 4 };
-        var result = await _pipeline.IngestFromProviderAsync(provider, "prov",
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             options: options,
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -298,7 +298,7 @@ public sealed class IngestFromProviderTests : IDisposable
             ("id-2", "b.txt", "world", null),
             ("id-3", "c.txt", "foo", null));
 
-        var ingestTask = _pipeline.IngestFromProviderAsync(provider, "prov",
+        var ingestTask = _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             options: new IngestionOptions { MaxDegreeOfParallelism = 3 },
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -332,7 +332,7 @@ public sealed class IngestFromProviderTests : IDisposable
             .Returns(new[]
             {
                 new FileEntry(
-                    Id: "id-1",
+                    Id: new EntryId("id-1"),
                     FileName: "doc.txt",
                     OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
                     Metadata: new Dictionary<string, string>(StringComparer.Ordinal)
@@ -353,7 +353,7 @@ public sealed class IngestFromProviderTests : IDisposable
             }
         };
 
-        await _pipeline.IngestFromProviderAsync(provider, "prov",
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
             baseMetadata: baseMetadata,
             cancellationToken: TestContext.Current.CancellationToken);
 

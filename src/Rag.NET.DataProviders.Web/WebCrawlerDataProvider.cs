@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using AngleSharp.Html.Parser;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
 
 namespace Rag.NET.DataProviders.Web;
 
@@ -58,7 +59,7 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
             var capturedHtml = html;
 
             yield return new FileEntry(
-                Id: url,
+                Id: new EntryId(url),
                 FileName: InferFileName(url),
                 OpenContentAsync: _ =>
                 {

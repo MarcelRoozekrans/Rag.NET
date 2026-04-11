@@ -1,3 +1,5 @@
+using Rag.NET.Models;
+
 namespace Rag.NET.DataProviders;
 
 /// <summary>
@@ -13,7 +15,7 @@ namespace Rag.NET.DataProviders;
 /// </param>
 /// <param name="Metadata">Optional key/value pairs forwarded to <see cref="Rag.NET.Models.DocumentMetadata.Tags"/>.</param>
 public sealed record FileEntry(
-    string Id,
+    EntryId Id,
     string FileName,
     Func<CancellationToken, Task<Stream>> OpenContentAsync,
     string? ETag = null,

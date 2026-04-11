@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Rag.NET.Models;
 
 namespace Rag.NET.DataProviders;
 
@@ -35,7 +36,7 @@ public abstract class FileContentProviderBase : IFileContentProvider
             if (_options.Filter is not null && !_options.Filter(handle.Id)) continue;
 
             yield return new FileEntry(
-                Id:               handle.Id,
+                Id:               new EntryId(handle.Id),
                 FileName:         handle.FileName,
                 OpenContentAsync: handle.OpenContentAsync,
                 ETag:             handle.ETag);

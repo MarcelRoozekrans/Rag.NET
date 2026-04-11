@@ -43,7 +43,7 @@ public sealed class GitHubDataProviderTests
         Assert.NotEmpty(entries);
         Assert.All(entries, e =>
         {
-            Assert.NotEmpty(e.Id);
+            Assert.NotEmpty(e.Id.Value);
             Assert.NotEmpty(e.FileName);
         });
     }
@@ -70,7 +70,7 @@ public sealed class GitHubDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // The cassette includes a tree node (src/) — it must not appear in results.
-        Assert.DoesNotContain(entries, e => e.Id.EndsWith('/'));
+        Assert.DoesNotContain(entries, e => e.Id.Value.EndsWith('/'));
     }
 
     [Fact]

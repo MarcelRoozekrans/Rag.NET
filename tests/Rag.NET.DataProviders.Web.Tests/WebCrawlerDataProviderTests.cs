@@ -83,7 +83,7 @@ public sealed class WebCrawlerDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.DoesNotContain(entries, e => e.Id.StartsWith("https://other.com", StringComparison.Ordinal));
+        Assert.DoesNotContain(entries, e => e.Id.Value.StartsWith("https://other.com", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -166,6 +166,6 @@ public sealed class WebCrawlerDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count); // seed + /exists; /missing is skipped
-        Assert.DoesNotContain(entries, e => e.Id.Contains("missing", StringComparison.Ordinal));
+        Assert.DoesNotContain(entries, e => e.Id.Value.Contains("missing", StringComparison.Ordinal));
     }
 }

@@ -67,7 +67,7 @@ public sealed class SitemapDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.All(entries, e => Assert.NotEmpty(e.Id));
+        Assert.All(entries, e => Assert.NotEmpty(e.Id.Value));
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public sealed class SitemapDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var first = entries.First(e => e.Id.EndsWith("/page1", StringComparison.Ordinal));
+        var first = entries.First(e => e.Id.Value.EndsWith("/page1", StringComparison.Ordinal));
         await using var stream = await first.OpenContentAsync(TestContext.Current.CancellationToken);
         Assert.True(stream.Length > 0);
     }

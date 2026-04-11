@@ -56,10 +56,10 @@ public sealed class OneDriveDataProviderTests
 
         // Assert — folder entry must be excluded; both file entries must be present
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => e.Id.Contains("readme.md", StringComparison.Ordinal));
-        Assert.Contains(entries, e => e.Id.Contains("notes.txt", StringComparison.Ordinal));
-        Assert.Equal("readme.md", entries.Single(e => e.Id.Contains("readme.md", StringComparison.Ordinal)).FileName);
-        Assert.Equal("etag-1",    entries.Single(e => e.Id.Contains("readme.md", StringComparison.Ordinal)).ETag);
+        Assert.Contains(entries, e => e.Id.Value.Contains("readme.md", StringComparison.Ordinal));
+        Assert.Contains(entries, e => e.Id.Value.Contains("notes.txt", StringComparison.Ordinal));
+        Assert.Equal("readme.md", entries.Single(e => e.Id.Value.Contains("readme.md", StringComparison.Ordinal)).FileName);
+        Assert.Equal("etag-1",    entries.Single(e => e.Id.Value.Contains("readme.md", StringComparison.Ordinal)).ETag);
     }
 
     [Fact]

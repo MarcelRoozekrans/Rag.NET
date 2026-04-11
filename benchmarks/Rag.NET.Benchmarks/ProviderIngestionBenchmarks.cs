@@ -43,7 +43,7 @@ public class ProviderIngestionBenchmarks
         var warmStore = new SqliteContentHashStore(_warmDbPath);
         var seedProvider = new LocalFilesDataProvider(_tempDir);
         await foreach (var entry in seedProvider.GetFilesAsync().ConfigureAwait(false))
-            await warmStore.SetAsync("bench", entry.Id, entry.ETag, "placeholder-hash").ConfigureAwait(false);
+            await warmStore.SetAsync(new ProviderId("bench"), entry.Id, entry.ETag, "placeholder-hash").ConfigureAwait(false);
 
         _coldDbPath = Path.Combine(Path.GetTempPath(), $"ragnet-bench-cold-{Guid.NewGuid():N}.db");
     }
@@ -68,7 +68,7 @@ public class ProviderIngestionBenchmarks
     public async Task<int> IngestFromProviderAsync_NoStore()
     {
         var provider = new LocalFilesDataProvider(_tempDir);
-        var result = await _pipeline.IngestFromProviderAsync(provider, "bench").ConfigureAwait(false);
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("bench")).ConfigureAwait(false);
         return result.Ingested;
     }
 
@@ -78,7 +78,7 @@ public class ProviderIngestionBenchmarks
     {
         var provider = new LocalFilesDataProvider(_tempDir);
         var store = new SqliteContentHashStore(_warmDbPath);
-        var result = await _pipeline.IngestFromProviderAsync(provider, "bench", hashStore: store).ConfigureAwait(false);
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("bench"), hashStore: store).ConfigureAwait(false);
         return result.Skipped;
     }
 
@@ -88,7 +88,7 @@ public class ProviderIngestionBenchmarks
     {
         var provider = new LocalFilesDataProvider(_tempDir);
         var store = new SqliteContentHashStore(_coldDbPath);
-        var result = await _pipeline.IngestFromProviderAsync(provider, "bench", hashStore: store).ConfigureAwait(false);
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("bench"), hashStore: store).ConfigureAwait(false);
         return result.Ingested;
     }
 
@@ -97,7 +97,7 @@ public class ProviderIngestionBenchmarks
     public async Task<int> IngestFromProviderAsync_Sequential_WithDelay()
     {
         var provider = new LocalFilesDataProvider(_tempDir);
-        var result = await _pipeline5ms.IngestFromProviderAsync(provider, "bench",
+        var result = await _pipeline5ms.IngestFromProviderAsync(provider, new ProviderId("bench"),
             options: new IngestionOptions { MaxDegreeOfParallelism = 1 }).ConfigureAwait(false);
         return result.Ingested;
     }
@@ -107,7 +107,7 @@ public class ProviderIngestionBenchmarks
     public async Task<int> IngestFromProviderAsync_Parallel4_WithDelay()
     {
         var provider = new LocalFilesDataProvider(_tempDir);
-        var result = await _pipeline5ms.IngestFromProviderAsync(provider, "bench",
+        var result = await _pipeline5ms.IngestFromProviderAsync(provider, new ProviderId("bench"),
             options: new IngestionOptions { MaxDegreeOfParallelism = 4 }).ConfigureAwait(false);
         return result.Ingested;
     }

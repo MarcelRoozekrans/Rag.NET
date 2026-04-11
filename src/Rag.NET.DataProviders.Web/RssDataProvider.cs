@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
 
 namespace Rag.NET.DataProviders.Web;
 
@@ -42,7 +43,7 @@ public sealed class RssDataProvider : IFileContentProvider
                 var capturedLink = link;
 
                 yield return new FileEntry(
-                    Id: id,
+                    Id: new EntryId(id),
                     FileName: InferFileName(id),
                     OpenContentAsync: async ct =>
                     {
@@ -70,7 +71,7 @@ public sealed class RssDataProvider : IFileContentProvider
                 var capturedLink = link ?? id;
 
                 yield return new FileEntry(
-                    Id: id,
+                    Id: new EntryId(id),
                     FileName: InferFileName(id),
                     OpenContentAsync: async ct =>
                     {

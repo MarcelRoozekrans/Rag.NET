@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using Rag.NET.Models;
 
 namespace Rag.NET.DataProviders;
 
@@ -37,7 +38,7 @@ public sealed class LocalFilesDataProvider : IFileContentProvider
             var capturedPath = path;
 
             yield return new FileEntry(
-                Id: Path.GetRelativePath(_rootPath, path),
+                Id: new EntryId(Path.GetRelativePath(_rootPath, path)),
                 FileName: Path.GetFileName(path),
                 OpenContentAsync: _ => Task.FromResult<Stream>(File.OpenRead(capturedPath)),
                 ETag: etag);
