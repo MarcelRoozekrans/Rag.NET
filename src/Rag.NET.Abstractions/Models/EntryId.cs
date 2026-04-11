@@ -1,0 +1,40 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using ZeroAlloc.ValueObjects;
+
+namespace Rag.NET.Models;
+
+[JsonConverter(typeof(EntryIdJsonConverter))]
+[ValueObject]
+public sealed partial class EntryId
+{
+    private readonly string _value;
+
+    [EqualityMember]
+    public string Value => _value;
+
+    public EntryId(string value)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(value);
+        _value = value;
+    }
+
+    public override string ToString() => _value;
+
+    public static implicit operator string(EntryId id) => id._value;
+    public static explicit operator EntryId(string s) => new(s);
+
+    private sealed class EntryIdJsonConverter : JsonConverter<EntryId>
+    {
+        public override EntryId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            var value = reader.GetString();
+            if (string.IsNullOrEmpty(value))
+                throw new JsonException("EntryId cannot be null or empty.");
+            return new(value);
+        }
+
+        public override void Write(Utf8JsonWriter writer, EntryId value, JsonSerializerOptions options)
+            => writer.WriteStringValue(value._value);
+    }
+}
