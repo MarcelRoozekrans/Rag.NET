@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Rag.NET.DataProviders.Notion;
 
-internal sealed class NotionBlock
+public sealed class NotionBlock
 {
     [JsonPropertyName("type")]
     public string Type { get; init; } = string.Empty;

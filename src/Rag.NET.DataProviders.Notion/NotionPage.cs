@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Rag.NET.DataProviders.Notion;
 
-internal sealed class NotionPage
+public sealed class NotionPage
 {
     [JsonPropertyName("id")]
     public string Id { get; init; } = string.Empty;
@@ -11,5 +11,5 @@ internal sealed class NotionPage
     public string LastEditedTime { get; init; } = string.Empty;
 
     [JsonPropertyName("properties")]
-    public Dictionary<string, NotionProperty> Properties { get; init; } = [];
+    public IReadOnlyDictionary<string, NotionProperty> Properties { get; init; } = new Dictionary<string, NotionProperty>(StringComparer.Ordinal);
 }

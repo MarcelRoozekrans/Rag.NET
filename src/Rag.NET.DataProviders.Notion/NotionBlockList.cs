@@ -2,10 +2,10 @@ using System.Text.Json.Serialization;
 
 namespace Rag.NET.DataProviders.Notion;
 
-internal sealed class NotionBlockList
+public sealed class NotionBlockList
 {
     [JsonPropertyName("results")]
-    public List<NotionBlock> Results { get; init; } = [];
+    public IReadOnlyList<NotionBlock> Results { get; init; } = [];
 
     [JsonPropertyName("next_cursor")]
     public string? NextCursor { get; init; }

@@ -1,7 +1,7 @@
 using System.Net.Http.Headers;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using Rag.NET.DataProviders;
-using Refit;
 
 namespace Rag.NET.DataProviders.Notion;
 
@@ -26,15 +26,22 @@ public static class NotionDataProviderExtensions
         var opts = new NotionOptions();
         configure?.Invoke(opts);
 
-        services.AddDataProviderHttpClient("Notion");
+        services.AddINotionApi(options =>
+            {
+                options.BaseAddress = new Uri("https://api.notion.com");
+                options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
+            })
+            .ConfigureHttpClient(client =>
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", integrationToken);
+                client.DefaultRequestHeaders.Accept.Add(
+                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.Add("Notion-Version", "2022-06-28");
+            })
+            .AddStandardResilienceHandler();
 
         return services.AddSingleton<IFileContentProvider>(sp =>
-        {
-            var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("Notion");
-            http.BaseAddress = new Uri("https://api.notion.com");
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", integrationToken);
-            return new NotionDataProvider(RestService.For<INotionApi>(http), opts);
-        });
+            new NotionDataProvider(sp.GetRequiredService<INotionApi>(), opts));
     }
 }

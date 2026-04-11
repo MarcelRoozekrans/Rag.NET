@@ -1,19 +1,20 @@
-using Refit;
+using ZeroAlloc.Rest.Attributes;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Notion;
 
-[Headers("Accept: application/json", "Notion-Version: 2022-06-28")]
+[ZeroAllocRestClient]
 internal interface INotionApi
 {
     [Post("/v1/search")]
-    Task<NotionSearchResult> SearchAsync(
-        [Body] NotionSearchRequest request,
+    Task<Result<NotionSearchResult, ZeroAlloc.Rest.HttpError>> SearchAsync(
+        [Body] NotionSearchRequest body,
         CancellationToken cancellationToken = default);
 
     [Get("/v1/blocks/{blockId}/children")]
-    Task<NotionBlockList> GetBlockChildrenAsync(
+    Task<Result<NotionBlockList, ZeroAlloc.Rest.HttpError>> GetBlockChildrenAsync(
         string blockId,
-        [Query] int page_size = 100,
-        [Query] string? start_cursor = null,
+        [Query(Name = "page_size")] int page_size = 100,
+        [Query(Name = "start_cursor")] string? start_cursor = null,
         CancellationToken cancellationToken = default);
 }

@@ -2,20 +2,24 @@ using System.Net;
 using System.Text;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Notion;
-using Refit;
+using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Rest;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.Notion.Tests;
 
 public sealed class NotionDataProviderTests
 {
+    private static readonly IRestSerializer JsonSerializer = new SystemTextJsonSerializer();
+
     private static NotionDataProvider MakeProvider(
         Dictionary<string, string> responses,
         NotionOptions? options = null)
     {
         var handler = new FakeHandler(responses);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.notion.com") };
-        var api = RestService.For<INotionApi>(http);
+        var api = new NotionApiClient(http, JsonSerializer);
         return new NotionDataProvider(api, options ?? new NotionOptions());
     }
 
@@ -313,7 +317,7 @@ public sealed class NotionDataProviderTests
 
         var handler = new SearchPaginationHandler(searchPage1, searchPage2, blocksJson);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.notion.com") };
-        var api = RestService.For<INotionApi>(http);
+        var api = new NotionApiClient(http, JsonSerializer);
         var sut = new NotionDataProvider(api, new NotionOptions());
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
@@ -389,7 +393,7 @@ public sealed class NotionDataProviderTests
         // Use a handler that honours cancellation properly by checking the token.
         var handler = new CancellationAwareHandler();
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.notion.com") };
-        var api = RestService.For<INotionApi>(http);
+        var api = new NotionApiClient(http, JsonSerializer);
         var sut = new NotionDataProvider(api, new NotionOptions());
 
         using var cts = new CancellationTokenSource();
@@ -438,7 +442,7 @@ public sealed class NotionDataProviderTests
         // First call has no start_cursor, second call has start_cursor in URL
         var handler = new BlockPaginationHandler(searchJson, blocksPage1, blocksPage2);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.notion.com") };
-        var api = RestService.For<INotionApi>(http);
+        var api = new NotionApiClient(http, JsonSerializer);
         var sut = new NotionDataProvider(api, new NotionOptions());
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
@@ -448,6 +452,23 @@ public sealed class NotionDataProviderTests
         var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("Block1", content, StringComparison.Ordinal);
         Assert.Contains("Block2", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_SearchHttpFailure_PropagatesError()
+    {
+        var handler = new StatusCodeHandler(HttpStatusCode.InternalServerError);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.notion.com") };
+        var api = new NotionApiClient(http, JsonSerializer);
+        var sut = new NotionDataProvider(api, new NotionOptions());
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.True(results[0].IsFailure);
+        var error = Assert.IsType<RagError.HttpFailed>(results[0].Error);
+        Assert.Equal(HttpStatusCode.InternalServerError, error.StatusCode);
     }
 }
 
@@ -483,6 +504,16 @@ file sealed class CancellationAwareHandler : HttpMessageHandler
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
     }
+}
+
+/// <summary>
+/// Handler that always returns a fixed status code.
+/// </summary>
+file sealed class StatusCodeHandler(HttpStatusCode statusCode) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(new HttpResponseMessage(statusCode));
 }
 
 /// <summary>

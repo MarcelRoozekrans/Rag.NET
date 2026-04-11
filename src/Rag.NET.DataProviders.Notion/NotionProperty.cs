@@ -2,8 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace Rag.NET.DataProviders.Notion;
 
-internal sealed class NotionProperty
+public sealed class NotionProperty
 {
     [JsonPropertyName("title")]
-    public List<NotionRichText>? Title { get; init; }
+    public IReadOnlyList<NotionRichText>? Title { get; init; }
 }

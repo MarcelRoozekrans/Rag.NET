@@ -46,21 +46,25 @@ public sealed class NotionDataProvider : FileContentProviderBase
         bool stopPaging = false;
         do
         {
-            var filter = new NotionFilter("object", "page");
-
             var result = await _api.SearchAsync(
-                new NotionSearchRequest(filter, 100, cursor, sort),
+                body: new NotionSearchRequest(new NotionFilter("object", "page"), 100, cursor, sort),
                 cancellationToken).ConfigureAwait(false);
 
-            for (int i = 0; i < result.Results.Count; i++)
+            if (result.IsFailure)
+            {
+                yield return Result<FileHandle, RagError>.Failure(
+                    new RagError.HttpFailed(result.Error.StatusCode, result.Error.Message));
+                yield break;
+            }
+
+            var searchResult = result.Value;
+            for (int i = 0; i < searchResult.Results.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var page = result.Results[i];
+                var page = searchResult.Results[i];
 
                 // Delta: results are sorted descending by last_edited_time.
-                // Once we encounter a page that is not newer than DeltaToken, all
-                // subsequent pages in this and future batches will also be older —
-                // stop pagination entirely rather than continuing to fetch.
+                // Once we encounter a page that is not newer than DeltaToken, stop paging.
                 if (_options.DeltaToken is not null
                     && string.Compare(page.LastEditedTime, _options.DeltaToken,
                         StringComparison.Ordinal) <= 0)
@@ -69,37 +73,52 @@ public sealed class NotionDataProvider : FileContentProviderBase
                     break;
                 }
 
-                var blocks   = await FetchBlocksAsync(page.Id, cancellationToken).ConfigureAwait(false);
-                var title    = GetTitle(page);
-                var markdown = BlocksToMarkdown(title, blocks);
-
-                yield return Result<FileHandle, RagError>.Success(new FileHandle(
-                    Id:               page.Id,
-                    FileName:         $"{title}.md",
-                    ETag:             page.LastEditedTime,
-                    OpenContentAsync: _ => Task.FromResult<Stream>(
-                        new MemoryStream(Encoding.UTF8.GetBytes(markdown)))));
+                        var handle = await BuildHandleAsync(page, cancellationToken).ConfigureAwait(false);
+                if (handle.IsFailure) { yield return Result<FileHandle, RagError>.Failure(handle.Error); yield break; }
+                yield return Result<FileHandle, RagError>.Success(handle.Value);
             }
 
-            cursor = (!stopPaging && result.HasMore) ? result.NextCursor : null;
+            cursor = (!stopPaging && searchResult.HasMore) ? searchResult.NextCursor : null;
         }
         while (cursor is not null);
     }
 
-    private async Task<List<NotionBlock>> FetchBlocksAsync(
+    private async Task<Result<FileHandle, RagError>> BuildHandleAsync(
+        NotionPage page, CancellationToken cancellationToken)
+    {
+        var blocksResult = await FetchBlocksAsync(page.Id, cancellationToken).ConfigureAwait(false);
+        if (blocksResult.IsFailure)
+            return Result<FileHandle, RagError>.Failure(blocksResult.Error);
+
+        var title    = GetTitle(page);
+        var markdown = BlocksToMarkdown(title, blocksResult.Value);
+        return Result<FileHandle, RagError>.Success(new FileHandle(
+            Id:               page.Id,
+            FileName:         $"{title}.md",
+            ETag:             page.LastEditedTime,
+            OpenContentAsync: _ => Task.FromResult<Stream>(
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown)))));
+    }
+
+    private async Task<Result<IReadOnlyList<NotionBlock>, RagError>> FetchBlocksAsync(
         string pageId, CancellationToken cancellationToken)
     {
         var all = new List<NotionBlock>();
         string? cursor = null;
         do
         {
-            var page = await _api.GetBlockChildrenAsync(pageId, start_cursor: cursor,
+            var result = await _api.GetBlockChildrenAsync(pageId, start_cursor: cursor,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
-            all.AddRange(page.Results);
-            cursor = page.HasMore ? page.NextCursor : null;
+
+            if (result.IsFailure)
+                return Result<IReadOnlyList<NotionBlock>, RagError>.Failure(
+                    new RagError.HttpFailed(result.Error.StatusCode, result.Error.Message));
+
+            all.AddRange(result.Value.Results);
+            cursor = result.Value.HasMore ? result.Value.NextCursor : null;
         }
         while (cursor is not null);
-        return all;
+        return Result<IReadOnlyList<NotionBlock>, RagError>.Success(all);
     }
 
     private static string GetTitle(NotionPage page)
@@ -112,7 +131,7 @@ public sealed class NotionDataProvider : FileContentProviderBase
         return page.Id;
     }
 
-    private static string ConcatRichText(List<NotionRichText> richText)
+    private static string ConcatRichText(IReadOnlyList<NotionRichText> richText)
     {
         var sb = new StringBuilder();
         for (int i = 0; i < richText.Count; i++)
@@ -120,7 +139,7 @@ public sealed class NotionDataProvider : FileContentProviderBase
         return sb.ToString();
     }
 
-    private static string BlocksToMarkdown(string title, List<NotionBlock> blocks)
+    private static string BlocksToMarkdown(string title, IReadOnlyList<NotionBlock> blocks)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"# {title}");
