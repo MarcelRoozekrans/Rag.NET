@@ -2,13 +2,14 @@ using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
-using Refit;
 
 namespace Rag.NET.DataProviders.Bitbucket;
 
 /// <summary>Extension methods for registering <see cref="BitbucketDataProvider"/> with dependency injection.</summary>
 public static class BitbucketDataProviderExtensions
 {
+    private const string HttpClientName = "Bitbucket";
+
     /// <summary>
     /// Registers a <see cref="BitbucketDataProvider"/> as an <see cref="IFileContentProvider"/> singleton.
     /// </summary>
@@ -36,18 +37,35 @@ public static class BitbucketDataProviderExtensions
         var opts = new BitbucketOptions { Workspace = workspace, RepoSlug = repoSlug };
         configure?.Invoke(opts);
 
-        services.AddDataProviderHttpClient("Bitbucket");
+        var credentials = Convert.ToBase64String(
+            Encoding.UTF8.GetBytes($"{username}:{appPassword}"));
+
+        services.AddIBitbucketApi(options =>
+            {
+                options.BaseAddress = new Uri("https://api.bitbucket.org");
+                options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
+            })
+            .ConfigureHttpClient(client =>
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Basic", credentials);
+                client.DefaultRequestHeaders.Accept.Add(
+                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            })
+            .AddStandardResilienceHandler();
+
+        services.AddHttpClient(HttpClientName, client =>
+        {
+            client.BaseAddress = new Uri("https://api.bitbucket.org");
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Basic", credentials);
+        }).AddStandardResilienceHandler();
 
         return services.AddSingleton<IFileContentProvider>(sp =>
         {
-            var credentials = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes($"{username}:{appPassword}"));
-            var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("Bitbucket");
-            http.BaseAddress = new Uri("https://api.bitbucket.org/2.0/");
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Basic", credentials);
-            var api = RestService.For<IBitbucketApi>(http);
-            return new BitbucketDataProvider(api, opts);
+            var api = sp.GetRequiredService<IBitbucketApi>();
+            var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName);
+            return new BitbucketDataProvider(api, http, opts);
         });
     }
 }

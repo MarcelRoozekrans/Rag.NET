@@ -1,13 +1,17 @@
 using System.Net;
 using System.Text;
 using Rag.NET.DataProviders.Bitbucket;
-using Refit;
+using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Rest;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.Bitbucket.Tests;
 
 public sealed class BitbucketDataProviderTests
 {
+    private static readonly IRestSerializer JsonSerializer = new SystemTextJsonSerializer();
+
     private static BitbucketDataProvider MakeProvider(
         string sourceJson,
         BitbucketOptions? options = null,
@@ -15,9 +19,10 @@ public sealed class BitbucketDataProviderTests
     {
         var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
             { [urlKey] = sourceJson });
-        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org/2.0/") };
-        var api = RestService.For<IBitbucketApi>(http);
-        return new BitbucketDataProvider(api, options ?? new BitbucketOptions
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        var api = new BitbucketApiClient(http, JsonSerializer);
+        var rawHttp = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        return new BitbucketDataProvider(api, rawHttp, options ?? new BitbucketOptions
         {
             Workspace = "myteam",
             RepoSlug  = "myrepo"
@@ -34,9 +39,10 @@ public sealed class BitbucketDataProviderTests
         var handler = new FakeHandler(
             new Dictionary<string, string>(StringComparer.Ordinal) { [urlKey] = page1Json },
             page2Responses: new Dictionary<string, string>(StringComparer.Ordinal) { [urlKey] = page2Json });
-        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org/2.0/") };
-        var api = RestService.For<IBitbucketApi>(http);
-        return new BitbucketDataProvider(api, options ?? new BitbucketOptions
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        var api = new BitbucketApiClient(http, JsonSerializer);
+        var rawHttp = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        return new BitbucketDataProvider(api, rawHttp, options ?? new BitbucketOptions
         {
             Workspace = "myteam",
             RepoSlug  = "myrepo"
@@ -46,8 +52,23 @@ public sealed class BitbucketDataProviderTests
     [Fact]
     public void Constructor_NullApi_Throws()
     {
+        var http = new HttpClient { BaseAddress = new Uri("https://api.bitbucket.org") };
         Assert.Throws<ArgumentNullException>(() =>
-            new BitbucketDataProvider(null!, new BitbucketOptions
+            new BitbucketDataProvider(null!, http, new BitbucketOptions
+            {
+                Workspace = "myteam",
+                RepoSlug  = "myrepo"
+            }));
+    }
+
+    [Fact]
+    public void Constructor_NullHttpClient_Throws()
+    {
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal));
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        var api = new BitbucketApiClient(http, JsonSerializer);
+        Assert.Throws<ArgumentNullException>(() =>
+            new BitbucketDataProvider(api, null!, new BitbucketOptions
             {
                 Workspace = "myteam",
                 RepoSlug  = "myrepo"
@@ -346,9 +367,10 @@ public sealed class BitbucketDataProviderTests
         {
             ["hello.txt"] = fileContent
         });
-        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org/2.0/") };
-        var api = RestService.For<IBitbucketApi>(http);
-        var sut = new BitbucketDataProvider(api, new BitbucketOptions
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        var api = new BitbucketApiClient(http, JsonSerializer);
+        var rawHttp = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        var sut = new BitbucketDataProvider(api, rawHttp, new BitbucketOptions
         {
             Workspace = "myteam",
             RepoSlug  = "myrepo"
@@ -431,6 +453,53 @@ public sealed class BitbucketDataProviderTests
         _ = Assert.Single(results);
         Assert.Equal("a.cs", results[0].Value.FileName);
     }
+
+    [Fact]
+    public async Task GetFilesAsync_HttpFailure_PropagatesError()
+    {
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal),
+            statusCode: HttpStatusCode.Unauthorized);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        var api = new BitbucketApiClient(http, JsonSerializer);
+        var rawHttp = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        var sut = new BitbucketDataProvider(api, rawHttp, new BitbucketOptions
+        {
+            Workspace = "myteam",
+            RepoSlug  = "myrepo"
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.True(results[0].IsFailure);
+        var error = Assert.IsType<RagError.HttpFailed>(results[0].Error);
+        Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_DeltaHttpFailure_PropagatesError()
+    {
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal),
+            statusCode: HttpStatusCode.Forbidden);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        var api = new BitbucketApiClient(http, JsonSerializer);
+        var rawHttp = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org") };
+        var sut = new BitbucketDataProvider(api, rawHttp, new BitbucketOptions
+        {
+            Workspace             = "myteam",
+            RepoSlug              = "myrepo",
+            LastIngestedCommitHash = "abc"
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.True(results[0].IsFailure);
+        var error = Assert.IsType<RagError.HttpFailed>(results[0].Error);
+        Assert.Equal(HttpStatusCode.Forbidden, error.StatusCode);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -439,23 +508,27 @@ public sealed class BitbucketDataProviderTests
 
 /// <summary>
 /// Returns canned JSON responses keyed by URL substring, so tests never hit the network.
-/// Supports pagination via the <c>paginatedResponses</c> constructor overload and
-/// raw file content via the <c>rawContent</c> parameter.
+/// Supports pagination via the <c>paginatedResponses</c> constructor overload,
+/// raw file content via the <c>rawContent</c> parameter, and a fixed error
+/// <c>statusCode</c> for failure propagation tests.
 /// </summary>
 file sealed class FakeHandler : HttpMessageHandler
 {
     private readonly Dictionary<string, string> _responses;
     private readonly Dictionary<string, string>? _rawContent;
     private readonly Dictionary<string, string>? _page2Responses;
+    private readonly HttpStatusCode _statusCode;
 
     public FakeHandler(
         Dictionary<string, string> responses,
         Dictionary<string, string>? rawContent = null,
-        Dictionary<string, string>? page2Responses = null)
+        Dictionary<string, string>? page2Responses = null,
+        HttpStatusCode statusCode = HttpStatusCode.OK)
     {
         _responses = responses;
         _rawContent = rawContent;
         _page2Responses = page2Responses;
+        _statusCode = statusCode;
     }
 
     protected override Task<HttpResponseMessage> SendAsync(
@@ -488,6 +561,10 @@ file sealed class FakeHandler : HttpMessageHandler
                         "application/json")
                 });
         }
+
+        // Return fixed error status code when configured
+        if (_statusCode != HttpStatusCode.OK)
+            return Task.FromResult(new HttpResponseMessage(_statusCode));
 
         var key = _responses.Keys.FirstOrDefault(k => url.Contains(k,
             StringComparison.Ordinal));

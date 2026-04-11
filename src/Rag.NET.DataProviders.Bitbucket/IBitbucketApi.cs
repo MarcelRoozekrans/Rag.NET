@@ -1,35 +1,27 @@
-using Refit;
+using ZeroAlloc.Rest.Attributes;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Bitbucket;
 
-[Headers("Accept: application/json")]
+[ZeroAllocRestClient]
 internal interface IBitbucketApi
 {
-    [Get("/repositories/{workspace}/{repo}/src/{commit}/{path}")]
-    Task<BitbucketSourcePage> GetSourceAsync(
+    [Get("/2.0/repositories/{workspace}/{repo}/src/{commit}/{path}")]
+    Task<Result<BitbucketSourcePage, ZeroAlloc.Rest.HttpError>> GetSourceAsync(
         string workspace,
         string repo,
         string commit,
         string path,
-        [Query] int? pagelen = null,
-        [Query] string? page = null,
+        [Query(Name = "pagelen")] int? pagelen = null,
+        [Query(Name = "page")] string? page = null,
         CancellationToken cancellationToken = default);
 
-    [Get("/repositories/{workspace}/{repo}/src/{commit}/{path}")]
-    [Headers("Accept: application/octet-stream")]
-    Task<HttpResponseMessage> GetRawFileAsync(
-        string workspace,
-        string repo,
-        string commit,
-        string path,
-        CancellationToken cancellationToken = default);
-
-    [Get("/repositories/{workspace}/{repo}/diffstat/{spec}")]
-    Task<BitbucketDiffstatPage> GetDiffstatAsync(
+    [Get("/2.0/repositories/{workspace}/{repo}/diffstat/{spec}")]
+    Task<Result<BitbucketDiffstatPage, ZeroAlloc.Rest.HttpError>> GetDiffstatAsync(
         string workspace,
         string repo,
         string spec,
-        [Query] int? pagelen = null,
-        [Query] string? page = null,
+        [Query(Name = "pagelen")] int? pagelen = null,
+        [Query(Name = "page")] string? page = null,
         CancellationToken cancellationToken = default);
 }

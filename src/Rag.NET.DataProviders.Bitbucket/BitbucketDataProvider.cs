@@ -16,13 +16,16 @@ namespace Rag.NET.DataProviders.Bitbucket;
 public sealed class BitbucketDataProvider : FileContentProviderBase
 {
     private readonly IBitbucketApi _api;
+    private readonly HttpClient _http;
     private readonly BitbucketOptions _options;
 
-    internal BitbucketDataProvider(IBitbucketApi api, BitbucketOptions options)
+    internal BitbucketDataProvider(IBitbucketApi api, HttpClient http, BitbucketOptions options)
         : base(options)
     {
         ArgumentNullException.ThrowIfNull(api);
+        ArgumentNullException.ThrowIfNull(http);
         _api = api;
+        _http = http;
         _options = options;
     }
 
@@ -38,7 +41,7 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
         string? pageToken = null;
         do
         {
-            var page = await _api.GetSourceAsync(
+            var result = await _api.GetSourceAsync(
                 _options.Workspace,
                 _options.RepoSlug,
                 _options.Ref,
@@ -47,6 +50,14 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
                 page: pageToken,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
+            if (result.IsFailure)
+            {
+                yield return Result<FileHandle, RagError>.Failure(
+                    new RagError.HttpFailed(result.Error.StatusCode, result.Error.Message));
+                yield break;
+            }
+
+            var page = result.Value;
             for (int i = 0; i < page.Values.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -62,16 +73,8 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
                     Id: capturedPath,
                     FileName: Path.GetFileName(capturedPath),
                     ETag: etag,
-                    OpenContentAsync: async ct =>
-                    {
-                        var response = await _api.GetRawFileAsync(
-                            _options.Workspace,
-                            _options.RepoSlug,
-                            _options.Ref,
-                            capturedPath,
-                            cancellationToken: ct).ConfigureAwait(false);
-                        return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                    }));
+                    OpenContentAsync: ct => GetRawFileStreamAsync(
+                        _options.Workspace, _options.RepoSlug, _options.Ref, capturedPath, ct)));
             }
 
             pageToken = ExtractPageToken(page.Next);
@@ -86,7 +89,7 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
         string? pageToken = null;
         do
         {
-            var page = await _api.GetDiffstatAsync(
+            var result = await _api.GetDiffstatAsync(
                 _options.Workspace,
                 _options.RepoSlug,
                 spec,
@@ -94,6 +97,14 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
                 page: pageToken,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
+            if (result.IsFailure)
+            {
+                yield return Result<FileHandle, RagError>.Failure(
+                    new RagError.HttpFailed(result.Error.StatusCode, result.Error.Message));
+                yield break;
+            }
+
+            var page = result.Value;
             for (int i = 0; i < page.Values.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -112,21 +123,23 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
                     Id: capturedPath,
                     FileName: Path.GetFileName(capturedPath),
                     ETag: null,
-                    OpenContentAsync: async ct =>
-                    {
-                        var response = await _api.GetRawFileAsync(
-                            _options.Workspace,
-                            _options.RepoSlug,
-                            _options.Ref,
-                            capturedPath,
-                            cancellationToken: ct).ConfigureAwait(false);
-                        return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                    }));
+                    OpenContentAsync: ct => GetRawFileStreamAsync(
+                        _options.Workspace, _options.RepoSlug, _options.Ref, capturedPath, ct)));
             }
 
             pageToken = ExtractPageToken(page.Next);
         }
         while (pageToken is not null);
+    }
+
+    private async Task<Stream> GetRawFileStreamAsync(
+        string workspace, string repo, string @ref, string path, CancellationToken ct)
+    {
+        var url = $"2.0/repositories/{workspace}/{repo}/src/{@ref}/{path}";
+        var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
