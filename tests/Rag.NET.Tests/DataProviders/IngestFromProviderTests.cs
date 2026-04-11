@@ -67,7 +67,7 @@ public sealed class IngestFromProviderTests : IDisposable
     public async Task IngestFromProviderAsync_ETagMatch_SkipsFile()
     {
         var hashStore = new SqliteContentHashStore(_dbPath);
-        await hashStore.SetAsync("prov", "id-1", etag: "etag-abc", hash: "any", TestContext.Current.CancellationToken);
+        await hashStore.SetAsync(new ProviderId("prov"), new EntryId("id-1"), etag: "etag-abc", hash: "any", TestContext.Current.CancellationToken);
         var provider = MakeProvider(("id-1", "a.txt", "hello", "etag-abc"));
 
         var result = await _pipeline.IngestFromProviderAsync(provider, "prov", hashStore: hashStore,
@@ -85,7 +85,7 @@ public sealed class IngestFromProviderTests : IDisposable
         var hashStore = new SqliteContentHashStore(_dbPath);
         // SHA-256 of "hello" in hex
         var helloHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("hello"u8.ToArray()));
-        await hashStore.SetAsync("prov", "id-1", etag: "old-etag", hash: helloHash, TestContext.Current.CancellationToken);
+        await hashStore.SetAsync(new ProviderId("prov"), new EntryId("id-1"), etag: "old-etag", hash: helloHash, TestContext.Current.CancellationToken);
 
         var provider = MakeProvider(("id-1", "a.txt", "hello", "new-etag"));
         var result = await _pipeline.IngestFromProviderAsync(provider, "prov", hashStore: hashStore,
@@ -94,7 +94,7 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Equal(0, result.Ingested);
         Assert.Equal(1, result.Skipped);
         // ETag should be refreshed
-        Assert.Equal("new-etag", await hashStore.GetETagAsync("prov", "id-1", TestContext.Current.CancellationToken));
+        Assert.Equal("new-etag", await hashStore.GetETagAsync(new ProviderId("prov"), new EntryId("id-1"), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public sealed class IngestFromProviderTests : IDisposable
         await _pipeline.IngestFromProviderAsync(provider, "prov", hashStore: hashStore,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        var hash = await hashStore.GetHashAsync("prov", "id-1", TestContext.Current.CancellationToken);
+        var hash = await hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("id-1"), TestContext.Current.CancellationToken);
         Assert.NotNull(hash);
         _ = await _pipeline.Received(1).IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
@@ -116,7 +116,7 @@ public sealed class IngestFromProviderTests : IDisposable
     public async Task IngestFromProviderAsync_CleanupModeFull_DeletesDisappearedDocuments()
     {
         var hashStore = new SqliteContentHashStore(_dbPath);
-        await hashStore.SetAsync("prov", "old-id", null, "old-hash", TestContext.Current.CancellationToken);
+        await hashStore.SetAsync(new ProviderId("prov"), new EntryId("old-id"), null, "old-hash", TestContext.Current.CancellationToken);
 
         var provider = MakeProvider(("new-id", "new.txt", "content", null));
         var result = await _pipeline.IngestFromProviderAsync(
@@ -125,7 +125,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         Assert.Equal(1, result.Deleted);
         await _pipeline.Received(1).DeleteAsync("old-id", Arg.Any<CancellationToken>());
-        Assert.Null(await hashStore.GetHashAsync("prov", "old-id", TestContext.Current.CancellationToken));
+        Assert.Null(await hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("old-id"), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -186,7 +186,7 @@ public sealed class IngestFromProviderTests : IDisposable
     {
         var hashStore = new SqliteContentHashStore(_dbPath);
         // "old-id" exists in the store but will not appear from the provider
-        await hashStore.SetAsync("prov", "old-id", null, "old-hash", TestContext.Current.CancellationToken);
+        await hashStore.SetAsync(new ProviderId("prov"), new EntryId("old-id"), null, "old-hash", TestContext.Current.CancellationToken);
 
         var provider = MakeProvider(("new-id", "new.txt", "content", null));
 
@@ -198,7 +198,7 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Equal(0, result.Deleted);
         await _pipeline.DidNotReceive().DeleteAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
         // "old-id" must still be in the store
-        Assert.NotNull(await hashStore.GetHashAsync("prov", "old-id", TestContext.Current.CancellationToken));
+        Assert.NotNull(await hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("old-id"), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -208,8 +208,8 @@ public sealed class IngestFromProviderTests : IDisposable
 
         // Pre-compute SHA-256 of "hello" — same as what the provider will return
         var helloHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData("hello"u8.ToArray()));
-        hashStore.GetETagAsync("prov", "id-1", Arg.Any<CancellationToken>()).Returns((string?)null);
-        hashStore.GetHashAsync("prov", "id-1", Arg.Any<CancellationToken>()).Returns(helloHash);
+        hashStore.GetETagAsync(new ProviderId("prov"), new EntryId("id-1"), Arg.Any<CancellationToken>()).Returns((string?)null);
+        hashStore.GetHashAsync(new ProviderId("prov"), new EntryId("id-1"), Arg.Any<CancellationToken>()).Returns(helloHash);
 
         // Provider returns null ETag — content unchanged (hash matches)
         var provider = MakeProvider(("id-1", "a.txt", "hello", null));
@@ -220,7 +220,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         // SetAsync must NOT be called — there is no new ETag to store and hash already matches
         await hashStore.DidNotReceive().SetAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+            Arg.Any<ProviderId>(), Arg.Any<EntryId>(), Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -230,7 +230,7 @@ public sealed class IngestFromProviderTests : IDisposable
         var hashStore = new SqliteContentHashStore(_dbPath);
 
         // Pre-register "id-old" as a known file from a previous run
-        await hashStore.SetAsync("prov", "id-old", etag: null, hash: "oldhash", ct);
+        await hashStore.SetAsync(new ProviderId("prov"), new EntryId("id-old"), etag: null, hash: "oldhash", ct);
 
         // Provider returns only "id-new" — "id-old" has disappeared and should be cleaned up
         var provider = MakeProvider(("id-new", "b.txt", "world", null));

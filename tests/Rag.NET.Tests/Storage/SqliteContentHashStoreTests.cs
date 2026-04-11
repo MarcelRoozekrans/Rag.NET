@@ -1,3 +1,4 @@
+using Rag.NET.Models;
 using Rag.NET.Storage;
 using Xunit;
 
@@ -16,8 +17,8 @@ public sealed class SqliteContentHashStoreTests : IDisposable
     public async Task SetAsync_ThenGetHash_ReturnsStoredHash()
     {
         var sut = new SqliteContentHashStore(_dbPath);
-        await sut.SetAsync("prov-1", "entry-1", etag: null, hash: "abc123", TestContext.Current.CancellationToken);
-        var result = await sut.GetHashAsync("prov-1", "entry-1", TestContext.Current.CancellationToken);
+        await sut.SetAsync(new ProviderId("prov-1"), new EntryId("entry-1"), etag: null, hash: "abc123", TestContext.Current.CancellationToken);
+        var result = await sut.GetHashAsync(new ProviderId("prov-1"), new EntryId("entry-1"), TestContext.Current.CancellationToken);
         Assert.Equal("abc123", result);
     }
 
@@ -25,8 +26,8 @@ public sealed class SqliteContentHashStoreTests : IDisposable
     public async Task SetAsync_WithETag_GetETagReturnsIt()
     {
         var sut = new SqliteContentHashStore(_dbPath);
-        await sut.SetAsync("prov-1", "entry-1", etag: "etag-xyz", hash: "abc123", TestContext.Current.CancellationToken);
-        var result = await sut.GetETagAsync("prov-1", "entry-1", TestContext.Current.CancellationToken);
+        await sut.SetAsync(new ProviderId("prov-1"), new EntryId("entry-1"), etag: "etag-xyz", hash: "abc123", TestContext.Current.CancellationToken);
+        var result = await sut.GetETagAsync(new ProviderId("prov-1"), new EntryId("entry-1"), TestContext.Current.CancellationToken);
         Assert.Equal("etag-xyz", result);
     }
 
@@ -34,7 +35,7 @@ public sealed class SqliteContentHashStoreTests : IDisposable
     public async Task GetHashAsync_UnknownEntry_ReturnsNull()
     {
         var sut = new SqliteContentHashStore(_dbPath);
-        var result = await sut.GetHashAsync("prov-1", "missing", TestContext.Current.CancellationToken);
+        var result = await sut.GetHashAsync(new ProviderId("prov-1"), new EntryId("missing"), TestContext.Current.CancellationToken);
         Assert.Null(result);
     }
 
@@ -42,7 +43,7 @@ public sealed class SqliteContentHashStoreTests : IDisposable
     public async Task GetETagAsync_UnknownEntry_ReturnsNull()
     {
         var sut = new SqliteContentHashStore(_dbPath);
-        var result = await sut.GetETagAsync("prov-1", "missing", TestContext.Current.CancellationToken);
+        var result = await sut.GetETagAsync(new ProviderId("prov-1"), new EntryId("missing"), TestContext.Current.CancellationToken);
         Assert.Null(result);
     }
 
@@ -50,25 +51,25 @@ public sealed class SqliteContentHashStoreTests : IDisposable
     public async Task GetAllIdsAsync_ReturnsScopedIds()
     {
         var sut = new SqliteContentHashStore(_dbPath);
-        await sut.SetAsync("prov-1", "a", null, "h1", TestContext.Current.CancellationToken);
-        await sut.SetAsync("prov-1", "b", null, "h2", TestContext.Current.CancellationToken);
-        await sut.SetAsync("prov-2", "c", null, "h3", TestContext.Current.CancellationToken);
+        await sut.SetAsync(new ProviderId("prov-1"), new EntryId("a"), null, "h1", TestContext.Current.CancellationToken);
+        await sut.SetAsync(new ProviderId("prov-1"), new EntryId("b"), null, "h2", TestContext.Current.CancellationToken);
+        await sut.SetAsync(new ProviderId("prov-2"), new EntryId("c"), null, "h3", TestContext.Current.CancellationToken);
 
-        var ids = await sut.GetAllIdsAsync("prov-1", TestContext.Current.CancellationToken);
+        var ids = await sut.GetAllIdsAsync(new ProviderId("prov-1"), TestContext.Current.CancellationToken);
 
         Assert.Equal(2, ids.Count);
-        Assert.Contains("a", ids);
-        Assert.Contains("b", ids);
-        Assert.DoesNotContain("c", ids);
+        Assert.Contains(new EntryId("a"), ids);
+        Assert.Contains(new EntryId("b"), ids);
+        Assert.DoesNotContain(new EntryId("c"), ids);
     }
 
     [Fact]
     public async Task RemoveAsync_EntryGone_GetHashReturnsNull()
     {
         var sut = new SqliteContentHashStore(_dbPath);
-        await sut.SetAsync("prov-1", "entry-1", null, "abc123", TestContext.Current.CancellationToken);
-        await sut.RemoveAsync("prov-1", "entry-1", TestContext.Current.CancellationToken);
-        var result = await sut.GetHashAsync("prov-1", "entry-1", TestContext.Current.CancellationToken);
+        await sut.SetAsync(new ProviderId("prov-1"), new EntryId("entry-1"), null, "abc123", TestContext.Current.CancellationToken);
+        await sut.RemoveAsync(new ProviderId("prov-1"), new EntryId("entry-1"), TestContext.Current.CancellationToken);
+        var result = await sut.GetHashAsync(new ProviderId("prov-1"), new EntryId("entry-1"), TestContext.Current.CancellationToken);
         Assert.Null(result);
     }
 
@@ -76,9 +77,9 @@ public sealed class SqliteContentHashStoreTests : IDisposable
     public async Task SetAsync_UpdatesExistingRow()
     {
         var sut = new SqliteContentHashStore(_dbPath);
-        await sut.SetAsync("prov-1", "entry-1", null, "hash-v1", TestContext.Current.CancellationToken);
-        await sut.SetAsync("prov-1", "entry-1", null, "hash-v2", TestContext.Current.CancellationToken);
-        var result = await sut.GetHashAsync("prov-1", "entry-1", TestContext.Current.CancellationToken);
+        await sut.SetAsync(new ProviderId("prov-1"), new EntryId("entry-1"), null, "hash-v1", TestContext.Current.CancellationToken);
+        await sut.SetAsync(new ProviderId("prov-1"), new EntryId("entry-1"), null, "hash-v2", TestContext.Current.CancellationToken);
+        var result = await sut.GetHashAsync(new ProviderId("prov-1"), new EntryId("entry-1"), TestContext.Current.CancellationToken);
         Assert.Equal("hash-v2", result);
     }
 
@@ -86,12 +87,12 @@ public sealed class SqliteContentHashStoreTests : IDisposable
     public async Task SurvivesRestart_DataPersistedToSqlite()
     {
         var sut1 = new SqliteContentHashStore(_dbPath);
-        await sut1.SetAsync("prov-1", "entry-1", "etag-1", "hash-1", TestContext.Current.CancellationToken);
+        await sut1.SetAsync(new ProviderId("prov-1"), new EntryId("entry-1"), "etag-1", "hash-1", TestContext.Current.CancellationToken);
 
         // Simulate restart — new instance, same db file
         var sut2 = new SqliteContentHashStore(_dbPath);
-        Assert.Equal("hash-1", await sut2.GetHashAsync("prov-1", "entry-1", TestContext.Current.CancellationToken));
-        Assert.Equal("etag-1", await sut2.GetETagAsync("prov-1", "entry-1", TestContext.Current.CancellationToken));
+        Assert.Equal("hash-1", await sut2.GetHashAsync(new ProviderId("prov-1"), new EntryId("entry-1"), TestContext.Current.CancellationToken));
+        Assert.Equal("etag-1", await sut2.GetETagAsync(new ProviderId("prov-1"), new EntryId("entry-1"), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -100,11 +101,11 @@ public sealed class SqliteContentHashStoreTests : IDisposable
         var sut = new SqliteContentHashStore(_dbPath);
 
         // Same entry ID, two different providers, two different hashes
-        await sut.SetAsync("prov-1", "shared-entry", null, "hash-from-prov1", TestContext.Current.CancellationToken);
-        await sut.SetAsync("prov-2", "shared-entry", null, "hash-from-prov2", TestContext.Current.CancellationToken);
+        await sut.SetAsync(new ProviderId("prov-1"), new EntryId("shared-entry"), null, "hash-from-prov1", TestContext.Current.CancellationToken);
+        await sut.SetAsync(new ProviderId("prov-2"), new EntryId("shared-entry"), null, "hash-from-prov2", TestContext.Current.CancellationToken);
 
-        var hash1 = await sut.GetHashAsync("prov-1", "shared-entry", TestContext.Current.CancellationToken);
-        var hash2 = await sut.GetHashAsync("prov-2", "shared-entry", TestContext.Current.CancellationToken);
+        var hash1 = await sut.GetHashAsync(new ProviderId("prov-1"), new EntryId("shared-entry"), TestContext.Current.CancellationToken);
+        var hash2 = await sut.GetHashAsync(new ProviderId("prov-2"), new EntryId("shared-entry"), TestContext.Current.CancellationToken);
 
         Assert.Equal("hash-from-prov1", hash1);
         Assert.Equal("hash-from-prov2", hash2);

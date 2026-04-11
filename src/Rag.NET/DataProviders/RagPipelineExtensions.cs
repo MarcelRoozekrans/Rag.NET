@@ -34,9 +34,9 @@ public static class RagPipelineExtensions
         var deleted = 0;
         var errors = new ConcurrentBag<string>();
 
-        IReadOnlySet<string> knownIds = hashStore is not null && cleanupMode == CleanupMode.Full
-            ? await hashStore.GetAllIdsAsync(providerId, cancellationToken).ConfigureAwait(false)
-            : (IReadOnlySet<string>)new HashSet<string>(StringComparer.Ordinal);
+        IReadOnlySet<EntryId> knownIds = hashStore is not null && cleanupMode == CleanupMode.Full
+            ? await hashStore.GetAllIdsAsync(new ProviderId(providerId), cancellationToken).ConfigureAwait(false)
+            : (IReadOnlySet<EntryId>)new HashSet<EntryId>();
 
         var seenIds = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
 
@@ -87,7 +87,7 @@ public static class RagPipelineExtensions
         {
             if (hashStore is not null && entry.ETag is not null)
             {
-                var storedETag = await hashStore.GetETagAsync(providerId, entry.Id, cancellationToken).ConfigureAwait(false);
+                var storedETag = await hashStore.GetETagAsync(new ProviderId(providerId), new EntryId(entry.Id), cancellationToken).ConfigureAwait(false);
                 if (string.Equals(entry.ETag, storedETag, StringComparison.Ordinal))
                     return EntryOutcome.Skipped;
             }
@@ -130,12 +130,12 @@ public static class RagPipelineExtensions
         await rawStream.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
         var hash = ComputeHash(buffer.GetBuffer(), (int)buffer.Length);
 
-        var storedHash = await hashStore.GetHashAsync(providerId, entry.Id, cancellationToken).ConfigureAwait(false);
+        var storedHash = await hashStore.GetHashAsync(new ProviderId(providerId), new EntryId(entry.Id), cancellationToken).ConfigureAwait(false);
         if (string.Equals(hash, storedHash, StringComparison.Ordinal))
         {
             // Only refresh ETag when there's a non-null ETag to store
             if (entry.ETag is not null)
-                await hashStore.SetAsync(providerId, entry.Id, entry.ETag, hash, cancellationToken).ConfigureAwait(false);
+                await hashStore.SetAsync(new ProviderId(providerId), new EntryId(entry.Id), entry.ETag, hash, cancellationToken).ConfigureAwait(false);
             return EntryOutcome.Skipped;
         }
 
@@ -144,7 +144,7 @@ public static class RagPipelineExtensions
         var ingestResult = await pipeline.IngestAsync(buffer, metadata, options, progress, cancellationToken).ConfigureAwait(false);
         if (!ingestResult.IsSuccess)
             throw new InvalidOperationException($"Ingestion failed: {ingestResult.Error}");
-        await hashStore.SetAsync(providerId, entry.Id, entry.ETag, hash, cancellationToken).ConfigureAwait(false);
+        await hashStore.SetAsync(new ProviderId(providerId), new EntryId(entry.Id), entry.ETag, hash, cancellationToken).ConfigureAwait(false);
         return EntryOutcome.Ingested;
     }
 
@@ -152,7 +152,7 @@ public static class RagPipelineExtensions
         IRagPipeline pipeline,
         string providerId,
         IContentHashStore hashStore,
-        IReadOnlySet<string> knownIds,
+        IReadOnlySet<EntryId> knownIds,
         ConcurrentDictionary<string, byte> seenIds,
         ConcurrentBag<string> errors,
         CancellationToken cancellationToken)
@@ -160,12 +160,12 @@ public static class RagPipelineExtensions
         var deleted = 0;
         foreach (var id in knownIds)
         {
-            if (seenIds.ContainsKey(id)) continue;
+            if (seenIds.ContainsKey(id.Value)) continue;
 
             try
             {
-                await pipeline.DeleteAsync(id, cancellationToken).ConfigureAwait(false);
-                await hashStore.RemoveAsync(providerId, id, cancellationToken).ConfigureAwait(false);
+                await pipeline.DeleteAsync(id.Value, cancellationToken).ConfigureAwait(false);
+                await hashStore.RemoveAsync(new ProviderId(providerId), id, cancellationToken).ConfigureAwait(false);
                 deleted++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
