@@ -1,23 +1,24 @@
-using Refit;
+using ZeroAlloc.Rest.Attributes;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Confluence;
 
-[Headers("Accept: application/json")]
+[ZeroAllocRestClient]
 internal interface IConfluenceApi
 {
     [Get("/wiki/rest/api/content")]
-    Task<ConfluencePageList> GetPagesAsync(
-        [Query("spaceKey")] string? spaceKey,
+    Task<Result<ConfluencePageList, ZeroAlloc.Rest.HttpError>> GetPagesAsync(
+        [Query(Name = "spaceKey")] string? spaceKey,
         [Query] int limit,
         [Query] string? cursor,
-        [Query("expand")] string expand = "body.storage,version",
+        [Query(Name = "expand")] string expand = "body.storage,version",
         CancellationToken cancellationToken = default);
 
     [Get("/wiki/rest/api/content/search")]
-    Task<ConfluencePageList> SearchPagesAsync(
+    Task<Result<ConfluencePageList, ZeroAlloc.Rest.HttpError>> SearchPagesAsync(
         [Query] string cql,
         [Query] int limit,
         [Query] string? cursor,
-        [Query("expand")] string expand = "body.storage,version",
+        [Query(Name = "expand")] string expand = "body.storage,version",
         CancellationToken cancellationToken = default);
 }

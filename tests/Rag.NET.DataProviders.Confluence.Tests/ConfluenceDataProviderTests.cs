@@ -2,13 +2,16 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders.Confluence;
-using Refit;
 using Xunit;
+using ZeroAlloc.Rest;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.Confluence.Tests;
 
 public sealed class ConfluenceDataProviderTests
 {
+    private static readonly IRestSerializer JsonSerializer = new SystemTextJsonSerializer();
+
     private static ConfluenceDataProvider MakeProvider(
         string responseJson,
         ConfluenceOptions? options = null,
@@ -17,7 +20,7 @@ public sealed class ConfluenceDataProviderTests
         var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
             { [urlKey] = responseJson });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IConfluenceApi>(http);
+        var api = new ConfluenceApiClient(http, JsonSerializer);
         return new ConfluenceDataProvider(api, options ?? new ConfluenceOptions
         {
             BaseUrl = "https://test.atlassian.net",
@@ -131,7 +134,7 @@ public sealed class ConfluenceDataProviderTests
             """;
         var handler = new FakeSequentialHandler(page1Json, page2Json);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IConfluenceApi>(http);
+        var api = new ConfluenceApiClient(http, JsonSerializer);
         var sut = new ConfluenceDataProvider(api, new ConfluenceOptions
         {
             BaseUrl = "https://test.atlassian.net",
@@ -172,7 +175,7 @@ public sealed class ConfluenceDataProviderTests
     {
         var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal));
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IConfluenceApi>(http);
+        var api = new ConfluenceApiClient(http, JsonSerializer);
 
         Assert.Throws<ArgumentException>(() =>
             new ConfluenceDataProvider(api, new ConfluenceOptions
@@ -188,7 +191,7 @@ public sealed class ConfluenceDataProviderTests
     {
         var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal));
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IConfluenceApi>(http);
+        var api = new ConfluenceApiClient(http, JsonSerializer);
 
         Assert.Throws<ArgumentException>(() =>
             new ConfluenceDataProvider(api, new ConfluenceOptions
@@ -212,7 +215,7 @@ public sealed class ConfluenceDataProviderTests
             """;
         var handler = new FakeStaleDeltaHandler(fullJson);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IConfluenceApi>(http);
+        var api = new ConfluenceApiClient(http, JsonSerializer);
         var sut = new ConfluenceDataProvider(api, new ConfluenceOptions
         {
             BaseUrl    = "https://test.atlassian.net",
@@ -265,7 +268,7 @@ public sealed class ConfluenceDataProviderTests
             """;
         var handler = new FakeSequentialHandler(page1Json, page2Json);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IConfluenceApi>(http);
+        var api = new ConfluenceApiClient(http, JsonSerializer);
         var sut = new ConfluenceDataProvider(api, new ConfluenceOptions
         {
             BaseUrl = "https://test.atlassian.net",
@@ -295,7 +298,7 @@ public sealed class ConfluenceDataProviderTests
             """;
         var handler = new FakeCapturingHandler(json);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IConfluenceApi>(http);
+        var api = new ConfluenceApiClient(http, JsonSerializer);
         var sut = new ConfluenceDataProvider(api, new ConfluenceOptions
         {
             BaseUrl    = "https://test.atlassian.net",
@@ -338,7 +341,7 @@ public sealed class ConfluenceDataProviderTests
             """;
         var handler = new FakeSequentialHandler(page1Json, page2Json);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IConfluenceApi>(http);
+        var api = new ConfluenceApiClient(http, JsonSerializer);
         var sut = new ConfluenceDataProvider(api, new ConfluenceOptions
         {
             BaseUrl = "https://test.atlassian.net",

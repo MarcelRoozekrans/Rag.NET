@@ -1,8 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using Rag.NET.DataProviders;
-using Refit;
 
 namespace Rag.NET.DataProviders.Confluence;
 
@@ -33,18 +33,19 @@ public static class ConfluenceDataProviderExtensions
         var opts = new ConfluenceOptions { BaseUrl = baseUrl, Email = email };
         configure?.Invoke(opts);
 
-        services.AddDataProviderHttpClient("Confluence");
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{email}:{apiToken}"));
+
+        services.AddIConfluenceApi(options =>
+            {
+                options.BaseAddress = new Uri(baseUrl);
+                options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
+            })
+            .ConfigureHttpClient(client =>
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Basic", credentials))
+            .AddStandardResilienceHandler();
 
         return services.AddSingleton<IFileContentProvider>(sp =>
-        {
-            var credentials = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes($"{email}:{apiToken}"));
-            var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("Confluence");
-            http.BaseAddress = new Uri(baseUrl);
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Basic", credentials);
-            var api = RestService.For<IConfluenceApi>(http);
-            return new ConfluenceDataProvider(api, opts);
-        });
+            new ConfluenceDataProvider(sp.GetRequiredService<IConfluenceApi>(), opts));
     }
 }

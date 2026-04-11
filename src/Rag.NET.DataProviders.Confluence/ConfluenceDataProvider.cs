@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Rag.NET.DataProviders;
 using Rag.NET.Models;
-using Refit;
 using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Confluence;
@@ -61,10 +60,18 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
         string? cursor = null;
         do
         {
-            var page = await _api.GetPagesAsync(
+            var result = await _api.GetPagesAsync(
                 _options.SpaceKey, limit: 50, cursor: cursor,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
+            if (result.IsFailure)
+            {
+                yield return Result<FileHandle, RagError>.Failure(
+                    new RagError.HttpFailed(result.Error.StatusCode, result.Error.Message));
+                yield break;
+            }
+
+            var page = result.Value;
             for (int i = 0; i < page.Results.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -88,33 +95,29 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
             ? $"space=\"{_options.SpaceKey}\" AND lastModified>\"{_options.DeltaToken}\""
             : $"lastModified>\"{_options.DeltaToken}\"";
 
-        // Attempt the first page before entering the yield-loop so we can catch API errors
-        // before any items have been emitted. C# does not allow yield inside catch blocks,
-        // so we use a flag to switch to full traversal after the try/catch.
-        ConfluencePageList? firstPage = null;
-        bool staleDeltaToken = false;
-        try
-        {
-            firstPage = await _api.SearchPagesAsync(
-                cql, limit: 50, cursor: null,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-        catch (ApiException ex)
-            when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
-        {
-            // Stale or invalid token — signal a fall back to full traversal.
-            staleDeltaToken = true;
-        }
+        var firstResult = await _api.SearchPagesAsync(
+            cql, limit: 50, cursor: null,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        if (staleDeltaToken)
+        // Stale delta token — fall back to full traversal.
+        if (firstResult.IsFailure &&
+            firstResult.Error.StatusCode == System.Net.HttpStatusCode.BadRequest)
         {
             await foreach (var h in GetFullHandlesAsync(cancellationToken).ConfigureAwait(false))
                 yield return h;
             yield break;
         }
 
+        if (firstResult.IsFailure)
+        {
+            yield return Result<FileHandle, RagError>.Failure(
+                new RagError.HttpFailed(firstResult.Error.StatusCode, firstResult.Error.Message));
+            yield break;
+        }
+
         // Emit results from the first (already-fetched) page and then continue paging.
-        string? cursor = ExtractCursor(firstPage!.Links.Next);
+        var firstPage = firstResult.Value;
+        string? cursor = ExtractCursor(firstPage.Links.Next);
         for (int i = 0; i < firstPage.Results.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -123,10 +126,18 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
 
         while (cursor is not null)
         {
-            var page = await _api.SearchPagesAsync(
+            var result = await _api.SearchPagesAsync(
                 cql, limit: 50, cursor: cursor,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
+            if (result.IsFailure)
+            {
+                yield return Result<FileHandle, RagError>.Failure(
+                    new RagError.HttpFailed(result.Error.StatusCode, result.Error.Message));
+                yield break;
+            }
+
+            var page = result.Value;
             for (int i = 0; i < page.Results.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
