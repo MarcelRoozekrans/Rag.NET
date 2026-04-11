@@ -57,4 +57,23 @@ public class FaithfulnessEvaluatorTests
         Assert.Equal(0.0, score);
         await client.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully()
+    {
+        // LLM wraps JSON in a markdown fence — common real-world response
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "```json\n[\"a claim\"]\n```")));
+
+        var evaluator = new FaithfulnessEvaluator(client);
+        var sample = new EvaluationSample("Q?", "Answer.", "Ref.", ["Context."]);
+
+        // Malformed JSON (markdown fence) → JsonException → claims = [] → score = 1.0
+        var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1.0, score, precision: 2);
+        // Only 1 LLM call (claims extraction) — no verification calls because claims = []
+        await client.Received(1).GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
 }

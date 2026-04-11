@@ -69,4 +69,21 @@ public class ContextRecallEvaluatorTests
         Assert.Equal(0.0, score, precision: 2);
         await client.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task ScoreAsync_MalformedStatementsJson_ReturnsOneGracefully()
+    {
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "not valid json at all")));
+
+        var evaluator = new ContextRecallEvaluator(client);
+        var sample = new EvaluationSample("Q?", "A.", "Ref.", ["Chunk."]);
+
+        // Malformed JSON → JsonException → statements = [] → trivially recalled → 1.0
+        var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1.0, score, precision: 2);
+        await client.Received(1).GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
 }
