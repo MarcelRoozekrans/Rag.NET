@@ -35,4 +35,18 @@ public class RagErrorTests
         RagError error = new RagError.NonSeekableStream();
         Assert.IsType<RagError.NonSeekableStream>(error);
     }
+
+    [Fact]
+    public void RagError_HttpFailed_CanBeConstructedAndPatternMatched()
+    {
+        RagError error = new RagError.HttpFailed(System.Net.HttpStatusCode.NotFound, "Not Found");
+
+        var message = error switch
+        {
+            RagError.HttpFailed { StatusCode: System.Net.HttpStatusCode.NotFound } e => $"HTTP {(int)e.StatusCode}",
+            _ => "other",
+        };
+
+        Assert.Equal("HTTP 404", message);
+    }
 }

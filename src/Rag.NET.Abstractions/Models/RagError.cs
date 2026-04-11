@@ -17,4 +17,9 @@ public abstract record RagError
 
     /// <summary>The ingestion stream is not readable.</summary>
     public sealed record NonSeekableStream() : RagError;
+
+    /// <summary>An HTTP call to an external data provider failed.</summary>
+    /// <param name="StatusCode">The HTTP status code returned by the server.</param>
+    /// <param name="Content">The response body, if any.</param>
+    public sealed record HttpFailed(System.Net.HttpStatusCode StatusCode, string? Content) : RagError;
 }
