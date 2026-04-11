@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.VectorStores.Qdrant\Rag.NET.VectorStores.Qdrant.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.VectorStores.AzureAISearch\Rag.NET.VectorStores.AzureAISearch.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Security\Rag.NET.Security.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Evaluation\Rag.NET.Evaluation.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
