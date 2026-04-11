@@ -40,62 +40,97 @@ public sealed class SlackDataProvider : FileContentProviderBase
     private async IAsyncEnumerable<Result<FileHandle, RagError>> GetHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var channels = await GetChannelsAsync(cancellationToken).ConfigureAwait(false);
+        var (channels, channelError) = await GetChannelsAsync(cancellationToken).ConfigureAwait(false);
+        if (channelError is not null)
+        {
+            yield return Result<FileHandle, RagError>.Failure(channelError);
+            yield break;
+        }
 
-        for (int ci = 0; ci < channels.Count; ci++)
+        for (int ci = 0; ci < channels!.Count; ci++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var channel = channels[ci];
 
-            var messages = await FetchMessagesAsync(channel.Id, cancellationToken)
+            var (messages, messageError) = await FetchMessagesAsync(channel.Id, cancellationToken)
                 .ConfigureAwait(false);
-
-            // Group messages by UTC calendar day
-            var byDay = new Dictionary<DateTime, List<SlackMessage>>();
-            for (int mi = 0; mi < messages.Count; mi++)
+            if (messageError is not null)
             {
-                var msg  = messages[mi];
-                var date = DateTimeOffset
-                    .FromUnixTimeMilliseconds(
-                        (long)(double.Parse(msg.Ts, CultureInfo.InvariantCulture) * 1000))
-                    .UtcDateTime.Date;
-                if (!byDay.TryGetValue(date, out var list))
-                {
-                    list       = [];
-                    byDay[date] = list;
-                }
-                list.Add(msg);
+                yield return Result<FileHandle, RagError>.Failure(messageError);
+                yield break;
             }
 
-            foreach (var kvp in byDay)
+            await foreach (var handle in EmitDayHandlesAsync(
+                channel, messages!, cancellationToken).ConfigureAwait(false))
             {
-                var dateStr = kvp.Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-                var dayMsgs = kvp.Value;
-
-                // ETag = latest ts in the batch
-                string latestTs = dayMsgs[0].Ts;
-                for (int k = 1; k < dayMsgs.Count; k++)
-                    if (string.CompareOrdinal(dayMsgs[k].Ts, latestTs) > 0)
-                        latestTs = dayMsgs[k].Ts;
-
-                var markdown = await BuildDayMarkdownAsync(
-                    channel.Id, channel.Name, dateStr, dayMsgs, cancellationToken)
-                    .ConfigureAwait(false);
-
-                yield return Result<FileHandle, RagError>.Success(new FileHandle(
-                    Id:               $"{channel.Id}/{dateStr}",
-                    FileName:         $"{channel.Name}-{dateStr}.md",
-                    ETag:             latestTs,
-                    OpenContentAsync: _ => Task.FromResult<Stream>(
-                        new MemoryStream(Encoding.UTF8.GetBytes(markdown)))));
+                yield return handle;
+                if (handle.IsFailure) yield break;
             }
         }
     }
 
-    private async Task<List<SlackChannel>> GetChannelsAsync(CancellationToken ct)
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> EmitDayHandlesAsync(
+        SlackChannel channel,
+        IList<SlackMessage> messages,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var byDay = GroupByDay(messages);
+
+        foreach (var kvp in byDay)
+        {
+            var dateStr = kvp.Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            var dayMsgs = kvp.Value;
+
+            string latestTs = dayMsgs[0].Ts;
+            for (int k = 1; k < dayMsgs.Count; k++)
+                if (string.CompareOrdinal(dayMsgs[k].Ts, latestTs) > 0)
+                    latestTs = dayMsgs[k].Ts;
+
+            var (markdown, markdownError) = await BuildDayMarkdownAsync(
+                channel.Id, channel.Name, dateStr, dayMsgs, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (markdownError is not null)
+            {
+                yield return Result<FileHandle, RagError>.Failure(markdownError);
+                yield break;
+            }
+
+            var md = markdown!;
+            yield return Result<FileHandle, RagError>.Success(new FileHandle(
+                Id:               $"{channel.Id}/{dateStr}",
+                FileName:         $"{channel.Name}-{dateStr}.md",
+                ETag:             latestTs,
+                OpenContentAsync: _ => Task.FromResult<Stream>(
+                    new MemoryStream(Encoding.UTF8.GetBytes(md)))));
+        }
+    }
+
+    private static Dictionary<DateTime, List<SlackMessage>> GroupByDay(IList<SlackMessage> messages)
+    {
+        var byDay = new Dictionary<DateTime, List<SlackMessage>>();
+        for (int mi = 0; mi < messages.Count; mi++)
+        {
+            var msg  = messages[mi];
+            var date = DateTimeOffset
+                .FromUnixTimeMilliseconds(
+                    (long)(double.Parse(msg.Ts, CultureInfo.InvariantCulture) * 1000))
+                .UtcDateTime.Date;
+            if (!byDay.TryGetValue(date, out var list))
+            {
+                list        = [];
+                byDay[date] = list;
+            }
+            list.Add(msg);
+        }
+        return byDay;
+    }
+
+    private async Task<(List<SlackChannel>? Channels, RagError? Error)> GetChannelsAsync(
+        CancellationToken ct)
     {
         if (_options.ChannelId is not null)
-            return [new SlackChannel(_options.ChannelId, _options.ChannelId)];
+            return ([new SlackChannel(_options.ChannelId, _options.ChannelId)], null);
 
         var channels = new List<SlackChannel>();
         string? cursor = null;
@@ -103,19 +138,23 @@ public sealed class SlackDataProvider : FileContentProviderBase
         {
             var result = await _api.ListChannelsAsync(cursor: cursor, cancellationToken: ct)
                 .ConfigureAwait(false);
-            if (!result.Ok)
+            if (result.IsFailure)
+                return (null, new RagError.HttpFailed(result.Error.StatusCode, result.Error.Message ?? string.Empty));
+            var data = result.Value;
+            if (!data.Ok)
                 throw new InvalidOperationException(
                     string.Create(CultureInfo.InvariantCulture,
-                        $"Slack API error: {result.Error}"));
-            channels.AddRange(result.Channels);
-            cursor = string.IsNullOrEmpty(result.ResponseMetadata?.NextCursor)
-                ? null : result.ResponseMetadata.NextCursor;
+                        $"Slack API error: {data.Error}"));
+            channels.AddRange(data.Channels);
+            cursor = string.IsNullOrEmpty(data.ResponseMetadata?.NextCursor)
+                ? null : data.ResponseMetadata.NextCursor;
         }
         while (cursor is not null);
-        return channels;
+        return (channels, null);
     }
 
-    private async Task<List<SlackMessage>> FetchMessagesAsync(string channelId, CancellationToken ct)
+    private async Task<(List<SlackMessage>? Messages, RagError? Error)> FetchMessagesAsync(
+        string channelId, CancellationToken ct)
     {
         var messages = new List<SlackMessage>();
         string? cursor = null;
@@ -126,20 +165,23 @@ public sealed class SlackDataProvider : FileContentProviderBase
             var result = await _api.GetHistoryAsync(
                 channelId, _options.MessageLimit, oldest, cursor, ct)
                 .ConfigureAwait(false);
-            if (!result.Ok)
+            if (result.IsFailure)
+                return (null, new RagError.HttpFailed(result.Error.StatusCode, result.Error.Message ?? string.Empty));
+            var data = result.Value;
+            if (!data.Ok)
                 throw new InvalidOperationException(
                     string.Create(CultureInfo.InvariantCulture,
-                        $"Slack API error: {result.Error}"));
-            messages.AddRange(result.Messages);
-            cursor = string.IsNullOrEmpty(result.ResponseMetadata?.NextCursor)
-                ? null : result.ResponseMetadata.NextCursor;
+                        $"Slack API error: {data.Error}"));
+            messages.AddRange(data.Messages);
+            cursor = string.IsNullOrEmpty(data.ResponseMetadata?.NextCursor)
+                ? null : data.ResponseMetadata.NextCursor;
         }
         while (cursor is not null);
 
-        return messages;
+        return (messages, null);
     }
 
-    private async Task<string> BuildDayMarkdownAsync(
+    private async Task<(string? Markdown, RagError? Error)> BuildDayMarkdownAsync(
         string channelId, string channelName, string date,
         List<SlackMessage> messages, CancellationToken ct)
     {
@@ -166,8 +208,12 @@ public sealed class SlackDataProvider : FileContentProviderBase
 
             if (msg.ReplyCount is > 0 && msg.ThreadTs is not null)
             {
-                var replies = await _api.GetRepliesAsync(channelId, msg.ThreadTs, ct)
+                var repliesResult = await _api.GetRepliesAsync(channelId, msg.ThreadTs, ct)
                     .ConfigureAwait(false);
+                if (repliesResult.IsFailure)
+                    return (null, new RagError.HttpFailed(repliesResult.Error.StatusCode, repliesResult.Error.Message ?? string.Empty));
+
+                var replies = repliesResult.Value;
                 if (!replies.Ok)
                     throw new InvalidOperationException(
                         string.Create(CultureInfo.InvariantCulture,
@@ -188,16 +234,22 @@ public sealed class SlackDataProvider : FileContentProviderBase
             }
         }
 
-        return sb.ToString().TrimEnd();
+        return (sb.ToString().TrimEnd(), null);
     }
 
     private async Task<string> GetUserNameAsync(string userId, CancellationToken ct)
     {
         if (_userCache.TryGetValue(userId, out var name)) return name;
-        var info = await _api.GetUserAsync(userId, ct).ConfigureAwait(false);
-        // ok: false for user lookups is treated as a soft-fail; fall back to userId rather
-        // than throwing — an unresolvable display name should not abort document processing.
-        name = info.User?.RealName ?? userId;
+        var result = await _api.GetUserAsync(userId, ct).ConfigureAwait(false);
+        // HTTP failures and ok: false for user lookups are treated as a soft-fail;
+        // fall back to userId rather than throwing — an unresolvable display name
+        // should not abort document processing.
+        if (result.IsFailure)
+        {
+            _userCache[userId] = userId;
+            return userId;
+        }
+        name = result.Value.User?.RealName ?? userId;
         _userCache[userId] = name;
         return name;
     }

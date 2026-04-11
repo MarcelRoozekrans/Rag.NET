@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Rag.NET.DataProviders.Slack;
 
-internal sealed class SlackMessage
+public sealed class SlackMessage
 {
     [JsonPropertyName("ts")]
     public string Ts { get; init; } = string.Empty;

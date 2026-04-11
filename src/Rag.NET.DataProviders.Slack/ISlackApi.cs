@@ -1,18 +1,19 @@
-using Refit;
+using ZeroAlloc.Rest.Attributes;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Slack;
 
-[Headers("Accept: application/json")]
-internal interface ISlackApi
+[ZeroAllocRestClient]
+public interface ISlackApi
 {
     [Get("/api/conversations.list")]
-    Task<SlackChannelList> ListChannelsAsync(
+    Task<Result<SlackChannelList, ZeroAlloc.Rest.HttpError>> ListChannelsAsync(
         [Query] int limit = 200,
         [Query] string? cursor = null,
         CancellationToken cancellationToken = default);
 
     [Get("/api/conversations.history")]
-    Task<SlackMessageList> GetHistoryAsync(
+    Task<Result<SlackMessageList, ZeroAlloc.Rest.HttpError>> GetHistoryAsync(
         [Query] string channel,
         [Query] int limit = 200,
         [Query] string? oldest = null,
@@ -20,13 +21,13 @@ internal interface ISlackApi
         CancellationToken cancellationToken = default);
 
     [Get("/api/conversations.replies")]
-    Task<SlackMessageList> GetRepliesAsync(
+    Task<Result<SlackMessageList, ZeroAlloc.Rest.HttpError>> GetRepliesAsync(
         [Query] string channel,
         [Query] string ts,
         CancellationToken cancellationToken = default);
 
     [Get("/api/users.info")]
-    Task<SlackUserInfo> GetUserAsync(
+    Task<Result<SlackUserInfo, ZeroAlloc.Rest.HttpError>> GetUserAsync(
         [Query] string user,
         CancellationToken cancellationToken = default);
 }

@@ -1,8 +1,10 @@
+using System.Net;
 using System.Text.Json;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Slack;
 using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Rest;
 using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Slack.Tests;
@@ -309,6 +311,41 @@ public sealed class SlackDataProviderTests
             await sut.GetFilesAsync(cts.Token)
                 .ToListAsync(cts.Token));
     }
+
+    [Fact]
+    public async Task GetFilesAsync_HttpErrorOnChannelList_PropagatesAsRagErrorHttpFailed()
+    {
+        var api = new FakeSlackApiHttpErrorOnChannels(
+            statusCode: HttpStatusCode.Unauthorized,
+            errorMessage: "Unauthorized");
+        var sut = MakeProvider(api);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(results);
+        Assert.True(single.IsFailure);
+        var httpFailed = Assert.IsType<RagError.HttpFailed>(single.Error);
+        Assert.Equal(HttpStatusCode.Unauthorized, httpFailed.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_HttpErrorOnHistory_PropagatesAsRagErrorHttpFailed()
+    {
+        var api = new FakeSlackApiHttpErrorOnHistory(
+            channels: [new SlackChannel("C001", "general")],
+            statusCode: HttpStatusCode.Forbidden,
+            errorMessage: "Forbidden");
+        var sut = MakeProvider(api);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(results);
+        Assert.True(single.IsFailure);
+        var httpFailed = Assert.IsType<RagError.HttpFailed>(single.Error);
+        Assert.Equal(HttpStatusCode.Forbidden, httpFailed.StatusCode);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -321,57 +358,57 @@ file sealed class FakeSlackApiWithReplies(
     List<SlackMessage> replies,
     Dictionary<string, string> userNames) : ISlackApi
 {
-    public Task<SlackChannelList> ListChannelsAsync(
+    public Task<Result<SlackChannelList, HttpError>> ListChannelsAsync(
         int limit = 200,
         string? cursor = null,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackChannelList
+        return Task.FromResult(Result<SlackChannelList, HttpError>.Success(new SlackChannelList
         {
             Ok       = true,
             Channels = channels,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackMessageList> GetHistoryAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetHistoryAsync(
         string channel,
         int limit = 200,
         string? oldest = null,
         string? cursor = null,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = messages,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackMessageList> GetRepliesAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetRepliesAsync(
         string channel,
         string ts,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = replies,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackUserInfo> GetUserAsync(
+    public Task<Result<SlackUserInfo, HttpError>> GetUserAsync(
         string user,
         CancellationToken cancellationToken = default)
     {
         var name = userNames.TryGetValue(user, out var n) ? n : user;
-        return Task.FromResult(new SlackUserInfo
+        return Task.FromResult(Result<SlackUserInfo, HttpError>.Success(new SlackUserInfo
         {
             Ok   = true,
             User = new SlackUser { RealName = name }
-        });
+        }));
     }
 }
 
@@ -382,20 +419,20 @@ file sealed class FakeSlackApi(
 {
     public string? LastOldest { get; private set; }
 
-    public Task<SlackChannelList> ListChannelsAsync(
+    public Task<Result<SlackChannelList, HttpError>> ListChannelsAsync(
         int limit = 200,
         string? cursor = null,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackChannelList
+        return Task.FromResult(Result<SlackChannelList, HttpError>.Success(new SlackChannelList
         {
             Ok       = true,
             Channels = channels,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackMessageList> GetHistoryAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetHistoryAsync(
         string channel,
         int limit = 200,
         string? oldest = null,
@@ -403,36 +440,36 @@ file sealed class FakeSlackApi(
         CancellationToken cancellationToken = default)
     {
         LastOldest = oldest;
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = messages,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackMessageList> GetRepliesAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetRepliesAsync(
         string channel,
         string ts,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = [],
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackUserInfo> GetUserAsync(
+    public Task<Result<SlackUserInfo, HttpError>> GetUserAsync(
         string user,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackUserInfo
+        return Task.FromResult(Result<SlackUserInfo, HttpError>.Success(new SlackUserInfo
         {
             Ok   = true,
             User = realName is not null ? new SlackUser { RealName = realName } : null
-        });
+        }));
     }
 }
 
@@ -442,28 +479,28 @@ file sealed class FakeSlackApi(
 
 file sealed class FakeSlackApiErrorOnChannels(string error) : ISlackApi
 {
-    public Task<SlackChannelList> ListChannelsAsync(
+    public Task<Result<SlackChannelList, HttpError>> ListChannelsAsync(
         int limit = 200,
         string? cursor = null,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackChannelList
+        return Task.FromResult(Result<SlackChannelList, HttpError>.Success(new SlackChannelList
         {
             Ok    = false,
             Error = error
-        });
+        }));
     }
 
-    public Task<SlackMessageList> GetHistoryAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetHistoryAsync(
         string channel, int limit = 200, string? oldest = null,
         string? cursor = null, CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("Should not be called");
 
-    public Task<SlackMessageList> GetRepliesAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetRepliesAsync(
         string channel, string ts, CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("Should not be called");
 
-    public Task<SlackUserInfo> GetUserAsync(
+    public Task<Result<SlackUserInfo, HttpError>> GetUserAsync(
         string user, CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("Should not be called");
 }
@@ -474,43 +511,43 @@ file sealed class FakeSlackApiErrorOnChannels(string error) : ISlackApi
 
 file sealed class FakeSlackApiThrowsOnChannelList : ISlackApi
 {
-    public Task<SlackChannelList> ListChannelsAsync(
+    public Task<Result<SlackChannelList, HttpError>> ListChannelsAsync(
         int limit = 200,
         string? cursor = null,
         CancellationToken cancellationToken = default)
         => throw new InvalidOperationException("ListChannelsAsync should not be called when ChannelId is set");
 
-    public Task<SlackMessageList> GetHistoryAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetHistoryAsync(
         string channel, int limit = 200, string? oldest = null,
         string? cursor = null, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = [],
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackMessageList> GetRepliesAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetRepliesAsync(
         string channel, string ts, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = [],
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackUserInfo> GetUserAsync(
+    public Task<Result<SlackUserInfo, HttpError>> GetUserAsync(
         string user, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackUserInfo
+        return Task.FromResult(Result<SlackUserInfo, HttpError>.Success(new SlackUserInfo
         {
             Ok   = true,
             User = new SlackUser { RealName = user }
-        });
+        }));
     }
 }
 
@@ -523,51 +560,51 @@ file sealed class FakeSlackApiPerChannel(
     Dictionary<string, List<SlackMessage>> messagesByChannel,
     string? realName = null) : ISlackApi
 {
-    public Task<SlackChannelList> ListChannelsAsync(
+    public Task<Result<SlackChannelList, HttpError>> ListChannelsAsync(
         int limit = 200,
         string? cursor = null,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackChannelList
+        return Task.FromResult(Result<SlackChannelList, HttpError>.Success(new SlackChannelList
         {
             Ok       = true,
             Channels = channels,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackMessageList> GetHistoryAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetHistoryAsync(
         string channel, int limit = 200, string? oldest = null,
         string? cursor = null, CancellationToken cancellationToken = default)
     {
         var msgs = messagesByChannel.TryGetValue(channel, out var m) ? m : [];
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = msgs,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackMessageList> GetRepliesAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetRepliesAsync(
         string channel, string ts, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = [],
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackUserInfo> GetUserAsync(
+    public Task<Result<SlackUserInfo, HttpError>> GetUserAsync(
         string user, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackUserInfo
+        return Task.FromResult(Result<SlackUserInfo, HttpError>.Success(new SlackUserInfo
         {
             Ok   = true,
             User = realName is not null ? new SlackUser { RealName = realName } : null
-        });
+        }));
     }
 }
 
@@ -579,50 +616,122 @@ file sealed class FakeSlackApiUserFails(
     List<SlackChannel> channels,
     List<SlackMessage> messages) : ISlackApi
 {
-    public Task<SlackChannelList> ListChannelsAsync(
+    public Task<Result<SlackChannelList, HttpError>> ListChannelsAsync(
         int limit = 200,
         string? cursor = null,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackChannelList
+        return Task.FromResult(Result<SlackChannelList, HttpError>.Success(new SlackChannelList
         {
             Ok       = true,
             Channels = channels,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackMessageList> GetHistoryAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetHistoryAsync(
         string channel, int limit = 200, string? oldest = null,
         string? cursor = null, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = messages,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackMessageList> GetRepliesAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetRepliesAsync(
         string channel, string ts, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = [],
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackUserInfo> GetUserAsync(
+    public Task<Result<SlackUserInfo, HttpError>> GetUserAsync(
         string user, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(new SlackUserInfo
+        return Task.FromResult(Result<SlackUserInfo, HttpError>.Success(new SlackUserInfo
         {
             Ok    = false,
             Error = "user_not_found",
             User  = null
-        });
+        }));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Fake that returns HTTP error from ListChannelsAsync
+// ---------------------------------------------------------------------------
+
+file sealed class FakeSlackApiHttpErrorOnChannels(
+    HttpStatusCode statusCode,
+    string errorMessage) : ISlackApi
+{
+    public Task<Result<SlackChannelList, HttpError>> ListChannelsAsync(
+        int limit = 200,
+        string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(
+            Result<SlackChannelList, HttpError>.Failure(
+                new HttpError(statusCode, System.Collections.ObjectModel.ReadOnlyDictionary<string, IReadOnlyList<string>>.Empty, errorMessage)));
+    }
+
+    public Task<Result<SlackMessageList, HttpError>> GetHistoryAsync(
+        string channel, int limit = 200, string? oldest = null,
+        string? cursor = null, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("Should not be called");
+
+    public Task<Result<SlackMessageList, HttpError>> GetRepliesAsync(
+        string channel, string ts, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("Should not be called");
+
+    public Task<Result<SlackUserInfo, HttpError>> GetUserAsync(
+        string user, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("Should not be called");
+}
+
+// ---------------------------------------------------------------------------
+// Fake that returns HTTP error from GetHistoryAsync
+// ---------------------------------------------------------------------------
+
+file sealed class FakeSlackApiHttpErrorOnHistory(
+    List<SlackChannel> channels,
+    HttpStatusCode statusCode,
+    string errorMessage) : ISlackApi
+{
+    public Task<Result<SlackChannelList, HttpError>> ListChannelsAsync(
+        int limit = 200,
+        string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(Result<SlackChannelList, HttpError>.Success(new SlackChannelList
+        {
+            Ok       = true,
+            Channels = channels,
+            ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
+        }));
+    }
+
+    public Task<Result<SlackMessageList, HttpError>> GetHistoryAsync(
+        string channel, int limit = 200, string? oldest = null,
+        string? cursor = null, CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(
+            Result<SlackMessageList, HttpError>.Failure(
+                new HttpError(statusCode, System.Collections.ObjectModel.ReadOnlyDictionary<string, IReadOnlyList<string>>.Empty, errorMessage)));
+    }
+
+    public Task<Result<SlackMessageList, HttpError>> GetRepliesAsync(
+        string channel, string ts, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("Should not be called");
+
+    public Task<Result<SlackUserInfo, HttpError>> GetUserAsync(
+        string user, CancellationToken cancellationToken = default)
+        => throw new InvalidOperationException("Should not be called");
 }

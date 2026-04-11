@@ -1,7 +1,6 @@
 using System.Net.Http.Headers;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
-using Refit;
 
 namespace Rag.NET.DataProviders.Slack;
 
@@ -26,15 +25,21 @@ public static class SlackDataProviderExtensions
         var opts = new SlackOptions();
         configure?.Invoke(opts);
 
-        services.AddDataProviderHttpClient("Slack");
+        services.AddISlackApi(options =>
+            {
+                options.BaseAddress = new Uri("https://slack.com");
+                options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
+            })
+            .ConfigureHttpClient(client =>
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", botToken);
+                client.DefaultRequestHeaders.Accept.Add(
+                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            })
+            .AddStandardResilienceHandler();
 
         return services.AddSingleton<IFileContentProvider>(sp =>
-        {
-            var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("Slack");
-            http.BaseAddress = new Uri("https://slack.com");
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", botToken);
-            return new SlackDataProvider(RestService.For<ISlackApi>(http), opts);
-        });
+            new SlackDataProvider(sp.GetRequiredService<ISlackApi>(), opts));
     }
 }

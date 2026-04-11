@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Rag.NET.DataProviders.Slack;
 
-internal sealed class SlackUserInfo
+public sealed class SlackUserInfo
 {
     [JsonPropertyName("ok")]
     public bool Ok { get; init; }
