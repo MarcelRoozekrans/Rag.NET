@@ -6,6 +6,10 @@ namespace Rag.NET.Evaluation.Ragas;
 /// Runs registered RAGAS metrics over a set of evaluation samples.
 /// Metrics execute concurrently per sample; samples are processed sequentially.
 /// </summary>
+/// <remarks>
+/// This class is designed to be constructed exclusively via <see cref="RagasEvaluationSuiteBuilder"/>.
+/// The metric name strings used in <see cref="EvaluateAsync"/> correspond to the names registered by the builder.
+/// </remarks>
 public sealed class RagasEvaluationSuite
 {
     private readonly IReadOnlyList<(string Name, IRagasMetric Metric)> _metrics;

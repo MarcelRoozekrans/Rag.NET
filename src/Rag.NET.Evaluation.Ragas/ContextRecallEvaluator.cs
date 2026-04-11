@@ -22,11 +22,14 @@ public sealed class ContextRecallEvaluator(IChatClient chatClient) : IRagasMetri
                 $"ContextRecallEvaluator requires a non-empty {nameof(EvaluationSample.ReferenceAnswer)}. " +
                 "Use DatasetGenerationMode.QuestionAndAnswer when building your evaluation dataset.");
 
+        if (sample.SourceChunks is not { Count: > 0 })
+            return 0.0;
+
         var statements = await ExtractStatementsAsync(sample.ReferenceAnswer, cancellationToken).ConfigureAwait(false);
         if (statements.Count == 0)
             return 1.0;
 
-        var context = string.Join("\n", sample.SourceChunks ?? []);
+        var context = string.Join("\n", sample.SourceChunks);
         var tasks = statements.Select(stmt => IsSupportedAsync(stmt, context, cancellationToken));
         var results = await Task.WhenAll(tasks).ConfigureAwait(false);
 

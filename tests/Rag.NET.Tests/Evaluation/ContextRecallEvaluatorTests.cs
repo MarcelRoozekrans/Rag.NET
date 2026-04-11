@@ -56,4 +56,17 @@ public class ContextRecallEvaluatorTests
 
         Assert.Equal(1.0, score, precision: 2);
     }
+
+    [Fact]
+    public async Task ScoreAsync_NullSourceChunks_ReturnsZero()
+    {
+        var client = Substitute.For<IChatClient>();
+        var evaluator = new ContextRecallEvaluator(client);
+        var sample = new EvaluationSample("Q?", "A.", "Ref.");
+
+        var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0.0, score, precision: 2);
+        await client.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
 }

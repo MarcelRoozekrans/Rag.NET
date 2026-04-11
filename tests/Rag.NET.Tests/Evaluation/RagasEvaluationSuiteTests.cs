@@ -86,6 +86,18 @@ public class RagasEvaluationSuiteTests
     }
 
     [Fact]
+    public async Task EvaluateAsync_EmptySamples_Throws()
+    {
+        var client = Substitute.For<IChatClient>();
+        var suite = new RagasEvaluationSuiteBuilder(client, IdentityEmbedder())
+            .AddFaithfulness()
+            .Build();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            suite.EvaluateAsync([], TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task EvaluateAsync_NoMetricsRegistered_Throws()
     {
         var client = Substitute.For<IChatClient>();

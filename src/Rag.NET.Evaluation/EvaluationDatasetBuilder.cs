@@ -13,6 +13,11 @@ public sealed class EvaluationDatasetBuilder(
     IRagDataManager dataManager,
     IChatClient chatClient)
 {
+    private readonly IRagDataManager _dataManager = dataManager
+        ?? throw new ArgumentNullException(nameof(dataManager));
+    private readonly IChatClient _chatClient = chatClient
+        ?? throw new ArgumentNullException(nameof(chatClient));
+
     /// <summary>
     /// Builds a synthetic evaluation dataset by sampling chunks from the document corpus
     /// and generating questions (and optionally reference answers) via LLM.
@@ -28,11 +33,11 @@ public sealed class EvaluationDatasetBuilder(
             return [];
 
         // Collect all chunks across all documents
-        var documents = await dataManager.GetDocumentsAsync(cancellationToken).ConfigureAwait(false);
+        var documents = await _dataManager.GetDocumentsAsync(cancellationToken).ConfigureAwait(false);
         var allChunks = new List<TextChunk>();
         foreach (var doc in documents)
         {
-            var chunks = await dataManager.GetChunksAsync(doc.DocumentId.Value, cancellationToken).ConfigureAwait(false);
+            var chunks = await _dataManager.GetChunksAsync(doc.DocumentId.Value, cancellationToken).ConfigureAwait(false);
             allChunks.AddRange(chunks);
         }
 
@@ -73,7 +78,7 @@ public sealed class EvaluationDatasetBuilder(
                 "Output only the question, no explanation."),
             new(ChatRole.User, chunkText),
         };
-        var response = await chatClient.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
+        var response = await _chatClient.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
         return response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
     }
 
@@ -86,7 +91,7 @@ public sealed class EvaluationDatasetBuilder(
                 "Output only the answer, no explanation."),
             new(ChatRole.User, $"Text: {chunkText}\n\nQuestion: {question}"),
         };
-        var response = await chatClient.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
+        var response = await _chatClient.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
         return response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
     }
 }
