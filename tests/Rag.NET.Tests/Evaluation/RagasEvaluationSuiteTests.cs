@@ -1,0 +1,104 @@
+using Microsoft.Extensions.AI;
+using NSubstitute;
+using Rag.NET.Evaluation;
+using Rag.NET.Evaluation.Ragas;
+using Xunit;
+
+namespace Rag.NET.Tests.Evaluation;
+
+public class RagasEvaluationSuiteTests
+{
+    private static EvaluationSample MakeSample(string referenceAnswer = "Ref.") =>
+        new("Q?", "A.", referenceAnswer, ["Chunk."]);
+
+    private static IChatClient AlwaysYesClient()
+    {
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "yes")));
+        return client;
+    }
+
+    private static IEmbeddingGenerator<string, Embedding<float>> IdentityEmbedder()
+    {
+        var gen = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        gen.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var inputs = callInfo.Arg<IEnumerable<string>>().ToList();
+                var embeddings = new GeneratedEmbeddings<Embedding<float>>();
+                foreach (var _ in inputs)
+                    embeddings.Add(new Embedding<float>(new float[] { 1f, 0f }));
+                return Task.FromResult(embeddings);
+            });
+        return gen;
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_SingleFaithfulnessMetric_ReturnsReport()
+    {
+        // FaithfulnessEvaluator: LLM returns "[]" (no claims) → score = 1.0
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "[]")));
+
+        var suite = new RagasEvaluationSuiteBuilder(client, IdentityEmbedder())
+            .AddFaithfulness()
+            .Build();
+
+        var report = await suite.EvaluateAsync([MakeSample()], TestContext.Current.CancellationToken);
+
+        Assert.NotNull(report.Faithfulness);
+        Assert.Null(report.AnswerRelevance);
+        Assert.Null(report.ContextPrecision);
+        Assert.Null(report.ContextRecall);
+        Assert.Equal(report.Faithfulness!.Value, report.OverallScore, precision: 2);
+    }
+
+    [Fact]
+    public void Build_ContextPrecisionRegistered_DoesNotThrow()
+    {
+        // Build() itself doesn't throw — validation happens at EvaluateAsync time
+        var client = Substitute.For<IChatClient>();
+        var builder = new RagasEvaluationSuiteBuilder(client, IdentityEmbedder())
+            .AddContextPrecision();
+
+        var suite = builder.Build();
+        Assert.NotNull(suite);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_ContextPrecisionWithEmptyReferenceAnswer_Throws()
+    {
+        var client = Substitute.For<IChatClient>();
+        var suite = new RagasEvaluationSuiteBuilder(client, IdentityEmbedder())
+            .AddContextPrecision()
+            .Build();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            suite.EvaluateAsync([MakeSample(referenceAnswer: "")], TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_OverallScoreIsMeanOfRegisteredMetrics()
+    {
+        // Faithfulness: LLM returns "[]" → no claims → score = 1.0
+        // AnswerRelevance: identical embeddings → cosine = 1.0
+        // Both registered → OverallScore = (1.0 + 1.0) / 2 = 1.0
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "[]"))); // faithfulness: no claims
+
+        var suite = new RagasEvaluationSuiteBuilder(client, IdentityEmbedder())
+            .AddFaithfulness()
+            .AddAnswerRelevance()
+            .Build();
+
+        var report = await suite.EvaluateAsync([MakeSample()], TestContext.Current.CancellationToken);
+
+        Assert.NotNull(report.Faithfulness);
+        Assert.NotNull(report.AnswerRelevance);
+        var expected = (report.Faithfulness!.Value + report.AnswerRelevance!.Value) / 2.0;
+        Assert.Equal(expected, report.OverallScore, precision: 2);
+    }
+}
