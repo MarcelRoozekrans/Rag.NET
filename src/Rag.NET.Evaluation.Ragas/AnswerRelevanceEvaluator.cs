@@ -14,12 +14,16 @@ public sealed class AnswerRelevanceEvaluator(
     IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
     int syntheticQuestionCount = 3) : IRagasMetric
 {
+    private readonly int _syntheticQuestionCount = syntheticQuestionCount >= 1
+        ? syntheticQuestionCount
+        : throw new ArgumentOutOfRangeException(nameof(syntheticQuestionCount), "Must be at least 1.");
+
     public bool RequiresGroundTruth => false;
 
     public async Task<double> ScoreAsync(EvaluationSample sample, CancellationToken cancellationToken)
     {
         // Generate n synthetic questions from the predicted answer (concurrently)
-        var questionTasks = Enumerable.Range(0, syntheticQuestionCount)
+        var questionTasks = Enumerable.Range(0, _syntheticQuestionCount)
             .Select(_ => GenerateSyntheticQuestionAsync(sample.PredictedAnswer, cancellationToken));
         var syntheticQuestions = await Task.WhenAll(questionTasks).ConfigureAwait(false);
 
@@ -29,7 +33,7 @@ public sealed class AnswerRelevanceEvaluator(
             .GenerateAsync(allTexts, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
-        return ComputeMeanCosineSimilarity(embeddings, syntheticQuestionCount);
+        return ComputeMeanCosineSimilarity(embeddings, _syntheticQuestionCount);
     }
 
     private static double ComputeMeanCosineSimilarity(GeneratedEmbeddings<Embedding<float>> embeddings, int syntheticQuestionCount)
