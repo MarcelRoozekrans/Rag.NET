@@ -51,5 +51,20 @@ public class ContextPrecisionEvaluatorTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken));
+
+        await client.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ScoreAsync_NullSourceChunks_ReturnsZero()
+    {
+        var client = Substitute.For<IChatClient>();
+        var evaluator = new ContextPrecisionEvaluator(client);
+        var sample = new EvaluationSample("Q?", "A.", "Ref.");
+
+        var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0.0, score);
+        await client.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 }
