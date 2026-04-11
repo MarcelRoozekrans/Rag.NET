@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Rag.NET.DataProviders;
 using Rag.NET.Models;
-using Refit;
 using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Jira;
@@ -83,24 +82,12 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
         var deltaJql = BuildDeltaJql();
         const int maxResults = 50;
 
-        // Attempt the first page before entering the yield-loop so we can catch API errors
-        // before any items have been emitted. C# does not allow yield inside catch blocks,
-        // so we use a flag to switch to full traversal after the try/catch.
-        JiraSearchResult? firstPage = null;
-        bool staleDeltaToken = false;
-        try
-        {
-            firstPage = await _api.SearchAsync(deltaJql, maxResults, startAt: 0,
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-        catch (ApiException ex)
-            when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
-        {
-            // Stale or invalid token — signal a fall back to full traversal.
-            staleDeltaToken = true;
-        }
+        var firstResult = await _api.SearchAsync(deltaJql, maxResults, startAt: 0,
+            cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        if (staleDeltaToken)
+        // Stale delta token — fall back to full traversal.
+        if (firstResult.IsFailure &&
+            firstResult.Error.StatusCode == System.Net.HttpStatusCode.BadRequest)
         {
             await foreach (var h in GetHandlesAsync(BuildFullJql(), cancellationToken)
                 .ConfigureAwait(false))
@@ -108,7 +95,15 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
             yield break;
         }
 
-        for (int i = 0; i < firstPage!.Issues.Count; i++)
+        if (firstResult.IsFailure)
+        {
+            yield return Result<FileHandle, RagError>.Failure(
+                new RagError.HttpFailed(firstResult.Error.StatusCode, firstResult.Error.Message));
+            yield break;
+        }
+
+        var firstPage = firstResult.Value;
+        for (int i = 0; i < firstPage.Issues.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             yield return Result<FileHandle, RagError>.Success(ToHandle(firstPage.Issues[i]));
@@ -117,9 +112,17 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
         int startAt = firstPage.Issues.Count;
         while (startAt < firstPage.Total)
         {
-            var page = await _api.SearchAsync(deltaJql, maxResults, startAt,
+            var pageResult = await _api.SearchAsync(deltaJql, maxResults, startAt,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
+            if (pageResult.IsFailure)
+            {
+                yield return Result<FileHandle, RagError>.Failure(
+                    new RagError.HttpFailed(pageResult.Error.StatusCode, pageResult.Error.Message));
+                yield break;
+            }
+
+            var page = pageResult.Value;
             for (int i = 0; i < page.Issues.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -140,9 +143,17 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
 
         while (true)
         {
-            var result = await _api.SearchAsync(jql, maxResults, startAt,
+            var apiResult = await _api.SearchAsync(jql, maxResults, startAt,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
 
+            if (apiResult.IsFailure)
+            {
+                yield return Result<FileHandle, RagError>.Failure(
+                    new RagError.HttpFailed(apiResult.Error.StatusCode, apiResult.Error.Message));
+                yield break;
+            }
+
+            var result = apiResult.Value;
             for (int i = 0; i < result.Issues.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();

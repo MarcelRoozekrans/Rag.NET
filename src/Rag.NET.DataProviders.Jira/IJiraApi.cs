@@ -1,15 +1,16 @@
-using Refit;
+using ZeroAlloc.Rest.Attributes;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Jira;
 
-[Headers("Accept: application/json")]
+[ZeroAllocRestClient]
 internal interface IJiraApi
 {
     [Get("/rest/api/3/search")]
-    Task<JiraSearchResult> SearchAsync(
+    Task<Result<JiraSearchResult, ZeroAlloc.Rest.HttpError>> SearchAsync(
         [Query] string jql,
         [Query] int maxResults,
         [Query] int startAt,
-        [Query] string fields = "summary,description,status,priority,assignee,comment,updated",
+        [Query(Name = "fields")] string fields = "summary,description,status,priority,assignee,comment,updated",
         CancellationToken cancellationToken = default);
 }

@@ -1,8 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using Rag.NET.DataProviders;
-using Refit;
 
 namespace Rag.NET.DataProviders.Jira;
 
@@ -33,17 +33,23 @@ public static class JiraDataProviderExtensions
         var opts = new JiraOptions { BaseUrl = baseUrl, Email = email };
         configure?.Invoke(opts);
 
-        services.AddDataProviderHttpClient("Jira");
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{email}:{apiToken}"));
+
+        services.AddIJiraApi(options =>
+            {
+                options.BaseAddress = new Uri(baseUrl);
+                options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
+            })
+            .ConfigureHttpClient(client =>
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Basic", credentials);
+                client.DefaultRequestHeaders.Accept.Add(
+                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            })
+            .AddStandardResilienceHandler();
 
         return services.AddSingleton<IFileContentProvider>(sp =>
-        {
-            var credentials = Convert.ToBase64String(
-                Encoding.UTF8.GetBytes($"{email}:{apiToken}"));
-            var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("Jira");
-            http.BaseAddress = new Uri(baseUrl);
-            http.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Basic", credentials);
-            return new JiraDataProvider(RestService.For<IJiraApi>(http), opts);
-        });
+            new JiraDataProvider(sp.GetRequiredService<IJiraApi>(), opts));
     }
 }

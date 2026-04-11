@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace Rag.NET.DataProviders.Jira;
 
-internal sealed record JiraFields(
+public sealed record JiraFields(
     [property: JsonPropertyName("summary")]     string Summary,
     [property: JsonPropertyName("description")] string? Description,
     [property: JsonPropertyName("status")]      JiraStatus Status,

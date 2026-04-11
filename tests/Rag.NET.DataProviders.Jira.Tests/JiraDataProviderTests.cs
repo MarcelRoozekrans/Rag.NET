@@ -2,13 +2,17 @@ using System.Net;
 using System.Text;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Jira;
-using Refit;
+using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Rest;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.Jira.Tests;
 
 public sealed class JiraDataProviderTests
 {
+    private static readonly IRestSerializer JsonSerializer = new SystemTextJsonSerializer();
+
     private static JiraDataProvider MakeProvider(
         string responseJson,
         JiraOptions? options = null,
@@ -17,7 +21,7 @@ public sealed class JiraDataProviderTests
         var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
             { [urlKey] = responseJson });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IJiraApi>(http);
+        var api = new JiraApiClient(http, JsonSerializer);
         return new JiraDataProvider(api, options ?? new JiraOptions
         {
             BaseUrl = "https://test.atlassian.net",
@@ -85,7 +89,7 @@ public sealed class JiraDataProviderTests
         string? capturedUrl = null;
         var handler = new FakeCapturingHandler(json, url => capturedUrl = url);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IJiraApi>(http);
+        var api = new JiraApiClient(http, JsonSerializer);
         var opts = new JiraOptions
         {
             BaseUrl    = "https://test.atlassian.net",
@@ -162,7 +166,7 @@ public sealed class JiraDataProviderTests
         var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
             { ["/rest/api/3/search"] = """{"issues":[],"total":0}""" });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IJiraApi>(http);
+        var api = new JiraApiClient(http, JsonSerializer);
 
         Assert.Throws<ArgumentException>(() =>
             new JiraDataProvider(api, new JiraOptions
@@ -179,7 +183,7 @@ public sealed class JiraDataProviderTests
         var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
             { ["/rest/api/3/search"] = """{"issues":[],"total":0}""" });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IJiraApi>(http);
+        var api = new JiraApiClient(http, JsonSerializer);
 
         Assert.Throws<ArgumentException>(() =>
             new JiraDataProvider(api, new JiraOptions
@@ -216,7 +220,7 @@ public sealed class JiraDataProviderTests
 
         var handler = new FakeStaleDeltaHandler(fullJson);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IJiraApi>(http);
+        var api = new JiraApiClient(http, JsonSerializer);
         var opts = new JiraOptions
         {
             BaseUrl    = "https://test.atlassian.net",
@@ -259,7 +263,7 @@ public sealed class JiraDataProviderTests
         string? capturedUrl = null;
         var handler = new FakeCapturingHandler(json, url => capturedUrl = url);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IJiraApi>(http);
+        var api = new JiraApiClient(http, JsonSerializer);
         var opts = new JiraOptions
         {
             BaseUrl    = "https://test.atlassian.net",
@@ -374,7 +378,7 @@ public sealed class JiraDataProviderTests
     {
         var handler = new FakeCancellingHandler();
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IJiraApi>(http);
+        var api = new JiraApiClient(http, JsonSerializer);
         var sut = new JiraDataProvider(api, new JiraOptions
         {
             BaseUrl = "https://test.atlassian.net",
@@ -433,7 +437,7 @@ public sealed class JiraDataProviderTests
             """;
         var handler = new FakeSequentialHandler(page1Json, page2Json);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
-        var api = RestService.For<IJiraApi>(http);
+        var api = new JiraApiClient(http, JsonSerializer);
         var sut = new JiraDataProvider(api, new JiraOptions
         {
             BaseUrl = "https://test.atlassian.net",
@@ -447,6 +451,28 @@ public sealed class JiraDataProviderTests
         Assert.Equal("PROJ-1.md", results[0].Value.FileName);
         Assert.Equal("PROJ-2.md", results[1].Value.FileName);
     }
+
+    [Fact]
+    public async Task GetFilesAsync_ApiReturnsServerError_YieldsHttpFailedError()
+    {
+        var handler = new FakeErrorHandler(HttpStatusCode.InternalServerError);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
+        var api = new JiraApiClient(http, JsonSerializer);
+        var sut = new JiraDataProvider(api, new JiraOptions
+        {
+            BaseUrl = "https://test.atlassian.net",
+            Email   = "test@test.com"
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(results);
+        Assert.True(single.IsFailure);
+        var err = Assert.IsType<RagError.HttpFailed>(single.Error);
+        Assert.Equal(HttpStatusCode.InternalServerError, err.StatusCode);
+    }
+
     private static async Task<string> ReadContentAsync(FileEntry entry)
     {
         await using var stream = await entry.OpenContentAsync(CancellationToken.None);
@@ -546,4 +572,14 @@ file sealed class FakeCancellingHandler : HttpMessageHandler
             Content = new StringContent("{}", Encoding.UTF8, "application/json")
         });
     }
+}
+
+/// <summary>
+/// Always returns the given error status code, so tests can assert HTTP failure propagation.
+/// </summary>
+file sealed class FakeErrorHandler(HttpStatusCode statusCode) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(new HttpResponseMessage(statusCode) { RequestMessage = request });
 }
