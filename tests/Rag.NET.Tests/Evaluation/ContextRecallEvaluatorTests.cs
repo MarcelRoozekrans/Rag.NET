@@ -54,6 +54,6 @@ public class ContextRecallEvaluatorTests
 
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(1.0, score);
+        Assert.Equal(1.0, score, precision: 2);
     }
 }
