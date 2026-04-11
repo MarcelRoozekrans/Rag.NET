@@ -77,6 +77,25 @@ public class RagasEvaluationSuiteTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             suite.EvaluateAsync([MakeSample(referenceAnswer: "")], TestContext.Current.CancellationToken));
+
+        // Fail-fast: no LLM calls should have been made before the exception
+        await client.DidNotReceive().GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(),
+            Arg.Any<ChatOptions?>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_NoMetricsRegistered_Throws()
+    {
+        var client = Substitute.For<IChatClient>();
+        // Build a suite with no metrics by not calling any Add* method
+        var suite = new RagasEvaluationSuiteBuilder(client, IdentityEmbedder()).Build();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            suite.EvaluateAsync([MakeSample()], TestContext.Current.CancellationToken));
+
+        Assert.Equal("No metrics are registered.", ex.Message);
     }
 
     [Fact]

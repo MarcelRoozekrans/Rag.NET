@@ -24,9 +24,27 @@ public sealed class RagasEvaluationSuite
         IReadOnlyList<EvaluationSample> samples,
         CancellationToken cancellationToken = default)
     {
+        if (_metrics.Count == 0)
+            throw new InvalidOperationException("No metrics are registered.");
+
         ArgumentNullException.ThrowIfNull(samples);
         if (samples.Count == 0)
             throw new ArgumentException("At least one sample is required.", nameof(samples));
+
+        // Fail fast: validate all samples against registered metrics before any LLM call
+        var groundTruthMetricNames = _metrics
+            .Where(m => m.Metric.RequiresGroundTruth)
+            .Select(m => m.Name)
+            .ToList();
+        if (groundTruthMetricNames.Count > 0)
+        {
+            var badSample = samples.FirstOrDefault(s => string.IsNullOrEmpty(s.ReferenceAnswer));
+            if (badSample is not null)
+                throw new InvalidOperationException(
+                    $"Metric(s) [{string.Join(", ", groundTruthMetricNames)}] require a non-empty " +
+                    $"{nameof(EvaluationSample.ReferenceAnswer)} on every sample. " +
+                    "Use DatasetGenerationMode.QuestionAndAnswer when building your evaluation dataset.");
+        }
 
         // Accumulate scores per metric across samples
         var totals = new Dictionary<string, double>(StringComparer.Ordinal);
