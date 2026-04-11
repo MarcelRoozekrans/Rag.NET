@@ -688,6 +688,8 @@ Each metric is a standalone `IRagEvaluator<T>` so they can be composed into a `R
 
 **Why:** LLM-as-judge grades answer quality holistically. RAGAS metrics decompose quality into retrieval and generation components — essential for pinpointing whether failures are retrieval misses or generation errors.
 
+**Status:** ✅ Done
+
 ---
 
 ### Evaluation Dataset Builder
@@ -696,6 +698,8 @@ Each metric is a standalone `IRagEvaluator<T>` so they can be composed into a `R
 Generate synthetic question-answer pairs from an existing document corpus for offline evaluation. Samples `k` chunks, uses an LLM to generate a question whose answer is grounded in the chunk, optionally generates a ground-truth answer. Output: `IReadOnlyList<EvaluationSample>` ready to feed into any `IRagEvaluator`.
 
 **Why:** Bootstrapping an evaluation dataset from scratch requires manual annotation. Synthetic generation is imperfect but enables rapid iteration — run a bulk eval before/after a retrieval change to detect regressions.
+
+**Status:** ✅ Done
 
 ---
 
