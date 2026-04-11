@@ -246,3 +246,234 @@ foreach (var judgement in result.Samples)
 |---|---|
 | `LlmJudgeException` | The LLM returns malformed JSON after markdown fence-stripping. The `RawResponse` property contains the original text for diagnosis. |
 | `ArgumentException` | An empty samples list is passed to `EvaluateAsync`. |
+
+---
+
+## `EvaluationDatasetBuilder`
+
+Building a hand-labelled evaluation dataset is expensive. `EvaluationDatasetBuilder` generates a synthetic dataset automatically by sampling random chunks from your existing document corpus and using an LLM to produce a question (and optionally a reference answer) for each chunk.
+
+```bash
+dotnet add package Rag.NET.Evaluation
+```
+
+### Usage
+
+```csharp
+using Rag.NET.Evaluation;
+
+var builder = new EvaluationDatasetBuilder(dataManager, chatClient);
+
+var samples = await builder.BuildAsync(new EvaluationDatasetBuilderOptions
+{
+    SampleCount = 50,                                // chunks to sample (clamped to corpus size)
+    Mode        = DatasetGenerationMode.QuestionOnly, // or QuestionAndAnswer
+});
+```
+
+`dataManager` is `IRagDataManager` — the same instance registered in your DI container. `chatClient` is any `IChatClient`.
+
+### Generation modes
+
+| Mode | LLM calls per chunk | `ReferenceAnswer` | Use with |
+|---|---|---|---|
+| `QuestionOnly` (default) | 1 | `""` (empty) | `EmbeddingDistanceEvaluator`, `LlmJudgeEvaluator` |
+| `QuestionAndAnswer` | 2 | Ground-truth answer grounded in the chunk | `RagasEvaluationSuite` (Context Precision / Recall require it) |
+
+All per-chunk LLM calls run concurrently. With a large corpus and high `SampleCount`, use a rate-limit-aware `IChatClient` (e.g., `FallbackChatClient`) to avoid 429 errors.
+
+### Workflow
+
+```csharp
+// 1. Generate synthetic questions (and optionally reference answers)
+var samples = await builder.BuildAsync(new EvaluationDatasetBuilderOptions
+{
+    SampleCount = 50,
+    Mode = DatasetGenerationMode.QuestionAndAnswer,
+});
+
+// 2. Run your RAG pipeline to get predicted answers
+var evaluated = new List<EvaluationSample>();
+foreach (var sample in samples)
+{
+    var result = await pipeline.AskAsync(sample.Question);
+    evaluated.Add(sample with
+    {
+        PredictedAnswer = result.Answer,
+        SourceChunks    = result.SourceChunks,
+    });
+}
+
+// 3. Score with any evaluator
+var result = await evaluator.EvaluateAsync(evaluated);
+```
+
+### Limitations
+
+- Synthetic questions reflect the content of individual chunks, not complex multi-hop queries.
+- `QuestionOnly` mode produces empty `ReferenceAnswer` — you must either fill it in manually or avoid metrics that require it (Context Precision, Context Recall).
+- All LLM calls run concurrently — use a rate-limit-aware client for large sample counts.
+
+---
+
+## RAGAS-Style Metrics
+
+`Rag.NET.Evaluation.Ragas` decomposes RAG quality into four independent metrics, each targeting a specific failure mode. You register only the metrics you need — each adds LLM calls per sample.
+
+```bash
+dotnet add package Rag.NET.Evaluation.Ragas
+```
+
+### When to use RAGAS vs other evaluators
+
+| Evaluator | LLM calls/sample | Ground truth required | Detects |
+|---|---|---|---|
+| `EmbeddingDistanceEvaluator` | 0 | Yes (reference answer) | Semantic drift from reference |
+| `LlmJudgeEvaluator` | 1 | Yes (reference answer) | Holistic quality, hallucinations |
+| `RagasEvaluationSuite` | 5–20+ | Partial (2 of 4 metrics) | Specific retrieval and generation failure modes |
+
+Use RAGAS when you need to diagnose *where* quality is breaking down — retrieval, generation, or both.
+
+### The four metrics
+
+#### Faithfulness
+
+Checks: Are all claims in the predicted answer supported by the retrieved chunks?
+
+- LLM calls: 1 (extract atomic claims) + N per sample (verify each claim)
+- Ground truth: **not required**
+- Score 1.0: every claim is grounded in the retrieved context
+- Score 0.0: all claims are hallucinated
+
+#### Answer Relevance
+
+Checks: Does the answer actually address the original question?
+
+- LLM calls: 3 (generate synthetic questions from the answer) + 1 embedding batch
+- Ground truth: **not required**
+- Score 1.0: answer directly addresses the question
+- Score 0.0: answer is off-topic
+
+#### Context Precision
+
+Checks: Are the retrieved chunks relevant to the ground-truth answer?
+
+- LLM calls: N per sample (one per chunk)
+- Ground truth: **required** — `ReferenceAnswer` must be non-empty
+- Score 1.0: every retrieved chunk is relevant
+- Score 0.0: all retrieved chunks are irrelevant noise
+
+#### Context Recall
+
+Checks: Do the retrieved chunks contain the facts stated in the reference answer?
+
+- LLM calls: 1 (extract ground-truth statements) + M per sample (verify each)
+- Ground truth: **required** — `ReferenceAnswer` must be non-empty
+- Score 1.0: all ground-truth facts are present in the chunks
+- Score 0.0: retrieved chunks are missing the key facts
+
+### Which metrics to register
+
+| Goal | Register |
+|---|---|
+| Fast regression gate (no ground truth) | Faithfulness + AnswerRelevance |
+| Diagnose retrieval quality | ContextPrecision + ContextRecall |
+| Full RAGAS diagnostic | All four (requires `QuestionAndAnswer` dataset) |
+
+### Usage
+
+```csharp
+using Rag.NET.Evaluation.Ragas;
+
+var suite = new RagasEvaluationSuiteBuilder(chatClient, embeddingGenerator)
+    .AddFaithfulness()
+    .AddAnswerRelevance()
+    .AddContextPrecision()   // requires non-empty ReferenceAnswer
+    .AddContextRecall()      // requires non-empty ReferenceAnswer
+    .Build();
+
+RagasReport report = await suite.EvaluateAsync(samples);
+
+Console.WriteLine($"Overall:           {report.OverallScore:F2}");
+Console.WriteLine($"Faithfulness:      {report.Faithfulness:F2}");
+Console.WriteLine($"Answer Relevance:  {report.AnswerRelevance:F2}");
+Console.WriteLine($"Context Precision: {report.ContextPrecision:F2}");
+Console.WriteLine($"Context Recall:    {report.ContextRecall:F2}");
+```
+
+`OverallScore` is the arithmetic mean of all registered (non-null) metrics.
+
+A metric that was not registered appears as `null` in the report.
+
+### `RagasReport`
+
+```csharp
+public sealed record RagasReport
+{
+    public double? Faithfulness     { get; init; }  // null = not registered
+    public double? AnswerRelevance  { get; init; }
+    public double? ContextPrecision { get; init; }
+    public double? ContextRecall    { get; init; }
+    public double  OverallScore     { get; init; }  // mean of registered metrics
+}
+```
+
+### Ground-truth validation
+
+If you register Context Precision or Context Recall and pass a sample with an empty `ReferenceAnswer`, `EvaluateAsync` throws `InvalidOperationException` immediately — before any LLM call. Use `DatasetGenerationMode.QuestionAndAnswer` when building your dataset to avoid this.
+
+### Cost estimation
+
+For N samples with an average of K chunks/claims/statements per sample:
+
+| Metric | LLM calls |
+|---|---|
+| Faithfulness | N × (1 + K_claims) |
+| Answer Relevance | N × 3 (LLM) + 1 embedding batch |
+| Context Precision | N × K_chunks |
+| Context Recall | N × (1 + K_statements) |
+
+Example: 100 samples, 4 chunks each, ~3 claims/statements → approximately **1,500 LLM calls** for all four metrics. Use a rate-limit-aware `IChatClient` (e.g., `FallbackChatClient`) for production-scale evaluation runs.
+
+### Complete example: synthetic dataset → RAGAS evaluation
+
+```csharp
+using Rag.NET.Evaluation;
+using Rag.NET.Evaluation.Ragas;
+
+// 1. Build a synthetic evaluation dataset
+var builder = new EvaluationDatasetBuilder(dataManager, chatClient);
+var samples = await builder.BuildAsync(new EvaluationDatasetBuilderOptions
+{
+    SampleCount = 50,
+    Mode        = DatasetGenerationMode.QuestionAndAnswer, // required for Context metrics
+});
+
+// 2. Run your RAG pipeline
+var evaluated = new List<EvaluationSample>();
+foreach (var sample in samples)
+{
+    var result = await pipeline.AskAsync(sample.Question);
+    evaluated.Add(sample with
+    {
+        PredictedAnswer = result.Answer,
+        SourceChunks    = result.SourceChunks,
+    });
+}
+
+// 3. Score with RAGAS
+var suite = new RagasEvaluationSuiteBuilder(chatClient, embeddingGenerator)
+    .AddFaithfulness()
+    .AddAnswerRelevance()
+    .AddContextPrecision()
+    .AddContextRecall()
+    .Build();
+
+RagasReport report = await suite.EvaluateAsync(evaluated);
+
+Console.WriteLine($"Overall:           {report.OverallScore:F2}");
+Console.WriteLine($"Faithfulness:      {report.Faithfulness:F2}");
+Console.WriteLine($"Answer Relevance:  {report.AnswerRelevance:F2}");
+Console.WriteLine($"Context Precision: {report.ContextPrecision:F2}");
+Console.WriteLine($"Context Recall:    {report.ContextRecall:F2}");
+```
