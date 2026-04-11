@@ -13,11 +13,19 @@ public sealed class EvaluationDatasetBuilder(
     IRagDataManager dataManager,
     IChatClient chatClient)
 {
+    /// <summary>
+    /// Builds a synthetic evaluation dataset by sampling chunks from the document corpus
+    /// and generating questions (and optionally reference answers) via LLM.
+    /// </summary>
+    /// <param name="options">Controls sample count and generation mode. Defaults to <see cref="EvaluationDatasetBuilderOptions"/> if null.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<IReadOnlyList<EvaluationSample>> BuildAsync(
         EvaluationDatasetBuilderOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         options ??= new EvaluationDatasetBuilderOptions();
+        if (options.SampleCount <= 0)
+            return [];
 
         // Collect all chunks across all documents
         var documents = await dataManager.GetDocumentsAsync(cancellationToken).ConfigureAwait(false);
@@ -30,9 +38,6 @@ public sealed class EvaluationDatasetBuilder(
 
         // Random sample without replacement, clamped to available count
         var sampleCount = Math.Min(options.SampleCount, allChunks.Count);
-        if (sampleCount <= 0)
-            return [];
-
         var sampled = allChunks.OrderBy(_ => Random.Shared.Next()).Take(sampleCount).ToList();
 
         // Generate samples concurrently
