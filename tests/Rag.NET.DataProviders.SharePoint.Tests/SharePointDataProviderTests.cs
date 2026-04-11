@@ -52,10 +52,10 @@ public sealed class SharePointDataProviderTests
 
         // Assert — folder entry must be excluded; both file entries must be present
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Id, "/readme.md", StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id, "/notes.txt", StringComparison.Ordinal));
-        Assert.Equal("readme.md", entries.Single(e => e.Id.Value.Contains("readme.md", StringComparison.Ordinal)).FileName);
-        Assert.Equal("etag-1",    entries.Single(e => e.Id.Value.Contains("readme.md", StringComparison.Ordinal)).ETag);
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "/readme.md", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "/notes.txt", StringComparison.Ordinal));
+        Assert.Equal("readme.md", entries.Single(e => e.Value.Id.Value.Contains("readme.md", StringComparison.Ordinal)).Value.FileName);
+        Assert.Equal("etag-1",    entries.Single(e => e.Value.Id.Value.Contains("readme.md", StringComparison.Ordinal)).Value.ETag);
     }
 
     [Fact]
@@ -86,9 +86,9 @@ public sealed class SharePointDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Single(entries);
-        Assert.Equal("updated.md", entries[0].FileName);
-        Assert.Equal("etag-new",   entries[0].ETag);
+        _ = Assert.Single(entries);
+        Assert.Equal("updated.md", entries[0].Value.FileName);
+        Assert.Equal("etag-new",   entries[0].Value.ETag);
     }
 
     [Fact]
@@ -118,9 +118,9 @@ public sealed class SharePointDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert — only the .md file survives
-        Assert.Single(entries);
-        Assert.Equal("guide.md", entries[0].FileName);
-        Assert.DoesNotContain(entries, e => e.FileName.Contains(".yaml", StringComparison.OrdinalIgnoreCase));
+        _ = Assert.Single(entries);
+        Assert.Equal("guide.md", entries[0].Value.FileName);
+        Assert.DoesNotContain(entries, e => e.Value.FileName.Contains(".yaml", StringComparison.OrdinalIgnoreCase));
     }
 
     // -------------------------------------------------------------------------

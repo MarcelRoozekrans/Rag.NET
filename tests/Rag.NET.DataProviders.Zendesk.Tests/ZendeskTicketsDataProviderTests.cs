@@ -59,10 +59,10 @@ public sealed class ZendeskTicketsDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("ticket-1.md", results[0].FileName);
-        Assert.Equal("ticket-2.md", results[1].FileName);
-        Assert.Equal("1", results[0].Id);
-        Assert.Equal("2026-01-01T00:00:00Z", results[0].ETag);
+        Assert.Equal("ticket-1.md", results[0].Value.FileName);
+        Assert.Equal("ticket-2.md", results[1].Value.FileName);
+        Assert.Equal("1", results[0].Value.Id);
+        Assert.Equal("2026-01-01T00:00:00Z", results[0].Value.ETag);
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public sealed class ZendeskTicketsDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
+        _ = Assert.Single(results);
         // Verify the incremental endpoint was called with start_time from DeltaToken
         var ticketUrl = handler.CapturedUrls.First(u =>
             u.Contains("incremental", StringComparison.Ordinal));
@@ -135,8 +135,8 @@ public sealed class ZendeskTicketsDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.StartsWith("# Need help", content, StringComparison.Ordinal);
         Assert.Contains("**Status:** open", content, StringComparison.Ordinal);
         Assert.Contains("**Priority:** urgent", content, StringComparison.Ordinal);
@@ -205,8 +205,8 @@ public sealed class ZendeskTicketsDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.StartsWith("# Minimal ticket", content, StringComparison.Ordinal);
         Assert.Contains("**Status:** new", content, StringComparison.Ordinal);
         Assert.DoesNotContain("Priority", content, StringComparison.Ordinal);
@@ -248,8 +248,8 @@ public sealed class ZendeskTicketsDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("ticket-1.md", results[0].FileName);
-        Assert.Equal("ticket-2.md", results[1].FileName);
+        Assert.Equal("ticket-1.md", results[0].Value.FileName);
+        Assert.Equal("ticket-2.md", results[1].Value.FileName);
     }
 
     [Fact]
@@ -337,8 +337,8 @@ public sealed class ZendeskTicketsDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.StartsWith("# Login broken", content, StringComparison.Ordinal);
         Assert.Contains("**Status:** open", content, StringComparison.Ordinal);
         Assert.Contains("**Priority:** high", content, StringComparison.Ordinal);
@@ -370,8 +370,8 @@ public sealed class ZendeskTicketsDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("2026-03-15T12:30:00Z", results[0].ETag);
+        _ = Assert.Single(results);
+        Assert.Equal("2026-03-15T12:30:00Z", results[0].Value.ETag);
     }
 
     [Fact]
@@ -407,8 +407,8 @@ public sealed class ZendeskTicketsDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("## Comments", content, StringComparison.Ordinal);
         Assert.Contains("First comment body", content, StringComparison.Ordinal);
         Assert.Contains("Second comment body", content, StringComparison.Ordinal);

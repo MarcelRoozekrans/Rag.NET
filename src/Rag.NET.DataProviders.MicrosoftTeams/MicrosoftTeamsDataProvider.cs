@@ -4,6 +4,8 @@ using System.Text.RegularExpressions;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.MicrosoftTeams;
 
@@ -31,11 +33,11 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => GetFullHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetFullHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFullHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var teams = await GetTeamsAsync(cancellationToken).ConfigureAwait(false);
@@ -55,7 +57,7 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
 
                 var handles = GroupByDay(teamId, channelId, channelName, messages);
                 for (int hi = 0; hi < handles.Count; hi++)
-                    yield return handles[hi];
+                    yield return Result<FileHandle, RagError>.Success(handles[hi]);
             }
         }
     }

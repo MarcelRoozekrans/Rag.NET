@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders;
 
@@ -20,26 +21,34 @@ public abstract class FileContentProviderBase : IFileContentProvider
 
     /// <summary>
     /// Enumerate raw file handles from the vendor SDK.
+    /// Yield <see cref="Result{TValue,TError}.Failure"/> on HTTP errors.
     /// No filtering required — the base class handles it.
     /// </summary>
-    protected abstract IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected abstract IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public async IAsyncEnumerable<FileEntry> GetFilesAsync(
+    public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        await foreach (var handle in GetFileHandlesAsync(cancellationToken)
+        await foreach (var result in GetFileHandlesAsync(cancellationToken)
             .ConfigureAwait(false))
         {
+            if (result.IsFailure)
+            {
+                yield return Result<FileEntry, RagError>.Failure(result.Error);
+                continue;
+            }
+
+            var handle = result.Value;
             if (!MatchesExtension(handle.FileName)) continue;
             if (_options.Filter is not null && !_options.Filter(handle.Id)) continue;
 
-            yield return new FileEntry(
+            yield return Result<FileEntry, RagError>.Success(new FileEntry(
                 Id:               new EntryId(handle.Id),
                 FileName:         handle.FileName,
                 OpenContentAsync: handle.OpenContentAsync,
-                ETag:             handle.ETag);
+                ETag:             handle.ETag));
         }
     }
 

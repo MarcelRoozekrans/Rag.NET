@@ -69,7 +69,7 @@ public sealed class WebCrawlerDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => e.Id.Value.Contains("/start", StringComparison.Ordinal));
+        Assert.Contains(entries, e => e.Value.Id.Value.Contains("/start", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -87,8 +87,8 @@ public sealed class WebCrawlerDataProviderTests
 
         Assert.All(entries, e =>
         {
-            Assert.NotEmpty(e.Id.Value);
-            Assert.NotEmpty(e.FileName);
+            Assert.NotEmpty(e.Value.Id.Value);
+            Assert.NotEmpty(e.Value.FileName);
         });
     }
 
@@ -105,8 +105,8 @@ public sealed class WebCrawlerDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        _ = Assert.Single(entries);
+        await using var stream = await entries[0].Value.OpenContentAsync(TestContext.Current.CancellationToken);
         Assert.True(stream.Length > 0);
     }
 
@@ -123,7 +123,7 @@ public sealed class WebCrawlerDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
+        _ = Assert.Single(entries);
     }
 
     [Fact]
@@ -178,6 +178,6 @@ public sealed class WebCrawlerDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.DoesNotContain(entries, e => e.Id.Value.Contains("/private/"));
+        Assert.DoesNotContain(entries, e => e.Value.Id.Value.Contains("/private/"));
     }
 }

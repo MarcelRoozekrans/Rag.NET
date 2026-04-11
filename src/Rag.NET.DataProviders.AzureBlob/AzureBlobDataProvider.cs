@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using Azure.Storage.Blobs;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.AzureBlob;
 
@@ -22,7 +24,7 @@ public sealed class AzureBlobDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override async IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await foreach (var blob in _container
@@ -34,7 +36,7 @@ public sealed class AzureBlobDataProvider : FileContentProviderBase
             var etag = blob.Properties.ETag?.ToString("H");
             var capturedName = blob.Name;
 
-            yield return new FileHandle(
+            yield return Result<FileHandle, RagError>.Success(new FileHandle(
                 Id:               blob.Name,
                 FileName:         Path.GetFileName(blob.Name),
                 ETag:             etag,
@@ -44,7 +46,7 @@ public sealed class AzureBlobDataProvider : FileContentProviderBase
                     var download = await blobClient.DownloadStreamingAsync(cancellationToken: ct)
                         .ConfigureAwait(false);
                     return download.Value.Content;
-                });
+                }));
         }
     }
 }

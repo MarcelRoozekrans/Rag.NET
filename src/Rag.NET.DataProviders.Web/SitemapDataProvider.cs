@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 using Rag.NET.DataProviders;
 using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Web;
 
@@ -24,14 +25,14 @@ public sealed class SitemapDataProvider : IFileContentProvider
         _httpClient = httpClient;
     }
 
-    public async IAsyncEnumerable<FileEntry> GetFilesAsync(
+    public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await foreach (var entry in LoadSitemapAsync(_sitemapUrl, cancellationToken).ConfigureAwait(false))
             yield return entry;
     }
 
-    private async IAsyncEnumerable<FileEntry> LoadSitemapAsync(
+    private async IAsyncEnumerable<Result<FileEntry, RagError>> LoadSitemapAsync(
         string url,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -57,7 +58,7 @@ public sealed class SitemapDataProvider : IFileContentProvider
                 var lastMod = urlEl.Element(s_ns + "lastmod")?.Value;
                 var capturedLoc = loc;
 
-                yield return new FileEntry(
+                yield return Result<FileEntry, RagError>.Success(new FileEntry(
                     Id: new EntryId(loc),
                     FileName: InferFileName(loc),
                     OpenContentAsync: async ct =>
@@ -69,7 +70,7 @@ public sealed class SitemapDataProvider : IFileContentProvider
                         buffer.Position = 0;
                         return (Stream)buffer;
                     },
-                    ETag: lastMod);
+                    ETag: lastMod));
             }
         }
     }

@@ -106,8 +106,8 @@ public sealed class GitLabDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Id, "docs/readme.md", StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id, "src/main.cs", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "docs/readme.md", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "src/main.cs", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -128,8 +128,8 @@ public sealed class GitLabDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("kept.md", entries[0].Id);
+        _ = Assert.Single(entries);
+        Assert.Equal("kept.md", entries[0].Value.Id);
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public sealed class GitLabDataProviderTests
 
         Assert.Equal(2, entries.Count);
         Assert.DoesNotContain(entries,
-            e => string.Equals(e.Id, "build.yaml", StringComparison.Ordinal));
+            e => string.Equals(e.Value.Id, "build.yaml", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -186,8 +186,8 @@ public sealed class GitLabDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("src/main.cs", entries[0].Id);
+        _ = Assert.Single(entries);
+        Assert.Equal("src/main.cs", entries[0].Value.Id);
     }
 
     [Fact]
@@ -203,8 +203,8 @@ public sealed class GitLabDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("helper.cs", entries[0].FileName);
+        _ = Assert.Single(entries);
+        Assert.Equal("helper.cs", entries[0].Value.FileName);
     }
 
     [Fact]
@@ -221,8 +221,8 @@ public sealed class GitLabDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal(sha, entries[0].ETag, StringComparer.OrdinalIgnoreCase);
+        _ = Assert.Single(entries);
+        Assert.Equal(sha, entries[0].Value.ETag, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -246,9 +246,9 @@ public sealed class GitLabDataProviderTests
 
         // Deleted file is skipped; renamed file yields the new path
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Id, "new-name.cs", StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id, "modified.cs", StringComparison.Ordinal));
-        Assert.DoesNotContain(entries, e => string.Equals(e.Id, "removed.cs", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "new-name.cs", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "modified.cs", StringComparison.Ordinal));
+        Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "removed.cs", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -306,8 +306,8 @@ public sealed class GitLabDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        _ = Assert.Single(entries);
+        await using var stream = await entries[0].Value.OpenContentAsync(TestContext.Current.CancellationToken);
         using var ms = new MemoryStream();
         await stream.CopyToAsync(ms, TestContext.Current.CancellationToken);
         Assert.Equal(expectedBytes, ms.ToArray());
@@ -351,7 +351,7 @@ public sealed class GitLabDataProviderTests
         Assert.Equal(25, entries.Count);
         for (var i = 0; i < 25; i++)
         {
-            Assert.Contains(entries, e => string.Equals(e.Id, $"dir/file{i}.cs", StringComparison.Ordinal));
+            Assert.Contains(entries, e => string.Equals(e.Value.Id, $"dir/file{i}.cs", StringComparison.Ordinal));
         }
     }
 

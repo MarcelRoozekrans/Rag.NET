@@ -32,8 +32,8 @@ public sealed class RssDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/post-1", StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/post-2", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/post-1", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/post-2", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public sealed class RssDataProviderTests
         var sut = new RssDataProvider("https://example.com/feed.rss", MakeClient("https://example.com/feed.rss", xml));
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("Mon, 01 Jan 2024 00:00:00 GMT", entries[0].ETag);
+        Assert.Equal("Mon, 01 Jan 2024 00:00:00 GMT", entries[0].Value.ETag);
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public sealed class RssDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/post-1", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/post-1", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public sealed class RssDataProviderTests
         var sut = new RssDataProvider("https://example.com/atom.xml", MakeClient("https://example.com/atom.xml", xml));
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("2024-01-01T00:00:00Z", entries[0].ETag);
+        Assert.Equal("2024-01-01T00:00:00Z", entries[0].Value.ETag);
     }
 
     [Fact]
@@ -122,8 +122,8 @@ public sealed class RssDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("https://example.com/post-via-link", entries[0].Id);
+        _ = Assert.Single(entries);
+        Assert.Equal("https://example.com/post-via-link", entries[0].Value.Id);
     }
 
     [Fact]
@@ -145,8 +145,8 @@ public sealed class RssDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("https://example.com/post-via-link", entries[0].Id);
+        _ = Assert.Single(entries);
+        Assert.Equal("https://example.com/post-via-link", entries[0].Value.Id);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public sealed class RssDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        await using var stream = await entries[0].Value.OpenContentAsync(TestContext.Current.CancellationToken);
         Assert.True(stream.CanSeek, "stream must be seekable for parent-document retrieval");
     }
 
@@ -197,7 +197,7 @@ public sealed class RssDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        await using var stream = await entries[0].Value.OpenContentAsync(TestContext.Current.CancellationToken);
         Assert.True(stream.CanSeek, "stream must be seekable for parent-document retrieval");
     }
 }

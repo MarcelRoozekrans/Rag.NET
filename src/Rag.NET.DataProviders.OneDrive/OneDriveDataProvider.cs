@@ -3,6 +3,8 @@ using Microsoft.Graph;
 using Microsoft.Graph.Drives.Item.Items.Item.Delta;
 using Microsoft.Graph.Models.ODataErrors;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.OneDrive;
 
@@ -25,7 +27,7 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => _options.DeltaToken is not null
             ? GetDeltaHandlesAsync(cancellationToken)
@@ -39,7 +41,7 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
             $"Could not resolve OneDrive ID for user '{_options.UserId}'.");
     }
 
-    private async IAsyncEnumerable<FileHandle> GetFullHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFullHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var driveId = await GetDriveIdAsync(cancellationToken).ConfigureAwait(false);
@@ -58,14 +60,14 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
 
                 var capturedId = item.Id!;
                 var capturedDriveId = driveId;
-                yield return new FileHandle(
+                yield return Result<FileHandle, RagError>.Success(new FileHandle(
                     Id:               (item.ParentReference?.Path ?? string.Empty) + "/" + item.Name,
                     FileName:         item.Name ?? capturedId,
                     ETag:             item.ETag,
                     OpenContentAsync: async ct =>
                         await _graph.Drives[capturedDriveId].Items[capturedId].Content
                             .GetAsync(cancellationToken: ct).ConfigureAwait(false)
-                            ?? Stream.Null);
+                            ?? Stream.Null));
             }
 
             page = page.OdataNextLink is not null
@@ -76,7 +78,7 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
         }
     }
 
-    private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // C# does not permit yield inside a catch clause. We eagerly attempt the first
@@ -107,14 +109,14 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
 
                 var capturedId = item.Id!;
                 var capturedDriveId = driveId;
-                yield return new FileHandle(
+                yield return Result<FileHandle, RagError>.Success(new FileHandle(
                     Id:               (item.ParentReference?.Path ?? string.Empty) + "/" + item.Name,
                     FileName:         item.Name ?? capturedId,
                     ETag:             item.ETag,
                     OpenContentAsync: async ct =>
                         await _graph.Drives[capturedDriveId].Items[capturedId].Content
                             .GetAsync(cancellationToken: ct).ConfigureAwait(false)
-                            ?? Stream.Null);
+                            ?? Stream.Null));
             }
 
             page = page.OdataNextLink is not null

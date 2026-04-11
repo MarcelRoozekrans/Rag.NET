@@ -53,9 +53,9 @@ public sealed class JiraDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("PROJ-1.md", results[0].FileName);
-        Assert.Equal("2026-03-01T10:00:00Z", results[0].ETag);
+        _ = Assert.Single(results);
+        Assert.Equal("PROJ-1.md", results[0].Value.FileName);
+        Assert.Equal("2026-03-01T10:00:00Z", results[0].Value.ETag);
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public sealed class JiraDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
+        _ = Assert.Single(results);
         Assert.NotNull(capturedUrl);
         // URL should contain URL-encoded form of "updated >"
         Assert.Contains("updated", capturedUrl, StringComparison.OrdinalIgnoreCase);
@@ -228,8 +228,8 @@ public sealed class JiraDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("PROJ-1.md", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("PROJ-1.md", results[0].Value.FileName);
     }
 
     [Fact]
@@ -271,7 +271,7 @@ public sealed class JiraDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
+        _ = Assert.Single(results);
         Assert.NotNull(capturedUrl);
         Assert.Contains("project", capturedUrl, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ENG", capturedUrl, StringComparison.Ordinal);
@@ -305,8 +305,8 @@ public sealed class JiraDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("# Minimal issue", content, StringComparison.Ordinal);
         Assert.Contains("**Status:** Done", content, StringComparison.Ordinal);
         Assert.DoesNotContain("Priority", content, StringComparison.Ordinal);
@@ -350,8 +350,8 @@ public sealed class JiraDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("## Comments", content, StringComparison.Ordinal);
         Assert.Contains("Bob", content, StringComparison.Ordinal);
         Assert.Contains("Looks good to me", content, StringComparison.Ordinal);
@@ -444,8 +444,8 @@ public sealed class JiraDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("PROJ-1.md", results[0].FileName);
-        Assert.Equal("PROJ-2.md", results[1].FileName);
+        Assert.Equal("PROJ-1.md", results[0].Value.FileName);
+        Assert.Equal("PROJ-2.md", results[1].Value.FileName);
     }
     private static async Task<string> ReadContentAsync(FileEntry entry)
     {

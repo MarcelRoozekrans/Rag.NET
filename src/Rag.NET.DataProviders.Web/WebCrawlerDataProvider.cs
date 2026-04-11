@@ -3,6 +3,7 @@ using System.Text;
 using AngleSharp.Html.Parser;
 using Rag.NET.DataProviders;
 using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Web;
 
@@ -25,7 +26,7 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
         _options = options ?? new WebCrawlerOptions();
     }
 
-    public async IAsyncEnumerable<FileEntry> GetFilesAsync(
+    public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var seedUri = new Uri(_seedUrl);
@@ -58,14 +59,14 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
             pageCount++;
             var capturedHtml = html;
 
-            yield return new FileEntry(
+            yield return Result<FileEntry, RagError>.Success(new FileEntry(
                 Id: new EntryId(url),
                 FileName: InferFileName(url),
                 OpenContentAsync: _ =>
                 {
                     var bytes = Encoding.UTF8.GetBytes(capturedHtml);
                     return Task.FromResult<Stream>(new MemoryStream(bytes));
-                });
+                }));
 
             if (depth < _options.MaxDepth)
             {

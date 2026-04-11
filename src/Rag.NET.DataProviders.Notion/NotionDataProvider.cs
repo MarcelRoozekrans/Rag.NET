@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Notion;
 
@@ -29,11 +31,11 @@ public sealed class NotionDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => GetHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         NotionSort? sort = _options.DeltaToken is not null
@@ -71,12 +73,12 @@ public sealed class NotionDataProvider : FileContentProviderBase
                 var title    = GetTitle(page);
                 var markdown = BlocksToMarkdown(title, blocks);
 
-                yield return new FileHandle(
+                yield return Result<FileHandle, RagError>.Success(new FileHandle(
                     Id:               page.Id,
                     FileName:         $"{title}.md",
                     ETag:             page.LastEditedTime,
                     OpenContentAsync: _ => Task.FromResult<Stream>(
-                        new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                        new MemoryStream(Encoding.UTF8.GetBytes(markdown)))));
             }
 
             cursor = (!stopPaging && result.HasMore) ? result.NextCursor : null;

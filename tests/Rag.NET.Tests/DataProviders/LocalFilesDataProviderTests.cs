@@ -41,8 +41,8 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("a.md", entries[0].FileName);
+        _ = Assert.Single(entries);
+        Assert.Equal("a.md", entries[0].Value.FileName);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("readme.md", entries[0].Id.Value);
+        Assert.Equal("readme.md", entries[0].Value.Id.Value);
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public sealed class LocalFilesDataProviderTests : IDisposable
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Path.GetRelativePath uses the platform separator — normalise for the assertion
-        var id = entries[0].Id.Value.Replace('\\', '/');
+        var id = entries[0].Value.Id.Value.Replace('\\', '/');
         Assert.Equal("docs/guide.md", id);
     }
 
@@ -82,7 +82,7 @@ public sealed class LocalFilesDataProviderTests : IDisposable
 
         var info = new FileInfo(Path.Combine(_dir, "readme.md"));
         var expected = $"{info.LastWriteTimeUtc.Ticks}:{info.Length}";
-        Assert.Equal(expected, entries[0].ETag);
+        Assert.Equal(expected, entries[0].Value.ETag);
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        await using var stream = await entries[0].Value.OpenContentAsync(TestContext.Current.CancellationToken);
         using var reader = new StreamReader(stream);
         var content = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
         Assert.Equal("hello world", content);
@@ -112,8 +112,8 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("keep.md", entries[0].FileName);
+        _ = Assert.Single(entries);
+        Assert.Equal("keep.md", entries[0].Value.FileName);
     }
 
     [Fact]
@@ -130,8 +130,8 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("root.txt", entries[0].FileName);
+        _ = Assert.Single(entries);
+        Assert.Equal("root.txt", entries[0].Value.FileName);
     }
 
     [Fact]
@@ -143,8 +143,8 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("readme.MD", entries[0].FileName);
+        _ = Assert.Single(entries);
+        Assert.Equal("readme.MD", entries[0].Value.FileName);
     }
 
     [Fact]
@@ -160,7 +160,7 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.EndsWith("keep.txt", entries[0].Id.Value, StringComparison.OrdinalIgnoreCase);
+        _ = Assert.Single(entries);
+        Assert.EndsWith("keep.txt", entries[0].Value.Id.Value, StringComparison.OrdinalIgnoreCase);
     }
 }

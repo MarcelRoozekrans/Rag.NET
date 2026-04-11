@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Slack;
 
@@ -31,11 +33,11 @@ public sealed class SlackDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => GetHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var channels = await GetChannelsAsync(cancellationToken).ConfigureAwait(false);
@@ -80,12 +82,12 @@ public sealed class SlackDataProvider : FileContentProviderBase
                     channel.Id, channel.Name, dateStr, dayMsgs, cancellationToken)
                     .ConfigureAwait(false);
 
-                yield return new FileHandle(
+                yield return Result<FileHandle, RagError>.Success(new FileHandle(
                     Id:               $"{channel.Id}/{dateStr}",
                     FileName:         $"{channel.Name}-{dateStr}.md",
                     ETag:             latestTs,
                     OpenContentAsync: _ => Task.FromResult<Stream>(
-                        new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                        new MemoryStream(Encoding.UTF8.GetBytes(markdown)))));
             }
         }
     }

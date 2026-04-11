@@ -2,6 +2,8 @@ using System.Runtime.CompilerServices;
 using Box.V2;
 using Box.V2.Models;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Box;
 
@@ -23,13 +25,13 @@ public sealed class BoxDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => _options.DeltaToken is not null
             ? GetDeltaHandlesAsync(cancellationToken)
             : GetFullHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetFullHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFullHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var stack = new Stack<string>();
@@ -60,7 +62,7 @@ public sealed class BoxDataProvider : FileContentProviderBase
 
                     var capturedId = item.Id;
                     var sha1 = (item as BoxFile)?.Sha1;
-                    yield return new FileHandle(
+                    yield return Result<FileHandle, RagError>.Success(new FileHandle(
                         Id:               item.Id,
                         FileName:         item.Name,
                         ETag:             sha1,
@@ -69,7 +71,7 @@ public sealed class BoxDataProvider : FileContentProviderBase
                             ct.ThrowIfCancellationRequested();
                             return await _client.FilesManager.DownloadAsync(capturedId, null)
                                 .ConfigureAwait(false);
-                        });
+                        }));
                 }
 
                 offset += items.Entries.Count;
@@ -78,7 +80,7 @@ public sealed class BoxDataProvider : FileContentProviderBase
         }
     }
 
-    private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var streamPosition = _options.DeltaToken!;
@@ -101,7 +103,7 @@ public sealed class BoxDataProvider : FileContentProviderBase
                      && !string.Equals(ev.EventType, "COPY",   StringComparison.Ordinal)) continue;
 
                     var capturedId = file.Id;
-                    yield return new FileHandle(
+                    yield return Result<FileHandle, RagError>.Success(new FileHandle(
                         Id:               file.Id,
                         FileName:         file.Name,
                         ETag:             file.Sha1,
@@ -110,7 +112,7 @@ public sealed class BoxDataProvider : FileContentProviderBase
                             ct.ThrowIfCancellationRequested();
                             return await _client.FilesManager.DownloadAsync(capturedId, null)
                                 .ConfigureAwait(false);
-                        });
+                        }));
                 }
             }
 

@@ -43,8 +43,8 @@ public sealed class GitHubDataProviderTests
         Assert.NotEmpty(entries);
         Assert.All(entries, e =>
         {
-            Assert.NotEmpty(e.Id.Value);
-            Assert.NotEmpty(e.FileName);
+            Assert.NotEmpty(e.Value.Id.Value);
+            Assert.NotEmpty(e.Value.FileName);
         });
     }
 
@@ -57,7 +57,7 @@ public sealed class GitHubDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.All(entries, e => Assert.NotEmpty(e.ETag!));
+        Assert.All(entries, e => Assert.NotEmpty(e.Value.ETag!));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class GitHubDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // The cassette includes a tree node (src/) — it must not appear in results.
-        Assert.DoesNotContain(entries, e => e.Id.Value.EndsWith('/'));
+        Assert.DoesNotContain(entries, e => e.Value.Id.Value.EndsWith('/'));
     }
 
     [Fact]
@@ -84,7 +84,7 @@ public sealed class GitHubDataProviderTests
 
         // Open the first file and verify we get a non-empty stream.
         var first = entries[0];
-        await using var stream = await first.OpenContentAsync(TestContext.Current.CancellationToken);
+        await using var stream = await first.Value.OpenContentAsync(TestContext.Current.CancellationToken);
         Assert.True(stream.Length > 0);
     }
 
@@ -100,7 +100,7 @@ public sealed class GitHubDataProviderTests
 
         Assert.NotEmpty(entries);
         Assert.All(entries, e =>
-            Assert.EndsWith(".md", e.FileName, StringComparison.OrdinalIgnoreCase));
+            Assert.EndsWith(".md", e.Value.FileName, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -161,8 +161,8 @@ public sealed class GitHubDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("CHANGELOG.md", entries[0].Id);
-        Assert.Equal("delta-sha-001", entries[0].ETag);
+        _ = Assert.Single(entries);
+        Assert.Equal("CHANGELOG.md", entries[0].Value.Id);
+        Assert.Equal("delta-sha-001", entries[0].Value.ETag);
     }
 }

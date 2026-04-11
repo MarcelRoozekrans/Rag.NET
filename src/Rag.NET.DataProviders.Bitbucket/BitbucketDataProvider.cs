@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Bitbucket;
 
@@ -24,13 +26,13 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => _options.DeltaToken is not null
             ? GetDeltaHandlesAsync(cancellationToken)
             : GetFullHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetFullHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFullHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         string? pageToken = null;
@@ -56,7 +58,7 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
                 var capturedPath = entry.Path;
                 var etag = entry.Commit?.Hash;
 
-                yield return new FileHandle(
+                yield return Result<FileHandle, RagError>.Success(new FileHandle(
                     Id: capturedPath,
                     FileName: Path.GetFileName(capturedPath),
                     ETag: etag,
@@ -69,7 +71,7 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
                             capturedPath,
                             cancellationToken: ct).ConfigureAwait(false);
                         return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                    });
+                    }));
             }
 
             pageToken = ExtractPageToken(page.Next);
@@ -77,7 +79,7 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
         while (pageToken is not null);
     }
 
-    private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var spec = $"{_options.DeltaToken}..{_options.Ref}";
@@ -106,7 +108,7 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
 
                 var capturedPath = filePath;
 
-                yield return new FileHandle(
+                yield return Result<FileHandle, RagError>.Success(new FileHandle(
                     Id: capturedPath,
                     FileName: Path.GetFileName(capturedPath),
                     ETag: null,
@@ -119,7 +121,7 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
                             capturedPath,
                             cancellationToken: ct).ConfigureAwait(false);
                         return await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                    });
+                    }));
             }
 
             pageToken = ExtractPageToken(page.Next);

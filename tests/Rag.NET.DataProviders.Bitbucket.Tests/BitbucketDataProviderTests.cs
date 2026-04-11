@@ -73,10 +73,10 @@ public sealed class BitbucketDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("readme.md", results[0].FileName);
-        Assert.Equal("docs/readme.md", results[0].Id);
-        Assert.Equal("abc123", results[0].ETag);
-        Assert.Equal("app.cs", results[1].FileName);
+        Assert.Equal("readme.md", results[0].Value.FileName);
+        Assert.Equal("docs/readme.md", results[0].Value.Id);
+        Assert.Equal("abc123", results[0].Value.ETag);
+        Assert.Equal("app.cs", results[1].Value.FileName);
     }
 
     [Fact]
@@ -105,9 +105,9 @@ public sealed class BitbucketDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(3, results.Count);
-        Assert.Equal("new-file.md", results[0].FileName);
-        Assert.Equal("changed.md", results[1].FileName);
-        Assert.Equal("renamed.md", results[2].FileName);
+        Assert.Equal("new-file.md", results[0].Value.FileName);
+        Assert.Equal("changed.md", results[1].Value.FileName);
+        Assert.Equal("renamed.md", results[2].Value.FileName);
     }
 
     [Fact]
@@ -134,8 +134,8 @@ public sealed class BitbucketDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("readme.md", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("readme.md", results[0].Value.FileName);
     }
 
     [Fact]
@@ -190,8 +190,8 @@ public sealed class BitbucketDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("src/app.cs", results[0].Id);
+        _ = Assert.Single(results);
+        Assert.Equal("src/app.cs", results[0].Value.Id);
     }
 
     [Fact]
@@ -219,8 +219,8 @@ public sealed class BitbucketDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("file1.cs", results[0].FileName);
-        Assert.Equal("file2.cs", results[1].FileName);
+        Assert.Equal("file1.cs", results[0].Value.FileName);
+        Assert.Equal("file2.cs", results[1].Value.FileName);
     }
 
     [Fact]
@@ -254,8 +254,8 @@ public sealed class BitbucketDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("a.cs", results[0].FileName);
-        Assert.Equal("b.cs", results[1].FileName);
+        Assert.Equal("a.cs", results[0].Value.FileName);
+        Assert.Equal("b.cs", results[1].Value.FileName);
     }
 
     [Fact]
@@ -282,9 +282,9 @@ public sealed class BitbucketDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("new-location/file.cs", results[0].Id);
-        Assert.Equal("file.cs", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("new-location/file.cs", results[0].Value.Id);
+        Assert.Equal("file.cs", results[0].Value.FileName);
     }
 
     [Fact]
@@ -357,8 +357,8 @@ public sealed class BitbucketDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        await using var stream = await results[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        _ = Assert.Single(results);
+        await using var stream = await results[0].Value.OpenContentAsync(TestContext.Current.CancellationToken);
         using var reader = new StreamReader(stream);
         var content = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
         Assert.Equal(fileContent, content);
@@ -380,8 +380,8 @@ public sealed class BitbucketDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("deadbeef", results[0].ETag);
+        _ = Assert.Single(results);
+        Assert.Equal("deadbeef", results[0].Value.ETag);
     }
 
     [Fact]
@@ -400,9 +400,9 @@ public sealed class BitbucketDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("main.cs", results[0].FileName);
-        Assert.Equal("src/deep/nested/main.cs", results[0].Id);
+        _ = Assert.Single(results);
+        Assert.Equal("main.cs", results[0].Value.FileName);
+        Assert.Equal("src/deep/nested/main.cs", results[0].Value.Id);
     }
 
     [Fact]
@@ -428,8 +428,8 @@ public sealed class BitbucketDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("a.cs", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("a.cs", results[0].Value.FileName);
     }
 }
 

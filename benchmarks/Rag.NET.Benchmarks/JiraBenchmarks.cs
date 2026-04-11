@@ -42,7 +42,7 @@ public class JiraBenchmarks
         int count = 0;
         await foreach (var file in _fullProvider.GetFilesAsync(CancellationToken.None))
         {
-            await using var stream = await file.OpenContentAsync(CancellationToken.None);
+            await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
         return count;
@@ -54,7 +54,7 @@ public class JiraBenchmarks
         int count = 0;
         await foreach (var file in _deltaProvider.GetFilesAsync(CancellationToken.None))
         {
-            await using var stream = await file.OpenContentAsync(CancellationToken.None);
+            await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
         return count;
@@ -66,7 +66,7 @@ public class JiraBenchmarks
         int count = 0;
         await foreach (var file in _manyCommentsProvider.GetFilesAsync(CancellationToken.None))
         {
-            await using var stream = await file.OpenContentAsync(CancellationToken.None);
+            await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
         return count;

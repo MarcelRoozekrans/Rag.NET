@@ -2,7 +2,9 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
 using Refit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Jira;
 
@@ -45,7 +47,7 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => _options.DeltaToken is not null
             ? GetDeltaHandlesAsync(cancellationToken)
@@ -75,7 +77,7 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
     /// Falls back to a full traversal when the Atlassian API returns HTTP 400,
     /// which indicates a stale or otherwise invalid <see cref="JiraOptions.DeltaToken"/>.
     /// </summary>
-    private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var deltaJql = BuildDeltaJql();
@@ -109,7 +111,7 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
         for (int i = 0; i < firstPage!.Issues.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return ToHandle(firstPage.Issues[i]);
+            yield return Result<FileHandle, RagError>.Success(ToHandle(firstPage.Issues[i]));
         }
 
         int startAt = firstPage.Issues.Count;
@@ -121,7 +123,7 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
             for (int i = 0; i < page.Issues.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                yield return ToHandle(page.Issues[i]);
+                yield return Result<FileHandle, RagError>.Success(ToHandle(page.Issues[i]));
             }
 
             startAt += page.Issues.Count;
@@ -129,7 +131,7 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
         }
     }
 
-    private async IAsyncEnumerable<FileHandle> GetHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetHandlesAsync(
         string jql,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -144,7 +146,7 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
             for (int i = 0; i < result.Issues.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                yield return ToHandle(result.Issues[i]);
+                yield return Result<FileHandle, RagError>.Success(ToHandle(result.Issues[i]));
             }
 
             startAt += result.Issues.Count;

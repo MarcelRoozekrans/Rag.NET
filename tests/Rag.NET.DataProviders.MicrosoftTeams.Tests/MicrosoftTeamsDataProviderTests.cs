@@ -61,8 +61,8 @@ public sealed class MicrosoftTeamsDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("general-2026-03-01.md", entries[0].FileName);
+        _ = Assert.Single(entries);
+        Assert.Equal("general-2026-03-01.md", entries[0].Value.FileName);
     }
 
     [Fact]
@@ -79,8 +79,8 @@ public sealed class MicrosoftTeamsDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("chan-1-2026-03-01.md", entries[0].FileName);
+        _ = Assert.Single(entries);
+        Assert.Equal("chan-1-2026-03-01.md", entries[0].Value.FileName);
     }
 
     [Fact]
@@ -125,8 +125,8 @@ public sealed class MicrosoftTeamsDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("general-2026-03-01.md", entries[0].FileName);
+        _ = Assert.Single(entries);
+        Assert.Equal("general-2026-03-01.md", entries[0].Value.FileName);
     }
 
     [Fact]
@@ -180,8 +180,8 @@ public sealed class MicrosoftTeamsDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        var content = await ReadContentAsync(entries[0]);
+        _ = Assert.Single(entries);
+        var content = await ReadContentAsync(entries[0].Value);
         Assert.Contains("bold text", content, StringComparison.Ordinal);
         Assert.DoesNotContain("<b>", content, StringComparison.Ordinal);
         Assert.DoesNotContain("</b>", content, StringComparison.Ordinal);
@@ -211,8 +211,8 @@ public sealed class MicrosoftTeamsDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        var content = await ReadContentAsync(entries[0]);
+        _ = Assert.Single(entries);
+        var content = await ReadContentAsync(entries[0].Value);
         Assert.Contains("**unknown**", content, StringComparison.Ordinal);
     }
 
@@ -249,7 +249,7 @@ public sealed class MicrosoftTeamsDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count);
-        var fileNames = entries.Select(e => e.FileName).OrderBy(n => n, StringComparer.Ordinal).ToList();
+        var fileNames = entries.Select(e => e.Value.FileName).OrderBy(n => n, StringComparer.Ordinal).ToList();
         Assert.Contains("chan-1-2026-03-01.md", fileNames);
         Assert.Contains("chan-1-2026-03-02.md", fileNames);
     }
@@ -309,8 +309,8 @@ public sealed class MicrosoftTeamsDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        var content = await ReadContentAsync(entries[0]);
+        _ = Assert.Single(entries);
+        var content = await ReadContentAsync(entries[0].Value);
         var alicePos = content.IndexOf("Alice", StringComparison.Ordinal);
         var bobPos   = content.IndexOf("Bob", StringComparison.Ordinal);
         Assert.True(alicePos < bobPos, "Alice (09:00) should appear before Bob (15:00)");
@@ -339,10 +339,10 @@ public sealed class MicrosoftTeamsDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
+        _ = Assert.Single(entries);
         var todayStr = DateTime.UtcNow.Date.ToString("yyyy-MM-dd",
             System.Globalization.CultureInfo.InvariantCulture);
-        Assert.Contains(todayStr, entries[0].FileName, StringComparison.Ordinal);
+        Assert.Contains(todayStr, entries[0].Value.FileName, StringComparison.Ordinal);
     }
 
     [Fact]

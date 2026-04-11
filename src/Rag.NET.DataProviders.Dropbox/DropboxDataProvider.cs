@@ -2,6 +2,8 @@ using System.Runtime.CompilerServices;
 using Dropbox.Api;
 using Dropbox.Api.Files;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Dropbox;
 
@@ -29,13 +31,13 @@ public sealed class DropboxDataProvider : FileContentProviderBase
         return new DropboxClient(token);
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => _options.DeltaToken is not null
             ? GetDeltaHandlesAsync(cancellationToken)
             : GetFullHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetFullHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFullHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var client = await CreateClientAsync(cancellationToken).ConfigureAwait(false);
@@ -51,7 +53,7 @@ public sealed class DropboxDataProvider : FileContentProviderBase
                 if (entry is not FileMetadata file) continue;
 
                 var capturedPath = file.PathLower!;
-                yield return new FileHandle(
+                yield return Result<FileHandle, RagError>.Success(new FileHandle(
                     Id:               file.PathDisplay ?? capturedPath,
                     FileName:         file.Name,
                     ETag:             file.ContentHash,
@@ -64,7 +66,7 @@ public sealed class DropboxDataProvider : FileContentProviderBase
                         await content.CopyToAsync(ms, ct).ConfigureAwait(false);
                         ms.Seek(0, SeekOrigin.Begin);
                         return (Stream)ms;
-                    });
+                    }));
             }
 
             if (!result.HasMore) break;
@@ -72,7 +74,7 @@ public sealed class DropboxDataProvider : FileContentProviderBase
         }
     }
 
-    private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using var client = await CreateClientAsync(cancellationToken).ConfigureAwait(false);
@@ -87,7 +89,7 @@ public sealed class DropboxDataProvider : FileContentProviderBase
                 if (entry is not FileMetadata file) continue;
 
                 var capturedPath = file.PathLower!;
-                yield return new FileHandle(
+                yield return Result<FileHandle, RagError>.Success(new FileHandle(
                     Id:               file.PathDisplay ?? capturedPath,
                     FileName:         file.Name,
                     ETag:             file.ContentHash,
@@ -100,7 +102,7 @@ public sealed class DropboxDataProvider : FileContentProviderBase
                         await content.CopyToAsync(ms, ct).ConfigureAwait(false);
                         ms.Seek(0, SeekOrigin.Begin);
                         return (Stream)ms;
-                    });
+                    }));
             }
 
             if (!result.HasMore) break;

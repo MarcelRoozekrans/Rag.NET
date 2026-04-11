@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Tests;
 
@@ -10,11 +12,11 @@ public sealed class FileContentProviderBaseTests
         CloudStorageOptions options,
         params FileHandle[] handles) : FileContentProviderBase(options)
     {
-        protected override async IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+        protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             foreach (var h in handles)
-                yield return h;
+                yield return Result<FileHandle, RagError>.Success(h);
             await Task.CompletedTask.ConfigureAwait(false);
         }
     }
@@ -33,8 +35,9 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
+        var entries = results.Select(r => r.Value).ToList();
 
-        Assert.Equal(2, results.Count);
+        Assert.Equal(2, entries.Count);
     }
 
     [Fact]
@@ -47,9 +50,10 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
+        var entries = results.Select(r => r.Value).ToList();
 
-        Assert.Single(results);
-        Assert.Equal("readme.md", results[0].Id);
+        Assert.Single(entries);
+        Assert.Equal("readme.md", entries[0].Id);
     }
 
     [Fact]
@@ -63,8 +67,9 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
+        var entries = results.Select(r => r.Value).ToList();
 
-        Assert.Equal(3, results.Count);
+        Assert.Equal(3, entries.Count);
     }
 
     [Fact]
@@ -77,9 +82,10 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
+        var entries = results.Select(r => r.Value).ToList();
 
-        Assert.Single(results);
-        Assert.Equal("docs/guide.md", results[0].Id);
+        Assert.Single(entries);
+        Assert.Equal("docs/guide.md", entries[0].Id);
     }
 
     [Fact]
@@ -90,8 +96,9 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
+        var entries = results.Select(r => r.Value).ToList();
 
-        Assert.Equal("etag-abc", results[0].ETag);
+        Assert.Equal("etag-abc", entries[0].ETag);
     }
 
     [Fact]
@@ -104,8 +111,9 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
+        var entries = results.Select(r => r.Value).ToList();
 
-        Assert.Equal(2, results.Count);
+        Assert.Equal(2, entries.Count);
     }
 
     [Fact]
@@ -123,8 +131,33 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
+        var entries = results.Select(r => r.Value).ToList();
 
-        Assert.Single(results);
-        Assert.Equal("docs/guide.md", results[0].Id);
+        Assert.Single(entries);
+        Assert.Equal("docs/guide.md", entries[0].Id);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_HandleFailure_PropagatesAsFailureResult()
+    {
+        var failingProvider = new FailingStubProvider(new TestOptions());
+
+        var results = await failingProvider.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.True(results[0].IsFailure);
+        Assert.IsType<RagError.HttpFailed>(results[0].Error);
+    }
+
+    private sealed class FailingStubProvider(CloudStorageOptions options) : FileContentProviderBase(options)
+    {
+        protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            yield return Result<FileHandle, RagError>.Failure(
+                new RagError.HttpFailed(System.Net.HttpStatusCode.ServiceUnavailable, null));
+            await Task.CompletedTask.ConfigureAwait(false);
+        }
     }
 }

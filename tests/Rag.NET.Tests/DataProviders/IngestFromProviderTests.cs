@@ -38,12 +38,12 @@ public sealed class IngestFromProviderTests : IDisposable
     {
         var provider = Substitute.For<IFileContentProvider>();
         provider.GetFilesAsync(Arg.Any<CancellationToken>())
-            .Returns(entries.Select(e => new FileEntry(
+            .Returns(entries.Select(e => Result<FileEntry, RagError>.Success(new FileEntry(
                 Id: new EntryId(e.id),
                 FileName: e.fileName,
                 OpenContentAsync: _ => Task.FromResult<Stream>(
                     new MemoryStream(Encoding.UTF8.GetBytes(e.content))),
-                ETag: e.etag)).ToAsyncEnumerable());
+                ETag: e.etag))).ToAsyncEnumerable());
         return provider;
     }
 
@@ -178,7 +178,7 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Equal(1, result.Ingested);                                     // id-2 ingested
         Assert.Equal(2, result.Ingested + result.Skipped); // both entries were attempted
         Assert.Single(result.Errors);
-        Assert.Contains("id-1", result.Errors[0], StringComparison.Ordinal); // error message names the entry
+        Assert.IsType<RagError.StorageFailed>(result.Errors[0]);
     }
 
     [Fact]
@@ -245,7 +245,7 @@ public sealed class IngestFromProviderTests : IDisposable
             cancellationToken: ct);
 
         // Error is recorded
-        Assert.Contains(result.Errors, e => e.Contains("id-old", StringComparison.Ordinal));
+        Assert.Contains(result.Errors, e => e is RagError.StorageFailed);
         // Processing continued — id-new was ingested
         _ = await _pipeline.Received(1).IngestAsync(
             Arg.Any<Stream>(), Arg.Is<DocumentMetadata>(m => m.DocumentId.Equals(new DocumentId("id-new"))),
@@ -331,7 +331,7 @@ public sealed class IngestFromProviderTests : IDisposable
         provider.GetFilesAsync(Arg.Any<CancellationToken>())
             .Returns(new[]
             {
-                new FileEntry(
+                Result<FileEntry, RagError>.Success(new FileEntry(
                     Id: new EntryId("id-1"),
                     FileName: "doc.txt",
                     OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
@@ -339,7 +339,7 @@ public sealed class IngestFromProviderTests : IDisposable
                     {
                         ["source"]  = "entry-value",   // entry overrides base for "source"
                         ["extra"]   = "entry-extra",
-                    })
+                    }))
             }.ToAsyncEnumerable());
 
         var baseMetadata = new DocumentMetadata
@@ -362,5 +362,25 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Equal("entry-value",     tags["source"]);     // entry overrides base
         Assert.Equal("base-only-value", tags["base-only"]);  // base tag forwarded
         Assert.Equal("entry-extra",     tags["extra"]);      // entry-only tag included
+    }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_ProviderHttpFailure_AppearsInErrors()
+    {
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Failure(
+                    new RagError.HttpFailed(System.Net.HttpStatusCode.Unauthorized, "Unauthorized")),
+            }.ToAsyncEnumerable());
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.Ingested);
+        Assert.Single(result.Errors);
+        var error = Assert.IsType<RagError.HttpFailed>(result.Errors[0]);
+        Assert.Equal(System.Net.HttpStatusCode.Unauthorized, error.StatusCode);
     }
 }

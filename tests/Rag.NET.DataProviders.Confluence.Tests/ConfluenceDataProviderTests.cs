@@ -43,8 +43,8 @@ public sealed class ConfluenceDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("Guide.md", results[0].FileName);
-        Assert.Equal("3", results[0].ETag);
+        Assert.Equal("Guide.md", results[0].Value.FileName);
+        Assert.Equal("3", results[0].Value.ETag);
     }
 
     [Fact]
@@ -69,8 +69,8 @@ public sealed class ConfluenceDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("Updated.md", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("Updated.md", results[0].Value.FileName);
     }
 
     [Fact]
@@ -142,8 +142,8 @@ public sealed class ConfluenceDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("PageOne.md", results[0].FileName);
-        Assert.Equal("PageTwo.md", results[1].FileName);
+        Assert.Equal("PageOne.md", results[0].Value.FileName);
+        Assert.Equal("PageTwo.md", results[1].Value.FileName);
     }
 
     [Fact]
@@ -162,7 +162,7 @@ public sealed class ConfluenceDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var content = await ReadContentAsync(results[0]);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("Hello & World", content, StringComparison.Ordinal);
         Assert.DoesNotContain("<p>", content, StringComparison.Ordinal);
     }
@@ -223,8 +223,8 @@ public sealed class ConfluenceDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("Fallback.md", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("Fallback.md", results[0].Value.FileName);
     }
 
     [Fact]
@@ -276,8 +276,8 @@ public sealed class ConfluenceDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("First.md", results[0].FileName);
-        Assert.Equal("Second.md", results[1].FileName);
+        Assert.Equal("First.md", results[0].Value.FileName);
+        Assert.Equal("Second.md", results[1].Value.FileName);
         // Verify cursor=abc123 was extracted (stopped at &) by confirming the second page was fetched
         Assert.Equal(2, handler.RequestCount);
     }
@@ -307,7 +307,7 @@ public sealed class ConfluenceDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
+        _ = Assert.Single(results);
         var url = handler.CapturedUrls[0];
         // The CQL query should contain both space= and lastModified>
         Assert.Contains("space", url, StringComparison.OrdinalIgnoreCase);
@@ -377,7 +377,7 @@ public sealed class ConfluenceDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var content = await ReadContentAsync(results[0]);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.StartsWith("# My Title", content, StringComparison.Ordinal);
         Assert.Contains("Some body text & more", content, StringComparison.Ordinal);
         Assert.DoesNotContain("<h1>", content, StringComparison.Ordinal);

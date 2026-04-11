@@ -4,6 +4,8 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Zendesk;
 
@@ -33,7 +35,7 @@ public sealed partial class ZendeskArticlesDataProvider : FileContentProviderBas
         _options = options;
     }
 
-    protected override async IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         long startTime = _options.DeltaToken is not null
@@ -50,7 +52,7 @@ public sealed partial class ZendeskArticlesDataProvider : FileContentProviderBas
             for (int i = 0; i < result.Articles.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                yield return ToHandle(result.Articles[i]);
+                yield return Result<FileHandle, RagError>.Success(ToHandle(result.Articles[i]));
             }
 
             _lastEndTime = result.EndTime;

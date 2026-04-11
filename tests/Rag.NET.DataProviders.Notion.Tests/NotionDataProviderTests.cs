@@ -69,9 +69,9 @@ public sealed class NotionDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("My Page.md", results[0].FileName);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        Assert.Equal("My Page.md", results[0].Value.FileName);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("Hello world", content, StringComparison.Ordinal);
     }
 
@@ -196,8 +196,8 @@ public sealed class NotionDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("# H1", content, StringComparison.Ordinal);
         Assert.Contains("## H2", content, StringComparison.Ordinal);
         Assert.Contains("### H3", content, StringComparison.Ordinal);
@@ -237,8 +237,8 @@ public sealed class NotionDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("page-no-title.md", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("page-no-title.md", results[0].Value.FileName);
     }
 
     [Fact]
@@ -275,8 +275,8 @@ public sealed class NotionDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("Hello World.md", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("Hello World.md", results[0].Value.FileName);
     }
 
     [Fact]
@@ -320,8 +320,8 @@ public sealed class NotionDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("Page A.md", results[0].FileName);
-        Assert.Equal("Page B.md", results[1].FileName);
+        Assert.Equal("Page A.md", results[0].Value.FileName);
+        Assert.Equal("Page B.md", results[1].Value.FileName);
     }
 
     [Fact]
@@ -358,8 +358,8 @@ public sealed class NotionDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("New Page.md", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("New Page.md", results[0].Value.FileName);
     }
 
     [Fact]
@@ -444,8 +444,8 @@ public sealed class NotionDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("Block1", content, StringComparison.Ordinal);
         Assert.Contains("Block2", content, StringComparison.Ordinal);
     }

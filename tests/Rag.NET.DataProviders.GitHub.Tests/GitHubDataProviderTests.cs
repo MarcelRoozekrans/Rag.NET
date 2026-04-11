@@ -51,8 +51,8 @@ public sealed class GitHubDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Id, "docs/readme.md", StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id, "src/main.cs", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "docs/readme.md", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "src/main.cs", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public sealed class GitHubDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("sha-abc", entries[0].ETag);
+        Assert.Equal("sha-abc", entries[0].Value.ETag);
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public sealed class GitHubDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count);
-        Assert.DoesNotContain(entries, e => string.Equals(e.Id, "build.yaml", StringComparison.Ordinal));
+        Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "build.yaml", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -88,8 +88,8 @@ public sealed class GitHubDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("docs/guide.md", entries[0].Id);
+        _ = Assert.Single(entries);
+        Assert.Equal("docs/guide.md", entries[0].Value.Id);
     }
 
     [Fact]
@@ -112,8 +112,8 @@ public sealed class GitHubDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("changed.md", entries[0].Id);
+        _ = Assert.Single(entries);
+        Assert.Equal("changed.md", entries[0].Value.Id);
         // Verify full tree was NOT called
         await client.Git.Tree.DidNotReceive().GetRecursive(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
     }
@@ -139,9 +139,9 @@ public sealed class GitHubDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("kept.md", entries[0].Id);
-        Assert.DoesNotContain(entries, e => string.Equals(e.Id, "deleted.md", StringComparison.Ordinal));
+        _ = Assert.Single(entries);
+        Assert.Equal("kept.md", entries[0].Value.Id);
+        Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "deleted.md", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -161,8 +161,8 @@ public sealed class GitHubDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("src/main.cs", entries[0].Id);
+        _ = Assert.Single(entries);
+        Assert.Equal("src/main.cs", entries[0].Value.Id);
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public sealed class GitHubDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(entries);
-        Assert.Equal("changed.md", entries[0].Id);
+        _ = Assert.Single(entries);
+        Assert.Equal("changed.md", entries[0].Value.Id);
     }
 }

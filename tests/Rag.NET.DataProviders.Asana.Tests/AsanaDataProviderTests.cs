@@ -71,9 +71,9 @@ public sealed class AsanaDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("Fix bug.md", results[0].FileName);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        Assert.Equal("Fix bug.md", results[0].Value.FileName);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("## Subtasks", content, StringComparison.Ordinal);
     }
 
@@ -204,8 +204,8 @@ public sealed class AsanaDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("# Minimal task", content, StringComparison.Ordinal);
         Assert.Contains("**Completed:** False", content, StringComparison.Ordinal);
         Assert.DoesNotContain("**Due:**", content, StringComparison.Ordinal);
@@ -249,8 +249,8 @@ public sealed class AsanaDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("## Subtasks", content, StringComparison.Ordinal);
         Assert.Contains("- Subtask Alpha", content, StringComparison.Ordinal);
         Assert.Contains("- Subtask Beta", content, StringComparison.Ordinal);
@@ -286,8 +286,8 @@ public sealed class AsanaDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.DoesNotContain("## Subtasks", content, StringComparison.Ordinal);
     }
 
@@ -361,8 +361,8 @@ public sealed class AsanaDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("Page one task.md", results[0].FileName);
-        Assert.Equal("Page two task.md", results[1].FileName);
+        Assert.Equal("Page one task.md", results[0].Value.FileName);
+        Assert.Equal("Page two task.md", results[1].Value.FileName);
     }
 
     [Fact]
@@ -395,8 +395,8 @@ public sealed class AsanaDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal(string.Empty, results[0].ETag);
+        _ = Assert.Single(results);
+        Assert.Equal(string.Empty, results[0].Value.ETag);
     }
 
     [Fact]

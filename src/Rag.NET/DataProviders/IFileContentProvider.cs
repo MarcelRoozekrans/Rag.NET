@@ -1,3 +1,6 @@
+using ZeroAlloc.Results;
+using Rag.NET.Models;
+
 namespace Rag.NET.DataProviders;
 
 /// <summary>
@@ -5,5 +8,6 @@ namespace Rag.NET.DataProviders;
 /// </summary>
 public interface IFileContentProvider
 {
-    IAsyncEnumerable<FileEntry> GetFilesAsync(CancellationToken cancellationToken = default);
+    IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
+        CancellationToken cancellationToken = default);
 }

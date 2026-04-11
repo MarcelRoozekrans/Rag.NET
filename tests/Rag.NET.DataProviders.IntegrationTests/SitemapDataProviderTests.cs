@@ -67,7 +67,7 @@ public sealed class SitemapDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.All(entries, e => Assert.NotEmpty(e.Id.Value));
+        Assert.All(entries, e => Assert.NotEmpty(e.Value.Id.Value));
     }
 
     [Fact]
@@ -80,8 +80,8 @@ public sealed class SitemapDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.All(entries, e => Assert.NotEmpty(e.ETag!));
-        Assert.Contains(entries, e => string.Equals(e.ETag, "2024-01-15", StringComparison.Ordinal));
+        Assert.All(entries, e => Assert.NotEmpty(e.Value.ETag!));
+        Assert.Contains(entries, e => string.Equals(e.Value.ETag, "2024-01-15", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -94,8 +94,8 @@ public sealed class SitemapDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var first = entries.First(e => e.Id.Value.EndsWith("/page1", StringComparison.Ordinal));
-        await using var stream = await first.OpenContentAsync(TestContext.Current.CancellationToken);
+        var first = entries.First(e => e.Value.Id.Value.EndsWith("/page1", StringComparison.Ordinal));
+        await using var stream = await first.Value.OpenContentAsync(TestContext.Current.CancellationToken);
         Assert.True(stream.Length > 0);
     }
 }

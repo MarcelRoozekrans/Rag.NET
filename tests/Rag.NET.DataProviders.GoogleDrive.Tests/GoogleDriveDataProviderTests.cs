@@ -7,7 +7,9 @@ using Google.Apis.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.GoogleDrive;
+using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.GoogleDrive.Tests;
 
@@ -107,11 +109,11 @@ public sealed class GoogleDriveDataProviderTests
 
         // Assert — folder must be excluded; both files must be present with correct metadata
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Id,       "file-1",    StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id,       "file-2",    StringComparison.Ordinal));
-        Assert.DoesNotContain(entries, e => string.Equals(e.Id, "dir-1",     StringComparison.Ordinal));
-        Assert.Equal("readme.md", entries.Single(e => string.Equals(e.Id, "file-1", StringComparison.Ordinal)).FileName);
-        Assert.Equal("md5-1",     entries.Single(e => string.Equals(e.Id, "file-1", StringComparison.Ordinal)).ETag);
+        Assert.Contains(entries, e => string.Equals(e.Value.Id,       "file-1",    StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id,       "file-2",    StringComparison.Ordinal));
+        Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "dir-1",     StringComparison.Ordinal));
+        Assert.Equal("readme.md", entries.Single(e => string.Equals(e.Value.Id, "file-1", StringComparison.Ordinal)).Value.FileName);
+        Assert.Equal("md5-1",     entries.Single(e => string.Equals(e.Value.Id, "file-1", StringComparison.Ordinal)).Value.ETag);
     }
 
     [Fact]
@@ -132,10 +134,10 @@ public sealed class GoogleDriveDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.Single(entries);
-        Assert.Equal("file-1", entries[0].Id);
-        Assert.DoesNotContain(entries, e => string.Equals(e.Id, "file-2", StringComparison.Ordinal));
-        Assert.DoesNotContain(entries, e => string.Equals(e.Id, "file-3", StringComparison.Ordinal));
+        _ = Assert.Single(entries);
+        Assert.Equal("file-1", entries[0].Value.Id);
+        Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "file-2", StringComparison.Ordinal));
+        Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "file-3", StringComparison.Ordinal));
     }
 }
 

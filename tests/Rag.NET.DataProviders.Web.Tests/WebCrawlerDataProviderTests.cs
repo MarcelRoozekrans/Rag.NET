@@ -36,9 +36,9 @@ public sealed class WebCrawlerDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Contains(entries, e => string.Equals(e.Id, SeedUrl, StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/page1", StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/page2", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, SeedUrl, StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page1", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page2", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -61,8 +61,8 @@ public sealed class WebCrawlerDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         // Depth 0 → only the seed page; links are not followed
-        Assert.Single(entries);
-        Assert.Equal(SeedUrl, entries[0].Id);
+        _ = Assert.Single(entries);
+        Assert.Equal(SeedUrl, entries[0].Value.Id);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public sealed class WebCrawlerDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.DoesNotContain(entries, e => e.Id.Value.StartsWith("https://other.com", StringComparison.Ordinal));
+        Assert.DoesNotContain(entries, e => e.Value.Id.Value.StartsWith("https://other.com", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public sealed class WebCrawlerDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.DoesNotContain(entries, e => string.Equals(e.Id, "https://example.com/page2", StringComparison.Ordinal));
+        Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "https://example.com/page2", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public sealed class WebCrawlerDataProviderTests
             new WebCrawlerOptions { MaxDepth = 0, RespectRobotsTxt = false });
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        await using var stream = await entries[0].Value.OpenContentAsync(TestContext.Current.CancellationToken);
         using var reader = new StreamReader(stream);
         var content = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
 
@@ -140,8 +140,8 @@ public sealed class WebCrawlerDataProviderTests
 
         // seed + /page (both fragment variants deduplicated → only one /page entry)
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Id, SeedUrl, StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/page", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, SeedUrl, StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -166,6 +166,6 @@ public sealed class WebCrawlerDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count); // seed + /exists; /missing is skipped
-        Assert.DoesNotContain(entries, e => e.Id.Value.Contains("missing", StringComparison.Ordinal));
+        Assert.DoesNotContain(entries, e => e.Value.Id.Value.Contains("missing", StringComparison.Ordinal));
     }
 }

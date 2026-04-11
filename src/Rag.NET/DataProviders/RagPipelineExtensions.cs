@@ -32,7 +32,7 @@ public static class RagPipelineExtensions
         var ingested = 0;
         var skipped = 0;
         var deleted = 0;
-        var errors = new ConcurrentBag<string>();
+        var errors = new ConcurrentBag<RagError>();
 
         IReadOnlySet<EntryId> knownIds = hashStore is not null && cleanupMode == CleanupMode.Full
             ? await hashStore.GetAllIdsAsync(providerId, cancellationToken).ConfigureAwait(false)
@@ -42,8 +42,11 @@ public static class RagPipelineExtensions
 
         // Collect entries first — IAsyncEnumerable cannot be iterated in parallel directly
         var entries = new List<FileEntry>();
-        await foreach (var entry in provider.GetFilesAsync(cancellationToken).ConfigureAwait(false))
-            entries.Add(entry);
+        await foreach (var result in provider.GetFilesAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (result.IsFailure) { errors.Add(result.Error); continue; }
+            entries.Add(result.Value);
+        }
 
         var maxParallelism = options?.MaxDegreeOfParallelism ?? 1;
         var parallelOptions = new ParallelOptions
@@ -80,7 +83,7 @@ public static class RagPipelineExtensions
         DocumentMetadata? baseMetadata,
         IngestionOptions? options,
         IProgress<IngestionProgress>? progress,
-        ConcurrentBag<string> errors,
+        ConcurrentBag<RagError> errors,
         CancellationToken cancellationToken)
     {
         try
@@ -110,7 +113,7 @@ public static class RagPipelineExtensions
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            errors.Add($"{entry.Id}: {ex.Message}");
+            errors.Add(new RagError.StorageFailed(ex));
             return EntryOutcome.Skipped;
         }
     }
@@ -154,7 +157,7 @@ public static class RagPipelineExtensions
         IContentHashStore hashStore,
         IReadOnlySet<EntryId> knownIds,
         ConcurrentDictionary<EntryId, byte> seenIds,
-        ConcurrentBag<string> errors,
+        ConcurrentBag<RagError> errors,
         CancellationToken cancellationToken)
     {
         var deleted = 0;
@@ -170,7 +173,7 @@ public static class RagPipelineExtensions
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                errors.Add($"delete {id}: {ex.Message}");
+                errors.Add(new RagError.StorageFailed(ex));
             }
         }
 

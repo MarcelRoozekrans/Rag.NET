@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json;
 using AirtableApiClient;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Airtable;
 
@@ -37,11 +39,11 @@ public sealed class AirtableDataProvider : FileContentProviderBase
     }
 
     /// <inheritdoc />
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => GetHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         string? offset = null;
@@ -69,11 +71,11 @@ public sealed class AirtableDataProvider : FileContentProviderBase
                     cancellationToken.ThrowIfCancellationRequested();
 
                     // Emit the markdown handle for the record itself.
-                    yield return ToMarkdownHandle(record);
+                    yield return Result<FileHandle, RagError>.Success(ToMarkdownHandle(record));
 
                     // Emit separate handles for each attachment in every attachment field.
                     foreach (var handle in GetAttachmentHandles(record))
-                        yield return handle;
+                        yield return Result<FileHandle, RagError>.Success(handle);
                 }
             }
 

@@ -31,7 +31,7 @@ public class AsanaBenchmarks
         int count = 0;
         await foreach (var file in _fullProvider.GetFilesAsync(CancellationToken.None))
         {
-            await using var stream = await file.OpenContentAsync(CancellationToken.None);
+            await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
         return count;
@@ -43,7 +43,7 @@ public class AsanaBenchmarks
         int count = 0;
         await foreach (var file in _manySubtasksProvider.GetFilesAsync(CancellationToken.None))
         {
-            await using var stream = await file.OpenContentAsync(CancellationToken.None);
+            await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
         return count;

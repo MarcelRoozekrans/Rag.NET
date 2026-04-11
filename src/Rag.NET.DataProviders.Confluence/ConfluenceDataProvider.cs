@@ -2,7 +2,9 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
 using Refit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Confluence;
 
@@ -47,13 +49,13 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => _options.DeltaToken is not null
             ? GetDeltaHandlesAsync(cancellationToken)
             : GetFullHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetFullHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFullHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         string? cursor = null;
@@ -66,7 +68,7 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
             for (int i = 0; i < page.Results.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                yield return ToHandle(page.Results[i]);
+                yield return Result<FileHandle, RagError>.Success(ToHandle(page.Results[i]));
             }
 
             cursor = ExtractCursor(page.Links.Next);
@@ -79,7 +81,7 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
     /// Falls back to a full traversal when the Atlassian API returns HTTP 400,
     /// which indicates a stale or otherwise invalid <see cref="ConfluenceOptions.DeltaToken"/>.
     /// </summary>
-    private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var cql = _options.SpaceKey is not null
@@ -116,7 +118,7 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
         for (int i = 0; i < firstPage.Results.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            yield return ToHandle(firstPage.Results[i]);
+            yield return Result<FileHandle, RagError>.Success(ToHandle(firstPage.Results[i]));
         }
 
         while (cursor is not null)
@@ -128,7 +130,7 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
             for (int i = 0; i < page.Results.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                yield return ToHandle(page.Results[i]);
+                yield return Result<FileHandle, RagError>.Success(ToHandle(page.Results[i]));
             }
 
             cursor = ExtractCursor(page.Links.Next);

@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 using Rag.NET.DataProviders;
 using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Web;
 
@@ -23,7 +24,7 @@ public sealed class RssDataProvider : IFileContentProvider
         _httpClient = httpClient;
     }
 
-    public async IAsyncEnumerable<FileEntry> GetFilesAsync(
+    public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var xml = await _httpClient.GetStringAsync(_feedUrl, cancellationToken).ConfigureAwait(false);
@@ -42,7 +43,7 @@ public sealed class RssDataProvider : IFileContentProvider
                 var updated = entry.Element(s_atomNs + "updated")?.Value;
                 var capturedLink = link;
 
-                yield return new FileEntry(
+                yield return Result<FileEntry, RagError>.Success(new FileEntry(
                     Id: new EntryId(id),
                     FileName: InferFileName(id),
                     OpenContentAsync: async ct =>
@@ -54,7 +55,7 @@ public sealed class RssDataProvider : IFileContentProvider
                         buffer.Position = 0;
                         return (Stream)buffer;
                     },
-                    ETag: updated);
+                    ETag: updated));
             }
         }
         else
@@ -70,7 +71,7 @@ public sealed class RssDataProvider : IFileContentProvider
                 var pubDate = item.Element("pubDate")?.Value;
                 var capturedLink = link ?? id;
 
-                yield return new FileEntry(
+                yield return Result<FileEntry, RagError>.Success(new FileEntry(
                     Id: new EntryId(id),
                     FileName: InferFileName(id),
                     OpenContentAsync: async ct =>
@@ -82,7 +83,7 @@ public sealed class RssDataProvider : IFileContentProvider
                         buffer.Position = 0;
                         return (Stream)buffer;
                     },
-                    ETag: pubDate);
+                    ETag: pubDate));
             }
         }
     }

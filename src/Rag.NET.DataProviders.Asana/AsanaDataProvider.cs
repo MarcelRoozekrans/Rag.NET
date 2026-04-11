@@ -2,7 +2,9 @@ using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
 using Refit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Asana;
 
@@ -38,11 +40,11 @@ public sealed class AsanaDataProvider : FileContentProviderBase
         _options       = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => GetHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Resolve token per-call so expiring tokens are always fresh.
@@ -75,7 +77,7 @@ public sealed class AsanaDataProvider : FileContentProviderBase
                 var task = result.Data[i];
                 var subtasks = await api.GetSubtasksAsync(task.Gid,
                     cancellationToken: cancellationToken).ConfigureAwait(false);
-                yield return ToHandle(task, subtasks.Data);
+                yield return Result<FileHandle, RagError>.Success(ToHandle(task, subtasks.Data));
             }
 
             offset = result.NextPage?.Offset;

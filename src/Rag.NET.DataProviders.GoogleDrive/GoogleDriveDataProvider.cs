@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using Google.Apis.Drive.v3;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.GoogleDrive;
 
@@ -21,13 +23,13 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => _options.DeltaToken is not null
             ? GetDeltaHandlesAsync(cancellationToken)
             : GetFullHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetFullHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFullHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         if (_options.FolderId is null)
@@ -42,7 +44,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
         }
     }
 
-    private async IAsyncEnumerable<FileHandle> GetWholeDriveHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetWholeDriveHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         string? pageToken = null;
@@ -59,14 +61,14 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (string.Equals(file.MimeType, "application/vnd.google-apps.folder", StringComparison.Ordinal)) continue;
-                yield return BuildHandle(file.Id, file.Name, file.Md5Checksum);
+                yield return Result<FileHandle, RagError>.Success(BuildHandle(file.Id, file.Name, file.Md5Checksum));
             }
             pageToken = page.NextPageToken;
         }
         while (pageToken is not null);
     }
 
-    private async IAsyncEnumerable<FileHandle> GetFolderHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFolderHandlesAsync(
         string rootFolderId,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
@@ -94,7 +96,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
                         folderQueue.Enqueue(file.Id);
                         continue;
                     }
-                    yield return BuildHandle(file.Id, file.Name, file.Md5Checksum);
+                    yield return Result<FileHandle, RagError>.Success(BuildHandle(file.Id, file.Name, file.Md5Checksum));
                 }
                 pageToken = page.NextPageToken;
             }
@@ -102,7 +104,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
         }
     }
 
-    private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var firstPage = await TryFetchFirstDeltaPageAsync(cancellationToken).ConfigureAwait(false);
@@ -122,7 +124,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
                 cancellationToken.ThrowIfCancellationRequested();
                 if (change.Removed == true || change.File is null) continue;
                 if (string.Equals(change.File.MimeType, "application/vnd.google-apps.folder", StringComparison.Ordinal)) continue;
-                yield return BuildHandle(change.File.Id, change.File.Name, change.File.Md5Checksum);
+                yield return Result<FileHandle, RagError>.Success(BuildHandle(change.File.Id, change.File.Name, change.File.Md5Checksum));
             }
 
             if (page.NextPageToken is null) break;

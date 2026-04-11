@@ -1,7 +1,9 @@
 using System.Text.Json;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Slack;
+using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Slack.Tests;
 
@@ -37,9 +39,9 @@ public sealed class SlackDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("general-2024-04-01.md", results[0].FileName);
-        Assert.Equal("1711929700.000000", results[0].ETag);
+        _ = Assert.Single(results);
+        Assert.Equal("general-2024-04-01.md", results[0].Value.FileName);
+        Assert.Equal("1711929700.000000", results[0].Value.ETag);
     }
 
     [Fact]
@@ -119,8 +121,8 @@ public sealed class SlackDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
 
         // The reply should show "Bob", not "unknown"
         Assert.Contains("Bob", content, StringComparison.Ordinal);
@@ -181,8 +183,8 @@ public sealed class SlackDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Contains(results, f => f.FileName.StartsWith("general-", StringComparison.Ordinal));
-        Assert.Contains(results, f => f.FileName.StartsWith("random-", StringComparison.Ordinal));
+        Assert.Contains(results, f => f.Value.FileName.StartsWith("general-", StringComparison.Ordinal));
+        Assert.Contains(results, f => f.Value.FileName.StartsWith("random-", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -205,8 +207,8 @@ public sealed class SlackDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Contains(results, f => string.Equals(f.FileName, "general-2024-04-01.md", StringComparison.Ordinal));
-        Assert.Contains(results, f => string.Equals(f.FileName, "general-2024-04-02.md", StringComparison.Ordinal));
+        Assert.Contains(results, f => string.Equals(f.Value.FileName, "general-2024-04-01.md", StringComparison.Ordinal));
+        Assert.Contains(results, f => string.Equals(f.Value.FileName, "general-2024-04-02.md", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -239,8 +241,8 @@ public sealed class SlackDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("U999", content, StringComparison.Ordinal);
     }
 
@@ -258,8 +260,8 @@ public sealed class SlackDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("**unknown**", content, StringComparison.Ordinal);
     }
 
@@ -280,8 +282,8 @@ public sealed class SlackDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
 
         int firstIdx  = content.IndexOf("First", StringComparison.Ordinal);
         int secondIdx = content.IndexOf("Second", StringComparison.Ordinal);

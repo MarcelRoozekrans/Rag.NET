@@ -2,6 +2,8 @@ using System.Runtime.CompilerServices;
 using NGitLab;
 using NGitLab.Models;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.GitLab;
 
@@ -26,13 +28,13 @@ public sealed class GitLabDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => _options.LastIngestedCommitSha is not null
             ? GetDeltaHandlesAsync(cancellationToken)
             : GetFullTreeHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetFullTreeHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFullTreeHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var repo = _client.GetRepository((ProjectId)_options.ProjectIdOrPath);
@@ -49,7 +51,7 @@ public sealed class GitLabDataProvider : FileContentProviderBase
 
             var capturedPath = item.Path;
             var blobId = item.Id.ToString();
-            yield return new FileHandle(
+            yield return Result<FileHandle, RagError>.Success(new FileHandle(
                 Id:               capturedPath,
                 FileName:         Path.GetFileName(capturedPath),
                 ETag:             blobId,
@@ -60,11 +62,11 @@ public sealed class GitLabDataProvider : FileContentProviderBase
                         new GetRawFileRequest { Ref = _options.Ref }, ct).ConfigureAwait(false);
                     ms.Position = 0;
                     return (Stream)ms;
-                });
+                }));
         }
     }
 
-    private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var repo = _client.GetRepository((ProjectId)_options.ProjectIdOrPath);
@@ -78,7 +80,7 @@ public sealed class GitLabDataProvider : FileContentProviderBase
             if (diff.IsDeletedFile) continue;
 
             var capturedPath = diff.NewPath;
-            yield return new FileHandle(
+            yield return Result<FileHandle, RagError>.Success(new FileHandle(
                 Id:               capturedPath,
                 FileName:         Path.GetFileName(capturedPath),
                 ETag:             null,
@@ -89,7 +91,7 @@ public sealed class GitLabDataProvider : FileContentProviderBase
                         new GetRawFileRequest { Ref = _options.Ref }, ct).ConfigureAwait(false);
                     ms.Position = 0;
                     return (Stream)ms;
-                });
+                }));
         }
     }
 }

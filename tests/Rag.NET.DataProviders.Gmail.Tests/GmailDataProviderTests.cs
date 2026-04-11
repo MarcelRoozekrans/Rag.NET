@@ -59,7 +59,7 @@ public sealed class GmailDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.All(results, e => Assert.EndsWith(".md", e.FileName, StringComparison.Ordinal));
+        Assert.All(results, e => Assert.EndsWith(".md", e.Value.FileName, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -72,8 +72,8 @@ public sealed class GmailDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("Invoice Q1-2026.md", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("Invoice Q1-2026.md", results[0].Value.FileName);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public sealed class GmailDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
+        _ = Assert.Single(results);
         // Should have called SearchAsync (falls back to SearchQuery.All path)
         await inbox.Received(1).SearchAsync(
             Arg.Any<SearchQuery>(),
@@ -160,8 +160,8 @@ public sealed class GmailDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("message-42.md", results[0].FileName);
+        _ = Assert.Single(results);
+        Assert.Equal("message-42.md", results[0].Value.FileName);
     }
 
     [Fact]
@@ -174,10 +174,10 @@ public sealed class GmailDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.DoesNotContain("/", results[0].FileName, StringComparison.Ordinal);
-        Assert.DoesNotContain("\\", results[0].FileName, StringComparison.Ordinal);
-        Assert.EndsWith(".md", results[0].FileName, StringComparison.Ordinal);
+        _ = Assert.Single(results);
+        Assert.DoesNotContain("/", results[0].Value.FileName, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\", results[0].Value.FileName, StringComparison.Ordinal);
+        Assert.EndsWith(".md", results[0].Value.FileName, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -196,7 +196,7 @@ public sealed class GmailDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var content = await ReadContentAsync(results[0]);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("hello", content, StringComparison.Ordinal);
         Assert.DoesNotContain("<p>", content, StringComparison.Ordinal);
         Assert.DoesNotContain("</p>", content, StringComparison.Ordinal);
@@ -221,7 +221,7 @@ public sealed class GmailDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var content = await ReadContentAsync(results[0]);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("plain text body", content, StringComparison.Ordinal);
         Assert.DoesNotContain("html body", content, StringComparison.Ordinal);
     }
@@ -242,7 +242,7 @@ public sealed class GmailDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var content = await ReadContentAsync(results[0]);
+        var content = await ReadContentAsync(results[0].Value);
         // The markdown header is still present but body portion should be empty/whitespace
         Assert.Contains("# Empty", content, StringComparison.Ordinal);
     }
@@ -257,7 +257,7 @@ public sealed class GmailDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var content = await ReadContentAsync(results[0]);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("**From:**", content, StringComparison.Ordinal);
         Assert.Contains("**Date:**", content, StringComparison.Ordinal);
         Assert.Contains("**To:**", content, StringComparison.Ordinal);

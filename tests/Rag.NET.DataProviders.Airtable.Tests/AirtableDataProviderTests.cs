@@ -5,7 +5,9 @@ using AirtableApiClient;
 using NSubstitute;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Airtable;
+using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Airtable.Tests;
 
@@ -95,17 +97,17 @@ public sealed class AirtableDataProviderTests
         Assert.Equal(2, results.Count);
 
         // First entry: the markdown record.
-        Assert.Equal("rec001", results[0].Id);
-        Assert.Equal("Design doc.md", results[0].FileName);
-        var markdown = await ReadContentAsync(results[0]);
+        Assert.Equal("rec001", results[0].Value.Id);
+        Assert.Equal("Design doc.md", results[0].Value.FileName);
+        var markdown = await ReadContentAsync(results[0].Value);
         Assert.Contains("# Design doc", markdown, StringComparison.Ordinal);
         Assert.Contains("Status", markdown, StringComparison.Ordinal);
         Assert.Contains("In Progress", markdown, StringComparison.Ordinal);
 
         // Second entry: the attachment.
-        Assert.Equal("rec001/Attachments/photo.png", results[1].Id);
-        Assert.Equal("photo.png", results[1].FileName);
-        var attachmentContent = await ReadContentAsync(results[1]);
+        Assert.Equal("rec001/Attachments/photo.png", results[1].Value.Id);
+        Assert.Equal("photo.png", results[1].Value.FileName);
+        var attachmentContent = await ReadContentAsync(results[1].Value);
         Assert.Equal("attachment-bytes", attachmentContent);
     }
 
@@ -195,8 +197,8 @@ public sealed class AirtableDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("rec003", results[0].Id);
+        _ = Assert.Single(results);
+        Assert.Equal("rec003", results[0].Value.Id);
 
         // Verify no formula was used.
         await client.Received(1).ListRecordsAsync(
@@ -231,8 +233,8 @@ public sealed class AirtableDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("Page one.md", results[0].FileName);
-        Assert.Equal("Page two.md", results[1].FileName);
+        Assert.Equal("Page one.md", results[0].Value.FileName);
+        Assert.Equal("Page two.md", results[1].Value.FileName);
     }
 
     [Fact]
@@ -253,7 +255,7 @@ public sealed class AirtableDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var markdown = await ReadContentAsync(results[0]);
+        var markdown = await ReadContentAsync(results[0].Value);
         Assert.Contains("| Field | Value |", markdown, StringComparison.Ordinal);
         Assert.Contains("| --- | --- |", markdown, StringComparison.Ordinal);
         Assert.Contains("| Status | Done |", markdown, StringComparison.Ordinal);
@@ -277,7 +279,7 @@ public sealed class AirtableDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var markdown = await ReadContentAsync(results[0]);
+        var markdown = await ReadContentAsync(results[0].Value);
         Assert.Contains("## Notes", markdown, StringComparison.Ordinal);
         Assert.Contains("Line one", markdown, StringComparison.Ordinal);
         // Long text should NOT appear in the table.
@@ -301,9 +303,9 @@ public sealed class AirtableDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var markdown = await ReadContentAsync(results[0]);
+        var markdown = await ReadContentAsync(results[0].Value);
         Assert.StartsWith("# Project Alpha", markdown, StringComparison.Ordinal);
-        Assert.Equal("Project Alpha.md", results[0].FileName);
+        Assert.Equal("Project Alpha.md", results[0].Value.FileName);
         // The first field should NOT appear again in the table body.
         Assert.DoesNotContain("| Title |", markdown, StringComparison.Ordinal);
     }
@@ -326,8 +328,8 @@ public sealed class AirtableDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var markdown = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var markdown = await ReadContentAsync(results[0].Value);
         Assert.Contains("# Has Nulls", markdown, StringComparison.Ordinal);
         // Should not crash — null/empty values handled gracefully.
     }
@@ -362,10 +364,10 @@ public sealed class AirtableDataProviderTests
 
         // 1 markdown row + 3 attachments = 4 entries.
         Assert.Equal(4, results.Count);
-        Assert.Equal("rec104", results[0].Id);
-        Assert.Equal("a.png", results[1].FileName);
-        Assert.Equal("b.pdf", results[2].FileName);
-        Assert.Equal("c.docx", results[3].FileName);
+        Assert.Equal("rec104", results[0].Value.Id);
+        Assert.Equal("a.png", results[1].Value.FileName);
+        Assert.Equal("b.pdf", results[2].Value.FileName);
+        Assert.Equal("c.docx", results[3].Value.FileName);
     }
 
     [Fact]
@@ -394,7 +396,7 @@ public sealed class AirtableDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var attachment = results[1];
+        var attachment = results[1].Value;
         Assert.Equal("rec105/Uploads/report.xlsx", attachment.Id);
     }
 
@@ -484,7 +486,7 @@ public sealed class AirtableDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        var etag = results[0].ETag;
+        var etag = results[0].Value.ETag;
         Assert.NotNull(etag);
         // ETag should be a 64-char lowercase hex string (SHA256).
         Assert.Equal(64, etag.Length);

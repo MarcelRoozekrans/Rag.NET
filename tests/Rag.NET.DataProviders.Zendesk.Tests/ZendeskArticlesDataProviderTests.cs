@@ -56,10 +56,10 @@ public sealed class ZendeskArticlesDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("article-100.md", results[0].FileName);
-        Assert.Equal("article-101.md", results[1].FileName);
-        Assert.Equal("100", results[0].Id);
-        Assert.Equal("2026-01-01T00:00:00Z", results[0].ETag);
+        Assert.Equal("article-100.md", results[0].Value.FileName);
+        Assert.Equal("article-101.md", results[1].Value.FileName);
+        Assert.Equal("100", results[0].Value.Id);
+        Assert.Equal("2026-01-01T00:00:00Z", results[0].Value.ETag);
     }
 
     [Fact]
@@ -84,8 +84,8 @@ public sealed class ZendeskArticlesDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.StartsWith("# HTML article", content, StringComparison.Ordinal);
         Assert.Contains("hello", content, StringComparison.Ordinal);
         Assert.Contains("world", content, StringComparison.Ordinal);
@@ -122,7 +122,7 @@ public sealed class ZendeskArticlesDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
+        _ = Assert.Single(results);
         var articleUrl = handler.CapturedUrls.First(u =>
             u.Contains("incremental", StringComparison.Ordinal));
         Assert.Contains("1735000000", articleUrl, StringComparison.Ordinal);
@@ -181,8 +181,8 @@ public sealed class ZendeskArticlesDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.StartsWith("# No body article", content, StringComparison.Ordinal);
         // Only the title heading should be present, no body text
         Assert.Equal("# No body article", content.Trim());
@@ -217,8 +217,8 @@ public sealed class ZendeskArticlesDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("article-600.md", results[0].FileName);
-        Assert.Equal("article-601.md", results[1].FileName);
+        Assert.Equal("article-600.md", results[0].Value.FileName);
+        Assert.Equal("article-601.md", results[1].Value.FileName);
     }
 
     [Fact]
@@ -299,8 +299,8 @@ public sealed class ZendeskArticlesDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.StartsWith("# Setup Guide", content, StringComparison.Ordinal);
         Assert.Contains("Follow these steps to get started.", content, StringComparison.Ordinal);
         Assert.DoesNotContain("<p>", content, StringComparison.Ordinal);
@@ -328,8 +328,8 @@ public sealed class ZendeskArticlesDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        var content = await ReadContentAsync(results[0]);
+        _ = Assert.Single(results);
+        var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("Tom & Jerry", content, StringComparison.Ordinal);
         Assert.Contains("<3", content, StringComparison.Ordinal);
         Assert.Contains("\"always\"", content, StringComparison.Ordinal);
@@ -360,8 +360,8 @@ public sealed class ZendeskArticlesDataProviderTests
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("2026-03-20T08:15:00Z", results[0].ETag);
+        _ = Assert.Single(results);
+        Assert.Equal("2026-03-20T08:15:00Z", results[0].Value.ETag);
     }
 
     private static async Task<string> ReadContentAsync(Rag.NET.DataProviders.FileEntry entry)

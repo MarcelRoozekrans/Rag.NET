@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using Octokit;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.GitHub;
 
@@ -32,13 +34,13 @@ public sealed class GitHubDataProvider : FileContentProviderBase
         _options = options;  // options is now guaranteed non-null by ??= above
     }
 
-    protected override IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         CancellationToken cancellationToken)
         => _options.LastIngestedCommitSha is not null
             ? GetDeltaHandlesAsync(cancellationToken)
             : GetFullTreeHandlesAsync(cancellationToken);
 
-    private async IAsyncEnumerable<FileHandle> GetFullTreeHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFullTreeHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var tree = await _client.Git.Tree
@@ -50,7 +52,7 @@ public sealed class GitHubDataProvider : FileContentProviderBase
             if (item.Type != TreeType.Blob) continue;
 
             var capturedPath = item.Path;
-            yield return new FileHandle(
+            yield return Result<FileHandle, RagError>.Success(new FileHandle(
                 Id:               item.Path,
                 FileName:         Path.GetFileName(item.Path),
                 ETag:             item.Sha,
@@ -59,11 +61,11 @@ public sealed class GitHubDataProvider : FileContentProviderBase
                     var bytes = await _client.Repository.Content
                         .GetRawContent(_owner, _repo, capturedPath).ConfigureAwait(false);
                     return (Stream)new MemoryStream(bytes);
-                });
+                }));
         }
     }
 
-    private async IAsyncEnumerable<FileHandle> GetDeltaHandlesAsync(
+    private async IAsyncEnumerable<Result<FileHandle, RagError>> GetDeltaHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var comparison = await _client.Repository.Commit
@@ -76,7 +78,7 @@ public sealed class GitHubDataProvider : FileContentProviderBase
             if (string.Equals(file.Status, "removed", StringComparison.Ordinal)) continue;
 
             var capturedPath = file.Filename;
-            yield return new FileHandle(
+            yield return Result<FileHandle, RagError>.Success(new FileHandle(
                 Id:               file.Filename,
                 FileName:         Path.GetFileName(file.Filename),
                 ETag:             file.Sha,
@@ -85,7 +87,7 @@ public sealed class GitHubDataProvider : FileContentProviderBase
                     var bytes = await _client.Repository.Content
                         .GetRawContent(_owner, _repo, capturedPath).ConfigureAwait(false);
                     return (Stream)new MemoryStream(bytes);
-                });
+                }));
         }
     }
 }

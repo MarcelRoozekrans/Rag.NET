@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders;
 
@@ -20,7 +21,7 @@ public sealed class LocalFilesDataProvider : IFileContentProvider
         _options = options ?? new LocalFilesOptions();
     }
 
-    public async IAsyncEnumerable<FileEntry> GetFilesAsync(
+    public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         await Task.Yield(); // ensure async, avoid CS1998
@@ -37,11 +38,11 @@ public sealed class LocalFilesDataProvider : IFileContentProvider
             var etag = $"{info.LastWriteTimeUtc.Ticks}:{info.Length}";
             var capturedPath = path;
 
-            yield return new FileEntry(
+            yield return Result<FileEntry, RagError>.Success(new FileEntry(
                 Id: new EntryId(Path.GetRelativePath(_rootPath, path)),
                 FileName: Path.GetFileName(path),
                 OpenContentAsync: _ => Task.FromResult<Stream>(File.OpenRead(capturedPath)),
-                ETag: etag);
+                ETag: etag));
         }
     }
 

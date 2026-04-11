@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Zendesk;
 
@@ -30,7 +32,7 @@ public sealed class ZendeskTicketsDataProvider : FileContentProviderBase
         _options = options;
     }
 
-    protected override async IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         long startTime = _options.DeltaToken is not null
@@ -48,8 +50,8 @@ public sealed class ZendeskTicketsDataProvider : FileContentProviderBase
             for (int i = 0; i < result.Tickets.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                yield return await ToHandleAsync(result.Tickets[i], cancellationToken)
-                    .ConfigureAwait(false);
+                yield return Result<FileHandle, RagError>.Success(
+                    await ToHandleAsync(result.Tickets[i], cancellationToken).ConfigureAwait(false));
             }
 
             endOfStream = result.EndOfStream;

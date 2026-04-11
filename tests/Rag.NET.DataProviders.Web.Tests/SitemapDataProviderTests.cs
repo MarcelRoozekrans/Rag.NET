@@ -27,8 +27,8 @@ public sealed class SitemapDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/page1", StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/page2", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page1", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page2", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public sealed class SitemapDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("2024-01-15", entries[0].ETag);
+        Assert.Equal("2024-01-15", entries[0].Value.ETag);
     }
 
     [Fact]
@@ -81,8 +81,8 @@ public sealed class SitemapDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/page1", StringComparison.Ordinal));
-        Assert.Contains(entries, e => string.Equals(e.Id, "https://example.com/page2", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page1", StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page2", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -99,7 +99,7 @@ public sealed class SitemapDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("getting-started.html", entries[0].FileName);
+        Assert.Equal("getting-started.html", entries[0].Value.FileName);
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public sealed class SitemapDataProviderTests
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        await using var stream = await entries[0].OpenContentAsync(TestContext.Current.CancellationToken);
+        await using var stream = await entries[0].Value.OpenContentAsync(TestContext.Current.CancellationToken);
         Assert.True(stream.CanSeek, "stream must be seekable for parent-document retrieval");
     }
 }

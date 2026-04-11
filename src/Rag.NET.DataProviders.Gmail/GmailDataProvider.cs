@@ -6,6 +6,8 @@ using MailKit.Net.Imap;
 using MailKit.Search;
 using MimeKit;
 using Rag.NET.DataProviders;
+using Rag.NET.Models;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Gmail;
 
@@ -41,7 +43,7 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
         _clientFactory = clientFactory ?? (() => new ImapClient());
     }
 
-    protected override async IAsyncEnumerable<FileHandle> GetFileHandlesAsync(
+    protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var token = await _tokenProvider.GetTokenAsync(cancellationToken).ConfigureAwait(false);
@@ -81,7 +83,7 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
             cancellationToken.ThrowIfCancellationRequested();
             var uid     = uids[i];
             var message = await inbox.GetMessageAsync(uid, cancellationToken).ConfigureAwait(false);
-            yield return ToHandle(uid, message);
+            yield return Result<FileHandle, RagError>.Success(ToHandle(uid, message));
         }
 
         await client.DisconnectAsync(true, cancellationToken).ConfigureAwait(false);
