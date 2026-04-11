@@ -25,6 +25,7 @@
     <Project Path="src/Rag.NET.DataProviders.GitHub/Rag.NET.DataProviders.GitHub.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Web/Rag.NET.DataProviders.Web.csproj" />
     <Project Path="src/Rag.NET.DataProviders.AzureBlob/Rag.NET.DataProviders.AzureBlob.csproj" />
+    <Project Path="src/Rag.NET.Evaluation.Ragas/Rag.NET.Evaluation.Ragas.csproj" />
     <Project Path="src/Rag.NET.Evaluation/Rag.NET.Evaluation.csproj" />
     <Project Path="src/Rag.NET.Reranking.Onnx/Rag.NET.Reranking.Onnx.csproj" />
     <Project Path="src/Rag.NET.Reranking.Cohere/Rag.NET.Reranking.Cohere.csproj" />
