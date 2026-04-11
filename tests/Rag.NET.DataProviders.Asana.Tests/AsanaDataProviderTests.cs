@@ -2,22 +2,25 @@ using System.Net;
 using System.Text;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Asana;
+using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Rest;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.Asana.Tests;
 
 public sealed class AsanaDataProviderTests
 {
+    private static readonly IRestSerializer JsonSerializer = new SystemTextJsonSerializer();
+
     private static AsanaDataProvider MakeProvider(
         Dictionary<string, string> responses,
         AsanaOptions? options = null)
     {
         var handler = new FakeHandler(responses);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com") };
-        return new AsanaDataProvider(
-            http,
-            new StaticTokenProvider("test-token"),
-            options ?? new AsanaOptions { WorkspaceGid = "ws-1" });
+        var api = new AsanaApiClient(http, JsonSerializer);
+        return new AsanaDataProvider(api, options ?? new AsanaOptions { WorkspaceGid = "ws-1" });
     }
 
     private static async Task<string> ReadContentAsync(FileEntry entry)
@@ -84,12 +87,13 @@ public sealed class AsanaDataProviderTests
 
         var capturer = new FakeCapturingHandler(tasksJson);
         var http = new HttpClient(capturer) { BaseAddress = new Uri("https://app.asana.com") };
+        var api = new AsanaApiClient(http, JsonSerializer);
         var opts = new AsanaOptions
         {
             WorkspaceGid = "ws-1",
             DeltaToken   = "2026-03-01T00:00:00Z"
         };
-        var sut = new AsanaDataProvider(http, new StaticTokenProvider("test-token"), opts);
+        var sut = new AsanaDataProvider(api, opts);
 
         await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -138,19 +142,10 @@ public sealed class AsanaDataProviderTests
     }
 
     [Fact]
-    public void Constructor_NullHttp_Throws()
+    public void Constructor_NullApi_Throws()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new AsanaDataProvider(null!, new StaticTokenProvider("tok"),
-                new AsanaOptions { WorkspaceGid = "ws-1" }));
-    }
-
-    [Fact]
-    public void Constructor_NullTokenProvider_Throws()
-    {
-        var http = new HttpClient { BaseAddress = new Uri("https://app.asana.com") };
-        Assert.Throws<ArgumentNullException>(() =>
-            new AsanaDataProvider(http, null!, new AsanaOptions { WorkspaceGid = "ws-1" }));
+            new AsanaDataProvider(null!, new AsanaOptions { WorkspaceGid = "ws-1" }));
     }
 
     [Fact]
@@ -160,12 +155,13 @@ public sealed class AsanaDataProviderTests
 
         var capturer = new FakeCapturingHandler(tasksJson);
         var http = new HttpClient(capturer) { BaseAddress = new Uri("https://app.asana.com") };
+        var api = new AsanaApiClient(http, JsonSerializer);
         var opts = new AsanaOptions
         {
             WorkspaceGid = "ws-1",
             ProjectGid   = "proj-42"
         };
-        var sut = new AsanaDataProvider(http, new StaticTokenProvider("test-token"), opts);
+        var sut = new AsanaDataProvider(api, opts);
 
         await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -352,10 +348,8 @@ public sealed class AsanaDataProviderTests
             ["/subtasks"]   = new Queue<string>([subtasksJson, subtasksJson])
         });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com") };
-        var sut = new AsanaDataProvider(
-            http,
-            new StaticTokenProvider("test-token"),
-            new AsanaOptions { WorkspaceGid = "ws-1" });
+        var api = new AsanaApiClient(http, JsonSerializer);
+        var sut = new AsanaDataProvider(api, new AsanaOptions { WorkspaceGid = "ws-1" });
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -449,16 +443,69 @@ public sealed class AsanaDataProviderTests
                 ["/subtasks"]    = subtasksJson
             }, cts, cancelAfterRequests: 3);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com") };
-        var sut = new AsanaDataProvider(
-            http,
-            new StaticTokenProvider("test-token"),
-            new AsanaOptions { WorkspaceGid = "ws-1" });
+        var api = new AsanaApiClient(http, JsonSerializer);
+        var sut = new AsanaDataProvider(api, new AsanaOptions { WorkspaceGid = "ws-1" });
 
-        // The cancelled token causes either an OperationCanceledException (from
-        // ThrowIfCancellationRequested) or a Refit-internal NullReferenceException
-        // depending on timing.  Either way, enumeration must not complete normally.
         await Assert.ThrowsAnyAsync<Exception>(async () =>
             await sut.GetFilesAsync(cts.Token).ToListAsync(cts.Token));
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_TaskListHttpError_PropagatesFailure()
+    {
+        var handler = new FakeStatusHandler(HttpStatusCode.Unauthorized);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com") };
+        var api = new AsanaApiClient(http, JsonSerializer);
+        var sut = new AsanaDataProvider(api, new AsanaOptions { WorkspaceGid = "ws-1" });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.True(results[0].IsFailure);
+        var error = Assert.IsType<RagError.HttpFailed>(results[0].Error);
+        Assert.Equal(HttpStatusCode.Unauthorized, error.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_SubtaskHttpError_PropagatesFailure()
+    {
+        const string tasksJson = """
+            {
+              "data": [
+                {
+                  "gid": "task-err",
+                  "name": "Erroring task",
+                  "notes": null,
+                  "due_on": null,
+                  "completed": false,
+                  "assignee": null,
+                  "modified_at": "2026-03-01T10:00:00Z"
+                }
+              ]
+            }
+            """;
+
+        // The routing handler returns the task list for the tasks endpoint and 503 for subtasks.
+        var handler = new FakeRoutingHandler(url =>
+            url.Contains("/subtasks", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                : url.Contains("/api/1.0/tasks", StringComparison.Ordinal)
+                    ? new HttpResponseMessage(HttpStatusCode.OK)
+                        { Content = new StringContent(tasksJson, Encoding.UTF8, "application/json") }
+                    : new HttpResponseMessage(HttpStatusCode.NotFound));
+
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com") };
+        var api = new AsanaApiClient(http, JsonSerializer);
+        var sut = new AsanaDataProvider(api, new AsanaOptions { WorkspaceGid = "ws-1" });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.True(results[0].IsFailure);
+        var error = Assert.IsType<RagError.HttpFailed>(results[0].Error);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, error.StatusCode);
     }
 }
 
@@ -547,4 +594,18 @@ file sealed class FakeSequentialHandler(Dictionary<string, Queue<string>> respon
             Content = new StringContent(json, Encoding.UTF8, "application/json")
         });
     }
+}
+
+file sealed class FakeStatusHandler(HttpStatusCode statusCode) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(new HttpResponseMessage(statusCode));
+}
+
+file sealed class FakeRoutingHandler(Func<string, HttpResponseMessage> router) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(router(request.RequestUri!.ToString()));
 }

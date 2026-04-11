@@ -1,31 +1,32 @@
-using Refit;
+using ZeroAlloc.Rest.Attributes;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Asana;
 
-[Headers("Accept: application/json")]
+[ZeroAllocRestClient]
 internal interface IAsanaApi
 {
     [Get("/api/1.0/tasks")]
-    Task<AsanaTaskList> GetWorkspaceTasksAsync(
+    Task<Result<AsanaTaskList, ZeroAlloc.Rest.HttpError>> GetWorkspaceTasksAsync(
         [Query] string workspace,
-        [Query] string opt_fields,
+        [Query(Name = "opt_fields")] string opt_fields,
         [Query] int limit,
         [Query] string? offset = null,
-        [Query] string? modified_since = null,
+        [Query(Name = "modified_since")] string? modified_since = null,
         CancellationToken cancellationToken = default);
 
     [Get("/api/1.0/projects/{projectGid}/tasks")]
-    Task<AsanaTaskList> GetProjectTasksAsync(
+    Task<Result<AsanaTaskList, ZeroAlloc.Rest.HttpError>> GetProjectTasksAsync(
         string projectGid,
-        [Query] string opt_fields,
+        [Query(Name = "opt_fields")] string opt_fields,
         [Query] int limit,
         [Query] string? offset = null,
-        [Query] string? modified_since = null,
+        [Query(Name = "modified_since")] string? modified_since = null,
         CancellationToken cancellationToken = default);
 
     [Get("/api/1.0/tasks/{taskGid}/subtasks")]
-    Task<AsanaTaskList> GetSubtasksAsync(
+    Task<Result<AsanaTaskList, ZeroAlloc.Rest.HttpError>> GetSubtasksAsync(
         string taskGid,
-        [Query] string opt_fields = "gid,name",
+        [Query(Name = "opt_fields")] string opt_fields = "gid,name",
         CancellationToken cancellationToken = default);
 }

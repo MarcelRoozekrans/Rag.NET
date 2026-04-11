@@ -49,15 +49,24 @@ public static class AsanaDataProviderExtensions
         var opts = new AsanaOptions { WorkspaceGid = workspaceGid };
         configure?.Invoke(opts);
 
-        services.AddDataProviderHttpClient("Asana");
+        // Register the token handler as transient so DI can inject the caller-supplied
+        // ITokenProvider into it when the HttpClient pipeline is constructed.
+        services.AddTransient<AsanaTokenHandler>(_ => new AsanaTokenHandler(tokenProvider));
+
+        services.AddIAsanaApi(options =>
+            {
+                options.BaseAddress = new Uri("https://app.asana.com");
+                options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
+            })
+            .ConfigureHttpClient(client =>
+            {
+                client.DefaultRequestHeaders.Accept.Add(
+                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            })
+            .AddHttpMessageHandler<AsanaTokenHandler>()
+            .AddStandardResilienceHandler();
 
         return services.AddSingleton<IFileContentProvider>(sp =>
-        {
-            var http = sp.GetRequiredService<IHttpClientFactory>().CreateClient("Asana");
-            http.BaseAddress = new Uri("https://app.asana.com");
-            // Token is resolved per-request inside AsanaDataProvider.GetHandlesAsync
-            // to avoid sync-over-async in the factory and to handle token expiry correctly.
-            return new AsanaDataProvider(http, tokenProvider, opts);
-        });
+            new AsanaDataProvider(sp.GetRequiredService<IAsanaApi>(), opts));
     }
 }
