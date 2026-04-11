@@ -41,8 +41,12 @@ public static class ConfluenceDataProviderExtensions
                 options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
             })
             .ConfigureHttpClient(client =>
+            {
                 client.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Basic", credentials))
+                    new AuthenticationHeaderValue("Basic", credentials);
+                client.DefaultRequestHeaders.Accept.Add(
+                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            })
             .AddStandardResilienceHandler();
 
         return services.AddSingleton<IFileContentProvider>(sp =>

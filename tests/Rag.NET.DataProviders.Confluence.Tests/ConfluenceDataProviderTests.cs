@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders.Confluence;
+using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Rest;
 using ZeroAlloc.Rest.SystemTextJson;
@@ -387,6 +388,80 @@ public sealed class ConfluenceDataProviderTests
         Assert.DoesNotContain("<p>", content, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task GetFilesAsync_ApiReturnsServerError_YieldsHttpFailedError()
+    {
+        var handler = new FakeErrorHandler(HttpStatusCode.InternalServerError);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
+        var api = new ConfluenceApiClient(http, JsonSerializer);
+        var sut = new ConfluenceDataProvider(api, new ConfluenceOptions
+        {
+            BaseUrl = "https://test.atlassian.net",
+            Email   = "test@test.com"
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(results);
+        Assert.True(single.IsFailure);
+        var err = Assert.IsType<RagError.HttpFailed>(single.Error);
+        Assert.Equal(HttpStatusCode.InternalServerError, err.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_SecondPageFails_YieldsPartialResultsThenError()
+    {
+        const string page1Json = """
+            {
+              "results": [
+                { "id": "1", "title": "PageOne", "body": { "storage": { "value": "a" } }, "version": { "number": 1 } }
+              ],
+              "_links": { "next": "/wiki/rest/api/content?cursor=abc&limit=50" }
+            }
+            """;
+        var handler = new FakeFirstPageThenErrorHandler(page1Json, HttpStatusCode.Unauthorized);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
+        var api = new ConfluenceApiClient(http, JsonSerializer);
+        var sut = new ConfluenceDataProvider(api, new ConfluenceOptions
+        {
+            BaseUrl = "https://test.atlassian.net",
+            Email   = "test@test.com"
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.True(results[0].IsSuccess);
+        Assert.Equal("PageOne.md", results[0].Value.FileName);
+        Assert.True(results[1].IsFailure);
+        var err = Assert.IsType<RagError.HttpFailed>(results[1].Error);
+        Assert.Equal(HttpStatusCode.Unauthorized, err.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_DeltaApiReturnsNonBadRequest_YieldsHttpFailedError()
+    {
+        var handler = new FakeErrorHandler(HttpStatusCode.Forbidden);
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://test.atlassian.net") };
+        var api = new ConfluenceApiClient(http, JsonSerializer);
+        var sut = new ConfluenceDataProvider(api, new ConfluenceOptions
+        {
+            BaseUrl    = "https://test.atlassian.net",
+            Email      = "test@test.com",
+            DeltaToken = "2026-01-01T00:00:00Z"
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var single = Assert.Single(results);
+        Assert.True(single.IsFailure);
+        var err = Assert.IsType<RagError.HttpFailed>(single.Error);
+        Assert.Equal(HttpStatusCode.Forbidden, err.StatusCode);
+    }
+
     private static async Task<string> ReadContentAsync(Rag.NET.DataProviders.FileEntry entry)
     {
         await using var stream = await entry.OpenContentAsync(CancellationToken.None);
@@ -483,5 +558,40 @@ file sealed class FakeCapturingHandler(string responseJson) : HttpMessageHandler
         {
             Content = new StringContent(responseJson, Encoding.UTF8, "application/json")
         });
+    }
+}
+
+/// <summary>
+/// Always returns the given error status code, so tests can assert HTTP failure propagation.
+/// </summary>
+file sealed class FakeErrorHandler(HttpStatusCode statusCode) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => Task.FromResult(new HttpResponseMessage(statusCode) { RequestMessage = request });
+}
+
+/// <summary>
+/// Returns OK JSON for the first request, then the given error status code for all subsequent requests.
+/// Used to simulate mid-pagination failures.
+/// </summary>
+file sealed class FakeFirstPageThenErrorHandler(string firstPageJson, HttpStatusCode errorCode)
+    : HttpMessageHandler
+{
+    private int _count;
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (_count++ == 0)
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content        = new StringContent(firstPageJson, Encoding.UTF8, "application/json"),
+                RequestMessage = request
+            });
+        }
+
+        return Task.FromResult(new HttpResponseMessage(errorCode) { RequestMessage = request });
     }
 }
