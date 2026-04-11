@@ -36,6 +36,7 @@ public class TeamsBenchmarks
         int count = 0;
         await foreach (var file in _singleDayProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
@@ -48,6 +49,7 @@ public class TeamsBenchmarks
         int count = 0;
         await foreach (var file in _multiDayProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
@@ -60,6 +62,7 @@ public class TeamsBenchmarks
         int count = 0;
         await foreach (var file in _htmlStrippingProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }

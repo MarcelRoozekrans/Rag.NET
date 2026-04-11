@@ -26,6 +26,7 @@ public class GitLabBenchmarks
         int count = 0;
         await foreach (var file in _fullProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
@@ -38,6 +39,7 @@ public class GitLabBenchmarks
         int count = 0;
         await foreach (var file in _deltaProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }

@@ -35,7 +35,7 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
-        var entries = results.Select(r => r.Value).ToList();
+        var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
 
         Assert.Equal(2, entries.Count);
     }
@@ -50,7 +50,7 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
-        var entries = results.Select(r => r.Value).ToList();
+        var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
 
         Assert.Single(entries);
         Assert.Equal("readme.md", entries[0].Id);
@@ -67,7 +67,7 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
-        var entries = results.Select(r => r.Value).ToList();
+        var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
 
         Assert.Equal(3, entries.Count);
     }
@@ -82,7 +82,7 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
-        var entries = results.Select(r => r.Value).ToList();
+        var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
 
         Assert.Single(entries);
         Assert.Equal("docs/guide.md", entries[0].Id);
@@ -96,7 +96,7 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
-        var entries = results.Select(r => r.Value).ToList();
+        var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
 
         Assert.Equal("etag-abc", entries[0].ETag);
     }
@@ -111,7 +111,7 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
-        var entries = results.Select(r => r.Value).ToList();
+        var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
 
         Assert.Equal(2, entries.Count);
     }
@@ -131,7 +131,7 @@ public sealed class FileContentProviderBaseTests
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
-        var entries = results.Select(r => r.Value).ToList();
+        var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
 
         Assert.Single(entries);
         Assert.Equal("docs/guide.md", entries[0].Id);

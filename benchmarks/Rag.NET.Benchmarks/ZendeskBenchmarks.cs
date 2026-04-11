@@ -34,6 +34,7 @@ public class ZendeskBenchmarks
         int count = 0;
         await foreach (var file in _ticketsProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
@@ -46,6 +47,7 @@ public class ZendeskBenchmarks
         int count = 0;
         await foreach (var file in _articlesProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
@@ -58,6 +60,7 @@ public class ZendeskBenchmarks
         int count = 0;
         await foreach (var file in _largeHtmlProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }

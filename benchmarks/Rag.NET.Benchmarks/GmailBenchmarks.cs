@@ -43,6 +43,7 @@ public class GmailBenchmarks
         int count = 0;
         await foreach (var file in _fullProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
@@ -55,6 +56,7 @@ public class GmailBenchmarks
         int count = 0;
         await foreach (var file in _textOnlyProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
@@ -67,6 +69,7 @@ public class GmailBenchmarks
         int count = 0;
         await foreach (var file in _htmlOnlyProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }

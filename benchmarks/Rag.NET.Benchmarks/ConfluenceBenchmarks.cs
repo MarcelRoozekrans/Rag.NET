@@ -44,6 +44,7 @@ public class ConfluenceBenchmarks
         int count = 0;
         await foreach (var file in _fullProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
@@ -56,6 +57,7 @@ public class ConfluenceBenchmarks
         int count = 0;
         await foreach (var file in _deltaProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }
@@ -68,6 +70,7 @@ public class ConfluenceBenchmarks
         int count = 0;
         await foreach (var file in _largeHtmlProvider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }

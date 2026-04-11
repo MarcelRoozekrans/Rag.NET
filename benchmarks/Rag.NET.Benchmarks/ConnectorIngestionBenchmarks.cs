@@ -69,6 +69,7 @@ public class ConnectorIngestionBenchmarks
         int count = 0;
         await foreach (var file in _provider.GetFilesAsync(CancellationToken.None))
         {
+            if (file.IsFailure) continue;
             await using var stream = await file.Value.OpenContentAsync(CancellationToken.None);
             count++;
         }

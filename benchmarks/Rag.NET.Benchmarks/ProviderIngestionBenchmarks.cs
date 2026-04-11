@@ -43,7 +43,10 @@ public class ProviderIngestionBenchmarks
         var warmStore = new SqliteContentHashStore(_warmDbPath);
         var seedProvider = new LocalFilesDataProvider(_tempDir);
         await foreach (var entry in seedProvider.GetFilesAsync().ConfigureAwait(false))
+        {
+            if (entry.IsFailure) continue;
             await warmStore.SetAsync(new ProviderId("bench"), entry.Value.Id, entry.Value.ETag, "placeholder-hash").ConfigureAwait(false);
+        }
 
         _coldDbPath = Path.Combine(Path.GetTempPath(), $"ragnet-bench-cold-{Guid.NewGuid():N}.db");
     }
