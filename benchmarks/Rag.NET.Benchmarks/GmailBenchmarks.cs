@@ -19,22 +19,20 @@ public class GmailBenchmarks
     private GmailDataProvider _textOnlyProvider = default!;
     private GmailDataProvider _htmlOnlyProvider = default!;
 
-    [GlobalSetup]
-    public void Setup()
+    private static readonly string HtmlBody = "<html><body>" +
+        string.Concat(Enumerable.Range(0, 50)
+            .Select(i => $"<p>Paragraph {i}: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor.</p>")) +
+        "</body></html>";
+
+    // Providers are recreated each iteration to prevent NSubstitute call-record
+    // accumulation from inflating timings across iterations.
+    [IterationSetup]
+    public void IterationSetup()
     {
-        // Full traversal: 20 messages with plain text body
-        _fullProvider = ConnectorIngestionBenchmarks.CreateGmailProvider();
-
-        // Text body only: 5 messages
-        _textOnlyProvider = MakeGmailProvider(5, bodyType: "plain",
+        _fullProvider      = ConnectorIngestionBenchmarks.CreateGmailProvider();
+        _textOnlyProvider  = MakeGmailProvider(5, bodyType: "plain",
             bodyText: "This is a plain text email body used for benchmark throughput testing.");
-
-        // HTML body only: 5 messages with ~5KB HTML
-        var htmlBody = "<html><body>" +
-            string.Concat(Enumerable.Range(0, 50)
-                .Select(i => $"<p>Paragraph {i}: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor.</p>")) +
-            "</body></html>";
-        _htmlOnlyProvider = MakeGmailProvider(5, bodyType: "html", bodyText: htmlBody);
+        _htmlOnlyProvider  = MakeGmailProvider(5, bodyType: "html", bodyText: HtmlBody);
     }
 
     [Benchmark]

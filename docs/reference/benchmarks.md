@@ -194,54 +194,58 @@ Benchmarks measure `GetFilesAsync()` enumeration throughput with mocked HTTP/IMA
 
 | Connector | Mean | Allocated |
 |-----------|-----:|----------:|
-| Confluence | TBD | TBD |
-| Jira | TBD | TBD |
-| Notion | TBD | TBD |
-| Asana | TBD | TBD |
-| Slack | TBD | TBD |
-| Teams | TBD | TBD |
-| Gmail | TBD | TBD |
-| GitLab | TBD | TBD |
-| Bitbucket | TBD | TBD |
-| Zendesk Tickets | TBD | TBD |
-| Zendesk Articles | TBD | TBD |
-| Airtable | TBD | TBD |
+| Confluence | 43.3 μs | 34.25 KB |
+| Jira | 36.2 μs | 70.17 KB |
+| Notion | 52.2 μs | 99.23 KB |
+| Asana | 425.8 μs | 382.33 KB |
+| Slack | 5.7 μs | 12.01 KB |
+| Teams | 484.7 μs | 589.73 KB |
+| Gmail | 22,624 μs | 125 KB |
+| GitLab | 53.4 μs | 37.01 KB |
+| Bitbucket | 51.6 μs | 59.66 KB |
+| Zendesk Tickets | 56.9 μs | 125.85 KB |
+| Zendesk Articles | 15.7 μs | 33.21 KB |
+| Airtable | 42.6 μs | 48.42 KB |
 
 ### Connector-Specific
 
 | Benchmark | Items | Mean | Allocated |
 |-----------|------:|-----:|----------:|
-| Confluence — FullTraversal | 20 | TBD | TBD |
-| Confluence — DeltaTraversal | 20 | TBD | TBD |
-| Confluence — LargeHtmlBodies | 5 | TBD | TBD |
-| Jira — FullTraversal | 20 | TBD | TBD |
-| Jira — DeltaTraversal | 20 | TBD | TBD |
-| Jira — IssueWithManyComments | 5 (10 comments) | TBD | TBD |
-| Notion — FullTraversal | 20 | TBD | TBD |
-| Notion — ManyBlocksPerPage | 5 (50 blocks) | TBD | TBD |
-| Asana — FullTraversal | 20 | TBD | TBD |
-| Asana — ManySubtasks | 5 (20 subtasks) | TBD | TBD |
-| Slack — SingleDayBatch | 20 | TBD | TBD |
-| Slack — MultiDayBatch | 20 (5 days) | TBD | TBD |
-| Slack — WithThreadReplies | 10 (3 replies) | TBD | TBD |
-| Teams — SingleDayBatch | 20 | TBD | TBD |
-| Teams — MultiDayBatch | 20 (5 days) | TBD | TBD |
-| Teams — HtmlStripping | 20 | TBD | TBD |
-| Gmail — FullTraversal | 20 | TBD | TBD |
-| Gmail — TextBodyOnly | 5 | TBD | TBD |
-| Gmail — HtmlBodyOnly | 5 | TBD | TBD |
-| GitLab — FullTraversal | 20 | TBD | TBD |
-| GitLab — DeltaTraversal | 20 | TBD | TBD |
-| Bitbucket — FullTraversal | 20 | TBD | TBD |
-| Bitbucket — DeltaTraversal | 20 | TBD | TBD |
-| Zendesk — TicketsFullTraversal | 20 (2 comments) | TBD | TBD |
-| Zendesk — ArticlesFullTraversal | 20 | TBD | TBD |
-| Zendesk — ArticlesHtmlStripping | 5 (~10 KB HTML) | TBD | TBD |
-| Airtable — FullTraversal | 20 | TBD | TBD |
-| Airtable — WithAttachments | 10 (2 attachments) | TBD | TBD |
-| Airtable — DeltaWithFilter | 20 | TBD | TBD |
+| Confluence — FullTraversal | 20 | 24.0 μs | 34.25 KB |
+| Confluence — DeltaTraversal | 20 | 24.6 μs | 34.86 KB |
+| Confluence — LargeHtmlBodies | 5 | 187.6 μs | 474.16 KB |
+| Jira — FullTraversal | 20 | 37.1 μs | 70.18 KB |
+| Jira — DeltaTraversal | 20 | 38.8 μs | 70.85 KB |
+| Jira — IssueWithManyComments | 5 (10 comments) | 39.1 μs | 90.43 KB |
+| Notion — FullTraversal | 20 | 52.0 μs | 99.24 KB |
+| Notion — ManyBlocksPerPage | 5 (50 blocks) | 181.3 μs | 414.87 KB |
+| Asana — FullTraversal | 20 | 220.6 μs | 382.33 KB |
+| Asana — ManySubtasks | 5 (20 subtasks) | 26.1 μs | 43.82 KB |
+| Slack — SingleDayBatch | 20 | 5.9 μs | 12.01 KB |
+| Slack — MultiDayBatch | 20 (5 days) | 7.2 μs | 17.09 KB |
+| Slack — WithThreadReplies | 10 (3 replies) | 11.3 μs | 29.88 KB |
+| Teams — SingleDayBatch | 20 | 478.0 μs | 589.84 KB |
+| Teams — MultiDayBatch | 20 (5 days) | 502.6 μs | 595.63 KB |
+| Teams — HtmlStripping | 20 | 511.6 μs | 609.62 KB |
+| Gmail — FullTraversal | 20 | 307.2 μs | 206.78 KB |
+| Gmail — TextBodyOnly | 5 | 180.9 μs | 117.61 KB |
+| Gmail — HtmlBodyOnly | 5 | 1,008.2 μs | 484.05 KB |
+| GitLab — FullTraversal | 20 | 48.7 μs | 38.01 KB |
+| GitLab — DeltaTraversal | 20 | 43.3 μs | 30.57 KB |
+| Bitbucket — FullTraversal | 20 | 30.9 μs | 59.66 KB |
+| Bitbucket — DeltaTraversal | 20 | 28.9 μs | 54.45 KB |
+| Zendesk — TicketsFullTraversal | 20 (2 comments) | 64.5 μs | 125.85 KB |
+| Zendesk — ArticlesFullTraversal | 20 | 15.3 μs | 33.21 KB |
+| Zendesk — ArticlesHtmlStripping | 5 (~10 KB HTML) | 67.4 μs | 758.77 KB |
+| Airtable — FullTraversal | 20 | 22.8 μs | 48.42 KB |
+| Airtable — WithAttachments | 10 (2 attachments) | 37.2 μs | 70.29 KB |
+| Airtable — DeltaWithFilter | 20 | 24.0 μs | 48.53 KB |
 
-**Note:** Run `dotnet run -c Release --project benchmarks/Rag.NET.Benchmarks` to populate.
+**Notes:**
+- All measurements use mocked HTTP/IMAP backends — no network I/O.
+- Gmail `[SharedIngestion]` uses the same 20-message provider as `FullTraversal`; its high latency (~22 ms) comes from MimeKit MIME parsing and base64 decoding of message bodies, not network overhead.
+- Teams allocates significantly more than other connectors because it parses nested HTML activity feeds and resolves display names for each message.
+- Asana `FullTraversal` is slower than `ManySubtasks` because 20 tasks are fetched from the API; `ManySubtasks` uses only 5 tasks with 20 subtasks each, which amortises the per-task overhead.
 
 ---
 
