@@ -7,7 +7,7 @@ sidebar_position: 10
 
 # Data Providers
 
-Data providers are connectors that enumerate remote files and stream their content into the Rag.NET ingestion pipeline. They implement `IFileContentProvider`, which the pipeline calls during `IngestFromProviderAsync` to receive a sequence of `FileEntry` objects — each carrying a stable ID, a filename, an optional ETag for deduplication, and a factory that opens the file as a stream.
+Data providers are connectors that enumerate remote files and stream their content into the Rag.NET ingestion pipeline. They implement `IFileContentProvider`, which the pipeline calls during `IngestFromProviderAsync` to receive a sequence of `Result<FileEntry, RagError>` items. Each successful item carries a stable ID, a filename, an optional ETag for deduplication, and a factory that opens the file as a stream. HTTP failures from the remote API are surfaced as `RagError.HttpFailed` results and collected in `ProviderIngestionResult.Errors` — the pipeline continues processing remaining files rather than aborting.
 
 ```csharp
 // Typical usage: provider registered in DI, pipeline receives it via injection
@@ -530,7 +530,7 @@ Both filters are applied before the file content is downloaded, so excluded file
 | Stale delta token (other connectors) | Provider-specific behaviour; refer to the SDK documentation for the connector |
 | Stale ETag (Azure Blob) | No special handling needed — a changed or absent ETag causes the blob to be re-ingested, not skipped |
 | Azure SDK transient errors | Handled by the Azure SDK's built-in retry policy; do not add an external retry policy on top |
-| 429 Too Many Requests (Confluence / Jira) | Atlassian rate limits; the Refit HTTP client retries automatically via the resilience pipeline |
+| 429 Too Many Requests (Confluence / Jira) | Atlassian rate limits; the ZeroAlloc.Rest HTTP client retries automatically via the resilience pipeline |
 | 429 Too Many Requests (Notion) | Notion API rate-limits at ~3 requests/second; the resilience pipeline retries with back-off |
 | 429 Too Many Requests (Asana / Slack) | Handled by the resilience pipeline; consider reducing concurrency if limits are hit frequently |
 | Slack `invalid_auth` / `token_revoked` | Exception propagated; re-issue the bot token and redeploy |

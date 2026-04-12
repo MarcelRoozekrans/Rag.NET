@@ -49,4 +49,21 @@ public class RagErrorTests
 
         Assert.Equal("HTTP 404", message);
     }
+
+    [Fact]
+    public void RagError_HttpFailed_NullContentIsAccepted()
+    {
+        RagError error = new RagError.HttpFailed(System.Net.HttpStatusCode.ServiceUnavailable, null);
+        var typed = Assert.IsType<RagError.HttpFailed>(error);
+        Assert.Null(typed.Content);
+        Assert.Equal(System.Net.HttpStatusCode.ServiceUnavailable, typed.StatusCode);
+    }
+
+    [Fact]
+    public void RagError_HttpFailed_ContentIsAccessible()
+    {
+        RagError error = new RagError.HttpFailed(System.Net.HttpStatusCode.BadRequest, "Invalid CQL");
+        var typed = Assert.IsType<RagError.HttpFailed>(error);
+        Assert.Equal("Invalid CQL", typed.Content);
+    }
 }

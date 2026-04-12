@@ -3,7 +3,7 @@ using System.Text;
 using BenchmarkDotNet.Attributes;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Confluence;
-using Refit;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.Benchmarks;
 
@@ -83,7 +83,7 @@ public class ConfluenceBenchmarks
         var handler = new BenchFakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
             { [urlKey] = json });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://bench.atlassian.net") };
-        var api = RestService.For<IConfluenceApi>(http);
+        var api = new ConfluenceApiClient(http, new SystemTextJsonSerializer());
         return new ConfluenceDataProvider(api, options ?? new ConfluenceOptions
         {
             BaseUrl = "https://bench.atlassian.net",

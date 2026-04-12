@@ -3,7 +3,7 @@ using System.Text;
 using BenchmarkDotNet.Attributes;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Notion;
-using Refit;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.Benchmarks;
 
@@ -68,7 +68,7 @@ public class NotionBenchmarks
 
         var handler = new BenchFakeHandler(responses);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.notion.com") };
-        var api = RestService.For<INotionApi>(http);
+        var api = new NotionApiClient(http, new SystemTextJsonSerializer());
         return new NotionDataProvider(api, new NotionOptions());
     }
 

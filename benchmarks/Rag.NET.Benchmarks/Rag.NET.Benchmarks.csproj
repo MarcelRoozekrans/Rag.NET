@@ -37,7 +37,7 @@
     <PackageReference Include="NGitLab" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.*" />
     <PackageReference Include="NSubstitute" Version="5.*" />
-    <PackageReference Include="Refit" Version="8.*" />
+    <PackageReference Include="ZeroAlloc.Rest.SystemTextJson" Version="0.*" />
   </ItemGroup>
 
 </Project>

@@ -3,6 +3,7 @@ using System.Text;
 using BenchmarkDotNet.Attributes;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Asana;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.Benchmarks;
 
@@ -62,8 +63,8 @@ public class AsanaBenchmarks
             ["/subtasks"]      = subtasksJson
         });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com") };
-        return new AsanaDataProvider(http, new StaticTokenProvider("bench-token"),
-            new AsanaOptions { WorkspaceGid = "ws-bench" });
+        var api = new AsanaApiClient(http, new SystemTextJsonSerializer());
+        return new AsanaDataProvider(api, new AsanaOptions { WorkspaceGid = "ws-bench" });
     }
 
     private static string BuildSubtasksJson(int count)

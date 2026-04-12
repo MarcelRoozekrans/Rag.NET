@@ -24,7 +24,9 @@ using Rag.NET.DataProviders.MicrosoftTeams;
 using Rag.NET.DataProviders.Notion;
 using Rag.NET.DataProviders.Slack;
 using Rag.NET.DataProviders.Zendesk;
-using Refit;
+using ZeroAlloc.Rest;
+using ZeroAlloc.Rest.SystemTextJson;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Benchmarks;
 
@@ -86,7 +88,7 @@ public class ConnectorIngestionBenchmarks
         var handler = new BenchFakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
             { ["/wiki/rest/api/content"] = json });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://bench.atlassian.net") };
-        var api = RestService.For<IConfluenceApi>(http);
+        var api = new ConfluenceApiClient(http, new SystemTextJsonSerializer());
         return new ConfluenceDataProvider(api, new ConfluenceOptions
         {
             BaseUrl = "https://bench.atlassian.net",
@@ -100,7 +102,7 @@ public class ConnectorIngestionBenchmarks
         var handler = new BenchFakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
             { ["/rest/api/3/search"] = json });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://bench.atlassian.net") };
-        var api = RestService.For<IJiraApi>(http);
+        var api = new JiraApiClient(http, new SystemTextJsonSerializer());
         return new JiraDataProvider(api, new JiraOptions
         {
             BaseUrl = "https://bench.atlassian.net",
@@ -122,7 +124,7 @@ public class ConnectorIngestionBenchmarks
 
         var handler = new BenchFakeHandler(responses);
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.notion.com") };
-        var api = RestService.For<INotionApi>(http);
+        var api = new NotionApiClient(http, new SystemTextJsonSerializer());
         return new NotionDataProvider(api, new NotionOptions());
     }
 
@@ -136,8 +138,8 @@ public class ConnectorIngestionBenchmarks
             ["/subtasks"]      = emptySubtasks
         });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://app.asana.com") };
-        return new AsanaDataProvider(http, new StaticTokenProvider("bench-token"),
-            new AsanaOptions { WorkspaceGid = "ws-bench" });
+        var asanaApi = new AsanaApiClient(http, new SystemTextJsonSerializer());
+        return new AsanaDataProvider(asanaApi, new AsanaOptions { WorkspaceGid = "ws-bench" });
     }
 
     internal static SlackDataProvider CreateSlackProvider()
@@ -357,8 +359,8 @@ public class ConnectorIngestionBenchmarks
                 ["/repositories/bench-ws/bench-repo/src/main/src/"] = rawContent,
             });
             var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org/2.0") };
-            var api = RestService.For<IBitbucketApi>(http);
-            return new BitbucketDataProvider(api, new BitbucketOptions
+            var api = new BitbucketApiClient(http, new SystemTextJsonSerializer());
+            return new BitbucketDataProvider(api, http, new BitbucketOptions
             {
                 Workspace = "bench-ws",
                 RepoSlug  = "bench-repo",
@@ -374,8 +376,8 @@ public class ConnectorIngestionBenchmarks
                 ["/src/main/"]  = rawContent,
             });
             var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.bitbucket.org/2.0") };
-            var api = RestService.For<IBitbucketApi>(http);
-            return new BitbucketDataProvider(api, new BitbucketOptions
+            var api = new BitbucketApiClient(http, new SystemTextJsonSerializer());
+            return new BitbucketDataProvider(api, http, new BitbucketOptions
             {
                 Workspace             = "bench-ws",
                 RepoSlug              = "bench-repo",
@@ -428,7 +430,7 @@ public class ConnectorIngestionBenchmarks
             ["/comments"]                                = commentsJson,
         });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://bench.zendesk.com") };
-        var api = RestService.For<IZendeskApi>(http);
+        var api = new ZendeskApiClient(http, new SystemTextJsonSerializer());
         return new ZendeskTicketsDataProvider(api, new ZendeskTicketsOptions
         {
             Subdomain = "bench",
@@ -478,7 +480,7 @@ public class ConnectorIngestionBenchmarks
             ["/api/v2/help_center/incremental/articles.json"] = articlesJson,
         });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://bench.zendesk.com") };
-        var api = RestService.For<IZendeskApi>(http);
+        var api = new ZendeskApiClient(http, new SystemTextJsonSerializer());
         return new ZendeskArticlesDataProvider(api, new ZendeskArticlesOptions
         {
             Subdomain = "bench",
@@ -629,41 +631,41 @@ internal sealed class BenchSlackApi(
     List<SlackMessage> messages,
     string? realName = null) : ISlackApi
 {
-    public Task<SlackChannelList> ListChannelsAsync(
+    public Task<Result<SlackChannelList, HttpError>> ListChannelsAsync(
         int limit = 200, string? cursor = null, CancellationToken cancellationToken = default)
-        => Task.FromResult(new SlackChannelList
+        => Task.FromResult(Result<SlackChannelList, HttpError>.Success(new SlackChannelList
         {
             Ok       = true,
             Channels = channels,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
 
-    public Task<SlackMessageList> GetHistoryAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetHistoryAsync(
         string channel, int limit = 200, string? oldest = null,
         string? cursor = null, CancellationToken cancellationToken = default)
-        => Task.FromResult(new SlackMessageList
+        => Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = messages,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
 
-    public Task<SlackMessageList> GetRepliesAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetRepliesAsync(
         string channel, string ts, CancellationToken cancellationToken = default)
-        => Task.FromResult(new SlackMessageList
+        => Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = [],
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
 
-    public Task<SlackUserInfo> GetUserAsync(
+    public Task<Result<SlackUserInfo, HttpError>> GetUserAsync(
         string user, CancellationToken cancellationToken = default)
-        => Task.FromResult(new SlackUserInfo
+        => Task.FromResult(Result<SlackUserInfo, HttpError>.Success(new SlackUserInfo
         {
             Ok   = true,
             User = realName is not null ? new SlackUser { RealName = realName } : null
-        });
+        }));
 }
 
 /// <summary>Simple async enumerator over an array for GitLab benchmark mocking.</summary>

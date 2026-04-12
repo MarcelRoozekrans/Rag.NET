@@ -2,6 +2,8 @@ using System.Globalization;
 using BenchmarkDotNet.Attributes;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Slack;
+using ZeroAlloc.Rest;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Benchmarks;
 
@@ -123,26 +125,26 @@ internal sealed class BenchSlackApiWithReplies(
     int repliesPerMessage,
     string realName) : ISlackApi
 {
-    public Task<SlackChannelList> ListChannelsAsync(
+    public Task<Result<SlackChannelList, HttpError>> ListChannelsAsync(
         int limit = 200, string? cursor = null, CancellationToken cancellationToken = default)
-        => Task.FromResult(new SlackChannelList
+        => Task.FromResult(Result<SlackChannelList, HttpError>.Success(new SlackChannelList
         {
             Ok       = true,
             Channels = channels,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
 
-    public Task<SlackMessageList> GetHistoryAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetHistoryAsync(
         string channel, int limit = 200, string? oldest = null,
         string? cursor = null, CancellationToken cancellationToken = default)
-        => Task.FromResult(new SlackMessageList
+        => Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = messages,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
 
-    public Task<SlackMessageList> GetRepliesAsync(
+    public Task<Result<SlackMessageList, HttpError>> GetRepliesAsync(
         string channel, string ts, CancellationToken cancellationToken = default)
     {
         var replies = new List<SlackMessage> { new() { Ts = ts, User = "U001", Text = "parent" } };
@@ -156,19 +158,19 @@ internal sealed class BenchSlackApiWithReplies(
                 Text = string.Create(CultureInfo.InvariantCulture, $"Reply {r}")
             });
         }
-        return Task.FromResult(new SlackMessageList
+        return Task.FromResult(Result<SlackMessageList, HttpError>.Success(new SlackMessageList
         {
             Ok       = true,
             Messages = replies,
             ResponseMetadata = new SlackCursor { NextCursor = string.Empty }
-        });
+        }));
     }
 
-    public Task<SlackUserInfo> GetUserAsync(
+    public Task<Result<SlackUserInfo, HttpError>> GetUserAsync(
         string user, CancellationToken cancellationToken = default)
-        => Task.FromResult(new SlackUserInfo
+        => Task.FromResult(Result<SlackUserInfo, HttpError>.Success(new SlackUserInfo
         {
             Ok   = true,
             User = new SlackUser { RealName = realName }
-        });
+        }));
 }

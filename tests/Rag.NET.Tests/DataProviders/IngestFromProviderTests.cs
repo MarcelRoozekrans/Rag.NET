@@ -383,4 +383,48 @@ public sealed class IngestFromProviderTests : IDisposable
         var error = Assert.IsType<RagError.HttpFailed>(result.Errors[0]);
         Assert.Equal(System.Net.HttpStatusCode.Unauthorized, error.StatusCode);
     }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_MultipleProviderHttpFailures_AllAppearInErrors()
+    {
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Failure(new RagError.HttpFailed(System.Net.HttpStatusCode.Unauthorized, null)),
+                Result<FileEntry, RagError>.Failure(new RagError.HttpFailed(System.Net.HttpStatusCode.Forbidden, null)),
+            }.ToAsyncEnumerable());
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.Ingested);
+        Assert.Equal(2, result.Errors.Count);
+        Assert.All(result.Errors, e => Assert.IsType<RagError.HttpFailed>(e));
+    }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_MixedSuccessAndHttpFailure_IngestsSuccessesRecordsFailure()
+    {
+        var entry = new FileEntry(
+            Id: new EntryId("id-ok"),
+            FileName: "ok.txt",
+            OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("content"u8.ToArray())),
+            ETag: null);
+
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(entry),
+                Result<FileEntry, RagError>.Failure(new RagError.HttpFailed(System.Net.HttpStatusCode.InternalServerError, null)),
+            }.ToAsyncEnumerable());
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Ingested);
+        Assert.Single(result.Errors);
+        Assert.IsType<RagError.HttpFailed>(result.Errors[0]);
+    }
 }

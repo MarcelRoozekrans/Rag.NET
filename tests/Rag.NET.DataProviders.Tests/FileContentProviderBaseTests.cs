@@ -150,6 +150,51 @@ public sealed class FileContentProviderBaseTests
         Assert.IsType<RagError.HttpFailed>(results[0].Error);
     }
 
+    [Fact]
+    public async Task GetFilesAsync_MixedSuccessAndFailure_PropagatesBoth()
+    {
+        var sut = new MixedStubProvider(new TestOptions());
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, results.Count);
+        Assert.True(results[0].IsSuccess);
+        Assert.Equal("a.md", results[0].Value.FileName);
+        Assert.True(results[1].IsFailure);
+        Assert.IsType<RagError.HttpFailed>(results[1].Error);
+        Assert.True(results[2].IsSuccess);
+        Assert.Equal("b.md", results[2].Value.FileName);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ExtensionFilter_StillFiltersSuccessesWhenFailuresMixed()
+    {
+        var options = new TestOptions { Extensions = [".md"] };
+        var sut = new MixedWithNonMdStubProvider(options);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // success (.md) → passes, failure → passes through, success (.yaml) → filtered out
+        Assert.Equal(2, results.Count);
+        Assert.True(results[0].IsSuccess);
+        Assert.Equal("doc.md", results[0].Value.FileName);
+        Assert.True(results[1].IsFailure);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_MultipleFailures_AllPropagated()
+    {
+        var sut = new MultiFailingStubProvider(new TestOptions());
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.All(results, r => Assert.True(r.IsFailure));
+    }
+
     private sealed class FailingStubProvider(CloudStorageOptions options) : FileContentProviderBase(options)
     {
         protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
@@ -157,6 +202,45 @@ public sealed class FileContentProviderBaseTests
         {
             yield return Result<FileHandle, RagError>.Failure(
                 new RagError.HttpFailed(System.Net.HttpStatusCode.ServiceUnavailable, null));
+            await Task.CompletedTask.ConfigureAwait(false);
+        }
+    }
+
+    private sealed class MixedStubProvider(CloudStorageOptions options) : FileContentProviderBase(options)
+    {
+        protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            yield return Result<FileHandle, RagError>.Success(Handle("a/a.md", "a.md"));
+            yield return Result<FileHandle, RagError>.Failure(
+                new RagError.HttpFailed(System.Net.HttpStatusCode.InternalServerError, null));
+            yield return Result<FileHandle, RagError>.Success(Handle("b/b.md", "b.md"));
+            await Task.CompletedTask.ConfigureAwait(false);
+        }
+    }
+
+    private sealed class MixedWithNonMdStubProvider(CloudStorageOptions options) : FileContentProviderBase(options)
+    {
+        protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            yield return Result<FileHandle, RagError>.Success(Handle("doc.md", "doc.md"));
+            yield return Result<FileHandle, RagError>.Failure(
+                new RagError.HttpFailed(System.Net.HttpStatusCode.Unauthorized, null));
+            yield return Result<FileHandle, RagError>.Success(Handle("config.yaml", "config.yaml"));
+            await Task.CompletedTask.ConfigureAwait(false);
+        }
+    }
+
+    private sealed class MultiFailingStubProvider(CloudStorageOptions options) : FileContentProviderBase(options)
+    {
+        protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            yield return Result<FileHandle, RagError>.Failure(
+                new RagError.HttpFailed(System.Net.HttpStatusCode.Unauthorized, null));
+            yield return Result<FileHandle, RagError>.Failure(
+                new RagError.HttpFailed(System.Net.HttpStatusCode.Forbidden, null));
             await Task.CompletedTask.ConfigureAwait(false);
         }
     }

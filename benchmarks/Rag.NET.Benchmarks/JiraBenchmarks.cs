@@ -3,7 +3,7 @@ using System.Text;
 using BenchmarkDotNet.Attributes;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Jira;
-using Refit;
+using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.Benchmarks;
 
@@ -80,7 +80,7 @@ public class JiraBenchmarks
         var handler = new BenchFakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
             { ["/rest/api/3/search"] = json });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://bench.atlassian.net") };
-        var api = RestService.For<IJiraApi>(http);
+        var api = new JiraApiClient(http, new SystemTextJsonSerializer());
         return new JiraDataProvider(api, options ?? new JiraOptions
         {
             BaseUrl = "https://bench.atlassian.net",
