@@ -44,26 +44,42 @@ public class ConnectorIngestionBenchmarks
 
     private IFileContentProvider _provider = default!;
 
+    // Connectors backed by NSubstitute mocks accumulate call records across
+    // iterations, causing monotonically-increasing per-op latency. Those
+    // connectors are recreated per iteration; the rest use GlobalSetup.
+    private static readonly HashSet<string> NSubstituteConnectors =
+        new(StringComparer.Ordinal) { "Gmail", "GitLab", "Airtable" };
+
     [GlobalSetup]
     public void Setup()
     {
-        _provider = Connector switch
-        {
-            "Confluence" => CreateConfluenceProvider(),
-            "Jira"       => CreateJiraProvider(),
-            "Notion"     => CreateNotionProvider(),
-            "Asana"      => CreateAsanaProvider(),
-            "Slack"      => CreateSlackProvider(),
-            "Teams"      => CreateTeamsProvider(),
-            "Gmail"           => CreateGmailProvider(),
-            "GitLab"          => CreateGitLabProvider(),
-            "Bitbucket"       => CreateBitbucketProvider(),
-            "ZendeskTickets"  => CreateZendeskTicketsProvider(),
-            "ZendeskArticles" => CreateZendeskArticlesProvider(),
-            "Airtable"        => CreateAirtableProvider(),
-            _                 => throw new NotSupportedException($"Unknown connector: {Connector}")
-        };
+        if (!NSubstituteConnectors.Contains(Connector))
+            _provider = CreateProvider();
     }
+
+    [IterationSetup]
+    public void IterationSetup()
+    {
+        if (NSubstituteConnectors.Contains(Connector))
+            _provider = CreateProvider();
+    }
+
+    private IFileContentProvider CreateProvider() => Connector switch
+    {
+        "Confluence"     => CreateConfluenceProvider(),
+        "Jira"           => CreateJiraProvider(),
+        "Notion"         => CreateNotionProvider(),
+        "Asana"          => CreateAsanaProvider(),
+        "Slack"          => CreateSlackProvider(),
+        "Teams"          => CreateTeamsProvider(),
+        "Gmail"          => CreateGmailProvider(),
+        "GitLab"         => CreateGitLabProvider(),
+        "Bitbucket"      => CreateBitbucketProvider(),
+        "ZendeskTickets" => CreateZendeskTicketsProvider(),
+        "ZendeskArticles"=> CreateZendeskArticlesProvider(),
+        "Airtable"       => CreateAirtableProvider(),
+        _                => throw new NotSupportedException($"Unknown connector: {Connector}")
+    };
 
     [Benchmark]
     public async Task<int> EnumerateFiles()

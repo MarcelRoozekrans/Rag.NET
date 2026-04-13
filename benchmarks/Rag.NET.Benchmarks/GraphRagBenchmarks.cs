@@ -44,24 +44,30 @@ public class GraphRagBenchmarks
     {
         _graph = BuildRandomGraph(NodeCount);
         _chunks = BuildChunks(Math.Min(NodeCount, 20));
+        _localSearchResults = BuildEntitySearchResults(NodeCount);
+        _globalSearchResults = BuildCommunitySearchResults(Math.Max(NodeCount / 10, 3));
+        _globalSearchBehavior = new GraphGlobalSearchBehavior(
+            new FakeChatClient(),
+            new GraphRagRetrievalOptions());
+        // Behaviors that use the NSubstitute IGraphStore mock are rebuilt each
+        // iteration to prevent call-record accumulation from inflating timings.
+        RebuildMockDependentBehaviors();
+    }
 
+    [IterationSetup]
+    public void IterationSetup() => RebuildMockDependentBehaviors();
+
+    private void RebuildMockDependentBehaviors()
+    {
         var graphStore = BuildFakeGraphStore(_graph);
         _extractionBehavior = new GraphEntityExtractionBehavior(
             new FakeChatClient(),
             new FakeEmbeddingGenerator(EmbeddingDimensions),
             graphStore,
             new GraphRagOptions { Enabled = true, GleaningPasses = 0 });
-
         _localSearchBehavior = new GraphLocalSearchBehavior(
             graphStore,
             new GraphRagRetrievalOptions { LocalTopEntities = 5, LocalSearchDepth = 1, PageRankWeight = 0.3 });
-
-        _globalSearchBehavior = new GraphGlobalSearchBehavior(
-            new FakeChatClient(),
-            new GraphRagRetrievalOptions());
-
-        _localSearchResults = BuildEntitySearchResults(NodeCount);
-        _globalSearchResults = BuildCommunitySearchResults(Math.Max(NodeCount / 10, 3));
     }
 
     // ════════════════════════════════════════════════════════════════════

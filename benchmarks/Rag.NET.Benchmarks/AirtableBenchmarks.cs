@@ -15,18 +15,15 @@ public class AirtableBenchmarks
     private AirtableDataProvider _attachmentProvider = default!;
     private AirtableDataProvider _deltaProvider = default!;
 
-    [GlobalSetup]
-    public void Setup()
+    // Providers use NSubstitute mocks — recreate each iteration to prevent
+    // call-record accumulation from inflating per-iteration latency.
+    [IterationSetup]
+    public void IterationSetup()
     {
-        // 20 records, no attachments
         _fullProvider = ConnectorIngestionBenchmarks.CreateAirtableProvider(
             count: 20, attachmentsPerRecord: 0);
-
-        // 10 records with 2 attachments each
         _attachmentProvider = ConnectorIngestionBenchmarks.CreateAirtableProvider(
             count: 10, attachmentsPerRecord: 2);
-
-        // 20 records via filterByFormula (delta)
         _deltaProvider = ConnectorIngestionBenchmarks.CreateAirtableProvider(
             count: 20, attachmentsPerRecord: 0, withDeltaFilter: true);
     }

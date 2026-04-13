@@ -13,8 +13,10 @@ public class GitLabBenchmarks
     private GitLabDataProvider _fullProvider = default!;
     private GitLabDataProvider _deltaProvider = default!;
 
-    [GlobalSetup]
-    public void Setup()
+    // Providers use NSubstitute mocks — recreate each iteration to prevent
+    // call-record accumulation from inflating per-iteration latency.
+    [IterationSetup]
+    public void IterationSetup()
     {
         _fullProvider  = ConnectorIngestionBenchmarks.CreateGitLabProvider(20, delta: false);
         _deltaProvider = ConnectorIngestionBenchmarks.CreateGitLabProvider(20, delta: true);
