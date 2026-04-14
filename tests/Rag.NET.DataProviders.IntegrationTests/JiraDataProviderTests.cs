@@ -52,7 +52,7 @@ public sealed class JiraDataProviderTests
     }
 
     [Fact]
-    public async Task GetFilesAsync_AcceptsJsonHeader()
+    public async Task GetFilesAsync_FullTraversal_AcceptsJsonHeader()
     {
         _fixture.Server.ResetLogEntries();
 
