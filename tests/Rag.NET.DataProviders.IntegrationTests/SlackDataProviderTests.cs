@@ -23,8 +23,6 @@ public sealed class SlackDataProviderTests
         var http = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
         http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", "xoxb-test");
-        http.DefaultRequestHeaders.Accept.Add(
-            new MediaTypeWithQualityHeaderValue("application/json"));
         var api = new SlackApiClient(http, JsonSerializer);
         return new SlackDataProvider(api, opts ?? new SlackOptions());
     }

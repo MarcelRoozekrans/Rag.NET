@@ -116,4 +116,24 @@ public sealed class NotionDataProviderTests
         Assert.Contains(results, r =>
             string.Equals(r.Value.ETag, "2026-03-12T14:00:00.000Z", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public async Task GetFilesAsync_GetBlocks_ReturnsContent()
+    {
+        var sut = CreateProvider();
+
+        var results = await sut
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(results);
+        var first = results[0];
+        Assert.True(first.IsSuccess);
+
+        await using var stream = await first.Value.OpenContentAsync(TestContext.Current.CancellationToken);
+        using var reader = new StreamReader(stream);
+        var content = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains("Hello from Notion.", content, StringComparison.Ordinal);
+    }
 }

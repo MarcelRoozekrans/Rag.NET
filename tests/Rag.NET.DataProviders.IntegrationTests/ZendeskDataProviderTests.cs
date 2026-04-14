@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using Rag.NET.DataProviders.Zendesk;
 using Rag.NET.Testing;
+using WireMock.RequestBuilders;
+using WireMock.ResponseBuilders;
 using Xunit;
 using ZeroAlloc.Rest.SystemTextJson;
 
@@ -23,8 +25,6 @@ public sealed class ZendeskDataProviderTests
         var http = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
         http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Basic", "dGVzdDp0ZXN0");
-        http.DefaultRequestHeaders.Accept.Add(
-            new MediaTypeWithQualityHeaderValue("application/json"));
         return new ZendeskApiClient(http, JsonSerializer);
     }
 
@@ -96,5 +96,63 @@ public sealed class ZendeskDataProviderTests
         });
         Assert.Contains(results, r => string.Equals(r.Value.FileName, "article-201.md", StringComparison.Ordinal));
         Assert.Contains(results, r => string.Equals(r.Value.FileName, "article-202.md", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetTickets_IncrementalCursor_Followed()
+    {
+        _fixture.LoadCassettes("Zendesk", "https://test.zendesk.com");
+
+        const string scenario = "zendesk-cursor";
+        const string page2State = "page-2";
+
+        // Page 1: returns a cursor; transitions scenario to page-2.
+        _fixture.Server
+            .Given(Request.Create()
+                .WithPath("/api/v2/incremental/tickets/cursor.json")
+                .UsingGet())
+            .InScenario(scenario)
+            .WillSetStateTo(page2State)
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json; charset=utf-8")
+                .WithBody("""{"tickets":[],"after_cursor":"cursor123","end_of_stream":false,"end_time":0}"""));
+
+        // Page 2: matches only after state transition; returns end-of-stream.
+        _fixture.Server
+            .Given(Request.Create()
+                .WithPath("/api/v2/incremental/tickets/cursor.json")
+                .UsingGet())
+            .InScenario(scenario)
+            .WhenStateIs(page2State)
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json; charset=utf-8")
+                .WithBody("""{"tickets":[],"after_cursor":null,"end_of_stream":true,"end_time":0}"""));
+
+        _fixture.Server.ResetLogEntries();
+
+        var sut = new ZendeskTicketsDataProvider(
+            CreateApiClient(),
+            new ZendeskTicketsOptions { Subdomain = "test", Email = "a@b.com" });
+
+        var results = await sut
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(results);
+
+        var ticketRequests = _fixture.Server.LogEntries
+            .Where(e => e.RequestMessage.AbsolutePath.Contains(
+                "/api/v2/incremental/tickets/cursor.json", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.Equal(2, ticketRequests.Count);
+        Assert.Contains(ticketRequests, e =>
+            e.RequestMessage.RawQuery == null ||
+            !e.RequestMessage.RawQuery.Contains("cursor=", StringComparison.Ordinal));
+        Assert.Contains(ticketRequests, e =>
+            e.RequestMessage.RawQuery != null &&
+            e.RequestMessage.RawQuery.Contains("cursor=cursor123", StringComparison.Ordinal));
     }
 }

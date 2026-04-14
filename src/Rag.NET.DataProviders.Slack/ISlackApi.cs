@@ -4,7 +4,7 @@ using ZeroAlloc.Results;
 namespace Rag.NET.DataProviders.Slack;
 
 [ZeroAllocRestClient]
-public interface ISlackApi
+internal interface ISlackApi
 {
     [Get("/api/conversations.list")]
     Task<Result<SlackChannelList, ZeroAlloc.Rest.HttpError>> ListChannelsAsync(
