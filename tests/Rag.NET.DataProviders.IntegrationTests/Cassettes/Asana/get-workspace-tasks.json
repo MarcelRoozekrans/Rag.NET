@@ -1,0 +1,22 @@
+{
+  "Guid": "c1d2e3f4-a5b6-7890-cdef-123456789001",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/api/1.0/tasks",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"data\":[{\"gid\":\"task-001\",\"name\":\"Design new login page\",\"notes\":\"Redesign the login page with new branding.\",\"completed\":false,\"modified_at\":\"2026-03-10T08:00:00Z\",\"due_on\":null,\"assignee\":null},{\"gid\":\"task-002\",\"name\":\"Fix payment bug\",\"notes\":\"Payment fails for certain card types.\",\"completed\":false,\"modified_at\":\"2026-03-11T09:00:00Z\",\"due_on\":null,\"assignee\":null}],\"next_page\":null}"
+  }
+}

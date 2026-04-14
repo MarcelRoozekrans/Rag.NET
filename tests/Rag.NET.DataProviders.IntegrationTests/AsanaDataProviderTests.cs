@@ -1,0 +1,99 @@
+using System.Net.Http.Headers;
+using Rag.NET.DataProviders.Asana;
+using Rag.NET.Testing;
+using Xunit;
+using ZeroAlloc.Rest.SystemTextJson;
+
+namespace Rag.NET.DataProviders.IntegrationTests;
+
+[Collection("WireMock")]
+public sealed class AsanaDataProviderTests
+{
+    private static readonly SystemTextJsonSerializer JsonSerializer = new();
+    private readonly WireMockServerFixture _fixture;
+
+    public AsanaDataProviderTests(WireMockServerFixture fixture)
+    {
+        _fixture = fixture;
+        _fixture.LoadCassettes("Asana", "https://app.asana.com");
+    }
+
+    private AsanaDataProvider CreateProvider(AsanaOptions? opts = null)
+    {
+        var http = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
+        http.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", "test-token");
+        var api = new AsanaApiClient(http, JsonSerializer);
+        return new AsanaDataProvider(api, opts ?? new AsanaOptions { WorkspaceGid = "ws-001" });
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_GetTasks_YieldsTasks()
+    {
+        var sut = CreateProvider();
+
+        var results = await sut
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.All(results, r =>
+        {
+            Assert.True(r.IsSuccess);
+            Assert.NotEmpty(r.Value.FileName);
+            Assert.NotEmpty(r.Value.Id.Value);
+        });
+        Assert.Contains(results, r => string.Equals(r.Value.FileName, "Design new login page.md", StringComparison.Ordinal));
+        Assert.Contains(results, r => string.Equals(r.Value.FileName, "Fix payment bug.md", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_FullTraversal_AcceptsJsonHeader()
+    {
+        _fixture.Server.ResetLogEntries();
+
+        var sut = CreateProvider();
+        await sut
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var logEntries = _fixture.Server.LogEntries.ToList();
+        Assert.NotEmpty(logEntries);
+
+        // Every request to the Asana API must carry an Accept: application/json header.
+        Assert.All(logEntries, entry =>
+        {
+            var headers = entry.RequestMessage.Headers;
+            Assert.NotNull(headers);
+            Assert.True(headers.ContainsKey("Accept"), "Accept header missing");
+            Assert.Contains("application/json", headers["Accept"]);
+        });
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_DeltaRun_UsesModifiedSince()
+    {
+        _fixture.LoadCassettes("Asana", "https://app.asana.com");
+        _fixture.Server.ResetLogEntries();
+
+        var opts = new AsanaOptions
+        {
+            WorkspaceGid = "ws-001",
+            DeltaToken   = "2026-03-01T00:00:00Z",
+        };
+        var sut = CreateProvider(opts);
+
+        await sut
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var logEntries = _fixture.Server.LogEntries.ToList();
+        Assert.NotEmpty(logEntries);
+
+        // At least one request to the tasks endpoint must carry the modified_since query param.
+        Assert.Contains(logEntries, entry =>
+            entry.RequestMessage.AbsolutePath.Contains("/api/1.0/tasks", StringComparison.Ordinal)
+            && entry.RequestMessage.RawQuery != null
+            && entry.RequestMessage.RawQuery.Contains("modified_since", StringComparison.Ordinal));
+    }
+}
