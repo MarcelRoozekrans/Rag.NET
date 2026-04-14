@@ -100,6 +100,8 @@ public sealed class ConfluenceDataProviderTests
     [Fact]
     public async Task GetFilesAsync_DeltaRun_UsesCqlSearchEndpoint()
     {
+        _fixture.LoadCassettes("Confluence", "https://test.atlassian.net");
+
         // Register a programmatic stub for the search endpoint.
         _fixture.Server
             .Given(Request.Create()
