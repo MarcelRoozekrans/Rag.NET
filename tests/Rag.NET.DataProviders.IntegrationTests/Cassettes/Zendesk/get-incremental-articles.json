@@ -1,0 +1,22 @@
+{
+  "Guid": "d1e2f3a4-b5c6-7890-defa-234567890003",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/api/v2/help_center/incremental/articles.json",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"articles\":[{\"id\":201,\"title\":\"Getting Started\",\"body\":\"<p>Welcome to our Help Center.</p>\",\"updated_at\":\"2026-01-10T00:00:00Z\",\"section_id\":10},{\"id\":202,\"title\":\"FAQ\",\"body\":\"<p>Frequently asked questions.</p>\",\"updated_at\":\"2026-01-11T00:00:00Z\",\"section_id\":10}],\"count\":2,\"end_time\":1736640000,\"next_page\":null}"
+  }
+}

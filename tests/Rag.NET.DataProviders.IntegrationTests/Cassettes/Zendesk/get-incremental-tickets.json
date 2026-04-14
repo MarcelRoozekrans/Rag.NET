@@ -1,0 +1,22 @@
+{
+  "Guid": "d1e2f3a4-b5c6-7890-defa-234567890001",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/api/v2/incremental/tickets/cursor.json",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"tickets\":[{\"id\":1,\"subject\":\"Login issue\",\"description\":\"Cannot login with correct credentials.\",\"status\":\"open\",\"priority\":\"high\",\"updated_at\":\"2026-01-01T00:00:00Z\"},{\"id\":2,\"subject\":\"Billing question\",\"description\":\"I was charged twice this month.\",\"status\":\"pending\",\"priority\":\"normal\",\"updated_at\":\"2026-01-02T00:00:00Z\"}],\"after_cursor\":null,\"end_of_stream\":true,\"end_time\":1735700000}"
+  }
+}
