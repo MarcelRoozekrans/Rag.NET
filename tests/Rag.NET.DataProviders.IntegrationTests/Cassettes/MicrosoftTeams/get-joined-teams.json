@@ -1,0 +1,12 @@
+{
+  "Guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567891",
+  "Request": {
+    "Path": { "Matchers": [{ "Name": "WildcardMatcher", "Pattern": "/v1.0/me/joinedTeams" }] },
+    "Methods": ["GET"]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": { "Content-Type": "application/json; charset=utf-8" },
+    "Body": "{\"@odata.context\":\"https://graph.microsoft.com/v1.0/$metadata#teams\",\"value\":[{\"id\":\"team-1\",\"displayName\":\"Engineering\"}]}"
+  }
+}
