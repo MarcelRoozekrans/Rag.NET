@@ -23,6 +23,8 @@ public sealed class ZendeskDataProviderTests
         var http = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
         http.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Basic", "dGVzdDp0ZXN0");
+        http.DefaultRequestHeaders.Accept.Add(
+            new MediaTypeWithQualityHeaderValue("application/json"));
         return new ZendeskApiClient(http, JsonSerializer);
     }
 
