@@ -1,0 +1,22 @@
+{
+  "Guid": "c1d2e3f4-a5b6-7890-cdef-123456789abc",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/v1/search",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "POST" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"results\":[{\"id\":\"page-aaa\",\"last_edited_time\":\"2026-03-10T10:00:00.000Z\",\"properties\":{\"title\":{\"title\":[{\"plain_text\":\"Getting Started\"}]}}},{\"id\":\"page-bbb\",\"last_edited_time\":\"2026-03-12T14:00:00.000Z\",\"properties\":{\"title\":{\"title\":[{\"plain_text\":\"API Reference\"}]}}}],\"has_more\":false}"
+  }
+}
