@@ -111,5 +111,9 @@ public sealed class NotionDataProviderTests
             Assert.True(r.IsSuccess);
             Assert.NotEmpty(r.Value.ETag!);
         });
+        Assert.Contains(results, r =>
+            string.Equals(r.Value.ETag, "2026-03-10T10:00:00.000Z", StringComparison.Ordinal));
+        Assert.Contains(results, r =>
+            string.Equals(r.Value.ETag, "2026-03-12T14:00:00.000Z", StringComparison.Ordinal));
     }
 }
