@@ -1,0 +1,22 @@
+{
+  "Guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567803",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/api/users.info",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"ok\":true,\"user\":{\"real_name\":\"Test User\"}}"
+  }
+}
