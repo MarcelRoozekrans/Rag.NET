@@ -1,0 +1,22 @@
+{
+  "Guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/rest/api/3/search",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"issues\":[{\"id\":\"10001\",\"key\":\"PROJ-1\",\"fields\":{\"summary\":\"Fix login bug\",\"description\":\"Users cannot login with valid credentials.\",\"status\":{\"name\":\"In Progress\"},\"priority\":{\"name\":\"High\"},\"assignee\":{\"displayName\":\"Alice Smith\"},\"comment\":{\"comments\":[{\"author\":{\"displayName\":\"Bob Jones\"},\"created\":\"2026-03-02T09:00:00Z\",\"body\":\"Reproduced the issue on Chrome.\"}]},\"updated\":\"2026-03-05T10:00:00Z\"}},{\"id\":\"10002\",\"key\":\"PROJ-2\",\"fields\":{\"summary\":\"Add dark mode support\",\"description\":\"Users have requested a dark mode option in the settings.\",\"status\":{\"name\":\"Open\"},\"priority\":{\"name\":\"Medium\"},\"assignee\":null,\"comment\":{\"comments\":[]},\"updated\":\"2026-03-10T14:30:00Z\"}}],\"total\":2}"
+  }
+}
