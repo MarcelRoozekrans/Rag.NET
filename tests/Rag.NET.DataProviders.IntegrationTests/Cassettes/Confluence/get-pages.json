@@ -1,0 +1,22 @@
+{
+  "Guid": "b1c2d3e4-f5a6-7890-bcde-f12345678901",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/wiki/rest/api/content",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"results\":[{\"id\":\"101\",\"title\":\"Getting Started\",\"body\":{\"storage\":{\"value\":\"<p>Welcome to Confluence.</p>\"}},\"version\":{\"number\":3}},{\"id\":\"202\",\"title\":\"API Reference\",\"body\":{\"storage\":{\"value\":\"<p>All available endpoints.</p>\"}},\"version\":{\"number\":7}}],\"_links\":{}}"
+  }
+}
