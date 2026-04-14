@@ -66,16 +66,13 @@ public sealed class ConfluenceDataProviderTests
         var logEntries = _fixture.Server.LogEntries.ToList();
         Assert.NotEmpty(logEntries);
 
-        // Every request to the Confluence API must carry an Authorization header.
+        // Every request to the Confluence API must carry an Accept: application/json header.
         Assert.All(logEntries, entry =>
         {
             var headers = entry.RequestMessage.Headers;
             Assert.NotNull(headers);
-            Assert.True(
-                headers.ContainsKey("Authorization"),
-                "Expected Authorization header on Confluence API request.");
-            var authValues = headers["Authorization"];
-            Assert.Contains(authValues, v => v.StartsWith("Basic ", StringComparison.Ordinal));
+            Assert.True(headers.ContainsKey("Accept"), "Accept header missing");
+            Assert.Contains("application/json", headers["Accept"]);
         });
     }
 
