@@ -61,9 +61,11 @@ public sealed class MicrosoftTeamsDataProviderTests
         await Assert.AllAsync(results, async r =>
         {
             Assert.True(r.IsSuccess);
-            var stream = await r.Value.OpenContentAsync(TestContext.Current.CancellationToken);
+            await using var stream = await r.Value.OpenContentAsync(TestContext.Current.CancellationToken);
             Assert.NotNull(stream);
-            Assert.True(stream.Length > 0);
+            var ms = new MemoryStream();
+            await stream.CopyToAsync(ms, TestContext.Current.CancellationToken);
+            Assert.True(ms.Length > 0);
         });
     }
 }
