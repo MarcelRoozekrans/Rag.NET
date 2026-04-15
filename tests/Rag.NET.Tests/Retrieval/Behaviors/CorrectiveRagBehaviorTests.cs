@@ -156,7 +156,7 @@ public class CorrectiveRagBehaviorTests
     }
 
     [Fact]
-    public void ScoreWithHeuristic_AllMatching_ReturnsHighScore()
+    public void ScoreWithHeuristic_AllMatching_ReturnsOne()
     {
         var results = new List<SearchResult>
         {
@@ -164,7 +164,15 @@ public class CorrectiveRagBehaviorTests
             MakeResult("doc-2", 0, 0.8, "test query more"),
         };
         var score = CorrectiveRagBehavior.ScoreWithHeuristic("test query", results);
-        Assert.True(score > 0.5f);
+        Assert.Equal(1f, score);
+    }
+
+    [Fact]
+    public void ScoreWithHeuristic_EmptyQuery_ReturnsZero()
+    {
+        var results = new List<SearchResult> { MakeResult("doc-1", 0, 0.9, "some content") };
+        var score = CorrectiveRagBehavior.ScoreWithHeuristic("", results);
+        Assert.Equal(0f, score);
     }
 
     [Fact]
@@ -176,5 +184,76 @@ public class CorrectiveRagBehaviorTests
         };
         var score = CorrectiveRagBehavior.ScoreWithHeuristic("specific topic", results);
         Assert.True(score < 0.5f);
+    }
+
+    // ── LLM scoring path ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task HandleAsync_LlmScoring_AllRelevant_DoesNotTriggerWebSearch()
+    {
+        var webSearch = Substitute.For<IWebSearch>();
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "relevant")));
+
+        var sut = new CorrectiveRagBehavior { WebSearch = webSearch, ChatClient = chatClient };
+        var results = new List<SearchResult> { MakeResult("doc-1", 0, 0.9, text: "unrelated xyz") };
+        var ctx = MakeCtx(
+            new RetrievalOptions { UseCrag = true, CragScoreThreshold = 0.5f },
+            query: "specific topic");
+
+        await sut.HandleAsync(ctx, TestContext.Current.CancellationToken, NextReturning(results));
+
+        await webSearch.DidNotReceive().SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        Assert.Equal("false", ctx.Extensions["crag_triggered"]);
+    }
+
+    [Fact]
+    public async Task HandleAsync_LlmScoring_AllIrrelevant_TriggersWebSearch()
+    {
+        var webResult = MakeResult("web-1", 0, 0.95, "web result");
+        var webSearch = Substitute.For<IWebSearch>();
+        webSearch.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<SearchResult>>([webResult]));
+
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "irrelevant")));
+
+        var sut = new CorrectiveRagBehavior { WebSearch = webSearch, ChatClient = chatClient };
+        var results = new List<SearchResult> { MakeResult("doc-1", 0, 0.1, text: "content") };
+        var ctx = MakeCtx(
+            new RetrievalOptions { UseCrag = true, CragScoreThreshold = 0.5f },
+            query: "specific topic");
+
+        var output = await sut.HandleAsync(ctx, TestContext.Current.CancellationToken, NextReturning(results));
+
+        Assert.Equal("true", ctx.Extensions["crag_triggered"]);
+        Assert.Contains(webResult, output);
+    }
+
+    [Fact]
+    public async Task HandleAsync_LlmScoringThrows_FallsBackToHeuristic()
+    {
+        var webSearch = Substitute.For<IWebSearch>();
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new HttpRequestException("llm error"));
+
+        var sut = new CorrectiveRagBehavior { WebSearch = webSearch, ChatClient = chatClient };
+        // High heuristic relevance: query tokens present in chunk text
+        var results = new List<SearchResult>
+        {
+            MakeResult("doc-1", 0, 0.9, text: "specific topic content"),
+        };
+        var ctx = MakeCtx(
+            new RetrievalOptions { UseCrag = true, CragScoreThreshold = 0.5f },
+            query: "specific topic");
+
+        await sut.HandleAsync(ctx, TestContext.Current.CancellationToken, NextReturning(results));
+
+        // Heuristic score is high → no web search
+        await webSearch.DidNotReceive().SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        Assert.Equal("false", ctx.Extensions["crag_triggered"]);
     }
 }
