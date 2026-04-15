@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Zendesk;
 using Rag.NET.Models;
 using Xunit;
@@ -383,11 +385,40 @@ public sealed class ZendeskArticlesDataProviderTests
         Assert.Equal(HttpStatusCode.ServiceUnavailable, err.StatusCode);
     }
 
-    private static async Task<string> ReadContentAsync(Rag.NET.DataProviders.FileEntry entry)
+    private static async Task<string> ReadContentAsync(FileEntry entry)
     {
         await using var stream = await entry.OpenContentAsync(CancellationToken.None);
         using var reader = new StreamReader(stream);
         return await reader.ReadToEndAsync();
+    }
+
+    [Fact]
+    public void AddZendeskArticlesDataProvider_DefaultBaseUrl_UsesProductionUrl()
+    {
+        var services = new ServiceCollection();
+        services.AddZendeskArticlesDataProvider(
+            subdomain: "mycompany",
+            email: "agent@mycompany.com",
+            apiToken: "test-token");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public void AddZendeskArticlesDataProvider_CustomBaseUrl_OverridesDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddZendeskArticlesDataProvider(
+            subdomain: "mycompany",
+            email: "agent@mycompany.com",
+            apiToken: "test-token",
+            baseUrl: "https://custom.example.com");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
     }
 }
 

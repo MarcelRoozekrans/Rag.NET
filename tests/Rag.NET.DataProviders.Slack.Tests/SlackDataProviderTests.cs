@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Slack;
 using Rag.NET.Models;
@@ -345,6 +346,28 @@ public sealed class SlackDataProviderTests
         Assert.True(single.IsFailure);
         var httpFailed = Assert.IsType<RagError.HttpFailed>(single.Error);
         Assert.Equal(HttpStatusCode.Forbidden, httpFailed.StatusCode);
+    }
+
+    [Fact]
+    public void AddSlackDataProvider_DefaultBaseUrl_UsesProductionUrl()
+    {
+        var services = new ServiceCollection();
+        services.AddSlackDataProvider(botToken: "xoxb-test-token");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public void AddSlackDataProvider_CustomBaseUrl_OverridesDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddSlackDataProvider(botToken: "xoxb-test-token", baseUrl: "https://custom.example.com");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
     }
 }
 

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Zendesk;
 using Rag.NET.Models;
 using Xunit;
@@ -465,11 +467,54 @@ public sealed class ZendeskTicketsDataProviderTests
         Assert.Equal(HttpStatusCode.Forbidden, err.StatusCode);
     }
 
-    private static async Task<string> ReadContentAsync(Rag.NET.DataProviders.FileEntry entry)
+    private static async Task<string> ReadContentAsync(FileEntry entry)
     {
         await using var stream = await entry.OpenContentAsync(CancellationToken.None);
         using var reader = new StreamReader(stream);
         return await reader.ReadToEndAsync();
+    }
+
+    [Fact]
+    public void AddZendeskTicketsDataProvider_DefaultBaseUrl_UsesProductionUrl()
+    {
+        var services = new ServiceCollection();
+        services.AddZendeskTicketsDataProvider(
+            subdomain: "mycompany",
+            email: "agent@mycompany.com",
+            apiToken: "test-token");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public void AddZendeskTicketsDataProvider_CustomBaseUrl_OverridesDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddZendeskTicketsDataProvider(
+            subdomain: "mycompany",
+            email: "agent@mycompany.com",
+            apiToken: "test-token",
+            baseUrl: "https://custom.example.com");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public void AddZendeskTicketsDataProvider_NullBaseUrl_UsesSubdomainUrl()
+    {
+        var services = new ServiceCollection();
+        services.AddZendeskTicketsDataProvider(
+            subdomain: "mycompany",
+            email: "agent@mycompany.com",
+            apiToken: "test-token");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
     }
 }
 

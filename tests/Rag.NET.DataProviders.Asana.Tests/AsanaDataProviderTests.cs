@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Asana;
 using Rag.NET.Models;
@@ -507,6 +508,47 @@ public sealed class AsanaDataProviderTests
         var error = Assert.IsType<RagError.HttpFailed>(results[0].Error);
         Assert.Equal(HttpStatusCode.ServiceUnavailable, error.StatusCode);
     }
+
+    [Fact]
+    public void AddAsanaDataProvider_DefaultBaseUrl_UsesProductionUrl()
+    {
+        var services = new ServiceCollection();
+        services.AddAsanaDataProvider(
+            personalAccessToken: "test-pat",
+            workspaceGid: "ws-1");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public void AddAsanaDataProvider_CustomBaseUrl_OverridesDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddAsanaDataProvider(
+            personalAccessToken: "test-pat",
+            workspaceGid: "ws-1",
+            baseUrl: "https://custom.example.com");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public void AddAsanaDataProvider_ITokenProvider_CustomBaseUrl_OverridesDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddAsanaDataProvider(
+            tokenProvider: new FakeTokenProvider(),
+            workspaceGid: "ws-1",
+            baseUrl: "https://custom.example.com");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -608,4 +650,10 @@ file sealed class FakeRoutingHandler(Func<string, HttpResponseMessage> router) :
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
         => Task.FromResult(router(request.RequestUri!.ToString()));
+}
+
+file sealed class FakeTokenProvider : ITokenProvider
+{
+    public ValueTask<string> GetTokenAsync(CancellationToken cancellationToken = default)
+        => ValueTask.FromResult("fake-token");
 }

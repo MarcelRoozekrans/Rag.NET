@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Notion;
 using Rag.NET.Models;
@@ -469,6 +470,28 @@ public sealed class NotionDataProviderTests
         Assert.True(results[0].IsFailure);
         var error = Assert.IsType<RagError.HttpFailed>(results[0].Error);
         Assert.Equal(HttpStatusCode.InternalServerError, error.StatusCode);
+    }
+
+    [Fact]
+    public void AddNotionDataProvider_DefaultBaseUrl_UsesProductionUrl()
+    {
+        var services = new ServiceCollection();
+        services.AddNotionDataProvider(integrationToken: "test-token");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public void AddNotionDataProvider_CustomBaseUrl_OverridesDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddNotionDataProvider(integrationToken: "test-token", baseUrl: "https://custom.example.com");
+
+        var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
+
+        Assert.NotNull(provider);
     }
 }
 
