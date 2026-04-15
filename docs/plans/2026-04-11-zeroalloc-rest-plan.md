@@ -2,6 +2,8 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+**Status:** ✅ Done
+
 **Goal:** Replace Refit with ZeroAlloc.Rest across 7 data provider packages, adopting `Result<T, HttpError>` on every API method and propagating typed HTTP errors through `IFileContentProvider` → `RagPipelineExtensions` → `ProviderIngestionResult`.
 
 **Architecture:** Three layers change. First, `RagError` gains `HttpFailed(StatusCode, Content)`. Then the core pipeline interfaces (`IFileContentProvider`, `FileContentProviderBase`, `ProviderIngestionResult`, `RagPipelineExtensions`) are updated to carry `Result<FileEntry, RagError>`. Finally, each of the 7 data providers is migrated one at a time: swap Refit for ZeroAlloc.Rest in the csproj, update the API interface, update the DI registration, and update the provider implementation to unwrap `Result<T, HttpError>` from API calls.

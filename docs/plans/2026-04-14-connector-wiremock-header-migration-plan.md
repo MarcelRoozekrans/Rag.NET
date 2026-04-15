@@ -2,6 +2,8 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+**Status:** ✅ Done
+
 **Goal:** Move static `Accept: application/json` (and `Notion-Version`) headers from `DefaultRequestHeaders` in `*Extensions.cs` onto `[Header]` class attributes on the ZeroAlloc.Rest interfaces, then add WireMock integration tests for all 7 connectors (Confluence, Jira, Notion, Slack, Asana, Zendesk, MicrosoftTeams) that assert those headers actually arrive on the wire.
 
 **Architecture:** The `[Header("Accept", Value = "application/json")]` attribute is added at the interface level — the ZeroAlloc.Rest source generator then emits the header on every call. Auth headers (`Authorization: Basic/Bearer`) stay in `*Extensions.cs` because they are computed at registration time from user credentials. WireMock tests point a real `*ApiClient` at the WireMock server instead of the real API; cassette JSON files replay static responses and `LogEntries` assertions verify headers.
