@@ -1,0 +1,22 @@
+{
+  "Guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/search",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "POST" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"results\":[{\"title\":\"What is RAG?\",\"url\":\"https://example.com/rag\",\"content\":\"Retrieval-Augmented Generation (RAG) combines retrieval and generation for better answers.\",\"score\":0.95},{\"title\":\"RAG vs Fine-Tuning\",\"url\":\"https://example.com/rag-vs-finetuning\",\"content\":\"RAG retrieves relevant documents at inference time, while fine-tuning bakes knowledge into model weights.\",\"score\":0.82}]}"
+  }
+}

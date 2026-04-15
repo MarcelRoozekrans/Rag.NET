@@ -5,6 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.WebSearch.Tavily\Rag.NET.WebSearch.Tavily.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Confluence\Rag.NET.DataProviders.Confluence.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Notion\Rag.NET.DataProviders.Notion.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.GitHub\Rag.NET.DataProviders.GitHub.csproj" />
