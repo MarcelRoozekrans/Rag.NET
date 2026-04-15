@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.WebSearch.Tavily</RootNamespace>
+    <PackageId>Rag.NET.WebSearch.Tavily</PackageId>
+    <Description>Tavily web search provider for Rag.NET CRAG</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.WebSearch.Tavily.Tests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.DataProviders.IntegrationTests</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>DynamicProxyGenAssembly2</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <PackageReference Include="ZeroAlloc.Rest" Version="0.*" />
+    <PackageReference Include="ZeroAlloc.Rest.Generator" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.Rest.SystemTextJson" Version="0.*" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <Analyzer Include="$(PkgZeroAlloc_Rest_Generator)\lib\netstandard2.0\ZeroAlloc.Rest.Generator.dll" />
+  </ItemGroup>
+</Project>
