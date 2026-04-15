@@ -35,6 +35,8 @@ public static class NotionDataProviderExtensions
             {
                 client.DefaultRequestHeaders.Authorization =
                     new AuthenticationHeaderValue("Bearer", integrationToken);
+                // ZeroAlloc.Rest 0.2.0 [Header] only supports method/parameter targets, not interface level.
+                // Keep Accept and Notion-Version here until the library adds class-level header support.
                 client.DefaultRequestHeaders.Accept.Add(
                     new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
                 client.DefaultRequestHeaders.Add("Notion-Version", "2022-06-28");

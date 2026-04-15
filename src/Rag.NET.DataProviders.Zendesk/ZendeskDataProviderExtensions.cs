@@ -45,6 +45,8 @@ public static class ZendeskDataProviderExtensions
             {
                 client.DefaultRequestHeaders.Authorization =
                     new AuthenticationHeaderValue("Basic", credentials);
+                // ZeroAlloc.Rest 0.2.0 [Header] only supports method/parameter targets, not interface level.
+                // Keep Accept here until the library adds class-level header support.
                 client.DefaultRequestHeaders.Accept.Add(
                     new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
             })
@@ -90,6 +92,8 @@ public static class ZendeskDataProviderExtensions
             {
                 client.DefaultRequestHeaders.Authorization =
                     new AuthenticationHeaderValue("Basic", credentials);
+                // ZeroAlloc.Rest 0.2.0 [Header] only supports method/parameter targets, not interface level.
+                // Keep Accept here until the library adds class-level header support.
                 client.DefaultRequestHeaders.Accept.Add(
                     new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
             })
