@@ -57,4 +57,7 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "ConversationMemoryPipeline: summary LLM call failed; returning trimmed history without summary")]
     internal static partial void ConversationSummaryFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Adaptive retrieval classification failed for query '{Query}', defaulting to complex")]
+    internal static partial void AdaptiveClassificationFailed(ILogger logger, string query, Exception exception);
 }
