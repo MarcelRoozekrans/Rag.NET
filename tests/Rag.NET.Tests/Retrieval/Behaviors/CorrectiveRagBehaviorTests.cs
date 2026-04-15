@@ -146,6 +146,23 @@ public class CorrectiveRagBehaviorTests
         Assert.Same(vectorResults, output);
     }
 
+    [Fact]
+    public async Task HandleAsync_WebSearchCancelled_PropagatesCancellation()
+    {
+        var webSearch = Substitute.For<IWebSearch>();
+        webSearch.SearchAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException());
+
+        var sut = new CorrectiveRagBehavior { WebSearch = webSearch };
+        var vectorResults = new List<SearchResult> { MakeResult("doc-1", 0, 0.1, text: "unrelated content xyz") };
+        var ctx = MakeCtx(
+            new RetrievalOptions { UseCrag = true, CragScoreThreshold = 0.5f },
+            query: "specific topic search");
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => sut.HandleAsync(ctx, TestContext.Current.CancellationToken, NextReturning(vectorResults)).AsTask());
+    }
+
     // ── Heuristic scoring unit tests ──────────────────────────────────────────
 
     [Fact]
@@ -176,14 +193,14 @@ public class CorrectiveRagBehaviorTests
     }
 
     [Fact]
-    public void ScoreWithHeuristic_NoneMatching_ReturnsLowScore()
+    public void ScoreWithHeuristic_NoneMatching_ReturnsZero()
     {
         var results = new List<SearchResult>
         {
             MakeResult("doc-1", 0, 0.9, "xyz abc def ghi jkl"),
         };
         var score = CorrectiveRagBehavior.ScoreWithHeuristic("specific topic", results);
-        Assert.True(score < 0.5f);
+        Assert.Equal(0f, score);
     }
 
     // ── LLM scoring path ─────────────────────────────────────────────────────
