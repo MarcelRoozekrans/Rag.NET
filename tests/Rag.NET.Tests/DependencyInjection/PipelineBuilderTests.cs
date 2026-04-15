@@ -50,11 +50,11 @@ public class PipelineBuilderTests
     // ── RetrievalPipelineBuilder ─────────────────────────────────────────
 
     [Fact]
-    public void RetrievalBuilder_DefaultContainsAllFourteenBehaviors()
+    public void RetrievalBuilder_DefaultContainsAllSixteenBehaviors()
     {
         var builder = new RetrievalPipelineBuilder();
         var types = builder.GetBehaviorTypes();
-        Assert.Equal(14, types.Count);
+        Assert.Equal(16, types.Count);
         Assert.Equal(typeof(VectorStoreBehavior), types[^1]);
         Assert.Equal(typeof(EnsembleBehavior), types[^2]);
     }
@@ -67,7 +67,7 @@ public class PipelineBuilderTests
         var types = builder.GetBehaviorTypes();
         var vsIdx = types.ToList().IndexOf(typeof(VectorStoreBehavior));
         Assert.Equal(typeof(NoOpRetrievalBehavior), types[vsIdx - 1]);
-        Assert.Equal(15, types.Count); // 14 defaults + 1 inserted
+        Assert.Equal(17, types.Count); // 16 defaults + 1 inserted
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
