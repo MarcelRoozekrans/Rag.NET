@@ -62,6 +62,7 @@ public class AdaptiveRetrievalBehaviorTests
     [InlineData("compare BM25 and vector search", "complex")] // "compare"
     [InlineData("why is chunking important", "complex")]       // "why"
     [InlineData("explain hybrid retrieval methods", "complex")]// "explain"
+    [InlineData("what is the difference between BM25 and cosine similarity", "complex")] // "difference"
     [InlineData("What is RAG and how does it work and also why is it important", "multi_hop")] // ≥2 conjunctions
     public void ClassifyHeuristic_ReturnsExpected(string query, string expected)
     {
