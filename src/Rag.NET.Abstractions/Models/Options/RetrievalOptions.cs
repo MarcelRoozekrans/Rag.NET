@@ -80,6 +80,36 @@ public sealed record RetrievalOptions
     public bool UseHyde { get; init; } = true;
 
     /// <summary>
+    /// Set to <see langword="true"/> to enable Adaptive Retrieval complexity-based routing.
+    /// Automatically adjusts <see cref="TopK"/>, <see cref="UseMultiQuery"/>, and <see cref="UseHyde"/>
+    /// based on detected query complexity (simple / complex / multi_hop).
+    /// Uses heuristic classification first; falls back to <see cref="Microsoft.Extensions.AI.IChatClient"/>
+    /// when available and the query is ambiguous.
+    /// </summary>
+    public bool UseAdaptiveRetrieval { get; init; } = false;
+
+    /// <summary>
+    /// Set to <see langword="true"/> to enable Corrective RAG (CRAG) post-retrieval relevance checking.
+    /// Requires <see cref="Rag.NET.Abstractions.IWebSearch"/> to be registered in DI.
+    /// When the relevance score is below <see cref="CragScoreThreshold"/>, web results replace or
+    /// supplement vector results according to <see cref="CragFallbackMode"/>.
+    /// </summary>
+    public bool UseCrag { get; init; } = false;
+
+    /// <summary>
+    /// Minimum fraction of results classified as relevant before CRAG triggers web fallback.
+    /// Range: 0.0–1.0. Default <c>0.5</c>.
+    /// </summary>
+    public float CragScoreThreshold { get; init; } = 0.5f;
+
+    /// <summary>
+    /// Controls how web search results are merged when CRAG triggers.
+    /// <see cref="CragFallbackMode.Replace"/> discards vector results (default);
+    /// <see cref="CragFallbackMode.Append"/> concatenates web results after vector results.
+    /// </summary>
+    public CragFallbackMode CragFallbackMode { get; init; } = CragFallbackMode.Replace;
+
+    /// <summary>
     /// Set to <see langword="false"/> to skip self-query rewriting and filter generation for this call,
     /// even when <see cref="SelfQueryOptions"/> is registered in DI.
     /// Has no effect when <c>UseSelfQuery()</c> is not registered.
