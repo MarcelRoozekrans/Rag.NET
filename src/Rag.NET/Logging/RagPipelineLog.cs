@@ -60,4 +60,10 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Adaptive retrieval classification failed for query '{Query}', defaulting to complex")]
     internal static partial void AdaptiveClassificationFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "CRAG web search failed for query '{Query}', returning original vector results")]
+    internal static partial void CragWebSearchFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "CRAG LLM relevance scoring failed for query '{Query}', falling back to heuristic scoring")]
+    internal static partial void CragLlmScoringFailed(ILogger logger, string query, Exception exception);
 }
