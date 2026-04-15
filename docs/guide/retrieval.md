@@ -31,6 +31,10 @@ public sealed record RetrievalOptions
     public bool UseCacheEmbedding            { get; init; } = true;
     public bool UseCacheResult               { get; init; } = true;
     public int? CandidateCount               { get; init; }
+    public bool UseAdaptiveRetrieval         { get; init; } = false;
+    public bool UseCrag                      { get; init; } = false;
+    public float CragScoreThreshold          { get; init; } = 0.5f;
+    public CragFallbackMode CragFallbackMode { get; init; } = CragFallbackMode.Replace;
 }
 ```
 
@@ -840,6 +844,81 @@ It is not needed when:
 - You use Azure AI Search (which handles BM25 server-side)
 - Your corpus is small and re-ingestion is fast
 - You redeploy with a fresh vector store frequently
+
+## Adaptive Retrieval
+
+Adaptive retrieval classifies the incoming query as `simple`, `complex`, or `multi_hop` and automatically adjusts retrieval settings (TopK, MultiQuery, HyDE) to match the complexity. This eliminates the need to manually tune options per query type.
+
+### Enabling
+
+```csharp
+var results = await pipeline.RetrieveAsync("how does chunking affect context windows?", new RetrievalOptions
+{
+    UseAdaptiveRetrieval = true,
+});
+```
+
+### Classification strategy
+
+1. **Heuristic (no LLM cost):** multi-hop conjunction keywords (≥2 of: "and", "also", "additionally", "furthermore", "as well as") → `multi_hop`; complex signal words ("how", "why", "compare", "difference", "explain") → `complex`; query length ≤6 words → `simple`.
+2. **LLM fallback:** when the heuristic cannot classify (long query, no keywords), an `IChatClient` is called with a one-shot classification prompt. Register an `IChatClient` in DI to enable this path.
+3. **Default:** if both paths are unavailable or fail, the query is treated as `complex`.
+
+### Strategy mapping
+
+| Complexity | TopK | MultiQuery | HyDE |
+|-----------|------|-----------|------|
+| `simple` | 3 | off | off |
+| `complex` | 8 | on | off |
+| `multi_hop` | 10 | on | on |
+
+The resolved complexity is recorded in `RetrievalContext.Extensions["adaptive_complexity"]` for observability.
+
+## Corrective RAG (CRAG)
+
+CRAG detects when retrieved results are not relevant to the query and falls back to a web search. This prevents the LLM from hallucinating answers from irrelevant document chunks.
+
+### Enabling
+
+Register an `IWebSearch` implementation — for example, the Tavily connector:
+
+```csharp
+services.AddTavilyWebSearch(apiKey: "tvly-...");
+
+var results = await pipeline.RetrieveAsync("latest EU AI Act provisions", new RetrievalOptions
+{
+    UseCrag = true,
+    CragScoreThreshold = 0.5f,
+    CragFallbackMode = CragFallbackMode.Replace,  // or Append
+});
+```
+
+### Relevance scoring
+
+CRAG scores the relevance of retrieved results using one of two strategies:
+
+1. **Heuristic (no LLM cost):** measures token overlap between query terms and chunk text. A result is considered matching when ≥30% of query tokens appear in the chunk. The overall score is the fraction of results that match.
+2. **LLM per-chunk:** when an `IChatClient` is registered, each chunk is scored individually with a prompt asking for `relevant`, `ambiguous`, or `irrelevant`. The score is the fraction of chunks labelled `relevant`.
+
+### Fallback modes
+
+| `CragFallbackMode` | Behaviour when score < threshold |
+|-------------------|----------------------------------|
+| `Replace` (default) | Discards vector results; returns web results only |
+| `Append` | Returns vector results + web results merged |
+
+The fallback is recorded in `RetrievalContext.Extensions["crag_triggered"]` (`"true"` / `"false"`).
+
+If web search fails (network error, timeout), CRAG logs a warning and returns the original vector results unchanged.
+
+### Tavily connector
+
+```csharp
+// Register with a base URL override (optional — defaults to api.tavily.com)
+services.AddTavilyWebSearch(apiKey: "tvly-...", baseUrl: "https://api.tavily.com");
+```
+
+`AddTavilyWebSearch` registers `IWebSearch` as a singleton with resilience (retry + circuit-breaker) from `ZeroAlloc.Rest`.
 
 ## Post-retrieval processing
 

@@ -183,4 +183,20 @@ public class AdaptiveRetrievalBehaviorTests
 
         Assert.Equal("complex", getCaptured()!.Extensions["adaptive_complexity"]);
     }
+
+    [Fact]
+    public async Task HandleAsync_LlmCancelled_PropagatesCancellation()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException());
+
+        var sut = new AdaptiveRetrievalBehavior { ChatClient = chatClient };
+        var ctx = MakeCtx(new RetrievalOptions { UseAdaptiveRetrieval = true });
+        // Ambiguous query — forces LLM path
+        ctx = ctx with { Query = "retrieval augmented generation semantic vector database embedding storage" };
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => sut.HandleAsync(ctx, TestContext.Current.CancellationToken, NextReturning([])).AsTask());
+    }
 }
