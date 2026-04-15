@@ -17,7 +17,8 @@ public static class SlackDataProviderExtensions
     public static IServiceCollection AddSlackDataProvider(
         this IServiceCollection services,
         string botToken,
-        Action<SlackOptions>? configure = null)
+        Action<SlackOptions>? configure = null,
+        string? baseUrl = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(botToken);
@@ -27,7 +28,7 @@ public static class SlackDataProviderExtensions
 
         services.AddISlackApi(options =>
             {
-                options.BaseAddress = new Uri("https://slack.com");
+                options.BaseAddress = new Uri(string.IsNullOrEmpty(baseUrl) ? "https://slack.com" : baseUrl);
                 options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
             })
             .ConfigureHttpClient(client =>

@@ -9,6 +9,8 @@ namespace Rag.NET.DataProviders.Zendesk;
 /// <summary>Extension methods for registering Zendesk data providers with dependency injection.</summary>
 public static class ZendeskDataProviderExtensions
 {
+    private sealed class ZendeskApiMarker { }
+
     /// <summary>
     /// Registers a <see cref="ZendeskTicketsDataProvider"/> as an <see cref="IFileContentProvider"/> singleton.
     /// </summary>
@@ -23,7 +25,8 @@ public static class ZendeskDataProviderExtensions
         string subdomain,
         string email,
         string apiToken,
-        Action<ZendeskTicketsOptions>? configure = null)
+        Action<ZendeskTicketsOptions>? configure = null,
+        string? baseUrl = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(subdomain);
@@ -33,24 +36,28 @@ public static class ZendeskDataProviderExtensions
         var opts = new ZendeskTicketsOptions { Subdomain = subdomain, Email = email };
         configure?.Invoke(opts);
 
-        var baseUrl = $"https://{subdomain}.zendesk.com";
+        var resolvedBaseUrl = string.IsNullOrEmpty(baseUrl) ? $"https://{subdomain}.zendesk.com" : baseUrl;
         var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{email}/token:{apiToken}"));
 
-        services.AddIZendeskApi(options =>
-            {
-                options.BaseAddress = new Uri(baseUrl);
-                options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
-            })
-            .ConfigureHttpClient(client =>
-            {
-                client.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Basic", credentials);
-                // ZeroAlloc.Rest 0.2.0 [Header] only supports method/parameter targets, not interface level.
-                // Keep Accept here until the library adds class-level header support.
-                client.DefaultRequestHeaders.Accept.Add(
-                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-            })
-            .AddStandardResilienceHandler();
+        if (!services.Any(d => d.ServiceType == typeof(ZendeskApiMarker)))
+        {
+            services.AddSingleton<ZendeskApiMarker>();
+            services.AddIZendeskApi(options =>
+                {
+                    options.BaseAddress = new Uri(resolvedBaseUrl);
+                    options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
+                })
+                .ConfigureHttpClient(client =>
+                {
+                    client.DefaultRequestHeaders.Authorization =
+                        new AuthenticationHeaderValue("Basic", credentials);
+                    // ZeroAlloc.Rest 0.2.0 [Header] only supports method/parameter targets, not interface level.
+                    // Keep Accept here until the library adds class-level header support.
+                    client.DefaultRequestHeaders.Accept.Add(
+                        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                })
+                .AddStandardResilienceHandler();
+        }
 
         return services.AddSingleton<IFileContentProvider>(sp =>
             new ZendeskTicketsDataProvider(sp.GetRequiredService<IZendeskApi>(), opts));
@@ -70,7 +77,8 @@ public static class ZendeskDataProviderExtensions
         string subdomain,
         string email,
         string apiToken,
-        Action<ZendeskArticlesOptions>? configure = null)
+        Action<ZendeskArticlesOptions>? configure = null,
+        string? baseUrl = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(subdomain);
@@ -80,24 +88,28 @@ public static class ZendeskDataProviderExtensions
         var opts = new ZendeskArticlesOptions { Subdomain = subdomain, Email = email };
         configure?.Invoke(opts);
 
-        var baseUrl = $"https://{subdomain}.zendesk.com";
+        var resolvedBaseUrl = string.IsNullOrEmpty(baseUrl) ? $"https://{subdomain}.zendesk.com" : baseUrl;
         var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{email}/token:{apiToken}"));
 
-        services.AddIZendeskApi(options =>
-            {
-                options.BaseAddress = new Uri(baseUrl);
-                options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
-            })
-            .ConfigureHttpClient(client =>
-            {
-                client.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Basic", credentials);
-                // ZeroAlloc.Rest 0.2.0 [Header] only supports method/parameter targets, not interface level.
-                // Keep Accept here until the library adds class-level header support.
-                client.DefaultRequestHeaders.Accept.Add(
-                    new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-            })
-            .AddStandardResilienceHandler();
+        if (!services.Any(d => d.ServiceType == typeof(ZendeskApiMarker)))
+        {
+            services.AddSingleton<ZendeskApiMarker>();
+            services.AddIZendeskApi(options =>
+                {
+                    options.BaseAddress = new Uri(resolvedBaseUrl);
+                    options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
+                })
+                .ConfigureHttpClient(client =>
+                {
+                    client.DefaultRequestHeaders.Authorization =
+                        new AuthenticationHeaderValue("Basic", credentials);
+                    // ZeroAlloc.Rest 0.2.0 [Header] only supports method/parameter targets, not interface level.
+                    // Keep Accept here until the library adds class-level header support.
+                    client.DefaultRequestHeaders.Accept.Add(
+                        new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+                })
+                .AddStandardResilienceHandler();
+        }
 
         return services.AddSingleton<IFileContentProvider>(sp =>
             new ZendeskArticlesDataProvider(sp.GetRequiredService<IZendeskApi>(), opts));

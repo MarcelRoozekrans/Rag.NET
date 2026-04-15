@@ -1,17 +1,16 @@
-using System.Net.Http.Headers;
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Zendesk;
 using Rag.NET.Testing;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using Xunit;
-using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.IntegrationTests;
 
 [Collection("WireMock")]
 public sealed class ZendeskDataProviderTests
 {
-    private static readonly SystemTextJsonSerializer JsonSerializer = new();
     private readonly WireMockServerFixture _fixture;
 
     public ZendeskDataProviderTests(WireMockServerFixture fixture)
@@ -20,20 +19,32 @@ public sealed class ZendeskDataProviderTests
         _fixture.LoadCassettes("Zendesk", "https://test.zendesk.com");
     }
 
-    private ZendeskApiClient CreateApiClient()
+    private (ZendeskTicketsDataProvider Tickets, ZendeskArticlesDataProvider Articles) CreateProviders()
     {
-        var http = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
-        http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Basic", "dGVzdDp0ZXN0");
-        return new ZendeskApiClient(http, JsonSerializer);
+        var services = new ServiceCollection();
+        services.AddZendeskTicketsDataProvider(
+            subdomain: "test",
+            email: "a@b.com",
+            apiToken: "test-token",
+            baseUrl: _fixture.BaseUrl);
+        services.AddZendeskArticlesDataProvider(
+            subdomain: "test",
+            email: "a@b.com",
+            apiToken: "test-token",
+            baseUrl: _fixture.BaseUrl);
+        var sp = services.BuildServiceProvider();
+        var all = sp.GetServices<IFileContentProvider>().ToList();
+        var tickets = all.OfType<ZendeskTicketsDataProvider>().FirstOrDefault()
+                      ?? throw new InvalidOperationException("ZendeskTicketsDataProvider not registered");
+        var articles = all.OfType<ZendeskArticlesDataProvider>().FirstOrDefault()
+                       ?? throw new InvalidOperationException("ZendeskArticlesDataProvider not registered");
+        return (tickets, articles);
     }
 
     [Fact]
     public async Task GetTickets_YieldsTickets()
     {
-        var sut = new ZendeskTicketsDataProvider(
-            CreateApiClient(),
-            new ZendeskTicketsOptions { Subdomain = "test", Email = "a@b.com" });
+        var (sut, _) = CreateProviders();
 
         var results = await sut
             .GetFilesAsync(TestContext.Current.CancellationToken)
@@ -55,9 +66,7 @@ public sealed class ZendeskDataProviderTests
     {
         _fixture.Server.ResetLogEntries();
 
-        var sut = new ZendeskTicketsDataProvider(
-            CreateApiClient(),
-            new ZendeskTicketsOptions { Subdomain = "test", Email = "a@b.com" });
+        var (sut, _) = CreateProviders();
 
         await sut
             .GetFilesAsync(TestContext.Current.CancellationToken)
@@ -79,9 +88,7 @@ public sealed class ZendeskDataProviderTests
     [Fact]
     public async Task GetArticles_YieldsArticles()
     {
-        var sut = new ZendeskArticlesDataProvider(
-            CreateApiClient(),
-            new ZendeskArticlesOptions { Subdomain = "test", Email = "a@b.com" });
+        var (_, sut) = CreateProviders();
 
         var results = await sut
             .GetFilesAsync(TestContext.Current.CancellationToken)
@@ -132,9 +139,7 @@ public sealed class ZendeskDataProviderTests
 
         _fixture.Server.ResetLogEntries();
 
-        var sut = new ZendeskTicketsDataProvider(
-            CreateApiClient(),
-            new ZendeskTicketsOptions { Subdomain = "test", Email = "a@b.com" });
+        var (sut, _) = CreateProviders();
 
         var results = await sut
             .GetFilesAsync(TestContext.Current.CancellationToken)

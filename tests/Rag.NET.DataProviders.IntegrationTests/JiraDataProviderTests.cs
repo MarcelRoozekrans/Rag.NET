@@ -1,15 +1,14 @@
-using System.Net.Http.Headers;
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Jira;
 using Rag.NET.Testing;
 using Xunit;
-using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.IntegrationTests;
 
 [Collection("WireMock")]
 public sealed class JiraDataProviderTests
 {
-    private static readonly SystemTextJsonSerializer JsonSerializer = new();
     private readonly WireMockServerFixture _fixture;
 
     public JiraDataProviderTests(WireMockServerFixture fixture)
@@ -20,15 +19,19 @@ public sealed class JiraDataProviderTests
 
     private JiraDataProvider CreateProvider(JiraOptions? opts = null)
     {
-        var http = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
-        http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Basic", "dGVzdDp0ZXN0");
-        var api = new JiraApiClient(http, JsonSerializer);
-        return new JiraDataProvider(api, opts ?? new JiraOptions
-        {
-            BaseUrl = _fixture.BaseUrl,
-            Email   = "test@test.com",
-        });
+        var services = new ServiceCollection();
+        services.AddJiraDataProvider(
+            baseUrl: _fixture.BaseUrl,
+            email: "test@test.com",
+            apiToken: "test-token",
+            configure: opts is null ? null : o =>
+            {
+                if (!string.IsNullOrEmpty(opts.DeltaToken))
+                    o.DeltaToken = opts.DeltaToken;
+            });
+        var sp = services.BuildServiceProvider();
+        return sp.GetRequiredService<IFileContentProvider>() as JiraDataProvider
+               ?? throw new InvalidOperationException("JiraDataProvider not registered");
     }
 
     [Fact]

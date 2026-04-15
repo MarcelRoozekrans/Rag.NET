@@ -19,12 +19,13 @@ public static class AsanaDataProviderExtensions
         this IServiceCollection services,
         string personalAccessToken,
         string workspaceGid,
-        Action<AsanaOptions>? configure = null)
+        Action<AsanaOptions>? configure = null,
+        string? baseUrl = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(personalAccessToken);
         return services.AddAsanaDataProvider(
-            new StaticTokenProvider(personalAccessToken), workspaceGid, configure);
+            new StaticTokenProvider(personalAccessToken), workspaceGid, configure, baseUrl);
     }
 
     /// <summary>
@@ -35,12 +36,14 @@ public static class AsanaDataProviderExtensions
     /// <param name="tokenProvider">Provider that supplies (and optionally refreshes) the bearer token.</param>
     /// <param name="workspaceGid">Asana workspace GID.</param>
     /// <param name="configure">Optional callback to further configure <see cref="AsanaOptions"/>.</param>
+    /// <param name="baseUrl">Optional base URL override; defaults to <c>https://app.asana.com</c>.</param>
     /// <returns>The same <see cref="IServiceCollection"/> for chaining.</returns>
     public static IServiceCollection AddAsanaDataProvider(
         this IServiceCollection services,
         ITokenProvider tokenProvider,
         string workspaceGid,
-        Action<AsanaOptions>? configure = null)
+        Action<AsanaOptions>? configure = null,
+        string? baseUrl = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(tokenProvider);
@@ -55,7 +58,7 @@ public static class AsanaDataProviderExtensions
 
         services.AddIAsanaApi(options =>
             {
-                options.BaseAddress = new Uri("https://app.asana.com");
+                options.BaseAddress = new Uri(string.IsNullOrEmpty(baseUrl) ? "https://app.asana.com" : baseUrl);
                 options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
             })
             .ConfigureHttpClient(client =>

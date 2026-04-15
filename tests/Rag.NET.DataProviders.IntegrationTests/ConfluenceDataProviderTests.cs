@@ -1,17 +1,16 @@
-using System.Net.Http.Headers;
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Confluence;
 using Rag.NET.Testing;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using Xunit;
-using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.IntegrationTests;
 
 [Collection("WireMock")]
 public sealed class ConfluenceDataProviderTests
 {
-    private static readonly SystemTextJsonSerializer JsonSerializer = new();
     private readonly WireMockServerFixture _fixture;
 
     public ConfluenceDataProviderTests(WireMockServerFixture fixture)
@@ -22,15 +21,19 @@ public sealed class ConfluenceDataProviderTests
 
     private ConfluenceDataProvider CreateProvider(ConfluenceOptions? opts = null)
     {
-        var http = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
-        http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Basic", "dGVzdDp0ZXN0");
-        var api = new ConfluenceApiClient(http, JsonSerializer);
-        return new ConfluenceDataProvider(api, opts ?? new ConfluenceOptions
-        {
-            BaseUrl = _fixture.BaseUrl,
-            Email   = "test@test.com",
-        });
+        var services = new ServiceCollection();
+        services.AddConfluenceDataProvider(
+            baseUrl: _fixture.BaseUrl,
+            email: "test@test.com",
+            apiToken: "test-token",
+            configure: opts is null ? null : o =>
+            {
+                if (!string.IsNullOrEmpty(opts.DeltaToken))
+                    o.DeltaToken = opts.DeltaToken;
+            });
+        var sp = services.BuildServiceProvider();
+        return sp.GetRequiredService<IFileContentProvider>() as ConfluenceDataProvider
+               ?? throw new InvalidOperationException("ConfluenceDataProvider not registered");
     }
 
     [Fact]

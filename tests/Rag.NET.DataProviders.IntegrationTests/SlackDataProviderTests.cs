@@ -1,15 +1,14 @@
-using System.Net.Http.Headers;
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Slack;
 using Rag.NET.Testing;
 using Xunit;
-using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.IntegrationTests;
 
 [Collection("WireMock")]
 public sealed class SlackDataProviderTests
 {
-    private static readonly SystemTextJsonSerializer JsonSerializer = new();
     private readonly WireMockServerFixture _fixture;
 
     public SlackDataProviderTests(WireMockServerFixture fixture)
@@ -20,11 +19,18 @@ public sealed class SlackDataProviderTests
 
     private SlackDataProvider CreateProvider(SlackOptions? opts = null)
     {
-        var http = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
-        http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", "xoxb-test");
-        var api = new SlackApiClient(http, JsonSerializer);
-        return new SlackDataProvider(api, opts ?? new SlackOptions());
+        var services = new ServiceCollection();
+        services.AddSlackDataProvider(
+            botToken: "xoxb-test",
+            configure: opts is null ? null : o =>
+            {
+                if (!string.IsNullOrEmpty(opts.DeltaToken))
+                    o.DeltaToken = opts.DeltaToken;
+            },
+            baseUrl: _fixture.BaseUrl);
+        var sp = services.BuildServiceProvider();
+        return sp.GetRequiredService<IFileContentProvider>() as SlackDataProvider
+               ?? throw new InvalidOperationException("SlackDataProvider not registered");
     }
 
     [Fact]

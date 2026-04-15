@@ -18,7 +18,8 @@ public static class NotionDataProviderExtensions
     public static IServiceCollection AddNotionDataProvider(
         this IServiceCollection services,
         string integrationToken,
-        Action<NotionOptions>? configure = null)
+        Action<NotionOptions>? configure = null,
+        string? baseUrl = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(integrationToken);
@@ -28,7 +29,7 @@ public static class NotionDataProviderExtensions
 
         services.AddINotionApi(options =>
             {
-                options.BaseAddress = new Uri("https://api.notion.com");
+                options.BaseAddress = new Uri(string.IsNullOrEmpty(baseUrl) ? "https://api.notion.com" : baseUrl);
                 options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
             })
             .ConfigureHttpClient(client =>

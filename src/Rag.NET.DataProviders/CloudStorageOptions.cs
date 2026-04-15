@@ -17,5 +17,5 @@ public abstract class CloudStorageOptions
     /// <c>null</c> triggers a full traversal.
     /// Set to the value returned by the previous run to enable incremental ingestion.
     /// </summary>
-    public string? DeltaToken { get; init; }
+    public string? DeltaToken { get; set; }
 }

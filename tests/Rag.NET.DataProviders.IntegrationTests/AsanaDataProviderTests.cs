@@ -1,15 +1,14 @@
-using System.Net.Http.Headers;
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Asana;
 using Rag.NET.Testing;
 using Xunit;
-using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.IntegrationTests;
 
 [Collection("WireMock")]
 public sealed class AsanaDataProviderTests
 {
-    private static readonly SystemTextJsonSerializer JsonSerializer = new();
     private readonly WireMockServerFixture _fixture;
 
     public AsanaDataProviderTests(WireMockServerFixture fixture)
@@ -20,11 +19,19 @@ public sealed class AsanaDataProviderTests
 
     private AsanaDataProvider CreateProvider(AsanaOptions? opts = null)
     {
-        var http = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
-        http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", "test-token");
-        var api = new AsanaApiClient(http, JsonSerializer);
-        return new AsanaDataProvider(api, opts ?? new AsanaOptions { WorkspaceGid = "ws-001" });
+        var services = new ServiceCollection();
+        services.AddAsanaDataProvider(
+            personalAccessToken: "fake-pat",
+            workspaceGid: "ws-001",
+            configure: opts is null ? null : o =>
+            {
+                if (!string.IsNullOrEmpty(opts.DeltaToken))
+                    o.DeltaToken = opts.DeltaToken;
+            },
+            baseUrl: _fixture.BaseUrl);
+        var sp = services.BuildServiceProvider();
+        return sp.GetRequiredService<IFileContentProvider>() as AsanaDataProvider
+               ?? throw new InvalidOperationException("AsanaDataProvider not registered");
     }
 
     [Fact]

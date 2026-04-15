@@ -1,15 +1,14 @@
-using System.Net.Http.Headers;
+using Microsoft.Extensions.DependencyInjection;
+using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Notion;
 using Rag.NET.Testing;
 using Xunit;
-using ZeroAlloc.Rest.SystemTextJson;
 
 namespace Rag.NET.DataProviders.IntegrationTests;
 
 [Collection("WireMock")]
 public sealed class NotionDataProviderTests
 {
-    private static readonly SystemTextJsonSerializer JsonSerializer = new();
     private readonly WireMockServerFixture _fixture;
 
     public NotionDataProviderTests(WireMockServerFixture fixture)
@@ -20,12 +19,13 @@ public sealed class NotionDataProviderTests
 
     private NotionDataProvider CreateProvider(NotionOptions? opts = null)
     {
-        var http = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
-        http.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", "secret_test");
-        http.DefaultRequestHeaders.Add("Notion-Version", "2022-06-28");
-        var api = new NotionApiClient(http, JsonSerializer);
-        return new NotionDataProvider(api, opts ?? new NotionOptions());
+        var services = new ServiceCollection();
+        services.AddNotionDataProvider(
+            integrationToken: "secret_test",
+            baseUrl: _fixture.BaseUrl);
+        var sp = services.BuildServiceProvider();
+        return sp.GetRequiredService<IFileContentProvider>() as NotionDataProvider
+               ?? throw new InvalidOperationException("NotionDataProvider not registered");
     }
 
     [Fact]
