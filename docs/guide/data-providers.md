@@ -268,6 +268,8 @@ services.AddNotionDataProvider(
     });
 ```
 
+> **`baseUrl`** (optional) — overrides the default base URL (`https://api.notion.com`). Useful when routing through a proxy or pointing at a local mock during testing.
+
 ### Asana — PAT
 
 ```csharp
@@ -295,6 +297,8 @@ services.AddAsanaDataProvider(tokenProvider, workspaceGid: "1234567890", opts =>
 });
 ```
 
+> **`baseUrl`** (optional) — overrides the default base URL (`https://app.asana.com`). Useful when routing through a proxy or pointing at a local mock during testing.
+
 ### Slack
 
 ```csharp
@@ -306,6 +310,8 @@ services.AddSlackDataProvider(
         opts.DeltaToken = settings.SlackDeltaToken;
     });
 ```
+
+> **`baseUrl`** (optional) — overrides the default base URL (`https://slack.com`). Useful when routing through a proxy or pointing at a local mock during testing.
 
 ### Microsoft Teams
 
@@ -383,6 +389,8 @@ services.AddZendeskTicketsDataProvider(
     });
 ```
 
+> **`baseUrl`** (optional) — overrides the default base URL (`https://{subdomain}.zendesk.com`). Useful when routing through a proxy or pointing at a local mock during testing.
+
 ### Zendesk — Articles
 
 ```csharp
@@ -395,6 +403,8 @@ services.AddZendeskArticlesDataProvider(
         opts.DeltaToken = settings.ZendeskArticlesDeltaToken; // Unix epoch; null on first run
     });
 ```
+
+> **`baseUrl`** (optional) — overrides the default base URL (`https://{subdomain}.zendesk.com`). Useful when routing through a proxy or pointing at a local mock during testing.
 
 ### Airtable
 
@@ -546,3 +556,9 @@ Both filters are applied before the file content is downloaded, so excluded file
 | 429 Too Many Requests (Airtable) | Airtable rate-limits at 5 requests/second per base; the resilience pipeline retries with back-off |
 | 401 Unauthorized (Airtable) | Verify the personal access token is valid and has access to the specified base |
 | LLM / embedding failures during ingestion | Propagated from the core pipeline — not connector-specific |
+
+---
+
+## Implementation notes
+
+**Static request headers** (`Accept: application/json`, `Notion-Version: 2022-06-28`) are set via `HttpClient.DefaultRequestHeaders` in each connector's registration method. The ZeroAlloc.Rest 0.2.0 `[Header]` attribute only supports method- and parameter-level targets, not interface-level — so headers cannot be declared on the API interface directly. This will be revisited when class-level header support is added to the library.
