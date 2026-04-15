@@ -71,7 +71,8 @@ public class TavilyWebSearchTests
         Result<TavilySearchResponse, ZeroAlloc.Rest.HttpError> fail =
             new ZeroAlloc.Rest.HttpError(
                 System.Net.HttpStatusCode.Unauthorized,
-                new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal));
+                System.Collections.ObjectModel.ReadOnlyDictionary<string, IReadOnlyList<string>>.Empty,
+                "Unauthorized");
         api.SearchAsync(Arg.Any<TavilySearchRequest>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(fail));
 
