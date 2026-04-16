@@ -32,6 +32,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.Chunking.CSharp\Rag.NET.Chunking.CSharp.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.AnswerEngines\Rag.NET.AnswerEngines.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Memory\Rag.NET.Memory.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Security\Rag.NET.Security.csproj" />
     <PackageReference Include="BenchmarkDotNet" Version="0.*" />
     <PackageReference Include="WireMock.Net" Version="1.*" />
     <PackageReference Include="NGitLab" Version="10.*" />
