@@ -90,4 +90,32 @@ public class RbacRetrievalGuardTests
         var results = new List<SearchResult> { MakeResult(null), MakeResult(null) }.AsReadOnly();
         Assert.Same(results, sut.Inspect(results));
     }
+
+    [Fact]
+    public void Inspect_RolesWithSpacesInCsv_TrimmedAndMatched()
+    {
+        // "hr, finance" has a space after the comma — TrimEntries should handle it
+        var sut = new RbacRetrievalGuard(CallerWith("finance"), NullLogger<RbacRetrievalGuard>.Instance);
+        var results = new[] { MakeResult("hr, finance") };
+        Assert.Single(sut.Inspect(results));
+    }
+
+    [Fact]
+    public void Inspect_EmptyEntriesInCsv_Ignored()
+    {
+        // "hr,,finance" has an empty entry between the two commas — RemoveEmptyEntries should handle it
+        var sut = new RbacRetrievalGuard(CallerWith("hr"), NullLogger<RbacRetrievalGuard>.Instance);
+        var results = new[] { MakeResult("hr,,finance") };
+        Assert.Single(sut.Inspect(results));
+    }
+
+    [Fact]
+    public void Inspect_CorrelationContextNull_DoesNotCrash()
+    {
+        // Verify no NullReferenceException when allowed_roles is set and caller has a valid role
+        var sut = new RbacRetrievalGuard(CallerWith("hr"), NullLogger<RbacRetrievalGuard>.Instance);
+        var results = new[] { MakeResult("hr") };
+        var inspected = sut.Inspect(results);
+        Assert.Single(inspected);
+    }
 }
