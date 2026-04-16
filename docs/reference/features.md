@@ -1011,6 +1011,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Self-Query Filtering | High | `IChatClient` + schema |
 | [x] | GraphRAG | Very High | Graph DB + `IChatClient` |
 | [x] | Mind-Map Extractor | Medium | `IChatClient` + `IGraphStore` |
+| [ ] | IOptions Alignment + ZeroAlloc Validation for pipeline options | Low | `Microsoft.Extensions.Options` + ZeroAlloc.Validation |
 | [ ] | NuGet Publishing Pipeline | Low | GitHub Actions + MinVer |
 | [ ] | Structured Logging Enrichment | Low | None |
 | [ ] | Sliding Window Chunking with Overlap | Low | None |
@@ -1028,7 +1029,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | PDF Table Extraction | Medium | PdfPig geometry |
 | [ ] | OCR for Scanned PDFs | Medium | Tesseract / Azure Doc Intelligence |
 | [ ] | Contextual Compression | Medium | `IChatClient` or embeddings |
-| [ ] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
+| [x] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
 | [ ] | Proposition Extraction Chunking | Medium | `IChatClient` |
 | [ ] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core / Service Bus |
 | [ ] | OpenTelemetry Tracing & Metrics | Medium | `System.Diagnostics.ActivitySource` |
@@ -1042,7 +1043,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Sample Applications | Medium | All packages |
 | [ ] | Rag.NET CLI Tool | Medium | `dotnet tool` |
 | [ ] | Pipeline Debugger / Trace Viewer | Medium | ASP.NET Core middleware |
-| [ ] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
+| [x] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
 | [ ] | FLARE | High | `IChatClient` + logprobs |
 | [ ] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store |
 | [ ] | Late Chunking | High | Token-level embedding model |
