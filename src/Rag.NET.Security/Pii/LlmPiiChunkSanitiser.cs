@@ -38,10 +38,12 @@ public sealed partial class LlmPiiChunkSanitiser(
             var result = response.Text?.Trim();
             if (!string.IsNullOrWhiteSpace(result))
             {
-                LogLlmPiiRedacted(_logger, fileName);
+                if (!string.Equals(result, text, StringComparison.Ordinal))
+                    LogLlmPiiRedacted(_logger, fileName);
                 return result;
             }
-            return text;
+            LogLlmEmptyResponse(_logger, fileName);
+            return _fallback.Sanitise(text, metadata);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -51,9 +53,13 @@ public sealed partial class LlmPiiChunkSanitiser(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(Level = LogLevel.Information,
         Message = "LLM PII sanitiser redacted content in chunk from '{FileName}'.")]
     private static partial void LogLlmPiiRedacted(ILogger logger, string fileName);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "LLM PII sanitiser returned empty response for '{FileName}'; falling back to regex sanitiser.")]
+    private static partial void LogLlmEmptyResponse(ILogger logger, string fileName);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "LLM PII sanitiser failed; falling back to regex sanitiser.")]

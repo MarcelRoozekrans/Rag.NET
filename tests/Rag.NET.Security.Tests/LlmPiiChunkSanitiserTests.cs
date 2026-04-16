@@ -48,4 +48,14 @@ public class LlmPiiChunkSanitiserTests
         var sut = new LlmPiiChunkSanitiser(ClientReturning(""), NullLogger<LlmPiiChunkSanitiser>.Instance);
         Assert.Equal(string.Empty, sut.Sanitise(null!, Meta));
     }
+
+    [Fact]
+    public void Sanitise_LlmThrowsOce_Propagates()
+    {
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+              .ThrowsAsync(new OperationCanceledException());
+        var sut = new LlmPiiChunkSanitiser(client, NullLogger<LlmPiiChunkSanitiser>.Instance);
+        Assert.Throws<OperationCanceledException>(() => sut.Sanitise("text", Meta));
+    }
 }
