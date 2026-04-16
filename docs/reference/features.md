@@ -1034,9 +1034,9 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core / Service Bus |
 | [ ] | OpenTelemetry Tracing & Metrics | Medium | `System.Diagnostics.ActivitySource` |
 | [ ] | Email Connector (Outlook/Exchange) | Medium | Microsoft Graph SDK |
-| [ ] | PII Detection and Redaction | Medium | Regex / `IChatClient` |
-| [ ] | Role-Based Access Control (RBAC) | Medium | `IRetrievalGuard` extension |
-| [ ] | Audit Log | Medium | `IAuditLog` + SQLite |
+| [x] | PII Detection and Redaction | Medium | Regex / `IChatClient` |
+| [x] | Role-Based Access Control (RBAC) | Medium | `IRetrievalGuard` extension |
+| [x] | Audit Log | Medium | `IAuditLog` + SQLite |
 | [ ] | LLM Fallback Chain | Medium | `IChatClient` decorator |
 | [ ] | Rate Limiting & Cost Budgeting | Medium | Token bucket |
 | [ ] | Batch Ingestion Optimiser | Medium | `Parallel.ForEachAsync` |
