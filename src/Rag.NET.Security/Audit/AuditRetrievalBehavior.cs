@@ -15,7 +15,8 @@ public sealed partial class AuditRetrievalBehavior(
     IAuditLog auditLog,
     ICallerContext callerContext,
     AuditLogOptions options,
-    ILogger<AuditRetrievalBehavior>? logger = null) : IRetrievalBehavior
+    ILogger<AuditRetrievalBehavior>? logger = null,
+    AuditCorrelationContext? correlationContext = null) : IRetrievalBehavior
 {
     private readonly ILogger<AuditRetrievalBehavior> _logger =
         logger ?? NullLogger<AuditRetrievalBehavior>.Instance;
@@ -28,6 +29,7 @@ public sealed partial class AuditRetrievalBehavior(
 
         var requestId = Guid.NewGuid().ToString("N");
         ctx.Extensions["audit_request_id"] = requestId;
+        if (correlationContext != null) correlationContext.RequestId = requestId;
 
         var chunks = new List<AuditChunkRef>(results.Count);
         for (var i = 0; i < results.Count; i++)
