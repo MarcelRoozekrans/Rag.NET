@@ -36,6 +36,7 @@ public static class ServiceCollectionExtensions
 
         var retrievalBuilder = new RetrievalPipelineBuilder();
         retrieval?.Invoke(retrievalBuilder);
+        services.AddSingleton(retrievalBuilder);
         services.AddSingleton(sp => retrievalBuilder.Build(sp));
 
         services.AddSingleton<RagPipeline>(sp =>
