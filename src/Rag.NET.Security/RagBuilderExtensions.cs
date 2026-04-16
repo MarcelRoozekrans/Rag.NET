@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Pipeline;
 
 namespace Rag.NET.Security;
@@ -109,5 +110,95 @@ public static class RagBuilderExtensions
             sp.GetRequiredService<PromptHardeningAnswerEngineDecorator>());
 
         return builder;
+    }
+
+    public static TBuilder UseRbac<TBuilder>(this TBuilder builder)
+        where TBuilder : IRagBuilder
+    {
+        // ICallerContext must be registered separately (e.g. via AddRagNetAspNetCoreSecurity)
+        builder.Services.AddSingleton<IRetrievalGuard>(sp =>
+            new RbacRetrievalGuard(
+                sp.GetRequiredService<ICallerContext>(),
+                sp.GetService<ILogger<RbacRetrievalGuard>>()));
+        return builder;
+    }
+
+    public static TBuilder UsePiiDetection<TBuilder>(
+        this TBuilder builder, Action<PiiDetectionOptions>? configure = null)
+        where TBuilder : IRagBuilder
+    {
+        var opts = new PiiDetectionOptions();
+        configure?.Invoke(opts);
+        builder.Services.AddSingleton(opts);
+        builder.Services.AddSingleton<IChunkSanitiser>(sp =>
+            new PiiChunkSanitiser(
+                sp.GetRequiredService<PiiDetectionOptions>(),
+                sp.GetService<ILogger<PiiChunkSanitiser>>()));
+        return builder;
+    }
+
+    public static TBuilder UseLlmPiiDetection<TBuilder>(this TBuilder builder)
+        where TBuilder : IRagBuilder
+    {
+        builder.Services.AddSingleton<IChunkSanitiser>(sp =>
+            new LlmPiiChunkSanitiser(
+                sp.GetRequiredService<IChatClient>(),
+                sp.GetService<ILogger<LlmPiiChunkSanitiser>>()));
+        return builder;
+    }
+
+    public static TBuilder UseAuditLog<TBuilder>(
+        this TBuilder builder, Action<AuditLogOptions>? configure = null)
+        where TBuilder : IRagBuilder
+    {
+        var opts = new AuditLogOptions();
+        configure?.Invoke(opts);
+        builder.Services.AddSingleton(opts);
+        builder.Services.AddSingleton<AuditCorrelationContext>();
+        builder.Services.AddSingleton<IAuditLog>(sp =>
+            new SqliteAuditLog(
+                sp.GetRequiredService<AuditLogOptions>(),
+                sp.GetService<ILogger<SqliteAuditLog>>()));
+
+        // Register AuditRetrievalBehavior as a singleton so the pipeline builder can resolve it.
+        builder.Services.AddSingleton<AuditRetrievalBehavior>(sp =>
+            new AuditRetrievalBehavior(
+                sp.GetRequiredService<IAuditLog>(),
+                sp.GetService<ICallerContext>() ?? new AnonymousCallerContext(),
+                sp.GetRequiredService<AuditLogOptions>(),
+                sp.GetService<ILogger<AuditRetrievalBehavior>>(),
+                sp.GetService<AuditCorrelationContext>()));
+
+        // Add AuditRetrievalBehavior to the retrieval pipeline via the RetrievalPipelineBuilder in DI.
+        var pipelineBuilder = builder.Services
+            .FirstOrDefault(d => d.ServiceType == typeof(RetrievalPipelineBuilder))
+            ?.ImplementationInstance as RetrievalPipelineBuilder;
+        pipelineBuilder?.Add<AuditRetrievalBehavior>();
+
+        // Wire answer engine decorator.
+        EnsureChatAnswerEngine(builder);
+        builder.Services.AddSingleton<AuditAnswerEngineDecorator>(sp =>
+            new AuditAnswerEngineDecorator(
+                sp.GetRequiredService<ChatAnswerEngine>(),
+                sp.GetRequiredService<IAuditLog>(),
+                sp.GetRequiredService<AuditCorrelationContext>(),
+                sp.GetRequiredService<AuditLogOptions>(),
+                sp.GetService<ILogger<AuditAnswerEngineDecorator>>()));
+        builder.Services.AddSingleton<IAnswerEngine>(sp =>
+            sp.GetRequiredService<AuditAnswerEngineDecorator>());
+
+        return builder;
+    }
+
+    private static void EnsureChatAnswerEngine<TBuilder>(TBuilder builder)
+        where TBuilder : IRagBuilder
+    {
+        if (!builder.Services.Any(d => d.ServiceType == typeof(ChatAnswerEngine)))
+        {
+            builder.Services.AddSingleton<ChatAnswerEngine>(sp =>
+                new ChatAnswerEngine(
+                    sp.GetRequiredService<IChatClient>(),
+                    sp.GetService<IConversationMemory>()));
+        }
     }
 }
