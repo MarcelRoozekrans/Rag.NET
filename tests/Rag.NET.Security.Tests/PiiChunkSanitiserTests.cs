@@ -41,6 +41,14 @@ public class PiiChunkSanitiserTests
     }
 
     [Fact]
+    public void Sanitise_CreditCard_Redacted()
+    {
+        var result = Sut().Sanitise("Card number 4111-1111-1111-1111 was charged.", Meta);
+        Assert.Contains("[CREDIT_CARD]", result, StringComparison.Ordinal);
+        Assert.DoesNotContain("4111-1111-1111-1111", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Sanitise_IpAddress_Redacted()
     {
         var result = Sut().Sanitise("Server IP is 192.168.1.1", Meta);
