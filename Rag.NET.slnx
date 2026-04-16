@@ -9,6 +9,7 @@
     <Project Path="src/Rag.NET.Api.Grpc.Client/Rag.NET.Api.Grpc.Client.csproj" />
     <Project Path="src/Rag.NET.Api.Grpc/Rag.NET.Api.Grpc.csproj" />
     <Project Path="src/Rag.NET.Api/Rag.NET.Api.csproj" />
+    <Project Path="src/Rag.NET.Security.AspNetCore/Rag.NET.Security.AspNetCore.csproj" />
     <Project Path="src/Rag.NET.Security/Rag.NET.Security.csproj" />
     <Project Path="src/Rag.NET.VectorStores.AzureAISearch/Rag.NET.VectorStores.AzureAISearch.csproj" />
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
