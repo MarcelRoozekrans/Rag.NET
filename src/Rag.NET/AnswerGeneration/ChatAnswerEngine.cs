@@ -129,15 +129,32 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
 
         var messages = new List<ChatMessage>();
 
-        messages.Add(new ChatMessage(ChatRole.System, systemPrompt));
-
+        IReadOnlyList<ChatMessage>? history = null;
         if (opts.ConversationHistory is { Count: > 0 })
         {
-            IReadOnlyList<ChatMessage> history = opts.ConversationHistory as IReadOnlyList<ChatMessage> ?? opts.ConversationHistory.ToList();
+            history = opts.ConversationHistory as IReadOnlyList<ChatMessage> ?? opts.ConversationHistory.ToList();
             if (memory is not null)
                 history = await memory.ProcessAsync(history, cancellationToken).ConfigureAwait(false);
-            messages.AddRange(history);
         }
+
+        // Leading system messages from history (e.g. a prompt-hardening prefix) go FIRST
+        // so they are not shadowed by the primary system prompt below.
+        var historyStart = 0;
+        if (history is not null)
+        {
+            while (historyStart < history.Count && history[historyStart].Role == ChatRole.System)
+            {
+                messages.Add(history[historyStart]);
+                historyStart++;
+            }
+        }
+
+        messages.Add(new ChatMessage(ChatRole.System, systemPrompt));
+
+        // Remaining history — user/assistant turns
+        if (history is not null)
+            for (var i = historyStart; i < history.Count; i++)
+                messages.Add(history[i]);
 
         messages.Add(new ChatMessage(ChatRole.User, $"Context:\n{context}\n\nQuestion: {query}"));
 
