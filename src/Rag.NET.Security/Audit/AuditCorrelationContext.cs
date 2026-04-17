@@ -1,18 +1,17 @@
 namespace Rag.NET.Security;
 
 /// <summary>
-/// Flows the audit <c>RequestId</c> from <see cref="AuditRetrievalBehavior"/> to
-/// <see cref="AuditAnswerEngineDecorator"/> via <see cref="AsyncLocal{T}"/>.
-/// Register as a singleton — the AsyncLocal handles per-request scoping.
+/// Carries the audit <c>RequestId</c> from <see cref="AuditRetrievalBehavior"/> to
+/// <see cref="AuditAnswerEngineDecorator"/> within a single logical request.
+/// <para>
+/// Retrieval and answer generation are sequential: <see cref="AuditRetrievalBehavior"/> writes
+/// the ID and <see cref="AuditAnswerEngineDecorator"/> reads it in the same continuation chain,
+/// so a plain field is correct. For concurrent-request scenarios register as scoped instead of
+/// singleton so each request gets its own instance.
+/// </para>
 /// </summary>
 public sealed class AuditCorrelationContext
 {
-    private readonly AsyncLocal<string?> _requestId = new();
-
     /// <summary>The current request ID, set by <see cref="AuditRetrievalBehavior"/> after retrieval.</summary>
-    public string? RequestId
-    {
-        get => _requestId.Value;
-        set => _requestId.Value = value;
-    }
+    public string? RequestId { get; set; }
 }

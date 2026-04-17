@@ -176,14 +176,17 @@ public static class RagBuilderExtensions
             ?.ImplementationInstance as RetrievalPipelineBuilder
             ?? throw new InvalidOperationException(
                 "UseAuditLog requires AddRagNet to be called first so that RetrievalPipelineBuilder is registered in DI.");
-        pipelineBuilder.Add<AuditRetrievalBehavior>();
+        pipelineBuilder.AddFirst<AuditRetrievalBehavior>();
 
-        // Wire answer engine decorator — wrap whatever IAnswerEngine is already registered (e.g. PromptHardening),
-        // falling back to ChatAnswerEngine when no decorator has been registered yet.
+        // Wire answer engine decorator — wrap PromptHardeningAnswerEngineDecorator if registered,
+        // otherwise fall back to ChatAnswerEngine.
+        // NOTE: do NOT resolve via IAnswerEngine here; IAnswerEngine already points to this decorator
+        //       and would cause a circular dependency → stack overflow.
         EnsureChatAnswerEngine(builder);
         builder.Services.AddSingleton<AuditAnswerEngineDecorator>(sp =>
             new AuditAnswerEngineDecorator(
-                sp.GetService<IAnswerEngine>() ?? (IAnswerEngine)sp.GetRequiredService<ChatAnswerEngine>(),
+                (IAnswerEngine?)sp.GetService<PromptHardeningAnswerEngineDecorator>()
+                    ?? sp.GetRequiredService<ChatAnswerEngine>(),
                 sp.GetRequiredService<IAuditLog>(),
                 sp.GetRequiredService<AuditCorrelationContext>(),
                 sp.GetRequiredService<AuditLogOptions>(),

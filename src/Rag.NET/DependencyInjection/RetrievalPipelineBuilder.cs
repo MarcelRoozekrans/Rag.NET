@@ -42,6 +42,18 @@ public sealed class RetrievalPipelineBuilder
         return this;
     }
 
+    /// <summary>
+    /// Inserts <typeparamref name="T"/> at the start of the pipeline, making it the outermost
+    /// (first-to-run) behavior. Use for cross-cutting concerns that should observe the final
+    /// results returned to the caller after all inner behaviors have executed.
+    /// </summary>
+    public RetrievalPipelineBuilder AddFirst<T>()
+        where T : IRetrievalBehavior
+    {
+        _types.Insert(0, typeof(T));
+        return this;
+    }
+
     public RetrievalPipelineBuilder Replace<TOld, TNew>()
         where TOld : IRetrievalBehavior
         where TNew : IRetrievalBehavior

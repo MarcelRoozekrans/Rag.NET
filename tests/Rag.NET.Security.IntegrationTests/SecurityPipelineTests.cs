@@ -231,9 +231,217 @@ public class SecurityPipelineTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task Rbac_FiltersRestrictedChunks()
+    {
+        var docPublic     = $"sec-rbac-pub-{Guid.CreateVersion7():N}";
+        var docRestricted = $"sec-rbac-res-{Guid.CreateVersion7():N}";
+
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new FakeEmbeddingGenerator());
+        // Caller only has "viewer" role — admin-restricted chunk must be filtered out.
+        services.AddSingleton<ICallerContext>(new TestCallerContext("viewer"));
+        services.AddRagNet(rag => rag
+            .UsePgVector(_fixture.ConnectionString, vectorDimensions: 3)
+            .UseRbac());
+
+        await using var sp = services.BuildServiceProvider();
+        var store = (PgVectorStore)sp.GetRequiredService<IVectorStore>();
+        await store.InitializeAsync(TestContext.Current.CancellationToken);
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        try
+        {
+            await IngestPlainTextAsync(pipeline, docPublic, "public.txt",
+                "Public information everyone can see.");
+            await IngestWithTagsAsync(pipeline, docRestricted, "restricted.txt",
+                "Top secret admin-only content.",
+                new Dictionary<string, string>(StringComparer.Ordinal) { ["allowed_roles"] = "admin" });
+
+            var retrieveResult = await pipeline.RetrieveAsync(
+                "information content",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.True(retrieveResult.IsSuccess, $"RetrieveAsync failed: {retrieveResult}");
+            Assert.DoesNotContain(retrieveResult.Value, c =>
+                c.Chunk.Metadata.TryGetValue("allowed_roles", out var r) &&
+                r.Contains("admin", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            await pipeline.DeleteAsync(docPublic,     CancellationToken.None);
+            await pipeline.DeleteAsync(docRestricted, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task UseAuditLog_WritesToSqliteEndToEnd()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"rag-audit-{Guid.CreateVersion7():N}.db");
+        var docId  = $"sec-audit-{Guid.CreateVersion7():N}";
+
+        try
+        {
+            var services = new ServiceCollection();
+            services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+            services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new FakeEmbeddingGenerator());
+            services.AddSingleton<IChatClient>(new CapturingChatClient());
+            services.AddRagNet(rag => rag
+                .UsePgVector(_fixture.ConnectionString, vectorDimensions: 3)
+                .UseAuditLog(o => o.DatabasePath = dbPath));
+
+            await using var sp = services.BuildServiceProvider();
+            var store = (PgVectorStore)sp.GetRequiredService<IVectorStore>();
+            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+            await IngestPlainTextAsync(pipeline, docId, "audit-doc.txt",
+                "The audit log records every retrieval.");
+
+            // AskAsync internally calls RetrieveAsync then the answer engine,
+            // producing exactly one correlated retrieval + answer event pair.
+            await pipeline.AskAsync("What does the audit log record?",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+            await AssertAuditRowsCorrelatedAsync(dbPath);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+            await _pipeline.DeleteAsync(docId, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task RbacAndAuditLog_ComposeTogether()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"rag-audit-rbac-{Guid.CreateVersion7():N}.db");
+        var docId  = $"sec-rbac-audit-{Guid.CreateVersion7():N}";
+
+        try
+        {
+            var services = new ServiceCollection();
+            services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+            services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(new FakeEmbeddingGenerator());
+            // Caller has "admin" role so the restricted chunk passes through RBAC.
+            services.AddSingleton<ICallerContext>(new TestCallerContext("admin"));
+            services.AddSingleton<IChatClient>(new CapturingChatClient());
+            services.AddRagNet(rag => rag
+                .UsePgVector(_fixture.ConnectionString, vectorDimensions: 3)
+                .UseRbac()
+                .UseAuditLog(o => o.DatabasePath = dbPath));
+
+            await using var sp = services.BuildServiceProvider();
+            var store = (PgVectorStore)sp.GetRequiredService<IVectorStore>();
+            await store.InitializeAsync(TestContext.Current.CancellationToken);
+            var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+            await IngestWithTagsAsync(pipeline, docId, "admin-doc.txt",
+                "Admin-only data that should be audited.",
+                new Dictionary<string, string>(StringComparer.Ordinal) { ["allowed_roles"] = "admin" });
+
+            var retrieveResult = await pipeline.RetrieveAsync(
+                "admin data audited",
+                cancellationToken: TestContext.Current.CancellationToken);
+            Assert.True(retrieveResult.IsSuccess, $"RetrieveAsync failed: {retrieveResult}");
+
+            await pipeline.AskAsync("What admin data is audited?",
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+            await AssertAuditCallerRolesContainAsync(dbPath, "admin");
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+            await _pipeline.DeleteAsync(docId, CancellationToken.None);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test helpers
+    // ---------------------------------------------------------------------------
+
+    private async Task IngestPlainTextAsync(IRagPipeline pipeline, string docId, string fileName, string text)
+    {
+        var result = await pipeline.IngestAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes(text)),
+            new DocumentMetadata
+            {
+                DocumentId  = new DocumentId(docId),
+                FileName    = fileName,
+                ContentType = "text/plain",
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(result.IsSuccess, $"IngestAsync ({fileName}) failed: {result}");
+    }
+
+    private async Task IngestWithTagsAsync(
+        IRagPipeline pipeline, string docId, string fileName, string text,
+        IDictionary<string, string> tags)
+    {
+        var result = await pipeline.IngestAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes(text)),
+            new DocumentMetadata
+            {
+                DocumentId  = new DocumentId(docId),
+                FileName    = fileName,
+                ContentType = "text/plain",
+                Tags        = tags,
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.True(result.IsSuccess, $"IngestAsync ({fileName}) failed: {result}");
+    }
+
+    private async Task AssertAuditRowsCorrelatedAsync(string dbPath)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
+
+        var rCmd = conn.CreateCommand();
+        rCmd.CommandText = "SELECT request_id FROM retrieval_events LIMIT 1";
+        var retrievalId = (string?)await rCmd.ExecuteScalarAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(retrievalId);
+        Assert.NotEmpty(retrievalId);
+
+        var aCmd = conn.CreateCommand();
+        aCmd.CommandText = "SELECT request_id FROM answer_events LIMIT 1";
+        var answerId = (string?)await aCmd.ExecuteScalarAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(answerId);
+        Assert.NotEmpty(answerId);
+
+        Assert.Equal(retrievalId, answerId);
+    }
+
+    private async Task AssertAuditCallerRolesContainAsync(string dbPath, string expectedRole)
+    {
+        using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}");
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
+
+        var rCmd = conn.CreateCommand();
+        rCmd.CommandText = "SELECT caller_roles FROM retrieval_events LIMIT 1";
+        var rolesJson = (string?)await rCmd.ExecuteScalarAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(rolesJson);
+        Assert.Contains(expectedRole, rolesJson, StringComparison.OrdinalIgnoreCase);
+
+        var aCmd = conn.CreateCommand();
+        aCmd.CommandText = "SELECT COUNT(*) FROM answer_events";
+        var count = (long)(await aCmd.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
+        Assert.True(count >= 1, "Expected at least one answer_events row");
+    }
+
     // ---------------------------------------------------------------------------
     // Fake collaborators
     // ---------------------------------------------------------------------------
+
+    private sealed class TestCallerContext(params string[] roles) : ICallerContext
+    {
+        public IReadOnlyList<string> GetRoles() => roles;
+    }
 
     private sealed class FakeEmbeddingGenerator : IEmbeddingGenerator<string, Embedding<float>>
     {
