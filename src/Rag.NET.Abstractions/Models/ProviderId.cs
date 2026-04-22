@@ -19,6 +19,8 @@ public sealed partial class ProviderId
         _value = value;
     }
 
+    public override string ToString() => _value;
+
     public static implicit operator string(ProviderId id) => id._value;
     public static explicit operator ProviderId(string s) => new(s);
 

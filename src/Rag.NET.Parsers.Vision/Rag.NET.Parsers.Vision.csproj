@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <PackageReference Include="FFMpegCore" Version="5.*" />
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
     <PackageReference Include="Tesseract" Version="5.*" Condition="'$(EnableOcr)'=='true'" />
   </ItemGroup>

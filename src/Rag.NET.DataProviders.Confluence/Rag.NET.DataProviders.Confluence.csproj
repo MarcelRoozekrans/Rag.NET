@@ -9,7 +9,7 @@
     <PackageReference Include="ZeroAlloc.Rest" Version="0.*" />
     <PackageReference Include="ZeroAlloc.Rest.Generator" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
     <PackageReference Include="ZeroAlloc.Rest.SystemTextJson" Version="0.*" />
-    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
   </ItemGroup>
   <ItemGroup>

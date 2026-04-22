@@ -31,14 +31,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="9.*" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
     <PackageReference Include="ZeroAlloc.Results" Version="0.*" />
     <PackageReference Include="ZeroAlloc.Specification" Version="0.*" GeneratePathProperty="true" />
     <PackageReference Include="ZeroAlloc.Specification.Generator" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
     <PackageReference Include="ZeroAlloc.Validation" Version="0.*" GeneratePathProperty="true" />
     <PackageReference Include="ZeroAlloc.Pipeline.Generators" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
-    <PackageReference Include="ZeroAlloc.ValueObjects" Version="1.*" GeneratePathProperty="true" />
+    <!-- Pinned to 1.1.* — version 1.2.0 generates ToString() with record-style format
+         ("DocumentId { Value = x }") which breaks callers that expect the raw value. -->
+    <PackageReference Include="ZeroAlloc.ValueObjects" Version="1.1.*" GeneratePathProperty="true" />
   </ItemGroup>
 
   <ItemGroup>

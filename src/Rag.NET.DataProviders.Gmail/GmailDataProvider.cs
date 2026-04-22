@@ -58,7 +58,7 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
             new MailKit.Security.SaslMechanismOAuth2(_options.UserName, token),
             cancellationToken).ConfigureAwait(false);
 
-        var inbox = client.Inbox;
+        var inbox = client.Inbox ?? throw new InvalidOperationException("IMAP client has no Inbox folder.");
         await inbox.OpenAsync(FolderAccess.ReadOnly, cancellationToken).ConfigureAwait(false);
 
         IList<UniqueId> uids;
