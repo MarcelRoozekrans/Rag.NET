@@ -19,8 +19,6 @@ public sealed partial class DocumentId
         _value = value;
     }
 
-    public override string ToString() => _value;
-
     public static implicit operator string(DocumentId id) => id._value;
     public static explicit operator DocumentId(string s) => new(s);
 

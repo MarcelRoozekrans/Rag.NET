@@ -19,8 +19,6 @@ public sealed partial class SessionId
         _value = value;
     }
 
-    public override string ToString() => _value;
-
     public static implicit operator string(SessionId id) => id._value;
     public static explicit operator SessionId(string s) => new(s);
 

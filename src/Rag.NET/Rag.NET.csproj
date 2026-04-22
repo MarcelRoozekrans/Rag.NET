@@ -38,8 +38,8 @@
   <ItemGroup>
     <Analyzer Include="$(PkgZeroAlloc_Inject_Generator)\analyzers\dotnet\cs\ZeroAlloc.Inject.Generator.dll" />
     <!-- ZeroAlloc.Validation.Generator is not yet published to NuGet (IsPackable=false).
-         Build it locally from src/ZeroAlloc.Validation.Generator and update this path. -->
-    <Analyzer Include="C:\Projects\Prive\ZeroAlloc.Validation\src\ZeroAlloc.Validation.Generator\bin\Release\netstandard2.0\ZeroAlloc.Validation.Generator.dll" />
+         Built locally from C:\Projects\Prive\ZeroAlloc\ZeroAlloc.Validation -->
+    <Analyzer Include="C:\Projects\Prive\ZeroAlloc\ZeroAlloc.Validation\src\ZeroAlloc.Validation.Generator\bin\Release\netstandard2.0\ZeroAlloc.Validation.Generator.dll" />
     <Analyzer Include="$(PkgZeroAlloc_Pipeline_Generators)\lib\netstandard2.0\ZeroAlloc.Pipeline.Generators.dll" />
     <Analyzer Include="$(PkgZeroAlloc_Pipeline)\lib\netstandard2.0\ZeroAlloc.Pipeline.dll" />
     <Analyzer Include="$(PkgZeroAlloc_Specification_Generator)\analyzers\dotnet\cs\ZeroAlloc.Specification.Generator.dll" />
