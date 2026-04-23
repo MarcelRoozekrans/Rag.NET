@@ -17,4 +17,11 @@ public sealed class RagOptions
     public SynthesisStrategy SynthesisStrategy { get; set; } = SynthesisStrategy.Default;
     public MapReduceOptions? MapReduceOptions { get; set; }
     public RefineOptions? RefineOptions { get; set; }
+
+    /// <summary>
+    /// Bypass contextual compression for this call even when an
+    /// <c>IContextualCompressor</c> is registered. Use when raw source
+    /// text is required (admin tooling, UI citation rendering).
+    /// </summary>
+    public bool SkipCompression { get; set; }
 }
