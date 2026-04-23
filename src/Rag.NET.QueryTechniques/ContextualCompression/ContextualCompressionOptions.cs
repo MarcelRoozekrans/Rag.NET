@@ -8,6 +8,7 @@ namespace Rag.NET.QueryTechniques.ContextualCompression;
 /// </summary>
 public sealed class ContextualCompressionOptions
 {
+    /// <summary>Which compressor implementation to register.</summary>
     public ContextualCompressionStrategy Strategy { get; set; }
         = ContextualCompressionStrategy.Extractive;
 
@@ -20,7 +21,7 @@ public sealed class ContextualCompressionOptions
 
     /// <summary>
     /// Soft cap — keep highest-scoring sentences until the cap is reached.
-    /// Uses <c>Microsoft.ML.Tokenizers</c> cl100k_base. Guideline, not a hard limit
+    /// Uses the tokenizer configured on the compressor. Guideline, not a hard limit
     /// (abstractive mode may exceed it by a small margin).
     /// </summary>
     public int? MaxTokensPerChunk { get; set; }
