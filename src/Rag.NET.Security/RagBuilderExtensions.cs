@@ -5,7 +5,6 @@ using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Pipeline;
-using Rag.NET.QueryTechniques.ContextualCompression;
 
 namespace Rag.NET.Security;
 
@@ -96,11 +95,7 @@ public static class RagBuilderExtensions
         // Same pattern as UseQuerySanitiser registering RagPipeline by concrete type.
         if (!builder.Services.Any(d => d.ServiceType == typeof(ChatAnswerEngine)))
         {
-            builder.Services.AddSingleton<ChatAnswerEngine>(sp =>
-                new ChatAnswerEngine(
-                    sp.GetRequiredService<IChatClient>(),
-                    sp.GetService<IConversationMemory>(),
-                    sp.GetService<IContextualCompressor>()));
+            builder.Services.AddSingleton(ChatAnswerEngine.CreateFromServices);
         }
 
         // Register decorator as concrete type, then replace IAnswerEngine with it.
@@ -204,11 +199,7 @@ public static class RagBuilderExtensions
     {
         if (!builder.Services.Any(d => d.ServiceType == typeof(ChatAnswerEngine)))
         {
-            builder.Services.AddSingleton<ChatAnswerEngine>(sp =>
-                new ChatAnswerEngine(
-                    sp.GetRequiredService<IChatClient>(),
-                    sp.GetService<IConversationMemory>(),
-                    sp.GetService<IContextualCompressor>()));
+            builder.Services.AddSingleton(ChatAnswerEngine.CreateFromServices);
         }
     }
 }

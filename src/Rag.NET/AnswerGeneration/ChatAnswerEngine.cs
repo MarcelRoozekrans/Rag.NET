@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -21,6 +22,23 @@ public sealed class ChatAnswerEngine(
         "Answer the user's question based only on the provided context. " +
         "If the context doesn't contain enough information, say so. " +
         "Cite which sources you used.";
+
+    /// <summary>
+    /// Factory that constructs a <see cref="ChatAnswerEngine"/> by resolving all dependencies
+    /// from the provided <see cref="IServiceProvider"/>. Centralizes dependency wiring so new
+    /// optional dependencies added to the constructor are threaded through automatically at
+    /// every registration site.
+    /// </summary>
+    /// <remarks>
+    /// Resolves <c>IChatClient</c> as required — throws at resolution time if none is registered.
+    /// Callers that need to handle the missing-chat-client case gracefully (e.g., retrieval-only
+    /// pipelines) must check for <c>IChatClient</c> registration themselves before invoking.
+    /// </remarks>
+    public static ChatAnswerEngine CreateFromServices(IServiceProvider serviceProvider) =>
+        new(
+            serviceProvider.GetRequiredService<IChatClient>(),
+            serviceProvider.GetService<IConversationMemory>(),
+            serviceProvider.GetService<IContextualCompressor>());
 
     public async Task<RagResponse> AskAsync(
         string query,
