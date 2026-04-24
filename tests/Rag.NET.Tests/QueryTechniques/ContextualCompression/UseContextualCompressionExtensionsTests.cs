@@ -10,6 +10,7 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.QueryTechniques;
 using Rag.NET.QueryTechniques.ContextualCompression;
+using Rag.NET.Retrieval.Behaviors;
 using Xunit;
 
 namespace Rag.NET.Tests.QueryTechniques.ContextualCompression;
@@ -187,5 +188,33 @@ public class UseContextualCompressionExtensionsTests
 
         await spyCompressor.Received(1).CompressAsync(
             Arg.Any<IReadOnlyList<SearchResult>>(), "q", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void UseContextualCompressionInRetrieval_WithoutBaseRegistration_Throws()
+    {
+        var services = BaseServices();
+        services.AddRagNet(); // registers RetrievalPipelineBuilder
+        var builder = BuilderOn(services);
+
+        Assert.Throws<InvalidOperationException>(() => builder.UseContextualCompressionInRetrieval());
+    }
+
+    [Fact]
+    public void UseContextualCompressionInRetrieval_AddsBehaviorToPipelineBuilder()
+    {
+        var services = BaseServices();
+        services.AddRagNet(); // registers RetrievalPipelineBuilder in DI
+        var builder = BuilderOn(services);
+        builder.UseContextualCompression();
+
+        builder.UseContextualCompressionInRetrieval();
+
+        var pipelineBuilder = services
+            .First(d => d.ServiceType == typeof(RetrievalPipelineBuilder))
+            .ImplementationInstance as RetrievalPipelineBuilder;
+        Assert.NotNull(pipelineBuilder);
+        var types = pipelineBuilder.GetBehaviorTypes();
+        Assert.Contains(typeof(ContextualCompressionRetrievalBehavior), types);
     }
 }
