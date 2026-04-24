@@ -12,30 +12,26 @@ namespace Rag.NET.QueryTechniques.ContextualCompression;
 /// scores them against the query embedding by cosine similarity, and keeps either the
 /// top-N sentences or as many top-ranked sentences as fit within the token budget.
 /// </summary>
-public sealed partial class ExtractiveCompressor : IContextualCompressor
+public sealed partial class ExtractiveCompressor(
+    IEmbeddingGenerator<string, Embedding<float>> embedder,
+    ContextualCompressionOptions options,
+    ILogger<ExtractiveCompressor>? logger = null) : IContextualCompressor
 {
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder = embedder;
+    private readonly ContextualCompressionOptions _options = options;
+    private readonly ILogger<ExtractiveCompressor> _logger = logger ?? NullLogger<ExtractiveCompressor>.Instance;
+
     private static readonly Regex SentenceSplit = SentenceSplitRegex();
 
-#pragma warning disable MA0009 // Lookbehind is required to preserve sentence-ending punctuation
-    [GeneratedRegex(@"(?<=[.!?])\s+", RegexOptions.ExplicitCapture)]
+    // Sentence-ending punctuation followed by whitespace, with negative lookbehind
+    // for common abbreviations (Mr., Mrs., Ms., Dr., Jr., Sr., vs., etc., e.g., i.e.).
+    // Mirrors SemanticChunkingStrategy.SentenceEndPattern — keep in sync with that convention.
+#pragma warning disable MA0009 // Lookbehind required for abbreviation handling
+    [GeneratedRegex(@"(?<!\b(?:Mr|Mrs|Ms|Dr|Jr|Sr|vs|etc|e\.g|i\.e))\.\s+|[!?]\s+", RegexOptions.ExplicitCapture)]
     private static partial Regex SentenceSplitRegex();
 #pragma warning restore MA0009
 
     private static readonly Tokenizer Cl100kTokenizer = TiktokenTokenizer.CreateForEncoding("cl100k_base");
-
-    private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
-    private readonly ContextualCompressionOptions _options;
-    private readonly ILogger<ExtractiveCompressor> _logger;
-
-    public ExtractiveCompressor(
-        IEmbeddingGenerator<string, Embedding<float>> embedder,
-        ContextualCompressionOptions options,
-        ILogger<ExtractiveCompressor>? logger = null)
-    {
-        _embedder = embedder;
-        _options = options;
-        _logger = logger ?? NullLogger<ExtractiveCompressor>.Instance;
-    }
 
     public async ValueTask<IReadOnlyList<SearchResult>> CompressAsync(
         IReadOnlyList<SearchResult> sources,
@@ -145,10 +141,11 @@ public sealed partial class ExtractiveCompressor : IContextualCompressor
             foreach (var idx in order)
             {
                 var tokens = Cl100kTokenizer.CountTokens(sentences[idx]);
+                // Always admit the top-scoring sentence, even if it alone exceeds the budget — otherwise
+                // an overly small MaxTokensPerChunk would produce empty output.
                 if (keptList.Count > 0 && running + tokens > maxTokens) break;
                 keptList.Add(idx);
                 running += tokens;
-                if (running >= maxTokens) break;
             }
             keptList.Sort();
             return Join(sentences, keptList);
@@ -167,16 +164,16 @@ public sealed partial class ExtractiveCompressor : IContextualCompressor
 
     private static double CosineSimilarity(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
     {
-        double dot = 0, na = 0, nb = 0;
-        var len = Math.Min(a.Length, b.Length);
-        for (var i = 0; i < len; i++)
+        if (a.Length != b.Length) return 0.0;
+        double dot = 0, normA = 0, normB = 0;
+        for (var i = 0; i < a.Length; i++)
         {
-            dot += a[i] * b[i];
-            na += a[i] * a[i];
-            nb += b[i] * b[i];
+            dot += a[i] * (double)b[i];
+            normA += a[i] * (double)a[i];
+            normB += b[i] * (double)b[i];
         }
-        if (na == 0 || nb == 0) return 0;
-        return dot / (Math.Sqrt(na) * Math.Sqrt(nb));
+        var denom = Math.Sqrt(normA) * Math.Sqrt(normB);
+        return denom == 0 ? 0 : dot / denom;
     }
 
     [LoggerMessage(Level = LogLevel.Warning,

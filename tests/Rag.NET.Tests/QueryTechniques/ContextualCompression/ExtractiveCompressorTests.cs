@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.ML.Tokenizers;
 using NSubstitute;
 using Rag.NET.Models;
 using Rag.NET.QueryTechniques.ContextualCompression;
@@ -68,6 +69,13 @@ public class ExtractiveCompressorTests
         Assert.NotNull(compressed);
         Assert.Contains("Cats", compressed, StringComparison.Ordinal);
         Assert.DoesNotContain("Rockets", compressed, StringComparison.Ordinal);
+
+        // Verify the token budget is actually respected (not merely mimicking TopN behaviour).
+        // Budget is 10; the "always admit top" rule may push one extra short sentence in.
+        // A ceiling of 15 still catches a regression where the budget is silently ignored.
+        var tokenizer = TiktokenTokenizer.CreateForEncoding("cl100k_base");
+        var tokenCount = tokenizer.CountTokens(compressed!);
+        Assert.True(tokenCount <= 15, $"Expected <=15 tokens, got {tokenCount}. Output: {compressed}");
     }
 
     [Fact]
