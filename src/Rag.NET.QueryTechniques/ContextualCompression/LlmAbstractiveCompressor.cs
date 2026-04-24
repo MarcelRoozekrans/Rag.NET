@@ -77,9 +77,11 @@ public sealed partial class LlmAbstractiveCompressor(
         {
             new(ChatRole.System,
                 "You compress retrieved content for a question-answering system. " +
-                "Output only the content verbatim-style rewritten to retain information relevant to " +
-                "the user's query. Do not include meta-commentary or markdown." + budget),
-            new(ChatRole.User, $"Query: {query}\n\nContent:\n{content}"),
+                "Return only the sentences or clauses directly relevant to the query. " +
+                "Preserve the original wording where possible; do not paraphrase beyond what is needed " +
+                "to drop irrelevant content. Output no markdown, no preamble, no meta-commentary — " +
+                "just the compressed content." + budget),
+            new(ChatRole.User, $"<query>{query}</query>\n\n<content>\n{content}\n</content>"),
         };
     }
 
