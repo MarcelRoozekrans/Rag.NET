@@ -1,10 +1,12 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerEngines;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.QueryTechniques.ContextualCompression;
 
 namespace Rag.NET.AnswerGeneration;
 
@@ -12,7 +14,11 @@ namespace Rag.NET.AnswerGeneration;
 /// Generates an initial answer from the first source chunk, then iteratively refines it
 /// with each subsequent chunk. Sequential by design.
 /// </summary>
-public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAnswerEngine> logger, IConversationMemory? memory = null) : IAnswerEngine
+public sealed class RefineAnswerEngine(
+    IChatClient chatClient,
+    ILogger<RefineAnswerEngine> logger,
+    IConversationMemory? memory = null,
+    IContextualCompressor? compressor = null) : IAnswerEngine
 {
     private const string DefaultInitialPrompt =
         "Answer this question using only the following context.\n\n" +
@@ -24,6 +30,19 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
         "answer unchanged.\n\n" +
         "Existing answer: {answer}\n\nNew context:\n{chunk}\n\nQuestion: {query}";
 
+    /// <summary>
+    /// Factory that constructs a <see cref="RefineAnswerEngine"/> by resolving all dependencies
+    /// from the provided <see cref="IServiceProvider"/>. Centralizes dependency wiring so new
+    /// optional dependencies added to the constructor are threaded through automatically at
+    /// every registration site.
+    /// </summary>
+    public static RefineAnswerEngine CreateFromServices(IServiceProvider serviceProvider) =>
+        new(
+            serviceProvider.GetRequiredService<IChatClient>(),
+            serviceProvider.GetRequiredService<ILogger<RefineAnswerEngine>>(),
+            serviceProvider.GetService<IConversationMemory>(),
+            serviceProvider.GetService<IContextualCompressor>());
+
     public async Task<RagResponse> AskAsync(
         string query,
         IReadOnlyList<SearchResult> sources,
@@ -33,6 +52,8 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
         var opts = options ?? new RagOptions();
         var refineOpts = opts.RefineOptions ?? new RefineOptions();
         var chatOptions = BuildChatOptions(opts);
+
+        sources = await MaybeCompressAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
 
         var initialPrompt = refineOpts.InitialPromptTemplate ?? DefaultInitialPrompt;
         var refinePrompt = refineOpts.RefinePromptTemplate ?? DefaultRefinePrompt;
@@ -46,7 +67,7 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
         // Initial call on first chunk — always propagates on failure
         var firstChunk = sources[0];
         var initialText = initialPrompt
-            .Replace("{chunk}", firstChunk.Chunk.Text)
+            .Replace("{chunk}", firstChunk.CompressedText ?? firstChunk.Chunk.Text)
             .Replace("{query}", query);
 
         var initialMessages = BuildMessages(initialText, opts, processedHistory);
@@ -61,7 +82,7 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
             {
                 var refineText = refinePrompt
                     .Replace("{answer}", currentAnswer)
-                    .Replace("{chunk}", source.Chunk.Text)
+                    .Replace("{chunk}", source.CompressedText ?? source.Chunk.Text)
                     .Replace("{query}", query);
 
                 var refineMessages = BuildMessages(refineText, opts, processedHistory);
@@ -91,10 +112,26 @@ public sealed class RefineAnswerEngine(IChatClient chatClient, ILogger<RefineAns
         RagOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        yield return new RagStreamingUpdate { Sources = sources };
-
+        // Delegate to AskAsync so compression happens exactly once (inside AskAsync).
+        // The returned response.Sources reflects the post-compression list.
         var response = await AskAsync(query, sources, options, cancellationToken).ConfigureAwait(false);
+        yield return new RagStreamingUpdate { Sources = response.Sources };
         yield return new RagStreamingUpdate { TextDelta = response.Answer };
+    }
+
+    /// <summary>Applies contextual compression when configured and not skipped for this call.</summary>
+    private async ValueTask<IReadOnlyList<SearchResult>> MaybeCompressAsync(
+        IReadOnlyList<SearchResult> sources,
+        string query,
+        RagOptions opts,
+        CancellationToken cancellationToken)
+    {
+        if (compressor is null || opts.SkipCompression)
+        {
+            return sources;
+        }
+
+        return await compressor.CompressAsync(sources, query, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<IReadOnlyList<ChatMessage>?> ProcessHistoryAsync(RagOptions opts, CancellationToken cancellationToken)

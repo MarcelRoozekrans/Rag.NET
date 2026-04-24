@@ -1,10 +1,12 @@
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerEngines;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.QueryTechniques.ContextualCompression;
 
 namespace Rag.NET.AnswerGeneration;
 
@@ -12,7 +14,11 @@ namespace Rag.NET.AnswerGeneration;
 /// Executes one LLM call per source chunk in parallel (map), filters "not found" responses,
 /// then combines surviving partials in a single reduce call.
 /// </summary>
-public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapReduceAnswerEngine> logger, IConversationMemory? memory = null) : IAnswerEngine
+public sealed class MapReduceAnswerEngine(
+    IChatClient chatClient,
+    ILogger<MapReduceAnswerEngine> logger,
+    IConversationMemory? memory = null,
+    IContextualCompressor? compressor = null) : IAnswerEngine
 {
     private const string DefaultMapPrompt =
         "Using only the following text, answer this question as best you can.\n" +
@@ -24,6 +30,19 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         "Discard redundant or contradictory information.\n\n" +
         "Partial answers:\n{partials}\n\nQuestion: {query}";
 
+    /// <summary>
+    /// Factory that constructs a <see cref="MapReduceAnswerEngine"/> by resolving all dependencies
+    /// from the provided <see cref="IServiceProvider"/>. Centralizes dependency wiring so new
+    /// optional dependencies added to the constructor are threaded through automatically at
+    /// every registration site.
+    /// </summary>
+    public static MapReduceAnswerEngine CreateFromServices(IServiceProvider serviceProvider) =>
+        new(
+            serviceProvider.GetRequiredService<IChatClient>(),
+            serviceProvider.GetRequiredService<ILogger<MapReduceAnswerEngine>>(),
+            serviceProvider.GetService<IConversationMemory>(),
+            serviceProvider.GetService<IContextualCompressor>());
+
     public async Task<RagResponse> AskAsync(
         string query,
         IReadOnlyList<SearchResult> sources,
@@ -33,6 +52,8 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         var opts = options ?? new RagOptions();
         var mrOpts = opts.MapReduceOptions ?? new MapReduceOptions();
         var chatOptions = BuildChatOptions(opts);
+
+        sources = await MaybeCompressAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
 
         var mapPrompt = mrOpts.MapPromptTemplate ?? DefaultMapPrompt;
         var reducePrompt = mrOpts.ReducePromptTemplate ?? DefaultReducePrompt;
@@ -72,10 +93,26 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
         RagOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        yield return new RagStreamingUpdate { Sources = sources };
-
+        // Delegate to AskAsync so compression happens exactly once (inside AskAsync).
+        // The returned response.Sources reflects the post-compression list.
         var response = await AskAsync(query, sources, options, cancellationToken).ConfigureAwait(false);
+        yield return new RagStreamingUpdate { Sources = response.Sources };
         yield return new RagStreamingUpdate { TextDelta = response.Answer };
+    }
+
+    /// <summary>Applies contextual compression when configured and not skipped for this call.</summary>
+    private async ValueTask<IReadOnlyList<SearchResult>> MaybeCompressAsync(
+        IReadOnlyList<SearchResult> sources,
+        string query,
+        RagOptions opts,
+        CancellationToken cancellationToken)
+    {
+        if (compressor is null || opts.SkipCompression)
+        {
+            return sources;
+        }
+
+        return await compressor.CompressAsync(sources, query, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<string?> MapOneAsync(
@@ -95,7 +132,7 @@ public sealed class MapReduceAnswerEngine(IChatClient chatClient, ILogger<MapRed
             acquired = true;
 
             var prompt = mapPromptTemplate
-                .Replace("{chunk}", source.Chunk.Text)
+                .Replace("{chunk}", source.CompressedText ?? source.Chunk.Text)
                 .Replace("{query}", query);
 
             var messages = BuildMessages(prompt, opts, processedHistory);

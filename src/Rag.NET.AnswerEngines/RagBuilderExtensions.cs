@@ -1,6 +1,4 @@
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
 
@@ -20,11 +18,7 @@ public static class RagBuilderExtensions
     public static TBuilder UseMapReduceAnswerEngine<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
     {
-        builder.Services.AddSingleton<IAnswerEngine>(sp =>
-            new MapReduceAnswerEngine(
-                sp.GetRequiredService<IChatClient>(),
-                sp.GetRequiredService<ILogger<MapReduceAnswerEngine>>(),
-                sp.GetService<IConversationMemory>()));
+        builder.Services.AddSingleton<IAnswerEngine>(sp => MapReduceAnswerEngine.CreateFromServices(sp));
         return builder;
     }
 
@@ -39,11 +33,7 @@ public static class RagBuilderExtensions
     public static TBuilder UseRefineAnswerEngine<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
     {
-        builder.Services.AddSingleton<IAnswerEngine>(sp =>
-            new RefineAnswerEngine(
-                sp.GetRequiredService<IChatClient>(),
-                sp.GetRequiredService<ILogger<RefineAnswerEngine>>(),
-                sp.GetService<IConversationMemory>()));
+        builder.Services.AddSingleton<IAnswerEngine>(sp => RefineAnswerEngine.CreateFromServices(sp));
         return builder;
     }
 
@@ -60,17 +50,9 @@ public static class RagBuilderExtensions
     {
         builder.Services.AddSingleton<IAnswerEngine>(sp =>
         {
-            var chatClient = sp.GetRequiredService<IChatClient>();
-            var memory = sp.GetService<IConversationMemory>();
             var chatEngine = ChatAnswerEngine.CreateFromServices(sp);
-            var mapReduceEngine = new MapReduceAnswerEngine(
-                chatClient,
-                sp.GetRequiredService<ILogger<MapReduceAnswerEngine>>(),
-                memory);
-            var refineEngine = new RefineAnswerEngine(
-                chatClient,
-                sp.GetRequiredService<ILogger<RefineAnswerEngine>>(),
-                memory);
+            var mapReduceEngine = MapReduceAnswerEngine.CreateFromServices(sp);
+            var refineEngine = RefineAnswerEngine.CreateFromServices(sp);
             return new DispatchingAnswerEngine(chatEngine, mapReduceEngine, refineEngine);
         });
         return builder;
