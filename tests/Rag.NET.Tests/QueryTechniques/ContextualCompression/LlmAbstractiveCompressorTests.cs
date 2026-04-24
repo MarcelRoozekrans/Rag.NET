@@ -108,6 +108,19 @@ public class LlmAbstractiveCompressorTests
     }
 
     [Fact]
+    public async Task CompressAsync_AlreadyCompressed_SkipsWork()
+    {
+        var chat = Substitute.For<IChatClient>();
+        var sut = new LlmAbstractiveCompressor(chat, DefaultOpts(), NullLogger<LlmAbstractiveCompressor>.Instance);
+        var source = MakeResult("text") with { CompressedText = "pre-compressed" };
+
+        var result = await sut.CompressAsync(new List<SearchResult> { source }, "q", TestContext.Current.CancellationToken);
+
+        Assert.Equal("pre-compressed", result[0].CompressedText);
+        await chat.DidNotReceive().GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task CompressAsync_CancelledToken_PropagatesOCE()
     {
         var chat = Substitute.For<IChatClient>();

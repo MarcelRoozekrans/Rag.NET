@@ -392,6 +392,17 @@ services.AddRagNet(rag => rag
 
 ---
 
+## Answer engines: `CreateFromServices` pattern
+
+All built-in `IAnswerEngine` implementations (`ChatAnswerEngine`, `MapReduceAnswerEngine`, `RefineAnswerEngine`) expose a static `CreateFromServices(IServiceProvider)` factory that centralizes dependency resolution. When adding a new engine, follow the same pattern:
+
+1. Expose a `public static MyEngine CreateFromServices(IServiceProvider sp) => new(sp.GetRequiredService<...>(), sp.GetService<...>(), ...);`.
+2. Wire the factory at every registration site (`ServiceCollectionExtensions`, `UsePromptHardening`'s `ChatAnswerEngine` fallback, `UseDispatchingAnswerEngine`).
+
+Rationale: optional dependencies (like `IContextualCompressor`) are then threaded through by updating ONE method instead of every construction site.
+
+---
+
 ## Using `RagBuilder.Services` for advanced cases
 
 `RagBuilder.Services` exposes the underlying `IServiceCollection` for registrations that do not have a dedicated fluent method:

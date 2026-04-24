@@ -108,6 +108,45 @@ public class ExtractiveCompressorTests
     }
 
     [Fact]
+    public async Task CompressAsync_AlreadyCompressed_SkipsWork()
+    {
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(ci =>
+            {
+                var inputs = ci.Arg<IEnumerable<string>>().ToList();
+                var embeddings = inputs.Select(_ => new Embedding<float>(new[] { 1f, 0f, 0f })).ToList();
+                return Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(embeddings));
+            });
+        var opts = new ContextualCompressionOptions { KeepTopSentences = 2 };
+        var sut = new ExtractiveCompressor(embedder, opts, NullLogger<ExtractiveCompressor>.Instance);
+        var source = MakeResult("Cats purr. Rockets fly.") with { CompressedText = "pre-compressed" };
+
+        var result = await sut.CompressAsync(new List<SearchResult> { source }, "cats", TestContext.Current.CancellationToken);
+
+        // Compressed text is preserved unchanged (guard fired).
+        Assert.Equal("pre-compressed", result[0].CompressedText);
+        // The query embedding happens once before the per-chunk loop; after the guard fires,
+        // no per-chunk sentence embedding call runs. Embedder should only see the query batch.
+        await embedder.Received(1).GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CompressAsync_ReducesChunkLength()
+    {
+        var opts = new ContextualCompressionOptions { KeepTopSentences = 1 };
+        var sut = new ExtractiveCompressor(DeterministicEmbedder(), opts, NullLogger<ExtractiveCompressor>.Instance);
+        var originalText = "Cats purr loudly. Rockets go to Mars. Cats sleep often. Rockets have engines. Cats like fish.";
+        var sources = new List<SearchResult> { MakeResult(originalText) };
+
+        var result = await sut.CompressAsync(sources, "tell me about cats", TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result[0].CompressedText);
+        Assert.True(result[0].CompressedText!.Length < originalText.Length,
+            $"Compressed length {result[0].CompressedText!.Length} should be < original {originalText.Length}");
+    }
+
+    [Fact]
     public async Task CompressAsync_CancelledToken_ThrowsOperationCanceled()
     {
         var opts = new ContextualCompressionOptions { KeepTopSentences = 2 };

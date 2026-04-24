@@ -40,6 +40,10 @@ public sealed partial class LlmAbstractiveCompressor(
         string query,
         CancellationToken cancellationToken)
     {
+        // Skip already-compressed chunks — prevents double work when compression runs
+        // both in the retrieval pipeline and at the answer engine.
+        if (source.CompressedText is not null) return source;
+
         try
         {
             var messages = BuildMessages(source.Chunk.Text, query);
@@ -73,6 +77,10 @@ public sealed partial class LlmAbstractiveCompressor(
                 ? $" Target: at most {mt} tokens."
                 : string.Empty;
 
+        // Per-call randomized delimiter suffix — defends against prompt-injection attempts
+        // that might embed literal </content> or </query> closing tags to escape the fence.
+        var delim = Guid.CreateVersion7().ToString("N")[..8];
+
         return new List<ChatMessage>
         {
             new(ChatRole.System,
@@ -81,7 +89,7 @@ public sealed partial class LlmAbstractiveCompressor(
                 "Preserve the original wording where possible; do not paraphrase beyond what is needed " +
                 "to drop irrelevant content. Output no markdown, no preamble, no meta-commentary — " +
                 "just the compressed content." + budget),
-            new(ChatRole.User, $"<query>{query}</query>\n\n<content>\n{content}\n</content>"),
+            new(ChatRole.User, $"<query-{delim}>{query}</query-{delim}>\n\n<content-{delim}>\n{content}\n</content-{delim}>"),
         };
     }
 

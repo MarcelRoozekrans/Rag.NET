@@ -69,6 +69,10 @@ public sealed partial class ExtractiveCompressor(
         Embedding<float> queryEmbedding,
         CancellationToken cancellationToken)
     {
+        // Skip already-compressed chunks — prevents double work when compression runs
+        // both in the retrieval pipeline and at the answer engine.
+        if (source.CompressedText is not null) return source;
+
         try
         {
             var text = source.Chunk.Text;

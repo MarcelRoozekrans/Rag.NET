@@ -749,7 +749,7 @@ Fixed-size chunks with configurable token overlap between adjacent chunks. The s
 
 Post-retrieval step that compresses each retrieved chunk to only the content most relevant to the query. Two strategies ship: **extractive** (embedding similarity, no LLM) and **abstractive** (per-chunk parallel LLM rewrite). Stopping criteria are either `KeepTopSentences` (top-N, default 3) or `MaxTokensPerChunk` (token budget via `cl100k_base`). Output is **non-destructive**: compressed text lives on `SearchResult.CompressedText`, the original `Chunk.Text` is preserved. Register with `builder.UseContextualCompression(opts => ...)` (default: answer-engine path) or additionally `builder.UseContextualCompressionInRetrieval()` to also compress retrieval-facing results. Skip per call with `RagOptions.SkipCompression = true`.
 
-**Why:** Retrieved chunks often contain boilerplate or tangential sentences that waste context window space and dilute the signal for the LLM. Compression can halve token usage with minimal faithfulness loss.
+**Why:** Retrieved chunks often contain boilerplate or tangential sentences that waste context window space and dilute the signal for the LLM. Compression reduces prompt-token usage by dropping boilerplate and off-topic sentences from retrieved chunks, preserving the semantic signal for the LLM. Actual reduction depends on chunk content and stopping-criterion choice.
 
 ---
 
