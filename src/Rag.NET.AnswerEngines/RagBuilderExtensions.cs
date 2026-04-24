@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
+using Rag.NET.QueryTechniques.ContextualCompression;
 
 namespace Rag.NET.AnswerEngines;
 
@@ -62,7 +63,8 @@ public static class RagBuilderExtensions
         {
             var chatClient = sp.GetRequiredService<IChatClient>();
             var memory = sp.GetService<IConversationMemory>();
-            var chatEngine = new ChatAnswerEngine(chatClient, memory);
+            var compressor = sp.GetService<IContextualCompressor>();
+            var chatEngine = new ChatAnswerEngine(chatClient, memory, compressor);
             var mapReduceEngine = new MapReduceAnswerEngine(
                 chatClient,
                 sp.GetRequiredService<ILogger<MapReduceAnswerEngine>>(),
