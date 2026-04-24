@@ -15,6 +15,7 @@ using Xunit;
 
 namespace Rag.NET.Tests.Telemetry;
 
+[Collection("Telemetry")]
 public class IngestTelemetryTests
 {
     private static PipelineIngestor CreateSut(
@@ -46,6 +47,8 @@ public class IngestTelemetryTests
         var result = await sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(result.IsSuccess);
+        // document.id tag is already unique enough to disambiguate this test's span from
+        // concurrently-emitted activities on the same global ActivitySource.
         var span = activities.FirstOrDefault(a =>
             string.Equals(a.OperationName, "ragnet.ingest", StringComparison.Ordinal) &&
             string.Equals(a.GetTagItem("document.id") as string, "test-doc", StringComparison.Ordinal));
@@ -84,10 +87,13 @@ public class IngestTelemetryTests
         };
         ctx.Chunks.Add(new TextChunk { Text = "hello", DocumentId = new DocumentId("embed-doc"), ChunkIndex = 0 });
 
+        var cutoff = DateTime.UtcNow.AddMilliseconds(-50);
+
         await sut.HandleAsync(ctx, TestContext.Current.CancellationToken,
             (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 1 }));
 
-        Assert.Contains(activities, a => string.Equals(a.OperationName, "ragnet.embed", StringComparison.Ordinal));
+        Assert.Contains(activities.Where(a => a.StartTimeUtc >= cutoff),
+            a => string.Equals(a.OperationName, "ragnet.embed", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -142,7 +148,10 @@ public class IngestTelemetryTests
             (c, ct) => chunkingBehavior.HandleAsync(c, ct,
                 (c2, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c2.Metadata.DocumentId, ChunksStored = c2.Chunks.Count })));
 
-        var parseSpan = activities.FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.parse", StringComparison.Ordinal));
+        // Filter by the unique document.id we set, to disambiguate from concurrently-emitted parse spans.
+        var parseSpan = activities.FirstOrDefault(a =>
+            string.Equals(a.OperationName, "ragnet.parse", StringComparison.Ordinal) &&
+            string.Equals(a.GetTagItem("document.id") as string, "parse-chunk-doc", StringComparison.Ordinal));
         Assert.NotNull(parseSpan);
         Assert.Equal("parse-chunk-doc", parseSpan.GetTagItem("document.id"));
         Assert.NotNull(parseSpan.GetTagItem("parser.type"));
@@ -186,7 +195,9 @@ public class IngestTelemetryTests
         await sut.HandleAsync(ctx, TestContext.Current.CancellationToken,
             (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
 
-        var storeSpan = activities.FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.store", StringComparison.Ordinal));
+        var storeSpan = activities.FirstOrDefault(a =>
+            string.Equals(a.OperationName, "ragnet.store", StringComparison.Ordinal) &&
+            string.Equals(a.GetTagItem("document.id") as string, "store-doc", StringComparison.Ordinal));
         Assert.NotNull(storeSpan);
         Assert.Equal("store-doc", storeSpan.GetTagItem("document.id"));
         Assert.Equal("1", storeSpan.GetTagItem("chunk.count")?.ToString());
@@ -211,17 +222,23 @@ public class IngestTelemetryTests
             ContentType = "text/rtf",
         };
 
+        // Baseline measurements accumulated before the act (may be non-zero if a parallel test
+        // class triggered an ingest error through the shared global Meter).
+        var baseline = errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value);
+
         var result = await sut.IngestAsync(new MemoryStream([1]), metadata,
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.IsSuccess);
 
+        // Filter by document.id tag — unique to this test.
         var span = activities.FirstOrDefault(a =>
-            string.Equals(a.OperationName, "ragnet.ingest", StringComparison.Ordinal));
+            string.Equals(a.OperationName, "ragnet.ingest", StringComparison.Ordinal) &&
+            string.Equals(a.GetTagItem("document.id") as string, "err-doc", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.Equal(ActivityStatusCode.Error, span.Status);
 
-        Assert.Equal(1, errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value));
+        Assert.Equal(1, errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value) - baseline);
     }
 
     [Fact]
@@ -238,11 +255,15 @@ public class IngestTelemetryTests
             ContentType = "text/plain",
         };
 
+        // Baseline measurement count before the act (the global Meter may emit from other tests).
+        var baselineCount = durationCollector.GetMeasurementSnapshot().Count;
+
         var _ = await sut.IngestAsync(stream, metadata, cancellationToken: TestContext.Current.CancellationToken);
 
         var measurements = durationCollector.GetMeasurementSnapshot();
-        Assert.Single(measurements);
-        Assert.True(measurements[0].Value >= 0);
+        Assert.True(measurements.Count > baselineCount,
+            $"expected new measurement after IngestAsync (baseline={baselineCount}, actual={measurements.Count})");
+        Assert.All(measurements, m => Assert.True(m.Value >= 0));
     }
 
     [Fact]
@@ -276,12 +297,14 @@ public class IngestTelemetryTests
             Embedding = new float[] { 0.1f, 0.2f },
         });
 
+        var baseline = chunksCollector.GetMeasurementSnapshot().Sum(m => m.Value);
+
         await sut.HandleAsync(ctx, TestContext.Current.CancellationToken,
             (c, _) => ValueTask.FromResult(
                 new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
 
         var measurements = chunksCollector.GetMeasurementSnapshot();
-        Assert.Equal(1, measurements.Sum(m => m.Value));
+        Assert.Equal(1, measurements.Sum(m => m.Value) - baseline);
     }
 
     private static (ConcurrentBag<Activity> activities, ActivityListener listener) CreateListener()

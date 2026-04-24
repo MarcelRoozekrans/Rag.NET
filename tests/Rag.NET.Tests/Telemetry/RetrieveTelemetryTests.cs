@@ -10,6 +10,7 @@ using Xunit;
 
 namespace Rag.NET.Tests.Telemetry;
 
+[Collection("Telemetry")]
 public class RetrieveTelemetryTests
 {
     private static (ConcurrentBag<Activity> activities, ActivityListener listener) CreateListener()
@@ -41,9 +42,13 @@ public class RetrieveTelemetryTests
 
         var retriever = CreateSut();
 
+        var cutoff = DateTime.UtcNow.AddMilliseconds(-50);
+
         var __ = await retriever.RetrieveAsync("what is RAG?", cancellationToken: TestContext.Current.CancellationToken);
 
-        var span = activities.FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.retrieve", StringComparison.Ordinal));
+        var span = activities
+            .Where(a => a.StartTimeUtc >= cutoff)
+            .FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.retrieve", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.NotNull(span.GetTagItem("query.hash")); // 8-char hex SHA-256 prefix — don't assert exact value
         Assert.NotNull(span.GetTagItem("top_k"));
@@ -61,17 +66,24 @@ public class RetrieveTelemetryTests
             (_, _) => throw new InvalidOperationException("vector store unavailable"));
         var retriever = CreateSut(throwingPipeline);
 
+        // Baseline any measurements accumulated by parallel test classes between the collector's
+        // construction and this test's act — assert on the delta instead of the absolute sum.
+        var baseline = errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value);
+        var cutoff = DateTime.UtcNow.AddMilliseconds(-50);
+
         var result = await retriever.RetrieveAsync("failing query",
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(result.IsSuccess);
 
-        var span = activities.FirstOrDefault(a =>
-            string.Equals(a.OperationName, "ragnet.retrieve", StringComparison.Ordinal));
+        var span = activities
+            .Where(a => a.StartTimeUtc >= cutoff)
+            .FirstOrDefault(a =>
+                string.Equals(a.OperationName, "ragnet.retrieve", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.Equal(ActivityStatusCode.Error, span.Status);
 
-        Assert.Equal(1, errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value));
+        Assert.Equal(1, errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value) - baseline);
     }
 
     [Fact]
@@ -81,11 +93,19 @@ public class RetrieveTelemetryTests
 
         var retriever = CreateSut();
 
+        // Baseline measurement count before the act. Other parallel tests that call RetrieveAsync
+        // through unrelated code paths also record on this global histogram.
+        var baselineCount = durationCollector.GetMeasurementSnapshot().Count;
+
         var _ = await retriever.RetrieveAsync("what is RAG?",
             cancellationToken: TestContext.Current.CancellationToken);
 
         var measurements = durationCollector.GetMeasurementSnapshot();
-        Assert.Single(measurements);
-        Assert.True(measurements[0].Value >= 0);
+        // At least one new measurement recorded by this test. Using >= to tolerate parallel
+        // test classes that also call RetrieveAsync concurrently (process-global Meter).
+        Assert.True(measurements.Count > baselineCount,
+            $"expected new measurement after RetrieveAsync (baseline={baselineCount}, actual={measurements.Count})");
+        // All durations (including ours) are stopwatch elapsed values, so non-negative.
+        Assert.All(measurements, m => Assert.True(m.Value >= 0));
     }
 }

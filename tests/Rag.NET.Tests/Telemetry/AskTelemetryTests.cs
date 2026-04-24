@@ -10,6 +10,7 @@ using Xunit;
 
 namespace Rag.NET.Tests.Telemetry;
 
+[Collection("Telemetry")]
 public class AskTelemetryTests
 {
     private static (ConcurrentBag<Activity> activities, ActivityListener listener) CreateListener()
@@ -42,10 +43,18 @@ public class AskTelemetryTests
         var engine = new ChatAnswerEngine(chatClient);
         var sources = Array.Empty<SearchResult>();
 
+        // Capture the cutoff BEFORE the act so we can distinguish our span from any
+        // concurrently-emitted activity on the same global ActivitySource.
+        // Small backward tolerance because Activity.StartTimeUtc is set slightly before
+        // this line returns (stopwatch timing + clock resolution on Windows).
+        var cutoff = DateTime.UtcNow.AddMilliseconds(-50);
+
         await engine.AskAsync("Where is the Eiffel Tower?", sources,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        var span = activities.FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.ask", StringComparison.Ordinal));
+        var span = activities
+            .Where(a => a.StartTimeUtc >= cutoff)
+            .FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.ask", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.Equal("0", span.GetTagItem("source.count")?.ToString());
         Assert.Equal(SynthesisStrategy.Default.ToString(), span.GetTagItem("synthesis.strategy"));
@@ -68,13 +77,17 @@ public class AskTelemetryTests
         var engine = new ChatAnswerEngine(chatClient);
         var sources = Array.Empty<SearchResult>();
 
+        var cutoff = DateTime.UtcNow.AddMilliseconds(-50);
+
         await foreach (var update in engine.AskStreamingAsync("Where is the Eiffel Tower?", sources,
             cancellationToken: TestContext.Current.CancellationToken))
         {
             // consume the stream fully so the span is stopped
         }
 
-        var span = activities.FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.ask", StringComparison.Ordinal));
+        var span = activities
+            .Where(a => a.StartTimeUtc >= cutoff)
+            .FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.ask", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.Equal("0", span.GetTagItem("source.count")?.ToString());
         Assert.Equal(SynthesisStrategy.Default.ToString(), span.GetTagItem("synthesis.strategy"));
