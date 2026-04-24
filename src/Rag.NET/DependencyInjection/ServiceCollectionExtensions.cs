@@ -8,6 +8,7 @@ using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
+using Rag.NET.QueryTechniques.ContextualCompression;
 using Rag.NET.Retrieval;
 using Rag.NET.Search;
 
@@ -48,7 +49,8 @@ public static class ServiceCollectionExtensions
             if (answerEngine is null && chatClient is not null)
             {
                 var conversationMemory = sp.GetService<IConversationMemory>();
-                answerEngine = new ChatAnswerEngine(chatClient, conversationMemory);
+                var compressor = sp.GetService<IContextualCompressor>();
+                answerEngine = new ChatAnswerEngine(chatClient, conversationMemory, compressor);
             }
             return new RagPipeline(r, i, answerEngine);
         });

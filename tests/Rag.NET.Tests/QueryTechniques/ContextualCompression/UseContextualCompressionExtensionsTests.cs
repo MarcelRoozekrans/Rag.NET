@@ -1,8 +1,11 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
+using Rag.NET.Models;
+using Rag.NET.Models.Options;
 using Rag.NET.QueryTechniques;
 using Rag.NET.QueryTechniques.ContextualCompression;
 using Xunit;
@@ -86,5 +89,51 @@ public class UseContextualCompressionExtensionsTests
 
         using var sp = services.BuildServiceProvider();
         Assert.IsType<ExtractiveCompressor>(sp.GetRequiredService<IContextualCompressor>());
+    }
+
+    [Fact]
+    public async Task UseContextualCompression_AskAsync_InvokesCompressor()
+    {
+        // Build a full DI container (AddRagNet) with required dependencies stubbed so
+        // the default ChatAnswerEngine factory in ServiceCollectionExtensions runs and
+        // resolves IContextualCompressor from DI.
+        var services = new ServiceCollection();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var chatClient = Substitute.For<IChatClient>();
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 0.5 },
+            });
+        chatClient.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "answer")));
+
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(embedder);
+        services.AddSingleton(chatClient);
+
+        services.AddRagNet(); // registers the default pipeline
+        BuilderOn(services).UseContextualCompression(o => o.KeepTopSentences = 1);
+
+        // Replace the registered compressor with a spy so we can verify it was invoked.
+        var spyCompressor = Substitute.For<IContextualCompressor>();
+#pragma warning disable EPS06
+        spyCompressor.CompressAsync(Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ci => new ValueTask<IReadOnlyList<SearchResult>>(ci.Arg<IReadOnlyList<SearchResult>>()));
+#pragma warning restore EPS06
+        services.RemoveAll<IContextualCompressor>();
+        services.AddSingleton(spyCompressor);
+
+        using var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        await pipeline.AskAsync("q", new RagOptions(), TestContext.Current.CancellationToken);
+
+        await spyCompressor.Received(1).CompressAsync(
+            Arg.Any<IReadOnlyList<SearchResult>>(), "q", Arg.Any<CancellationToken>());
     }
 }

@@ -5,6 +5,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Pipeline;
+using Rag.NET.QueryTechniques.ContextualCompression;
 
 namespace Rag.NET.Security;
 
@@ -98,7 +99,8 @@ public static class RagBuilderExtensions
             builder.Services.AddSingleton<ChatAnswerEngine>(sp =>
                 new ChatAnswerEngine(
                     sp.GetRequiredService<IChatClient>(),
-                    sp.GetService<IConversationMemory>()));
+                    sp.GetService<IConversationMemory>(),
+                    sp.GetService<IContextualCompressor>()));
         }
 
         // Register decorator as concrete type, then replace IAnswerEngine with it.
@@ -205,7 +207,8 @@ public static class RagBuilderExtensions
             builder.Services.AddSingleton<ChatAnswerEngine>(sp =>
                 new ChatAnswerEngine(
                     sp.GetRequiredService<IChatClient>(),
-                    sp.GetService<IConversationMemory>()));
+                    sp.GetService<IConversationMemory>(),
+                    sp.GetService<IContextualCompressor>()));
         }
     }
 }
