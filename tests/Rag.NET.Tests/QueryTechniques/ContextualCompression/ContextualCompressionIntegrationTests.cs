@@ -6,15 +6,15 @@ using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.QueryTechniques;
+using Rag.NET.QueryTechniques.ContextualCompression;
 using Xunit;
 
 namespace Rag.NET.Tests.QueryTechniques.ContextualCompression;
 
 /// <summary>
-/// End-to-end integration test: verifies that when <c>UseContextualCompression</c> is
-/// configured with the default <see cref="Rag.NET.QueryTechniques.ContextualCompression.ExtractiveCompressor"/>,
-/// the compressed (sentence-filtered) text actually reaches the LLM prompt — not merely that
-/// the compressor is invoked.
+/// End-to-end integration tests for <c>UseContextualCompression</c>: verifies that the
+/// compressor's output actually reaches the LLM prompt — not merely that the compressor
+/// is invoked. Covers both extractive and abstractive strategies.
 /// </summary>
 public class ContextualCompressionIntegrationTests
 {
@@ -23,8 +23,8 @@ public class ContextualCompressionIntegrationTests
     [Fact]
     public async Task AskAsync_WithExtractiveCompression_LlmPromptContainsOnlyRelevantSentences()
     {
-        var capturedMessages = new List<ChatMessage>();
-        var chat = CreateCapturingChatClient(capturedMessages);
+        var capturedMessages = new List<List<ChatMessage>>();
+        var chat = CreateCapturingChatClient(capturedMessages, assistantText: "answer");
         var embedder = CreateDeterministicEmbedder();
         var vectorStore = CreateVectorStoreReturning(MixedChunkText);
 
@@ -44,21 +44,58 @@ public class ContextualCompressionIntegrationTests
         // Assert: the user-role prompt delivered to the LLM should contain the cats
         // sentence but not the rockets sentence — proving the extractive compressor's
         // output actually replaced the raw chunk text en route to the chat client.
-        var userMessages = capturedMessages.Where(m => m.Role == ChatRole.User).ToList();
+        Assert.NotEmpty(capturedMessages);
+        var userMessages = capturedMessages.SelectMany(m => m).Where(m => m.Role == ChatRole.User).ToList();
         Assert.NotEmpty(userMessages);
         var combined = string.Join(" ", userMessages.Select(m => m.Text ?? string.Empty));
         Assert.Contains("Cats", combined, StringComparison.Ordinal);
         Assert.DoesNotContain("Rockets", combined, StringComparison.Ordinal);
     }
 
-    private static IChatClient CreateCapturingChatClient(List<ChatMessage> capturedMessages)
+    [Fact]
+    public async Task AskAsync_WithAbstractiveCompression_LlmPromptContainsCompressedOutput()
+    {
+        // Same IChatClient handles both (a) the per-chunk compression call and
+        // (b) the final answer call. We return "CATS_SUMMARY" for everything and then
+        // assert the FINAL capture contains it in the user message — proving the
+        // abstractive compressor's output reached the answer-generation prompt.
+        var capturedMessages = new List<List<ChatMessage>>();
+        var chat = CreateCapturingChatClient(capturedMessages, assistantText: "CATS_SUMMARY");
+        var embedder = CreateDeterministicEmbedder();
+        var vectorStore = CreateVectorStoreReturning(MixedChunkText);
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(chat);
+        services.AddSingleton(embedder);
+        services.AddSingleton(vectorStore);
+        services.AddRagNet(rag => rag.UseContextualCompression(o =>
+        {
+            o.Strategy = ContextualCompressionStrategy.Abstractive;
+            o.MaxTokensPerChunk = 50;
+            o.KeepTopSentences = null;
+        }));
+
+        await using var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        await pipeline.AskAsync("tell me about cats", options: null, TestContext.Current.CancellationToken);
+
+        // Two LLM calls expected: one for abstractive compression, one for the final answer.
+        Assert.Equal(2, capturedMessages.Count);
+        // The FINAL call's user message contains "CATS_SUMMARY" (the compressed output).
+        var finalUserMessages = capturedMessages[^1].Where(m => m.Role == ChatRole.User).ToList();
+        Assert.Contains(finalUserMessages, m => (m.Text ?? string.Empty).Contains("CATS_SUMMARY", StringComparison.Ordinal));
+    }
+
+    private static IChatClient CreateCapturingChatClient(List<List<ChatMessage>> capturedMessages, string assistantText)
     {
         var chat = Substitute.For<IChatClient>();
         chat.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
-                capturedMessages.AddRange(ci.Arg<IList<ChatMessage>>());
-                return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "answer")));
+                capturedMessages.Add(ci.Arg<IList<ChatMessage>>().ToList());
+                return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, assistantText)));
             });
         return chat;
     }

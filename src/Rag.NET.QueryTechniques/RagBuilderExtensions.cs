@@ -103,17 +103,19 @@ public static class RagBuilderExtensions
         if (opts.KeepTopSentences is null && opts.MaxTokensPerChunk is null)
         {
             throw new InvalidOperationException(
-                "ContextualCompressionOptions: at least one of KeepTopSentences or MaxTokensPerChunk must be set.");
+                $"{nameof(ContextualCompressionOptions)}: at least one of " +
+                $"{nameof(ContextualCompressionOptions.KeepTopSentences)} or " +
+                $"{nameof(ContextualCompressionOptions.MaxTokensPerChunk)} must be set.");
         }
         if (opts.KeepTopSentences is { } n && n <= 0)
         {
             throw new InvalidOperationException(
-                "ContextualCompressionOptions.KeepTopSentences must be positive.");
+                $"{nameof(ContextualCompressionOptions)}.{nameof(ContextualCompressionOptions.KeepTopSentences)} must be positive.");
         }
         if (opts.MaxTokensPerChunk is { } m && m <= 0)
         {
             throw new InvalidOperationException(
-                "ContextualCompressionOptions.MaxTokensPerChunk must be positive.");
+                $"{nameof(ContextualCompressionOptions)}.{nameof(ContextualCompressionOptions.MaxTokensPerChunk)} must be positive.");
         }
     }
 }

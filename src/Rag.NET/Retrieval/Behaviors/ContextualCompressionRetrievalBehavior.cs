@@ -10,6 +10,13 @@ namespace Rag.NET.Retrieval.Behaviors;
 /// compression on the pipeline output so plain <c>RetrieveAsync</c> callers see
 /// compressed text. Opt-in via <c>UseContextualCompressionInRetrieval()</c>.
 /// </summary>
+/// <remarks>
+/// Registered as a <c>[Singleton]</c> for DI discoverability but only executes when
+/// inserted into <see cref="DependencyInjection.RetrievalPipelineBuilder"/> by the opt-in extension.
+/// Resolving this type directly without calling <c>UseContextualCompression()</c>
+/// first will throw at <c>[Inject]</c>-resolution time because <see cref="IContextualCompressor"/>
+/// is not registered.
+/// </remarks>
 [Singleton]
 public sealed class ContextualCompressionRetrievalBehavior : IRetrievalBehavior
 {

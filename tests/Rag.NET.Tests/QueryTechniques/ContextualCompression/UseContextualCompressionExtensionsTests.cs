@@ -216,5 +216,38 @@ public class UseContextualCompressionExtensionsTests
         Assert.NotNull(pipelineBuilder);
         var types = pipelineBuilder.GetBehaviorTypes();
         Assert.Contains(typeof(ContextualCompressionRetrievalBehavior), types);
+
+        // Strengthen: compression must sit BEFORE the retrieval guard so guards see compressed text.
+        var idxCompress = types.ToList().IndexOf(typeof(ContextualCompressionRetrievalBehavior));
+        var idxGuard = types.ToList().IndexOf(typeof(RetrievalGuardBehavior));
+        Assert.InRange(idxCompress, 0, idxGuard - 1);
+    }
+
+    [Fact]
+    public void UseContextualCompressionInRetrieval_WithoutAddRagNet_Throws()
+    {
+        var services = BaseServices();
+        var builder = BuilderOn(services);
+        builder.UseContextualCompression(); // IContextualCompressor registered, but no AddRagNet
+        Assert.Throws<InvalidOperationException>(() => builder.UseContextualCompressionInRetrieval());
+    }
+
+    [Fact]
+    public void UseContextualCompressionInRetrieval_CalledTwice_IsIdempotent()
+    {
+        var services = BaseServices();
+        services.AddRagNet();
+        var builder = BuilderOn(services);
+        builder.UseContextualCompression();
+
+        builder.UseContextualCompressionInRetrieval();
+        builder.UseContextualCompressionInRetrieval(); // second call
+
+        var pipelineBuilder = services
+            .First(d => d.ServiceType == typeof(RetrievalPipelineBuilder))
+            .ImplementationInstance as RetrievalPipelineBuilder;
+        Assert.NotNull(pipelineBuilder);
+        var types = pipelineBuilder.GetBehaviorTypes();
+        Assert.Equal(1, types.Count(t => t == typeof(ContextualCompressionRetrievalBehavior)));
     }
 }

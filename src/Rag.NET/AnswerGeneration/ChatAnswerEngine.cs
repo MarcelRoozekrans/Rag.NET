@@ -74,6 +74,7 @@ public sealed class ChatAnswerEngine(
 
         sources = await MaybeCompressAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
 
+        // Emit post-compression sources so consumers see what the model actually saw.
         yield return new RagStreamingUpdate { Sources = sources };
 
         var (messages, chatOptions) = await BuildMessagesAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);

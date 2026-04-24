@@ -34,6 +34,13 @@ public static class RagBuilderExtensions
                 "UseContextualCompressionInRetrieval requires AddRagNet to be called first so that " +
                 "RetrievalPipelineBuilder is registered in DI.");
 
+        // Idempotency guard: avoid inserting the behavior twice when the extension is called
+        // multiple times (e.g., from layered composition roots).
+        if (pipelineBuilder.GetBehaviorTypes().Contains(typeof(ContextualCompressionRetrievalBehavior)))
+        {
+            return builder;
+        }
+
         pipelineBuilder.Add<ContextualCompressionRetrievalBehavior>(before: typeof(RetrievalGuardBehavior));
 
         return builder;
