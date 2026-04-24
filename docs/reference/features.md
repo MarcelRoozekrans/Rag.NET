@@ -745,9 +745,9 @@ Fixed-size chunks with configurable token overlap between adjacent chunks. The s
 ## Retrieval Techniques
 
 ### Contextual Compression
-**Package:** `Rag.NET` (core)
+**Package:** `Rag.NET.QueryTechniques`
 
-Post-retrieval step that compresses each retrieved chunk to only the sentences most relevant to the query, using a lightweight LLM call (or extractive approach with embedding similarity). The compressed chunk is passed to the answer engine instead of the full chunk, reducing prompt tokens without reducing relevance.
+Post-retrieval step that compresses each retrieved chunk to only the content most relevant to the query. Two strategies ship: **extractive** (embedding similarity, no LLM) and **abstractive** (per-chunk parallel LLM rewrite). Stopping criteria are either `KeepTopSentences` (top-N, default 3) or `MaxTokensPerChunk` (token budget via `cl100k_base`). Output is **non-destructive**: compressed text lives on `SearchResult.CompressedText`, the original `Chunk.Text` is preserved. Register with `builder.UseContextualCompression(opts => ...)` (default: answer-engine path) or additionally `builder.UseContextualCompressionInRetrieval()` to also compress retrieval-facing results. Skip per call with `RagOptions.SkipCompression = true`.
 
 **Why:** Retrieved chunks often contain boilerplate or tangential sentences that waste context window space and dilute the signal for the LLM. Compression can halve token usage with minimal faithfulness loss.
 
@@ -1028,7 +1028,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Multi-Index Federation | Medium | `IVectorStore` composition |
 | [ ] | PDF Table Extraction | Medium | PdfPig geometry |
 | [ ] | OCR for Scanned PDFs | Medium | Tesseract / Azure Doc Intelligence |
-| [ ] | Contextual Compression | Medium | `IChatClient` or embeddings |
+| [x] | Contextual Compression | Medium | `IChatClient` or embeddings |
 | [x] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
 | [ ] | Proposition Extraction Chunking | Medium | `IChatClient` |
 | [ ] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core / Service Bus |
