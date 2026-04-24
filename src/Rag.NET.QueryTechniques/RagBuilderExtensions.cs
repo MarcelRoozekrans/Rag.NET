@@ -1,8 +1,11 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.HyDE;
 using Rag.NET.Models.Options;
 using Rag.NET.MultiQuery;
+using Rag.NET.QueryTechniques.ContextualCompression;
 
 namespace Rag.NET.QueryTechniques;
 
@@ -49,5 +52,68 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<IHypotheticalDocumentGenerator, LlmHypotheticalDocumentGenerator>();
         return builder;
+    }
+
+    /// <summary>
+    /// Registers an <see cref="IContextualCompressor"/> that <c>ChatAnswerEngine</c>
+    /// invokes before building the LLM prompt. Choose between extractive (embedding-similarity,
+    /// no LLM) or abstractive (per-chunk parallel LLM call) compression via
+    /// <see cref="ContextualCompressionOptions.Strategy"/>.
+    /// </summary>
+    /// <remarks>
+    /// Extractive mode requires an <c>IEmbeddingGenerator&lt;string, Embedding&lt;float&gt;&gt;</c> registered in DI.
+    /// Abstractive mode requires an <c>IChatClient</c>.
+    /// Per-call opt-out: set <c>RagOptions.SkipCompression = true</c>.
+    /// </remarks>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="configure">Optional delegate to configure <see cref="ContextualCompressionOptions"/>.</param>
+    public static TBuilder UseContextualCompression<TBuilder>(
+        this TBuilder builder,
+        Action<ContextualCompressionOptions>? configure = null)
+        where TBuilder : IRagBuilder
+    {
+        var options = new ContextualCompressionOptions();
+        configure?.Invoke(options);
+        ValidateContextualCompressionOptions(options);
+
+        builder.Services.AddSingleton(options);
+
+        if (options.Strategy == ContextualCompressionStrategy.Extractive)
+        {
+            builder.Services.AddSingleton<IContextualCompressor>(sp =>
+                new ExtractiveCompressor(
+                    sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
+                    sp.GetRequiredService<ContextualCompressionOptions>(),
+                    sp.GetService<ILogger<ExtractiveCompressor>>()));
+        }
+        else
+        {
+            builder.Services.AddSingleton<IContextualCompressor>(sp =>
+                new LlmAbstractiveCompressor(
+                    sp.GetRequiredService<IChatClient>(),
+                    sp.GetRequiredService<ContextualCompressionOptions>(),
+                    sp.GetService<ILogger<LlmAbstractiveCompressor>>()));
+        }
+
+        return builder;
+    }
+
+    private static void ValidateContextualCompressionOptions(ContextualCompressionOptions opts)
+    {
+        if (opts.KeepTopSentences is null && opts.MaxTokensPerChunk is null)
+        {
+            throw new InvalidOperationException(
+                "ContextualCompressionOptions: at least one of KeepTopSentences or MaxTokensPerChunk must be set.");
+        }
+        if (opts.KeepTopSentences is { } n && n <= 0)
+        {
+            throw new InvalidOperationException(
+                "ContextualCompressionOptions.KeepTopSentences must be positive.");
+        }
+        if (opts.MaxTokensPerChunk is { } m && m <= 0)
+        {
+            throw new InvalidOperationException(
+                "ContextualCompressionOptions.MaxTokensPerChunk must be positive.");
+        }
     }
 }
