@@ -4,6 +4,7 @@ using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.QueryTechniques.ContextualCompression;
 using Rag.NET.Telemetry;
 
 namespace Rag.NET.AnswerGeneration;
@@ -11,7 +12,10 @@ namespace Rag.NET.AnswerGeneration;
 /// <summary>
 /// Generates answers by building a context prompt from search results and calling an <see cref="IChatClient"/>.
 /// </summary>
-public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory? memory = null) : IAnswerEngine
+public sealed class ChatAnswerEngine(
+    IChatClient chatClient,
+    IConversationMemory? memory = null,
+    IContextualCompressor? compressor = null) : IAnswerEngine
 {
     private const string DefaultSystemPrompt =
         "Answer the user's question based only on the provided context. " +
@@ -29,6 +33,8 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.ask");
         activity?.SetTag("source.count", sources.Count);
         activity?.SetTag("synthesis.strategy", opts.SynthesisStrategy.ToString());
+
+        sources = await MaybeCompressAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
 
         var (messages, chatOptions) = await BuildMessagesAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
 
@@ -65,6 +71,8 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.ask");
         activity?.SetTag("source.count", sources.Count);
         activity?.SetTag("synthesis.strategy", opts.SynthesisStrategy.ToString());
+
+        sources = await MaybeCompressAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
 
         yield return new RagStreamingUpdate { Sources = sources };
 
@@ -116,6 +124,21 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
         }
     }
 
+    /// <summary>Applies contextual compression when configured and not skipped for this call.</summary>
+    private async ValueTask<IReadOnlyList<SearchResult>> MaybeCompressAsync(
+        IReadOnlyList<SearchResult> sources,
+        string query,
+        RagOptions opts,
+        CancellationToken cancellationToken)
+    {
+        if (compressor is null || opts.SkipCompression)
+        {
+            return sources;
+        }
+
+        return await compressor.CompressAsync(sources, query, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<(List<ChatMessage> Messages, ChatOptions Options)> BuildMessagesAsync(
         IReadOnlyList<SearchResult> sources,
         string query,
@@ -123,7 +146,7 @@ public sealed class ChatAnswerEngine(IChatClient chatClient, IConversationMemory
         CancellationToken cancellationToken)
     {
         var context = string.Join("\n\n---\n\n",
-            sources.Select((s, i) => $"[Source {i + 1}]\n{s.Chunk.Text}"));
+            sources.Select((s, i) => $"[Source {i + 1}]\n{s.CompressedText ?? s.Chunk.Text}"));
 
         var systemPrompt = opts.SystemPrompt ?? DefaultSystemPrompt;
 
