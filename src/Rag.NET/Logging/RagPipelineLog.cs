@@ -66,4 +66,7 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "CRAG LLM relevance scoring failed for query '{Query}', falling back to heuristic scoring")]
     internal static partial void CragLlmScoringFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Contextual compression failed for query '{Query}'; returning uncompressed results.")]
+    internal static partial void ContextualCompressionFailed(ILogger logger, string query, Exception exception);
 }

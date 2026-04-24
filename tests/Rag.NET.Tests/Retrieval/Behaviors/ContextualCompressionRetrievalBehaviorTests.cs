@@ -28,7 +28,7 @@ public class ContextualCompressionRetrievalBehaviorTests
             .Returns(_ => new ValueTask<IReadOnlyList<SearchResult>>(compressed));
 #pragma warning restore EPS06
 
-        var sut = new ContextualCompressionRetrievalBehavior(compressor);
+        var sut = new ContextualCompressionRetrievalBehavior { Compressor = compressor };
         var ctx = new RetrievalContext { Query = "q", Options = new RetrievalOptions() };
 
         var result = await sut.HandleAsync(ctx, ct,
@@ -36,5 +36,32 @@ public class ContextualCompressionRetrievalBehaviorTests
 
         Assert.Equal("compressed", result[0].CompressedText);
         await compressor.Received(1).CompressAsync(pipelineResults, "q", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleAsync_CompressorThrows_ReturnsUncompressed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var pipelineResults = new List<SearchResult>
+        {
+            new() { Chunk = new TextChunk { Text = "t", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 0.5 },
+        };
+        var compressor = Substitute.For<IContextualCompressor>();
+#pragma warning disable EPS06 // ValueTask struct copy — intentional test double setup via NSubstitute
+        compressor.CompressAsync(Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ValueTask<IReadOnlyList<SearchResult>>(
+                Task.FromException<IReadOnlyList<SearchResult>>(new InvalidOperationException("compressor down"))));
+#pragma warning restore EPS06
+
+        var sut = new ContextualCompressionRetrievalBehavior { Compressor = compressor };
+        var ctx = new RetrievalContext { Query = "q", Options = new RetrievalOptions() };
+
+        var result = await sut.HandleAsync(ctx, ct,
+            (_, _) => ValueTask.FromResult<IReadOnlyList<SearchResult>>(pipelineResults));
+
+        // Uncompressed upstream results returned; CompressedText stays null.
+        Assert.Single(result);
+        Assert.Null(result[0].CompressedText);
+        Assert.Equal("t", result[0].Chunk.Text);
     }
 }
