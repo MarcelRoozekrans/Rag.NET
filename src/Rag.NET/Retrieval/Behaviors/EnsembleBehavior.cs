@@ -33,10 +33,19 @@ public sealed class EnsembleBehavior : IRetrievalBehavior
             MetadataFilter = opts.MetadataFilter,
         };
 
-        var textToEmbed = opts.EmbeddingTextOverride ?? ctx.Query;
-        var queryEmbeddings = await Embedder.GenerateAsync([textToEmbed], cancellationToken: ct).ConfigureAwait(false);
+        ReadOnlyMemory<float> queryVector;
+        if (opts.EmbeddingOverride is { IsEmpty: false } over)
+        {
+            queryVector = over;
+        }
+        else
+        {
+            var textToEmbed = opts.EmbeddingTextOverride ?? ctx.Query;
+            var queryEmbeddings = await Embedder.GenerateAsync([textToEmbed], cancellationToken: ct).ConfigureAwait(false);
+            queryVector = queryEmbeddings[0].Vector;
+        }
 
-        var denseTask = VectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, ct);
+        var denseTask = VectorStore.SearchAsync(queryVector, searchOptions, ct);
 
         IReadOnlyList<(TextChunk chunk, double score)> bm25Hits;
         try

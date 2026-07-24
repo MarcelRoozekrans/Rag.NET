@@ -157,4 +157,14 @@ public sealed record RetrievalOptions
     /// to <see cref="Rag.NET.Retrieval.VectorStoreRetriever"/> while preserving the original query for BM25.
     /// </summary>
     internal string? EmbeddingTextOverride { get; init; }
+
+    /// <summary>
+    /// Internal override for the query embedding itself.
+    /// Set by HyDE v2 multi-hypothesis averaging; consumed by the vector-store and ensemble
+    /// (dense arm) behaviors in preference to embedding any text
+    /// (takes precedence over <see cref="EmbeddingTextOverride"/>).
+    /// An empty vector means absent — same contract as <c>TextChunk.Embedding</c>.
+    /// The embedding cache behavior passes through when this is set (no text key to cache under).
+    /// </summary>
+    internal ReadOnlyMemory<float>? EmbeddingOverride { get; init; }
 }
