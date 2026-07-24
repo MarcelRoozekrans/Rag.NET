@@ -43,4 +43,14 @@ public class UseHydeTests
             .BuildServiceProvider();
         Assert.Equal("custom", sp.GetRequiredService<HydeOptions>().PromptTemplate);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-3)]
+    public void UseHyde_InvalidHypothesisCount_Throws(int count)
+    {
+        var services = BaseServices();
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => services.AddRagNet(rag => rag.UseHyde(o => o.HypothesisCount = count)));
+    }
 }
