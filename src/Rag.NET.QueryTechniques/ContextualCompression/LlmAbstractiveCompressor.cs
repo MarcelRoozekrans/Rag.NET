@@ -79,7 +79,8 @@ public sealed partial class LlmAbstractiveCompressor(
 
         // Per-call randomized delimiter suffix — defends against prompt-injection attempts
         // that might embed literal </content> or </query> closing tags to escape the fence.
-        var delim = Guid.CreateVersion7().ToString("N")[..8];
+        // Must be a v4 GUID: v7's leading hex chars are timestamp-derived and predictable.
+        var delim = Guid.NewGuid().ToString("N")[..8];
 
         return new List<ChatMessage>
         {
