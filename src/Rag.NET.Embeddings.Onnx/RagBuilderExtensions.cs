@@ -44,4 +44,45 @@ public static class RagBuilderExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Registers <see cref="OnnxSpladeEncoder"/> as the singleton
+    /// <see cref="ISparseEmbeddingGenerator"/>, producing SPLADE sparse embeddings from a
+    /// local ONNX model — consumed by sparse-capable vector stores
+    /// (<see cref="ISparseSearchable"/>) during ingestion and by the ensemble sparse arm
+    /// during retrieval.
+    /// </summary>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="configure">
+    /// Configures the <see cref="OnnxSpladeOptions"/>; required, and must set
+    /// <see cref="OnnxSpladeOptions.ModelPath"/> and
+    /// <see cref="OnnxSpladeOptions.TokenizerVocabPath"/> to non-empty paths.
+    /// </param>
+    /// <exception cref="ArgumentNullException">When <paramref name="configure"/> is null.</exception>
+    /// <exception cref="ArgumentException">
+    /// At registration, when <see cref="OnnxSpladeOptions.ModelPath"/> or
+    /// <see cref="OnnxSpladeOptions.TokenizerVocabPath"/> is empty. File EXISTENCE is checked
+    /// at resolution time by the <see cref="OnnxSpladeEncoder"/> constructor
+    /// (<see cref="FileNotFoundException"/>) — the same timing as
+    /// <see cref="UseOnnxTokenEmbeddings"/>.
+    /// </exception>
+    public static TBuilder UseSpladeEncoder<TBuilder>(this TBuilder builder, Action<OnnxSpladeOptions> configure)
+        where TBuilder : IRagBuilder
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var options = new OnnxSpladeOptions { ModelPath = "", TokenizerVocabPath = "" };
+        configure(options);
+
+        if (string.IsNullOrWhiteSpace(options.ModelPath))
+            throw new ArgumentException("OnnxSpladeOptions.ModelPath must be a non-empty path.", nameof(configure));
+
+        if (string.IsNullOrWhiteSpace(options.TokenizerVocabPath))
+            throw new ArgumentException("OnnxSpladeOptions.TokenizerVocabPath must be a non-empty path.", nameof(configure));
+
+        builder.Services.AddSingleton(options);
+        builder.Services.AddSingleton<ISparseEmbeddingGenerator, OnnxSpladeEncoder>();
+
+        return builder;
+    }
 }
