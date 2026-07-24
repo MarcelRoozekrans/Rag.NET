@@ -7,6 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" Version="0.*" />
+    <PackageReference Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
   </ItemGroup>
 
