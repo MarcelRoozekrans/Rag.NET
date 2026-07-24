@@ -28,6 +28,8 @@ public sealed partial class PropositionChunkingStrategy(
 
     private readonly ILogger<PropositionChunkingStrategy> _logger = logger ?? NullLogger<PropositionChunkingStrategy>.Instance;
 
+    // chunkingOptions (MaxChunkSize/Overlap) is not used — passage size is governed by
+    // PropositionChunkingOptions.MaxPassageTokens. The parameter is required by the interface.
     public async IAsyncEnumerable<TextChunk> ChunkDocumentAsync(
         IAsyncEnumerable<DocumentSection> sections,
         ChunkingOptions chunkingOptions,
