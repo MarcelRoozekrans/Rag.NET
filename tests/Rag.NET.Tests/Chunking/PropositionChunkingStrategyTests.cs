@@ -179,6 +179,91 @@ public class PropositionChunkingStrategyTests
     }
 
     [Fact]
+    public async Task ChunkAsync_SingleSectionWrapper_ProducesPropositions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = MakeSut(ChatReturning("""["Fact one.","Fact two."]"""));
+
+        var chunks = await sut.ChunkAsync(
+            Section("Fact one is stated here. Fact two is stated there."), new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.Equal(2, chunks.Count);
+        Assert.Equal("Fact one.", chunks[0].Text);
+        Assert.All(chunks, c => Assert.Equal("proposition", c.Metadata["chunk.kind"]));
+    }
+
+    [Fact]
+    public async Task AllWhitespacePropositions_FallBackToPassageChunk()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string text = "Some passage text.";
+        var sut = MakeSut(ChatReturning("""["", "   "]"""));
+
+        var chunks = await sut.ChunkDocumentAsync(
+            ToAsync([Section(text)]), new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.Single(chunks);
+        Assert.Equal(text, chunks[0].Text);
+        Assert.Equal("passage", chunks[0].Metadata["chunk.kind"]);
+    }
+
+    [Fact]
+    public async Task EmptyResponse_FallsBackToPassageChunk()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string text = "Some passage text.";
+        var sut = MakeSut(ChatReturning(""));
+
+        var chunks = await sut.ChunkDocumentAsync(
+            ToAsync([Section(text)]), new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.Single(chunks);
+        Assert.Equal(text, chunks[0].Text);
+        Assert.Equal("passage", chunks[0].Metadata["chunk.kind"]);
+    }
+
+    [Fact]
+    public async Task FencedJsonResponse_ParsesPropositions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = MakeSut(ChatReturning("```json\n[\"Fact one.\",\"Fact two.\"]\n```"));
+
+        var chunks = await sut.ChunkDocumentAsync(
+            ToAsync([Section("Passage.")]), new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.Equal(2, chunks.Count);
+        Assert.Equal("Fact one.", chunks[0].Text);
+        Assert.Equal("Fact two.", chunks[1].Text);
+        Assert.All(chunks, c => Assert.Equal("proposition", c.Metadata["chunk.kind"]));
+    }
+
+    [Fact]
+    public async Task PassageText_IsSentInsideFencedUserMessage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string text = "The mitochondria is the powerhouse of the cell.";
+        List<ChatMessage>? captured = null;
+        var chat = Substitute.For<IChatClient>();
+        chat.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                captured = ci.Arg<IEnumerable<ChatMessage>>().ToList();
+                return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, """["Fact."]""")));
+            });
+        var sut = MakeSut(chat);
+
+        await sut.ChunkDocumentAsync(
+            ToAsync([Section(text)]), new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.NotNull(captured);
+        Assert.Equal(2, captured.Count);
+        Assert.Equal(ChatRole.System, captured[0].Role);
+        Assert.Equal(ChatRole.User, captured[1].Role);
+        Assert.Contains(text, captured[1].Text, StringComparison.Ordinal);
+        Assert.Contains("<content-", captured[1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task MultiByteContent_PassageWindowsPartitionOriginalTextExactly()
     {
         var ct = TestContext.Current.CancellationToken;
