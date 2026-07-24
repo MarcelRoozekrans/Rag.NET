@@ -2,6 +2,9 @@
 // PollingIngestionOptions can reference it without a core dependency. The namespace is kept
 // as Rag.NET.DataProviders — the consuming APIs (IngestFromProviderAsync, the polling
 // trigger) live there, and keeping it avoids a source-breaking change.
+// NOTE for the first NuGet release: this move is binary-breaking for assemblies compiled
+// against the old location; add [assembly: TypeForwardedTo(typeof(CleanupMode))] to Rag.NET
+// at that point if pre-release binaries ever circulated.
 namespace Rag.NET.DataProviders;
 
 /// <summary>Controls whether disappeared documents are deleted from the vector store.</summary>

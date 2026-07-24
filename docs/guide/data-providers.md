@@ -520,6 +520,7 @@ services.AddRagNet(rag => rag
 
 - `IIngestionJobQueue` → `ChannelIngestionJobQueue`, a bounded channel with `BoundedChannelFullMode.Wait`: a full queue applies backpressure (`EnqueueAsync` waits for space); jobs are never dropped.
 - `IngestionJobProcessor`, a `BackgroundService` that drains the queue into `IIngestor.IngestAsync`. A job that fails — failure result or thrown exception — is logged as a warning with its document id and skipped; the processor never crashes. Host shutdown exits the loop cleanly.
+- **Durability:** the queue is in-memory only — jobs still queued (and the one in flight) are lost on host stop or crash. Producers that need durable delivery should retry on missing acknowledgement (safe: ingestion upserts by `DocumentId`) or wait for the planned Service Bus trigger.
 
 `IngestionJob` carries `byte[] Content` rather than a `Stream` because jobs outlive the enqueue call — e.g. an HTTP request body is long disposed by the time the processor runs. The host must support hosted services (`IHost` / ASP.NET Core; `AddHostedService` is used under the covers).
 
