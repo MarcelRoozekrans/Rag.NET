@@ -17,7 +17,7 @@ Generates a hypothetical document that _would_ answer the query using the LLM, t
 
 **When to use:** Short queries against long technical documents. Expect improved recall in asymmetric retrieval.
 
-**Cost:** `HypothesisCount` LLM calls (default 3, at most 4 in parallel) plus `HypothesisCount` embedding inputs in one batch call per retrieval. Set `HypothesisCount = 1` for the classic single-call behavior. Dominated by LLM latency, not pipeline overhead.
+**Cost:** `HypothesisCount` LLM calls (default 3, at most 4 in parallel) plus `HypothesisCount` embedding inputs in one batch call per retrieval. Set `HypothesisCount = 1` to restore the single-LLM-call cost — note that the sampling temperature is still explicitly `HypothesisTemperature` (0.8) rather than the provider default. Dominated by LLM latency, not pipeline overhead.
 
 **Registration:**
 ```csharp
@@ -73,3 +73,5 @@ services.AddRagNet(rag => rag
     .UseMultiQueryRetrieval()
     .UseHyde());
 ```
+
+Costs multiply when combined: each of the `VariantCount + 1` query branches runs its own HyDE generation, for `(VariantCount + 1) x HypothesisCount` LLM calls per retrieval — **12 with both defaults** (`VariantCount = 3`, `HypothesisCount = 3`). Lower `HypothesisCount` (or `VariantCount`) if that call volume is a concern.

@@ -201,10 +201,16 @@ services.AddRagNet(b => b
 
 Notes:
 
-- **Cost:** each retrieval spends `n` LLM calls (bounded at 4 in parallel) plus `n` embedding inputs in one batch call, where `n = HypothesisCount`. Set `HypothesisCount = 1` to keep the original single-call behavior.
-- Individual hypothesis generations may fail; as long as one survives, retrieval proceeds with the survivors. If all fail, the pipeline logs a warning and falls back to embedding the original query.
+- **Cost:** each retrieval spends `n` LLM calls (bounded at 4 in parallel) plus `n` embedding inputs in one batch call, where `n = HypothesisCount`. Set `HypothesisCount = 1` to restore the single-LLM-call cost.
+- Individual hypothesis generations may fail; as long as one survives, retrieval proceeds with the survivors (logged at Debug, plus an Information entry when averaging has to be skipped). If all fail, the pipeline logs a warning and falls back to embedding the original query.
 - The averaged vector flows to dense search via an internal `RetrievalOptions.EmbeddingOverride`; the embedding cache is bypassed in this mode (there is no stable text key to cache under).
 - Averaging requires an `IEmbeddingGenerator` in DI (always present in a standard pipeline); without one, HyDE falls back to the single-document text path.
+
+> **Upgrading from single-hypothesis HyDE:**
+>
+> - `UseHyde()` now defaults to **3 hypotheses per query** — 3 LLM calls plus 1 embedding batch where it used to be a single LLM call. Set `HypothesisCount = 1` to restore the previous call volume.
+> - Hypothesis generation now always requests an explicit sampling temperature (`HypothesisTemperature`, default 0.8) — **including at `HypothesisCount = 1`**, where previously the provider's default temperature applied.
+> - Combining MultiQuery with HyDE multiplies costs: each of the `VariantCount + 1` query branches runs its own HyDE generation, i.e. `(VariantCount + 1) x HypothesisCount` LLM calls — **12 per query with both defaults**.
 
 ### How it works
 
