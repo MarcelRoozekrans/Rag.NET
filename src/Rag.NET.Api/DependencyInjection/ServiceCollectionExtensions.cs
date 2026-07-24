@@ -48,10 +48,21 @@ public static class ServiceCollectionExtensions
                 nameof(configure));
         }
 
+        // Guard the API-key exemption: an empty prefix would exempt EVERY route, and a
+        // trailing slash would break PathString.StartsWithSegments matching.
+        var routePrefix = options.RoutePrefix?.TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(routePrefix) || !routePrefix.StartsWith('/'))
+        {
+            throw new ArgumentException(
+                "WebhookOptions.RoutePrefix must be a non-empty path starting with '/' (e.g. \"/rag/webhooks\").",
+                nameof(configure));
+        }
+
+        options.RoutePrefix = routePrefix;
         services.AddSingleton(options);
         services.TryAddSingleton<IWebhookPayloadParser, GenericWebhookPayloadParser>();
         // Signature auth replaces the API key on the webhook route.
-        services.Configure<ApiKeyOptions>(o => o.ExemptPathPrefixes = [.. o.ExemptPathPrefixes, options.RoutePrefix]);
+        services.Configure<ApiKeyOptions>(o => o.ExemptPathPrefixes = [.. o.ExemptPathPrefixes, routePrefix]);
 
         return services;
     }

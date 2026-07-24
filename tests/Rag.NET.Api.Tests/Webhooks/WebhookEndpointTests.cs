@@ -235,6 +235,31 @@ public sealed class WebhookEndpointTests
     }
 
     [Fact]
+    public void AddRagNetWebhooks_EmptySecret_Throws()
+    {
+        var services = new ServiceCollection();
+
+        var ex = Assert.Throws<ArgumentException>(() => services.AddRagNetWebhooks(o => o.Secret = " "));
+        Assert.Contains("Secret", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("/")]
+    [InlineData("rag/webhooks")]
+    public void AddRagNetWebhooks_InvalidRoutePrefix_Throws(string prefix)
+    {
+        var services = new ServiceCollection();
+
+        var ex = Assert.Throws<ArgumentException>(() => services.AddRagNetWebhooks(o =>
+        {
+            o.Secret = Secret;
+            o.RoutePrefix = prefix;
+        }));
+        Assert.Contains("RoutePrefix", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task WebhookRoute_IsExemptFromApiKeyAuth_WhileOtherRoutesAreNot()
     {
         var queue = new FakeQueue();
