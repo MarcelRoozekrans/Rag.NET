@@ -91,6 +91,14 @@ public class HydeBenchmarks
     {
         public Task<string> GenerateAsync(string query, CancellationToken cancellationToken = default)
             => Task.FromResult("A hypothetical document that answers the query about " + query);
+
+        public Task<IReadOnlyList<string>> GenerateManyAsync(string query, int count, CancellationToken cancellationToken = default)
+        {
+            var docs = new List<string>(count);
+            for (var i = 0; i < count; i++)
+                docs.Add($"Hypothetical document {i} about {query}");
+            return Task.FromResult<IReadOnlyList<string>>(docs);
+        }
     }
 
     private sealed class NoOpVectorStore : IVectorStore
