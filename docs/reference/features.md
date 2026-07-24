@@ -734,11 +734,13 @@ LLM-driven chunking that decomposes document text into atomic, self-contained pr
 ---
 
 ### Sliding Window Chunking with Overlap
-**Package:** `Rag.NET.Chunking`
+**Package:** `Rag.NET.Chunking.TokenAware`
 
 Fixed-size chunks with configurable token overlap between adjacent chunks. The simplest baseline chunking strategy — no LLM, no regex, O(n) time. Useful as a fast fallback or comparison baseline.
 
 **Why:** Despite being the oldest technique, sliding window is still the default in many frameworks and serves as an important performance baseline. Rag.NET currently lacks a first-class implementation.
+
+**Status:** Delivered by `TokenAwareChunkingStrategy` in `Rag.NET.Chunking.TokenAware`, upgraded with `TokenAwareChunkingOptions` (`WindowSizeTokens` / `OverlapTokens` with fallback to `ChunkingOptions`).
 
 ---
 
@@ -1014,7 +1016,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | IOptions Alignment + ZeroAlloc Validation for pipeline options | Low | `Microsoft.Extensions.Options` + ZeroAlloc.Validation |
 | [ ] | NuGet Publishing Pipeline | Low | GitHub Actions + MinVer |
 | [ ] | Structured Logging Enrichment | Low | None |
-| [ ] | Sliding Window Chunking with Overlap | Low | None |
+| [x] | Sliding Window Chunking with Overlap | Low | None |
 | [ ] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | EPUB Parser | Low | `VersOne.Epub` |
 | [ ] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |

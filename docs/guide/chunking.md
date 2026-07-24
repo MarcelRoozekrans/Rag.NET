@@ -96,41 +96,35 @@ This is the **default strategy** and the right choice for most prose-based docum
 
 ## `TokenAwareChunkingStrategy`
 
-Uses the [Microsoft.ML.Tokenizers](https://learn.microsoft.com/dotnet/api/microsoft.ml.tokenizers) `TiktokenTokenizer` to encode the section text into token IDs, then slides a window of `MaxChunkSize` tokens with a step of `MaxChunkSize - Overlap`. `MaxChunkSize` and `Overlap` are interpreted as **token counts**, not character counts.
+The **sliding-window baseline**: fixed token windows with configurable overlap, O(n) time, no LLM and no regex. It uses the [Microsoft.ML.Tokenizers](https://learn.microsoft.com/dotnet/api/microsoft.ml.tokenizers) `TiktokenTokenizer` to encode the section text into token IDs, then slides a window of `WindowSizeTokens` tokens with a step of `WindowSizeTokens - OverlapTokens`. Because it counts tokens rather than characters, chunks never exceed embedding model token limits — and its simplicity makes it the natural performance and quality baseline to compare other strategies against.
+
+The simplest registration takes a model name (window and overlap then come from `ChunkingOptions.MaxChunkSize` / `ChunkingOptions.Overlap`, interpreted as **token counts**):
 
 ```csharp
 services.AddRagNet(rag => rag
     .UseTokenAwareChunking("gpt-4")   // selects cl100k_base encoding
-    .UseChunkingStrategy<RecursiveChunkingStrategy>(options =>
-    {
-        options.MaxChunkSize = 512;   // tokens
-        options.Overlap      = 50;    // tokens
-    }));
-```
-
-Wait — `UseTokenAwareChunking` registers `TokenAwareChunkingStrategy` as the `IChunkingStrategy`. The subsequent `UseChunkingStrategy<RecursiveChunkingStrategy>` call would replace it. The correct usage when you want token-aware chunking is:
-
-```csharp
-services.AddRagNet(rag => rag
-    .UseTokenAwareChunking("gpt-4")
     .UsePgVector(connectionString));
 // ChunkingOptions.MaxChunkSize = 512, Overlap = 50 are applied as token counts
 ```
 
-Or with custom limits:
+Or configure the window explicitly with `TokenAwareChunkingOptions`:
 
 ```csharp
 services.AddRagNet(rag => rag
-    .UseTokenAwareChunking("gpt-4")
+    .UseTokenAwareChunking(o =>
+    {
+        o.ModelName        = "gpt-4"; // tokenizer encoding
+        o.WindowSizeTokens = 256;     // fixed window, overrides ChunkingOptions.MaxChunkSize
+        o.OverlapTokens    = 32;      // overlap between windows, overrides ChunkingOptions.Overlap
+    })
     .UsePgVector(connectionString));
-
-// Override ChunkingOptions directly on the service collection:
-services.AddSingleton(new ChunkingOptions { MaxChunkSize = 256, Overlap = 25 });
 ```
+
+`WindowSizeTokens` and `OverlapTokens` are optional; any value left `null` falls back to the corresponding `ChunkingOptions` property at chunk time.
 
 **Model names:** Any model name accepted by `TiktokenTokenizer.CreateForModel` works (e.g., `"gpt-4"`, `"gpt-3.5-turbo"`, `"text-embedding-ada-002"`). The default is `"gpt-4"` which uses the `cl100k_base` encoding, compatible with most modern OpenAI embedding models.
 
-**Constraint:** `Overlap` must be strictly less than `MaxChunkSize`; the strategy throws `ArgumentOutOfRangeException` otherwise.
+**Constraint:** the effective overlap must be strictly less than the effective window size; the strategy throws `ArgumentOutOfRangeException` otherwise (at construction when both are set via `TokenAwareChunkingOptions`, at chunk time when falling back to `ChunkingOptions`).
 
 **Overhead:** Tiktoken encoding/decoding adds ~20–60× CPU overhead compared to character-based strategies on 50 KB input (~1,750 µs vs. ~29–94 µs). This is negligible relative to embedding API latency (typically 50–500 ms per batch).
 
