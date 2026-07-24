@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
@@ -76,7 +77,10 @@ public static class RagBuilderExtensions
         }
 
         builder.Services.AddSingleton(opts);
-        builder.Services.AddSingleton<PropositionChunkingStrategy>();
+        builder.Services.AddSingleton<PropositionChunkingStrategy>(sp => new PropositionChunkingStrategy(
+            opts.ChatClient ?? sp.GetRequiredService<IChatClient>(),
+            opts,
+            sp.GetService<ILogger<PropositionChunkingStrategy>>()));
         builder.Services.AddSingleton<IChunkingStrategy>(sp => sp.GetRequiredService<PropositionChunkingStrategy>());
         builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<PropositionChunkingStrategy>());
         return builder;

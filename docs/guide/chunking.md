@@ -36,15 +36,15 @@ The default strategy when nothing is configured is `RecursiveChunkingStrategy` w
 
 ## Strategy comparison
 
-| | `FixedSizeChunkingStrategy` | `RecursiveChunkingStrategy` | `TokenAwareChunkingStrategy` | `SemanticChunkingStrategy` | `HierarchicalMergerChunkingStrategy` | `CodeChunkingStrategy` |
-|---|---|---|---|---|---|---|
-| Unit | Characters | Characters | Tokens | Characters (min/max) | Characters (max) | Characters |
-| Split logic | Hard cut at word boundary | Hierarchical separators | Tiktoken encode → slice → decode | Embedding cosine similarity breakpoints | Heading subtree merge | Language-specific (class/func/method) |
-| Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window | None | None | Optional |
-| Heading awareness | No | No | No | No (sentence-level) | Yes | No |
-| Respects token limits | No | No | Yes | Approximate (min/max chars) | Approximate (max chars) | No |
-| Chunking overhead (50 KB) | ~29 µs | ~94 µs | ~1,750 µs | Embedding-latency-bound | ~50 µs | ~50 µs |
-| Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text | Coherent meaning boundaries, QA systems | Structured documents with headings | Code files (Python, JS/TS, Go, Rust, C#, …) |
+| | `FixedSizeChunkingStrategy` | `RecursiveChunkingStrategy` | `TokenAwareChunkingStrategy` | `SemanticChunkingStrategy` | `HierarchicalMergerChunkingStrategy` | `CodeChunkingStrategy` | `PropositionChunkingStrategy` | `LateChunkingStrategy` |
+|---|---|---|---|---|---|---|---|---|
+| Unit | Characters | Characters | Tokens | Characters (min/max) | Characters (max) | Characters | Propositions (LLM) | Tokens |
+| Split logic | Hard cut at word boundary | Hierarchical separators | Tiktoken encode → slice → decode | Embedding cosine similarity breakpoints | Heading subtree merge | Language-specific (class/func/method) | LLM decomposes passages into atomic claims | Embed full text, then window token vectors |
+| Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window | None | None | Optional | None (passages partition) | Token-level sliding window |
+| Heading awareness | No | No | No | No (sentence-level) | Yes | No | No | No |
+| Respects token limits | No | No | Yes | Approximate (min/max chars) | Approximate (max chars) | No | Yes (passage budget) | Yes |
+| Chunking overhead (50 KB) | ~29 µs | ~94 µs | ~1,750 µs | Embedding-latency-bound | ~50 µs | ~50 µs | LLM-latency-bound (1 call/passage) | Token-embedding-latency-bound |
+| Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text | Coherent meaning boundaries, QA systems | Structured documents with headings | Code files (Python, JS/TS, Go, Rust, C#, …) | Precise factoid retrieval | Context-aware chunk embeddings |
 
 See [benchmarks](benchmarks.md) for full throughput numbers. Semantic chunking overhead is embedding-latency-bound (50–500 ms per batch), not CPU-bound — CPU processing is negligible.
 
@@ -248,6 +248,10 @@ Inputs longer than `OnnxTokenEmbeddingOptions.MaxTokens` (default 8192, includin
 **Fallback semantics:** if the token-embedding generator fails (or returns a matrix violating its contract), the section is still chunked into the same cl100k token windows — the chunks simply carry **no precomputed embedding** and are embedded normally downstream by the pipeline's regular embedder. Ingestion never loses content; cancellation is always propagated.
 
 **Storage-dimension caveat:** a precomputed embedding whose dimension does not match the vector store's configured dimension fails at **storage time with a backend-side error** (e.g. a pgvector or Qdrant server rejection), not a Rag.NET-owned message. Make sure the ONNX model's hidden dimension matches the collection/table dimension you provisioned.
+
+**Sanitiser caveat:** chunk sanitisers rewrite `Text` after chunking but preserve the precomputed embedding, so with late chunking a redaction sanitiser stores a vector that still encodes the *unsanitised* content. If you sanitise sensitive content, don't combine it with late chunking (or clear `Embedding` in your sanitiser so the redacted text is embedded normally downstream).
+
+**Parent Document Retrieval caveat:** as with `PropositionChunkingStrategy`, enabling parent-document retrieval re-invokes the registered strategy for the parent pass — with late chunking that means a second full ONNX token-embedding pass over each document at ingest. Prefer a non-LLM/non-embedding parent chunker (`RecursiveChunkingStrategy`, `TokenAwareChunkingStrategy`) for the parent side.
 
 ## `HierarchicalMergerChunkingStrategy`
 

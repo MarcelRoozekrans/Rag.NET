@@ -52,6 +52,17 @@ public class UsePropositionChunkingTests
     }
 
     [Fact]
+    public void UsePropositionChunking_OptionsChatClient_ResolvesWithoutDiRegisteredChatClient()
+    {
+        // No IChatClient in DI at all — the options-provided client must be used as the fallback.
+        var sp = new ServiceCollection()
+            .AddRagNet(rag => rag.UsePropositionChunking(o => o.ChatClient = Substitute.For<IChatClient>()))
+            .BuildServiceProvider();
+
+        Assert.IsType<PropositionChunkingStrategy>(sp.GetRequiredService<IChunkingStrategy>());
+    }
+
+    [Fact]
     public void UsePropositionChunking_InvalidMaxPassageTokens_Throws()
     {
         var ex = Assert.Throws<ArgumentOutOfRangeException>(() =>
