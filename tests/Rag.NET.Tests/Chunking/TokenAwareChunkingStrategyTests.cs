@@ -20,7 +20,7 @@ public class TokenAwareChunkingStrategyTests
     [Fact]
     public void Constructor_NullModelName_ThrowsArgumentException()
     {
-        Assert.ThrowsAny<ArgumentException>(() => new TokenAwareChunkingStrategy(null!));
+        Assert.ThrowsAny<ArgumentException>(() => new TokenAwareChunkingStrategy((string)null!));
     }
 
     [Fact]
@@ -127,6 +127,50 @@ public class TokenAwareChunkingStrategyTests
         var options = new ChunkingOptions { MaxChunkSize = 10, Overlap = 10 };
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
             await _sut.ChunkAsync(section, options, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ChunkAsync_OptionsWindowOverridesChunkingOptions()
+    {
+        var strategy = new TokenAwareChunkingStrategy(new TokenAwareChunkingOptions
+        {
+            WindowSizeTokens = 4,
+            OverlapTokens = 1,
+        });
+        var section = CreateSection(string.Join(' ', Enumerable.Repeat("word", 20)));
+
+        // ChunkingOptions says 512/50 — the options-class values must win.
+        var chunks = await strategy.ChunkAsync(section, new ChunkingOptions(), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(chunks.Count > 2);
+    }
+
+    [Fact]
+    public void Ctor_OverlapGreaterOrEqualWindow_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TokenAwareChunkingStrategy(new TokenAwareChunkingOptions { WindowSizeTokens = 4, OverlapTokens = 4 }));
+    }
+
+    [Fact]
+    public void Ctor_NullOptions_Throws()
+    {
+        Assert.Throws<ArgumentNullException>(() => new TokenAwareChunkingStrategy((TokenAwareChunkingOptions)null!));
+    }
+
+    [Fact]
+    public void Ctor_NonPositiveWindow_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TokenAwareChunkingStrategy(new TokenAwareChunkingOptions { WindowSizeTokens = 0 }));
+    }
+
+    [Fact]
+    public void Ctor_NegativeOverlap_Throws()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new TokenAwareChunkingStrategy(new TokenAwareChunkingOptions { OverlapTokens = -1 }));
     }
 
     [Fact]
