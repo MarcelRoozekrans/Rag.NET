@@ -8,9 +8,10 @@ namespace Rag.NET.Embeddings.Onnx;
 public sealed class OnnxTokenEmbeddingOptions
 {
     /// <summary>
-    /// Path to the ONNX embedding model file. The model must accept <c>input_ids</c>,
-    /// <c>attention_mask</c> and <c>token_type_ids</c> and output the last hidden state as
-    /// <c>[1, sequence, dimension]</c>.
+    /// Path to the ONNX embedding model file. The model must accept <c>input_ids</c>;
+    /// <c>attention_mask</c> and <c>token_type_ids</c> are supplied only when the model
+    /// declares them (exports without them work). It must output token-level hidden states as
+    /// <c>[1, sequence, dimension]</c> — see <see cref="OutputName"/>.
     /// </summary>
     public required string ModelPath { get; set; }
 
@@ -33,4 +34,14 @@ public sealed class OnnxTokenEmbeddingOptions
     /// Must be non-negative and smaller than <see cref="MaxTokens"/>.
     /// </summary>
     public int WindowOverlapTokens { get; set; } = 64;
+
+    /// <summary>
+    /// Name of the model output holding the token-level hidden states
+    /// <c>[1, sequence, dimension]</c>. When the model does not declare an output with this
+    /// name but has exactly one output, that single output is used; otherwise construction
+    /// fails listing the model's actual outputs. The output shape is validated on every pass —
+    /// a pooled <c>[1, dimension]</c> export is rejected with a clear error instead of
+    /// producing garbage embeddings.
+    /// </summary>
+    public string OutputName { get; set; } = "last_hidden_state";
 }

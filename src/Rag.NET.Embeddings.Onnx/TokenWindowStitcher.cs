@@ -84,20 +84,45 @@ internal static class TokenWindowStitcher
         for (var w = 0; w < windows.Count; w++)
         {
             var (start, end) = windows[w];
-            var matrix = windowMatrices[w];
-            var expected = (end - start) * dimension;
-            if (matrix.Length != expected)
-            {
-                throw new ArgumentException(
-                    $"Matrix {w} has length {matrix.Length} but window ({start}, {end}) with dimension {dimension} requires {expected}.",
-                    nameof(windowMatrices));
-            }
-
-            // Later windows intentionally overwrite the overlap rows of earlier ones.
-            Array.Copy(matrix, 0, stitched, start * dimension, expected);
+            CopyWindow(stitched, windowMatrices[w], start, end, dimension);
         }
 
         return stitched;
+    }
+
+    /// <summary>
+    /// Copies one window's row-major matrix into <paramref name="destination"/> at row
+    /// <paramref name="start"/> — the incremental entry point used by the generator so the
+    /// full matrix is allocated once and windows are folded in as each pass completes. Later
+    /// windows intentionally overwrite the overlap rows of earlier ones (same policy as
+    /// <see cref="Stitch"/>).
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// When the matrix length does not match <c>(end - start) * dimension</c> or the window
+    /// does not fit inside <paramref name="destination"/>.
+    /// </exception>
+    public static void CopyWindow(float[] destination, float[] windowMatrix, int start, int end, int dimension)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(windowMatrix);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(dimension);
+
+        var expected = (end - start) * dimension;
+        if (windowMatrix.Length != expected)
+        {
+            throw new ArgumentException(
+                $"Matrix has length {windowMatrix.Length} but window ({start}, {end}) with dimension {dimension} requires {expected}.",
+                nameof(windowMatrix));
+        }
+
+        if (start < 0 || (end * dimension) > destination.Length)
+        {
+            throw new ArgumentException(
+                $"Window ({start}, {end}) with dimension {dimension} does not fit a destination of length {destination.Length}.",
+                nameof(windowMatrix));
+        }
+
+        Array.Copy(windowMatrix, 0, destination, start * dimension, expected);
     }
 
     /// <summary>
