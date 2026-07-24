@@ -15,6 +15,7 @@ The vector store is the persistence layer for embedded chunks. Rag.NET ships thr
 | Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` |
 | Dense (semantic) search | Yes | Yes | Yes |
 | Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) |
+| Sparse search (SPLADE, `ISparseSearchable`) | No (deferred) | Yes (`enableSparseVectors: true`) | No |
 | Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) |
 | `ICollectionManageable` | Yes | Yes | Yes |
 | Similarity function | Cosine (via `<=>`) | Cosine | Cosine |
@@ -199,6 +200,10 @@ var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 ### Hybrid search
 
 `QdrantVectorStore` does not implement `IHybridSearchable`. When `UseHybridSearch = true`, the pipeline falls back to the in-memory BM25 index + RRF merge.
+
+### Sparse vectors (SPLADE)
+
+Pass `enableSparseVectors: true` to `UseQdrant` (or the constructor) to create the collection with a named sparse vector (`"splade"`) next to the dense vector and serve `ISparseSearchable`. Sparse vectors live on the same points as the dense embeddings: point ids become deterministic per `(DocumentId, ChunkIndex)` (making chunk upserts idempotent), and `StoreSparseAsync` attaches sparse vectors to points previously upserted by `StoreAsync` — ingestion always calls them in that order. Collections created without sparse support must be recreated to enable it. See [Sparse retrieval (SPLADE)](retrieval.md#sparse-retrieval-splade) for the full setup including `UseSpladeEncoder`.
 
 ---
 

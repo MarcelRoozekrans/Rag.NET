@@ -5,15 +5,28 @@ namespace Rag.NET.Qdrant;
 
 public static class QdrantBuilderExtensions
 {
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="host">Qdrant host.</param>
+    /// <param name="port">Qdrant gRPC port.</param>
+    /// <param name="collectionName">Collection to store chunks in.</param>
+    /// <param name="vectorDimensions">Dense embedding dimensions.</param>
+    /// <param name="enableSparseVectors">
+    /// When <see langword="true"/>, the collection is created with a named sparse vector
+    /// ("splade") and the store serves <c>ISparseSearchable</c> — pair with
+    /// <c>UseSpladeEncoder</c> for SPLADE hybrid retrieval. Point ids become deterministic
+    /// per <c>(DocumentId, ChunkIndex)</c>. Existing collections created without sparse
+    /// support must be recreated to enable it.
+    /// </param>
     public static TBuilder UseQdrant<TBuilder>(
         this TBuilder builder,
         string host,
         int port,
         string collectionName,
-        int vectorDimensions = 1536)
+        int vectorDimensions = 1536,
+        bool enableSparseVectors = false)
         where TBuilder : IRagBuilder
     {
-        var store = new QdrantVectorStore(host, port, collectionName, vectorDimensions);
+        var store = new QdrantVectorStore(host, port, collectionName, vectorDimensions, enableSparseVectors);
         builder.Services.AddSingleton<IVectorStore>(store);
         builder.Services.AddSingleton<ICollectionManageable>(store);
         return builder;

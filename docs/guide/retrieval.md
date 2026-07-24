@@ -159,6 +159,55 @@ RRF scores are not cosine similarities. `MinScore` filtering is applied by the d
 
 See [benchmarks](benchmarks.md#hybrid-search-bm25-fallback) for throughput data on the BM25+RRF path.
 
+## Sparse retrieval (SPLADE)
+
+Learned sparse retrieval adds a third arm to hybrid search: a SPLADE model expands the query and each chunk into weighted vocabulary terms (a `SparseVector`), scoring by dot product over an inverted index. Unlike BM25 it matches on learned term expansions, so it handles synonyms and out-of-vocabulary phrasing while staying as cheap to search as keyword retrieval.
+
+### Setup
+
+Three pieces: a SPLADE encoder, a sparse-capable vector store, and hybrid search enabled.
+
+```csharp
+services.AddRagNet(rag =>
+{
+    rag.UseSpladeEncoder(o =>
+    {
+        o.ModelPath = "models/splade/model.onnx";      // ONNX export with MLM logits [1, seq, vocab]
+        o.TokenizerVocabPath = "models/splade/vocab.txt";
+        // o.MaxTokens = 512; o.TopTerms = 256; o.OutputName = "logits";
+    });
+
+    // Qdrant: named sparse vector "splade" next to the dense vector on the same points.
+    rag.UseQdrant("localhost", 6334, "docs", vectorDimensions: 1536, enableSparseVectors: true);
+
+    // Or in-process (tests / small corpora):
+    // rag.Services.AddSingleton<IVectorStore>(new InMemoryVectorStore());
+});
+```
+
+**Model:** export a SPLADE checkpoint such as [`naver/splade-cocondenser-ensembledistil`](https://huggingface.co/naver/splade-cocondenser-ensembledistil) to ONNX (e.g. `optimum-cli export onnx --model naver/splade-cocondenser-ensembledistil --task fill-mask <out>`); the encoder needs the model's MLM logits output plus its WordPiece `vocab.txt`.
+
+With those registered, ingestion computes a sparse vector per chunk automatically (`SparseEmbeddingBehavior`) and stores it alongside the dense embedding. Retrieval with `UseHybridSearch = true` then fuses **dense + BM25 + sparse** with weighted RRF:
+
+```csharp
+var results = await pipeline.RetrieveAsync("ISO 27001 compliance checklist", new RetrievalOptions
+{
+    TopK            = 10,
+    UseHybridSearch = true,
+    // UseSparseSearch = null (default): the sparse arm follows UseHybridSearch.
+    // Set false to exclude it for this call.
+    EnsembleOptions = new EnsembleOptions { DenseWeight = 0.4f, Bm25Weight = 0.3f, SparseWeight = 0.3f },
+});
+```
+
+### Behaviour and degradation
+
+- `RetrievalOptions.UseSparseSearch` — `null` (default) follows `UseHybridSearch`; `false` disables the sparse arm per call. `true` without `UseHybridSearch` has no effect: sparse search only participates in the ensemble.
+- The sparse arm runs only when an `ISparseEmbeddingGenerator` is registered **and** the store implements `ISparseSearchable` (Qdrant with `enableSparseVectors: true`, or `InMemoryVectorStore`). Otherwise hybrid search behaves exactly as the two-arm dense+BM25 fusion above.
+- Degraded, never broken: sparse encoding or search failures are logged and the remaining arms serve the request; sparse ingestion failures fall back to dense-only storage.
+- Qdrant sparse mode uses deterministic point ids derived from `(DocumentId, ChunkIndex)`, making chunk upserts idempotent. Collections created without sparse support must be recreated to enable it.
+- PgVector sparse storage is deferred — use Qdrant or the in-memory store for SPLADE today.
+
 ## Hypothetical Document Embeddings (HyDE)
 
 HyDE improves retrieval for queries that are phrased very differently from the documents they should match. Instead of embedding the raw query, the pipeline asks an LLM to generate a hypothetical answer document and embeds that instead. The original query string is still used for BM25/keyword search, so hybrid search remains effective.

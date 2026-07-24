@@ -804,11 +804,13 @@ Generate the answer incrementally sentence by sentence. When a sentence scores b
 ---
 
 ### Sparse Embedding Retrieval (SPLADE)
-**Package:** `Rag.NET.VectorStores.PgVector` / `Rag.NET.VectorStores.Qdrant`
+**Package:** `Rag.NET.Embeddings.Onnx` (encoder) + `Rag.NET` (in-memory store, ensemble) + `Rag.NET.VectorStores.Qdrant`
 
 Generate sparse embedding vectors via SPLADE (Sparse Lexical and Expansion Model) using an ONNX model, stored alongside dense vectors. Retrieval combines sparse and dense scores natively in the vector store (Qdrant supports this natively; PgVector via separate column + RRF merge).
 
 **Why:** SPLADE outperforms BM25 on out-of-vocabulary terms while remaining sparse enough for efficient retrieval. Pairs with dense embeddings for state-of-the-art hybrid search without a separate BM25 index.
+
+**Status:** Delivered for Qdrant + in-memory; PgVector sparse storage deferred. `OnnxSpladeEncoder` (register with `UseSpladeEncoder(...)`; e.g. an ONNX export of `naver/splade-cocondenser-ensembledistil`) pools MLM logits per chunk/query into a pruned `SparseVector` (`log(1 + ReLU(logit))`, max over tokens, `TopTerms` largest). Ingestion computes sparse vectors automatically (`SparseEmbeddingBehavior`) when the store implements the `ISparseSearchable` capability — `QdrantVectorStore` with `enableSparseVectors: true` (named sparse vector "splade" on the same points, deterministic point ids) or `InMemoryVectorStore` (inverted postings, dot product). Retrieval: `EnsembleBehavior` grows a third arm fused by weighted RRF (`EnsembleOptions.SparseWeight`; `RetrievalOptions.UseSparseSearch` null follows `UseHybridSearch`). Degraded-never-broken: sparse failures at ingest or query time log a warning and continue dense/BM25-only.
 
 ---
 
@@ -1057,6 +1059,6 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Pipeline Debugger / Trace Viewer | Medium | ASP.NET Core middleware |
 | [x] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
 | [x] | FLARE | High | `IChatClient` (self-assessment scorer; logprob scorer = extension point) |
-| [ ] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store |
+| [x] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store (Qdrant + in-memory; PgVector deferred) |
 | [x] | Late Chunking | High | Token-level embedding model |
 | [ ] | Embedding Versioning & Re-indexing | High | Content hash store |
