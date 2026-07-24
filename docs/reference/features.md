@@ -766,6 +766,8 @@ Extend the existing `HydeQueryTechnique` to generate `n` hypothetical documents 
 
 **Why:** Single-hypothesis HyDE can degrade when the generated document takes a wrong angle on the query. Multi-hypothesis averaging is more robust and costs only `n` extra embedding calls.
 
+**Status:** Delivered. `HydeOptions.HypothesisCount` (default 3) and `HypothesisTemperature` (default 0.8) drive `IHypotheticalDocumentGenerator.GenerateManyAsync`; `HydeBehavior` embeds all hypotheses in one batch, mean-pools + L2-normalizes, and passes the averaged vector downstream via the internal `RetrievalOptions.EmbeddingOverride` (consumed by the vector-store and ensemble dense arms, bypassing the embedding cache). Partial generation failures are tolerated; total failure falls back to the plain query. Cost per retrieval: `n` LLM calls + `n` embedding inputs (one batch call).
+
 ---
 
 ### Adaptive Retrieval (Query Complexity Routing)
@@ -791,20 +793,24 @@ After standard retrieval, evaluate each chunk's relevance to the query using a l
 ---
 
 ### FLARE — Forward-Looking Active Retrieval
-**Package:** `Rag.NET.QueryTechniques`
+**Package:** `Rag.NET.AnswerEngines` (engine) + `Rag.NET.Abstractions` (scorer contract)
 
-Generate the answer incrementally sentence by sentence. When the model produces a low-confidence token (detected via logprob threshold), pause generation, reformulate a query from the partial answer so far, retrieve fresh context, and continue generation with the new context injected.
+Generate the answer incrementally sentence by sentence. When a sentence scores below a confidence threshold, pause generation, reformulate a query from the partial answer so far, retrieve fresh context, and continue generation with the new context injected.
 
 **Why:** A single retrieval at query time misses information needed mid-answer. FLARE retrieves exactly when and what is needed — especially useful for long-form generation and multi-step reasoning.
+
+**Status:** Delivered. `FlareAnswerEngine` (register with `UseFlare(...)`, or per call via `RagOptions.SynthesisStrategy = SynthesisStrategy.Flare` with the dispatching engine) generates one sentence per LLM call, scores it via the pluggable `IConfidenceScorer`, and below `FlareOptions.ConfidenceThreshold` (default 0.6) runs a lookahead retrieval (query + sentence, `LookaheadTopK`) through the retrieval pipeline — plain by default (HyDE/multi-query disabled to avoid hidden expansion calls; override via `FlareOptions.LookaheadRetrievalOptions`) — merges/dedups sources, and regenerates the sentence once. Caps: `MaxSentences` (15), `MaxRetrievals` (3). Default scorer is `SelfAssessmentConfidenceScorer` — one small LLM call, works with any `IChatClient`, fails open on failure; a logprob-based scorer is a documented extension point (`FlareOptions.Scorer`). Degraded-never-broken: retrieval failures keep the sentence, scorer failures count as confident.
 
 ---
 
 ### Sparse Embedding Retrieval (SPLADE)
-**Package:** `Rag.NET.VectorStores.PgVector` / `Rag.NET.VectorStores.Qdrant`
+**Package:** `Rag.NET.Embeddings.Onnx` (encoder) + `Rag.NET` (in-memory store, ensemble) + `Rag.NET.VectorStores.Qdrant`
 
 Generate sparse embedding vectors via SPLADE (Sparse Lexical and Expansion Model) using an ONNX model, stored alongside dense vectors. Retrieval combines sparse and dense scores natively in the vector store (Qdrant supports this natively; PgVector via separate column + RRF merge).
 
 **Why:** SPLADE outperforms BM25 on out-of-vocabulary terms while remaining sparse enough for efficient retrieval. Pairs with dense embeddings for state-of-the-art hybrid search without a separate BM25 index.
+
+**Status:** Delivered for Qdrant + in-memory; PgVector sparse storage deferred. `OnnxSpladeEncoder` (register with `UseSpladeEncoder(...)`; e.g. an ONNX export of `naver/splade-cocondenser-ensembledistil`) pools MLM logits per chunk/query into a pruned `SparseVector` (`log(1 + ReLU(logit))`, max over tokens, `TopTerms` largest). Ingestion computes sparse vectors automatically (`SparseEmbeddingBehavior`) when the store implements the `ISparseSearchable` capability — `QdrantSparseVectorStore` via `UseQdrant(..., enableSparseVectors: true)` (named sparse vector "splade" on the same points, deterministic point ids, fail-fast on pre-existing dense-only collections) or `InMemoryVectorStore` (inverted postings, dot product). Retrieval: `EnsembleBehavior` grows a third arm fused by weighted RRF (`EnsembleOptions.SparseWeight`; `RetrievalOptions.UseSparseSearch` null follows `UseHybridSearch`). Degraded-never-broken: sparse failures at ingest or query time log a warning and continue dense/BM25-only.
 
 ---
 
@@ -814,6 +820,8 @@ Generate sparse embedding vectors via SPLADE (Sparse Lexical and Expansion Model
 A `FederatedVectorStore` that wraps multiple `IVectorStore` instances and merges results via RRF. Enables searching across collections in different vector stores simultaneously — e.g. a private PgVector index plus a shared Qdrant index.
 
 **Why:** Enterprise deployments often have multiple vector stores for different data domains (HR docs in one, engineering docs in another). Federation enables unified search without data migration.
+
+**Status:** Delivered. `FederatedVectorStore` (register with `UseFederatedSearch(f => f.AddStore(...).AddStore(...))`) fans searches out to all stores concurrently and merges the per-store rankings with N-way RRF (`FederatedStoreOptions.RrfK`, default 60); each merged result is tagged with a `source.store` metadata entry (store name or index). Writes and deletes go to the primary store only (`WithPrimary(...)`, default the first). Degraded-never-broken: a failing store is skipped with a warning; the search throws only when every store failed. Limitation: federation is dense-only — hybrid (`IHybridSearchable`), sparse, and collection-management capabilities of the underlying stores are not federated.
 
 ---
 
@@ -1021,7 +1029,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | NuGet Publishing Pipeline | Low | GitHub Actions + MinVer |
 | [ ] | Structured Logging Enrichment | Low | None |
 | [x] | Sliding Window Chunking with Overlap | Low | None |
-| [ ] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
+| [x] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | EPUB Parser | Low | `VersOne.Epub` |
 | [ ] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
 | [ ] | Linear Issue Tracker | Low | Linear GraphQL API |
@@ -1031,7 +1039,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Weaviate Vector Store | Medium | `WeaviateSharp` |
 | [ ] | Chroma Vector Store | Medium | Chroma REST API |
 | [ ] | Pinecone Vector Store | Medium | Pinecone REST API |
-| [ ] | Multi-Index Federation | Medium | `IVectorStore` composition |
+| [x] | Multi-Index Federation | Medium | `IVectorStore` composition (dense-only) |
 | [ ] | PDF Table Extraction | Medium | PdfPig geometry |
 | [ ] | OCR for Scanned PDFs | Medium | Tesseract / Azure Doc Intelligence |
 | [x] | Contextual Compression | Medium | `IChatClient` or embeddings |
@@ -1050,7 +1058,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Rag.NET CLI Tool | Medium | `dotnet tool` |
 | [ ] | Pipeline Debugger / Trace Viewer | Medium | ASP.NET Core middleware |
 | [x] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
-| [ ] | FLARE | High | `IChatClient` + logprobs |
-| [ ] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store |
+| [x] | FLARE | High | `IChatClient` (self-assessment scorer; logprob scorer = extension point) |
+| [x] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store (Qdrant + in-memory; PgVector deferred) |
 | [x] | Late Chunking | High | Token-level embedding model |
 | [ ] | Embedding Versioning & Re-indexing | High | Content hash store |

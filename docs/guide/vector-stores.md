@@ -15,6 +15,7 @@ The vector store is the persistence layer for embedded chunks. Rag.NET ships thr
 | Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` |
 | Dense (semantic) search | Yes | Yes | Yes |
 | Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) |
+| Sparse search (SPLADE, `ISparseSearchable`) | No (deferred) | Yes (`enableSparseVectors: true`) | No |
 | Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) |
 | `ICollectionManageable` | Yes | Yes | Yes |
 | Similarity function | Cosine (via `<=>`) | Cosine | Cosine |
@@ -200,6 +201,10 @@ var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 
 `QdrantVectorStore` does not implement `IHybridSearchable`. When `UseHybridSearch = true`, the pipeline falls back to the in-memory BM25 index + RRF merge.
 
+### Sparse vectors (SPLADE)
+
+Pass `enableSparseVectors: true` to `UseQdrant` to register `QdrantSparseVectorStore` — a subtype that creates the collection with a named sparse vector (`"splade"`) next to the dense vector and serves `ISparseSearchable`. The dense-only `QdrantVectorStore` deliberately does **not** implement `ISparseSearchable`, so the pipelines' capability probe is honest and no SPLADE encoding work happens against a store that cannot persist it. Sparse vectors live on the same points as the dense embeddings: point ids become deterministic per `(DocumentId, ChunkIndex)` (making chunk upserts idempotent), and `StoreSparseAsync` attaches sparse vectors to points previously upserted by `StoreAsync` — ingestion always calls them in that order. `InitializeAsync` fails fast when an existing collection was created without sparse support — delete the collection and re-ingest to enable it. See [Sparse retrieval (SPLADE)](retrieval.md#sparse-retrieval-splade) for the full setup including `UseSpladeEncoder`.
+
 ---
 
 ## Azure AI Search
@@ -276,6 +281,45 @@ Multiple filter entries are combined with `and`.
 ### Indexing latency
 
 Azure AI Search indexing is near real-time. `StoreAsync` includes a 1-second delay after batch upload to allow the index to become consistent before a subsequent `SearchAsync` call. This delay is intentional and sourced from the implementation; plan for it in integration tests.
+
+---
+
+## Multi-index federation
+
+**Package:** `Rag.NET` (core)
+
+`FederatedVectorStore` wraps two or more `IVectorStore` instances behind a single store, so you can search across collections living in different backends (e.g. a private PgVector index plus a shared Qdrant index) without migrating data. It is registered as *the* `IVectorStore`, so the entire pipeline (MMR, reranking, caching, …) composes unchanged.
+
+### Setup
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseFederatedSearch(f => f
+        .AddStore(_ => new PgVectorStore("Host=...;Database=private", 1536), "private-pg")
+        .AddStore(_ => new QdrantVectorStore("localhost", 6334, "shared", 1536), "shared-qdrant")
+        .WithPrimary(0)      // optional: writes/deletes target this store (default: first)
+        .WithRrfK(60)));     // optional: RRF constant (default: 60)
+```
+
+At least two stores are required (validated at registration). Store factories receive the `IServiceProvider` and run once, when the federated store is first resolved.
+
+### Behaviour
+
+- **Search** fans out to all stores concurrently, then merges the per-store rankings with N-way Reciprocal Rank Fusion: each hit contributes `1 / (k + rank)` (1-based rank, `k` = `RrfK`) and the merged `Score` is the summed RRF score, not a cosine similarity. `TopK` is applied after the merge. Ties on the merged score are broken deterministically: the chunk that first appeared in the lower store index wins, then the lower per-store rank.
+- **`MinScore`** is applied by each store against its own similarity scale *before* fusion; the merged `Score` is RRF. Beware cross-backend coherence: the same `MinScore` value means different things to different backends (e.g. cosine similarity in `[0, 1]` for PgVector/Qdrant vs. Azure AI Search's unbounded hybrid scores), so a threshold tuned for one store may over- or under-filter another.
+- **Provenance:** every merged result's chunk metadata gains a `source.store` entry with the store's name (from `AddStore(..., name)`) or its zero-based index. The source store's own chunk is never mutated — the tag is written into a copied metadata dictionary.
+- **Writes and deletes** go to the primary store only. `DeleteByDocumentIdAsync` does **not** touch secondary stores — documents ingested directly into secondaries must be deleted there.
+- **Degraded, never broken:** a store that throws during search is skipped with a logged warning; the federated search itself only throws (`InvalidOperationException` naming the stores) when *every* store failed.
+
+### Interaction with other registrations
+
+`UseFederatedSearch` supersedes any earlier `IVectorStore` registration (standard last-wins container semantics). Do not combine it with `UsePgVector`/`UseQdrant`-style calls — add those stores through the builder instead.
+
+**Persistent conversation memory (known limitation):** `UsePersistentMemory` resolves the DI `IVectorStore` and filters recalled exchanges by `PersistentMemoryOptions.MinScore` (default 0.7), which is calibrated to the similarity scale. Federated results carry RRF scores (about 0.033 at best for two stores), so persistent memory backed by the federated store would silently never recall anything. Point persistent memory at a dedicated (non-federated) store until score normalization lands.
+
+### Limitations
+
+Federation is **dense-only** in this release: `IHybridSearchable` (native hybrid), sparse search, and `ICollectionManageable` capabilities of the underlying stores are not federated. When `UseHybridSearch = true`, the pipeline's BM25 fallback still applies over the shared in-memory/SQLite BM25 index, not per federated store.
 
 ---
 

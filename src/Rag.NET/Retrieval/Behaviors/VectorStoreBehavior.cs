@@ -25,10 +25,9 @@ public sealed class VectorStoreBehavior : IRetrievalBehavior
             UseHybridSearch = opts.UseHybridSearch,
         };
 
-        var textToEmbed = opts.EmbeddingTextOverride ?? ctx.Query;
-        var queryEmbeddings = await Embedder.GenerateAsync([textToEmbed], cancellationToken: ct).ConfigureAwait(false);
+        var queryVector = await QueryVectorResolver.ResolveAsync(opts, ctx.Query, Embedder, ct).ConfigureAwait(false);
 
-        var results = await VectorStore.SearchAsync(queryEmbeddings[0].Vector, searchOptions, ct).ConfigureAwait(false);
+        var results = await VectorStore.SearchAsync(queryVector, searchOptions, ct).ConfigureAwait(false);
         // Terminal — does not call next
         return results;
     }

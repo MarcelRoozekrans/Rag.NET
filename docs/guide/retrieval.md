@@ -155,9 +155,58 @@ score(d) = Σ  1 / (k + rank_i)    where k = 60
 
 Each document's RRF score is the sum of its reciprocal ranks across both result lists. Documents appearing in both lists score higher than documents appearing in only one. The top `TopK` results by RRF score are returned.
 
-RRF scores are not cosine similarities. `MinScore` filtering is applied by the dense retriever before merging; the final RRF scores are not filtered by `MinScore`.
+RRF scores are not cosine similarities. `MinScore` filtering is applied by each arm before merging — the dense arm against cosine similarity and the sparse arm against SPLADE dot-product scores, which are on a different scale — and the final RRF scores are not filtered by `MinScore`.
 
 See [benchmarks](benchmarks.md#hybrid-search-bm25-fallback) for throughput data on the BM25+RRF path.
+
+## Sparse retrieval (SPLADE)
+
+Learned sparse retrieval adds a third arm to hybrid search: a SPLADE model expands the query and each chunk into weighted vocabulary terms (a `SparseVector`), scoring by dot product over an inverted index. Unlike BM25 it matches on learned term expansions, so it handles synonyms and out-of-vocabulary phrasing while staying as cheap to search as keyword retrieval. Like BM25, the sparse arm always encodes the **raw query text** — even when HyDE is active and the dense arm searches with a hypothesis embedding — because lexical and learned-sparse matching want the user's actual terms.
+
+### Setup
+
+Three pieces: a SPLADE encoder, a sparse-capable vector store, and hybrid search enabled.
+
+```csharp
+services.AddRagNet(rag =>
+{
+    rag.UseSpladeEncoder(o =>
+    {
+        o.ModelPath = "models/splade/model.onnx";      // ONNX export with MLM logits [1, seq, vocab]
+        o.TokenizerVocabPath = "models/splade/vocab.txt";
+        // o.MaxTokens = 512; o.TopTerms = 256; o.OutputName = "logits";
+    });
+
+    // Qdrant: named sparse vector "splade" next to the dense vector on the same points.
+    rag.UseQdrant("localhost", 6334, "docs", vectorDimensions: 1536, enableSparseVectors: true);
+
+    // Or in-process (tests / small corpora):
+    // rag.Services.AddSingleton<IVectorStore>(new InMemoryVectorStore());
+});
+```
+
+**Model:** export a SPLADE checkpoint such as [`naver/splade-cocondenser-ensembledistil`](https://huggingface.co/naver/splade-cocondenser-ensembledistil) to ONNX (e.g. `optimum-cli export onnx --model naver/splade-cocondenser-ensembledistil --task fill-mask <out>`); the encoder needs the model's MLM logits output plus its WordPiece `vocab.txt`.
+
+With those registered, ingestion computes a sparse vector per chunk automatically (`SparseEmbeddingBehavior`) and stores it alongside the dense embedding. Retrieval with `UseHybridSearch = true` then fuses **dense + BM25 + sparse** with weighted RRF:
+
+```csharp
+var results = await pipeline.RetrieveAsync("ISO 27001 compliance checklist", new RetrievalOptions
+{
+    TopK            = 10,
+    UseHybridSearch = true,
+    // UseSparseSearch = null (default): the sparse arm follows UseHybridSearch.
+    // Set false to exclude it for this call.
+    EnsembleOptions = new EnsembleOptions { DenseWeight = 0.4f, Bm25Weight = 0.3f, SparseWeight = 0.3f },
+});
+```
+
+### Behaviour and degradation
+
+- `RetrievalOptions.UseSparseSearch` — `null` (default) follows `UseHybridSearch`; `false` disables the sparse arm per call. `true` without `UseHybridSearch` has no effect: sparse search only participates in the ensemble.
+- The sparse arm runs only when an `ISparseEmbeddingGenerator` is registered **and** the store implements `ISparseSearchable` (Qdrant with `enableSparseVectors: true`, or `InMemoryVectorStore`). Otherwise hybrid search behaves exactly as the two-arm dense+BM25 fusion above.
+- Degraded, never broken: sparse encoding or search failures are logged and the remaining arms serve the request; sparse ingestion failures fall back to dense-only storage.
+- Qdrant sparse mode uses deterministic point ids derived from `(DocumentId, ChunkIndex)`, making chunk upserts idempotent. Collections created without sparse support must be recreated to enable it.
+- PgVector sparse storage is deferred — use Qdrant or the in-memory store for SPLADE today.
 
 ## Hypothetical Document Embeddings (HyDE)
 
@@ -185,6 +234,32 @@ services.AddRagNet(b => b
 ```
 
 `{query}` is a required placeholder in the template.
+
+### Multi-hypothesis averaging (HyDE v2)
+
+By default HyDE generates **three** hypothetical documents per query (`HypothesisCount`, minimum 1) at a relatively high sampling temperature (`HypothesisTemperature`, default 0.8, for diversity), embeds them in a single batch call, and searches with the **L2-normalized mean** of their embeddings. Averaging smooths out the variance a single badly-angled hypothesis would introduce.
+
+```csharp
+services.AddRagNet(b => b
+    .UseHyde(o =>
+    {
+        o.HypothesisCount = 5;        // 1 disables averaging (classic single-doc HyDE)
+        o.HypothesisTemperature = 0.9f;
+    }));
+```
+
+Notes:
+
+- **Cost:** each retrieval spends `n` LLM calls (bounded at 4 in parallel) plus `n` embedding inputs in one batch call, where `n = HypothesisCount`. Set `HypothesisCount = 1` to restore the single-LLM-call cost.
+- Individual hypothesis generations may fail; as long as one survives, retrieval proceeds with the survivors (logged at Debug, plus an Information entry when averaging has to be skipped). If all fail, the pipeline logs a warning and falls back to embedding the original query.
+- The averaged vector flows to dense search via an internal `RetrievalOptions.EmbeddingOverride`; the embedding cache is bypassed in this mode (there is no stable text key to cache under).
+- Averaging requires an `IEmbeddingGenerator` in DI (always present in a standard pipeline); without one, HyDE falls back to the single-document text path.
+
+> **Upgrading from single-hypothesis HyDE:**
+>
+> - `UseHyde()` now defaults to **3 hypotheses per query** — 3 LLM calls plus 1 embedding batch where it used to be a single LLM call. Set `HypothesisCount = 1` to restore the previous call volume.
+> - Hypothesis generation now always requests an explicit sampling temperature (`HypothesisTemperature`, default 0.8) — **including at `HypothesisCount = 1`**, where previously the provider's default temperature applied.
+> - Combining MultiQuery with HyDE multiplies costs: each of the `VariantCount + 1` query branches runs its own HyDE generation, i.e. `(VariantCount + 1) x HypothesisCount` LLM calls — **12 per query with both defaults**.
 
 ### How it works
 

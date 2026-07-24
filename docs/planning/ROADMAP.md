@@ -17,8 +17,10 @@ corresponding rows in features.md.
 **Plan:** `docs/plans/2026-07-24-chunking-strategies-design.md` + `-implementation.md`
 **Completed:** 2026-07-24
 
-### Phase 1.2: Retrieval Techniques [status: pending]
+### Phase 1.2: Retrieval Techniques [status: complete]
 **Backlog items:** Hypothetical Document Embeddings v2; FLARE; Sparse Embedding Retrieval (SPLADE); Multi-Index Federation
+**Plan:** `docs/plans/2026-07-24-retrieval-techniques-design.md` + `-implementation.md`
+**Completed:** 2026-07-24 (SPLADE delivered for Qdrant + in-memory; PgVector sparse storage deferred)
 
 ### Phase 1.3: Ingestion Operations [status: pending]
 **Backlog items:** Batch Ingestion Optimiser; Webhook / Event-Driven Ingestion; Embedding Versioning & Re-indexing

@@ -17,8 +17,13 @@ public sealed class EmbeddingCacheBehavior : IRetrievalBehavior
         RetrievalContext ctx, CancellationToken ct,
         Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next)
     {
-        if (!ctx.Options.UseCacheEmbedding || Cache is null || CachingOptions is null)
+        // EmbeddingOverride carries an already-computed vector — there is no text key to
+        // cache under, so the cache is bypassed entirely.
+        if (!ctx.Options.UseCacheEmbedding || Cache is null || CachingOptions is null
+            || ctx.Options.EmbeddingOverride is { IsEmpty: false })
+        {
             return await next(ctx, ct).ConfigureAwait(false);
+        }
 
         var textToEmbed = ctx.Options.EmbeddingTextOverride ?? ctx.Query;
         var cacheKey = CacheKeyGenerator.ForEmbedding(textToEmbed);

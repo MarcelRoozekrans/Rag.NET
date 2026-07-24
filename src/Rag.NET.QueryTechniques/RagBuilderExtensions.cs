@@ -49,6 +49,11 @@ public static class RagBuilderExtensions
     {
         var options = new HydeOptions();
         configure?.Invoke(options);
+        if (options.HypothesisCount < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(configure),
+                $"{nameof(HydeOptions)}.{nameof(HydeOptions.HypothesisCount)} ({options.HypothesisCount}) must be at least 1.");
+        }
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<IHypotheticalDocumentGenerator, LlmHypotheticalDocumentGenerator>();
         return builder;

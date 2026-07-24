@@ -19,6 +19,12 @@ internal static partial class RagPipelineLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "HyDE generation failed for query '{Query}', falling back to original query embedding")]
     internal static partial void HydeGenerationFailed(ILogger logger, string query, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "HyDE multi-hypothesis averaging unavailable ({Reason}) for query '{Query}'; falling back to the single-document or plain-query path")]
+    internal static partial void HydeAveragingUnavailable(ILogger logger, string reason, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "HyDE generated {Survived} of {Requested} requested hypotheses for query '{Query}'")]
+    internal static partial void HydePartialHypotheses(ILogger logger, int survived, int requested, string query);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Embedding cache operation failed for query '{Query}'")]
     internal static partial void EmbeddingCacheFailed(ILogger logger, string query, Exception exception);
 
@@ -69,4 +75,16 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Contextual compression failed for query '{Query}'; returning uncompressed results.")]
     internal static partial void ContextualCompressionFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Federated vector store '{StoreName}' failed to serve the search; skipping it")]
+    internal static partial void FederatedStoreSearchFailed(ILogger logger, string storeName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EnsembleBehavior: sparse search failed; continuing with the remaining arms")]
+    internal static partial void EnsembleSparseFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sparse embedding generation failed for document '{DocumentId}'; proceeding with dense-only storage")]
+    internal static partial void SparseEmbeddingFailed(ILogger logger, string documentId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sparse vector storage failed for document '{DocumentId}'; dense vectors were stored")]
+    internal static partial void SparseStorageFailed(ILogger logger, string documentId, Exception exception);
 }

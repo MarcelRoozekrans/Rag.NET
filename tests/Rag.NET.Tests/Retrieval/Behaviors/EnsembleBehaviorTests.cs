@@ -213,6 +213,224 @@ public class EnsembleBehaviorTests
             sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException()).AsTask());
     }
 
+    // ── Sparse (SPLADE) third arm ────────────────────────────────────────────
+
+    private static SparseVector MakeSparse() =>
+        new() { Indices = new[] { 1, 5 }, Values = new[] { 0.5f, 0.7f } };
+
+    /// <summary>
+    /// Hand-written fake: substituting <see cref="ISparseEmbeddingGenerator.GenerateAsync"/>
+    /// (a <see cref="ValueTask{T}"/> member) via NSubstitute trips EPS06 (hidden struct copy).
+    /// </summary>
+    private sealed class FakeSparseGenerator : ISparseEmbeddingGenerator
+    {
+        private readonly Func<string, SparseVector> _generate;
+
+        public FakeSparseGenerator(Func<string, SparseVector> generate) => _generate = generate;
+
+        public int Calls { get; private set; }
+
+        public ValueTask<SparseVector> GenerateAsync(string text, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return ValueTask.FromResult(_generate(text));
+        }
+    }
+
+    private static (IVectorStore Store, IEmbeddingGenerator<string, Embedding<float>> Embedder, IBm25Index Bm25)
+        MakeSparseCapableArms(IReadOnlyList<SearchResult> denseResults, IReadOnlyList<SearchResult> sparseResults)
+    {
+        var store = Substitute.For<IVectorStore, ISparseSearchable>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25 = Substitute.For<IBm25Index>();
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(denseResults);
+        ((ISparseSearchable)store).SearchSparseAsync(Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(sparseResults);
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>())
+            .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
+
+        return (store, embedder, bm25);
+    }
+
+    [Fact]
+    public async Task HandleAsync_SparseArm_FusesAllThreeArms()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (store, embedder, bm25) = MakeSparseCapableArms(
+            [MakeResult("doc-dense", 0, 0.9)], [MakeResult("doc-sparse", 0, 4.0)]);
+        var generator = new FakeSparseGenerator(_ => MakeSparse());
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = generator,
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-dense", StringComparison.Ordinal));
+        Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-bm25", StringComparison.Ordinal));
+        Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-sparse", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task HandleAsync_NoSparseGenerator_TwoArmResultUnchanged()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (store, embedder, bm25) = MakeSparseCapableArms(
+            [MakeResult("doc-dense", 0, 0.9)], [MakeResult("doc-sparse", 0, 4.0)]);
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = null,
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        Assert.DoesNotContain(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-sparse", StringComparison.Ordinal));
+        await ((ISparseSearchable)store).DidNotReceive().SearchSparseAsync(
+            Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleAsync_StoreNotSparseSearchable_TwoArmResultUnchanged()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var vectorStore = Substitute.For<IVectorStore>(); // no ISparseSearchable
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25 = Substitute.For<IBm25Index>();
+        var generator = new FakeSparseGenerator(_ => MakeSparse());
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>())
+            .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = vectorStore,
+            Bm25Index = bm25,
+            SparseGenerator = generator,
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        Assert.NotEmpty(output);
+        Assert.Equal(0, generator.Calls);
+    }
+
+    [Fact]
+    public async Task HandleAsync_UseSparseSearchFalse_SparseArmDisabled()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (store, embedder, bm25) = MakeSparseCapableArms(
+            [MakeResult("doc-dense", 0, 0.9)], [MakeResult("doc-sparse", 0, 4.0)]);
+        var generator = new FakeSparseGenerator(_ => MakeSparse());
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = generator,
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5, UseSparseSearch = false });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        Assert.DoesNotContain(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-sparse", StringComparison.Ordinal));
+        Assert.Equal(0, generator.Calls);
+    }
+
+    [Fact]
+    public async Task HandleAsync_SparseEncoderFails_DenseAndBm25StillServed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (store, embedder, bm25) = MakeSparseCapableArms(
+            [MakeResult("doc-dense", 0, 0.9)], [MakeResult("doc-sparse", 0, 4.0)]);
+        var generator = new FakeSparseGenerator(_ => throw new InvalidOperationException("encoder down"));
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = generator,
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-dense", StringComparison.Ordinal));
+        Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-bm25", StringComparison.Ordinal));
+        Assert.DoesNotContain(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-sparse", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task HandleAsync_SparseSearchFails_DenseAndBm25StillServed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (store, embedder, bm25) = MakeSparseCapableArms(
+            [MakeResult("doc-dense", 0, 0.9)], [MakeResult("doc-sparse", 0, 4.0)]);
+        ((ISparseSearchable)store).SearchSparseAsync(Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("sparse index down"));
+        var generator = new FakeSparseGenerator(_ => MakeSparse());
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = generator,
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-dense", StringComparison.Ordinal));
+        Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-bm25", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task HandleAsync_EmptySparseQueryVector_SparseArmSkipped()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (store, embedder, bm25) = MakeSparseCapableArms(
+            [MakeResult("doc-dense", 0, 0.9)], [MakeResult("doc-sparse", 0, 4.0)]);
+        var generator = new FakeSparseGenerator(_ => SparseVector.Empty);
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = generator,
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        Assert.NotEmpty(output);
+        await ((ISparseSearchable)store).DidNotReceive().SearchSparseAsync(
+            Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task HandleAsync_Bm25ReturnsEmpty_ReturnsDenseResults()
     {

@@ -87,6 +87,8 @@ public class HydeBenchmarks
         return sb.ToString();
     }
 
+    // GenerateManyAsync is intentionally NOT overridden: the interface's default
+    // implementation (sequential GenerateAsync loop) covers multi-hypothesis calls.
     private sealed class FakeHydeGenerator : IHypotheticalDocumentGenerator
     {
         public Task<string> GenerateAsync(string query, CancellationToken cancellationToken = default)

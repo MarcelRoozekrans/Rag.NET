@@ -19,6 +19,18 @@ public sealed record RetrievalOptions
     /// </summary>
     public EnsembleOptions? EnsembleOptions { get; init; }
 
+    /// <summary>
+    /// Controls the learned sparse (SPLADE) arm of hybrid search.
+    /// <see langword="null"/> (the default) follows <see cref="UseHybridSearch"/>: the sparse
+    /// arm joins the ensemble whenever hybrid search runs, an
+    /// <see cref="Rag.NET.Abstractions.ISparseEmbeddingGenerator"/> is registered, and the
+    /// vector store implements <see cref="Rag.NET.Abstractions.ISparseSearchable"/>.
+    /// Set to <see langword="false"/> to exclude the sparse arm from hybrid search for this
+    /// call. Setting <see langword="true"/> without <see cref="UseHybridSearch"/> has no
+    /// effect — sparse search only participates in the ensemble.
+    /// </summary>
+    public bool? UseSparseSearch { get; init; }
+
     public bool UseLostInTheMiddleReordering { get; init; }
     public bool UseRedundancyFilter { get; init; }
     public float RedundancyThreshold { get; init; } = 0.95f;
@@ -157,4 +169,14 @@ public sealed record RetrievalOptions
     /// to <see cref="Rag.NET.Retrieval.VectorStoreRetriever"/> while preserving the original query for BM25.
     /// </summary>
     internal string? EmbeddingTextOverride { get; init; }
+
+    /// <summary>
+    /// Internal override for the query embedding itself.
+    /// Set by HyDE v2 multi-hypothesis averaging; consumed by the vector-store and ensemble
+    /// (dense arm) behaviors in preference to embedding any text
+    /// (takes precedence over <see cref="EmbeddingTextOverride"/>).
+    /// An empty vector means absent — same contract as <c>TextChunk.Embedding</c>.
+    /// The embedding cache behavior passes through when this is set (no text key to cache under).
+    /// </summary>
+    internal ReadOnlyMemory<float>? EmbeddingOverride { get; init; }
 }

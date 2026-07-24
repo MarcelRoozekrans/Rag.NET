@@ -7,30 +7,36 @@ using static Qdrant.Client.Grpc.Conditions;
 
 namespace Rag.NET.Qdrant;
 
-public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposable
+/// <summary>
+/// Qdrant-backed <see cref="IVectorStore"/> (dense vectors only). For SPLADE sparse vector
+/// support use <see cref="QdrantSparseVectorStore"/> — deliberately a separate type so an
+/// <c>is ISparseSearchable</c> capability probe on the registered store is honest: a
+/// dense-only Qdrant store never advertises sparse support, and the ingestion/retrieval
+/// pipelines skip sparse work entirely instead of computing vectors that could never be
+/// stored.
+/// </summary>
+public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposable
 {
-    private readonly QdrantClient _client;
-    private readonly string _collectionName;
-    private readonly int _vectorDimensions;
+    private protected QdrantClient Client { get; }
+    private protected string CollectionName { get; }
+    private protected int VectorDimensions { get; }
 
     public QdrantVectorStore(string host, int port, string collectionName, int vectorDimensions = 1536)
     {
-        _client = new QdrantClient(host, port);
-        _collectionName = collectionName;
-        _vectorDimensions = vectorDimensions;
+        Client = new QdrantClient(host, port);
+        CollectionName = collectionName;
+        VectorDimensions = vectorDimensions;
     }
 
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    public virtual async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        var exists = await _client.CollectionExistsAsync(_collectionName, cancellationToken)
+        var exists = await Client.CollectionExistsAsync(CollectionName, cancellationToken)
             .ConfigureAwait(false);
 
         if (!exists)
         {
-            await _client.CreateCollectionAsync(
-                _collectionName,
-                new VectorParams { Size = (ulong)_vectorDimensions, Distance = Distance.Cosine },
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+            await CreateCollectionCoreAsync(CollectionName, VectorDimensions, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -42,7 +48,7 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
 
         foreach (var chunk in chunks)
         {
-            var pointId = Guid.NewGuid();
+            var pointId = CreatePointId((string)chunk.Chunk.DocumentId, chunk.Chunk.ChunkIndex);
 
             points.Add(new PointStruct
             {
@@ -63,7 +69,7 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
             }
         }
 
-        await _client.UpsertAsync(_collectionName, points, cancellationToken: cancellationToken)
+        await Client.UpsertAsync(CollectionName, points, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -72,61 +78,23 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
         SearchOptions options,
         CancellationToken cancellationToken = default)
     {
-        Filter? filter = null;
-        if (options.MetadataFilter is { Count: > 0 })
-        {
-            filter = new Filter();
-            foreach (var kvp in options.MetadataFilter)
-            {
-                filter.Must.Add(MatchKeyword($"meta_{kvp.Key}", kvp.Value));
-            }
-        }
-
-        var results = await _client.SearchAsync(
-            _collectionName,
+        var results = await Client.SearchAsync(
+            CollectionName,
             queryEmbedding.ToArray(),
-            filter: filter,
+            filter: BuildMetadataFilter(options.MetadataFilter),
             limit: (ulong)options.TopK,
             scoreThreshold: (float)options.MinScore,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        return results
-            .Select(point =>
-            {
-                Dictionary<string, string> metadata;
-                if (point.Payload.TryGetValue("metadata", out var metaValue))
-                {
-                    var metadataResult = MetadataSerializer.DeserializeMetadata(metaValue.StringValue);
-                    metadata = metadataResult.IsSuccess
-                        ? metadataResult.Value
-                        : new Dictionary<string, string>(StringComparer.Ordinal);
-                }
-                else
-                {
-                    metadata = new Dictionary<string, string>(StringComparer.Ordinal);
-                }
-
-                return new SearchResult
-                {
-                    Chunk = new TextChunk
-                    {
-                        Text = point.Payload["text"].StringValue,
-                        DocumentId = new DocumentId(point.Payload["document_id"].StringValue),
-                        ChunkIndex = (int)point.Payload["chunk_index"].IntegerValue,
-                        Metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal),
-                    },
-                    Score = point.Score,
-                };
-            })
-            .ToList();
+        return results.Select(MapScoredPoint).ToList();
     }
 
     public async Task DeleteByDocumentIdAsync(
         string documentId,
         CancellationToken cancellationToken = default)
     {
-        await _client.DeleteAsync(
-            collectionName: _collectionName,
+        await Client.DeleteAsync(
+            collectionName: CollectionName,
             filter: MatchKeyword("document_id", documentId),
             cancellationToken: cancellationToken).ConfigureAwait(false);
     }
@@ -136,17 +104,14 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
         int vectorDimensions,
         CancellationToken cancellationToken = default)
     {
-        await _client.CreateCollectionAsync(
-            name,
-            new VectorParams { Size = (ulong)vectorDimensions, Distance = Distance.Cosine },
-            cancellationToken: cancellationToken).ConfigureAwait(false);
+        await CreateCollectionCoreAsync(name, vectorDimensions, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task DeleteCollectionAsync(
         string name,
         CancellationToken cancellationToken = default)
     {
-        await _client.DeleteCollectionAsync(name, cancellationToken: cancellationToken)
+        await Client.DeleteCollectionAsync(name, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -154,9 +119,80 @@ public sealed class QdrantVectorStore : IVectorStore, ICollectionManageable, IDi
         string name,
         CancellationToken cancellationToken = default)
     {
-        return await _client.CollectionExistsAsync(name, cancellationToken)
+        return await Client.CollectionExistsAsync(name, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+            Client.Dispose();
+    }
+
+    /// <summary>
+    /// Point id for one chunk. Random by default; <see cref="QdrantSparseVectorStore"/>
+    /// overrides with deterministic ids so sparse vectors can address the same points.
+    /// </summary>
+    private protected virtual Guid CreatePointId(string documentId, int chunkIndex) => Guid.NewGuid();
+
+    /// <summary>
+    /// Creates a collection. Dense-only by default; <see cref="QdrantSparseVectorStore"/>
+    /// overrides to add the named sparse vector config.
+    /// </summary>
+    private protected virtual async Task CreateCollectionCoreAsync(
+        string name, int vectorDimensions, CancellationToken cancellationToken)
+    {
+        await Client.CreateCollectionAsync(
+            name,
+            new VectorParams { Size = (ulong)vectorDimensions, Distance = Distance.Cosine },
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    private protected static Filter? BuildMetadataFilter(IDictionary<string, string>? metadataFilter)
+    {
+        if (metadataFilter is not { Count: > 0 })
+            return null;
+
+        var filter = new Filter();
+        foreach (var kvp in metadataFilter)
+        {
+            filter.Must.Add(MatchKeyword($"meta_{kvp.Key}", kvp.Value));
+        }
+
+        return filter;
+    }
+
+    private protected static SearchResult MapScoredPoint(ScoredPoint point)
+    {
+        Dictionary<string, string> metadata;
+        if (point.Payload.TryGetValue("metadata", out var metaValue))
+        {
+            var metadataResult = MetadataSerializer.DeserializeMetadata(metaValue.StringValue);
+            metadata = metadataResult.IsSuccess
+                ? metadataResult.Value
+                : new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+        else
+        {
+            metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        }
+
+        return new SearchResult
+        {
+            Chunk = new TextChunk
+            {
+                Text = point.Payload["text"].StringValue,
+                DocumentId = new DocumentId(point.Payload["document_id"].StringValue),
+                ChunkIndex = (int)point.Payload["chunk_index"].IntegerValue,
+                Metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal),
+            },
+            Score = point.Score,
+        };
+    }
 }
