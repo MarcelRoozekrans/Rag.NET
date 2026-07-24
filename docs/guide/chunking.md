@@ -165,6 +165,45 @@ services.AddRagNet(rag => rag.UseSemanticChunking(new SemanticChunkingOptions
 
 **Overhead:** All processing is embedding-latency-bound. The local similarity computation and grouping add negligible overhead (< 1 ms for typical documents) relative to embedding API latency (50–500 ms per batch).
 
+## `PropositionChunkingStrategy`
+
+LLM-driven chunking that decomposes document text into **atomic, self-contained propositions** — each a single factual claim expressed as one complete sentence, with pronouns resolved so the sentence is understandable without its surrounding text. Each proposition becomes its own chunk, making it highly retrievable for specific questions ("one chunk, one fact"). The document is concatenated, split into token-bounded passages (cl100k_base, no overlap), and each passage is sent to the `IChatClient` in one call that returns a JSON array of proposition strings.
+
+```csharp
+services.AddRagNet(rag => rag.UsePropositionChunking());
+```
+
+Or with custom options:
+
+```csharp
+services.AddRagNet(rag => rag.UsePropositionChunking(o =>
+{
+    o.MaxPassageTokens          = 500;   // smaller passages, more LLM calls
+    o.MaxPropositionsPerPassage = 30;    // safety cap per passage
+    o.EmitParentPassages        = true;  // also emit each passage as its own chunk
+    o.ChatClient                = myCheapModel; // optional dedicated client
+}));
+```
+
+`UsePropositionChunking` registers `PropositionChunkingStrategy` for both `IChunkingStrategy` and `IDocumentChunkingStrategy`, pointing to the same singleton instance. It requires an `IChatClient` in DI (or `PropositionChunkingOptions.ChatClient`).
+
+**Options (`PropositionChunkingOptions`):**
+
+| Option | Default | Description |
+|---|---|---|
+| `MaxPassageTokens` | `1000` | Max tokens (cl100k_base) per passage sent to the LLM. One LLM call per passage. |
+| `MaxPropositionsPerPassage` | `50` | Safety cap on propositions parsed per passage; excess entries are dropped. |
+| `EmitParentPassages` | `false` | Also emit each source passage as its own chunk before its propositions (for dual-index setups). |
+| `ChatClient` | `null` | Optional dedicated chat client; falls back to the DI-registered one. |
+
+**Chunk metadata:** every chunk carries `Metadata["chunk.kind"]` (`"proposition"` or `"passage"`), plus `parent.start` / `parent.end` — the character span of the source passage in the concatenated document text.
+
+**Parent Document Retrieval compatibility:** each proposition chunk's `StartPosition` / `EndPosition` are set to its source passage's character span (the proposition text itself does not exist verbatim in the source). `ParentDocumentIngestionBehavior` maps child chunks to parents via `StartPosition`, so proposition chunks combine naturally with [Parent Document Retrieval](retrieval.md): retrieve by precise proposition, expand to the surrounding passage for answer context.
+
+**Failure fallback:** if the LLM call fails, the response is not valid JSON, or no usable propositions survive filtering, the strategy logs a warning and emits the passage itself as a single chunk (`chunk.kind = "passage"`) — ingestion never loses content and never throws for one bad passage. Cancellation is always propagated, never swallowed.
+
+**Cost:** one LLM call per `MaxPassageTokens`-sized passage at ingest time. Proposition chunking trades ingest cost and chunk count for maximum retrieval precision.
+
 ## `HierarchicalMergerChunkingStrategy`
 
 Merges document sections into heading-subtree chunks. Each chunk covers one heading and all body text beneath it down to a configurable depth. Best for documents with a clear heading hierarchy (Markdown, Word, HTML).

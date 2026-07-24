@@ -41,4 +41,43 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton<IChunkingStrategy>(_ => strategy);
         return builder;
     }
+
+    /// <summary>
+    /// Registers <see cref="PropositionChunkingStrategy"/> as both <see cref="IChunkingStrategy"/>
+    /// and <see cref="IDocumentChunkingStrategy"/>, resolving to the same singleton instance.
+    /// The strategy sends token-bounded passages to the DI-registered
+    /// <see cref="Microsoft.Extensions.AI.IChatClient"/> (or
+    /// <see cref="PropositionChunkingOptions.ChatClient"/> when set) and emits one chunk per
+    /// extracted proposition; on LLM or parse failure the passage is emitted as a fallback chunk.
+    /// </summary>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="configure">Configures the <see cref="PropositionChunkingOptions"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <see cref="PropositionChunkingOptions.MaxPassageTokens"/> or
+    /// <see cref="PropositionChunkingOptions.MaxPropositionsPerPassage"/> is not positive.
+    /// </exception>
+    public static TBuilder UsePropositionChunking<TBuilder>(this TBuilder builder, Action<PropositionChunkingOptions>? configure = null)
+        where TBuilder : IRagBuilder
+    {
+        var opts = new PropositionChunkingOptions();
+        configure?.Invoke(opts);
+
+        if (opts.MaxPassageTokens <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(configure),
+                $"MaxPassageTokens ({opts.MaxPassageTokens}) must be greater than zero.");
+        }
+
+        if (opts.MaxPropositionsPerPassage <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(configure),
+                $"MaxPropositionsPerPassage ({opts.MaxPropositionsPerPassage}) must be greater than zero.");
+        }
+
+        builder.Services.AddSingleton(opts);
+        builder.Services.AddSingleton<PropositionChunkingStrategy>();
+        builder.Services.AddSingleton<IChunkingStrategy>(sp => sp.GetRequiredService<PropositionChunkingStrategy>());
+        builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<PropositionChunkingStrategy>());
+        return builder;
+    }
 }

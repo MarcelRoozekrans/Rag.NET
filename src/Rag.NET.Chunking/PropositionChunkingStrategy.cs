@@ -22,7 +22,7 @@ namespace Rag.NET.Chunking;
 public sealed partial class PropositionChunkingStrategy(
     IChatClient chatClient,
     PropositionChunkingOptions options,
-    ILogger<PropositionChunkingStrategy>? logger = null) : IDocumentChunkingStrategy
+    ILogger<PropositionChunkingStrategy>? logger = null) : IDocumentChunkingStrategy, IChunkingStrategy
 {
     private static readonly Tokenizer Cl100kTokenizer = TiktokenTokenizer.CreateForEncoding("cl100k_base");
 
@@ -71,6 +71,22 @@ public sealed partial class PropositionChunkingStrategy(
             foreach (var proposition in propositions)
                 yield return MakeChunk(proposition, docId, chunkIndex++, start, end, "proposition");
         }
+    }
+
+    /// <summary>
+    /// Per-section entry point (<see cref="IChunkingStrategy"/>): wraps the single section in a
+    /// one-element async sequence and delegates to <see cref="ChunkDocumentAsync"/>.
+    /// </summary>
+    public IAsyncEnumerable<TextChunk> ChunkAsync(
+        DocumentSection section,
+        ChunkingOptions chunkingOptions,
+        CancellationToken cancellationToken = default) =>
+        ChunkDocumentAsync(SingleAsync(section), chunkingOptions, cancellationToken);
+
+    private static async IAsyncEnumerable<DocumentSection> SingleAsync(DocumentSection section)
+    {
+        await Task.CompletedTask.ConfigureAwait(false);
+        yield return section;
     }
 
     private static async Task<(string Text, DocumentId Id)> ConcatenateSectionsAsync(

@@ -731,6 +731,8 @@ LLM-driven chunking that decomposes document text into atomic, self-contained pr
 
 **Why:** Traditional chunks are paragraph-shaped and contain multiple ideas. Proposition chunks are query-shaped — one chunk, one fact — maximising precision at the cost of more chunks and an LLM pass at ingest time.
 
+**Status:** Delivered by `PropositionChunkingStrategy` in `Rag.NET.Chunking` (`UsePropositionChunking`): token-bounded passage windows (cl100k_base), one `IChatClient` call per passage returning a JSON array of propositions, passage-chunk fallback on LLM/parse failure, and `parent.start`/`parent.end` + passage-span `StartPosition`/`EndPosition` for Parent Document Retrieval compatibility.
+
 ---
 
 ### Sliding Window Chunking with Overlap
@@ -1032,7 +1034,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | OCR for Scanned PDFs | Medium | Tesseract / Azure Doc Intelligence |
 | [x] | Contextual Compression | Medium | `IChatClient` or embeddings |
 | [x] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
-| [ ] | Proposition Extraction Chunking | Medium | `IChatClient` |
+| [x] | Proposition Extraction Chunking | Medium | `IChatClient` |
 | [ ] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core / Service Bus |
 | [ ] | OpenTelemetry Tracing & Metrics | Medium | `System.Diagnostics.ActivitySource` |
 | [ ] | Email Connector (Outlook/Exchange) | Medium | Microsoft Graph SDK |
