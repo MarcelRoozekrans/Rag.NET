@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Xunit;
 
 namespace Rag.NET.Embeddings.Onnx.Tests;
@@ -39,7 +40,7 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
         var sut = CreateSut((ids, start, end) =>
         {
             calls++;
-            return (new float[(end - start) * 2], 2);
+            return (new float[2], 2);
         });
 
         var result = await sut.GenerateAsync(text, TestContext.Current.CancellationToken);
@@ -52,29 +53,21 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
     public async Task GenerateAsync_MultiWindow_MergesByElementWiseMax()
     {
         // MaxTokens 4 → content budget 2, overlap 0 → windows (0,2), (2,4) over the 4 word
-        // tokens. vocab = 3:
-        //   window (0,2): every row [2, 1, -1] → pooled [ln 3, ln 2, 0]
-        //   window (2,4): every row [0, 3, -1] → pooled [0, ln 4, 0]
-        // merged max: [ln 3, ln 4, 0] → pruned: indices [0, 1], values [ln 3, ln 4].
+        // tokens. The runner returns POOLED per-vocab weights (vocab = 3):
+        //   window (0,2): [2, 1, 0]
+        //   window (2,4): [0, 3, 0]
+        // merged element-wise max: [2, 3, 0] → pruned: indices [0, 1], values [2, 3].
+        // (Pooling math itself — ReLU/log1p/max over tokens — is covered by SpladePoolingTests.)
         var sut = CreateSut((ids, start, end) =>
-        {
-            var rows = end - start;
-            var logits = new float[rows * 3];
-            for (var r = 0; r < rows; r++)
-            {
-                logits[r * 3] = start == 0 ? 2f : 0f;
-                logits[(r * 3) + 1] = start == 0 ? 1f : 3f;
-                logits[(r * 3) + 2] = -1f;
-            }
-            return (logits, 3);
-        }, maxTokens: 4);
+            start == 0 ? (new float[] { 2f, 1f, 0f }, 3) : (new float[] { 0f, 3f, 0f }, 3),
+            maxTokens: 4);
 
         var result = await sut.GenerateAsync("alpha bravo charlie delta", TestContext.Current.CancellationToken);
 
         Assert.Equal(2, result.Count);
         Assert.Equal([0, 1], result.Indices.ToArray());
-        Assert.Equal(MathF.Log(3f), result.Values.Span[0], precision: 5);
-        Assert.Equal(MathF.Log(4f), result.Values.Span[1], precision: 5);
+        Assert.Equal(2f, result.Values.Span[0]);
+        Assert.Equal(3f, result.Values.Span[1]);
     }
 
     [Fact]
@@ -84,7 +77,7 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
         var sut = CreateSut((ids, start, end) =>
         {
             seenIds = ids;
-            return (new float[(end - start) * 2], 2);
+            return (new float[2], 2);
         });
 
         await sut.GenerateAsync("alpha bravo charlie delta", TestContext.Current.CancellationToken);
@@ -97,24 +90,13 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
     [Fact]
     public async Task GenerateAsync_TopTermsPrunesToLargestWeights()
     {
-        var sut = CreateSut((ids, start, end) =>
-        {
-            var rows = end - start;
-            var logits = new float[rows * 3];
-            for (var r = 0; r < rows; r++)
-            {
-                logits[r * 3] = 1f;
-                logits[(r * 3) + 1] = 5f;
-                logits[(r * 3) + 2] = 3f;
-            }
-            return (logits, 3);
-        }, topTerms: 1);
+        var sut = CreateSut((ids, start, end) => (new float[] { 1f, 5f, 3f }, 3), topTerms: 1);
 
         var result = await sut.GenerateAsync("alpha bravo", TestContext.Current.CancellationToken);
 
         Assert.Equal(1, result.Count);
         Assert.Equal([1], result.Indices.ToArray());
-        Assert.Equal(MathF.Log(6f), result.Values.Span[0], precision: 5);
+        Assert.Equal(5f, result.Values.Span[0]);
     }
 
     [Fact]
@@ -126,7 +108,7 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
         {
             calls++;
             cts.Cancel(); // cancel during the first pass — the loop must stop before pass 2
-            return (new float[(end - start) * 2], 2);
+            return (new float[2], 2);
         }, maxTokens: 4);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
@@ -141,13 +123,75 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
         var sut = CreateSut((ids, start, end) =>
         {
             var vocab = start == 0 ? 2 : 3; // second window disagrees
-            return (new float[(end - start) * vocab], vocab);
+            return (new float[vocab], vocab);
         }, maxTokens: 4);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await sut.GenerateAsync("alpha bravo charlie delta", TestContext.Current.CancellationToken));
 
         Assert.Contains("vocabulary", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_WeightsLengthMismatchesVocabularySize_Throws()
+    {
+        var sut = CreateSut((ids, start, end) => (new float[5], 3));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await sut.GenerateAsync("alpha bravo", TestContext.Current.CancellationToken));
+
+        Assert.Contains("pooled weights", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── Model/tokenizer vocabulary cross-check ───────────────────────────────
+
+    private sealed class CapturingLogger : ILogger<OnnxSpladeEncoder>
+    {
+        public List<string> Warnings { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning)
+                Warnings.Add(formatter(state, exception));
+        }
+    }
+
+    [Fact]
+    public async Task GenerateAsync_ModelVocabularyDiffersFromTokenizerVocab_WarnsOnce()
+    {
+        // The temp vocab file has 9 lines; the fake model reports vocabulary size 3.
+        var logger = new CapturingLogger();
+        var sut = new OnnxSpladeEncoder(
+            new OnnxSpladeOptions { ModelPath = "unused/model.onnx", TokenizerVocabPath = _vocabPath },
+            (ids, start, end) => (new float[3], 3),
+            logger);
+
+        await sut.GenerateAsync("alpha bravo", TestContext.Current.CancellationToken);
+        await sut.GenerateAsync("charlie delta", TestContext.Current.CancellationToken);
+
+        var warning = Assert.Single(logger.Warnings); // once per instance, not per call
+        Assert.Contains("3", warning, StringComparison.Ordinal);
+        Assert.Contains("9", warning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GenerateAsync_MatchingVocabularySizes_NoWarning()
+    {
+        var logger = new CapturingLogger();
+        var sut = new OnnxSpladeEncoder(
+            new OnnxSpladeOptions { ModelPath = "unused/model.onnx", TokenizerVocabPath = _vocabPath },
+            (ids, start, end) => (new float[9], 9),
+            logger);
+
+        await sut.GenerateAsync("alpha bravo", TestContext.Current.CancellationToken);
+
+        Assert.Empty(logger.Warnings);
     }
 
     // ── Constructor validation ───────────────────────────────────────────────

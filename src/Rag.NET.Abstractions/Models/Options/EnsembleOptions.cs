@@ -19,8 +19,10 @@ public sealed class EnsembleOptions
     public float Bm25Weight  { get; init; } = 0.5f;
 
     /// <summary>
-    /// Weight applied to learned sparse (SPLADE) retrieval scores when combining results.
-    /// Must be in the range [0, 1]. Only used when the sparse ensemble arm runs — see
+    /// Relative weight applied to learned sparse (SPLADE) retrieval scores when combining
+    /// results — use the same scale as <see cref="DenseWeight"/> and <see cref="Bm25Weight"/>
+    /// (weights are not validated; only their ratios matter for the RRF fusion).
+    /// Only used when the sparse ensemble arm runs — see
     /// <see cref="RetrievalOptions.UseSparseSearch"/>.
     /// Defaults to <c>0.5</c>.
     /// </summary>

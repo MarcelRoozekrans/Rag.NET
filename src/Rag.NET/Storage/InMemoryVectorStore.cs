@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.PostRetrieval;
 
 namespace Rag.NET.Storage;
 
@@ -61,8 +62,6 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
         if (options.TopK <= 0)
             return Task.FromResult<IReadOnlyList<SearchResult>>([]);
 
-        var query = queryEmbedding.Span;
-
         _lock.EnterReadLock();
         try
         {
@@ -72,7 +71,9 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
                 if (!MatchesFilter(entry.Chunk, options.MetadataFilter))
                     continue;
 
-                var score = CosineSimilarity(query, entry.Embedding.Span);
+                // Shared cosine helper: a dimension mismatch scores 0 (excluded whenever
+                // MinScore > 0; included with score 0 under the default MinScore of 0).
+                double score = EmbeddingMath.CosineSimilarity(queryEmbedding, entry.Embedding);
                 if (score < options.MinScore)
                     continue;
 
@@ -282,22 +283,6 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
         }
 
         return true;
-    }
-
-    /// <summary>Cosine similarity with double accumulation; zero norm scores 0.</summary>
-    private static double CosineSimilarity(ReadOnlySpan<float> a, ReadOnlySpan<float> b)
-    {
-        var length = Math.Min(a.Length, b.Length);
-        double dot = 0, normA = 0, normB = 0;
-        for (var i = 0; i < length; i++)
-        {
-            dot += (double)a[i] * b[i];
-            normA += (double)a[i] * a[i];
-            normB += (double)b[i] * b[i];
-        }
-
-        var denominator = Math.Sqrt(normA) * Math.Sqrt(normB);
-        return denominator == 0 ? 0 : dot / denominator;
     }
 
     private static IReadOnlyList<SearchResult> TakeTop(

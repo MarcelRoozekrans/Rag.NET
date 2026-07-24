@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using Microsoft.ML.Tokenizers;
@@ -41,11 +42,14 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
     private const int SpecialTokensPerWindow = 2;
 
     /// <summary>
-    /// One model pass over <c>ids[start..end)</c> returning the content-token logit rows
-    /// (row-major <c>[contentTokens, vocabularySize]</c>) and the vocabulary size. Internal
-    /// seam so tests can exercise <see cref="GenerateAsync"/> without an ONNX model.
+    /// One model pass over <c>ids[start..end)</c> returning the POOLED per-vocabulary term
+    /// weights (<c>float[vocabularySize]</c> — <see cref="PoolWindow"/> already applied) and
+    /// the vocabulary size. Pooling happens inside the pass, over the live output tensor
+    /// buffer, so the full <c>[tokens, vocabulary]</c> logit matrix (tens of MB per window)
+    /// is never copied out. Internal seam so tests can exercise <see cref="GenerateAsync"/>
+    /// without an ONNX model.
     /// </summary>
-    internal delegate (float[] Logits, int VocabularySize) WindowRunner(int[] ids, int start, int end);
+    internal delegate (float[] Weights, int VocabularySize) WindowRunner(int[] ids, int start, int end);
 
     private readonly InferenceSession? _session;
     private readonly BertTokenizer _tokenizer;
@@ -54,9 +58,12 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
     private readonly string? _outputName;
     private readonly bool _sendAttentionMask;
     private readonly bool _sendTokenTypeIds;
+    private readonly int _tokenizerVocabularySize;
+    private readonly ILogger<OnnxSpladeEncoder>? _logger;
+    private int _vocabularyMismatchWarned;
 
-    public OnnxSpladeEncoder(OnnxSpladeOptions options)
-        : this(options, windowRunner: null)
+    public OnnxSpladeEncoder(OnnxSpladeOptions options, ILogger<OnnxSpladeEncoder>? logger = null)
+        : this(options, windowRunner: null, logger)
     {
     }
 
@@ -64,7 +71,8 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
     /// Test seam: a non-null <paramref name="windowRunner"/> replaces the ONNX session (no
     /// model file needed — only the vocabulary). Public-constructor behavior is unchanged.
     /// </summary>
-    internal OnnxSpladeEncoder(OnnxSpladeOptions options, WindowRunner? windowRunner)
+    internal OnnxSpladeEncoder(
+        OnnxSpladeOptions options, WindowRunner? windowRunner, ILogger<OnnxSpladeEncoder>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -91,10 +99,15 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
         }
 
         _options = options;
+        _logger = logger;
         // Explicit BertOptions: passing null options makes BertTokenizer.Create skip the Bert
         // normalizer and basic tokenization entirely (verified against 0.22.0), which would
         // break uncased-vocab matching (uppercase words all become [UNK]).
         _tokenizer = BertTokenizer.Create(options.TokenizerVocabPath, new BertOptions());
+        // One-time line count of the vocab file: cheap and lets GenerateAsync warn when the
+        // model's logits dimension disagrees with the tokenizer vocabulary (a likely
+        // model/vocab mix-up). Warn-only — some exports pad the vocabulary dimension.
+        _tokenizerVocabularySize = CountLines(options.TokenizerVocabPath);
 
         if (windowRunner is not null)
         {
@@ -147,16 +160,23 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
 
             var window = windows[w];
             // InferenceSession.Run is synchronous — keep it off the caller's thread.
-            var (logits, vocab) = await Task.Run(
+            var (weights, vocab) = await Task.Run(
                 () => _runWindow(ids, window.Start, window.End), cancellationToken).ConfigureAwait(false);
+
+            if (vocab <= 0)
+                throw new InvalidOperationException($"Model returned a non-positive vocabulary size ({vocab}).");
+
+            if (weights.Length != vocab)
+            {
+                throw new InvalidOperationException(
+                    $"Window {w} returned {weights.Length} pooled weights for vocabulary size {vocab}.");
+            }
 
             if (merged is null)
             {
-                if (vocab <= 0)
-                    throw new InvalidOperationException($"Model returned a non-positive vocabulary size ({vocab}).");
-
                 vocabularySize = vocab;
-                merged = PoolWindow(logits, vocabularySize);
+                WarnOnceOnVocabularyMismatch(vocab);
+                merged = weights;
             }
             else if (vocab != vocabularySize)
             {
@@ -165,11 +185,27 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
             }
             else
             {
-                MaxMergeInPlace(merged, PoolWindow(logits, vocabularySize));
+                MaxMergeInPlace(merged, weights);
             }
         }
 
         return merged!;
+    }
+
+    /// <summary>
+    /// Warns (once per instance) when the model's logits dimension disagrees with the
+    /// tokenizer vocabulary file — a likely model/vocab mix-up. Not fatal: some exports pad
+    /// the vocabulary dimension, so token ids remain valid indices.
+    /// </summary>
+    private void WarnOnceOnVocabularyMismatch(int modelVocabularySize)
+    {
+        if (modelVocabularySize == _tokenizerVocabularySize || _logger is null)
+            return;
+        if (Interlocked.Exchange(ref _vocabularyMismatchWarned, 1) != 0)
+            return;
+
+        OnnxEmbeddingsLog.SpladeVocabularySizeMismatch(
+            _logger, modelVocabularySize, _tokenizerVocabularySize, _options.TokenizerVocabPath);
     }
 
     /// <summary>
@@ -178,9 +214,8 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
     /// logit first is equivalent to maxing <c>log(1 + ReLU(logit))</c> per token because
     /// <c>log1p</c> is monotonically increasing. Terms with no positive logit get weight 0.
     /// </summary>
-    internal static float[] PoolWindow(float[] logits, int vocabularySize)
+    internal static float[] PoolWindow(ReadOnlySpan<float> logits, int vocabularySize)
     {
-        ArgumentNullException.ThrowIfNull(logits);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(vocabularySize);
         if (logits.Length % vocabularySize != 0)
         {
@@ -314,10 +349,11 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
     }
 
     /// <summary>
-    /// Runs one [CLS] window [SEP] pass and returns the content-token logit rows (the two
-    /// special-token rows are dropped) as a row-major matrix plus the vocabulary size.
+    /// Runs one [CLS] window [SEP] pass and pools the content-token logit rows (the two
+    /// special-token rows are dropped) into per-vocabulary term weights. Pooling reads the
+    /// live tensor buffer directly — the [tokens, vocabulary] logit matrix is never copied.
     /// </summary>
-    private (float[] Logits, int VocabularySize) RunWindowCore(int[] ids, int start, int end)
+    private (float[] Weights, int VocabularySize) RunWindowCore(int[] ids, int start, int end)
     {
         var contentLength = end - start;
         var totalLength = contentLength + SpecialTokensPerWindow;
@@ -353,12 +389,22 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
         var vocabularySize = tensor.Dimensions[2];
 
         // The tensor buffer is row-major [1, totalLength, vocabulary]: the content rows
-        // (1..contentLength, skipping the [CLS] row) form one contiguous block.
+        // (1..contentLength, skipping the [CLS] row) form one contiguous block. Pool them
+        // in place, before the outputs are disposed.
         var dense = tensor as DenseTensor<float> ?? tensor.ToDenseTensor();
-        var logits = new float[contentLength * vocabularySize];
-        dense.Buffer.Span.Slice(vocabularySize, logits.Length).CopyTo(logits);
+        var weights = PoolWindow(
+            dense.Buffer.Span.Slice(vocabularySize, contentLength * vocabularySize), vocabularySize);
 
-        return (logits, vocabularySize);
+        return (weights, vocabularySize);
+    }
+
+    /// <summary>Line count of the vocabulary file (line index == token id).</summary>
+    private static int CountLines(string path)
+    {
+        var count = 0;
+        foreach (var _ in File.ReadLines(path))
+            count++;
+        return count;
     }
 
     public void Dispose() => _session?.Dispose();
