@@ -718,6 +718,8 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 ### Late Chunking
 **Package:** `Rag.NET.Chunking`
 
+**Status:** ✅ Done — delivered via `Rag.NET.Chunking` (`LateChunkingStrategy`, `UseLateChunking`) + `Rag.NET.Embeddings.Onnx` (`OnnxTokenEmbeddingGenerator`, `UseOnnxTokenEmbeddings`).
+
 Embed the full document (or section) first to capture global context, then split the resulting token-level embeddings into chunks — instead of splitting text first and embedding each chunk independently. Requires a model that exposes token-level embeddings (e.g. `jina-embeddings-v2`). Implements `IDocumentChunkingStrategy`.
 
 **Why:** Standard chunk-then-embed loses cross-chunk context. Late chunking preserves full-document attention during embedding, improving retrieval for references, pronouns, and cross-paragraph reasoning.
@@ -1050,5 +1052,5 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
 | [ ] | FLARE | High | `IChatClient` + logprobs |
 | [ ] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store |
-| [ ] | Late Chunking | High | Token-level embedding model |
+| [x] | Late Chunking | High | Token-level embedding model |
 | [ ] | Embedding Versioning & Re-indexing | High | Content hash store |

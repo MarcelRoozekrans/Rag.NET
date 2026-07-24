@@ -210,6 +210,41 @@ For Parent Document Retrieval users the recommended setup is a **non-LLM parent 
 
 **Cost:** one LLM call per `MaxPassageTokens`-sized passage at ingest time. Proposition chunking trades ingest cost and chunk count for maximum retrieval precision.
 
+## `LateChunkingStrategy`
+
+Late chunking inverts the usual order of operations: instead of splitting the text first and embedding each chunk in isolation, the **whole section is embedded first** in a single pass by an `ITokenEmbeddingGenerator` that returns one vector per token — so every token vector carries whole-document context (references, pronouns, cross-paragraph reasoning). Overlapping token windows are then cut over the token offsets, and each chunk's embedding is the **L2-normalized mean of its window's token vectors**. Chunks therefore arrive at the embedding stage with a precomputed, context-aware embedding already attached.
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseLateChunking(o =>
+    {
+        o.WindowSizeTokens = 256;
+        o.OverlapTokens    = 32;
+    })
+    .UseOnnxTokenEmbeddings(o =>
+    {
+        o.ModelPath          = "models/jina-embeddings-v2-base-en.onnx";
+        o.TokenizerVocabPath = "models/vocab.txt";
+    })
+    .UsePgVector(connectionString));
+```
+
+`UseLateChunking` registers `LateChunkingStrategy` for both `IChunkingStrategy` and `IDocumentChunkingStrategy` (same singleton). It requires an `ITokenEmbeddingGenerator` — either registered in DI (e.g. via `UseOnnxTokenEmbeddings` from `Rag.NET.Embeddings.Onnx`) or supplied directly through `LateChunkingOptions.Generator`.
+
+**Options (`LateChunkingOptions`):**
+
+| Option | Default | Description |
+|---|---|---|
+| `WindowSizeTokens` | `256` | Tokens per chunk window. Must be positive. |
+| `OverlapTokens` | `32` | Token overlap between consecutive windows. Must be non-negative and smaller than `WindowSizeTokens`. |
+| `Generator` | `null` | Optional dedicated `ITokenEmbeddingGenerator`; falls back to the DI-registered one. |
+
+**ONNX generator (`Rag.NET.Embeddings.Onnx`):** `UseOnnxTokenEmbeddings` registers `OnnxTokenEmbeddingGenerator`, which runs a local ONNX embedding model that exposes token-level hidden states. You need a **jina-embeddings-v2-style ONNX export** (a model whose output is the last hidden state `[1, sequence, dimension]`, exported from Hugging Face) plus its **WordPiece `vocab.txt`** from the same model repository. Inputs longer than `OnnxTokenEmbeddingOptions.MaxTokens` (default 8192) are windowed internally with `WindowOverlapTokens` (default 64) overlap and stitched back together, so any input length is accepted. The integration smoke test picks up the model via the `RAGNET_ONNX_EMBED_MODEL` and `RAGNET_ONNX_EMBED_VOCAB` environment variables.
+
+**Fallback semantics:** if the token-embedding generator fails (or returns a matrix violating its contract), the section is still chunked into the same cl100k token windows — the chunks simply carry **no precomputed embedding** and are embedded normally downstream by the pipeline's regular embedder. Ingestion never loses content; cancellation is always propagated.
+
+**Storage-dimension caveat:** a precomputed embedding whose dimension does not match the vector store's configured dimension fails at **storage time with a backend-side error** (e.g. a pgvector or Qdrant server rejection), not a Rag.NET-owned message. Make sure the ONNX model's hidden dimension matches the collection/table dimension you provisioned.
+
 ## `HierarchicalMergerChunkingStrategy`
 
 Merges document sections into heading-subtree chunks. Each chunk covers one heading and all body text beneath it down to a configurable depth. Best for documents with a clear heading hierarchy (Markdown, Word, HTML).
