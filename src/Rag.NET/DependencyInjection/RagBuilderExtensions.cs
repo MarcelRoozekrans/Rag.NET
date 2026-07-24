@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Rag.NET.Abstractions;
+using Rag.NET.Models.Options;
 using Rag.NET.QueryTechniques.ContextualCompression;
 using Rag.NET.Retrieval.Behaviors;
 using Rag.NET.Storage;
@@ -85,6 +87,42 @@ public static class RagBuilderExtensions
 
         pipelineBuilder.Add<ContextualCompressionRetrievalBehavior>(before: typeof(RetrievalGuardBehavior));
 
+        return builder;
+    }
+
+    /// <summary>
+    /// Registers the SQLite-backed <see cref="IEmbeddingVersionStore"/>
+    /// (<see cref="SqliteEmbeddingVersionStore"/>) so the ingestion pipeline stamps each
+    /// document with the embedding model that produced its vectors, and
+    /// <c>ReindexStaleAsync</c> can find documents embedded by an older model. The model
+    /// identity comes from the generator's <c>EmbeddingGeneratorMetadata</c> or the
+    /// explicit <see cref="EmbeddingVersioningOptions.ModelId"/> override; when neither
+    /// is available, stamping is disabled with a one-time warning. Idempotent: options
+    /// and store use <c>TryAdd</c>, so the first registration wins.
+    /// </summary>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="configure">Configures the <see cref="EmbeddingVersioningOptions"/>.</param>
+    /// <exception cref="ArgumentException">
+    /// Thrown when <see cref="EmbeddingVersioningOptions.DatabasePath"/> is empty.
+    /// </exception>
+    public static TBuilder UseEmbeddingVersioning<TBuilder>(
+        this TBuilder builder,
+        Action<EmbeddingVersioningOptions>? configure = null)
+        where TBuilder : IRagBuilder
+    {
+        var opts = new EmbeddingVersioningOptions();
+        configure?.Invoke(opts);
+
+        if (string.IsNullOrWhiteSpace(opts.DatabasePath))
+        {
+            throw new ArgumentException(
+                "EmbeddingVersioningOptions.DatabasePath must be a non-empty string.",
+                nameof(configure));
+        }
+
+        builder.Services.TryAddSingleton(opts);
+        builder.Services.TryAddSingleton<IEmbeddingVersionStore>(
+            sp => new SqliteEmbeddingVersionStore(sp.GetRequiredService<EmbeddingVersioningOptions>().DatabasePath));
         return builder;
     }
 }

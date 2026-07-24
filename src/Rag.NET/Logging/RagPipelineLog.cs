@@ -87,4 +87,13 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Sparse vector storage failed for document '{DocumentId}'; dense vectors were stored")]
     internal static partial void SparseStorageFailed(ILogger logger, string documentId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to stamp the embedding version for document '{DocumentId}'; ingestion succeeded, but re-indexing may miss or mis-report this document")]
+    internal static partial void EmbeddingVersionStampFailed(ILogger logger, string documentId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "An embedding version store is registered but the embedding model identity is unresolvable (the generator exposes no EmbeddingGeneratorMetadata with a model id and EmbeddingVersioningOptions.ModelId is not set); version stamping is disabled")]
+    internal static partial void EmbeddingVersionIdentityUnresolvable(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Re-indexing failed for document '{DocumentId}'; continuing with the remaining stale documents")]
+    internal static partial void ReindexDocumentFailed(ILogger logger, string documentId, Exception exception);
 }

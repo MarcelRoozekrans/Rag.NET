@@ -23,6 +23,7 @@ public sealed class PipelineIngestor : IIngestor
     [Inject] public ChunkingOptions ChunkingOptions { get; set; } = null!;
     [Inject(Required = false)] public IParentChunkStore? ParentStore { get; set; }
     [Inject(Required = false)] public IRagDataManager? DataManager { get; set; }
+    [Inject(Required = false)] public IEmbeddingVersionStore? VersionStore { get; set; }
 
     private int _nextBm25DocId;
 
@@ -83,6 +84,8 @@ public sealed class PipelineIngestor : IIngestor
         Bm25Index.Remove(documentId);
         ParentStore?.Remove(documentId);
         DataManager?.Remove(documentId);
+        if (VersionStore is not null)
+            await VersionStore.RemoveAsync(documentId, cancellationToken).ConfigureAwait(false);
     }
 
     private Result<IngestionResult, RagError>? ValidateRequest(

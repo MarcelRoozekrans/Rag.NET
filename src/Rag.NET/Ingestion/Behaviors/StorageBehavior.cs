@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
 using Rag.NET.Logging;
 using Rag.NET.Models;
+using Rag.NET.Models.Options;
 using Rag.NET.Telemetry;
 using ZeroAlloc.Inject;
 
@@ -16,7 +18,13 @@ public sealed class StorageBehavior : IIngestionBehavior
     [Inject] public IVectorStore VectorStore { get; set; } = null!;
     [Inject] public IBm25Index Bm25Index { get; set; } = null!;
     [Inject(Required = false)] public IRagDataManager? DataManager { get; set; }
+    [Inject(Required = false)] public IEmbeddingVersionStore? VersionStore { get; set; }
+    [Inject(Required = false)] public IEmbeddingGenerator<string, Embedding<float>>? Embedder { get; set; }
+    [Inject(Required = false)] public EmbeddingVersioningOptions? VersioningOptions { get; set; }
     [Inject(Required = false)] public ILogger<StorageBehavior>? Logger { get; set; }
+
+    /// <summary>One-time flag for the identity-unresolvable warning (0 = not yet logged).</summary>
+    private int _identityWarningLogged;
 
     public async ValueTask<IngestionResult> HandleAsync(
         IngestionContext ctx, CancellationToken ct,
@@ -45,6 +53,8 @@ public sealed class StorageBehavior : IIngestionBehavior
             Bm25Index.Add(ctx.GetNextBm25DocId(), ec.Chunk);
 
         DataManager?.Add(ctx.Metadata, ctx.Chunks);
+
+        await StampEmbeddingVersionAsync(ctx, ct).ConfigureAwait(false);
 
         // Terminal — does not call next
         return new IngestionResult
@@ -89,6 +99,42 @@ public sealed class StorageBehavior : IIngestionBehavior
         catch (Exception ex)
         {
             RagPipelineLog.SparseStorageFailed(
+                (ILogger?)Logger ?? NullLogger.Instance, ctx.Metadata.DocumentId.Value, ex);
+        }
+    }
+
+    /// <summary>
+    /// Stamps the embedding model version after a successful store, when an
+    /// <see cref="IEmbeddingVersionStore"/> is registered and the model identity resolves.
+    /// Degraded, never broken: a stamp failure is logged and ingestion still succeeds
+    /// (the vectors are already stored). An unresolvable identity disables stamping with
+    /// a one-time warning. Documents with zero chunks are not stamped (no dimension).
+    /// </summary>
+    private async Task StampEmbeddingVersionAsync(IngestionContext ctx, CancellationToken ct)
+    {
+        if (VersionStore is null || ctx.EmbeddedChunks.Count == 0)
+            return;
+
+        var modelId = EmbeddingModelIdentity.Resolve(Embedder, VersioningOptions);
+        if (modelId is null)
+        {
+            if (Interlocked.Exchange(ref _identityWarningLogged, 1) == 0)
+                RagPipelineLog.EmbeddingVersionIdentityUnresolvable((ILogger?)Logger ?? NullLogger.Instance);
+            return;
+        }
+
+        try
+        {
+            var dimension = ctx.EmbeddedChunks[0].Embedding.Length;
+            await VersionStore.SetAsync(ctx.Metadata.DocumentId.Value, modelId, dimension, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            RagPipelineLog.EmbeddingVersionStampFailed(
                 (ILogger?)Logger ?? NullLogger.Instance, ctx.Metadata.DocumentId.Value, ex);
         }
     }
