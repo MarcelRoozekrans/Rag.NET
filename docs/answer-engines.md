@@ -51,7 +51,11 @@ FLARE (Forward-Looking Active Retrieval) generates the answer one sentence at a 
 
 The default scorer is `SelfAssessmentConfidenceScorer` — one small LLM call per sentence that works with every `IChatClient` and fails open (score 1.0) on any failure. A logprob-based scorer is a documented extension point: implement `IConfidenceScorer` and assign it to `FlareOptions.Scorer`.
 
-**Best for:** Long-form answers and multi-step reasoning where a single up-front retrieval misses information needed mid-answer. Costs roughly 2 LLM calls per sentence (generation + scoring) plus retrievals.
+Lookahead retrievals default to a **plain** retrieval — HyDE and multi-query expansion are disabled (the lookahead query already embeds a synthetic document, so expanding it again multiplies hidden LLM calls), reranking stays active. To customize, set `FlareOptions.LookaheadRetrievalOptions`; it is used verbatim, including `TopK` (in that case `LookaheadTopK` is ignored).
+
+**Best for:** Long-form answers and multi-step reasoning where a single up-front retrieval misses information needed mid-answer. Costs roughly 2 LLM calls per sentence (generation + scoring) plus up to `MaxRetrievals` plain retrievals and one regeneration call each.
+
+**Limitations:** FLARE does not consult `IConversationMemory` (unlike Chat/MapReduce/Refine) — routing a call to Flare via the dispatching engine drops the processed conversation history from the prompt.
 
 **Registration:**
 ```csharp
@@ -95,5 +99,5 @@ var result = await pipeline.AskAsync(query, new RagOptions
 | Chat | 1 | — | Default, small source sets |
 | MapReduce | N + 1 | Yes (map phase) | Large doc sets |
 | Refine | N | No | Order-sensitive synthesis |
-| Flare | ~2 per sentence (+ retrievals) | No | Long-form, multi-step reasoning |
+| Flare | ~2 per sentence + 1 per lookahead (plain retrieval: no HyDE/multi-query) | No | Long-form, multi-step reasoning |
 | Dispatching | Varies | Depends on strategy | Mixed workloads |
