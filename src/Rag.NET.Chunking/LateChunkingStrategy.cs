@@ -19,7 +19,7 @@ public sealed partial class LateChunkingStrategy(
     LateChunkingOptions options,
     ILogger<LateChunkingStrategy>? logger = null) : IDocumentChunkingStrategy, IChunkingStrategy
 {
-    private readonly LateChunkingOptions _options = Validate(options);
+    private readonly LateChunkingOptions _options = ValidateOptions(options);
     private readonly ILogger<LateChunkingStrategy> _logger = logger ?? NullLogger<LateChunkingStrategy>.Instance;
 
     // chunkingOptions (MaxChunkSize/Overlap) is not used — window sizing is governed by
@@ -67,7 +67,11 @@ public sealed partial class LateChunkingStrategy(
         CancellationToken cancellationToken = default) =>
         ChunkDocumentAsync(SingleAsync(section), chunkingOptions, cancellationToken);
 
-    private static LateChunkingOptions Validate(LateChunkingOptions options)
+    /// <summary>
+    /// Shared by the constructor and <c>UseLateChunking</c> so misconfiguration fails at
+    /// registration time with the same rules.
+    /// </summary>
+    internal static LateChunkingOptions ValidateOptions(LateChunkingOptions options)
     {
         if (options.WindowSizeTokens <= 0)
         {

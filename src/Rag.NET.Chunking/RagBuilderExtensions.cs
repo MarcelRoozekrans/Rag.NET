@@ -80,4 +80,37 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<PropositionChunkingStrategy>());
         return builder;
     }
+
+    /// <summary>
+    /// Registers <see cref="LateChunkingStrategy"/> as both <see cref="IChunkingStrategy"/>
+    /// and <see cref="IDocumentChunkingStrategy"/>, resolving to the same singleton instance.
+    /// Each section is embedded in one pass by the DI-registered
+    /// <see cref="ITokenEmbeddingGenerator"/> (or <see cref="LateChunkingOptions.Generator"/>
+    /// when set), overlapping token windows are cut, and each chunk carries the L2-normalized
+    /// mean of its window's token vectors as a precomputed embedding; on generator failure,
+    /// unembedded cl100k token-window chunks are emitted instead.
+    /// </summary>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="configure">Configures the <see cref="LateChunkingOptions"/>.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown at registration when <see cref="LateChunkingOptions.WindowSizeTokens"/> is not
+    /// positive, or <see cref="LateChunkingOptions.OverlapTokens"/> is negative or not smaller
+    /// than <see cref="LateChunkingOptions.WindowSizeTokens"/>.
+    /// </exception>
+    public static TBuilder UseLateChunking<TBuilder>(this TBuilder builder, Action<LateChunkingOptions>? configure = null)
+        where TBuilder : IRagBuilder
+    {
+        var opts = new LateChunkingOptions();
+        configure?.Invoke(opts);
+        LateChunkingStrategy.ValidateOptions(opts); // same rules as the ctor — fail at registration
+
+        builder.Services.AddSingleton(opts);
+        builder.Services.AddSingleton<LateChunkingStrategy>(sp => new LateChunkingStrategy(
+            opts.Generator ?? sp.GetRequiredService<ITokenEmbeddingGenerator>(),
+            opts,
+            sp.GetService<Microsoft.Extensions.Logging.ILogger<LateChunkingStrategy>>()));
+        builder.Services.AddSingleton<IChunkingStrategy>(sp => sp.GetRequiredService<LateChunkingStrategy>());
+        builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<LateChunkingStrategy>());
+        return builder;
+    }
 }
