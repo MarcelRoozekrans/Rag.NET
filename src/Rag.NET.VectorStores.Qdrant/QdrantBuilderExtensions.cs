@@ -11,11 +11,12 @@ public static class QdrantBuilderExtensions
     /// <param name="collectionName">Collection to store chunks in.</param>
     /// <param name="vectorDimensions">Dense embedding dimensions.</param>
     /// <param name="enableSparseVectors">
-    /// When <see langword="true"/>, the collection is created with a named sparse vector
-    /// ("splade") and the store serves <c>ISparseSearchable</c> — pair with
-    /// <c>UseSpladeEncoder</c> for SPLADE hybrid retrieval. Point ids become deterministic
-    /// per <c>(DocumentId, ChunkIndex)</c>. Existing collections created without sparse
-    /// support must be recreated to enable it.
+    /// When <see langword="true"/>, registers <see cref="QdrantSparseVectorStore"/> instead:
+    /// the collection is created with a named sparse vector ("splade") and the store serves
+    /// <c>ISparseSearchable</c> — pair with <c>UseSpladeEncoder</c> for SPLADE hybrid
+    /// retrieval. Point ids become deterministic per <c>(DocumentId, ChunkIndex)</c>.
+    /// <c>InitializeAsync</c> fails fast on an existing collection created without sparse
+    /// support — delete the collection and re-ingest to enable it.
     /// </param>
     public static TBuilder UseQdrant<TBuilder>(
         this TBuilder builder,
@@ -26,7 +27,9 @@ public static class QdrantBuilderExtensions
         bool enableSparseVectors = false)
         where TBuilder : IRagBuilder
     {
-        var store = new QdrantVectorStore(host, port, collectionName, vectorDimensions, enableSparseVectors);
+        QdrantVectorStore store = enableSparseVectors
+            ? new QdrantSparseVectorStore(host, port, collectionName, vectorDimensions)
+            : new QdrantVectorStore(host, port, collectionName, vectorDimensions);
         builder.Services.AddSingleton<IVectorStore>(store);
         builder.Services.AddSingleton<ICollectionManageable>(store);
         return builder;

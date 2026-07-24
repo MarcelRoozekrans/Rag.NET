@@ -17,7 +17,7 @@ public class QdrantSparseVectorStoreTests : IAsyncLifetime
 {
     private readonly QdrantFixture _fixture;
     private readonly string _collectionName = $"ragnet-sparse-{Guid.CreateVersion7():N}"[..24];
-    private QdrantVectorStore _sut = null!;
+    private QdrantSparseVectorStore _sut = null!;
 
     public QdrantSparseVectorStoreTests(QdrantFixture fixture)
     {
@@ -26,9 +26,8 @@ public class QdrantSparseVectorStoreTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        _sut = new QdrantVectorStore(
-            _fixture.Host, _fixture.GrpcPort, _collectionName, vectorDimensions: 3,
-            enableSparseVectors: true);
+        _sut = new QdrantSparseVectorStore(
+            _fixture.Host, _fixture.GrpcPort, _collectionName, vectorDimensions: 3);
         await _sut.InitializeAsync(TestContext.Current.CancellationToken);
     }
 
@@ -150,6 +149,33 @@ public class QdrantSparseVectorStoreTests : IAsyncLifetime
         finally
         {
             await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Initialize_ExistingDenseOnlyCollection_FailsFast()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var denseCollection = $"ragnet-dense-{Guid.CreateVersion7():N}"[..24];
+
+        // Create the collection WITHOUT sparse support, then point a sparse store at it.
+        using var denseStore = new QdrantVectorStore(
+            _fixture.Host, _fixture.GrpcPort, denseCollection, vectorDimensions: 3);
+        await denseStore.InitializeAsync(ct);
+
+        using var sparseStore = new QdrantSparseVectorStore(
+            _fixture.Host, _fixture.GrpcPort, denseCollection, vectorDimensions: 3);
+        try
+        {
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => sparseStore.InitializeAsync(ct));
+
+            Assert.Contains(denseCollection, ex.Message, StringComparison.Ordinal);
+            Assert.Contains("sparse", ex.Message, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            await ((ICollectionManageable)denseStore).DeleteCollectionAsync(denseCollection, CancellationToken.None);
         }
     }
 

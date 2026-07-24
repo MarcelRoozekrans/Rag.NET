@@ -11,4 +11,10 @@
     <PackageReference Include="Qdrant.Client" Version="1.*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.VectorStores.Qdrant.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

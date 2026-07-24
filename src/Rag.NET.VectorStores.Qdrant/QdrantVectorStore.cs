@@ -1,53 +1,41 @@
-using System.Security.Cryptography;
-using System.Text;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using static Qdrant.Client.Grpc.Conditions;
-// The Qdrant client also declares a Grpc SparseVector message; the Rag.NET contract type wins.
-using SparseVector = Rag.NET.Models.SparseVector;
 
 namespace Rag.NET.Qdrant;
 
 /// <summary>
-/// Qdrant-backed <see cref="IVectorStore"/>. When constructed with
-/// <c>enableSparseVectors: true</c> it also serves <see cref="ISparseSearchable"/> through a
-/// named sparse vector ("splade") stored on the same points as the dense vectors: point ids
-/// become deterministic (derived from <c>DocumentId</c>/<c>ChunkIndex</c>, making
-/// <see cref="StoreAsync"/> idempotent per chunk) so <see cref="StoreSparseAsync"/> can attach
-/// sparse vectors to points upserted by <see cref="StoreAsync"/> — call
-/// <see cref="StoreAsync"/> first, as ingestion does.
+/// Qdrant-backed <see cref="IVectorStore"/> (dense vectors only). For SPLADE sparse vector
+/// support use <see cref="QdrantSparseVectorStore"/> — deliberately a separate type so an
+/// <c>is ISparseSearchable</c> capability probe on the registered store is honest: a
+/// dense-only Qdrant store never advertises sparse support, and the ingestion/retrieval
+/// pipelines skip sparse work entirely instead of computing vectors that could never be
+/// stored.
 /// </summary>
-public sealed class QdrantVectorStore : IVectorStore, ISparseSearchable, ICollectionManageable, IDisposable
+public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposable
 {
-    /// <summary>Name of the named sparse vector holding SPLADE weights.</summary>
-    internal const string SparseVectorName = "splade";
+    private protected QdrantClient Client { get; }
+    private protected string CollectionName { get; }
+    private protected int VectorDimensions { get; }
 
-    private readonly QdrantClient _client;
-    private readonly string _collectionName;
-    private readonly int _vectorDimensions;
-    private readonly bool _enableSparseVectors;
-
-    public QdrantVectorStore(
-        string host, int port, string collectionName, int vectorDimensions = 1536,
-        bool enableSparseVectors = false)
+    public QdrantVectorStore(string host, int port, string collectionName, int vectorDimensions = 1536)
     {
-        _client = new QdrantClient(host, port);
-        _collectionName = collectionName;
-        _vectorDimensions = vectorDimensions;
-        _enableSparseVectors = enableSparseVectors;
+        Client = new QdrantClient(host, port);
+        CollectionName = collectionName;
+        VectorDimensions = vectorDimensions;
     }
 
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    public virtual async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
-        var exists = await _client.CollectionExistsAsync(_collectionName, cancellationToken)
+        var exists = await Client.CollectionExistsAsync(CollectionName, cancellationToken)
             .ConfigureAwait(false);
 
         if (!exists)
         {
-            await CreateCollectionCoreAsync(_collectionName, _vectorDimensions, cancellationToken)
+            await CreateCollectionCoreAsync(CollectionName, VectorDimensions, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -60,11 +48,7 @@ public sealed class QdrantVectorStore : IVectorStore, ISparseSearchable, ICollec
 
         foreach (var chunk in chunks)
         {
-            // Sparse mode requires deterministic ids so StoreSparseAsync can address the
-            // same points; the legacy random-id behavior is preserved otherwise.
-            var pointId = _enableSparseVectors
-                ? DeterministicPointId((string)chunk.Chunk.DocumentId, chunk.Chunk.ChunkIndex)
-                : Guid.NewGuid();
+            var pointId = CreatePointId((string)chunk.Chunk.DocumentId, chunk.Chunk.ChunkIndex);
 
             points.Add(new PointStruct
             {
@@ -85,7 +69,7 @@ public sealed class QdrantVectorStore : IVectorStore, ISparseSearchable, ICollec
             }
         }
 
-        await _client.UpsertAsync(_collectionName, points, cancellationToken: cancellationToken)
+        await Client.UpsertAsync(CollectionName, points, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -94,8 +78,8 @@ public sealed class QdrantVectorStore : IVectorStore, ISparseSearchable, ICollec
         SearchOptions options,
         CancellationToken cancellationToken = default)
     {
-        var results = await _client.SearchAsync(
-            _collectionName,
+        var results = await Client.SearchAsync(
+            CollectionName,
             queryEmbedding.ToArray(),
             filter: BuildMetadataFilter(options.MetadataFilter),
             limit: (ulong)options.TopK,
@@ -105,63 +89,12 @@ public sealed class QdrantVectorStore : IVectorStore, ISparseSearchable, ICollec
         return results.Select(MapScoredPoint).ToList();
     }
 
-    /// <inheritdoc />
-    public async Task StoreSparseAsync(
-        IReadOnlyList<(EmbeddedChunk Chunk, SparseVector Sparse)> items,
-        CancellationToken cancellationToken = default)
-    {
-        EnsureSparseEnabled();
-
-        var pointVectors = new List<PointVectors>(items.Count);
-        foreach (var (chunk, sparse) in items)
-        {
-            if (sparse.Count == 0)
-                continue; // no terms — nothing to attach
-
-            Vector vector = (sparse.Values.ToArray(), ToUnsignedIndices(sparse));
-            pointVectors.Add(new PointVectors
-            {
-                Id = DeterministicPointId((string)chunk.Chunk.DocumentId, chunk.Chunk.ChunkIndex),
-                Vectors = (SparseVectorName, vector),
-            });
-        }
-
-        if (pointVectors.Count == 0)
-            return;
-
-        await _client.UpdateVectorsAsync(_collectionName, pointVectors, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    /// <inheritdoc />
-    public async Task<IReadOnlyList<SearchResult>> SearchSparseAsync(
-        SparseVector query,
-        SearchOptions options,
-        CancellationToken cancellationToken = default)
-    {
-        EnsureSparseEnabled();
-
-        if (query.Count == 0)
-            return [];
-
-        var results = await _client.QueryAsync(
-            _collectionName,
-            query: (query.Values.ToArray(), ToUnsignedIndices(query)),
-            usingVector: SparseVectorName,
-            filter: BuildMetadataFilter(options.MetadataFilter),
-            scoreThreshold: (float)options.MinScore,
-            limit: (ulong)options.TopK,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        return results.Select(MapScoredPoint).ToList();
-    }
-
     public async Task DeleteByDocumentIdAsync(
         string documentId,
         CancellationToken cancellationToken = default)
     {
-        await _client.DeleteAsync(
-            collectionName: _collectionName,
+        await Client.DeleteAsync(
+            collectionName: CollectionName,
             filter: MatchKeyword("document_id", documentId),
             cancellationToken: cancellationToken).ConfigureAwait(false);
     }
@@ -178,7 +111,7 @@ public sealed class QdrantVectorStore : IVectorStore, ISparseSearchable, ICollec
         string name,
         CancellationToken cancellationToken = default)
     {
-        await _client.DeleteCollectionAsync(name, cancellationToken: cancellationToken)
+        await Client.DeleteCollectionAsync(name, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -186,44 +119,42 @@ public sealed class QdrantVectorStore : IVectorStore, ISparseSearchable, ICollec
         string name,
         CancellationToken cancellationToken = default)
     {
-        return await _client.CollectionExistsAsync(name, cancellationToken)
+        return await Client.CollectionExistsAsync(name, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    public void Dispose() => _client.Dispose();
-
-    private async Task CreateCollectionCoreAsync(string name, int vectorDimensions, CancellationToken cancellationToken)
+    public void Dispose()
     {
-        var vectorParams = new VectorParams { Size = (ulong)vectorDimensions, Distance = Distance.Cosine };
-        if (_enableSparseVectors)
-        {
-            await _client.CreateCollectionAsync(
-                name,
-                vectorParams,
-                sparseVectorsConfig: new SparseVectorConfig
-                {
-                    Map = { [SparseVectorName] = new SparseVectorParams() },
-                },
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        await _client.CreateCollectionAsync(name, vectorParams, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
     }
 
-    private void EnsureSparseEnabled()
+    protected virtual void Dispose(bool disposing)
     {
-        if (!_enableSparseVectors)
-        {
-            throw new InvalidOperationException(
-                "Sparse vector support is disabled for this QdrantVectorStore. " +
-                "Construct it with enableSparseVectors: true (UseQdrant(..., enableSparseVectors: true)) " +
-                "so the collection is created with the named sparse vector config.");
-        }
+        if (disposing)
+            Client.Dispose();
     }
 
-    private static Filter? BuildMetadataFilter(IDictionary<string, string>? metadataFilter)
+    /// <summary>
+    /// Point id for one chunk. Random by default; <see cref="QdrantSparseVectorStore"/>
+    /// overrides with deterministic ids so sparse vectors can address the same points.
+    /// </summary>
+    private protected virtual Guid CreatePointId(string documentId, int chunkIndex) => Guid.NewGuid();
+
+    /// <summary>
+    /// Creates a collection. Dense-only by default; <see cref="QdrantSparseVectorStore"/>
+    /// overrides to add the named sparse vector config.
+    /// </summary>
+    private protected virtual async Task CreateCollectionCoreAsync(
+        string name, int vectorDimensions, CancellationToken cancellationToken)
+    {
+        await Client.CreateCollectionAsync(
+            name,
+            new VectorParams { Size = (ulong)vectorDimensions, Distance = Distance.Cosine },
+            cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    private protected static Filter? BuildMetadataFilter(IDictionary<string, string>? metadataFilter)
     {
         if (metadataFilter is not { Count: > 0 })
             return null;
@@ -237,7 +168,7 @@ public sealed class QdrantVectorStore : IVectorStore, ISparseSearchable, ICollec
         return filter;
     }
 
-    private static SearchResult MapScoredPoint(ScoredPoint point)
+    private protected static SearchResult MapScoredPoint(ScoredPoint point)
     {
         Dictionary<string, string> metadata;
         if (point.Payload.TryGetValue("metadata", out var metaValue))
@@ -263,29 +194,5 @@ public sealed class QdrantVectorStore : IVectorStore, ISparseSearchable, ICollec
             },
             Score = point.Score,
         };
-    }
-
-    private static uint[] ToUnsignedIndices(SparseVector sparse)
-    {
-        var span = sparse.Indices.Span;
-        var indices = new uint[span.Length];
-        for (var i = 0; i < span.Length; i++)
-            indices[i] = (uint)span[i];
-        return indices;
-    }
-
-    /// <summary>
-    /// Deterministic point id per <c>(DocumentId, ChunkIndex)</c> (SHA-256 truncated to a
-    /// GUID with version/variant bits set) so dense upserts and sparse vector updates address
-    /// the same point, and re-ingesting a chunk replaces it instead of duplicating it.
-    /// </summary>
-    internal static Guid DeterministicPointId(string documentId, int chunkIndex)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{documentId}\n{chunkIndex}"));
-        Span<byte> guidBytes = stackalloc byte[16];
-        hash.AsSpan(0, 16).CopyTo(guidBytes);
-        guidBytes[7] = (byte)((guidBytes[7] & 0x0F) | 0x80); // version 8 (custom, RFC 9562)
-        guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80); // RFC 4122 variant
-        return new Guid(guidBytes);
     }
 }
