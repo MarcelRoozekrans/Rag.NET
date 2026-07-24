@@ -23,14 +23,18 @@
     <PackageReference Include="Microsoft.Extensions.Resilience" Version="10.*" />
     <PackageReference Include="Microsoft.ML.Tokenizers" Version="0.*" />
     <PackageReference Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="0.*" />
-    <PackageReference Include="ZeroAlloc.Inject" Version="1.2.1" />
-    <PackageReference Include="ZeroAlloc.Results" Version="0.*" />
-    <PackageReference Include="ZeroAlloc.Inject.Generator" Version="1.2.1" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
-    <PackageReference Include="ZeroAlloc.Specification" Version="0.*" GeneratePathProperty="true" />
-    <PackageReference Include="ZeroAlloc.Specification.Generator" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
-    <PackageReference Include="ZeroAlloc.Validation" Version="0.*" GeneratePathProperty="true" />
-    <PackageReference Include="ZeroAlloc.Pipeline" Version="0.*" GeneratePathProperty="true" />
-    <PackageReference Include="ZeroAlloc.Pipeline.Generators" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.Inject" Version="1.7.1" />
+    <PackageReference Include="ZeroAlloc.Results" Version="1.2.0" />
+    <!-- Generators ship under analyzers/dotnet/cs and are auto-wired by the SDK;
+         Validation.Generator bundles ZeroAlloc.Pipeline(.Generators), so no standalone
+         Pipeline.Generators reference or explicit Analyzer items are needed. -->
+    <PackageReference Include="ZeroAlloc.Inject.Generator" Version="1.7.1" PrivateAssets="all" ExcludeAssets="runtime" />
+    <!-- Specification 1.1.0 bundles its generator — a separate Specification.Generator
+         reference would run the generator twice (duplicate And/Or/Not members). -->
+    <PackageReference Include="ZeroAlloc.Specification" Version="1.1.0" />
+    <PackageReference Include="ZeroAlloc.Validation" Version="1.5.3" />
+    <PackageReference Include="ZeroAlloc.Validation.Generator" Version="1.5.3" PrivateAssets="all" ExcludeAssets="runtime" />
+    <PackageReference Include="ZeroAlloc.Pipeline" Version="1.2.1" />
   </ItemGroup>
 
   <ItemGroup>
@@ -38,14 +42,5 @@
     <ProjectReference Include="..\Rag.NET.QueryTechniques\Rag.NET.QueryTechniques.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Analyzer Include="$(PkgZeroAlloc_Inject_Generator)\analyzers\dotnet\cs\ZeroAlloc.Inject.Generator.dll" />
-    <!-- ZeroAlloc.Validation.Generator is not yet published to NuGet (IsPackable=false).
-         Built locally from C:\Projects\Prive\ZeroAlloc\ZeroAlloc.Validation -->
-    <Analyzer Include="C:\Projects\Prive\ZeroAlloc\ZeroAlloc.Validation\src\ZeroAlloc.Validation.Generator\bin\Release\netstandard2.0\ZeroAlloc.Validation.Generator.dll" />
-    <Analyzer Include="$(PkgZeroAlloc_Pipeline_Generators)\lib\netstandard2.0\ZeroAlloc.Pipeline.Generators.dll" />
-    <Analyzer Include="$(PkgZeroAlloc_Pipeline)\lib\netstandard2.0\ZeroAlloc.Pipeline.dll" />
-    <Analyzer Include="$(PkgZeroAlloc_Specification_Generator)\analyzers\dotnet\cs\ZeroAlloc.Specification.Generator.dll" />
-  </ItemGroup>
 
 </Project>

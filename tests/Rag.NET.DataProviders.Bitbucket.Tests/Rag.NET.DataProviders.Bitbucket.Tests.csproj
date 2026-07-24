@@ -4,7 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Bitbucket\Rag.NET.DataProviders.Bitbucket.csproj" />
-    <PackageReference Include="ZeroAlloc.Rest.SystemTextJson" Version="0.*" />
+    <PackageReference Include="ZeroAlloc.Rest.SystemTextJson" Version="1.1.3" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.*">

@@ -21,7 +21,7 @@ public static class MediatorBuilderExtensions
                 cfg.SetFactory<RetrieveQueryHandler>(() => sp.GetRequiredService<RetrieveQueryHandler>());
                 cfg.SetFactory<DeleteCommandHandler>(() => sp.GetRequiredService<DeleteCommandHandler>());
             });
-            return new MediatorService();
+            return new MediatorService(sp);
         });
 
         return builder;

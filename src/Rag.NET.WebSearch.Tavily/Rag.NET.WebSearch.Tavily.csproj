@@ -17,13 +17,11 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
-    <PackageReference Include="ZeroAlloc.Rest" Version="0.*" />
-    <PackageReference Include="ZeroAlloc.Rest.Generator" Version="0.*" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
-    <PackageReference Include="ZeroAlloc.Rest.SystemTextJson" Version="0.*" />
+    <PackageReference Include="ZeroAlloc.Rest" Version="1.1.3" />
+    <PackageReference Include="ZeroAlloc.Rest.SystemTextJson" Version="1.1.3" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
   </ItemGroup>
   <ItemGroup>
-    <Analyzer Include="$(PkgZeroAlloc_Rest_Generator)\lib\netstandard2.0\ZeroAlloc.Rest.Generator.dll" />
   </ItemGroup>
 </Project>

@@ -8,30 +8,17 @@
     <Description>ZeroAlloc.Mediator integration for Rag.NET</Description>
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <!-- Suppress ZAM003: request types use class records because they carry Stream / IProgress
-         references that cannot be stored in readonly record structs. -->
-    <NoWarn>ZAM003</NoWarn>
+         references that cannot be stored in readonly record structs.
+         Suppress EPC12: fires on the ZeroAlloc.Mediator 4.x GENERATED dispatch code
+         (catch blocks that only read ex.Message for the activity status) — not our code. -->
+    <NoWarn>ZAM003;EPC12</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ZeroAlloc.Mediator" Version="1.1.7" GeneratePathProperty="true" />
-    <PackageReference Include="ZeroAlloc.Mediator.Generator" Version="1.1.7" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
-    <!-- ZeroAlloc.Pipeline.Generators is an indirect dependency of ZeroAlloc.Mediator.Generator.
-         Roslyn loads source generators in an isolated context and cannot resolve transitive
-         dependencies automatically, so we must register this DLL as an explicit Analyzer.
-         PrivateAssets="all" keeps it off the public API surface; GeneratePathProperty provides
-         the $(PkgZeroAlloc_Pipeline_Generators) MSBuild property used in the Analyzer item. -->
-    <PackageReference Include="ZeroAlloc.Pipeline.Generators" Version="0.1.1" PrivateAssets="all" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <PackageReference Include="ZeroAlloc.Mediator" Version="4.1.4" />
+    <!-- Since 4.x the generator ships under analyzers/dotnet/cs (auto-wired by the SDK) and
+         bundles its ZeroAlloc.Pipeline.Generators dependency — no explicit Analyzer items. -->
+    <PackageReference Include="ZeroAlloc.Mediator.Generator" Version="4.1.4" PrivateAssets="all" ExcludeAssets="runtime" />
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
-  </ItemGroup>
-
-
-  <ItemGroup>
-    <!-- Explicit analyzer registration is required in addition to the PackageReference above.
-         ZeroAlloc.Mediator.Generator uses PrivateAssets="all" / ExcludeAssets="runtime", which
-         prevents the SDK from auto-wiring the generator DLL as a Roslyn analyzer. Without this
-         item the source generator never runs and all generated types (IMediator, MediatorService,
-         etc.) are absent, causing CS0246/CS0234 build errors. -->
-    <Analyzer Include="$(PkgZeroAlloc_Mediator_Generator)\lib\netstandard2.0\ZeroAlloc.Mediator.Generator.dll" />
-    <Analyzer Include="$(PkgZeroAlloc_Pipeline_Generators)\lib\netstandard2.0\ZeroAlloc.Pipeline.Generators.dll" />
   </ItemGroup>
 </Project>
