@@ -12,11 +12,12 @@ public class DispatchingAnswerEngineTests
     private readonly IAnswerEngine _chatEngine = Substitute.For<IAnswerEngine>();
     private readonly IAnswerEngine _mapReduceEngine = Substitute.For<IAnswerEngine>();
     private readonly IAnswerEngine _refineEngine = Substitute.For<IAnswerEngine>();
+    private readonly IAnswerEngine _flareEngine = Substitute.For<IAnswerEngine>();
     private readonly DispatchingAnswerEngine _sut;
 
     public DispatchingAnswerEngineTests()
     {
-        _sut = new DispatchingAnswerEngine(_chatEngine, _mapReduceEngine, _refineEngine);
+        _sut = new DispatchingAnswerEngine(_chatEngine, _mapReduceEngine, _refineEngine, _flareEngine);
     }
 
     private static IReadOnlyList<SearchResult> EmptySources() => Array.Empty<SearchResult>();
@@ -89,6 +90,33 @@ public class DispatchingAnswerEngineTests
             Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>());
         await _chatEngine.DidNotReceive().AskAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(),
             Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAsync_FlareStrategy_DelegatesToFlareEngine()
+    {
+        var opts = new RagOptions { SynthesisStrategy = SynthesisStrategy.Flare };
+        _flareEngine.AskAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(),
+            Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ReplyWith("flare answer"));
+
+        var result = await _sut.AskAsync("q", EmptySources(), opts, TestContext.Current.CancellationToken);
+
+        Assert.Equal("flare answer", result.Answer);
+        await _flareEngine.Received(1).AskAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(),
+            Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>());
+        await _chatEngine.DidNotReceive().AskAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(),
+            Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAsync_FlareStrategy_WithoutFlareEngine_Throws()
+    {
+        var sut = new DispatchingAnswerEngine(_chatEngine, _mapReduceEngine, _refineEngine);
+        var opts = new RagOptions { SynthesisStrategy = SynthesisStrategy.Flare };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sut.AskAsync("q", EmptySources(), opts, TestContext.Current.CancellationToken));
     }
 
     [Fact]

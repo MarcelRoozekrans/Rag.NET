@@ -793,11 +793,13 @@ After standard retrieval, evaluate each chunk's relevance to the query using a l
 ---
 
 ### FLARE — Forward-Looking Active Retrieval
-**Package:** `Rag.NET.QueryTechniques`
+**Package:** `Rag.NET.AnswerEngines` (engine) + `Rag.NET.Abstractions` (scorer contract)
 
-Generate the answer incrementally sentence by sentence. When the model produces a low-confidence token (detected via logprob threshold), pause generation, reformulate a query from the partial answer so far, retrieve fresh context, and continue generation with the new context injected.
+Generate the answer incrementally sentence by sentence. When a sentence scores below a confidence threshold, pause generation, reformulate a query from the partial answer so far, retrieve fresh context, and continue generation with the new context injected.
 
 **Why:** A single retrieval at query time misses information needed mid-answer. FLARE retrieves exactly when and what is needed — especially useful for long-form generation and multi-step reasoning.
+
+**Status:** Delivered. `FlareAnswerEngine` (register with `UseFlare(...)`, or per call via `RagOptions.SynthesisStrategy = SynthesisStrategy.Flare` with the dispatching engine) generates one sentence per LLM call, scores it via the pluggable `IConfidenceScorer`, and below `FlareOptions.ConfidenceThreshold` (default 0.6) runs a lookahead retrieval (query + sentence, `LookaheadTopK`) through the full retrieval pipeline, merges/dedups sources, and regenerates the sentence once. Caps: `MaxSentences` (15), `MaxRetrievals` (3). Default scorer is `SelfAssessmentConfidenceScorer` — one small LLM call, works with any `IChatClient`, fails open on failure; a logprob-based scorer is a documented extension point (`FlareOptions.Scorer`). Degraded-never-broken: retrieval failures keep the sentence, scorer failures count as confident.
 
 ---
 
@@ -1052,7 +1054,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Rag.NET CLI Tool | Medium | `dotnet tool` |
 | [ ] | Pipeline Debugger / Trace Viewer | Medium | ASP.NET Core middleware |
 | [x] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
-| [ ] | FLARE | High | `IChatClient` + logprobs |
+| [x] | FLARE | High | `IChatClient` (self-assessment scorer; logprob scorer = extension point) |
 | [ ] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store |
 | [x] | Late Chunking | High | Token-level embedding model |
 | [ ] | Embedding Versioning & Re-indexing | High | Content hash store |
