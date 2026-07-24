@@ -19,6 +19,14 @@ public sealed class EnsembleOptions
     public float Bm25Weight  { get; init; } = 0.5f;
 
     /// <summary>
+    /// Weight applied to learned sparse (SPLADE) retrieval scores when combining results.
+    /// Must be in the range [0, 1]. Only used when the sparse ensemble arm runs — see
+    /// <see cref="RetrievalOptions.UseSparseSearch"/>.
+    /// Defaults to <c>0.5</c>.
+    /// </summary>
+    public float SparseWeight { get; init; } = 0.5f;
+
+    /// <summary>
     /// The rank constant used in the Reciprocal Rank Fusion denominator formula:
     /// <c>weight / (k + rank + 1)</c>. A higher value reduces the impact of rank differences
     /// between candidate lists. The value <c>60</c> is the canonical default recommended

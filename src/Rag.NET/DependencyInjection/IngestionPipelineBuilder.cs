@@ -19,6 +19,7 @@ public sealed class IngestionPipelineBuilder
         typeof(ChunkSanitiserBehavior),
         typeof(ParentDocumentIngestionBehavior),
         typeof(EmbeddingBehavior),
+        typeof(SparseEmbeddingBehavior),
         typeof(StorageBehavior),
     ];
 

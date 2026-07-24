@@ -21,6 +21,14 @@ public sealed class IngestionContext
     public List<DocumentSection> Sections          { get; } = [];
     public List<TextChunk> Chunks                  { get; } = [];
     public List<EmbeddedChunk> EmbeddedChunks      { get; } = [];
+
+    /// <summary>
+    /// Sparse (SPLADE) vectors parallel to <see cref="EmbeddedChunks"/> (same index).
+    /// Set by <c>SparseEmbeddingBehavior</c> when a sparse generator is registered and the
+    /// store is sparse-capable; <see langword="null"/> otherwise. Consumed by
+    /// <c>StorageBehavior</c>.
+    /// </summary>
+    public List<SparseVector>? SparseVectors       { get; set; }
 #pragma warning restore MA0016
 
     // ── Counter delegate — facade provides this so StorageBehavior

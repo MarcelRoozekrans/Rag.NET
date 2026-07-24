@@ -78,4 +78,13 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Federated vector store '{StoreName}' failed to serve the search; skipping it")]
     internal static partial void FederatedStoreSearchFailed(ILogger logger, string storeName, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "EnsembleBehavior: sparse search failed; continuing with the remaining arms")]
+    internal static partial void EnsembleSparseFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sparse embedding generation failed for document '{DocumentId}'; proceeding with dense-only storage")]
+    internal static partial void SparseEmbeddingFailed(ILogger logger, string documentId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Sparse vector storage failed for document '{DocumentId}'; dense vectors were stored")]
+    internal static partial void SparseStorageFailed(ILogger logger, string documentId, Exception exception);
 }
