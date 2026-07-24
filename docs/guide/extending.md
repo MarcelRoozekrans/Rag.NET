@@ -200,6 +200,11 @@ public interface ICollectionManageable
 
 ### Example: in-memory test double
 
+> Rag.NET ships a ready-made `Rag.NET.Storage.InMemoryVectorStore` (thread-safe, with sparse
+> SPLADE support via `ISparseSearchable`) — register it with
+> `rag.Services.AddSingleton<IVectorStore>(new InMemoryVectorStore())` if you just need an
+> in-process store. The simplified implementation below illustrates the contract.
+
 ```csharp
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
