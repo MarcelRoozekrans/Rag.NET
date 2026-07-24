@@ -86,18 +86,18 @@ public sealed class FederatedVectorStore : IVectorStore
         return MergeByRrf(perStore, options.TopK);
     }
 
-    private Task<IReadOnlyList<SearchResult>?[]> FanOutAsync(
+    private Task<(IReadOnlyList<SearchResult>? Results, Exception? Error)[]> FanOutAsync(
         ReadOnlyMemory<float> queryEmbedding,
         SearchOptions options,
         CancellationToken cancellationToken)
     {
-        var tasks = new Task<IReadOnlyList<SearchResult>?>[_stores.Count];
+        var tasks = new Task<(IReadOnlyList<SearchResult>? Results, Exception? Error)>[_stores.Count];
         for (int i = 0; i < _stores.Count; i++)
             tasks[i] = SearchStoreAsync(i, queryEmbedding, options, cancellationToken);
         return Task.WhenAll(tasks);
     }
 
-    private async Task<IReadOnlyList<SearchResult>?> SearchStoreAsync(
+    private async Task<(IReadOnlyList<SearchResult>? Results, Exception? Error)> SearchStoreAsync(
         int storeIndex,
         ReadOnlyMemory<float> queryEmbedding,
         SearchOptions options,
@@ -105,9 +105,13 @@ public sealed class FederatedVectorStore : IVectorStore
     {
         try
         {
-            return await _stores[storeIndex].SearchAsync(queryEmbedding, options, cancellationToken).ConfigureAwait(false);
+            var results = await _stores[storeIndex].SearchAsync(queryEmbedding, options, cancellationToken).ConfigureAwait(false);
+            return (results, null);
         }
-        catch (OperationCanceledException)
+        // Only the caller's cancellation aborts the federated search. A store-internal
+        // OperationCanceledException (e.g. an HttpClient/gRPC deadline surfacing as
+        // TaskCanceledException) is a per-store failure and falls through to the skip path.
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
@@ -115,37 +119,50 @@ public sealed class FederatedVectorStore : IVectorStore
         {
             if (_logger is not null)
                 RagPipelineLog.FederatedStoreSearchFailed(_logger, StoreLabel(storeIndex), ex);
-            return null;
+            return (null, ex);
         }
     }
 
-    private void ThrowIfAllFailed(IReadOnlyList<SearchResult>?[] perStore)
+    private void ThrowIfAllFailed((IReadOnlyList<SearchResult>? Results, Exception? Error)[] perStore)
     {
-        foreach (var storeResults in perStore)
+        foreach (var (results, _) in perStore)
         {
-            if (storeResults is not null) return;
+            if (results is not null) return;
         }
 
         var labels = new string[_stores.Count];
         for (int i = 0; i < _stores.Count; i++)
             labels[i] = StoreLabel(i);
+
+        var errors = new List<Exception>(perStore.Length);
+        foreach (var (_, error) in perStore)
+        {
+            if (error is not null) errors.Add(error);
+        }
+
         throw new InvalidOperationException(
-            $"All federated vector stores failed to serve the search: {string.Join(", ", labels)}. See warning logs for the per-store errors.");
+            $"All federated vector stores failed to serve the search: {string.Join(", ", labels)}.",
+            new AggregateException(errors));
     }
 
-    private IReadOnlyList<SearchResult> MergeByRrf(IReadOnlyList<SearchResult>?[] perStore, int topK)
+    /// <summary>
+    /// N-way RRF (RrfMerger semantics, generalised): each hit contributes
+    /// <c>1 / (k + rank)</c> with 1-based per-store ranks; the chunk instance is kept from
+    /// the first store that returned it. Ties on the merged score are broken
+    /// deterministically: lower store index of first appearance wins, then lower per-store
+    /// rank in that store.
+    /// </summary>
+    private IReadOnlyList<SearchResult> MergeByRrf((IReadOnlyList<SearchResult>? Results, Exception? Error)[] perStore, int topK)
     {
         if (topK <= 0) return [];
         int k = _options.RrfK;
 
-        // N-way RRF (RrfMerger semantics, generalised): contribution 1/(k + rank) with
-        // 1-based ranks; the chunk instance is kept from the first store that returned it.
         var rrfScores = new Dictionary<(string docId, int chunkIndex), double>();
-        var firstHit = new Dictionary<(string docId, int chunkIndex), (TextChunk chunk, int storeIndex)>();
+        var firstHit = new Dictionary<(string docId, int chunkIndex), (TextChunk chunk, int storeIndex, int rank)>();
 
         for (int s = 0; s < perStore.Length; s++)
         {
-            var hits = perStore[s];
+            var hits = perStore[s].Results;
             if (hits is null) continue;
             for (int rank = 0; rank < hits.Count; rank++)
             {
@@ -153,17 +170,23 @@ public sealed class FederatedVectorStore : IVectorStore
                 var key = ((string)chunk.DocumentId, chunk.ChunkIndex);
                 var contrib = 1.0 / (k + rank + 1);
                 rrfScores[key] = rrfScores.TryGetValue(key, out var existing) ? existing + contrib : contrib;
-                firstHit.TryAdd(key, (chunk, s));
+                firstHit.TryAdd(key, (chunk, s, rank));
             }
         }
 
-        var sorted = new List<(double score, TextChunk chunk, int storeIndex)>(rrfScores.Count);
+        var sorted = new List<(double score, TextChunk chunk, int storeIndex, int rank)>(rrfScores.Count);
         foreach (var (key, score) in rrfScores)
         {
-            var (chunk, storeIndex) = firstHit[key];
-            sorted.Add((score, chunk, storeIndex));
+            var (chunk, storeIndex, rank) = firstHit[key];
+            sorted.Add((score, chunk, storeIndex, rank));
         }
-        sorted.Sort(static (a, b) => b.score.CompareTo(a.score));
+        sorted.Sort(static (a, b) =>
+        {
+            var byScore = b.score.CompareTo(a.score);
+            if (byScore != 0) return byScore;
+            var byStore = a.storeIndex.CompareTo(b.storeIndex);
+            return byStore != 0 ? byStore : a.rank.CompareTo(b.rank);
+        });
 
         var count = Math.Min(topK, sorted.Count);
         var results = new List<SearchResult>(count);

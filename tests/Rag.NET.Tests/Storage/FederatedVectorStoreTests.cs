@@ -101,13 +101,31 @@ public class FederatedVectorStoreTests
         Assert.Equal("docA", (string)results[0].Chunk.DocumentId);
     }
 
+    [Fact]
+    public async Task Search_StoreInternalCancellation_SkippedWhenCallerNotCancelled()
+    {
+        // A store-internal timeout (e.g. HttpClient/gRPC deadline) surfaces as
+        // TaskCanceledException without the caller's token being cancelled — it must be
+        // treated as a per-store failure, not abort the whole federated search.
+        var timedOut = new FakeVectorStore { SearchException = new TaskCanceledException() };
+        var healthy = new FakeVectorStore { Results = [MakeResult("docA", 0, 0.9)] };
+        var federated = new FederatedVectorStore([timedOut, healthy], new FederatedStoreOptions());
+
+        var results = await federated.SearchAsync(QueryVector, new SearchOptions { TopK = 5 }, TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("docA", (string)results[0].Chunk.DocumentId);
+    }
+
     // ── 3. All stores failing throws, naming the stores ──────────────────────
 
     [Fact]
-    public async Task Search_AllFail_ThrowsNamingStores()
+    public async Task Search_AllFail_ThrowsNamingStores_WithAggregatedCauses()
     {
-        var a = new FakeVectorStore { SearchException = new InvalidOperationException("a down") };
-        var b = new FakeVectorStore { SearchException = new TimeoutException("b down") };
+        var causeA = new InvalidOperationException("a down");
+        var causeB = new TimeoutException("b down");
+        var a = new FakeVectorStore { SearchException = causeA };
+        var b = new FakeVectorStore { SearchException = causeB };
         var options = new FederatedStoreOptions { StoreNames = ["alpha", "beta"] };
         var federated = new FederatedVectorStore([a, b], options);
 
@@ -116,6 +134,9 @@ public class FederatedVectorStoreTests
 
         Assert.Contains("alpha", ex.Message, StringComparison.Ordinal);
         Assert.Contains("beta", ex.Message, StringComparison.Ordinal);
+        var aggregate = Assert.IsType<AggregateException>(ex.InnerException);
+        Assert.Contains(causeA, aggregate.InnerExceptions);
+        Assert.Contains(causeB, aggregate.InnerExceptions);
     }
 
     // ── 4. TopK applied after the merge ──────────────────────────────────────
@@ -126,15 +147,72 @@ public class FederatedVectorStoreTests
         var storeA = new FakeVectorStore { Results = [MakeResult("docX", 0, 0.9), MakeResult("docY", 1, 0.8)] };
         var storeB = new FakeVectorStore { Results = [MakeResult("docY", 1, 0.7), MakeResult("docZ", 2, 0.6)] };
         var federated = new FederatedVectorStore([storeA, storeB], new FederatedStoreOptions());
+        var options = new SearchOptions { TopK = 2 };
 
-        var results = await federated.SearchAsync(QueryVector, new SearchOptions { TopK = 2 }, TestContext.Current.CancellationToken);
+        var results = await federated.SearchAsync(QueryVector, options, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
         Assert.Equal("docY", (string)results[0].Chunk.DocumentId);
         Assert.Equal("docX", (string)results[1].Chunk.DocumentId);
-        // Each store still received the caller's options (full per-store rankings feed the RRF merge).
-        Assert.Equal(2, storeA.LastSearchOptions!.TopK);
-        Assert.Equal(2, storeB.LastSearchOptions!.TopK);
+        // The caller's options instance is passed through to each store unchanged
+        // (full per-store rankings feed the RRF merge).
+        Assert.Same(options, storeA.LastSearchOptions);
+        Assert.Same(options, storeB.LastSearchOptions);
+    }
+
+    [Fact]
+    public async Task Search_EqualScores_TieBrokenByStoreIndexThenRank()
+    {
+        // docP (store 0, rank 0) and docQ (store 1, rank 0) both score 1/61 —
+        // the store-index tie-break puts store 0's chunk first.
+        var storeA = new FakeVectorStore { Results = [MakeResult("docP", 0, 0.9)] };
+        var storeB = new FakeVectorStore { Results = [MakeResult("docQ", 0, 0.9)] };
+        var federated = new FederatedVectorStore([storeA, storeB], new FederatedStoreOptions());
+
+        var results = await federated.SearchAsync(QueryVector, new SearchOptions { TopK = 5 }, TestContext.Current.CancellationToken);
+
+        Assert.Equal("docP", (string)results[0].Chunk.DocumentId);
+        Assert.Equal("docQ", (string)results[1].Chunk.DocumentId);
+
+        // Mirrored lists: docP and docQ both score 1/61 + 1/62 and first appear in
+        // store 0 — the per-store rank tie-break puts docP (rank 0) before docQ (rank 1).
+        var storeC = new FakeVectorStore { Results = [MakeResult("docP", 0, 0.9), MakeResult("docQ", 0, 0.8)] };
+        var storeD = new FakeVectorStore { Results = [MakeResult("docQ", 0, 0.9), MakeResult("docP", 0, 0.8)] };
+        var mirrored = new FederatedVectorStore([storeC, storeD], new FederatedStoreOptions());
+
+        var mirroredResults = await mirrored.SearchAsync(QueryVector, new SearchOptions { TopK = 5 }, TestContext.Current.CancellationToken);
+
+        Assert.Equal("docP", (string)mirroredResults[0].Chunk.DocumentId);
+        Assert.Equal("docQ", (string)mirroredResults[1].Chunk.DocumentId);
+    }
+
+    [Fact]
+    public async Task Search_AllStoresEmpty_ReturnsEmptyWithoutThrowing()
+    {
+        var storeA = new FakeVectorStore();
+        var storeB = new FakeVectorStore();
+        var federated = new FederatedVectorStore([storeA, storeB], new FederatedStoreOptions());
+
+        var results = await federated.SearchAsync(QueryVector, new SearchOptions { TopK = 5 }, TestContext.Current.CancellationToken);
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task Search_DuplicateKeyWithinOneStore_DoubleContributes()
+    {
+        // Pins RrfMerger-parity behavior: a store returning the same (DocumentId, ChunkIndex)
+        // at two ranks contributes for both ranks (1/61 + 1/62); the rank-0 chunk is kept.
+        // Well-behaved stores do not return duplicates, so this is not deduplicated.
+        var storeA = new FakeVectorStore { Results = [MakeResult("docX", 0, 0.9, "first"), MakeResult("docX", 0, 0.8, "second")] };
+        var storeB = new FakeVectorStore();
+        var federated = new FederatedVectorStore([storeA, storeB], new FederatedStoreOptions());
+
+        var results = await federated.SearchAsync(QueryVector, new SearchOptions { TopK = 5 }, TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal(1.0 / 61 + 1.0 / 62, results[0].Score, precision: 10);
+        Assert.Equal("first", results[0].Chunk.Text);
     }
 
     // ── 5. source.store metadata without mutating the original chunk ─────────

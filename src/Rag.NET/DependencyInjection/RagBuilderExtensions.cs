@@ -24,6 +24,15 @@ public static class RagBuilderExtensions
     /// Federation is dense-only: capability interfaces of the underlying stores
     /// (<c>IHybridSearchable</c>, <c>ICollectionManageable</c>, sparse search) are not
     /// federated and keep pointing at whatever registered them.
+    /// <para>
+    /// Known limitation — persistent conversation memory: merged results carry RRF scores
+    /// (roughly <c>0.033</c> at best for two stores), not similarity scores.
+    /// <c>UsePersistentMemory</c> resolves the DI <see cref="IVectorStore"/> and filters
+    /// recalls by <c>PersistentMemoryOptions.MinScore</c> (default 0.7) on the similarity
+    /// scale, so against a federated store it would silently never recall. Point
+    /// persistent memory at a dedicated store instead of the federated one until score
+    /// normalization lands.
+    /// </para>
     /// </remarks>
     /// <param name="builder">The RAG builder.</param>
     /// <param name="configure">Configures the federated stores; at least 2 are required.</param>
