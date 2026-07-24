@@ -12,8 +12,10 @@ corresponding rows in features.md.
 - [ ] Every feature row it covers ticked in features.md with tests and docs
 - [ ] All tests passing
 
-### Phase 1.1: Chunking Strategies [status: pending]
+### Phase 1.1: Chunking Strategies [status: complete]
 **Backlog items:** Sliding Window Chunking with Overlap; Proposition Extraction Chunking; Late Chunking
+**Plan:** `docs/plans/2026-07-24-chunking-strategies-design.md` + `-implementation.md`
+**Completed:** 2026-07-24
 
 ### Phase 1.2: Retrieval Techniques [status: pending]
 **Backlog items:** Hypothetical Document Embeddings v2; FLARE; Sparse Embedding Retrieval (SPLADE); Multi-Index Federation
