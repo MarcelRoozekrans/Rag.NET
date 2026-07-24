@@ -186,6 +186,26 @@ services.AddRagNet(b => b
 
 `{query}` is a required placeholder in the template.
 
+### Multi-hypothesis averaging (HyDE v2)
+
+By default HyDE generates **three** hypothetical documents per query (`HypothesisCount`, minimum 1) at a relatively high sampling temperature (`HypothesisTemperature`, default 0.8, for diversity), embeds them in a single batch call, and searches with the **L2-normalized mean** of their embeddings. Averaging smooths out the variance a single badly-angled hypothesis would introduce.
+
+```csharp
+services.AddRagNet(b => b
+    .UseHyde(o =>
+    {
+        o.HypothesisCount = 5;        // 1 disables averaging (classic single-doc HyDE)
+        o.HypothesisTemperature = 0.9f;
+    }));
+```
+
+Notes:
+
+- **Cost:** each retrieval spends `n` LLM calls (bounded at 4 in parallel) plus `n` embedding inputs in one batch call, where `n = HypothesisCount`. Set `HypothesisCount = 1` to keep the original single-call behavior.
+- Individual hypothesis generations may fail; as long as one survives, retrieval proceeds with the survivors. If all fail, the pipeline logs a warning and falls back to embedding the original query.
+- The averaged vector flows to dense search via an internal `RetrievalOptions.EmbeddingOverride`; the embedding cache is bypassed in this mode (there is no stable text key to cache under).
+- Averaging requires an `IEmbeddingGenerator` in DI (always present in a standard pipeline); without one, HyDE falls back to the single-document text path.
+
 ### How it works
 
 ```mermaid

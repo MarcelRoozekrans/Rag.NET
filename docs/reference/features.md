@@ -766,6 +766,8 @@ Extend the existing `HydeQueryTechnique` to generate `n` hypothetical documents 
 
 **Why:** Single-hypothesis HyDE can degrade when the generated document takes a wrong angle on the query. Multi-hypothesis averaging is more robust and costs only `n` extra embedding calls.
 
+**Status:** Delivered. `HydeOptions.HypothesisCount` (default 3) and `HypothesisTemperature` (default 0.8) drive `IHypotheticalDocumentGenerator.GenerateManyAsync`; `HydeBehavior` embeds all hypotheses in one batch, mean-pools + L2-normalizes, and passes the averaged vector downstream via the internal `RetrievalOptions.EmbeddingOverride` (consumed by the vector-store and ensemble dense arms, bypassing the embedding cache). Partial generation failures are tolerated; total failure falls back to the plain query. Cost per retrieval: `n` LLM calls + `n` embedding inputs (one batch call).
+
 ---
 
 ### Adaptive Retrieval (Query Complexity Routing)
@@ -1021,7 +1023,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | NuGet Publishing Pipeline | Low | GitHub Actions + MinVer |
 | [ ] | Structured Logging Enrichment | Low | None |
 | [x] | Sliding Window Chunking with Overlap | Low | None |
-| [ ] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
+| [x] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | EPUB Parser | Low | `VersOne.Epub` |
 | [ ] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
 | [ ] | Linear Issue Tracker | Low | Linear GraphQL API |

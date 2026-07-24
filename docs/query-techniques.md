@@ -17,7 +17,7 @@ Generates a hypothetical document that _would_ answer the query using the LLM, t
 
 **When to use:** Short queries against long technical documents. Expect improved recall in asymmetric retrieval.
 
-**Cost:** One extra LLM call per retrieval. Dominated by LLM latency, not pipeline overhead.
+**Cost:** `HypothesisCount` LLM calls (default 3, at most 4 in parallel) plus `HypothesisCount` embedding inputs in one batch call per retrieval. Set `HypothesisCount = 1` for the classic single-call behavior. Dominated by LLM latency, not pipeline overhead.
 
 **Registration:**
 ```csharp
@@ -34,10 +34,14 @@ var result = await pipeline.RetrieveAsync(query, new RetrievalOptions { UseHyde 
 services.AddRagNet(rag => rag.UseHyde(o =>
 {
     o.PromptTemplate = "Generate a passage from a technical manual that answers: {query}";
+    o.HypothesisCount = 3;         // hypotheses per query (>= 1); > 1 enables averaging
+    o.HypothesisTemperature = 0.8f; // sampling temperature for hypothesis diversity
 }));
 ```
 
 The default `PromptTemplate` includes a `{query}` placeholder that is replaced with the user's query at runtime.
+
+When `HypothesisCount > 1`, the generated hypotheses are embedded in a single batch and the L2-normalized mean of their embeddings is used for dense search (multi-hypothesis HyDE v2), smoothing out the variance of a single badly-angled hypothesis. Individual generation failures are tolerated as long as at least one hypothesis survives; if all fail, retrieval falls back to embedding the original query. See the [retrieval guide](guide/retrieval.md#hypothetical-document-embeddings-hyde) for details.
 
 ## MultiQuery — LLM Query Expander
 
