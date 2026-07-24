@@ -126,9 +126,25 @@ public class ExtractiveCompressorTests
 
         // Compressed text is preserved unchanged (guard fired).
         Assert.Equal("pre-compressed", result[0].CompressedText);
-        // The query embedding happens once before the per-chunk loop; after the guard fires,
-        // no per-chunk sentence embedding call runs. Embedder should only see the query batch.
-        await embedder.Received(1).GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
+        // With every source already compressed, even the query embedding is skipped —
+        // the call is a complete no-op on the embedder.
+        await embedder.DidNotReceive().GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CompressAsync_MixedCompressedAndUncompressed_CompressesOnlyUncompressed()
+    {
+        var opts = new ContextualCompressionOptions { KeepTopSentences = 1 };
+        var sut = new ExtractiveCompressor(DeterministicEmbedder(), opts, NullLogger<ExtractiveCompressor>.Instance);
+        var precompressed = MakeResult("Rockets fly.", docId: "a") with { CompressedText = "pre-compressed" };
+        var uncompressed = MakeResult("Cats purr. Rockets fly.", docId: "b");
+
+        var result = await sut.CompressAsync(
+            new List<SearchResult> { precompressed, uncompressed }, "cats", TestContext.Current.CancellationToken);
+
+        Assert.Equal("pre-compressed", result[0].CompressedText);
+        Assert.NotNull(result[1].CompressedText);
+        Assert.Contains("Cats", result[1].CompressedText, StringComparison.Ordinal);
     }
 
     [Fact]

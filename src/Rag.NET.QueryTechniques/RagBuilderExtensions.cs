@@ -55,8 +55,9 @@ public static class RagBuilderExtensions
     }
 
     /// <summary>
-    /// Registers an <see cref="IContextualCompressor"/> that <c>ChatAnswerEngine</c>
-    /// invokes before building the LLM prompt. Choose between extractive (embedding-similarity,
+    /// Registers an <see cref="IContextualCompressor"/> that the answer engines
+    /// (<c>ChatAnswerEngine</c>, <c>MapReduceAnswerEngine</c>, <c>RefineAnswerEngine</c>)
+    /// invoke before building the LLM prompt. Choose between extractive (embedding-similarity,
     /// no LLM) or abstractive (per-chunk parallel LLM call) compression via
     /// <see cref="ContextualCompressionOptions.Strategy"/>.
     /// </summary>

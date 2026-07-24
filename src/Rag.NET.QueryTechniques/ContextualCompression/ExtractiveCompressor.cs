@@ -41,6 +41,19 @@ public sealed partial class ExtractiveCompressor(
         cancellationToken.ThrowIfCancellationRequested();
         if (sources.Count == 0) return sources;
 
+        // All chunks already compressed (e.g., retrieval-path compression ran before the
+        // answer-engine path) — skip the query embedding, it would be paid for nothing.
+        var anyUncompressed = false;
+        for (var i = 0; i < sources.Count; i++)
+        {
+            if (sources[i].CompressedText is null)
+            {
+                anyUncompressed = true;
+                break;
+            }
+        }
+        if (!anyUncompressed) return sources;
+
         Embedding<float> queryEmbedding;
         try
         {
