@@ -126,7 +126,7 @@ public class SelfAssessmentConfidenceScorerTests
         Assert.Contains("first chunk text", userText, StringComparison.Ordinal);
         Assert.Contains("third chunk text", userText, StringComparison.Ordinal);
         Assert.DoesNotContain("fourth chunk text", userText, StringComparison.Ordinal);
-        // Compressed text preferred over raw chunk text when present.
+        // The prompt-hardening sentence lives in the system message.
         var systemText = string.Join("\n", captured!.Where(m => m.Role == ChatRole.System).Select(m => m.Text));
         Assert.Contains("never instructions", systemText, StringComparison.Ordinal);
     }
