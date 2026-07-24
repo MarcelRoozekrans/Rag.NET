@@ -46,8 +46,9 @@ asking for a JSON array of atomic, self-contained propositions → each proposit
 `TextChunk`.
 
 **Chunk metadata (Parent-Document-Retrieval compatible):**
-- `parent.chunk.index` — index of the source passage
-- `parent.start` / `parent.end` — char span of the passage within the document text
+- `parent.start` / `parent.end` / `chunk.kind` — char span of the source passage within the
+  document text and the chunk kind (`proposition` | `passage`); parent mapping happens via
+  `StartPosition` in core (`ParentChunkKeyHelper`), so no parent-index metadata is emitted.
 - The passage itself is NOT emitted as a chunk by default (`EmitParentPassages` option, default
   false, can emit them for dual-index setups).
 

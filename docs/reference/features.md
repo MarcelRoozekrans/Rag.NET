@@ -718,6 +718,8 @@ Use `LlmJudgeEvaluator` to grade predicted answers against named criteria (corre
 ### Late Chunking
 **Package:** `Rag.NET.Chunking`
 
+**Status:** ✅ Done — delivered via `Rag.NET.Chunking` (`LateChunkingStrategy`, `UseLateChunking`) + `Rag.NET.Embeddings.Onnx` (`OnnxTokenEmbeddingGenerator`, `UseOnnxTokenEmbeddings`).
+
 Embed the full document (or section) first to capture global context, then split the resulting token-level embeddings into chunks — instead of splitting text first and embedding each chunk independently. Requires a model that exposes token-level embeddings (e.g. `jina-embeddings-v2`). Implements `IDocumentChunkingStrategy`.
 
 **Why:** Standard chunk-then-embed loses cross-chunk context. Late chunking preserves full-document attention during embedding, improving retrieval for references, pronouns, and cross-paragraph reasoning.
@@ -731,14 +733,18 @@ LLM-driven chunking that decomposes document text into atomic, self-contained pr
 
 **Why:** Traditional chunks are paragraph-shaped and contain multiple ideas. Proposition chunks are query-shaped — one chunk, one fact — maximising precision at the cost of more chunks and an LLM pass at ingest time.
 
+**Status:** Delivered by `PropositionChunkingStrategy` in `Rag.NET.Chunking` (`UsePropositionChunking`): token-bounded passage windows (cl100k_base), one `IChatClient` call per passage returning a JSON array of propositions, passage-chunk fallback on LLM/parse failure, and `parent.start`/`parent.end` + passage-span `StartPosition`/`EndPosition` for Parent Document Retrieval compatibility.
+
 ---
 
 ### Sliding Window Chunking with Overlap
-**Package:** `Rag.NET.Chunking`
+**Package:** `Rag.NET.Chunking.TokenAware`
 
 Fixed-size chunks with configurable token overlap between adjacent chunks. The simplest baseline chunking strategy — no LLM, no regex, O(n) time. Useful as a fast fallback or comparison baseline.
 
-**Why:** Despite being the oldest technique, sliding window is still the default in many frameworks and serves as an important performance baseline. Rag.NET currently lacks a first-class implementation.
+**Why:** Despite being the oldest technique, sliding window is still the default in many frameworks and serves as an important performance baseline.
+
+**Status:** Delivered by `TokenAwareChunkingStrategy` in `Rag.NET.Chunking.TokenAware`, upgraded with `TokenAwareChunkingOptions` (`WindowSizeTokens` / `OverlapTokens` with fallback to `ChunkingOptions`).
 
 ---
 
@@ -1014,7 +1020,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | IOptions Alignment + ZeroAlloc Validation for pipeline options | Low | `Microsoft.Extensions.Options` + ZeroAlloc.Validation |
 | [ ] | NuGet Publishing Pipeline | Low | GitHub Actions + MinVer |
 | [ ] | Structured Logging Enrichment | Low | None |
-| [ ] | Sliding Window Chunking with Overlap | Low | None |
+| [x] | Sliding Window Chunking with Overlap | Low | None |
 | [ ] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | EPUB Parser | Low | `VersOne.Epub` |
 | [ ] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
@@ -1030,7 +1036,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | OCR for Scanned PDFs | Medium | Tesseract / Azure Doc Intelligence |
 | [x] | Contextual Compression | Medium | `IChatClient` or embeddings |
 | [x] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
-| [ ] | Proposition Extraction Chunking | Medium | `IChatClient` |
+| [x] | Proposition Extraction Chunking | Medium | `IChatClient` |
 | [ ] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core / Service Bus |
 | [ ] | OpenTelemetry Tracing & Metrics | Medium | `System.Diagnostics.ActivitySource` |
 | [ ] | Email Connector (Outlook/Exchange) | Medium | Microsoft Graph SDK |
@@ -1046,5 +1052,5 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
 | [ ] | FLARE | High | `IChatClient` + logprobs |
 | [ ] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store |
-| [ ] | Late Chunking | High | Token-level embedding model |
+| [x] | Late Chunking | High | Token-level embedding model |
 | [ ] | Embedding Versioning & Re-indexing | High | Content hash store |

@@ -36,15 +36,15 @@ The default strategy when nothing is configured is `RecursiveChunkingStrategy` w
 
 ## Strategy comparison
 
-| | `FixedSizeChunkingStrategy` | `RecursiveChunkingStrategy` | `TokenAwareChunkingStrategy` | `SemanticChunkingStrategy` | `HierarchicalMergerChunkingStrategy` | `CodeChunkingStrategy` |
-|---|---|---|---|---|---|---|
-| Unit | Characters | Characters | Tokens | Characters (min/max) | Characters (max) | Characters |
-| Split logic | Hard cut at word boundary | Hierarchical separators | Tiktoken encode → slice → decode | Embedding cosine similarity breakpoints | Heading subtree merge | Language-specific (class/func/method) |
-| Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window | None | None | Optional |
-| Heading awareness | No | No | No | No (sentence-level) | Yes | No |
-| Respects token limits | No | No | Yes | Approximate (min/max chars) | Approximate (max chars) | No |
-| Chunking overhead (50 KB) | ~29 µs | ~94 µs | ~1,750 µs | Embedding-latency-bound | ~50 µs | ~50 µs |
-| Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text | Coherent meaning boundaries, QA systems | Structured documents with headings | Code files (Python, JS/TS, Go, Rust, C#, …) |
+| | `FixedSizeChunkingStrategy` | `RecursiveChunkingStrategy` | `TokenAwareChunkingStrategy` | `SemanticChunkingStrategy` | `HierarchicalMergerChunkingStrategy` | `CodeChunkingStrategy` | `PropositionChunkingStrategy` | `LateChunkingStrategy` |
+|---|---|---|---|---|---|---|---|---|
+| Unit | Characters | Characters | Tokens | Characters (min/max) | Characters (max) | Characters | Propositions (LLM) | Tokens |
+| Split logic | Hard cut at word boundary | Hierarchical separators | Tiktoken encode → slice → decode | Embedding cosine similarity breakpoints | Heading subtree merge | Language-specific (class/func/method) | LLM decomposes passages into atomic claims | Embed full text, then window token vectors |
+| Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window | None | None | Optional | None (passages partition) | Token-level sliding window |
+| Heading awareness | No | No | No | No (sentence-level) | Yes | No | No | No |
+| Respects token limits | No | No | Yes | Approximate (min/max chars) | Approximate (max chars) | No | Yes (passage budget) | Yes |
+| Chunking overhead (50 KB) | ~29 µs | ~94 µs | ~1,750 µs | Embedding-latency-bound | ~50 µs | ~50 µs | LLM-latency-bound (1 call/passage) | Token-embedding-latency-bound |
+| Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text | Coherent meaning boundaries, QA systems | Structured documents with headings | Code files (Python, JS/TS, Go, Rust, C#, …) | Precise factoid retrieval | Context-aware chunk embeddings |
 
 See [benchmarks](benchmarks.md) for full throughput numbers. Semantic chunking overhead is embedding-latency-bound (50–500 ms per batch), not CPU-bound — CPU processing is negligible.
 
@@ -96,41 +96,46 @@ This is the **default strategy** and the right choice for most prose-based docum
 
 ## `TokenAwareChunkingStrategy`
 
-Uses the [Microsoft.ML.Tokenizers](https://learn.microsoft.com/dotnet/api/microsoft.ml.tokenizers) `TiktokenTokenizer` to encode the section text into token IDs, then slides a window of `MaxChunkSize` tokens with a step of `MaxChunkSize - Overlap`. `MaxChunkSize` and `Overlap` are interpreted as **token counts**, not character counts.
+The **sliding-window baseline**: fixed token windows with configurable overlap, O(n) time, no LLM and no regex. It uses the [Microsoft.ML.Tokenizers](https://learn.microsoft.com/dotnet/api/microsoft.ml.tokenizers) `TiktokenTokenizer` to encode the section text into token IDs, then slides a window of `WindowSizeTokens` tokens with a step of `WindowSizeTokens - OverlapTokens`. Because it counts tokens rather than characters, chunks never exceed embedding model token limits — and its simplicity makes it the natural performance and quality baseline to compare other strategies against.
+
+The simplest registration takes a model name (window and overlap then come from `ChunkingOptions.MaxChunkSize` / `ChunkingOptions.Overlap`, interpreted as **token counts**):
 
 ```csharp
 services.AddRagNet(rag => rag
     .UseTokenAwareChunking("gpt-4")   // selects cl100k_base encoding
-    .UseChunkingStrategy<RecursiveChunkingStrategy>(options =>
-    {
-        options.MaxChunkSize = 512;   // tokens
-        options.Overlap      = 50;    // tokens
-    }));
-```
-
-Wait — `UseTokenAwareChunking` registers `TokenAwareChunkingStrategy` as the `IChunkingStrategy`. The subsequent `UseChunkingStrategy<RecursiveChunkingStrategy>` call would replace it. The correct usage when you want token-aware chunking is:
-
-```csharp
-services.AddRagNet(rag => rag
-    .UseTokenAwareChunking("gpt-4")
     .UsePgVector(connectionString));
 // ChunkingOptions.MaxChunkSize = 512, Overlap = 50 are applied as token counts
 ```
 
-Or with custom limits:
+Or configure the window explicitly with `TokenAwareChunkingOptions`:
 
 ```csharp
 services.AddRagNet(rag => rag
-    .UseTokenAwareChunking("gpt-4")
+    .UseTokenAwareChunking(o =>
+    {
+        o.ModelName        = "gpt-4"; // tokenizer encoding
+        o.WindowSizeTokens = 256;     // fixed window, overrides ChunkingOptions.MaxChunkSize
+        o.OverlapTokens    = 32;      // overlap between windows, overrides ChunkingOptions.Overlap
+    })
     .UsePgVector(connectionString));
-
-// Override ChunkingOptions directly on the service collection:
-services.AddSingleton(new ChunkingOptions { MaxChunkSize = 256, Overlap = 25 });
 ```
+
+`WindowSizeTokens` and `OverlapTokens` are optional; any value left `null` falls back to the corresponding `ChunkingOptions` property at chunk time.
+
+> **Warning:** the fallback applies per property. If you set only `WindowSizeTokens` to a value at or below the default `ChunkingOptions.Overlap` (50), the fallback overlap is no longer smaller than the window and chunking throws at runtime — also set `OverlapTokens`:
+>
+> ```csharp
+> // Throws at chunk time: effective overlap 50 (from ChunkingOptions.Overlap)
+> // is not less than effective window 32 (from TokenAwareChunkingOptions.WindowSizeTokens).
+> rag.UseTokenAwareChunking(o => o.WindowSizeTokens = 32);
+>
+> // Correct — override both:
+> rag.UseTokenAwareChunking(o => { o.WindowSizeTokens = 32; o.OverlapTokens = 8; });
+> ```
 
 **Model names:** Any model name accepted by `TiktokenTokenizer.CreateForModel` works (e.g., `"gpt-4"`, `"gpt-3.5-turbo"`, `"text-embedding-ada-002"`). The default is `"gpt-4"` which uses the `cl100k_base` encoding, compatible with most modern OpenAI embedding models.
 
-**Constraint:** `Overlap` must be strictly less than `MaxChunkSize`; the strategy throws `ArgumentOutOfRangeException` otherwise.
+**Constraint:** the effective overlap must be strictly less than the effective window size; the strategy throws `ArgumentOutOfRangeException` otherwise (at construction when both are set via `TokenAwareChunkingOptions`, at chunk time when falling back to `ChunkingOptions`).
 
 **Overhead:** Tiktoken encoding/decoding adds ~20–60× CPU overhead compared to character-based strategies on 50 KB input (~1,750 µs vs. ~29–94 µs). This is negligible relative to embedding API latency (typically 50–500 ms per batch).
 
@@ -159,6 +164,94 @@ services.AddRagNet(rag => rag.UseSemanticChunking(new SemanticChunkingOptions
 **Document-level path:** When `SemanticChunkingStrategy` is the active chunking strategy, `ParseBehavior` automatically uses the document-level path (`IDocumentChunkingStrategy`): all sections from a document are batch-embedded in one call, adjacent similar sections are merged into groups, and min/max size constraints are applied across groups. This is more coherent than processing each section independently.
 
 **Overhead:** All processing is embedding-latency-bound. The local similarity computation and grouping add negligible overhead (< 1 ms for typical documents) relative to embedding API latency (50–500 ms per batch).
+
+## `PropositionChunkingStrategy`
+
+LLM-driven chunking that decomposes document text into **atomic, self-contained propositions** — each a single factual claim expressed as one complete sentence, with pronouns resolved so the sentence is understandable without its surrounding text. Each proposition becomes its own chunk, making it highly retrievable for specific questions ("one chunk, one fact"). The document is concatenated, split into token-bounded passages (cl100k_base, no overlap), and each passage is sent to the `IChatClient` in one call that returns a JSON array of proposition strings.
+
+```csharp
+services.AddRagNet(rag => rag.UsePropositionChunking());
+```
+
+Or with custom options:
+
+```csharp
+services.AddRagNet(rag => rag.UsePropositionChunking(o =>
+{
+    o.MaxPassageTokens          = 500;   // smaller passages, more LLM calls
+    o.MaxPropositionsPerPassage = 30;    // safety cap per passage
+    o.EmitParentPassages        = true;  // also emit each passage as its own chunk
+    o.ChatClient                = myCheapModel; // optional dedicated client
+}));
+```
+
+`UsePropositionChunking` registers `PropositionChunkingStrategy` for both `IChunkingStrategy` and `IDocumentChunkingStrategy`, pointing to the same singleton instance. It requires an `IChatClient` in DI (or `PropositionChunkingOptions.ChatClient`).
+
+**Options (`PropositionChunkingOptions`):**
+
+| Option | Default | Description |
+|---|---|---|
+| `MaxPassageTokens` | `1000` | Max tokens (cl100k_base) per passage sent to the LLM. One LLM call per passage. |
+| `MaxPropositionsPerPassage` | `50` | Safety cap on propositions parsed per passage; excess entries are dropped. |
+| `EmitParentPassages` | `false` | Also emit each source passage as its own chunk before its propositions (for dual-index setups). |
+| `ChatClient` | `null` | Optional dedicated chat client; falls back to the DI-registered one. |
+
+**Chunk metadata:** every chunk carries `Metadata["chunk.kind"]` (`"proposition"` or `"passage"`), plus `parent.start` / `parent.end` — the character span of the source passage in the concatenated document text.
+
+**Parent Document Retrieval caveat:** each proposition chunk's `StartPosition` / `EndPosition` are set to its source passage's character span (the proposition text itself does not exist verbatim in the source), which is the position `ParentDocumentIngestionBehavior` uses to map child chunks to parents. Combining `UsePropositionChunking` with [Parent Document Retrieval](retrieval.md) is possible but has significant caveats, because the parent pass invokes the **same registered strategy**:
+
+- The parent pass runs a **second LLM extraction pass** over the document at ingest time (doubling cost), and `ParentChunkSize` / `ParentOverlap` are ignored — passage boundaries come from `MaxPassageTokens`.
+- With the default `EmitParentPassages = false`, the stored "parents" are themselves propositions, not passages. Set `EmitParentPassages = true` if you combine the two.
+- Mapping is only reliable for **single-section documents**: parent boundaries are computed per section, while proposition spans are global to the concatenated document text.
+
+For Parent Document Retrieval users the recommended setup is a **non-LLM parent chunker** (e.g. `RecursiveChunkingStrategy` or `TokenAwareChunkingStrategy`) as the registered strategy, with proposition chunks maintained as a separate index (dual-index setup via `EmitParentPassages`).
+
+**Failure fallback:** if the LLM call fails, the response is not valid JSON, or no usable propositions survive filtering, the strategy logs a warning and emits the passage itself as a single chunk (`chunk.kind = "passage"`) — ingestion never loses content and never throws for one bad passage. Cancellation is always propagated, never swallowed.
+
+**Cost:** one LLM call per `MaxPassageTokens`-sized passage at ingest time. Proposition chunking trades ingest cost and chunk count for maximum retrieval precision.
+
+## `LateChunkingStrategy`
+
+Late chunking inverts the usual order of operations: instead of splitting the text first and embedding each chunk in isolation, the **whole section is embedded first** in a single pass by an `ITokenEmbeddingGenerator` that returns one vector per token — so every token vector carries whole-document context (references, pronouns, cross-paragraph reasoning). Overlapping token windows are then cut over the token offsets, and each chunk's embedding is the **L2-normalized mean of its window's token vectors**. Chunks therefore arrive at the embedding stage with a precomputed, context-aware embedding already attached.
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseLateChunking(o =>
+    {
+        o.WindowSizeTokens = 256;
+        o.OverlapTokens    = 32;
+    })
+    .UseOnnxTokenEmbeddings(o =>
+    {
+        o.ModelPath          = "models/jina-embeddings-v2-base-en.onnx";
+        o.TokenizerVocabPath = "models/vocab.txt";
+    })
+    .UsePgVector(connectionString));
+```
+
+`UseLateChunking` registers `LateChunkingStrategy` for both `IChunkingStrategy` and `IDocumentChunkingStrategy` (same singleton). It requires an `ITokenEmbeddingGenerator` — either registered in DI (e.g. via `UseOnnxTokenEmbeddings` from `Rag.NET.Embeddings.Onnx`) or supplied directly through `LateChunkingOptions.Generator`.
+
+**Options (`LateChunkingOptions`):**
+
+| Option | Default | Description |
+|---|---|---|
+| `WindowSizeTokens` | `256` | Tokens per chunk window. Must be positive. |
+| `OverlapTokens` | `32` | Token overlap between consecutive windows. Must be non-negative and smaller than `WindowSizeTokens`. |
+| `Generator` | `null` | Optional dedicated `ITokenEmbeddingGenerator`; falls back to the DI-registered one. |
+
+**ONNX generator (`Rag.NET.Embeddings.Onnx`):** `UseOnnxTokenEmbeddings` registers `OnnxTokenEmbeddingGenerator`, which runs a local ONNX embedding model that exposes token-level hidden states. You need a **jina-embeddings-v2-style ONNX export** — a model whose output is the last hidden state `[1, sequence, dimension]` — plus its **WordPiece `vocab.txt`** from the same model repository. A concrete, known-good starting point is [`jinaai/jina-embeddings-v2-base-en`](https://huggingface.co/jinaai/jina-embeddings-v2-base-en) on Hugging Face: download `onnx/model.onnx` as the `ModelPath` and `vocab.txt` as the `TokenizerVocabPath`.
+
+Model I/O contract: the model must declare an **`input_ids`** input; **`attention_mask`** and **`token_type_ids`** are optional and fed only when the model declares them, so exports without them work. The token-level output is resolved by name — `OnnxTokenEmbeddingOptions.OutputName` (default `"last_hidden_state"`), falling back to the model's single output — and its shape is validated on every pass, so a pooled `[1, dimension]` export fails with a clear error instead of producing garbage embeddings.
+
+Inputs longer than `OnnxTokenEmbeddingOptions.MaxTokens` (default 8192, including the two `[CLS]`/`[SEP]` positions per pass) are windowed internally with `WindowOverlapTokens` (default 64) overlap and stitched back together, so any input length is accepted. The integration smoke test picks up the model via the `RAGNET_ONNX_EMBED_MODEL` and `RAGNET_ONNX_EMBED_VOCAB` environment variables.
+
+**Fallback semantics:** if the token-embedding generator fails (or returns a matrix violating its contract), the section is still chunked into the same cl100k token windows — the chunks simply carry **no precomputed embedding** and are embedded normally downstream by the pipeline's regular embedder. Ingestion never loses content; cancellation is always propagated.
+
+**Storage-dimension caveat:** a precomputed embedding whose dimension does not match the vector store's configured dimension fails at **storage time with a backend-side error** (e.g. a pgvector or Qdrant server rejection), not a Rag.NET-owned message. Make sure the ONNX model's hidden dimension matches the collection/table dimension you provisioned.
+
+**Sanitiser caveat:** chunk sanitisers rewrite `Text` after chunking but preserve the precomputed embedding, so with late chunking a redaction sanitiser stores a vector that still encodes the *unsanitised* content. If you sanitise sensitive content, don't combine it with late chunking (or clear `Embedding` in your sanitiser so the redacted text is embedded normally downstream).
+
+**Parent Document Retrieval caveat:** as with `PropositionChunkingStrategy`, enabling parent-document retrieval re-invokes the registered strategy for the parent pass — with late chunking that means a second full ONNX token-embedding pass over each document at ingest. Prefer a non-LLM/non-embedding parent chunker (`RecursiveChunkingStrategy`, `TokenAwareChunkingStrategy`) for the parent side.
 
 ## `HierarchicalMergerChunkingStrategy`
 
