@@ -22,6 +22,9 @@ internal static partial class AnswerEngineLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "FLARE lookahead retrieval threw; keeping sentence and continuing with existing context")]
     internal static partial void FlareLookaheadThrew(ILogger logger, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "FLARE lookahead retrieval returned no results; keeping sentence without regeneration")]
+    internal static partial void FlareLookaheadEmpty(ILogger logger);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Confidence scorer threw; treating sentence as fully confident (1.0)")]
     internal static partial void FlareScorerThrew(ILogger logger, Exception exception);
 }

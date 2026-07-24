@@ -146,10 +146,18 @@ public sealed class FlareAnswerEngine : IAnswerEngine
         var response = await _chatClient.GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
 
         var text = response.Text?.Trim();
-        if (string.IsNullOrEmpty(text) || string.Equals(text, DoneToken, StringComparison.Ordinal))
+        // A response STARTING with the done token counts as done ("<DONE>." and similar
+        // decorations leak from some models). A TRAILING done token after a sentence is
+        // stripped below — the sentence is kept and the model is asked to continue; it
+        // is expected to reply with the bare done token on the next iteration.
+        if (string.IsNullOrEmpty(text) || text.StartsWith(DoneToken, StringComparison.Ordinal))
             return null;
 
-        return ExtractFirstSentence(text);
+        var sentence = ExtractFirstSentence(text);
+        if (sentence.EndsWith(DoneToken, StringComparison.Ordinal))
+            sentence = sentence[..^DoneToken.Length].Trim();
+
+        return sentence.Length == 0 ? null : sentence;
     }
 
     /// <summary>
@@ -187,13 +195,30 @@ public sealed class FlareAnswerEngine : IAnswerEngine
         CancellationToken cancellationToken)
     {
         var lookaheadQuery = $"{query}\n{sentence}";
-        var retrievalOptions = new RetrievalOptions { TopK = _options.LookaheadTopK };
+        // Default lookahead is a PLAIN retrieval: the query already embeds a synthetic
+        // document (draft sentence), so HyDE / multi-query expansion on top would spawn
+        // hypotheses-of-a-hypothesis — hidden LLM calls for little gain. Reranking stays
+        // enabled. FlareOptions.LookaheadRetrievalOptions overrides verbatim (incl. TopK).
+        var retrievalOptions = _options.LookaheadRetrievalOptions ?? new RetrievalOptions
+        {
+            TopK = _options.LookaheadTopK,
+            UseHyde = false,
+            UseMultiQuery = false,
+        };
         try
         {
             var result = await _retriever.RetrieveAsync(lookaheadQuery, retrievalOptions, cancellationToken).ConfigureAwait(false);
             if (!result.IsSuccess)
             {
                 AnswerEngineLog.FlareLookaheadFailed(_logger, result.Error.GetType().Name);
+                return null;
+            }
+
+            if (result.Value.Count == 0)
+            {
+                // Nothing new to ground a regeneration on — keep the sentence and do not
+                // burn a regeneration LLM call.
+                AnswerEngineLog.FlareLookaheadEmpty(_logger);
                 return null;
             }
 
@@ -258,6 +283,10 @@ public sealed class FlareAnswerEngine : IAnswerEngine
         IReadOnlyList<SearchResult> context,
         RagOptions opts)
     {
+        // Single-message layout: the full prompt (context + question + partial answer) is
+        // rebuilt every iteration. A multi-message layout that keeps the context prefix
+        // stable across iterations (enabling provider-side prompt caching) is a future
+        // optimization — deliberately out of scope here.
         var contextText = string.Join("\n\n---\n\n",
             context.Select((s, i) => $"[Source {i + 1}]\n{s.CompressedText ?? s.Chunk.Text}"));
 
@@ -277,7 +306,9 @@ public sealed class FlareAnswerEngine : IAnswerEngine
 
     private static ChatOptions BuildChatOptions(RagOptions opts)
     {
-        var chatOptions = new ChatOptions();
+        // MaxOutputTokens bounds rambling models — only one sentence is kept per call,
+        // so anything beyond ~150 tokens is discarded output paid for nothing.
+        var chatOptions = new ChatOptions { MaxOutputTokens = 150 };
         if (opts.Temperature.HasValue)
             chatOptions.Temperature = opts.Temperature.Value;
         return chatOptions;

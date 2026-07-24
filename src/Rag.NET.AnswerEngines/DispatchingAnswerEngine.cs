@@ -10,6 +10,9 @@ namespace Rag.NET.AnswerGeneration;
 /// <remarks>
 /// The FLARE engine is optional — it requires <c>UseFlare()</c> registration (retriever +
 /// confidence scorer). Requesting <see cref="SynthesisStrategy.Flare"/> without it throws.
+/// Note: unlike the Chat/MapReduce/Refine engines, FLARE does not consult
+/// <c>IConversationMemory</c> — routing a call to Flare drops the processed conversation
+/// history from the prompt.
 /// </remarks>
 public sealed class DispatchingAnswerEngine(
     IAnswerEngine chatEngine,

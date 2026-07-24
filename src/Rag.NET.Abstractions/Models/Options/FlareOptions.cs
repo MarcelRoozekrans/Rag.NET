@@ -16,8 +16,10 @@ public sealed class FlareOptions
     public double ConfidenceThreshold { get; set; } = 0.6;
 
     /// <summary>
-    /// Hard cap on mid-generation retrievals per <c>AskAsync</c> call. Once exhausted,
-    /// further low-confidence sentences are kept as-is. Default <c>3</c>.
+    /// Hard cap on mid-generation retrieval <b>attempts</b> per <c>AskAsync</c> call —
+    /// failed attempts count against the budget too (intentional: a failing retriever
+    /// should not be retried indefinitely). Once exhausted, further low-confidence
+    /// sentences are kept as-is. Default <c>3</c>.
     /// </summary>
     public int MaxRetrievals { get; set; } = 3;
 
@@ -28,8 +30,20 @@ public sealed class FlareOptions
 
     /// <summary>
     /// <c>TopK</c> for mid-generation lookahead retrievals. Default <c>3</c>.
+    /// Ignored when <see cref="LookaheadRetrievalOptions"/> is set.
     /// </summary>
     public int LookaheadTopK { get; set; } = 3;
+
+    /// <summary>
+    /// Full override for the <see cref="RetrievalOptions"/> used by lookahead retrievals.
+    /// When <see langword="null"/> (default), lookaheads run a plain retrieval:
+    /// <c>TopK</c> = <see cref="LookaheadTopK"/> with HyDE and multi-query expansion
+    /// disabled — the lookahead query is already a synthetic document (query + draft
+    /// sentence), so expanding it again multiplies hidden LLM calls for little gain.
+    /// When set, the options are used verbatim — including <c>TopK</c>, which the
+    /// caller must set explicitly (<see cref="LookaheadTopK"/> is not applied).
+    /// </summary>
+    public RetrievalOptions? LookaheadRetrievalOptions { get; set; }
 
     /// <summary>
     /// Optional chat client override for the engine and the default self-assessment scorer.

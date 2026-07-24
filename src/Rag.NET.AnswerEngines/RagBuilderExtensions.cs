@@ -77,6 +77,9 @@ public static class RagBuilderExtensions
     /// <c>IRetriever</c> (registered by <c>AddRagNet</c>) in DI. Combine with
     /// <see cref="UseDispatchingAnswerEngine"/> to select FLARE per call via
     /// <c>RagOptions.SynthesisStrategy = SynthesisStrategy.Flare</c>.
+    /// This registration of <see cref="IConfidenceScorer"/> supersedes any earlier one
+    /// (standard last-wins container semantics, matching the other <c>Use*</c> extensions);
+    /// <see cref="FlareOptions.Scorer"/> is the supported way to plug in a custom scorer.
     /// </remarks>
     /// <param name="builder">The RAG builder.</param>
     /// <param name="configure">Optional delegate to configure <see cref="FlareOptions"/>.</param>

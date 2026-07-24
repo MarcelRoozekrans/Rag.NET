@@ -100,6 +100,42 @@ public class FlareAnswerEngineTests
     }
 
     [Fact]
+    public async Task AskAsync_LookaheadDefaults_PlainRetrieval()
+    {
+        var sources = new List<SearchResult> { MakeSource("ctx") };
+        ScriptChat("Wrong fact.", "Corrected fact.", "<DONE>");
+        _scorer.Script(0.3, 0.9);
+        ScriptRetrieval(MakeSource("fresh", "doc-new"));
+
+        _ = await CreateSut().AskAsync("q", sources, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Lookahead query is already a synthetic document — HyDE / multi-query must be off.
+        _ = await _retriever.Received(1).RetrieveAsync(
+            Arg.Any<string>(),
+            Arg.Is<RetrievalOptions>(o => o!.TopK == 3 && !o.UseHyde && !o.UseMultiQuery),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAsync_CustomLookaheadRetrievalOptions_UsedVerbatim()
+    {
+        var sources = new List<SearchResult> { MakeSource("ctx") };
+        ScriptChat("Wrong fact.", "Corrected fact.", "<DONE>");
+        _scorer.Script(0.3, 0.9);
+        ScriptRetrieval(MakeSource("fresh", "doc-new"));
+        var custom = new RetrievalOptions { TopK = 7, UseHyde = true };
+
+        _ = await CreateSut(new FlareOptions { LookaheadRetrievalOptions = custom })
+            .AskAsync("q", sources, cancellationToken: TestContext.Current.CancellationToken);
+
+        // Verbatim: TopK stays 7 (LookaheadTopK is NOT stamped over it), UseHyde stays on.
+        _ = await _retriever.Received(1).RetrieveAsync(
+            Arg.Any<string>(),
+            Arg.Is<RetrievalOptions>(o => o!.TopK == 7 && o.UseHyde),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task AskAsync_MaxRetrievals_Respected()
     {
         var sources = new List<SearchResult> { MakeSource("ctx") };
@@ -202,6 +238,91 @@ public class FlareAnswerEngineTests
         Assert.Equal(string.Empty, result.Answer);
         Assert.Same(sources, result.Sources);
         Assert.Equal(0, _scorer.Calls);
+    }
+
+    [Fact]
+    public async Task AskAsync_ZeroResultLookahead_KeepsSentenceWithoutRegeneration()
+    {
+        var sources = new List<SearchResult> { MakeSource("ctx") };
+        ScriptChat("Fact one.", "<DONE>");
+        _scorer.Script(0.0, 0.9);
+        ScriptRetrieval(); // success, but empty
+
+        var result = await CreateSut().AskAsync("q", sources, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("Fact one.", result.Answer);
+        Assert.Same(sources, result.Sources);
+        // No regeneration LLM call burned: generation + <DONE> only.
+        await _chatClient.Received(2).GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAsync_EmptyInitialSources_StillGenerates()
+    {
+        var sources = new List<SearchResult>();
+        ScriptChat("Answer.", "<DONE>");
+        _scorer.Script(0.9);
+
+        var result = await CreateSut().AskAsync("q", sources, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("Answer.", result.Answer);
+        Assert.Same(sources, result.Sources);
+    }
+
+    [Theory]
+    [InlineData("<DONE>")]
+    [InlineData("<DONE>.")]
+    public async Task AskAsync_ResponseStartingWithDoneToken_Stops(string doneReply)
+    {
+        var sources = new List<SearchResult> { MakeSource("ctx") };
+        ScriptChat("Fact one.", doneReply);
+        _scorer.Script(0.9);
+
+        var result = await CreateSut().AskAsync("q", sources, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("Fact one.", result.Answer);
+    }
+
+    [Fact]
+    public async Task AskAsync_DoneTokenAfterSentence_KeepsSentenceThenStops()
+    {
+        var sources = new List<SearchResult> { MakeSource("ctx") };
+        // Terminator before the token: the first sentence is extracted, the trailing
+        // token is discarded with the remainder; the model replies <DONE> next turn.
+        ScriptChat("Fact. <DONE>", "<DONE>");
+        _scorer.Script(0.9);
+
+        var result = await CreateSut().AskAsync("q", sources, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("Fact.", result.Answer);
+    }
+
+    [Fact]
+    public async Task AskAsync_TrailingDoneTokenWithoutTerminator_Stripped()
+    {
+        var sources = new List<SearchResult> { MakeSource("ctx") };
+        ScriptChat("Fact <DONE>", "<DONE>");
+        _scorer.Script(0.9);
+
+        var result = await CreateSut().AskAsync("q", sources, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("Fact", result.Answer);
+    }
+
+    [Fact]
+    public async Task AskAsync_SentenceGeneration_BoundsMaxOutputTokens()
+    {
+        var sources = new List<SearchResult> { MakeSource("ctx") };
+        ScriptChat("Only sentence.", "<DONE>");
+        _scorer.Script(0.9);
+
+        _ = await CreateSut().AskAsync("q", sources, cancellationToken: TestContext.Current.CancellationToken);
+
+        await _chatClient.Received(2).GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(),
+            Arg.Is<ChatOptions>(o => o!.MaxOutputTokens == 150),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

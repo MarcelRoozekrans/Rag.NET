@@ -132,6 +132,29 @@ public class SelfAssessmentConfidenceScorerTests
     }
 
     [Fact]
+    public async Task ScoreAsync_EmptyContext_StillParses()
+    {
+        SetupReply("0.25");
+
+        var score = await _sut.ScoreAsync("s", "p", [], TestContext.Current.CancellationToken);
+
+        Assert.Equal(0.25, score, precision: 10);
+    }
+
+    [Fact]
+    public async Task ScoreAsync_PinsTemperatureToZero()
+    {
+        SetupReply("0.5");
+
+        _ = await _sut.ScoreAsync("s", "p", [MakeSource("ctx")], TestContext.Current.CancellationToken);
+
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(),
+            Arg.Is<ChatOptions>(o => o!.Temperature == 0f),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ScoreAsync_PrefersCompressedText()
     {
         IList<ChatMessage>? captured = null;
