@@ -13,7 +13,8 @@ namespace Rag.NET.Chunking;
 public sealed class TokenAwareChunkingStrategy : IChunkingStrategy
 {
     private readonly Tokenizer _tokenizer;
-    private readonly TokenAwareChunkingOptions? _options;
+    private readonly int? _windowSizeTokens;
+    private readonly int? _overlapTokens;
 
     /// <summary>Gets the model name used to create the tokenizer encoding.</summary>
     public string ModelName { get; }
@@ -27,8 +28,14 @@ public sealed class TokenAwareChunkingStrategy : IChunkingStrategy
     /// </param>
     /// <exception cref="ArgumentException">Thrown when <paramref name="modelName"/> is null or whitespace.</exception>
     public TokenAwareChunkingStrategy(string modelName = "gpt-4")
-        : this(new TokenAwareChunkingOptions { ModelName = modelName! })
+        : this(CreateOptions(modelName))
     {
+    }
+
+    private static TokenAwareChunkingOptions CreateOptions(string modelName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+        return new TokenAwareChunkingOptions { ModelName = modelName };
     }
 
     /// <summary>
@@ -48,7 +55,10 @@ public sealed class TokenAwareChunkingStrategy : IChunkingStrategy
     public TokenAwareChunkingStrategy(TokenAwareChunkingOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentException.ThrowIfNullOrWhiteSpace(options.ModelName, nameof(options));
+#pragma warning disable MA0015 // Intentional composite param name: the invalid value lives on options.ModelName, not options itself.
+        ArgumentException.ThrowIfNullOrWhiteSpace(
+            options.ModelName, $"{nameof(options)}.{nameof(TokenAwareChunkingOptions.ModelName)}");
+#pragma warning restore MA0015
 
         if (options.WindowSizeTokens is <= 0)
         {
@@ -70,7 +80,10 @@ public sealed class TokenAwareChunkingStrategy : IChunkingStrategy
 
         ModelName = options.ModelName;
         _tokenizer = TiktokenTokenizer.CreateForModel(options.ModelName);
-        _options = options;
+
+        // Snapshot — post-construction mutation of the caller's options instance must not affect this strategy.
+        _windowSizeTokens = options.WindowSizeTokens;
+        _overlapTokens = options.OverlapTokens;
     }
 
     public async IAsyncEnumerable<TextChunk> ChunkAsync(
@@ -135,13 +148,20 @@ public sealed class TokenAwareChunkingStrategy : IChunkingStrategy
 
     private (int Window, int Overlap) ResolveWindowAndOverlap(ChunkingOptions options)
     {
-        var window = _options?.WindowSizeTokens ?? options.MaxChunkSize;
-        var overlap = _options?.OverlapTokens ?? options.Overlap;
+        var window = _windowSizeTokens ?? options.MaxChunkSize;
+        var overlap = _overlapTokens ?? options.Overlap;
 
         if (overlap >= window)
         {
+            var windowSource = _windowSizeTokens.HasValue
+                ? $"{nameof(TokenAwareChunkingOptions)}.{nameof(TokenAwareChunkingOptions.WindowSizeTokens)}"
+                : $"{nameof(ChunkingOptions)}.{nameof(ChunkingOptions.MaxChunkSize)}";
+            var overlapSource = _overlapTokens.HasValue
+                ? $"{nameof(TokenAwareChunkingOptions)}.{nameof(TokenAwareChunkingOptions.OverlapTokens)}"
+                : $"{nameof(ChunkingOptions)}.{nameof(ChunkingOptions.Overlap)}";
+
             throw new ArgumentOutOfRangeException(nameof(options),
-                $"Overlap ({overlap}) must be less than window size ({window}).");
+                $"Effective overlap {overlap} (from {overlapSource}) must be less than effective window {window} (from {windowSource}).");
         }
 
         return (window, overlap);

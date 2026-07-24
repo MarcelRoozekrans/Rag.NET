@@ -738,7 +738,7 @@ LLM-driven chunking that decomposes document text into atomic, self-contained pr
 
 Fixed-size chunks with configurable token overlap between adjacent chunks. The simplest baseline chunking strategy — no LLM, no regex, O(n) time. Useful as a fast fallback or comparison baseline.
 
-**Why:** Despite being the oldest technique, sliding window is still the default in many frameworks and serves as an important performance baseline. Rag.NET currently lacks a first-class implementation.
+**Why:** Despite being the oldest technique, sliding window is still the default in many frameworks and serves as an important performance baseline.
 
 **Status:** Delivered by `TokenAwareChunkingStrategy` in `Rag.NET.Chunking.TokenAware`, upgraded with `TokenAwareChunkingOptions` (`WindowSizeTokens` / `OverlapTokens` with fallback to `ChunkingOptions`).
 

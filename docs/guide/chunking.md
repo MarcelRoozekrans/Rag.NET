@@ -122,6 +122,17 @@ services.AddRagNet(rag => rag
 
 `WindowSizeTokens` and `OverlapTokens` are optional; any value left `null` falls back to the corresponding `ChunkingOptions` property at chunk time.
 
+> **Warning:** the fallback applies per property. If you set only `WindowSizeTokens` to a value at or below the default `ChunkingOptions.Overlap` (50), the fallback overlap is no longer smaller than the window and chunking throws at runtime — also set `OverlapTokens`:
+>
+> ```csharp
+> // Throws at chunk time: effective overlap 50 (from ChunkingOptions.Overlap)
+> // is not less than effective window 32 (from TokenAwareChunkingOptions.WindowSizeTokens).
+> rag.UseTokenAwareChunking(o => o.WindowSizeTokens = 32);
+>
+> // Correct — override both:
+> rag.UseTokenAwareChunking(o => { o.WindowSizeTokens = 32; o.OverlapTokens = 8; });
+> ```
+
 **Model names:** Any model name accepted by `TiktokenTokenizer.CreateForModel` works (e.g., `"gpt-4"`, `"gpt-3.5-turbo"`, `"text-embedding-ada-002"`). The default is `"gpt-4"` which uses the `cl100k_base` encoding, compatible with most modern OpenAI embedding models.
 
 **Constraint:** the effective overlap must be strictly less than the effective window size; the strategy throws `ArgumentOutOfRangeException` otherwise (at construction when both are set via `TokenAwareChunkingOptions`, at chunk time when falling back to `ChunkingOptions`).
