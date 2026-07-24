@@ -155,13 +155,13 @@ score(d) = Σ  1 / (k + rank_i)    where k = 60
 
 Each document's RRF score is the sum of its reciprocal ranks across both result lists. Documents appearing in both lists score higher than documents appearing in only one. The top `TopK` results by RRF score are returned.
 
-RRF scores are not cosine similarities. `MinScore` filtering is applied by the dense retriever before merging; the final RRF scores are not filtered by `MinScore`.
+RRF scores are not cosine similarities. `MinScore` filtering is applied by each arm before merging — the dense arm against cosine similarity and the sparse arm against SPLADE dot-product scores, which are on a different scale — and the final RRF scores are not filtered by `MinScore`.
 
 See [benchmarks](benchmarks.md#hybrid-search-bm25-fallback) for throughput data on the BM25+RRF path.
 
 ## Sparse retrieval (SPLADE)
 
-Learned sparse retrieval adds a third arm to hybrid search: a SPLADE model expands the query and each chunk into weighted vocabulary terms (a `SparseVector`), scoring by dot product over an inverted index. Unlike BM25 it matches on learned term expansions, so it handles synonyms and out-of-vocabulary phrasing while staying as cheap to search as keyword retrieval.
+Learned sparse retrieval adds a third arm to hybrid search: a SPLADE model expands the query and each chunk into weighted vocabulary terms (a `SparseVector`), scoring by dot product over an inverted index. Unlike BM25 it matches on learned term expansions, so it handles synonyms and out-of-vocabulary phrasing while staying as cheap to search as keyword retrieval. Like BM25, the sparse arm always encodes the **raw query text** — even when HyDE is active and the dense arm searches with a hypothesis embedding — because lexical and learned-sparse matching want the user's actual terms.
 
 ### Setup
 
