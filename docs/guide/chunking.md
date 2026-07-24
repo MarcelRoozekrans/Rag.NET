@@ -198,7 +198,13 @@ services.AddRagNet(rag => rag.UsePropositionChunking(o =>
 
 **Chunk metadata:** every chunk carries `Metadata["chunk.kind"]` (`"proposition"` or `"passage"`), plus `parent.start` / `parent.end` — the character span of the source passage in the concatenated document text.
 
-**Parent Document Retrieval compatibility:** each proposition chunk's `StartPosition` / `EndPosition` are set to its source passage's character span (the proposition text itself does not exist verbatim in the source). `ParentDocumentIngestionBehavior` maps child chunks to parents via `StartPosition`, so proposition chunks combine naturally with [Parent Document Retrieval](retrieval.md): retrieve by precise proposition, expand to the surrounding passage for answer context.
+**Parent Document Retrieval caveat:** each proposition chunk's `StartPosition` / `EndPosition` are set to its source passage's character span (the proposition text itself does not exist verbatim in the source), which is the position `ParentDocumentIngestionBehavior` uses to map child chunks to parents. Combining `UsePropositionChunking` with [Parent Document Retrieval](retrieval.md) is possible but has significant caveats, because the parent pass invokes the **same registered strategy**:
+
+- The parent pass runs a **second LLM extraction pass** over the document at ingest time (doubling cost), and `ParentChunkSize` / `ParentOverlap` are ignored — passage boundaries come from `MaxPassageTokens`.
+- With the default `EmitParentPassages = false`, the stored "parents" are themselves propositions, not passages. Set `EmitParentPassages = true` if you combine the two.
+- Mapping is only reliable for **single-section documents**: parent boundaries are computed per section, while proposition spans are global to the concatenated document text.
+
+For Parent Document Retrieval users the recommended setup is a **non-LLM parent chunker** (e.g. `RecursiveChunkingStrategy` or `TokenAwareChunkingStrategy`) as the registered strategy, with proposition chunks maintained as a separate index (dual-index setup via `EmitParentPassages`).
 
 **Failure fallback:** if the LLM call fails, the response is not valid JSON, or no usable propositions survive filtering, the strategy logs a warning and emits the passage itself as a single chunk (`chunk.kind = "passage"`) — ingestion never loses content and never throws for one bad passage. Cancellation is always propagated, never swallowed.
 

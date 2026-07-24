@@ -199,11 +199,9 @@ public sealed partial class PropositionChunkingStrategy(
             Text = text,
             DocumentId = docId,
             ChunkIndex = index,
-            // Compatibility contract: StartPosition/EndPosition carry the SOURCE-PASSAGE char
-            // span (not a span of the proposition text, which does not exist verbatim in the
-            // source). The core ParentDocumentIngestionBehavior maps child chunks to parent
-            // chunks via child.StartPosition, so proposition chunks must report their
-            // passage's span for Parent Document Retrieval to resolve the right parent.
+            // Position contract: StartPosition/EndPosition carry the SOURCE-PASSAGE char span
+            // (the proposition text does not exist verbatim in the source); the core
+            // ParentDocumentIngestionBehavior maps child chunks to parents via child.StartPosition.
             StartPosition = start,
             EndPosition = end,
             Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
