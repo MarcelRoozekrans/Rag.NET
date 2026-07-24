@@ -43,17 +43,17 @@ public class AskTelemetryTests
         var engine = new ChatAnswerEngine(chatClient);
         var sources = Array.Empty<SearchResult>();
 
-        // Capture the cutoff BEFORE the act so we can distinguish our span from any
-        // concurrently-emitted activity on the same global ActivitySource.
-        // Small backward tolerance because Activity.StartTimeUtc is set slightly before
-        // this line returns (stopwatch timing + clock resolution on Windows).
-        var cutoff = DateTime.UtcNow.AddMilliseconds(-50);
+        // Start a parent activity so the span emitted by THIS test inherits our TraceId
+        // (ActivitySource.StartActivity picks up Activity.Current via AsyncLocal). Filtering
+        // by TraceId deterministically excludes spans from concurrently running test classes
+        // that hit the same global ActivitySource.
+        using var parent = new Activity("test-parent").Start();
 
         await engine.AskAsync("Where is the Eiffel Tower?", sources,
             cancellationToken: TestContext.Current.CancellationToken);
 
         var span = activities
-            .Where(a => a.StartTimeUtc >= cutoff)
+            .Where(a => a.TraceId == parent.TraceId)
             .FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.ask", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.Equal("0", span.GetTagItem("source.count")?.ToString());
@@ -77,7 +77,8 @@ public class AskTelemetryTests
         var engine = new ChatAnswerEngine(chatClient);
         var sources = Array.Empty<SearchResult>();
 
-        var cutoff = DateTime.UtcNow.AddMilliseconds(-50);
+        // See AskAsync_EmitsAskSpan: TraceId-parent filtering is deterministic under test parallelism.
+        using var parent = new Activity("test-parent").Start();
 
         await foreach (var update in engine.AskStreamingAsync("Where is the Eiffel Tower?", sources,
             cancellationToken: TestContext.Current.CancellationToken))
@@ -86,7 +87,7 @@ public class AskTelemetryTests
         }
 
         var span = activities
-            .Where(a => a.StartTimeUtc >= cutoff)
+            .Where(a => a.TraceId == parent.TraceId)
             .FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.ask", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.Equal("0", span.GetTagItem("source.count")?.ToString());

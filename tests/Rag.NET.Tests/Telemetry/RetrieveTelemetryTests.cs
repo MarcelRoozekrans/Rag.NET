@@ -42,12 +42,16 @@ public class RetrieveTelemetryTests
 
         var retriever = CreateSut();
 
-        var cutoff = DateTime.UtcNow.AddMilliseconds(-50);
+        // Start a parent activity so the span emitted by THIS test inherits our TraceId
+        // (ActivitySource.StartActivity picks up Activity.Current via AsyncLocal). Filtering
+        // by TraceId deterministically excludes spans from concurrently running test classes
+        // that hit the same global ActivitySource.
+        using var parent = new Activity("test-parent").Start();
 
         var __ = await retriever.RetrieveAsync("what is RAG?", cancellationToken: TestContext.Current.CancellationToken);
 
         var span = activities
-            .Where(a => a.StartTimeUtc >= cutoff)
+            .Where(a => a.TraceId == parent.TraceId)
             .FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.retrieve", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.NotNull(span.GetTagItem("query.hash")); // 8-char hex SHA-256 prefix — don't assert exact value
@@ -69,7 +73,8 @@ public class RetrieveTelemetryTests
         // Baseline any measurements accumulated by parallel test classes between the collector's
         // construction and this test's act — assert on the delta instead of the absolute sum.
         var baseline = errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value);
-        var cutoff = DateTime.UtcNow.AddMilliseconds(-50);
+        // TraceId-parent filtering: deterministic span discrimination under test parallelism.
+        using var parent = new Activity("test-parent").Start();
 
         var result = await retriever.RetrieveAsync("failing query",
             cancellationToken: TestContext.Current.CancellationToken);
@@ -77,13 +82,16 @@ public class RetrieveTelemetryTests
         Assert.False(result.IsSuccess);
 
         var span = activities
-            .Where(a => a.StartTimeUtc >= cutoff)
+            .Where(a => a.TraceId == parent.TraceId)
             .FirstOrDefault(a =>
                 string.Equals(a.OperationName, "ragnet.retrieve", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.Equal(ActivityStatusCode.Error, span.Status);
 
-        Assert.Equal(1, errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value) - baseline);
+        // >= 1 rather than == 1: the counter is process-global and untagged, so a parallel
+        // test class erroring through RetrieveAsync during our act can also increment it.
+        var delta = errorsCollector.GetMeasurementSnapshot().Sum(m => m.Value) - baseline;
+        Assert.True(delta >= 1, $"expected at least one retrieve error recorded, delta={delta}");
     }
 
     [Fact]
