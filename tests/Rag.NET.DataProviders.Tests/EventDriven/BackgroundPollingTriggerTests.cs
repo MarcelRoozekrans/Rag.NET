@@ -21,7 +21,10 @@ public sealed class BackgroundPollingTriggerTests
     private sealed class FakeProvider(bool throwOnFirstCall = false) : IFileContentProvider
     {
         private int _calls;
+        private readonly TaskCompletionSource _firstCall = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _secondCall = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task FirstCallStarted => _firstCall.Task;
 
         public Task SecondCallStarted => _secondCall.Task;
 
@@ -31,6 +34,7 @@ public sealed class BackgroundPollingTriggerTests
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var call = Interlocked.Increment(ref _calls);
+            _firstCall.TrySetResult();
             if (call >= 2)
                 _secondCall.TrySetResult();
             if (throwOnFirstCall && call == 1)
@@ -96,6 +100,10 @@ public sealed class BackgroundPollingTriggerTests
         var sut = new BackgroundPollingTrigger(Substitute.For<IRagPipeline>(), provider, options);
 
         await sut.StartAsync(ct);
+        // On .NET 10, StartAsync only SCHEDULES ExecuteAsync — stopping immediately would race
+        // (a cancel that wins before ExecuteAsync starts leaves ExecuteTask Canceled, not
+        // RanToCompletion). Wait until cycle 1 is provably underway before requesting the stop.
+        await provider.FirstCallStarted.WaitAsync(TimeSpan.FromSeconds(10), ct);
         // Cancelling mid-delay must exit promptly via the clean-shutdown OCE catch.
         await sut.StopAsync(ct).WaitAsync(TimeSpan.FromSeconds(10), ct);
 
