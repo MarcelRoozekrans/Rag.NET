@@ -113,4 +113,69 @@ public class EmbeddingBehaviorTests
         Assert.Equal(pre0, ctx.EmbeddedChunks[0].Embedding.ToArray());
         Assert.Equal(pre1, ctx.EmbeddedChunks[1].Embedding.ToArray());
     }
+
+    [Fact]
+    public async Task HandleAsync_EmptyEmbedding_IsTreatedAsAbsent_AndChunkIsEmbedded()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        var generatedVec = new float[] { 0.7f, 0.8f };
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>(
+            [
+                new Embedding<float>(generatedVec),
+            ]));
+
+        var sut = new EmbeddingBehavior { Embedder = embedder };
+        var ctx = MakeContext();
+        ctx.Chunks.Add(new TextChunk
+        {
+            Text = "empty-embedding",
+            DocumentId = new DocumentId("doc-1"),
+            ChunkIndex = 0,
+            Embedding = ReadOnlyMemory<float>.Empty,
+        });
+
+        await sut.HandleAsync(ctx, ct, Next);
+
+        await embedder.Received(1).GenerateAsync(
+            Arg.Is<IEnumerable<string>>(texts => texts.SequenceEqual(new[] { "empty-embedding" })),
+            Arg.Any<EmbeddingGenerationOptions?>(),
+            Arg.Any<CancellationToken>());
+
+        Assert.Single(ctx.EmbeddedChunks);
+        Assert.Equal(generatedVec, ctx.EmbeddedChunks[0].Embedding.ToArray());
+    }
+
+    [Fact]
+    public async Task HandleAsync_GeneratorReturnsWrongCount_ThrowsWithBothCounts()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        // Two pending chunks, but the generator returns only one embedding.
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>(
+            [
+                new Embedding<float>(new float[] { 1f }),
+            ]));
+
+        var sut = new EmbeddingBehavior { Embedder = embedder };
+        var ctx = MakeContext();
+        ctx.Chunks.Add(MakeChunk(0, "a"));
+        ctx.Chunks.Add(MakeChunk(1, "b"));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.HandleAsync(ctx, ct, Next).AsTask());
+
+        Assert.Contains("returned 1", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("2 inputs", ex.Message, StringComparison.Ordinal);
+    }
 }
