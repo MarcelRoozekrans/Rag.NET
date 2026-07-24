@@ -22,4 +22,18 @@ public class UseTokenAwareChunkingTests
         var sp = new ServiceCollection().AddRagNet(rag => rag.UseTokenAwareChunking("gpt-3.5-turbo")).BuildServiceProvider();
         Assert.IsType<TokenAwareChunkingStrategy>(sp.GetRequiredService<IChunkingStrategy>());
     }
+
+    [Fact]
+    public void UseTokenAwareChunking_ConfigureAction_RegistersIChunkingStrategy()
+    {
+        var sp = new ServiceCollection()
+            .AddRagNet(rag => rag.UseTokenAwareChunking(o =>
+            {
+                o.WindowSizeTokens = 128;
+                o.OverlapTokens = 16;
+            }))
+            .BuildServiceProvider();
+
+        Assert.IsType<TokenAwareChunkingStrategy>(sp.GetRequiredService<IChunkingStrategy>());
+    }
 }
