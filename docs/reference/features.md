@@ -872,9 +872,11 @@ A `FallbackChatClient` (implements `IChatClient`) that tries a primary client, c
 ### Embedding Versioning & Re-indexing
 **Package:** `Rag.NET` (core)
 
-Track which embedding model (name + version) produced each stored vector, persisted alongside the content hash. When the embedding model changes, detect stale vectors and re-embed only affected documents. Exposes `RagManager.ReindexStaleCllectionsAsync()` and a CLI command.
+`UseEmbeddingVersioning` registers a SQLite `IEmbeddingVersionStore`; after each successful store the ingestion pipeline stamps the document with the embedding model identity (from `EmbeddingGeneratorMetadata` or the explicit `EmbeddingVersioningOptions.ModelId` override) and vector dimension, and `DeleteAsync` removes the stamp. `pipeline.ReindexStaleAsync(...)` finds documents whose stamp differs from the current model or dimension and re-embeds them from the chunk text stored by the registered `IRagDataManager` (re-store replaces by `(DocumentId, ChunkIndex)`; sparse vectors are regenerated when a sparse encoder + sparse-capable store are present). Without a data manager, stale documents are reported for caller-driven re-ingest.
 
-**Why:** Switching embedding models (a common upgrade path) currently requires wiping and re-ingesting the entire corpus. Version tracking makes incremental re-indexing possible.
+**Why:** Switching embedding models (a common upgrade path) previously required wiping and re-ingesting the entire corpus. Version tracking makes incremental re-indexing possible.
+
+**Status:** ✅ Done (library API in Phase 1.3; the `ragnet reindex --stale` CLI command lands with the CLI tool in Milestone 3)
 
 ---
 
@@ -1063,4 +1065,4 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | FLARE | High | `IChatClient` (self-assessment scorer; logprob scorer = extension point) |
 | [x] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store (Qdrant + in-memory; PgVector deferred) |
 | [x] | Late Chunking | High | Token-level embedding model |
-| [ ] | Embedding Versioning & Re-indexing | High | Content hash store |
+| [x] | Embedding Versioning & Re-indexing | High | SQLite version store (CLI command deferred to Milestone 3) |

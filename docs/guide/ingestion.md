@@ -318,3 +318,43 @@ services.AddRagNet(b => b
 ## Event-driven ingestion
 
 Ingestion can also be push-based: a bounded job queue plus a `BackgroundService` processor (`UseEventDrivenIngestion`), fed by an HMAC-verified webhook endpoint (`Rag.NET.Api`) or a background polling trigger (`UsePollingIngestion`). See [Event-driven ingestion in the data providers guide](data-providers.md#event-driven-ingestion) for setup, the webhook payload contract, and signature examples.
+
+## Embedding versioning & re-indexing
+
+Switching embedding models invalidates every stored vector — dense similarity scores are only meaningful within one model's embedding space. `UseEmbeddingVersioning` tracks which model produced each document's vectors so you can re-embed only what is stale instead of wiping and re-ingesting the corpus.
+
+### Model migration walkthrough
+
+**1. Register versioning before (or at) your first ingest:**
+
+```csharp
+services.AddRagNet(b => b
+    .UseEmbeddingVersioning(o => o.DatabasePath = "ragnet-versions.db"));
+
+// Stores chunk text — enables real re-indexing (otherwise ReindexStaleAsync is report-only):
+services.AddSingleton<IRagDataManager>(new SqliteDocumentStore("ragnet-data.db"));
+```
+
+After every successful store, the pipeline stamps the document with the resolved model identity and the vector dimension. The identity comes from the generator's `EmbeddingGeneratorMetadata` (`"{ProviderName}/{DefaultModelId}"`); for adapters that expose no metadata, set `o.ModelId` explicitly — without either source, stamping is disabled with a one-time warning (the identity is never guessed). `DeleteAsync` removes the stamp along with the document.
+
+**2. Switch the embedding model** (new registration, new deployment — nothing else changes). Newly ingested documents are stamped with the new identity; existing documents keep their old stamp.
+
+**3. Re-index the stale documents:**
+
+```csharp
+var result = await pipeline.ReindexStaleAsync(serviceProvider, cancellationToken);
+// result.Reindexed     — re-embedded, re-stored, re-stamped
+// result.ReportedStale — stale but not re-indexable (no data manager registered)
+// result.Failed        — (documentId, error) pairs; the loop continued past them
+```
+
+A document is stale when its stamped model identity differs from the current one, or when its stamped dimension differs from the current model's output dimension (learned by embedding one constant probe text — a single extra embedding call per run, only made when at least one stamp matches the current model id). Stale documents are re-embedded from the chunk text stored by the `IRagDataManager`, re-stored via `IVectorStore.StoreAsync` (which replaces by `(DocumentId, ChunkIndex)`), and re-stamped. Re-embedding honours `IngestionOptions.EmbedBatchSize`. When a sparse encoder (`ISparseEmbeddingGenerator`) and a sparse-capable store are both registered, sparse vectors are regenerated from the same text; a sparse failure is logged and the dense re-index still succeeds. BM25 needs no re-index (the text is unchanged).
+
+An overload taking explicit dependencies (`versionStore`, `embedder`, `vectorStore`, `dataManager`, options) is available for non-DI composition, mirroring `IngestFromProviderAsync`.
+
+### Limitations
+
+- **Chunks are reused verbatim.** Re-indexing re-embeds the stored chunk text; it does not re-parse or re-chunk the source document. If you also changed chunking settings, re-ingest instead.
+- **Report-only without a data manager.** Without an `IRagDataManager` (which stores the chunk text), stale documents land in `ReportedStale` for caller-driven re-ingest from the original source.
+- **Only stamped documents are seen.** Documents ingested before `UseEmbeddingVersioning` was registered have no stamp and are invisible to `ReindexStaleAsync` — re-ingest them once to get them stamped.
+- The `ragnet reindex --stale` CLI command ships with the CLI tool (Milestone 3).
