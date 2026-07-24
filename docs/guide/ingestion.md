@@ -84,6 +84,12 @@ public sealed class IngestionOptions
     /// when using IngestFromProviderAsync. Default is 1 (sequential).
     /// </summary>
     public int MaxDegreeOfParallelism { get; init; } = 1;
+
+    /// <summary>Chunks per embedding batch within a single document. Default 100.</summary>
+    public int EmbedBatchSize { get; init; } = 100;
+
+    /// <summary>Maximum embedding batches in flight concurrently per document. Default 2.</summary>
+    public int MaxConcurrentEmbeddingBatches { get; init; } = 2;
 }
 ```
 
@@ -105,6 +111,10 @@ var result = await pipeline.IngestFromProviderAsync(provider, "my-corpus",
 ```
 
 A value of `4` is a reasonable starting point for most cloud embedding APIs. The optimal value depends on your embedding service's rate limits and your vector store's connection pool size.
+
+### Chunk-batch embedding
+
+Within a single document, chunks that need embedding are sliced into batches of `EmbedBatchSize` (default 100) and the batches are embedded concurrently, bounded by `MaxConcurrentEmbeddingBatches` (default 2). A document with at most `EmbedBatchSize` pending chunks is embedded in one generator call, exactly as before — batching only kicks in for larger documents. Chunk order and precomputed embeddings are always preserved; results are reassembled by original chunk index. Tune `EmbedBatchSize` to your embedding API's maximum inputs per request, and raise `MaxConcurrentEmbeddingBatches` when the service tolerates more parallel requests. Both values must be greater than zero. Note that `MaxDegreeOfParallelism` (documents) and `MaxConcurrentEmbeddingBatches` (batches per document) multiply: with `4 × 2` you can have up to eight embedding requests in flight.
 
 > Concurrent ingestion of the same `DocumentId` is not supported. The BM25 index update and vector store write are not transactional. Serialise ingestion per document at the application layer.
 

@@ -888,11 +888,11 @@ An `IRateLimiter` abstraction with a token-bucket implementation that throttles 
 ### Batch Ingestion Optimiser
 **Package:** `Rag.NET` (core)
 
-Parallelise the embedding and storage steps during bulk ingestion: embed chunks in configurable batches (default 100) with `Parallel.ForEachAsync`, bulk-upsert to the vector store rather than one-by-one. Reduces large-corpus ingestion time from O(n) sequential API calls to O(n/batch) parallel calls.
+Chunk-batch embedding inside a single document: `EmbeddingBehavior` slices pending chunks into batches of `IngestionOptions.EmbedBatchSize` (default 100) and embeds the batches concurrently with `Parallel.ForEachAsync`, bounded by `IngestionOptions.MaxConcurrentEmbeddingBatches` (default 2). Results reassemble by original chunk index, and documents at or below the batch size keep the original single-call path. This complements two things that already existed before this feature: document-level parallelism (`IngestFromProviderAsync` + `IngestionOptions.MaxDegreeOfParallelism`) and the single bulk upsert to the vector store in `StorageBehavior`.
 
-**Why:** Ingesting 100,000 chunks one-at-a-time can take hours. Batched parallel embedding with bulk upsert can reduce this to minutes. The current pipeline is sequential.
+**Why:** A large document embedded as one giant generator call serialises the slowest step of ingestion and can exceed embedding-API request limits. Document-level parallelism only helps across documents; chunk batching with bounded concurrency speeds up large individual documents without overwhelming embedding-service rate limits.
 
-**Status:** ✅ Done
+**Status:** ✅ Done (chunk-batch embedding added in Phase 1.3; document-level parallelism and bulk upsert pre-existed)
 
 ---
 
@@ -1053,7 +1053,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Audit Log | Medium | `IAuditLog` + SQLite |
 | [ ] | LLM Fallback Chain | Medium | `IChatClient` decorator |
 | [ ] | Rate Limiting & Cost Budgeting | Medium | Token bucket |
-| [ ] | Batch Ingestion Optimiser | Medium | `Parallel.ForEachAsync` |
+| [x] | Batch Ingestion Optimiser | Medium | `Parallel.ForEachAsync` |
 | [ ] | Sample Applications | Medium | All packages |
 | [ ] | Rag.NET CLI Tool | Medium | `dotnet tool` |
 | [ ] | Pipeline Debugger / Trace Viewer | Medium | ASP.NET Core middleware |
