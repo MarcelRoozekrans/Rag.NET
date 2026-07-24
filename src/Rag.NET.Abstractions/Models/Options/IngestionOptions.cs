@@ -1,5 +1,8 @@
+using ZeroAlloc.Validation;
+
 namespace Rag.NET.Models.Options;
 
+[Validate]
 public sealed class IngestionOptions
 {
     public bool Overwrite { get; set; }
@@ -9,4 +12,10 @@ public sealed class IngestionOptions
     /// <c>IngestFromProviderAsync</c>. Default is 1 (sequential).
     /// </summary>
     public int MaxDegreeOfParallelism { get; init; } = 1;
+
+    /// <summary>Chunks per embedding batch within a single document. Default 100.</summary>
+    [GreaterThan(0)] public int EmbedBatchSize { get; init; } = 100;
+
+    /// <summary>Maximum embedding batches in flight concurrently per document. Default 2.</summary>
+    [GreaterThan(0)] public int MaxConcurrentEmbeddingBatches { get; init; } = 2;
 }

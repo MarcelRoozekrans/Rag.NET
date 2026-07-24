@@ -1,8 +1,10 @@
+using System.Globalization;
 using Microsoft.Extensions.AI;
 using NSubstitute;
 using Rag.NET.Ingestion;
 using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Models;
+using Rag.NET.Models.Options;
 using Xunit;
 
 namespace Rag.NET.Tests.Ingestion.Behaviors;
@@ -13,7 +15,8 @@ public class EmbeddingBehaviorTests
 
     private static IngestionContext MakeContext(
         DocumentMetadata? metadata = null,
-        IProgress<IngestionProgress>? progress = null)
+        IProgress<IngestionProgress>? progress = null,
+        IngestionOptions? options = null)
     {
         return new IngestionContext
         {
@@ -25,8 +28,41 @@ public class EmbeddingBehaviorTests
                 ContentType = "text/plain",
             },
             Progress = progress,
+            Options = options,
             GetNextBm25DocId = () => 42,
         };
+    }
+
+    /// <summary>
+    /// Embedder whose vector for text "cN" is [N]. Records each received batch
+    /// (as an ordered list of texts) into <paramref name="batches"/> when provided.
+    /// </summary>
+    private static IEmbeddingGenerator<string, Embedding<float>> MakeIndexedEmbedder(
+        List<string[]>? batches = null)
+    {
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var texts = call.Arg<IEnumerable<string>>().ToArray();
+                if (batches is not null)
+                {
+                    lock (batches) { batches.Add(texts); }
+                }
+
+                var embeddings = new List<Embedding<float>>(texts.Length);
+                foreach (var text in texts)
+                {
+                    var index = int.Parse(text[1..], CultureInfo.InvariantCulture);
+                    embeddings.Add(new Embedding<float>(new[] { (float)index }));
+                }
+
+                return new GeneratedEmbeddings<Embedding<float>>(embeddings);
+            });
+        return embedder;
     }
 
     private static TextChunk MakeChunk(int index, string text, float[]? embedding = null) => new()
@@ -177,5 +213,228 @@ public class EmbeddingBehaviorTests
 
         Assert.Contains("returned 1", ex.Message, StringComparison.Ordinal);
         Assert.Contains("2 inputs", ex.Message, StringComparison.Ordinal);
+    }
+
+    // ── Chunk-batch embedding ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task HandleAsync_Batched_ReassemblesInOrder()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var batches = new List<string[]>();
+        var embedder = MakeIndexedEmbedder(batches);
+
+        var sut = new EmbeddingBehavior { Embedder = embedder };
+        var ctx = MakeContext(options: new IngestionOptions
+        {
+            EmbedBatchSize = 2,
+            MaxConcurrentEmbeddingBatches = 1,
+        });
+        for (var i = 0; i < 5; i++)
+        {
+            ctx.Chunks.Add(MakeChunk(i, $"c{i}"));
+        }
+
+        await sut.HandleAsync(ctx, ct, Next);
+
+        Assert.Equal(3, batches.Count);
+        Assert.Equal(["c0", "c1"], batches[0]);
+        Assert.Equal(["c2", "c3"], batches[1]);
+        Assert.Equal(["c4"], batches[2]);
+
+        Assert.Equal(5, ctx.EmbeddedChunks.Count);
+        for (var i = 0; i < ctx.EmbeddedChunks.Count; i++)
+        {
+            Assert.Equal(i, ctx.EmbeddedChunks[i].Chunk.ChunkIndex);
+            Assert.Equal(new[] { (float)i }, ctx.EmbeddedChunks[i].Embedding.ToArray());
+        }
+    }
+
+    [Fact]
+    public async Task HandleAsync_Batched_MixedPrecomputedAcrossBatchEdges()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var batches = new List<string[]>();
+        var embedder = MakeIndexedEmbedder(batches);
+
+        var pre0 = new float[] { 100f };
+        var pre3 = new float[] { 103f };
+
+        var sut = new EmbeddingBehavior { Embedder = embedder };
+        var ctx = MakeContext(options: new IngestionOptions
+        {
+            EmbedBatchSize = 2,
+            MaxConcurrentEmbeddingBatches = 1,
+        });
+        ctx.Chunks.Add(MakeChunk(0, "c0", pre0));
+        ctx.Chunks.Add(MakeChunk(1, "c1"));
+        ctx.Chunks.Add(MakeChunk(2, "c2"));
+        ctx.Chunks.Add(MakeChunk(3, "c3", pre3));
+        ctx.Chunks.Add(MakeChunk(4, "c4"));
+
+        await sut.HandleAsync(ctx, ct, Next);
+
+        // Pending chunks are c1, c2, c4 → batches of 2: ["c1","c2"], ["c4"].
+        Assert.Equal(2, batches.Count);
+        Assert.Equal(["c1", "c2"], batches[0]);
+        Assert.Equal(["c4"], batches[1]);
+
+        // Precomputed vectors untouched; generated vectors land at their original indices.
+        Assert.Equal(5, ctx.EmbeddedChunks.Count);
+        Assert.Equal(pre0, ctx.EmbeddedChunks[0].Embedding.ToArray());
+        Assert.Equal(new[] { 1f }, ctx.EmbeddedChunks[1].Embedding.ToArray());
+        Assert.Equal(new[] { 2f }, ctx.EmbeddedChunks[2].Embedding.ToArray());
+        Assert.Equal(pre3, ctx.EmbeddedChunks[3].Embedding.ToArray());
+        Assert.Equal(new[] { 4f }, ctx.EmbeddedChunks[4].Embedding.ToArray());
+
+        for (var i = 0; i < ctx.EmbeddedChunks.Count; i++)
+        {
+            Assert.Equal(i, ctx.EmbeddedChunks[i].Chunk.ChunkIndex);
+        }
+    }
+
+    [Fact]
+    public async Task HandleAsync_Batched_CountMismatchInSecondBatch_ThrowsWithBatchOrdinal()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        // First batch ["c0","c1"] is fine; second batch ["c2","c3"] returns only one embedding.
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                var texts = call.Arg<IEnumerable<string>>().ToArray();
+                var count = Array.Exists(texts, t => string.Equals(t, "c2", StringComparison.Ordinal)) ? 1 : texts.Length;
+                var embeddings = new List<Embedding<float>>();
+                for (var i = 0; i < count; i++)
+                {
+                    embeddings.Add(new Embedding<float>(new[] { 0f }));
+                }
+
+                return new GeneratedEmbeddings<Embedding<float>>(embeddings);
+            });
+
+        var sut = new EmbeddingBehavior { Embedder = embedder };
+        var ctx = MakeContext(options: new IngestionOptions
+        {
+            EmbedBatchSize = 2,
+            MaxConcurrentEmbeddingBatches = 1,
+        });
+        for (var i = 0; i < 4; i++)
+        {
+            ctx.Chunks.Add(MakeChunk(i, $"c{i}"));
+        }
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            sut.HandleAsync(ctx, ct, Next).AsTask());
+
+        Assert.Contains("returned 1", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("2 inputs", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("batch 2/2", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("doc-1", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task HandleAsync_Batched_ConcurrencyBoundRespected()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        var inFlight = 0;
+        var maxInFlight = 0;
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                var texts = call.Arg<IEnumerable<string>>().ToArray();
+                var current = Interlocked.Increment(ref inFlight);
+                InterlockedMax(ref maxInFlight, current);
+                try
+                {
+                    // Hold each call briefly so overlapping batches are observable.
+                    await Task.Delay(20, call.Arg<CancellationToken>());
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref inFlight);
+                }
+
+                var embeddings = new List<Embedding<float>>(texts.Length);
+                foreach (var text in texts)
+                {
+                    var index = int.Parse(text[1..], CultureInfo.InvariantCulture);
+                    embeddings.Add(new Embedding<float>(new[] { (float)index }));
+                }
+
+                return new GeneratedEmbeddings<Embedding<float>>(embeddings);
+            });
+
+        var sut = new EmbeddingBehavior { Embedder = embedder };
+        var ctx = MakeContext(options: new IngestionOptions
+        {
+            EmbedBatchSize = 1,
+            MaxConcurrentEmbeddingBatches = 2,
+        });
+        for (var i = 0; i < 6; i++)
+        {
+            ctx.Chunks.Add(MakeChunk(i, $"c{i}"));
+        }
+
+        await sut.HandleAsync(ctx, ct, Next);
+
+        Assert.InRange(maxInFlight, 1, 2);
+        Assert.Equal(6, ctx.EmbeddedChunks.Count);
+        for (var i = 0; i < ctx.EmbeddedChunks.Count; i++)
+        {
+            Assert.Equal(new[] { (float)i }, ctx.EmbeddedChunks[i].Embedding.ToArray());
+        }
+
+        await embedder.Received(6).GenerateAsync(
+            Arg.Any<IEnumerable<string>>(),
+            Arg.Any<EmbeddingGenerationOptions?>(),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleAsync_SingleBatch_PathUnchanged_ExactlyOneGenerateCall()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var embedder = MakeIndexedEmbedder();
+
+        var sut = new EmbeddingBehavior { Embedder = embedder };
+        var ctx = MakeContext(options: new IngestionOptions { EmbedBatchSize = 100 });
+        for (var i = 0; i < 3; i++)
+        {
+            ctx.Chunks.Add(MakeChunk(i, $"c{i}"));
+        }
+
+        await sut.HandleAsync(ctx, ct, Next);
+
+        await embedder.Received(1).GenerateAsync(
+            Arg.Is<IEnumerable<string>>(texts => texts.SequenceEqual(new[] { "c0", "c1", "c2" })),
+            Arg.Any<EmbeddingGenerationOptions?>(),
+            Arg.Any<CancellationToken>());
+
+        Assert.Equal(3, ctx.EmbeddedChunks.Count);
+    }
+
+    private static void InterlockedMax(ref int location, int value)
+    {
+        var current = Volatile.Read(ref location);
+        while (value > current)
+        {
+            var observed = Interlocked.CompareExchange(ref location, value, current);
+            if (observed == current)
+            {
+                return;
+            }
+
+            current = observed;
+        }
     }
 }

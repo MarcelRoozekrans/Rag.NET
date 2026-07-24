@@ -33,18 +33,9 @@ public sealed class PipelineIngestor : IIngestor
         IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var chunkingValidation = new ChunkingOptionsValidator().Validate(ChunkingOptions);
-        if (!chunkingValidation.IsValid)
-            return Result<IngestionResult, RagError>.Failure(
-                new RagError.ValidationFailed(MapFailures(chunkingValidation.Failures)));
-
-        var validationResult = new DocumentMetadataValidator().Validate(metadata);
-        if (!validationResult.IsValid)
-            return Result<IngestionResult, RagError>.Failure(
-                new RagError.ValidationFailed(MapFailures(validationResult.Failures)));
-
-        if (!document.CanRead)
-            return Result<IngestionResult, RagError>.Failure(new RagError.NonSeekableStream());
+        var invalid = ValidateRequest(document, metadata, options);
+        if (invalid is not null)
+            return invalid.Value;
 
         var ctx = new IngestionContext
         {
@@ -92,6 +83,33 @@ public sealed class PipelineIngestor : IIngestor
         Bm25Index.Remove(documentId);
         ParentStore?.Remove(documentId);
         DataManager?.Remove(documentId);
+    }
+
+    private Result<IngestionResult, RagError>? ValidateRequest(
+        Stream document, DocumentMetadata metadata, IngestionOptions? options)
+    {
+        var chunkingValidation = new ChunkingOptionsValidator().Validate(ChunkingOptions);
+        if (!chunkingValidation.IsValid)
+            return Result<IngestionResult, RagError>.Failure(
+                new RagError.ValidationFailed(MapFailures(chunkingValidation.Failures)));
+
+        var validationResult = new DocumentMetadataValidator().Validate(metadata);
+        if (!validationResult.IsValid)
+            return Result<IngestionResult, RagError>.Failure(
+                new RagError.ValidationFailed(MapFailures(validationResult.Failures)));
+
+        if (options is not null)
+        {
+            var optionsValidation = new IngestionOptionsValidator().Validate(options);
+            if (!optionsValidation.IsValid)
+                return Result<IngestionResult, RagError>.Failure(
+                    new RagError.ValidationFailed(MapFailures(optionsValidation.Failures)));
+        }
+
+        if (!document.CanRead)
+            return Result<IngestionResult, RagError>.Failure(new RagError.NonSeekableStream());
+
+        return null;
     }
 
     private static IReadOnlyList<Models.ValidationFailure> MapFailures(ReadOnlySpan<ZeroAlloc.Validation.ValidationFailure> failures)
