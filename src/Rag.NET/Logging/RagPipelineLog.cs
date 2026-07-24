@@ -75,4 +75,7 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Contextual compression failed for query '{Query}'; returning uncompressed results.")]
     internal static partial void ContextualCompressionFailed(ILogger logger, string query, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Federated vector store '{StoreName}' failed to serve the search; skipping it")]
+    internal static partial void FederatedStoreSearchFailed(ILogger logger, string storeName, Exception exception);
 }
