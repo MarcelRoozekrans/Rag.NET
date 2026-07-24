@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.Models.Options;
 
@@ -108,7 +109,7 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton<LateChunkingStrategy>(sp => new LateChunkingStrategy(
             opts.Generator ?? sp.GetRequiredService<ITokenEmbeddingGenerator>(),
             opts,
-            sp.GetService<Microsoft.Extensions.Logging.ILogger<LateChunkingStrategy>>()));
+            sp.GetService<ILogger<LateChunkingStrategy>>()));
         builder.Services.AddSingleton<IChunkingStrategy>(sp => sp.GetRequiredService<LateChunkingStrategy>());
         builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<LateChunkingStrategy>());
         return builder;

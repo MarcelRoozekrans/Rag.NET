@@ -45,6 +45,12 @@ public sealed partial class LateChunkingStrategy(
                 chunks = await ChunkSectionAsync(section, chunkIndex, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { throw; }
+            catch (TokenEmbeddingContractException ex)
+            {
+                // A broken matrix is a generator BUG, not a transient failure — log at Error.
+                LogTokenEmbeddingContractViolation(_logger, section.DocumentId.Value, ex);
+                chunks = FallbackChunks(section, chunkIndex);
+            }
             catch (Exception ex)
             {
                 LogTokenEmbeddingFailure(_logger, section.DocumentId.Value, ex);
@@ -116,15 +122,33 @@ public sealed partial class LateChunkingStrategy(
         for (var i = 0; i < windows.Count; i++)
         {
             var window = windows[i];
-            var text = section.Text[window.Start..window.End].Trim();
-            if (text.Length == 0)
+            if (!TryTrimSpan(section.Text, window.Start, window.End, out var start, out var end))
                 continue;
 
             var embedding = PoolWindow(result, window.FirstToken, window.LastToken);
-            chunks.Add(MakeChunk(section, text, startIndex + chunks.Count, window, embedding));
+            chunks.Add(MakeChunk(section, startIndex + chunks.Count, start, end, embedding));
         }
 
         return chunks;
+    }
+
+    /// <summary>
+    /// Trims whitespace off both ends of the span <c>[windowStart..windowEnd)</c> and returns
+    /// the trimmed char positions, so <c>Text == section.Text[StartPosition..EndPosition]</c>
+    /// holds even when token spans include leading/trailing whitespace. Returns
+    /// <see langword="false"/> when the span is all whitespace.
+    /// </summary>
+    private static bool TryTrimSpan(string text, int windowStart, int windowEnd, out int start, out int end)
+    {
+        start = windowStart;
+        while (start < windowEnd && char.IsWhiteSpace(text[start]))
+            start++;
+
+        end = windowEnd;
+        while (end > start && char.IsWhiteSpace(text[end - 1]))
+            end--;
+
+        return end > start;
     }
 
     /// <summary>
@@ -135,15 +159,26 @@ public sealed partial class LateChunkingStrategy(
     private static void ValidateResult(TokenEmbeddingResult result)
     {
         if (result.Dimension <= 0)
-            throw new InvalidOperationException($"Token embedding dimension ({result.Dimension}) must be greater than zero.");
+            throw new TokenEmbeddingContractException($"Token embedding dimension ({result.Dimension}) must be greater than zero.");
 
         var expected = result.TokenOffsets.Count * result.Dimension;
         if (result.Embeddings.Length != expected)
         {
-            throw new InvalidOperationException(
+            throw new TokenEmbeddingContractException(
                 $"Token embedding matrix length ({result.Embeddings.Length}) does not match " +
                 $"TokenOffsets.Count x Dimension ({result.TokenOffsets.Count} x {result.Dimension} = {expected}).");
         }
+    }
+
+    /// <summary>
+    /// Marks a <see cref="TokenEmbeddingResult"/> that violates the matrix contract, so the
+    /// fallback path can log it at Error (generator bug) instead of Warning (transient failure).
+    /// </summary>
+    private sealed class TokenEmbeddingContractException : InvalidOperationException
+    {
+        public TokenEmbeddingContractException() { }
+        public TokenEmbeddingContractException(string message) : base(message) { }
+        public TokenEmbeddingContractException(string message, Exception innerException) : base(message, innerException) { }
     }
 
     /// <summary>
@@ -195,11 +230,10 @@ public sealed partial class LateChunkingStrategy(
         for (var i = 0; i < windows.Count; i++)
         {
             var window = windows[i];
-            var text = section.Text[window.Start..window.End].Trim();
-            if (text.Length == 0)
+            if (!TryTrimSpan(section.Text, window.Start, window.End, out var start, out var end))
                 continue;
 
-            chunks.Add(MakeChunk(section, text, startIndex + chunks.Count, window, embedding: null));
+            chunks.Add(MakeChunk(section, startIndex + chunks.Count, start, end, embedding: null));
         }
 
         return chunks;
@@ -207,17 +241,17 @@ public sealed partial class LateChunkingStrategy(
 
     private static TextChunk MakeChunk(
         DocumentSection section,
-        string text,
         int index,
-        in TokenWindowSplitter.TokenWindow window,
+        int start,
+        int end,
         float[]? embedding) =>
         new()
         {
-            Text = text,
+            Text = section.Text[start..end],
             DocumentId = section.DocumentId,
             ChunkIndex = index,
-            StartPosition = window.Start,
-            EndPosition = window.End,
+            StartPosition = start,
+            EndPosition = end,
             // Part B contract: null when absent — the cast is load-bearing: without it the
             // null branch converts via the implicit float[] → ReadOnlyMemory<float> operator
             // into an empty, NON-null memory (exactly the trap TextChunk.Embedding documents).
@@ -227,4 +261,8 @@ public sealed partial class LateChunkingStrategy(
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Token embedding generation failed for document {DocumentId}; falling back to token-window chunks without embeddings.")]
     private static partial void LogTokenEmbeddingFailure(ILogger logger, string documentId, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Token embedding generator returned a result violating the matrix contract for document {DocumentId}; falling back to token-window chunks without embeddings.")]
+    private static partial void LogTokenEmbeddingContractViolation(ILogger logger, string documentId, Exception ex);
 }

@@ -24,11 +24,14 @@ public class LateChunkingStrategyTests
     /// <summary>
     /// Deterministic fake: tokenizes by whitespace words (offsets = each word's char span in
     /// the input), per-token vectors chosen by the test via <c>vectorForToken</c>.
+    /// With <c>offsetsIncludeLeadingWhitespace</c> each token span starts at the previous
+    /// token's end (BPE-style " word" tokens), so window spans carry leading whitespace.
     /// </summary>
     private sealed class FakeTokenEmbeddingGenerator(
         int dimension = 2,
         Func<int, float[]>? vectorForToken = null,
-        Exception? failure = null) : ITokenEmbeddingGenerator
+        Exception? failure = null,
+        bool offsetsIncludeLeadingWhitespace = false) : ITokenEmbeddingGenerator
     {
         public int MaxTokens => 8192;
 
@@ -60,15 +63,16 @@ public class LateChunkingStrategyTests
             return vector;
         }
 
-        private static List<(int Start, int End)> Tokenize(string text)
+        private List<(int Start, int End)> Tokenize(string text)
         {
             var offsets = new List<(int Start, int End)>();
             var i = 0;
             while (i < text.Length)
             {
+                var wordStart = i;
                 while (i < text.Length && char.IsWhiteSpace(text[i])) i++;
                 if (i >= text.Length) break;
-                var start = i;
+                var start = offsetsIncludeLeadingWhitespace ? wordStart : i;
                 while (i < text.Length && !char.IsWhiteSpace(text[i])) i++;
                 offsets.Add((start, i));
             }
@@ -116,6 +120,32 @@ public class LateChunkingStrategyTests
         Assert.Equal("delta echo foxtrot golf", chunks[1].Text);
         Assert.Equal("golf hotel india juliet", chunks[2].Text);
         Assert.All(chunks, c => Assert.Equal(c.Text, text[c.StartPosition..c.EndPosition]));
+    }
+
+    [Fact]
+    public async Task Windows_WithWhitespaceInclusiveTokenOffsets_TrimAdjustsPositions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const string text = "alpha bravo charlie delta echo foxtrot golf hotel india juliet";
+        // BPE-style offsets: every token after the first spans " word" (leading space included),
+        // so non-first window spans start on whitespace. Trimming the chunk text MUST move
+        // StartPosition/EndPosition by the trimmed amount, or the position contract breaks.
+        var sut = MakeSut(
+            new FakeTokenEmbeddingGenerator(offsetsIncludeLeadingWhitespace: true),
+            new LateChunkingOptions { WindowSizeTokens = 4, OverlapTokens = 1 });
+
+        var chunks = await sut.ChunkAsync(Section(text), new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.Equal(3, chunks.Count);
+        Assert.Equal("alpha bravo charlie delta", chunks[0].Text);
+        Assert.Equal("delta echo foxtrot golf", chunks[1].Text);
+        Assert.Equal("golf hotel india juliet", chunks[2].Text);
+        Assert.All(chunks, c =>
+        {
+            Assert.Equal(c.Text, text[c.StartPosition..c.EndPosition]);
+            Assert.False(char.IsWhiteSpace(c.Text[0]));
+            Assert.False(char.IsWhiteSpace(c.Text[^1]));
+        });
     }
 
     [Fact]
