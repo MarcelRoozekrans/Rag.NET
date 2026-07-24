@@ -110,28 +110,34 @@ public sealed partial class PropositionChunkingStrategy(
     /// <summary>
     /// Splits the full text into consecutive windows of at most
     /// <see cref="PropositionChunkingOptions.MaxPassageTokens"/> tokens (no overlap).
-    /// The windows partition the token sequence, so the untrimmed decoded passages
-    /// concatenate back to the full text — accumulating their lengths yields exact
-    /// character spans without re-searching the source string.
+    /// Passages are sliced from the ORIGINAL string using token char offsets — never by
+    /// decoding token windows: cl100k is byte-level BPE, so a window boundary can split a
+    /// multi-byte character across tokens and Decode would emit U+FFFD replacement chars
+    /// (corrupting the passage and drifting the spans). Each window ends at its last token's
+    /// char-offset end, clamped to be non-decreasing (partial-char tokens can report
+    /// overlapping offsets), and the next window starts where the previous ended. The
+    /// guarantee: the returned passages are exact substrings that partition the original
+    /// text, for every window size.
     /// </summary>
     private List<(string Passage, int Start)> SplitIntoPassages(string text)
     {
-        var ids = Cl100kTokenizer.EncodeToIds(text);
+        var tokens = Cl100kTokenizer.EncodeToTokens(text, out _);
         var passages = new List<(string, int)>();
-        // Reusable window buffer: Tokenizer.Decode only accepts IEnumerable<int>, and a
-        // List<int> is a reference type — no per-iteration boxing or LINQ allocation.
-        var window = new List<int>(Math.Min(options.MaxPassageTokens, ids.Count));
-        var start = 0;
-        for (var offset = 0; offset < ids.Count; offset += options.MaxPassageTokens)
+        var prevEnd = 0;
+        for (var offset = 0; offset < tokens.Count; offset += options.MaxPassageTokens)
         {
-            var count = Math.Min(options.MaxPassageTokens, ids.Count - offset);
-            window.Clear();
-            for (var i = offset; i < offset + count; i++)
-                window.Add(ids[i]);
+            var last = Math.Min(offset + options.MaxPassageTokens, tokens.Count) - 1;
+            var end = last == tokens.Count - 1
+                ? text.Length // final window always closes the partition
+                : Math.Max(tokens[last].Offset.End.Value, prevEnd);
 
-            var passage = Cl100kTokenizer.Decode(window);
-            passages.Add((passage, start));
-            start += passage.Length;
+            // A window falling entirely inside a multi-byte character advances no chars;
+            // fold it into the next window instead of emitting an empty passage.
+            if (end > prevEnd)
+            {
+                passages.Add((text[prevEnd..end], prevEnd));
+                prevEnd = end;
+            }
         }
 
         return passages;

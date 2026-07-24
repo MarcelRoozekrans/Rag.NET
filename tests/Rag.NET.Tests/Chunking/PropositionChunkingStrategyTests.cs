@@ -179,6 +179,40 @@ public class PropositionChunkingStrategyTests
     }
 
     [Fact]
+    public async Task MultiByteContent_PassageWindowsPartitionOriginalTextExactly()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // Emoji + CJK: cl100k is byte-level BPE, so tiny windows are guaranteed to place
+        // boundaries inside multi-byte characters. Offset-based slicing must still produce
+        // exact substrings of the original text (no U+FFFD, no drift).
+        const string text = "数据处理系统将文本分解为原子命题。😀🚀🌟 Emoji and CJK mix here. 中文句子在这里结束。";
+        var sentPassages = new List<string>();
+        var chat = Substitute.For<IChatClient>();
+        chat.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var user = ci.Arg<IEnumerable<ChatMessage>>().Last().Text!;
+                // User message format: <content-{delim}>\n{passage}\n</content-{delim}>
+                sentPassages.Add(user[(user.IndexOf('\n', StringComparison.Ordinal) + 1)..user.LastIndexOf('\n')]);
+                return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, """["Fact."]""")));
+            });
+        var sut = MakeSut(chat, new PropositionChunkingOptions { MaxPassageTokens = 3 });
+
+        var chunks = await sut.ChunkDocumentAsync(
+            ToAsync([Section(text)]), new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.True(sentPassages.Count > 1, $"expected multiple passages, got {sentPassages.Count}");
+        Assert.Equal(text, string.Concat(sentPassages));
+        Assert.All(sentPassages, p => Assert.DoesNotContain('�', p));
+
+        // Chunk spans partition [0, text.Length) contiguously.
+        Assert.Equal(0, chunks[0].StartPosition);
+        Assert.Equal(text.Length, chunks[^1].EndPosition);
+        for (var i = 1; i < chunks.Count; i++)
+            Assert.Equal(chunks[i - 1].EndPosition, chunks[i].StartPosition);
+    }
+
+    [Fact]
     public async Task CancelledToken_ThrowsOperationCanceledException()
     {
         var sut = MakeSut(ChatReturning("""["Fact."]"""));
