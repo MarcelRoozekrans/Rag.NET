@@ -819,6 +819,8 @@ A `FederatedVectorStore` that wraps multiple `IVectorStore` instances and merges
 
 **Why:** Enterprise deployments often have multiple vector stores for different data domains (HR docs in one, engineering docs in another). Federation enables unified search without data migration.
 
+**Status:** Delivered. `FederatedVectorStore` (register with `UseFederatedSearch(f => f.AddStore(...).AddStore(...))`) fans searches out to all stores concurrently and merges the per-store rankings with N-way RRF (`FederatedStoreOptions.RrfK`, default 60); each merged result is tagged with a `source.store` metadata entry (store name or index). Writes and deletes go to the primary store only (`WithPrimary(...)`, default the first). Degraded-never-broken: a failing store is skipped with a warning; the search throws only when every store failed. Limitation: federation is dense-only — hybrid (`IHybridSearchable`), sparse, and collection-management capabilities of the underlying stores are not federated.
+
 ---
 
 ## Security & Compliance
@@ -1035,7 +1037,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Weaviate Vector Store | Medium | `WeaviateSharp` |
 | [ ] | Chroma Vector Store | Medium | Chroma REST API |
 | [ ] | Pinecone Vector Store | Medium | Pinecone REST API |
-| [ ] | Multi-Index Federation | Medium | `IVectorStore` composition |
+| [x] | Multi-Index Federation | Medium | `IVectorStore` composition (dense-only) |
 | [ ] | PDF Table Extraction | Medium | PdfPig geometry |
 | [ ] | OCR for Scanned PDFs | Medium | Tesseract / Azure Doc Intelligence |
 | [x] | Contextual Compression | Medium | `IChatClient` or embeddings |

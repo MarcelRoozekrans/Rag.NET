@@ -279,6 +279,42 @@ Azure AI Search indexing is near real-time. `StoreAsync` includes a 1-second del
 
 ---
 
+## Multi-index federation
+
+**Package:** `Rag.NET` (core)
+
+`FederatedVectorStore` wraps two or more `IVectorStore` instances behind a single store, so you can search across collections living in different backends (e.g. a private PgVector index plus a shared Qdrant index) without migrating data. It is registered as *the* `IVectorStore`, so the entire pipeline (MMR, reranking, caching, …) composes unchanged.
+
+### Setup
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseFederatedSearch(f => f
+        .AddStore(_ => new PgVectorStore("Host=...;Database=private", 1536), "private-pg")
+        .AddStore(_ => new QdrantVectorStore("localhost", 6334, "shared", 1536), "shared-qdrant")
+        .WithPrimary(0)      // optional: writes/deletes target this store (default: first)
+        .WithRrfK(60)));     // optional: RRF constant (default: 60)
+```
+
+At least two stores are required (validated at registration). Store factories receive the `IServiceProvider` and run once, when the federated store is first resolved.
+
+### Behaviour
+
+- **Search** fans out to all stores concurrently, then merges the per-store rankings with N-way Reciprocal Rank Fusion: each hit contributes `1 / (k + rank)` (1-based rank, `k` = `RrfK`) and the merged `Score` is the summed RRF score, not a cosine similarity. `TopK` is applied after the merge.
+- **Provenance:** every merged result's chunk metadata gains a `source.store` entry with the store's name (from `AddStore(..., name)`) or its zero-based index. The source store's own chunk is never mutated — the tag is written into a copied metadata dictionary.
+- **Writes and deletes** go to the primary store only. `DeleteByDocumentIdAsync` does **not** touch secondary stores — documents ingested directly into secondaries must be deleted there.
+- **Degraded, never broken:** a store that throws during search is skipped with a logged warning; the federated search itself only throws (`InvalidOperationException` naming the stores) when *every* store failed.
+
+### Interaction with other registrations
+
+`UseFederatedSearch` supersedes any earlier `IVectorStore` registration (standard last-wins container semantics). Do not combine it with `UsePgVector`/`UseQdrant`-style calls — add those stores through the builder instead.
+
+### Limitations
+
+Federation is **dense-only** in this release: `IHybridSearchable` (native hybrid), sparse search, and `ICollectionManageable` capabilities of the underlying stores are not federated. When `UseHybridSearch = true`, the pipeline's BM25 fallback still applies over the shared in-memory/SQLite BM25 index, not per federated store.
+
+---
+
 ## Implementing a custom vector store
 
 See [Extending](extending.md#implementing-ivectorstore) for the full guide.
