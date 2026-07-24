@@ -1,7 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.ML.Tokenizers;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -24,8 +23,6 @@ public sealed partial class PropositionChunkingStrategy(
     PropositionChunkingOptions options,
     ILogger<PropositionChunkingStrategy>? logger = null) : IDocumentChunkingStrategy, IChunkingStrategy
 {
-    private static readonly Tokenizer Cl100kTokenizer = TiktokenTokenizer.CreateForEncoding("cl100k_base");
-
     private readonly ILogger<PropositionChunkingStrategy> _logger = logger ?? NullLogger<PropositionChunkingStrategy>.Instance;
 
     // chunkingOptions (MaxChunkSize/Overlap) is not used — passage size is governed by
@@ -109,36 +106,16 @@ public sealed partial class PropositionChunkingStrategy(
 
     /// <summary>
     /// Splits the full text into consecutive windows of at most
-    /// <see cref="PropositionChunkingOptions.MaxPassageTokens"/> tokens (no overlap).
-    /// Passages are sliced from the ORIGINAL string using token char offsets — never by
-    /// decoding token windows: cl100k is byte-level BPE, so a window boundary can split a
-    /// multi-byte character across tokens and Decode would emit U+FFFD replacement chars
-    /// (corrupting the passage and drifting the spans). Each window ends at its last token's
-    /// char-offset end, clamped to be non-decreasing (partial-char tokens can report
-    /// overlapping offsets), and the next window starts where the previous ended. The
-    /// guarantee: the returned passages are exact substrings that partition the original
-    /// text, for every window size.
+    /// <see cref="PropositionChunkingOptions.MaxPassageTokens"/> tokens (no overlap) via
+    /// <see cref="TokenWindowSplitter"/> in partition mode. The guarantee: the returned
+    /// passages are exact substrings that partition the original text, for every window size.
     /// </summary>
     private List<(string Passage, int Start)> SplitIntoPassages(string text)
     {
-        var tokens = Cl100kTokenizer.EncodeToTokens(text, out _);
-        var passages = new List<(string, int)>();
-        var prevEnd = 0;
-        for (var offset = 0; offset < tokens.Count; offset += options.MaxPassageTokens)
-        {
-            var last = Math.Min(offset + options.MaxPassageTokens, tokens.Count) - 1;
-            var end = last == tokens.Count - 1
-                ? text.Length // final window always closes the partition
-                : Math.Max(tokens[last].Offset.End.Value, prevEnd);
-
-            // A window falling entirely inside a multi-byte character advances no chars;
-            // fold it into the next window instead of emitting an empty passage.
-            if (end > prevEnd)
-            {
-                passages.Add((text[prevEnd..end], prevEnd));
-                prevEnd = end;
-            }
-        }
+        var windows = TokenWindowSplitter.SplitByCl100kTokens(text, options.MaxPassageTokens, overlapTokens: 0);
+        var passages = new List<(string, int)>(windows.Count);
+        for (var i = 0; i < windows.Count; i++)
+            passages.Add((text[windows[i].Start..windows[i].End], windows[i].Start));
 
         return passages;
     }
