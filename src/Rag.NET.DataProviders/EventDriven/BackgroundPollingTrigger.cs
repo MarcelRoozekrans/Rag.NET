@@ -49,7 +49,8 @@ public sealed class BackgroundPollingTrigger(
         try
         {
             var result = await pipeline.IngestFromProviderAsync(
-                provider, _providerId, hashStore, cancellationToken: stoppingToken).ConfigureAwait(false);
+                provider, _providerId, hashStore, cleanupMode: options.CleanupMode,
+                cancellationToken: stoppingToken).ConfigureAwait(false);
             DataProvidersLog.PollingCycleCompleted(_logger, options.ProviderId,
                 result.Ingested, result.Skipped, result.Deleted, result.Errors.Count);
         }

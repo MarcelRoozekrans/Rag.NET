@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
@@ -15,7 +16,9 @@ public static class RagBuilderExtensions
     /// (<see cref="ChannelIngestionJobQueue"/>) and the <see cref="IngestionJobProcessor"/>
     /// hosted service that drains it. Producers (webhook endpoints, message-bus triggers)
     /// enqueue <see cref="Rag.NET.Models.IngestionJob"/>s; the processor ingests them via
-    /// the registered <see cref="IIngestor"/>.
+    /// the registered <see cref="IIngestor"/>. Idempotent: queue and options use
+    /// <c>TryAdd</c> and the processor is deduped by <c>AddHostedService</c>, so a second
+    /// call is a no-op (the first registration's options win — no orphaned channel).
     /// </summary>
     /// <param name="builder">The RAG builder.</param>
     /// <param name="configure">Configures the <see cref="EventDrivenIngestionOptions"/>.</param>
@@ -33,11 +36,12 @@ public static class RagBuilderExtensions
         if (opts.QueueCapacity <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(configure),
-                $"QueueCapacity ({opts.QueueCapacity}) must be greater than zero.");
+                $"EventDrivenIngestionOptions.QueueCapacity ({opts.QueueCapacity}) must be greater than zero.");
         }
 
-        builder.Services.AddSingleton(opts);
-        builder.Services.AddSingleton<IIngestionJobQueue>(new ChannelIngestionJobQueue(opts));
+        builder.Services.TryAddSingleton(opts);
+        builder.Services.TryAddSingleton<IIngestionJobQueue>(
+            sp => new ChannelIngestionJobQueue(sp.GetRequiredService<EventDrivenIngestionOptions>()));
         builder.Services.AddHostedService<IngestionJobProcessor>();
         return builder;
     }
@@ -72,13 +76,20 @@ public static class RagBuilderExtensions
         if (opts.PollingInterval <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(configure),
-                $"PollingInterval ({opts.PollingInterval}) must be greater than zero.");
+                $"PollingIngestionOptions.PollingInterval ({opts.PollingInterval}) must be greater than zero.");
         }
 
         if (string.IsNullOrWhiteSpace(opts.ProviderId))
         {
             throw new ArgumentException(
                 "PollingIngestionOptions.ProviderId must be a non-empty string — it scopes content-hash bookkeeping for this poller.",
+                nameof(configure));
+        }
+
+        if (!Enum.IsDefined(opts.CleanupMode))
+        {
+            throw new ArgumentException(
+                $"PollingIngestionOptions.CleanupMode ({opts.CleanupMode}) is not a defined CleanupMode value.",
                 nameof(configure));
         }
 

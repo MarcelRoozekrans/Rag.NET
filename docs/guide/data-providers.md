@@ -591,10 +591,11 @@ services.AddRagNet(rag => rag
         {
             o.ProviderId      = "local-docs";              // required
             o.PollingInterval = TimeSpan.FromMinutes(10);  // default 5 min
+            // o.CleanupMode  = CleanupMode.Full;          // also delete disappeared docs
         }));
 ```
 
-Each `UsePollingIngestion` call registers an **independent** `BackgroundPollingTrigger` hosted service with its own provider and options — register it multiple times to poll multiple sources concurrently. Every cycle runs `IngestFromProviderAsync` (hash-skip applies automatically when an `IContentHashStore` is registered) and logs an ingested/skipped/deleted/errors summary; a failed cycle logs a warning and the next cycle proceeds. Interval-based only — cron scheduling is out of scope.
+Each `UsePollingIngestion` call registers an **independent** `BackgroundPollingTrigger` hosted service with its own provider and options — register it multiple times to poll multiple sources concurrently. Every cycle runs `IngestFromProviderAsync` (hash-skip applies automatically when an `IContentHashStore` is registered) and logs an ingested/skipped/deleted/errors summary; a failed cycle logs a warning and the next cycle proceeds. Set `CleanupMode = CleanupMode.Full` (requires the hash store) to also delete documents that disappeared from the source each cycle. Interval-based only — cron scheduling is out of scope.
 
 ### Azure Service Bus (deferred)
 

@@ -39,6 +39,25 @@ public sealed class UseEventDrivenIngestionTests
     }
 
     [Fact]
+    public void CalledTwice_IsIdempotent_FirstRegistrationWins()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Substitute.For<IIngestor>());
+        var builder = new RagBuilder(services);
+
+        builder.UseEventDrivenIngestion(o => o.QueueCapacity = 5);
+        builder.UseEventDrivenIngestion(o => o.QueueCapacity = 9);
+
+        Assert.Single(services, d => d.ServiceType == typeof(IIngestionJobQueue));
+        Assert.Single(services, d => d.ServiceType == typeof(EventDrivenIngestionOptions));
+        Assert.Single(services, d => d.ServiceType == typeof(IHostedService));
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Equal(5, provider.GetRequiredService<EventDrivenIngestionOptions>().QueueCapacity);
+        Assert.IsType<ChannelIngestionJobQueue>(provider.GetRequiredService<IIngestionJobQueue>());
+    }
+
+    [Fact]
     public void NonPositiveQueueCapacity_Throws()
     {
         var builder = new RagBuilder(new ServiceCollection());

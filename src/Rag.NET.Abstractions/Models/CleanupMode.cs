@@ -1,3 +1,7 @@
+// Lives in Rag.NET.Abstractions (moved from the core Rag.NET project) so that
+// PollingIngestionOptions can reference it without a core dependency. The namespace is kept
+// as Rag.NET.DataProviders — the consuming APIs (IngestFromProviderAsync, the polling
+// trigger) live there, and keeping it avoids a source-breaking change.
 namespace Rag.NET.DataProviders;
 
 /// <summary>Controls whether disappeared documents are deleted from the vector store.</summary>

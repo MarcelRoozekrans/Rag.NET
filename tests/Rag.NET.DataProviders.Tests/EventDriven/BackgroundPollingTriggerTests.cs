@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using NSubstitute;
 using Rag.NET.Abstractions;
+using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.EventDriven;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
@@ -108,6 +109,51 @@ public sealed class BackgroundPollingTriggerTests
         await sut.StopAsync(ct).WaitAsync(TimeSpan.FromSeconds(10), ct);
 
         Assert.True(sut.ExecuteTask is { IsCompletedSuccessfully: true });
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PassesCleanupModeThroughToProviderIngestion()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var provider = new FakeProvider();
+        var hashStore = Substitute.For<IContentHashStore>();
+        hashStore.GetAllIdsAsync(Arg.Any<ProviderId>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlySet<EntryId>>(new HashSet<EntryId>()));
+        var options = FastOptions();
+        options.CleanupMode = CleanupMode.Full;
+        var sut = new BackgroundPollingTrigger(
+            Substitute.For<IRagPipeline>(), provider, options, hashStore);
+
+        await sut.StartAsync(ct);
+        try
+        {
+            // IngestFromProviderAsync fetches known ids (CleanupMode.Full only) BEFORE
+            // enumerating the provider, so once cycle 1 started the call has happened.
+            await provider.FirstCallStarted.WaitAsync(TimeSpan.FromSeconds(10), ct);
+        }
+        finally
+        {
+            await sut.StopAsync(ct);
+        }
+
+        // GetAllIdsAsync is only invoked when CleanupMode.Full reaches
+        // IngestFromProviderAsync — observable proof of the pass-through.
+        await hashStore.Received().GetAllIdsAsync(
+            Arg.Is<ProviderId>(p => p.Value == "test-provider"), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void UsePollingIngestion_UndefinedCleanupMode_Throws()
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            builder.UsePollingIngestion(_ => new FakeProvider(), o =>
+            {
+                o.ProviderId = "provider-1";
+                o.CleanupMode = (CleanupMode)42;
+            }));
+        Assert.Contains("CleanupMode", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
