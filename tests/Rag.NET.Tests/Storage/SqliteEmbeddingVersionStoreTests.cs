@@ -15,6 +15,7 @@ public sealed class SqliteEmbeddingVersionStoreTests : IDisposable
     [Fact]
     public async Task SetAsync_ThenGetAll_ReturnsStoredStamp()
     {
+        var before = DateTimeOffset.UtcNow.AddSeconds(-1);
         var sut = new SqliteEmbeddingVersionStore(_dbPath);
         await sut.SetAsync("doc-1", "openai/text-embedding-3-small", 1536, TestContext.Current.CancellationToken);
 
@@ -24,6 +25,7 @@ public sealed class SqliteEmbeddingVersionStoreTests : IDisposable
         Assert.Equal("doc-1", row.DocumentId);
         Assert.Equal("openai/text-embedding-3-small", row.ModelId);
         Assert.Equal(1536, row.Dimension);
+        Assert.InRange(row.EmbeddedAt, before, DateTimeOffset.UtcNow.AddSeconds(1));
     }
 
     [Fact]
@@ -59,9 +61,10 @@ public sealed class SqliteEmbeddingVersionStoreTests : IDisposable
         var all = await sut.GetAllAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(3, all.Count);
-        Assert.Contains(("doc-a", "model-1", 128), all);
-        Assert.Contains(("doc-b", "model-1", 128), all);
-        Assert.Contains(("doc-c", "model-2", 256), all);
+        var byDoc = all.ToDictionary(s => s.DocumentId, StringComparer.Ordinal);
+        Assert.Equal(("model-1", 128), (byDoc["doc-a"].ModelId, byDoc["doc-a"].Dimension));
+        Assert.Equal(("model-1", 128), (byDoc["doc-b"].ModelId, byDoc["doc-b"].Dimension));
+        Assert.Equal(("model-2", 256), (byDoc["doc-c"].ModelId, byDoc["doc-c"].Dimension));
     }
 
     [Fact]
@@ -95,7 +98,7 @@ public sealed class SqliteEmbeddingVersionStoreTests : IDisposable
         var all = await sut2.GetAllAsync(TestContext.Current.CancellationToken);
 
         var row = Assert.Single(all);
-        Assert.Equal(("doc-1", "model-1", 1024), row);
+        Assert.Equal(("doc-1", "model-1", 1024), (row.DocumentId, row.ModelId, row.Dimension));
     }
 
     [Fact]

@@ -116,7 +116,8 @@ public static class RagPipelineReindexExtensions
     /// DI convenience overload: resolves the version store (required —
     /// <c>UseEmbeddingVersioning</c> must have been called), embedder, vector store, and
     /// the optional data manager, options, and sparse generator from
-    /// <paramref name="services"/>.
+    /// <paramref name="services"/>. Pass <paramref name="ingestionOptions"/> to tune
+    /// <see cref="IngestionOptions.EmbedBatchSize"/> for the re-embedding calls.
     /// </summary>
     /// <exception cref="InvalidOperationException">
     /// No <see cref="IEmbeddingVersionStore"/> is registered.
@@ -124,6 +125,7 @@ public static class RagPipelineReindexExtensions
     public static Task<ReindexResult> ReindexStaleAsync(
         this IRagPipeline pipeline,
         IServiceProvider services,
+        IngestionOptions? ingestionOptions = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(pipeline);
@@ -139,7 +141,7 @@ public static class RagPipelineReindexExtensions
             services.GetRequiredService<IVectorStore>(),
             services.GetService<IRagDataManager>(),
             services.GetService<EmbeddingVersioningOptions>(),
-            ingestionOptions: null,
+            ingestionOptions,
             services.GetService<ISparseEmbeddingGenerator>(),
             services.GetService<ILoggerFactory>()?.CreateLogger(typeof(RagPipelineReindexExtensions)),
             cancellationToken);
@@ -187,6 +189,15 @@ public static class RagPipelineReindexExtensions
         for (var i = 0; i < chunks.Count; i++)
             embedded.Add(new EmbeddedChunk { Chunk = chunks[i], Embedding = vectors[i] });
 
+        // Delete-first: StoreAsync replaces by (DocumentId, ChunkIndex), so stale vectors
+        // under chunk indices beyond the current chunk count would otherwise survive in the
+        // wrong embedding space. Deleting after re-embedding succeeded keeps the failure
+        // window minimal; the brief search-visibility gap is acceptable because the document
+        // was already returning wrong-embedding-space results. Sparse vectors are covered
+        // too: DeleteByDocumentIdAsync removes them on the sparse-capable stores
+        // (InMemoryVectorStore clears its postings; QdrantSparseVectorStore shares point ids
+        // with the dense side).
+        await vectorStore.DeleteByDocumentIdAsync(documentId, ct).ConfigureAwait(false);
         await vectorStore.StoreAsync(embedded, ct).ConfigureAwait(false);
         await RegenerateSparseAsync(vectorStore, sparseGenerator, embedded, documentId, logger, ct).ConfigureAwait(false);
 

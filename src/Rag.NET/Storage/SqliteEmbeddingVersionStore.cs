@@ -1,5 +1,7 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Rag.NET.Abstractions;
+using Rag.NET.Models;
 
 namespace Rag.NET.Storage;
 
@@ -60,17 +62,25 @@ public sealed class SqliteEmbeddingVersionStore : IEmbeddingVersionStore
         return Task.CompletedTask;
     }
 
-    public Task<IReadOnlyList<(string DocumentId, string ModelId, int Dimension)>> GetAllAsync(
-        CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<EmbeddingVersionStamp>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         using var conn = SqliteStoreHelper.OpenConnection(_dbPath);
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT doc_id, model_id, dimension FROM embedding_versions";
-        var rows = new List<(string DocumentId, string ModelId, int Dimension)>();
+        cmd.CommandText = "SELECT doc_id, model_id, dimension, embedded_at FROM embedding_versions";
+        var rows = new List<EmbeddingVersionStamp>();
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
-            rows.Add((reader.GetString(0), reader.GetString(1), reader.GetInt32(2)));
-        return Task.FromResult<IReadOnlyList<(string DocumentId, string ModelId, int Dimension)>>(rows);
+        {
+            rows.Add(new EmbeddingVersionStamp
+            {
+                DocumentId = reader.GetString(0),
+                ModelId = reader.GetString(1),
+                Dimension = reader.GetInt32(2),
+                EmbeddedAt = DateTimeOffset.Parse(reader.GetString(3), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            });
+        }
+
+        return Task.FromResult<IReadOnlyList<EmbeddingVersionStamp>>(rows);
     }
 
     public Task RemoveAsync(string documentId, CancellationToken cancellationToken = default)

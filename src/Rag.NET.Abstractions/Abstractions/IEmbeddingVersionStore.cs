@@ -1,3 +1,5 @@
+using Rag.NET.Models;
+
 namespace Rag.NET.Abstractions;
 
 /// <summary>
@@ -20,8 +22,7 @@ public interface IEmbeddingVersionStore
     Task SetAsync(string documentId, string modelId, int dimension, CancellationToken cancellationToken = default);
 
     /// <summary>Returns every stored stamp.</summary>
-    Task<IReadOnlyList<(string DocumentId, string ModelId, int Dimension)>> GetAllAsync(
-        CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<EmbeddingVersionStamp>> GetAllAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Removes the stamp for <paramref name="documentId"/> (no-op when absent).</summary>
     Task RemoveAsync(string documentId, CancellationToken cancellationToken = default);

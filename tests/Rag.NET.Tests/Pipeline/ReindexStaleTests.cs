@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
@@ -26,10 +27,15 @@ public class ReindexStaleTests
             return Task.CompletedTask;
         }
 
-        public Task<IReadOnlyList<(string DocumentId, string ModelId, int Dimension)>> GetAllAsync(
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<(string DocumentId, string ModelId, int Dimension)>>(
-                Rows.Select(kv => (kv.Key, kv.Value.ModelId, kv.Value.Dimension)).ToList());
+        public Task<IReadOnlyList<EmbeddingVersionStamp>> GetAllAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<EmbeddingVersionStamp>>(
+                Rows.Select(kv => new EmbeddingVersionStamp
+                {
+                    DocumentId = kv.Key,
+                    ModelId = kv.Value.ModelId,
+                    Dimension = kv.Value.Dimension,
+                    EmbeddedAt = DateTimeOffset.UtcNow,
+                }).ToList());
 
         public Task RemoveAsync(string documentId, CancellationToken cancellationToken = default)
         {
@@ -93,6 +99,44 @@ public class ReindexStaleTests
     }
 
     private static IRagPipeline Pipeline() => Substitute.For<IRagPipeline>();
+
+    /// <summary>
+    /// Hand-rolled store that records the operation order and keeps chunks keyed by
+    /// (DocumentId, ChunkIndex) — lets tests assert the delete-before-store contract and
+    /// that surplus stale chunks do not survive a re-index.
+    /// </summary>
+    private sealed class RecordingVectorStore : IVectorStore
+    {
+        public List<string> Operations { get; } = [];
+        public Dictionary<(string DocId, int ChunkIndex), EmbeddedChunk> Stored { get; } = [];
+
+        public Task StoreAsync(IReadOnlyList<EmbeddedChunk> chunks, CancellationToken cancellationToken = default)
+        {
+            Operations.Add($"store:{chunks.Count}");
+            foreach (var chunk in chunks)
+                Stored[(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex)] = chunk;
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<SearchResult>> SearchAsync(
+            ReadOnlyMemory<float> queryEmbedding, SearchOptions options, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SearchResult>>([]);
+
+        public Task DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+        {
+            Operations.Add($"delete:{documentId}");
+            var toRemove = new List<(string DocId, int ChunkIndex)>();
+            foreach (var key in Stored.Keys)
+            {
+                if (string.Equals(key.DocId, documentId, StringComparison.Ordinal))
+                    toRemove.Add(key);
+            }
+
+            foreach (var key in toRemove)
+                Stored.Remove(key);
+            return Task.CompletedTask;
+        }
+    }
 
     // ── Tests ────────────────────────────────────────────────────────────────
 
@@ -314,5 +358,97 @@ public class ReindexStaleTests
         Assert.Equal(["c0", "c1"], embedder.Calls[0]);
         Assert.Equal(["c2", "c3"], embedder.Calls[1]);
         Assert.Equal(["c4"], embedder.Calls[2]);
+    }
+
+    [Fact]
+    public async Task Reindex_DeletesBeforeStoring_SurplusStaleChunksDoNotSurvive()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var versionStore = new FakeVersionStore();
+        versionStore.Rows["doc-1"] = ("legacy-model", 3);
+        var vectorStore = new RecordingVectorStore();
+
+        // Pre-seed: 3 stale chunks under the document; the current source has only 2.
+        await vectorStore.StoreAsync(
+            [.. Enumerable.Range(0, 3).Select(i => new EmbeddedChunk
+            {
+                Chunk = new TextChunk { Text = $"old-{i}", DocumentId = new DocumentId("doc-1"), ChunkIndex = i },
+                Embedding = new float[3],
+            })],
+            ct);
+        var dataManager = MakeDataManager(("doc-1", ["new a", "new b"]));
+
+        var result = await Pipeline().ReindexStaleAsync(
+            versionStore, CurrentEmbedder(), vectorStore, dataManager, cancellationToken: ct);
+
+        Assert.Equal(["doc-1"], result.Reindexed);
+        // Delete happened after pre-seeding and before the re-store.
+        Assert.Equal(["store:3", "delete:doc-1", "store:2"], vectorStore.Operations);
+        // The surplus stale chunk (index 2) did not survive.
+        Assert.Equal(2, vectorStore.Stored.Count);
+        Assert.True(vectorStore.Stored.ContainsKey(("doc-1", 0)));
+        Assert.True(vectorStore.Stored.ContainsKey(("doc-1", 1)));
+    }
+
+    [Fact]
+    public async Task StaleDocWithNoStoredChunks_LandsInFailed_WithActionableMessage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var versionStore = new FakeVersionStore();
+        versionStore.Rows["doc-1"] = ("legacy-model", 3);
+        var vectorStore = new RecordingVectorStore();
+        var dataManager = MakeDataManager(("doc-1", []));
+
+        var result = await Pipeline().ReindexStaleAsync(
+            versionStore, CurrentEmbedder(), vectorStore, dataManager, cancellationToken: ct);
+
+        Assert.Empty(result.Reindexed);
+        var failure = Assert.Single(result.Failed);
+        Assert.Equal("doc-1", failure.DocumentId);
+        Assert.Contains("no stored chunks", failure.Error, StringComparison.Ordinal);
+        Assert.Contains("re-ingest", failure.Error, StringComparison.Ordinal);
+        // Nothing was deleted or stored, and the stale stamp was kept.
+        Assert.Empty(vectorStore.Operations);
+        Assert.Equal(("legacy-model", 3), versionStore.Rows["doc-1"]);
+    }
+
+    [Fact]
+    public async Task ServiceProviderOverload_ResolvesDependencies_AndHonoursIngestionOptions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var versionStore = new FakeVersionStore();
+        versionStore.Rows["doc-1"] = ("legacy-model", 3);
+        var embedder = CurrentEmbedder();
+        var vectorStore = new RecordingVectorStore();
+        var dataManager = MakeDataManager(("doc-1", ["c0", "c1", "c2"]));
+
+        var services = new ServiceCollection()
+            .AddSingleton<IEmbeddingVersionStore>(versionStore)
+            .AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(embedder)
+            .AddSingleton<IVectorStore>(vectorStore)
+            .AddSingleton(dataManager)
+            .BuildServiceProvider();
+
+        var result = await Pipeline().ReindexStaleAsync(
+            services, new IngestionOptions { EmbedBatchSize = 2 }, ct);
+
+        Assert.Equal(["doc-1"], result.Reindexed);
+        Assert.Equal(["delete:doc-1", "store:3"], vectorStore.Operations);
+        Assert.Equal((CurrentModel, 3), versionStore.Rows["doc-1"]);
+        // EmbedBatchSize=2 honoured: batches of 2 + 1 (no probe — model differs).
+        Assert.Equal(2, embedder.Calls.Count);
+        Assert.Equal(["c0", "c1"], embedder.Calls[0]);
+        Assert.Equal(["c2"], embedder.Calls[1]);
+    }
+
+    [Fact]
+    public async Task ServiceProviderOverload_NoVersionStore_ThrowsActionable()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            Pipeline().ReindexStaleAsync(services, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("UseEmbeddingVersioning", ex.Message, StringComparison.Ordinal);
     }
 }
