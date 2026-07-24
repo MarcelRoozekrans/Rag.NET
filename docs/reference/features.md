@@ -441,13 +441,15 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 ---
 
 ### Webhook / Event-Driven Ingestion
-**Package:** `Rag.NET.DataProviders`
+**Packages:** `Rag.NET.DataProviders` (queue, processor, polling), `Rag.NET.Api` (webhook endpoint)
 
-An `IIngestionTrigger` abstraction that lets connectors push documents to the pipeline reactively rather than polling. Implementations:
+**Status:** ✅ Done — webhook endpoint + polling trigger delivered; Azure Service Bus trigger and provider-specific payload parsers (GitHub/Notion/Slack) deferred (the `IIngestionJobQueue` seam is ready for both).
 
-- `WebhookIngestionEndpoint` — a minimal ASP.NET Core endpoint that accepts connector webhook payloads (GitHub push events, Notion page updates, Slack message events) and dispatches them as ingestion jobs
-- `AzureServiceBusIngestionTrigger` — consumes messages from a Service Bus queue/topic and ingests the referenced documents
-- `BackgroundPollingTrigger` — wraps any `IFileContentProvider` in a `BackgroundService` that polls on a configurable schedule (cron expression via `NCrontab`)
+Producers push `IngestionJob`s (byte payload + metadata) onto a bounded `IIngestionJobQueue` (`ChannelIngestionJobQueue`, `BoundedChannelFullMode.Wait` backpressure, capacity via `EventDrivenIngestionOptions.QueueCapacity`); the `IngestionJobProcessor` `BackgroundService` drains it into `IIngestor.IngestAsync` with per-job failure isolation. Registered via `UseEventDrivenIngestion`. Triggers:
+
+- `MapRagNetWebhooks` (`Rag.NET.Api`) — minimal API POST endpoint verified by HMAC-SHA256 over the raw body (timing-safe, `sha256=` prefix tolerated, exempt from API-key auth); payloads parsed by the pluggable `IWebhookPayloadParser` (generic `{documentId, content, metadata?}` parser shipped)
+- `BackgroundPollingTrigger` + `UsePollingIngestion` — wraps any `IFileContentProvider` and re-runs `IngestFromProviderAsync` (hash-skip preserved) on a configurable interval; each registration is an independent poller. Interval only — cron/NCrontab deferred
+- `AzureServiceBusIngestionTrigger` — deferred (not in this phase)
 
 **Why:** The current data providers are pull-only — a scheduler or human must kick off re-ingestion. Event-driven ingestion keeps the index current without polling overhead or operator intervention.
 
@@ -1045,7 +1047,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Contextual Compression | Medium | `IChatClient` or embeddings |
 | [x] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
 | [x] | Proposition Extraction Chunking | Medium | `IChatClient` |
-| [ ] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core / Service Bus |
+| [x] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core minimal API + `System.Threading.Channels` (Service Bus deferred) |
 | [ ] | OpenTelemetry Tracing & Metrics | Medium | `System.Diagnostics.ActivitySource` |
 | [ ] | Email Connector (Outlook/Exchange) | Medium | Microsoft Graph SDK |
 | [x] | PII Detection and Redaction | Medium | Regex / `IChatClient` |

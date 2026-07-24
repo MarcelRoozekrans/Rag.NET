@@ -505,6 +505,92 @@ services.AddSharePointDataProvider(tenantId, clientId, clientSecret, siteId, dri
 
 ---
 
+## Event-driven ingestion
+
+`IngestFromProviderAsync` is pull-based — something must call it. Event-driven ingestion inverts that: producers push `IngestionJob`s onto a bounded in-memory queue and a background processor ingests them as they arrive. Two triggers ship today — an HMAC-verified webhook endpoint (`Rag.NET.Api`) and a background polling trigger. An Azure Service Bus trigger is deferred; the `IIngestionJobQueue` abstraction is the seam it will later plug into.
+
+### Job queue + background processor
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseEventDrivenIngestion(o => o.QueueCapacity = 500)); // default 1000
+```
+
+`UseEventDrivenIngestion` (in `Rag.NET.DataProviders`) registers:
+
+- `IIngestionJobQueue` → `ChannelIngestionJobQueue`, a bounded channel with `BoundedChannelFullMode.Wait`: a full queue applies backpressure (`EnqueueAsync` waits for space); jobs are never dropped.
+- `IngestionJobProcessor`, a `BackgroundService` that drains the queue into `IIngestor.IngestAsync`. A job that fails — failure result or thrown exception — is logged as a warning with its document id and skipped; the processor never crashes. Host shutdown exits the loop cleanly.
+
+`IngestionJob` carries `byte[] Content` rather than a `Stream` because jobs outlive the enqueue call — e.g. an HTTP request body is long disposed by the time the processor runs. The host must support hosted services (`IHost` / ASP.NET Core; `AddHostedService` is used under the covers).
+
+### Webhook endpoint (`Rag.NET.Api`)
+
+```csharp
+builder.Services.AddRagNetWebhooks(o =>
+{
+    o.Secret = builder.Configuration["Webhooks:Secret"]!; // required, non-empty
+    // o.SignatureHeader = "X-Signature-256";  // default
+    // o.RoutePrefix     = "/rag/webhooks";    // default
+});
+
+app.UseRagNetApiAuthentication();
+app.MapRagNetWebhooks(); // POST /rag/webhooks/ingest
+```
+
+Webhook requests are authenticated by an HMAC-SHA256 signature over the **raw request body**, hex-encoded in the signature header (a GitHub-style `sha256=` prefix is tolerated; the comparison is timing-safe). The webhook route prefix is exempted from `ApiKeyMiddleware` — the signature replaces the API key for webhook callers, while all other API routes keep requiring the key.
+
+The built-in `GenericWebhookPayloadParser` accepts a single object or an array of:
+
+```json
+{ "documentId": "doc-1", "content": "full document text", "metadata": { "source": "github" } }
+```
+
+`documentId` and `content` are required and non-empty; `metadata` (optional) must be a flat string map and becomes `DocumentMetadata.Tags`; the file name defaults to `{documentId}.txt`. To handle provider-specific payload shapes (GitHub push events, Notion page updates, …) register a custom `IWebhookPayloadParser` **before** `AddRagNetWebhooks` — the default parser is registered with `TryAdd`, so an earlier registration wins.
+
+Computing the signature — sender side in C#:
+
+```csharp
+var body = """{"documentId":"doc-1","content":"hello world"}""";
+var signature = Convert.ToHexString(HMACSHA256.HashData(
+    Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes(body)));
+// send as:  X-Signature-256: sha256=<signature>
+```
+
+…or with `curl` + `openssl`:
+
+```bash
+BODY='{"documentId":"doc-1","content":"hello world"}'
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -hex | awk '{print $NF}')
+curl -X POST https://localhost:5001/rag/webhooks/ingest \
+     -H "Content-Type: application/json" \
+     -H "X-Signature-256: sha256=$SIG" \
+     -d "$BODY"
+```
+
+Responses: `202 Accepted` with `{ "enqueued": n }`; `401` for a missing/invalid signature; `400` for invalid JSON or a payload the parser rejects; `503` (with an actionable message) when no `IIngestionJobQueue` is registered — call `UseEventDrivenIngestion` so accepted jobs actually get processed.
+
+### Background polling trigger
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseContentHashRecordManager("ragnet-hashes.db") // optional: enables hash-skip
+    .UsePollingIngestion(
+        sp => new LocalFilesDataProvider("./docs"),
+        o =>
+        {
+            o.ProviderId      = "local-docs";              // required
+            o.PollingInterval = TimeSpan.FromMinutes(10);  // default 5 min
+        }));
+```
+
+Each `UsePollingIngestion` call registers an **independent** `BackgroundPollingTrigger` hosted service with its own provider and options — register it multiple times to poll multiple sources concurrently. Every cycle runs `IngestFromProviderAsync` (hash-skip applies automatically when an `IContentHashStore` is registered) and logs an ingested/skipped/deleted/errors summary; a failed cycle logs a warning and the next cycle proceeds. Interval-based only — cron scheduling is out of scope.
+
+### Azure Service Bus (deferred)
+
+A Service Bus trigger (consume messages from a queue/topic and enqueue the referenced documents) is planned but not part of this phase. It will be a thin producer over the same `IIngestionJobQueue`.
+
+---
+
 ## Extension and predicate filtering
 
 ### Extension filtering

@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.DataProviders.EventDriven;
 using Rag.NET.Models.Options;
@@ -37,6 +39,58 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton(opts);
         builder.Services.AddSingleton<IIngestionJobQueue>(new ChannelIngestionJobQueue(opts));
         builder.Services.AddHostedService<IngestionJobProcessor>();
+        return builder;
+    }
+
+    /// <summary>
+    /// Registers a <see cref="BackgroundPollingTrigger"/> hosted service that re-ingests the
+    /// provider created by <paramref name="providerFactory"/> every
+    /// <see cref="PollingIngestionOptions.PollingInterval"/>. Hash-skip applies automatically
+    /// when an <see cref="IContentHashStore"/> is registered. Each call registers an
+    /// INDEPENDENT poller with its own provider and options instance — multiple registrations
+    /// never collide.
+    /// </summary>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="providerFactory">Creates the <see cref="IFileContentProvider"/> to poll.</param>
+    /// <param name="configure">
+    /// Required; must set a non-empty <see cref="PollingIngestionOptions.ProviderId"/>.
+    /// </param>
+    /// <exception cref="ArgumentException">Thrown when <see cref="PollingIngestionOptions.ProviderId"/> is empty.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when <see cref="PollingIngestionOptions.PollingInterval"/> is not positive.</exception>
+    public static TBuilder UsePollingIngestion<TBuilder>(
+        this TBuilder builder,
+        Func<IServiceProvider, IFileContentProvider> providerFactory,
+        Action<PollingIngestionOptions> configure)
+        where TBuilder : IRagBuilder
+    {
+        ArgumentNullException.ThrowIfNull(providerFactory);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var opts = new PollingIngestionOptions();
+        configure(opts);
+
+        if (opts.PollingInterval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(configure),
+                $"PollingInterval ({opts.PollingInterval}) must be greater than zero.");
+        }
+
+        if (string.IsNullOrWhiteSpace(opts.ProviderId))
+        {
+            throw new ArgumentException(
+                "PollingIngestionOptions.ProviderId must be a non-empty string — it scopes content-hash bookkeeping for this poller.",
+                nameof(configure));
+        }
+
+        // Deliberately NOT AddSingleton(opts) + AddHostedService<T>: each registration closes
+        // over its own options and provider factory, so multiple pollers coexist without
+        // sharing (or overwriting) a singleton options instance.
+        builder.Services.AddSingleton<IHostedService>(sp => new BackgroundPollingTrigger(
+            sp.GetRequiredService<IRagPipeline>(),
+            providerFactory(sp),
+            opts,
+            sp.GetService<IContentHashStore>(),
+            sp.GetService<ILogger<BackgroundPollingTrigger>>()));
         return builder;
     }
 }

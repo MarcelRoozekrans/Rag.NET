@@ -314,3 +314,7 @@ services.AddRagNet(b => b
     .UsePgVector(connectionString, vectorDimensions: 1536)
     .UseContentHashRecordManager("ragnet-hashes.db"));
 ```
+
+## Event-driven ingestion
+
+Ingestion can also be push-based: a bounded job queue plus a `BackgroundService` processor (`UseEventDrivenIngestion`), fed by an HMAC-verified webhook endpoint (`Rag.NET.Api`) or a background polling trigger (`UsePollingIngestion`). See [Event-driven ingestion in the data providers guide](data-providers.md#event-driven-ingestion) for setup, the webhook payload contract, and signature examples.
