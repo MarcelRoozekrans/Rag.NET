@@ -359,19 +359,26 @@ public class EmbeddingBehaviorTests
 
         var handleTask = sut.HandleAsync(ctx, ct, Next).AsTask();
 
-        // (a) Two batches must start concurrently — deterministic proof that batching
-        // actually parallelises. If the bound collapsed to 1, the second call could
-        // never start while the gate is held and this wait would time out.
-        await Task.WhenAll(started[0].Task, started[1].Task).WaitAsync(TimeSpan.FromSeconds(10), ct);
+        try
+        {
+            // (a) Two batches must start concurrently — deterministic proof that batching
+            // actually parallelises. If the bound collapsed to 1, the second call could
+            // never start while the gate is held and this wait would time out.
+            await Task.WhenAll(started[0].Task, started[1].Task).WaitAsync(TimeSpan.FromSeconds(10), ct);
 
-        // (b) While both in-flight calls are held at the gate, the bound of 2 must
-        // prevent any third call from starting. No sleep needed: a third start would
-        // have incremented the counter and signalled started[2] before blocking.
-        Assert.Equal(2, Volatile.Read(ref probe.Started));
-        Assert.False(started[2].Task.IsCompleted);
+            // (b) While both in-flight calls are held at the gate, the bound of 2 must
+            // prevent any third call from starting. No sleep needed: a third start would
+            // have incremented the counter and signalled started[2] before blocking.
+            Assert.Equal(2, Volatile.Read(ref probe.Started));
+            Assert.False(started[2].Task.IsCompleted);
+        }
+        finally
+        {
+            // (c) Release the gate even when an assertion above fails, so the pipeline
+            // drains instead of leaving handleTask blocked on the gate forever.
+            release.TrySetResult();
+        }
 
-        // (c) Release the gate; all six batches drain and reassemble correctly.
-        release.SetResult();
         await handleTask;
 
         Assert.Equal(2, probe.MaxInFlight);
