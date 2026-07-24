@@ -51,6 +51,7 @@ public class OnnxTokenEmbeddingGeneratorTests
     [InlineData(64, 64)]   // overlap == max
     [InlineData(64, 100)]  // overlap > max
     [InlineData(64, -1)]   // overlap negative
+    [InlineData(66, 64)]   // no room left after reserving the two [CLS]/[SEP] positions
     public void Constructor_WhenWindowingInvalid_ThrowsArgumentOutOfRangeException(int maxTokens, int overlap)
     {
         var options = new OnnxTokenEmbeddingOptions
@@ -62,5 +63,21 @@ public class OnnxTokenEmbeddingGeneratorTests
         };
 
         Assert.Throws<ArgumentOutOfRangeException>(() => new OnnxTokenEmbeddingGenerator(options));
+    }
+
+    [Fact]
+    public void Constructor_WindowBudgetJustAboveOverlapPlusSpecialTokens_PassesRangeValidation()
+    {
+        // 67 - 2 reserved special positions = 65 > overlap 64: windowing validation passes and
+        // the ctor proceeds to the file checks (FileNotFoundException, not out-of-range).
+        var options = new OnnxTokenEmbeddingOptions
+        {
+            ModelPath = "nonexistent/model.onnx",
+            TokenizerVocabPath = "nonexistent/vocab.txt",
+            MaxTokens = 67,
+            WindowOverlapTokens = 64,
+        };
+
+        Assert.Throws<FileNotFoundException>(() => new OnnxTokenEmbeddingGenerator(options));
     }
 }

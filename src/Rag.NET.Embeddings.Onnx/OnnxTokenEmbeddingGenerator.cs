@@ -29,6 +29,9 @@ namespace Rag.NET.Embeddings.Onnx;
 /// </summary>
 public sealed class OnnxTokenEmbeddingGenerator : ITokenEmbeddingGenerator, IDisposable
 {
+    /// <summary>[CLS] and [SEP] positions reserved per model pass.</summary>
+    private const int SpecialTokensPerWindow = 2;
+
     private readonly InferenceSession _session;
     private readonly BertTokenizer _tokenizer;
     private readonly OnnxTokenEmbeddingOptions _options;
@@ -43,10 +46,13 @@ public sealed class OnnxTokenEmbeddingGenerator : ITokenEmbeddingGenerator, IDis
                 $"WindowOverlapTokens ({options.WindowOverlapTokens}) must not be negative.");
         }
 
-        if (options.MaxTokens <= options.WindowOverlapTokens)
+        // Each pass wraps its window in [CLS]/[SEP], so the usable content budget per window
+        // is MaxTokens - 2 — and that budget must still exceed the overlap.
+        if (options.MaxTokens - SpecialTokensPerWindow <= options.WindowOverlapTokens)
         {
             throw new ArgumentOutOfRangeException(nameof(options),
-                $"MaxTokens ({options.MaxTokens}) must be greater than WindowOverlapTokens ({options.WindowOverlapTokens}).");
+                $"MaxTokens ({options.MaxTokens}) must exceed WindowOverlapTokens ({options.WindowOverlapTokens}) " +
+                $"plus the {SpecialTokensPerWindow} positions reserved for [CLS]/[SEP].");
         }
 
         if (!File.Exists(options.ModelPath))
@@ -94,7 +100,10 @@ public sealed class OnnxTokenEmbeddingGenerator : ITokenEmbeddingGenerator, IDis
             };
         }
 
-        var windows = TokenWindowStitcher.Windows(tokens.Count, _options.MaxTokens, _options.WindowOverlapTokens);
+        // Reserve the [CLS]/[SEP] positions so a full window + special tokens never exceeds
+        // the model's MaxTokens sequence limit.
+        var windows = TokenWindowStitcher.Windows(
+            tokens.Count, _options.MaxTokens - SpecialTokensPerWindow, _options.WindowOverlapTokens);
         var matrices = new List<float[]>(windows.Count);
         var dimension = 0;
         for (var w = 0; w < windows.Count; w++)

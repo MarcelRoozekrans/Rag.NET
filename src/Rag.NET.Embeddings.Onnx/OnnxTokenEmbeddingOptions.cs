@@ -21,9 +21,9 @@ public sealed class OnnxTokenEmbeddingOptions
     public required string TokenizerVocabPath { get; set; }
 
     /// <summary>
-    /// Maximum tokens per model pass (the model's sequence limit). Inputs with more tokens
-    /// are windowed internally and stitched back together — this is a per-pass size, not an
-    /// input limit.
+    /// Maximum tokens per model pass (the model's sequence limit, INCLUDING the two [CLS]/[SEP]
+    /// positions each pass adds). Inputs with more tokens are windowed internally and stitched
+    /// back together — this is a per-pass size, not an input limit.
     /// </summary>
     public int MaxTokens { get; set; } = 8192;
 

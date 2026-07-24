@@ -8,8 +8,8 @@ public static class RagBuilderExtensions
     /// <summary>
     /// Registers <see cref="OnnxTokenEmbeddingGenerator"/> as the singleton
     /// <see cref="ITokenEmbeddingGenerator"/>, producing token-level embeddings from a local
-    /// ONNX model — the generator late chunking (<c>UseLateChunking</c>) pools into chunk
-    /// embeddings.
+    /// ONNX model — the generator that late chunking (<c>UseLateChunking</c>) pools into
+    /// chunk embeddings.
     /// </summary>
     /// <param name="builder">The RAG builder.</param>
     /// <param name="configure">
