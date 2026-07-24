@@ -137,13 +137,54 @@ public class TokenAwareChunkingStrategyTests
             WindowSizeTokens = 4,
             OverlapTokens = 1,
         });
+        // "word word ... word" (20 words) tokenizes to exactly 20 tokens with cl100k_base.
         var section = CreateSection(string.Join(' ', Enumerable.Repeat("word", 20)));
+        var tokenizer = TiktokenTokenizer.CreateForModel("gpt-4");
+        Assert.Equal(20, tokenizer.CountTokens(section.Text));
 
         // ChunkingOptions says 512/50 — the options-class values must win.
         var chunks = await strategy.ChunkAsync(section, new ChunkingOptions(), TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.True(chunks.Count > 2);
+        // 20 tokens, window 4, step 3 → windows start at 0, 3, 6, 9, 12, 15, 18 → 7 chunks.
+        Assert.Equal(7, chunks.Count);
+        foreach (var chunk in chunks)
+        {
+            var tokenCount = tokenizer.CountTokens(chunk.Text);
+            Assert.True(tokenCount <= 4, $"Chunk has {tokenCount} tokens, expected <= 4");
+        }
+    }
+
+    [Fact]
+    public async Task ChunkAsync_WindowFromOptions_OverlapFallsBackToChunkingOptions()
+    {
+        var strategy = new TokenAwareChunkingStrategy(new TokenAwareChunkingOptions { WindowSizeTokens = 10 });
+        var section = CreateSection(string.Join(' ', Enumerable.Repeat("word", 20)));
+
+        var chunks = await strategy.ChunkAsync(section, new ChunkingOptions { MaxChunkSize = 512, Overlap = 2 }, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(chunks.Count >= 2);
+        for (int i = 1; i < chunks.Count; i++)
+        {
+            // Adjacent windows share exactly the 2 fallback overlap tokens from ChunkingOptions.Overlap.
+            Assert.Equal(chunks[i - 1].EndPosition - 2, chunks[i].StartPosition);
+        }
+    }
+
+    [Fact]
+    public async Task ChunkAsync_WindowBelowFallbackOverlap_ThrowsWithValueSources()
+    {
+        // Only the window is overridden (4); overlap falls back to ChunkingOptions.Overlap (default 50).
+        var strategy = new TokenAwareChunkingStrategy(new TokenAwareChunkingOptions { WindowSizeTokens = 4 });
+        var section = CreateSection("some text");
+
+        var ex = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+            await strategy.ChunkAsync(section, new ChunkingOptions(), TestContext.Current.CancellationToken)
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("ChunkingOptions.Overlap", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("TokenAwareChunkingOptions.WindowSizeTokens", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
