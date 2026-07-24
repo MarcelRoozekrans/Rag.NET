@@ -341,38 +341,10 @@ public class EmbeddingBehaviorTests
     public async Task HandleAsync_Batched_ConcurrencyBoundRespected()
     {
         var ct = TestContext.Current.CancellationToken;
-        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
-
-        var inFlight = 0;
-        var maxInFlight = 0;
-        embedder.GenerateAsync(
-                Arg.Any<IEnumerable<string>>(),
-                Arg.Any<EmbeddingGenerationOptions?>(),
-                Arg.Any<CancellationToken>())
-            .Returns(async call =>
-            {
-                var texts = call.Arg<IEnumerable<string>>().ToArray();
-                var current = Interlocked.Increment(ref inFlight);
-                InterlockedMax(ref maxInFlight, current);
-                try
-                {
-                    // Hold each call briefly so overlapping batches are observable.
-                    await Task.Delay(20, call.Arg<CancellationToken>());
-                }
-                finally
-                {
-                    Interlocked.Decrement(ref inFlight);
-                }
-
-                var embeddings = new List<Embedding<float>>(texts.Length);
-                foreach (var text in texts)
-                {
-                    var index = int.Parse(text[1..], CultureInfo.InvariantCulture);
-                    embeddings.Add(new Embedding<float>(new[] { (float)index }));
-                }
-
-                return new GeneratedEmbeddings<Embedding<float>>(embeddings);
-            });
+        var started = new[] { NewTcs(), NewTcs(), NewTcs(), NewTcs(), NewTcs(), NewTcs() };
+        var release = NewTcs();
+        var probe = new ConcurrencyProbe();
+        var embedder = MakeGatedEmbedder(started, release.Task, probe);
 
         var sut = new EmbeddingBehavior { Embedder = embedder };
         var ctx = MakeContext(options: new IngestionOptions
@@ -385,9 +357,24 @@ public class EmbeddingBehaviorTests
             ctx.Chunks.Add(MakeChunk(i, $"c{i}"));
         }
 
-        await sut.HandleAsync(ctx, ct, Next);
+        var handleTask = sut.HandleAsync(ctx, ct, Next).AsTask();
 
-        Assert.InRange(maxInFlight, 1, 2);
+        // (a) Two batches must start concurrently — deterministic proof that batching
+        // actually parallelises. If the bound collapsed to 1, the second call could
+        // never start while the gate is held and this wait would time out.
+        await Task.WhenAll(started[0].Task, started[1].Task).WaitAsync(TimeSpan.FromSeconds(10), ct);
+
+        // (b) While both in-flight calls are held at the gate, the bound of 2 must
+        // prevent any third call from starting. No sleep needed: a third start would
+        // have incremented the counter and signalled started[2] before blocking.
+        Assert.Equal(2, Volatile.Read(ref probe.Started));
+        Assert.False(started[2].Task.IsCompleted);
+
+        // (c) Release the gate; all six batches drain and reassemble correctly.
+        release.SetResult();
+        await handleTask;
+
+        Assert.Equal(2, probe.MaxInFlight);
         Assert.Equal(6, ctx.EmbeddedChunks.Count);
         for (var i = 0; i < ctx.EmbeddedChunks.Count; i++)
         {
@@ -398,6 +385,54 @@ public class EmbeddingBehaviorTests
             Arg.Any<IEnumerable<string>>(),
             Arg.Any<EmbeddingGenerationOptions?>(),
             Arg.Any<CancellationToken>());
+    }
+
+    private static TaskCompletionSource NewTcs() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private sealed class ConcurrencyProbe
+    {
+        public int Started;
+        public int InFlight;
+        public int MaxInFlight;
+    }
+
+    /// <summary>
+    /// Embedder whose calls signal a per-call "started" TCS (in arrival order) and then
+    /// block on <paramref name="release"/>. Vector for text "cN" is [N].
+    /// </summary>
+    private static IEmbeddingGenerator<string, Embedding<float>> MakeGatedEmbedder(
+        TaskCompletionSource[] started, Task release, ConcurrencyProbe probe)
+    {
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                var texts = call.Arg<IEnumerable<string>>().ToArray();
+                var current = Interlocked.Increment(ref probe.InFlight);
+                InterlockedMax(ref probe.MaxInFlight, current);
+                started[Interlocked.Increment(ref probe.Started) - 1].SetResult();
+                try
+                {
+                    await release;
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref probe.InFlight);
+                }
+
+                var embeddings = new List<Embedding<float>>(texts.Length);
+                foreach (var text in texts)
+                {
+                    var index = int.Parse(text[1..], CultureInfo.InvariantCulture);
+                    embeddings.Add(new Embedding<float>(new[] { (float)index }));
+                }
+
+                return new GeneratedEmbeddings<Embedding<float>>(embeddings);
+            });
+        return embedder;
     }
 
     [Fact]
