@@ -523,6 +523,12 @@ services.AddRagNet(rag => rag
 
 `IngestionJob` carries `byte[] Content` rather than a `Stream` because jobs outlive the enqueue call — e.g. an HTTP request body is long disposed by the time the processor runs. The host must support hosted services (`IHost` / ASP.NET Core; `AddHostedService` is used under the covers).
 
+#### Capacity and throughput
+
+- The processor is **deliberately sequential** — one job in flight at a time, so the drain rate equals your single-document ingest latency. A sustained producer rate above that fills the queue until backpressure kicks in (enqueues wait for space).
+- Worst-case queue memory is `QueueCapacity × payload size`: with the default capacity of 1000 and 5 MB documents that is ~5 GB of buffered payload bytes. Tune `QueueCapacity` to your payload profile.
+- Webhook request bodies are additionally bounded by Kestrel's default `MaxRequestBodySize` (~28.6 MB) unless the host overrides it.
+
 ### Webhook endpoint (`Rag.NET.Api`)
 
 ```csharp
@@ -568,6 +574,11 @@ curl -X POST https://localhost:5001/rag/webhooks/ingest \
 ```
 
 Responses: `202 Accepted` with `{ "enqueued": n }`; `401` for a missing/invalid signature; `400` for invalid JSON or a payload the parser rejects; `503` (with an actionable message) when no `IIngestionJobQueue` is registered — call `UseEventDrivenIngestion` so accepted jobs actually get processed.
+
+#### Security and delivery semantics
+
+- **Replay protection**: the HMAC scheme authenticates the sender but carries no timestamp or nonce, so a captured request can be replayed verbatim — the same posture as GitHub's `X-Hub-Signature-256`. HTTPS transport is assumed. Because ingestion is an id-keyed upsert, a replay re-ingests the same content under the same `documentId` rather than duplicating it. Senders that need genuine replay resistance should include a timestamp (or nonce) in the payload and enforce a freshness window in a custom `IWebhookPayloadParser`.
+- **At-least-once delivery**: a caller that times out mid-enqueue and retries can enqueue the same document twice. This is safe for the same reason — ingestion upserts by `DocumentId`, so the second job overwrites rather than duplicates.
 
 ### Background polling trigger
 

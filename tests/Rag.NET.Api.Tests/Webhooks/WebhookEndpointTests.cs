@@ -58,13 +58,18 @@ public sealed class WebhookEndpointTests
 #pragma warning disable ASPDEPR008 // TestServer(IWebHostBuilder) is deprecated — intentional for minimal test setup
     private static TestServer CreateServer(
         FakeQueue? queue,
-        Action<IServiceCollection>? servicesBeforeWebhooks = null)
+        Action<IServiceCollection>? servicesBeforeWebhooks = null,
+        Action<Rag.NET.Api.Contracts.WebhookOptions>? configureOptions = null)
     {
         var builder = new WebHostBuilder()
             .ConfigureServices(services =>
             {
                 servicesBeforeWebhooks?.Invoke(services);
-                services.AddRagNetWebhooks(o => o.Secret = Secret);
+                services.AddRagNetWebhooks(o =>
+                {
+                    o.Secret = Secret;
+                    configureOptions?.Invoke(o);
+                });
                 if (queue is not null)
                     services.AddSingleton<IIngestionJobQueue>(queue);
                 services.AddRouting();
@@ -86,10 +91,11 @@ public sealed class WebhookEndpointTests
 
     private static async Task<HttpResponseMessage> PostAsync(
         TestServer server, string body, string? signature,
-        string signatureHeader = "X-Signature-256", string? apiKey = null)
+        string signatureHeader = "X-Signature-256", string? apiKey = null,
+        string path = "/rag/webhooks/ingest")
     {
         var client = server.CreateClient();
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/rag/webhooks/ingest");
+        using var request = new HttpRequestMessage(HttpMethod.Post, path);
         request.Content = new StringContent(body, Encoding.UTF8, "application/json");
         if (signature is not null)
             request.Headers.TryAddWithoutValidation(signatureHeader, signature);
@@ -232,6 +238,57 @@ public sealed class WebhookEndpointTests
         var job = Assert.Single(queue.Enqueued);
         Assert.Equal("custom-doc", job.Metadata.DocumentId.Value);
         Assert.Equal("custom.bin", job.Metadata.FileName);
+    }
+
+    [Fact]
+    public async Task CustomRoutePrefix_MapsEndpointAndExemptsItFromApiKeyAuth()
+    {
+        var queue = new FakeQueue();
+        using var server = CreateServer(queue,
+            servicesBeforeWebhooks: s => s.AddRagNetApi(o => o.ApiKeys = ["api-key"]),
+            configureOptions: o => o.RoutePrefix = "/hooks");
+        const string body = """{"documentId":"doc-1","content":"hello"}""";
+
+        // No api key — only a valid signature — at the CUSTOM prefix.
+        var response = await PostAsync(server, body, Sign(body), path: "/hooks/ingest");
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Single(queue.Enqueued);
+    }
+
+    [Fact]
+    public async Task CustomSignatureHeader_IsHonored()
+    {
+        var queue = new FakeQueue();
+        using var server = CreateServer(queue,
+            configureOptions: o => o.SignatureHeader = "X-My-Signature");
+        const string body = """{"documentId":"doc-1","content":"hello"}""";
+
+        // Valid signature in the configured header → accepted.
+        var ok = await PostAsync(server, body, Sign(body), signatureHeader: "X-My-Signature");
+        Assert.Equal(HttpStatusCode.Accepted, ok.StatusCode);
+
+        // Same signature but only in the DEFAULT header → configured header missing → 401.
+        var wrongHeader = await PostAsync(server, body, Sign(body));
+        Assert.Equal(HttpStatusCode.Unauthorized, wrongHeader.StatusCode);
+    }
+
+    [Fact]
+    public async Task SiblingPathSharingPrefixCharacters_StillRequiresApiKey()
+    {
+        var queue = new FakeQueue();
+        using var server = CreateServer(queue,
+            servicesBeforeWebhooks: s => s.AddRagNetApi(o => o.ApiKeys = ["api-key"]));
+
+        // "/rag/webhooksfoo" shares leading characters with the exempt prefix but is a
+        // different path segment — StartsWithSegments must NOT exempt it. Pins the
+        // segment-aware matching against a future plain-StartsWith refactor.
+        var client = server.CreateClient();
+        var response = await client.PostAsync("/rag/webhooksfoo/ingest",
+            new StringContent("{}", Encoding.UTF8, "application/json"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
