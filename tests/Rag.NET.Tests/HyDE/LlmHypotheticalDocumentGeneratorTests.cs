@@ -168,4 +168,63 @@ public class LlmHypotheticalDocumentGeneratorTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
             () => sut.GenerateManyAsync("what is rag?", count, TestContext.Current.CancellationToken));
     }
+
+    // ── Default interface method (external implementers without an override) ──
+
+    /// <summary>
+    /// Implements only <see cref="Rag.NET.Abstractions.IHypotheticalDocumentGenerator.GenerateAsync"/>,
+    /// exercising the interface's default sequential GenerateManyAsync.
+    /// </summary>
+    private sealed class SingleDocOnlyGenerator(Func<int, string> responder) : Rag.NET.Abstractions.IHypotheticalDocumentGenerator
+    {
+        private int _calls;
+
+        public Task<string> GenerateAsync(string query, CancellationToken cancellationToken = default)
+            => Task.FromResult(responder(Interlocked.Increment(ref _calls)));
+    }
+
+    [Fact]
+    public async Task DefaultGenerateManyAsync_LoopsGenerateAsync_ReturnsCountDocs()
+    {
+        Rag.NET.Abstractions.IHypotheticalDocumentGenerator sut =
+            new SingleDocOnlyGenerator(n => $"seq-doc-{n}");
+
+        var docs = await sut.GenerateManyAsync("what is rag?", 3, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["seq-doc-1", "seq-doc-2", "seq-doc-3"], docs);
+    }
+
+    [Fact]
+    public async Task DefaultGenerateManyAsync_PartialFailure_ReturnsSurvivors()
+    {
+        Rag.NET.Abstractions.IHypotheticalDocumentGenerator sut =
+            new SingleDocOnlyGenerator(n => n == 2
+                ? throw new HttpRequestException("transient failure")
+                : $"seq-doc-{n}");
+
+        var docs = await sut.GenerateManyAsync("what is rag?", 3, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["seq-doc-1", "seq-doc-3"], docs);
+    }
+
+    [Fact]
+    public async Task DefaultGenerateManyAsync_AllFail_Throws()
+    {
+        Rag.NET.Abstractions.IHypotheticalDocumentGenerator sut =
+            new SingleDocOnlyGenerator(_ => throw new HttpRequestException("model down"));
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => sut.GenerateManyAsync("what is rag?", 3, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task DefaultGenerateManyAsync_DropsEmptyResponses()
+    {
+        Rag.NET.Abstractions.IHypotheticalDocumentGenerator sut =
+            new SingleDocOnlyGenerator(n => n == 2 ? "   " : $"seq-doc-{n}");
+
+        var docs = await sut.GenerateManyAsync("what is rag?", 3, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["seq-doc-1", "seq-doc-3"], docs);
+    }
 }

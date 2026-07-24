@@ -1,11 +1,15 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.Models.Options;
 using System.Runtime.ExceptionServices;
 
 namespace Rag.NET.HyDE;
 
-internal sealed class LlmHypotheticalDocumentGenerator(IChatClient chatClient, HydeOptions options) : IHypotheticalDocumentGenerator
+internal sealed partial class LlmHypotheticalDocumentGenerator(
+    IChatClient chatClient,
+    HydeOptions options,
+    ILogger<LlmHypotheticalDocumentGenerator>? logger = null) : IHypotheticalDocumentGenerator
 {
     /// <summary>Upper bound on concurrent LLM calls in <see cref="GenerateManyAsync"/>.</summary>
     private const int MaxConcurrency = 4;
@@ -37,9 +41,15 @@ internal sealed class LlmHypotheticalDocumentGenerator(IChatClient chatClient, H
         foreach (var (text, failure) in outcomes)
         {
             if (failure is not null)
+            {
                 lastFailure = failure;
+                if (logger is not null)
+                    LogHypothesisCallFailed(logger, failure);
+            }
             else if (!string.IsNullOrWhiteSpace(text))
+            {
                 hypotheses.Add(text);
+            }
         }
 
         if (hypotheses.Count == 0 && lastFailure is not null)
@@ -72,4 +82,7 @@ internal sealed class LlmHypotheticalDocumentGenerator(IChatClient chatClient, H
             throttle.Release();
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "HyDE hypothesis generation call failed; discarding it and continuing with the surviving hypotheses")]
+    private static partial void LogHypothesisCallFailed(ILogger logger, Exception exception);
 }

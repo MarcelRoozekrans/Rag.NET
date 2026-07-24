@@ -1,3 +1,5 @@
+using System.Runtime.ExceptionServices;
+
 namespace Rag.NET.Abstractions;
 
 /// <summary>
@@ -21,5 +23,40 @@ public interface IHypotheticalDocumentGenerator
     /// When every generation fails with an exception, the last exception is rethrown.
     /// Empty responses are dropped; a non-throwing model that returns only empty text yields an empty list.
     /// </summary>
-    Task<IReadOnlyList<string>> GenerateManyAsync(string query, int count, CancellationToken cancellationToken = default);
+    /// <remarks>
+    /// The default implementation calls <see cref="GenerateAsync"/> sequentially <paramref name="count"/>
+    /// times, so existing single-doc implementers keep working unchanged. Implementations are
+    /// encouraged to override it with a parallel version.
+    /// </remarks>
+    Task<IReadOnlyList<string>> GenerateManyAsync(string query, int count, CancellationToken cancellationToken = default)
+        => GenerateManySequentialAsync(this, query, count, cancellationToken);
+
+    private static async Task<IReadOnlyList<string>> GenerateManySequentialAsync(
+        IHypotheticalDocumentGenerator generator, string query, int count, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
+
+        var docs = new List<string>(count);
+        Exception? lastFailure = null;
+        for (var i = 0; i < count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var doc = await generator.GenerateAsync(query, cancellationToken).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(doc))
+                    docs.Add(doc);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                lastFailure = ex;
+            }
+        }
+
+        if (docs.Count == 0 && lastFailure is not null)
+            ExceptionDispatchInfo.Capture(lastFailure).Throw();
+
+        return docs;
+    }
 }

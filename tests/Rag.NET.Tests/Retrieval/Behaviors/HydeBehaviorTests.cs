@@ -54,7 +54,7 @@ public class HydeBehaviorTests
         {
             HydeGenerator = generator,
             Embedder = embedder,
-            Options = new HydeOptions { HypothesisCount = 3 },
+            HydeOptions = new HydeOptions { HypothesisCount = 3 },
         };
         var ctx = MakeCtx(new RetrievalOptions { UseHyde = true });
 
@@ -93,7 +93,7 @@ public class HydeBehaviorTests
         {
             HydeGenerator = generator,
             Embedder = embedder,
-            Options = new HydeOptions { HypothesisCount = 1 },
+            HydeOptions = new HydeOptions { HypothesisCount = 1 },
         };
         var ctx = MakeCtx(new RetrievalOptions { UseHyde = true });
 
@@ -127,7 +127,7 @@ public class HydeBehaviorTests
         {
             HydeGenerator = generator,
             Embedder = null,
-            Options = new HydeOptions { HypothesisCount = 3 },
+            HydeOptions = new HydeOptions { HypothesisCount = 3 },
         };
         var ctx = MakeCtx(new RetrievalOptions { UseHyde = true });
 
@@ -160,7 +160,7 @@ public class HydeBehaviorTests
         {
             HydeGenerator = generator,
             Embedder = embedder,
-            Options = new HydeOptions { HypothesisCount = 3 },
+            HydeOptions = new HydeOptions { HypothesisCount = 3 },
         };
         var ctx = MakeCtx(new RetrievalOptions { UseHyde = true });
 
@@ -194,7 +194,7 @@ public class HydeBehaviorTests
         {
             HydeGenerator = generator,
             Embedder = embedder,
-            Options = new HydeOptions { HypothesisCount = 2 },
+            HydeOptions = new HydeOptions { HypothesisCount = 2 },
         };
         var ctx = MakeCtx(new RetrievalOptions { UseHyde = true });
 
@@ -211,6 +211,107 @@ public class HydeBehaviorTests
         Assert.NotNull(captured);
         Assert.Null(captured.Options.EmbeddingOverride);
         Assert.Equal("hypo a", captured.Options.EmbeddingTextOverride);
+    }
+
+    [Fact]
+    public async Task AllHypothesesEmpty_MultiPath_FallsThroughToPlainQuery()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var generator = Substitute.For<IHypotheticalDocumentGenerator>();
+        generator.GenerateManyAsync(Arg.Any<string>(), 3, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>([]));
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        var sut = new HydeBehavior
+        {
+            HydeGenerator = generator,
+            Embedder = embedder,
+            HydeOptions = new HydeOptions { HypothesisCount = 3 },
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHyde = true });
+
+        RetrievalContext? captured = null;
+        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next =
+            (innerCtx, _) =>
+            {
+                captured = innerCtx;
+                return ValueTask.FromResult<IReadOnlyList<SearchResult>>([]);
+            };
+
+        await sut.HandleAsync(ctx, ct, next);
+
+        Assert.NotNull(captured);
+        Assert.False(captured.Options.UseHyde);
+        Assert.Null(captured.Options.EmbeddingTextOverride);
+        Assert.Null(captured.Options.EmbeddingOverride);
+        // The behavior itself must not embed anything (in particular not "").
+        await embedder.DidNotReceive().GenerateAsync(
+            Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SinglePath_EmptyDoc_FallsThroughToPlainQuery()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var generator = Substitute.For<IHypotheticalDocumentGenerator>();
+        generator.GenerateAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("   "));
+
+        var sut = new HydeBehavior
+        {
+            HydeGenerator = generator,
+            HydeOptions = new HydeOptions { HypothesisCount = 1 },
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHyde = true });
+
+        RetrievalContext? captured = null;
+        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next =
+            (innerCtx, _) =>
+            {
+                captured = innerCtx;
+                return ValueTask.FromResult<IReadOnlyList<SearchResult>>([]);
+            };
+
+        await sut.HandleAsync(ctx, ct, next);
+
+        Assert.NotNull(captured);
+        Assert.False(captured.Options.UseHyde);
+        Assert.Null(captured.Options.EmbeddingTextOverride);
+        Assert.Null(captured.Options.EmbeddingOverride);
+    }
+
+    [Fact]
+    public async Task SingleSurvivor_UsesTextPath_WithoutEmbedding()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var generator = Substitute.For<IHypotheticalDocumentGenerator>();
+        generator.GenerateManyAsync(Arg.Any<string>(), 3, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>(["only survivor"]));
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        var sut = new HydeBehavior
+        {
+            HydeGenerator = generator,
+            Embedder = embedder,
+            HydeOptions = new HydeOptions { HypothesisCount = 3 },
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHyde = true });
+
+        RetrievalContext? captured = null;
+        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next =
+            (innerCtx, _) =>
+            {
+                captured = innerCtx;
+                return ValueTask.FromResult<IReadOnlyList<SearchResult>>([]);
+            };
+
+        await sut.HandleAsync(ctx, ct, next);
+
+        Assert.NotNull(captured);
+        Assert.Equal("only survivor", captured.Options.EmbeddingTextOverride);
+        Assert.Null(captured.Options.EmbeddingOverride);
+        await embedder.DidNotReceive().GenerateAsync(
+            Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
     }
 
     // ── EmbeddingOverride consumption ─────────────────────────────────────────

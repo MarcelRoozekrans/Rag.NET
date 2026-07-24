@@ -19,6 +19,12 @@ internal static partial class RagPipelineLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "HyDE generation failed for query '{Query}', falling back to original query embedding")]
     internal static partial void HydeGenerationFailed(ILogger logger, string query, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "HyDE multi-hypothesis averaging unavailable ({Reason}) for query '{Query}'; falling back to the single-document or plain-query path")]
+    internal static partial void HydeAveragingUnavailable(ILogger logger, string reason, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "HyDE generated {Survived} of {Requested} requested hypotheses for query '{Query}'")]
+    internal static partial void HydePartialHypotheses(ILogger logger, int survived, int requested, string query);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Embedding cache operation failed for query '{Query}'")]
     internal static partial void EmbeddingCacheFailed(ILogger logger, string query, Exception exception);
 
