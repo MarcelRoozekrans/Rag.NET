@@ -15,27 +15,37 @@ public sealed class EmbeddingBehavior : IIngestionBehavior
         IngestionContext ctx, CancellationToken ct,
         Func<IngestionContext, CancellationToken, ValueTask<IngestionResult>> next)
     {
-        var texts = ctx.Chunks.Select(c => c.Text).ToList();
+        var pending = new List<(int Index, string Text)>();
+        for (var i = 0; i < ctx.Chunks.Count; i++)
+        {
+            if (ctx.Chunks[i].Embedding is null)
+            {
+                pending.Add((i, ctx.Chunks[i].Text));
+            }
+        }
 
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.embed");
         activity?.SetTag("document.id", ctx.Metadata.DocumentId.Value);
-        activity?.SetTag("chunk.count", texts.Count);
+        activity?.SetTag("chunk.count", ctx.Chunks.Count);
+        activity?.SetTag("chunk.precomputed", ctx.Chunks.Count - pending.Count);
 
-        var sw = Stopwatch.StartNew();
-        GeneratedEmbeddings<Embedding<float>> embeddings;
-        try
+        GeneratedEmbeddings<Embedding<float>>? generated = null;
+        if (pending.Count > 0)
         {
-            embeddings = await Embedder.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            sw.Stop();
-            RagTelemetry.EmbedDuration.Record(sw.Elapsed.TotalMilliseconds);
+            var sw = Stopwatch.StartNew();
+            try
+            {
+                var texts = pending.Select(p => p.Text).ToList();
+                generated = await Embedder.GenerateAsync(texts, cancellationToken: ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                sw.Stop();
+                RagTelemetry.EmbedDuration.Record(sw.Elapsed.TotalMilliseconds);
+            }
         }
 
-        ctx.EmbeddedChunks.AddRange(
-            ctx.Chunks.Zip(embeddings, (chunk, embedding) =>
-                new EmbeddedChunk { Chunk = chunk, Embedding = embedding.Vector }));
+        AssembleEmbeddedChunks(ctx, pending, generated);
 
         ctx.Progress?.Report(new()
         {
@@ -47,5 +57,30 @@ public sealed class EmbeddingBehavior : IIngestionBehavior
         });
 
         return await next(ctx, ct).ConfigureAwait(false);
+    }
+
+    private static void AssembleEmbeddedChunks(
+        IngestionContext ctx,
+        List<(int Index, string Text)> pending,
+        GeneratedEmbeddings<Embedding<float>>? generated)
+    {
+        var byIndex = new ReadOnlyMemory<float>[ctx.Chunks.Count];
+        for (var i = 0; i < ctx.Chunks.Count; i++)
+        {
+            if (ctx.Chunks[i].Embedding is { } pre)
+            {
+                byIndex[i] = pre;
+            }
+        }
+
+        for (var p = 0; p < pending.Count; p++)
+        {
+            byIndex[pending[p].Index] = generated![p].Vector;
+        }
+
+        for (var i = 0; i < ctx.Chunks.Count; i++)
+        {
+            ctx.EmbeddedChunks.Add(new EmbeddedChunk { Chunk = ctx.Chunks[i], Embedding = byIndex[i] });
+        }
     }
 }
