@@ -394,7 +394,7 @@ services.AddRagNet(rag => rag
 
 ## Answer engines: `CreateFromServices` pattern
 
-All built-in `IAnswerEngine` implementations (`ChatAnswerEngine`, `MapReduceAnswerEngine`, `RefineAnswerEngine`) expose a static `CreateFromServices(IServiceProvider)` factory that centralizes dependency resolution. When adding a new engine, follow the same pattern:
+All built-in `IAnswerEngine` implementations (`ChatAnswerEngine`, `MapReduceAnswerEngine`, `RefineAnswerEngine`, `FlareAnswerEngine`) expose a static `CreateFromServices(IServiceProvider)` factory that centralizes dependency resolution. When adding a new engine, follow the same pattern:
 
 1. Expose a `public static MyEngine CreateFromServices(IServiceProvider sp) => new(sp.GetRequiredService<...>(), sp.GetService<...>(), ...);`.
 2. Wire the factory at every registration site (`ServiceCollectionExtensions`, `UsePromptHardening`'s `ChatAnswerEngine` fallback, `UseDispatchingAnswerEngine`).
