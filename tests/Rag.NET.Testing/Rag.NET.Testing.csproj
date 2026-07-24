@@ -9,6 +9,11 @@
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.*" />
     <PackageReference Include="Testcontainers.Ollama" Version="4.*" />
     <PackageReference Include="WireMock.Net" Version="1.*" />
+    <!-- Audit lifts: WireMock.Net pins Scriban.Signed 5.5.0 (multiple advisories, patched in 7.0.0);
+         the AI/testing chain pins OpenTelemetry 1.14.0 (advisories patched in 1.15.3). -->
+    <PackageReference Include="Scriban.Signed" Version="7.2.5" />
+    <PackageReference Include="OpenTelemetry.Api" Version="1.17.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
     <PackageReference Include="xunit.v3.extensibility.core" Version="2.*" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.*" />

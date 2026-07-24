@@ -14,6 +14,10 @@
     </PackageReference>
     <PackageReference Include="NSubstitute" Version="5.*" />
     <PackageReference Include="WireMock.Net" Version="1.*" />
+    <!-- Audit lifts: WireMock.Net pins Scriban.Signed 5.5.0 and OpenTelemetry 1.14.0 (advisories; patched in 7.0.0 / 1.15.3). -->
+    <PackageReference Include="Scriban.Signed" Version="7.2.5" />
+    <PackageReference Include="OpenTelemetry.Api" Version="1.17.0" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
   </ItemGroup>
 
 </Project>

@@ -70,7 +70,7 @@ public sealed class CohereReranker : IReranker, IDisposable
                 ReturnDocuments = _options.ReturnDocuments,
             };
 
-            var response = await _client.RerankAsync(request, xClientName: "", cancellationToken)
+            var response = await _client.RerankAsync(request, xClientName: "", cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
             foreach (var result in response.Results)
