@@ -19,6 +19,12 @@ internal static class RagTelemetry
         Meter.CreateHistogram<double>("ragnet.retrieve.duration", "ms", "End-to-end retrieval time per query");
     internal static readonly Histogram<double> AskDuration =
         Meter.CreateHistogram<double>("ragnet.ask.duration", "ms", "Answer generation time per query");
+    // Tagged surface=chat|embedding. Recorded for every acquire outcome (granted, queue-full
+    // rejection, cancelled) — it measures time held at the limiter, not admission decisions;
+    // rejections are observable through the caller's exception handling, per the
+    // conservative-instrument convention below.
+    internal static readonly Histogram<double> RateLimitWaitDuration =
+        Meter.CreateHistogram<double>("ragnet.ratelimit.wait.duration", "ms", "Time spent waiting for a rate-limit permit");
 
     // Counters
     internal static readonly Counter<long> ChunksStored =
