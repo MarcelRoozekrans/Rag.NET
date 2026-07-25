@@ -544,7 +544,7 @@ Parse `.eml` (RFC 5322) and `.msg` (Outlook) files into sections: subject → he
 
 **Why:** Email archives are a major enterprise knowledge source. The existing Gmail/Exchange connectors ingest live mailboxes, but `.eml`/`.msg` exports from archives or migrations are unaddressed.
 
-**Status:** ✅ Done (EML only; MSG is a follow-up)
+**Status:** ✅ Done (EML via MimeKit, MSG via MsgReader)
 
 ---
 
@@ -1037,7 +1037,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Sliding Window Chunking with Overlap | Low | None |
 | [x] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
 | [x] | EPUB Parser | Low | `VersOne.Epub` |
-| [ ] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
+| [x] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
 | [ ] | Linear Issue Tracker | Low | Linear GraphQL API |
 | [ ] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | Evaluation Dataset Builder | Medium | `IChatClient` |

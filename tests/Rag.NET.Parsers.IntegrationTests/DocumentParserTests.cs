@@ -2,6 +2,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using Rag.NET.Models;
+using Rag.NET.Parsers.Email;
 using Rag.NET.Parsers.Epub;
 using Rag.NET.Parsers.Excel;
 using Rag.NET.Parsers.Html;
@@ -60,6 +61,51 @@ public sealed class DocumentParserTests
         Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
         Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
         Assert.Contains(sections, s => s.Text.Contains("Second Chapter", StringComparison.Ordinal));
+    }
+
+    // ── Email (EML) ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EmailParser_ParsesEmbeddedEmlFile_ReturnsNonEmptySections()
+    {
+        var sut = new EmailDocumentParser([], new HtmlDocumentParser());
+        var meta = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("eml-1"),
+            FileName = "sample.eml",
+            ContentType = "message/rfc822",
+        };
+
+        await using var stream = OpenResource("sample.eml");
+        var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(sections);
+        Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+        Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
+    }
+
+    // ── Email (MSG) ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task MsgParser_ParsesEmbeddedMsgFile_ReturnsNonEmptySections()
+    {
+        var sut = new MsgDocumentParser([], new HtmlDocumentParser());
+        var meta = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("msg-1"),
+            FileName = "sample.msg",
+            ContentType = "application/vnd.ms-outlook",
+        };
+
+        await using var stream = OpenResource("sample.msg");
+        var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(sections);
+        Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+        Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
+        Assert.Contains(sections, s => s.Text.Contains("integration testing", StringComparison.Ordinal));
     }
 
     // ── PDF ──────────────────────────────────────────────────────────────────
