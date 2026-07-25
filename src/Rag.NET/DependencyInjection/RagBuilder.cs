@@ -274,9 +274,11 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     }
 
     /// <summary>
-    /// Adds a Polly resilience pipeline named <c>"rag-net"</c> that wraps embedding and vector-store calls.
+    /// Registers a Polly resilience pipeline named <c>"rag-net"</c>. KNOWN ISSUE: the pipeline is
+    /// currently registered but not consumed anywhere in the library — nothing wraps embedding or
+    /// vector-store calls with it (see docs/guide/observability.md and docs/guide/resilience.md).
     /// When no <paramref name="configure"/> delegate is provided, a default exponential back-off retry
-    /// (3 attempts, 1 s base delay, jitter) is applied.
+    /// (3 attempts, 1 s base delay, jitter) is configured.
     /// </summary>
     /// <param name="configure">
     /// Optional delegate to customise the <see cref="ResiliencePipelineBuilder"/>.

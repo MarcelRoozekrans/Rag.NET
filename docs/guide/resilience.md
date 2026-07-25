@@ -19,7 +19,8 @@ An exception is transient if any of the following are true:
 | `HttpRequestException` with HTTP 429 | Rate limit hit |
 | `HttpRequestException` with HTTP 503 | Service temporarily unavailable |
 | `HttpRequestException` with no status code | Network failure, DNS error |
-| `TaskCanceledException` or `TimeoutException` | Request timed out |
+| `TimeoutException` | Request timed out |
+| `TaskCanceledException` — **only when the configured `PerClientTimeout` fired** | Per-client timeout elapsed. A client's *own* cancellation (e.g. a raw `HttpClient` internal timeout surfacing as `TaskCanceledException`) propagates without fallback — configure `PerClientTimeout` to bound hung providers |
 | Exception message contains `"rate limit"`, `"throttl"`, `"timeout"`, or `"unavailable"` (case-insensitive) | Provider-specific error text |
 | Per-client timeout elapsed (when `PerClientTimeout` is configured) | Hung or slow provider |
 
