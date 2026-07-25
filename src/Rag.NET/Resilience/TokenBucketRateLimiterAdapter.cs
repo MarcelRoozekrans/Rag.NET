@@ -92,12 +92,16 @@ public sealed class TokenBucketRateLimiterAdapter : IRateLimiter
         ArgumentOutOfRangeException.ThrowIfNegative(permits);
 
         var start = Stopwatch.GetTimestamp();
-        string outcome = "rejected";
+        // "faulted" is the default so unexpected exceptions (e.g. ObjectDisposedException from
+        // a disposed limiter) do not pollute the "rejected" bucket: "rejected" is set only on
+        // the two deliberate rejection paths below.
+        string outcome = "faulted";
         try
         {
             using var lease = await _limiter.AcquireAsync(permits, cancellationToken).ConfigureAwait(false);
             if (!lease.IsAcquired)
             {
+                outcome = "rejected";
                 throw QueueFullException();
             }
 
@@ -113,6 +117,7 @@ public sealed class TokenBucketRateLimiterAdapter : IRateLimiter
             // The framework rejects permit requests larger than TokenLimit outright (they can
             // never be satisfied); surface that as the same deliberate-rejection exception type
             // as queue overflow instead of an argument error from deep inside the limiter.
+            outcome = "rejected";
             throw CapacityExceededException(permits, ex);
         }
         finally

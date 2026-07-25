@@ -46,8 +46,12 @@ internal static class ServiceDecorationHelper
         }
 
         // Factory/type registrations produce container-owned inners: re-register the
-        // materialised inner under a key — unique per call so stacked decorations cannot
-        // collide or resolve recursively — so the container still tracks and disposes it.
+        // materialised inner under a key so the container still tracks and disposes it.
+        // The key MUST be unique per call: with a shared key, a stacked decoration's outer
+        // factory resolves the keyed inner while the keyed inner (last-wins on the shared
+        // key) is the outer's own layer — a singleton resolving itself, which DEADLOCKS
+        // silently inside the container's singleton-resolution lock (probe-verified), not
+        // merely a collision or a StackOverflowException.
         string innerKey = string.Create(CultureInfo.InvariantCulture,
             $"ragnet.decorated.inner.{FriendlyName(typeof(TService))}.{Guid.NewGuid():N}");
         services.Add(ServiceDescriptor.DescribeKeyed(
