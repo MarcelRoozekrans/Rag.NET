@@ -87,6 +87,7 @@ var tokenProvider = new OAuthClientCredentialsTokenProvider(
 | Slack | `Rag.NET.DataProviders.Slack` | Bearer bot token | `oldest` Unix timestamp | Channel messages exported as plain text |
 | Microsoft Teams | `Rag.NET.DataProviders.MicrosoftTeams` | OAuth2 client credentials | Not yet supported | Graph SDK; messages exported as HTML |
 | Gmail | `Rag.NET.DataProviders.Gmail` | OAuth2 (`SaslMechanismOAuth2`) | IMAP UniqueId watermark | MailKit IMAP; emails exported as plain text |
+| Exchange / Outlook | `Rag.NET.DataProviders.Exchange` | `ClientSecretCredential` (tenant/client/secret) | `receivedDateTime` watermark | Graph SDK; emits raw RFC 822 `.eml` — requires `AddEmailParser()` |
 | GitLab | `Rag.NET.DataProviders.GitLab` | PAT (`PRIVATE-TOKEN` header) | Commit SHA compare | Repository files; same delta pattern as GitHub |
 | Bitbucket | `Rag.NET.DataProviders.Bitbucket` | App Password (Basic Auth) | Commit hash diffstat | Repository files via REST API |
 | Zendesk (Tickets) | `Rag.NET.DataProviders.Zendesk` | API Token (Basic Auth `email/token:key`) | Incremental cursor (`start_time`) | Tickets exported as HTML |
@@ -345,6 +346,47 @@ services.AddGmailDataProvider(tokenProvider, opts =>
 });
 ```
 
+### Exchange / Outlook
+
+The Exchange connector emits each message as a raw RFC 822 **`.eml`** entry (fetched from
+Graph's `/users/{mailbox}/messages/{id}/$value`) rather than pre-rendered Markdown. This is
+deliberate: it lets `EmailDocumentParser` parse subject/body **and dispatch attachments to
+the other registered parsers** (PDF, Word, text, …). Ingesting the emitted entries therefore
+**requires `AddEmailParser()`** from `Rag.NET.Parsers.Email`:
+
+```csharp
+services.AddRagNet(rag => rag.AddEmailParser()); // .eml → message/rfc822 parser + attachment dispatch
+
+services.AddExchangeMailDataProvider(
+    tenantId:     "00000000-0000-0000-0000-000000000000",
+    clientId:     "my-app-client-id",
+    clientSecret: "my-app-client-secret",
+    configure: opts =>
+    {
+        opts.Mailbox    = "ingest@contoso.com";        // required mailbox UPN
+        opts.FolderIds  = ["inbox", "archive"];        // null = Inbox only
+        opts.MaxResults = 500;                         // default
+        opts.DeltaToken = settings.ExchangeDeltaToken; // receivedDateTime watermark; null on first run
+    });
+```
+
+**App registration:** uses app-only authentication (client credentials flow); the Azure AD
+app registration needs the **`Mail.Read` application permission** (Microsoft Graph →
+Application permissions) with admin consent. Delegated `/me` flows are out of scope.
+
+**Watermark persistence:** after a run, read the new watermark from the provider and persist
+it for the next run — the connector filters with `receivedDateTime ge {DeltaToken}`:
+
+```csharp
+var provider = (ExchangeMailDataProvider)sp.GetRequiredService<IFileContentProvider>();
+var result   = await pipeline.IngestFromProviderAsync(provider, new ProviderId("exchange"), hashStore);
+settings.ExchangeDeltaToken = provider.GetDeltaToken() ?? settings.ExchangeDeltaToken;
+```
+
+> Graph delta queries (`/mailFolders/{id}/messages/delta`) are intentionally **not** used in
+> v1 — the `receivedDateTime` watermark plus the hash-store ETag skip covers incremental
+> ingestion; same-timestamp duplicates on the next run are skipped by content hash.
+
 ### GitLab
 
 ```csharp
@@ -493,6 +535,7 @@ services.AddSharePointDataProvider(tenantId, clientId, clientSecret, siteId, dri
 | Slack | Unix timestamp (string) | Passed as `oldest` to `conversations.history` |
 | Microsoft Teams | Not yet supported | Delta ingestion is not yet implemented for this connector |
 | Gmail | IMAP UniqueId (string) | Messages with a UID greater than the watermark are fetched |
+| Exchange / Outlook | ISO 8601 `receivedDateTime` (string) | Applied as a `receivedDateTime ge` filter; `GetDeltaToken()` returns the max value seen |
 | GitLab | Commit SHA (string) | HEAD commit SHA at last successful ingest; compare API returns changed files |
 | Bitbucket | Commit hash (string) | HEAD commit hash at last successful ingest; diffstat API returns changed files |
 | Zendesk | Unix epoch (string) | Passed as `start_time` to the incremental export API |
@@ -645,6 +688,8 @@ Both filters are applied before the file content is downloaded, so excluded file
 | Slack `invalid_auth` / `token_revoked` | Exception propagated; re-issue the bot token and redeploy |
 | Microsoft Teams Graph errors | Handled the same way as SharePoint/OneDrive Graph errors; check app permissions (`ChannelMessage.Read.All`) |
 | Gmail IMAP connection refused | Check that IMAP is enabled for the mailbox and that the OAuth2 token has the `https://mail.google.com/` scope |
+| Exchange Graph errors | Surface as `RagError.HttpFailed` results; check the app registration has the `Mail.Read` application permission with admin consent |
+| Exchange `NoParserFound (message/rfc822)` | Register `AddEmailParser()` — the connector emits raw `.eml` entries by design |
 | 429 Too Many Requests (GitLab) | GitLab rate-limits at 300–2000 requests/min depending on tier; the resilience pipeline retries with back-off |
 | 401 Unauthorized (GitLab) | Verify the `PRIVATE-TOKEN` is valid and has `read_repository` scope |
 | 429 Too Many Requests (Bitbucket) | Bitbucket Cloud rate-limits at 1000 requests/hour; the resilience pipeline retries with back-off |
