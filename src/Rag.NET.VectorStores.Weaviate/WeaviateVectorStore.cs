@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Http.Resilience;
@@ -204,7 +203,7 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         if (result.Error.StatusCode == System.Net.HttpStatusCode.NotFound)
             return false;
         throw new InvalidOperationException(
-            $"Weaviate class probe for '{name}' failed with HTTP {(int)result.Error.StatusCode}: {result.Error.Message}");
+            $"Weaviate class probe for '{name}' failed with {FormatHttpError(result.Error)}.");
     }
 
     public void Dispose()
@@ -214,21 +213,14 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
     }
 
     /// <summary>
-    /// Deterministic object id per <c>(DocumentId, ChunkIndex)</c> (SHA-256 truncated to a
-    /// GUID with version/variant bits set — the <c>QdrantSparseVectorStore</c> derivation)
-    /// so re-storing a chunk replaces its object instead of duplicating it.
-    /// PERSISTENT STORAGE CONTRACT: existing classes hold objects with these ids — the
-    /// algorithm must never change.
+    /// Deterministic object id per <c>(DocumentId, ChunkIndex)</c> so re-storing a chunk
+    /// replaces its object instead of duplicating it. Delegates to the shared
+    /// <see cref="DeterministicChunkId"/> derivation (also used by the Qdrant sparse store) —
+    /// see its PERSISTENT STORAGE CONTRACT; the pinned-value unit test lives in this store's
+    /// suite.
     /// </summary>
-    internal static Guid DeterministicObjectId(string documentId, int chunkIndex)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{documentId}\n{chunkIndex}"));
-        Span<byte> guidBytes = stackalloc byte[16];
-        hash.AsSpan(0, 16).CopyTo(guidBytes);
-        guidBytes[7] = (byte)((guidBytes[7] & 0x0F) | 0x80); // version 8 (custom, RFC 9562)
-        guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80); // RFC 4122 variant
-        return new Guid(guidBytes);
-    }
+    internal static Guid DeterministicObjectId(string documentId, int chunkIndex) =>
+        DeterministicChunkId.Derive(documentId, chunkIndex);
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
@@ -318,7 +310,18 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
     {
         var result = await _api.QueryAsync(new WeaviateGraphQlRequest(query), cancellationToken)
             .ConfigureAwait(false);
-        var response = Unwrap(result, "GraphQL query");
+        if (result.IsFailure)
+        {
+            // The realistic non-2xx here is a fresh backend: a Weaviate instance whose
+            // schema contains no classes at all rejects EVERY GraphQL request with HTTP 422
+            // ("no graphql provider present") — searching before initializing/ingesting.
+            throw new InvalidOperationException(
+                $"Weaviate GraphQL query against class '{_options.ClassName}' failed with " +
+                $"{FormatHttpError(result.Error)}. A Weaviate instance with no classes rejects " +
+                "all GraphQL queries — is the store initialized and has anything been ingested?");
+        }
+
+        var response = result.Value;
 
         if (response.Errors is { Count: > 0 } errors)
         {
@@ -351,7 +354,7 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         if (hits.ValueKind != JsonValueKind.Array)
             return [];
 
-        var results = new List<SearchResult>();
+        var results = new List<SearchResult>(hits.GetArrayLength());
         foreach (var hit in hits.EnumerateArray())
         {
             var score = scoreSelector(hit.GetProperty("_additional"));
@@ -510,11 +513,20 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         if (result.IsFailure)
         {
             throw new InvalidOperationException(
-                $"Weaviate {operation} failed with HTTP {(int)result.Error.StatusCode}: {result.Error.Message}");
+                $"Weaviate {operation} failed with {FormatHttpError(result.Error)}.");
         }
 
         return result.Value;
     }
+
+    /// <summary>
+    /// ZeroAlloc.Rest's failure path discards the response body, so <c>Error.Message</c> is
+    /// frequently empty — omit the tail instead of ending the message in a dangling colon.
+    /// </summary>
+    private static string FormatHttpError(HttpError error) =>
+        string.IsNullOrEmpty(error.Message)
+            ? $"HTTP {(int)error.StatusCode}"
+            : $"HTTP {(int)error.StatusCode}: {error.Message}";
 
     private static HttpClient CreateHttpClient(WeaviateOptions options)
     {
@@ -524,7 +536,12 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         var pipeline = new ResiliencePipelineBuilder<HttpResponseMessage>()
             .AddRetry(new HttpRetryStrategyOptions())
             .Build();
-        var handler = new ResilienceHandler(pipeline) { InnerHandler = new SocketsHttpHandler() };
+        var handler = new ResilienceHandler(pipeline)
+        {
+            // Finite pooled-connection lifetime so this singleton's long-lived HttpClient
+            // still observes DNS changes (the IHttpClientFactory rotation equivalent).
+            InnerHandler = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) },
+        };
         var client = new HttpClient(handler) { BaseAddress = options.Endpoint };
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         if (!string.IsNullOrEmpty(options.ApiKey))

@@ -267,6 +267,13 @@ public class WeaviateVectorStoreTests
         var className = UniqueClassName();
         using var store = CreateStore(className);
         await store.InitializeAsync(TestContext.Current.CancellationToken);
+
+        // Sentinel: a Weaviate instance with ZERO classes rejects every GraphQL request with
+        // HTTP 422 before any resolver runs. Keeping one other class alive guarantees the
+        // 200-with-errors[] path this test pins, independent of suite order.
+        var sentinelClassName = UniqueClassName();
+        await store.CreateCollectionAsync(sentinelClassName, 3, TestContext.Current.CancellationToken);
+
         await store.DeleteCollectionAsync(className, TestContext.Current.CancellationToken);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
