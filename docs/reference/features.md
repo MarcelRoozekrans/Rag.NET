@@ -544,7 +544,7 @@ Parse `.eml` (RFC 5322) and `.msg` (Outlook) files into sections: subject → he
 
 **Why:** Email archives are a major enterprise knowledge source. The existing Gmail/Exchange connectors ingest live mailboxes, but `.eml`/`.msg` exports from archives or migrations are unaddressed.
 
-**Status:** ✅ Done (EML via MimeKit, MSG via MsgReader)
+**Status:** ✅ Done (EML via MimeKit, MSG via MsgReader; embedded/forwarded messages are not yet recursed — logged as a warning, follow-up)
 
 ---
 

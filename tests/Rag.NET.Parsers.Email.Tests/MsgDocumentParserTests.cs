@@ -38,7 +38,7 @@ public class MsgDocumentParserTests
         using var stream = MsgFixtureBuilder.Create(
             "Status Update",
             "All systems operational.",
-            ("log.txt", Encoding.UTF8.GetBytes("Attachment log line.")));
+            attachments: [("log.txt", Encoding.UTF8.GetBytes("Attachment log line."), null)]);
 
         var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
 
@@ -65,7 +65,7 @@ public class MsgDocumentParserTests
 
         using var nested = MsgFixtureBuilder.Create("Nested", "Nested body.");
         using var stream = MsgFixtureBuilder.Create(
-            "Outer", "Outer body.", ("nested.msg", nested.ToArray()));
+            "Outer", "Outer body.", attachments: [("nested.msg", nested.ToArray(), null)]);
 
         var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
 
@@ -73,6 +73,62 @@ public class MsgDocumentParserTests
         var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
         Assert.Contains("application/vnd.ms-outlook", warning.Message, StringComparison.Ordinal);
         Assert.Contains("nested.msg", warning.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Parse_Msg_HtmlBodyOnly_DelegatesToHtml()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = new MsgDocumentParser([], new HtmlDocumentParser());
+        using var stream = MsgFixtureBuilder.Create(
+            "Html Mail",
+            bodyText: null,
+            bodyHtml: "<html><body><h1>Announcement</h1><p>Details inside.</p></body></html>");
+
+        var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(2, sections.Count);
+        Assert.Equal("Announcement", sections[1].Heading);
+        Assert.Contains("Details inside.", sections[1].Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("<p>", sections[1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Parse_Msg_AttachmentWithExplicitMimeType_UsesIt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fake = new FakeTextParser();
+        var sut = new MsgDocumentParser([fake], new HtmlDocumentParser());
+        // ".xyz" maps to nothing in the extension map — dispatch must come from the
+        // explicit PidTagAttachMimeTag written into the fixture.
+        using var stream = MsgFixtureBuilder.Create(
+            "Tagged", "Body.",
+            attachments: [("data.xyz", Encoding.UTF8.GetBytes("Tagged content."), "text/plain")]);
+
+        var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(3, sections.Count);
+        Assert.Equal("Tagged content.", sections[2].Text);
+        Assert.Equal("text/plain", Assert.Single(fake.ReceivedMetadata).ContentType);
+    }
+
+    [Fact]
+    public async Task Parse_Msg_EmbeddedMessage_WarnsAndSkips()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var logger = new CapturingLogger<MsgDocumentParser>();
+        var sut = new MsgDocumentParser([new FakeTextParser()], new HtmlDocumentParser(), logger);
+        using var stream = MsgFixtureBuilder.Create(
+            "Outer", "Outer body.",
+            embeddedMessageSubject: "Forwarded Subject",
+            embeddedMessageBody: "Forwarded body.");
+
+        var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(2, sections.Count); // subject + body only
+        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("Forwarded Subject", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("not yet recursed", warning.Message, StringComparison.Ordinal);
     }
 
     [Fact]

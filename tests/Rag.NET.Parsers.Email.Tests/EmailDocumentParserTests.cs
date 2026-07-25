@@ -103,6 +103,65 @@ public class EmailDocumentParserTests
         Assert.Contains("data.bin", warning.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Parse_MultipartAlternative_PrefersTextOverHtml()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var sut = new EmailDocumentParser([], new HtmlDocumentParser());
+        using var stream = await CreateEmlAsync(
+            "Alternative", "Plain text wins.", "<h1>Html Heading</h1><p>Html loses.</p>", [], ct);
+
+        var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(2, sections.Count);
+        Assert.Equal("Plain text wins.", sections[1].Text);
+        Assert.DoesNotContain(sections, s => string.Equals(s.Heading, "Html Heading", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Parse_EmbeddedMessageAttachment_WarnsAndSkips()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var logger = new CapturingLogger<EmailDocumentParser>();
+        var sut = new EmailDocumentParser([new FakeTextParser()], new HtmlDocumentParser(), logger);
+        using var stream = await CreateEmlWithEmbeddedMessageAsync(
+            "Outer", "Outer body.", "Forwarded Subject", "Forwarded body.", ct);
+
+        var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(2, sections.Count); // subject + body only
+        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("Forwarded Subject", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("not yet recursed", warning.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Parse_TextAttachment_MetadataContract()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fake = new FakeTextParser();
+        var sut = new EmailDocumentParser([fake], new HtmlDocumentParser());
+        var metadata = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("eml-1"),
+            FileName = "test.eml",
+            ContentType = "message/rfc822",
+            Tags = new Dictionary<string, string>(StringComparer.Ordinal) { ["source"] = "unit-test" },
+        };
+        using var stream = await CreateEmlAsync(
+            "With Attachment", "See attached.", htmlBody: null,
+            [("notes.txt", "text/plain", Encoding.UTF8.GetBytes("Note."))], ct);
+
+        _ = await sut.ParseAsync(stream, metadata, ct).ToListAsync(ct);
+
+        var received = Assert.Single(fake.ReceivedMetadata);
+        Assert.Equal("notes.txt", received.FileName);
+        Assert.Equal("text/plain", received.ContentType);
+        Assert.Equal(metadata.DocumentId, received.DocumentId);
+        Assert.NotSame(metadata.Tags, received.Tags); // copied, not shared
+        Assert.Equal("unit-test", received.Tags["source"]);
+    }
+
     // ── DI ───────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -147,6 +206,40 @@ public class EmailDocumentParserTests
 
         message.Body = builder.ToMessageBody();
 
+        return await WriteToStreamAsync(message, cancellationToken);
+    }
+
+    private static async Task<MemoryStream> CreateEmlWithEmbeddedMessageAsync(
+        string subject,
+        string textBody,
+        string nestedSubject,
+        string nestedBody,
+        CancellationToken cancellationToken)
+    {
+        var nested = new MimeMessage();
+        nested.From.Add(new MailboxAddress("Original Sender", "original@example.com"));
+        nested.Subject = nestedSubject;
+        nested.Body = new TextPart("plain") { Text = nestedBody };
+
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress("Sender", "sender@example.com"));
+        message.To.Add(new MailboxAddress("Recipient", "recipient@example.com"));
+        message.Subject = subject;
+        message.Body = new Multipart("mixed")
+        {
+            new TextPart("plain") { Text = textBody },
+            new MessagePart
+            {
+                Message = nested,
+                ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+            },
+        };
+
+        return await WriteToStreamAsync(message, cancellationToken);
+    }
+
+    private static async Task<MemoryStream> WriteToStreamAsync(MimeMessage message, CancellationToken cancellationToken)
+    {
         var stream = new MemoryStream();
         await message.WriteToAsync(stream, cancellationToken);
         stream.Position = 0;

@@ -29,13 +29,19 @@ internal static class MimeTypeMap
         [".gif"] = "image/gif",
         [".bmp"] = "image/bmp",
         [".webp"] = "image/webp",
+        // No parser claims image/tiff today; kept for accurate typing — the dispatcher
+        // will warn-and-skip it like any other unclaimed content type.
         [".tiff"] = "image/tiff",
         [".wav"] = "audio/wav",
         [".mp3"] = "audio/mpeg",
         [".flac"] = "audio/flac",
         [".ogg"] = "audio/ogg",
         [".m4a"] = "audio/mp4",
-        [".mp4"] = "audio/mp4",
+        [".mp4"] = "video/mp4",
+        [".mov"] = "video/quicktime",
+        [".mkv"] = "video/x-matroska",
+        [".avi"] = "video/x-msvideo",
+        [".webm"] = "video/webm",
     };
 
     public static string FromFileName(string fileName)

@@ -10,7 +10,10 @@ namespace Rag.NET.Parsers.Email;
 /// being part of that collection themselves; constructor-injecting
 /// <c>IEnumerable&lt;IDocumentParser&gt;</c> directly would be a circular dependency, so
 /// <see cref="EmailParserBuilderExtensions.AddEmailParser{TBuilder}"/> injects this instead.
-/// Iteration only happens during attachment parsing, long after construction.
+/// Iteration only happens during attachment parsing, long after construction. Resolution
+/// goes through the root provider, which assumes parsers are registered as singletons (as
+/// <c>IRagBuilder.AddParser</c> does) — scoped parser registrations would resolve from the
+/// root scope.
 /// </summary>
 internal sealed class LazyDocumentParsers(IServiceProvider provider) : IEnumerable<IDocumentParser>
 {

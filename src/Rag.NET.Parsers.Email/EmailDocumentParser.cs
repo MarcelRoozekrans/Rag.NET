@@ -55,9 +55,26 @@ public sealed class EmailDocumentParser(
         DocumentMetadata metadata,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        foreach (var attachment in message.Attachments.OfType<MimePart>())
+        foreach (var entity in message.Attachments)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // Embedded/forwarded emails surface as MessagePart; recursing into them is a
+            // follow-up — warn instead of silently dropping them.
+            if (entity is MessagePart embedded)
+            {
+                if (logger is not null)
+                {
+                    EmailParserLog.EmbeddedMessageSkipped(
+                        logger,
+                        embedded.Message?.Subject ?? embedded.ContentDisposition?.FileName ?? "(no subject)");
+                }
+
+                continue;
+            }
+
+            if (entity is not MimePart attachment)
+                continue;
 
             if (string.IsNullOrWhiteSpace(attachment.FileName) || attachment.Content is null)
                 continue;
@@ -84,6 +101,7 @@ public sealed class EmailDocumentParser(
         // Prefer plain text
         if (!string.IsNullOrWhiteSpace(message.TextBody))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             yield return new DocumentSection
             {
                 Text = message.TextBody.Trim(),

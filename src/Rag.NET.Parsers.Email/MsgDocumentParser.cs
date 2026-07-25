@@ -64,6 +64,7 @@ public sealed class MsgDocumentParser(
         // Prefer plain text
         if (!string.IsNullOrWhiteSpace(message.BodyText))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             yield return new DocumentSection
             {
                 Text = message.BodyText.Trim(),
@@ -90,11 +91,29 @@ public sealed class MsgDocumentParser(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Storage.Message.Attachments is a List<object> mixing file attachments
-        // (Storage.Attachment) and embedded messages (Storage.Message); only file
-        // attachments are dispatched here.
-        foreach (var attachment in message.Attachments.OfType<Storage.Attachment>())
+        // (Storage.Attachment) and embedded messages (Storage.Message).
+#pragma warning disable HLQ012 // CollectionsMarshal.AsSpan cannot cross yield/await boundaries in async iterators
+        foreach (var item in message.Attachments)
+#pragma warning restore HLQ012
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // Embedded/forwarded emails surface as nested Storage.Message; recursing into
+            // them is a follow-up — warn instead of silently dropping them.
+            if (item is Storage.Message embedded)
+            {
+                if (logger is not null)
+                {
+                    EmailParserLog.EmbeddedMessageSkipped(
+                        logger,
+                        !string.IsNullOrWhiteSpace(embedded.Subject) ? embedded.Subject : embedded.FileName ?? "(no subject)");
+                }
+
+                continue;
+            }
+
+            if (item is not Storage.Attachment attachment)
+                continue;
 
             if (string.IsNullOrWhiteSpace(attachment.FileName) || attachment.Data is null)
                 continue;
