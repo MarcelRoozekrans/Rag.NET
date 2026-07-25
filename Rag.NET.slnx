@@ -12,6 +12,7 @@
     <Project Path="src/Rag.NET.Security.AspNetCore/Rag.NET.Security.AspNetCore.csproj" />
     <Project Path="src/Rag.NET.Security/Rag.NET.Security.csproj" />
     <Project Path="src/Rag.NET.VectorStores.AzureAISearch/Rag.NET.VectorStores.AzureAISearch.csproj" />
+    <Project Path="src/Rag.NET.VectorStores.Weaviate/Rag.NET.VectorStores.Weaviate.csproj" />
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
     <Project Path="src/Rag.NET.Parsers.Epub/Rag.NET.Parsers.Epub.csproj" />
     <Project Path="src/Rag.NET.Parsers.Email/Rag.NET.Parsers.Email.csproj" />
