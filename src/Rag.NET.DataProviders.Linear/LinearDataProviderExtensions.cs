@@ -37,10 +37,12 @@ public static class LinearDataProviderExtensions
                 nameof(configure));
         }
 
-        if (opts.PageSize <= 0)
+        if (opts.PageSize is <= 0 or > 250)
         {
             throw new ArgumentException(
-                "LinearOptions.PageSize must be greater than zero.", nameof(configure));
+                "LinearOptions.PageSize must be between 1 and 250 — Linear caps the GraphQL " +
+                "'first' pagination argument at 250 (https://linear.app/developers/pagination).",
+                nameof(configure));
         }
 
         services.AddILinearApi(options =>

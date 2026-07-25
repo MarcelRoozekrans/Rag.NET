@@ -53,12 +53,19 @@ public sealed class LinearDataProvider : FileContentProviderBase
               project { name }
               assignee { name }
               team { key }
-              comments { nodes { body createdAt user { name } } }
+              comments(first: 100) { nodes { body createdAt user { name } } pageInfo { hasNextPage } }
             }
             pageInfo { hasNextPage endCursor }
           }
         }
         """;
+
+    /// <summary>
+    /// Comments fetched per issue (the <c>first: 100</c> literal in <see cref="IssuesQuery"/>).
+    /// When an issue has more, the entry is flagged <c>comments_truncated</c> and a warning
+    /// is logged — comment pagination is out of scope for v1.
+    /// </summary>
+    internal const int CommentsPageSize = 100;
 
     private readonly ILinearApi    _api;
     private readonly LinearOptions _options;
@@ -222,7 +229,7 @@ public sealed class LinearDataProvider : FileContentProviderBase
         return Result<LinearIssueConnection, RagError>.Success(response.Data.Issues);
     }
 
-    private static FileHandle ToHandle(LinearIssue issue)
+    private FileHandle ToHandle(LinearIssue issue)
     {
         var markdown = ToMarkdown(issue);
 
@@ -231,8 +238,21 @@ public sealed class LinearDataProvider : FileContentProviderBase
             ["url"] = issue.Url,
         };
         if (issue.Team is not null)    metadata["team"]    = issue.Team.Key;
-        if (issue.State is not null)   metadata["state"]   = issue.State.Name;
+        if (issue.State is not null)
+        {
+            metadata["state"]      = issue.State.Name;
+            // The state *type* category is more useful than the display name for
+            // downstream filtering (display names are workspace-specific).
+            metadata["state_type"] = issue.State.Type;
+        }
         if (issue.Project is not null) metadata["project"] = issue.Project.Name;
+
+        if (issue.Comments is { PageInfo.HasNextPage: true })
+        {
+            metadata["comments_truncated"] = "true";
+            if (_logger is not null)
+                LinearLog.CommentsTruncated(_logger, issue.Identifier, CommentsPageSize);
+        }
 
         return new FileHandle(
             Id:               issue.Identifier,
@@ -243,6 +263,11 @@ public sealed class LinearDataProvider : FileContentProviderBase
             Metadata:         metadata);
     }
 
+    /// <summary>
+    /// Renders the issue as Markdown. User-supplied Markdown in the description and comment
+    /// bodies is intentionally <b>not</b> escaped — it is acceptable (and useful) for RAG
+    /// ingestion; titles are single-line by Linear's product constraints.
+    /// </summary>
     private static string ToMarkdown(LinearIssue issue)
     {
         var sb = new StringBuilder();

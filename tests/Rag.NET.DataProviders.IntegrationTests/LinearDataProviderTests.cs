@@ -74,6 +74,7 @@ public sealed class LinearDataProviderTests
         Assert.NotNull(body);
         Assert.Contains("query Issues($first: Int!, $after: String, $filter: IssueFilter)", body, StringComparison.Ordinal);
         Assert.Contains("orderBy: updatedAt", body, StringComparison.Ordinal);
+        Assert.Contains("comments(first: 100)", body, StringComparison.Ordinal);
         Assert.Contains("\"first\":50", body, StringComparison.Ordinal);
         Assert.Contains("\"team\":{\"key\":{\"in\":[\"ENG\"]}}", body, StringComparison.Ordinal);
         Assert.Contains("\"state\":{\"type\":{\"in\":[\"started\"]}}", body, StringComparison.Ordinal);

@@ -430,6 +430,10 @@ access tokens).
 `triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled` — note the American
 spelling of `canceled`. Invalid values throw at registration.
 
+**Comments:** up to 100 comments per issue are fetched inline; an issue with more is still
+emitted (with the first 100) but flagged with a `comments_truncated: "true"` metadata entry
+and a logged warning.
+
 **Watermark:** the connector filters with `updatedAt > DeltaToken` and tracks the max
 `updatedAt` seen. Because Linear does not document the sort direction of
 `orderBy: updatedAt`, `GetDeltaToken()` only returns a token after a **complete** traversal
@@ -750,6 +754,7 @@ Both filters are applied before the file content is downloaded, so excluded file
 | Gmail IMAP connection refused | Check that IMAP is enabled for the mailbox and that the OAuth2 token has the `https://mail.google.com/` scope |
 | Exchange Graph errors | Surface as `RagError.HttpFailed` results; check the app registration has the `Mail.Read` application permission with admin consent |
 | Exchange `NoParserFound (message/rfc822)` | Register `AddEmailParser()` — the connector emits raw `.eml` entries by design |
+| 429 Too Many Requests (Linear) | Retried by the resilience pipeline; query-complexity rejections instead surface as GraphQL-error failures (`RagError.HttpFailed` naming the messages) — reduce `PageSize` |
 | 429 Too Many Requests (GitLab) | GitLab rate-limits at 300–2000 requests/min depending on tier; the resilience pipeline retries with back-off |
 | 401 Unauthorized (GitLab) | Verify the `PRIVATE-TOKEN` is valid and has `read_repository` scope |
 | 429 Too Many Requests (Bitbucket) | Bitbucket Cloud rate-limits at 1000 requests/hour; the resilience pipeline retries with back-off |

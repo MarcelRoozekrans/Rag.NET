@@ -94,8 +94,10 @@ public sealed class LinearDataProviderTests
         Assert.Equal("2026-07-01T12:00:00.0000000+00:00", entry.ETag);
         Assert.Equal("ENG", entry.Metadata!["team"]);
         Assert.Equal("In Progress", entry.Metadata["state"]);
+        Assert.Equal("started", entry.Metadata["state_type"]);
         Assert.Equal("Auth", entry.Metadata["project"]);
         Assert.Equal("https://linear.app/acme/issue/ENG-1", entry.Metadata["url"]);
+        Assert.False(entry.Metadata.ContainsKey("comments_truncated"));
 
         var content = await ReadContentAsync(entry);
         Assert.Equal(
@@ -287,6 +289,45 @@ public sealed class LinearDataProviderTests
         Assert.Contains("hasNextPage", warning.Message, StringComparison.Ordinal);
     }
 
+    // 6d. Comments page reports hasNextPage: fetched comments rendered, entry flagged, warning logged.
+    [Fact]
+    public async Task GetFilesAsync_TruncatedComments_FlagsEntryAndLogsWarning()
+    {
+        var api = new FakeLinearApi(Page(
+            hasNext: false, endCursor: null,
+            Issue(comments: new LinearCommentConnection
+            {
+                Nodes =
+                [
+                    new LinearComment
+                    {
+                        Body      = "First of many",
+                        CreatedAt = new DateTimeOffset(2026, 7, 1, 10, 30, 0, TimeSpan.Zero),
+                        User      = new LinearUser { Name = "Bob" },
+                    },
+                ],
+                PageInfo = new LinearPageInfo { HasNextPage = true },
+            })));
+        var logger = new CapturingLogger<LinearDataProvider>();
+        var sut    = MakeProvider(api, logger: logger);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(results).Value;
+        Assert.Equal("true", entry.Metadata!["comments_truncated"]);
+
+        // The fetched comments are still rendered.
+        var content = await ReadContentAsync(entry);
+        Assert.Contains("## Comments", content, StringComparison.Ordinal);
+        Assert.Contains("**Bob** (2026-07-01 10:30): First of many", content, StringComparison.Ordinal);
+
+        var warning = Assert.Single(logger.Entries,
+            e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        Assert.Contains("ENG-1", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("100", warning.Message, StringComparison.Ordinal);
+    }
+
     // 7. Invalid state value throws at registration.
     [Fact]
     public void AddLinearDataProvider_InvalidStateValue_ThrowsAtRegistration()
@@ -322,6 +363,21 @@ public sealed class LinearDataProviderTests
         var services = new ServiceCollection();
 
         Assert.Throws<ArgumentException>(() => services.AddLinearDataProvider(apiKey: " "));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(251)] // Linear caps the GraphQL 'first' argument at 250
+    public void AddLinearDataProvider_PageSizeOutOfRange_ThrowsAtRegistration(int pageSize)
+    {
+        var services = new ServiceCollection();
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            services.AddLinearDataProvider(
+                apiKey: "lin_api_test",
+                configure: opts => opts.PageSize = pageSize));
+
+        Assert.Contains("250", ex.Message, StringComparison.Ordinal);
     }
 
     // 9. Issue without comments/description/state: sections omitted gracefully.
@@ -370,9 +426,15 @@ file sealed class FakeLinearApi(params LinearGraphQlResponse[] responses) : ILin
         CancellationToken cancellationToken = default)
     {
         Requests.Add(body);
-        var response = responses[Math.Min(_call, responses.Length - 1)];
-        _call++;
-        return Task.FromResult(Result<LinearGraphQlResponse, HttpError>.Success(response));
+        // Fail fast beyond the scripted responses — a repeat would mask a pagination
+        // regression (e.g. the endCursor guard no longer terminating the loop).
+        if (_call >= responses.Length)
+        {
+            throw new InvalidOperationException(
+                $"FakeLinearApi received request #{_call + 1} but only {responses.Length} responses were scripted.");
+        }
+
+        return Task.FromResult(Result<LinearGraphQlResponse, HttpError>.Success(responses[_call++]));
     }
 }
 
