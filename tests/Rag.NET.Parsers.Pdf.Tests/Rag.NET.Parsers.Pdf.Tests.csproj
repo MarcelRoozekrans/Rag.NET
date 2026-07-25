@@ -2,6 +2,10 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Mirrors the parser's OCR gate so gate-conditional tests (the gate-off construction
+         throw, the gated real-Tesseract integration test) compile consistently with the
+         parser when building with /p:EnableOcr=true. -->
+    <DefineConstants Condition="'$(EnableOcr)'=='true'">$(DefineConstants);ENABLE_OCR</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

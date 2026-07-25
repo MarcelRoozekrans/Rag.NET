@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using Rag.NET.Parsers.Pdf.Ocr;
 using Rag.NET.Parsers.Pdf.TableExtraction;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
@@ -13,11 +14,23 @@ public sealed class PdfDocumentParser : IDocumentParser
 {
     private readonly PdfParserOptions _options;
     private readonly ILogger<PdfDocumentParser>? _logger;
+    private readonly IPdfOcrEngine? _ocrEngine;
 
     public PdfDocumentParser(PdfParserOptions? options = null, ILogger<PdfDocumentParser>? logger = null)
+        : this(options, logger, ocrEngine: null)
+    {
+    }
+
+    /// <summary>Test seam: a non-null <paramref name="ocrEngine"/> replaces the gated factory engine.</summary>
+    internal PdfDocumentParser(
+        PdfParserOptions? options, ILogger<PdfDocumentParser>? logger, IPdfOcrEngine? ocrEngine)
     {
         _options = options ?? new PdfParserOptions();
         _logger = logger;
+        // Fail fast: in a gate-off compilation the stub engine's constructor throws the
+        // instructive misconfiguration error here, at parser construction — not at the
+        // first OCR-needed page.
+        _ocrEngine = ocrEngine ?? (_options.UseOcrFallback ? PdfOcrEngineFactory.Create(_options) : null);
     }
 
     public bool CanParse(string contentType) =>
