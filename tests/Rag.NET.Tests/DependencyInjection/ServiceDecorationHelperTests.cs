@@ -33,6 +33,15 @@ public class ServiceDecorationHelperTests
         public string Name => "decorated:" + Inner.Name;
     }
 
+    public sealed class DisposableWidget : IWidget, IDisposable
+    {
+        public string Name => "disposable";
+
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+    }
+
     private static void DecorateWidget(IServiceCollection services) =>
         ServiceDecorationHelper.Decorate<IWidget>(services, (inner, _) => new WidgetDecorator(inner));
 
@@ -111,14 +120,98 @@ public class ServiceDecorationHelperTests
     }
 
     [Fact]
-    public void Decorate_ReRegistersAsSingleton()
+    public void Decorate_SingletonRegistration_StaysSingleton()
     {
         var services = new ServiceCollection();
         services.AddSingleton<IWidget>(_ => new Widget("x"));
 
         DecorateWidget(services);
-        var provider = services.BuildServiceProvider();
+        using var provider = services.BuildServiceProvider();
 
         Assert.Same(provider.GetRequiredService<IWidget>(), provider.GetRequiredService<IWidget>());
+    }
+
+    [Fact]
+    public void Decorate_ScopedRegistration_StaysScoped()
+    {
+        var services = new ServiceCollection();
+        services.AddScoped<IWidget>(_ => new Widget("scoped"));
+
+        DecorateWidget(services);
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+
+        using var scope1 = provider.CreateScope();
+        using var scope2 = provider.CreateScope();
+        var fromScope1A = Assert.IsType<WidgetDecorator>(scope1.ServiceProvider.GetRequiredService<IWidget>());
+        var fromScope1B = Assert.IsType<WidgetDecorator>(scope1.ServiceProvider.GetRequiredService<IWidget>());
+        var fromScope2 = Assert.IsType<WidgetDecorator>(scope2.ServiceProvider.GetRequiredService<IWidget>());
+
+        Assert.Same(fromScope1A, fromScope1B);                 // cached within a scope
+        Assert.NotSame(fromScope1A, fromScope2);               // distinct decorator per scope
+        Assert.NotSame(fromScope1A.Inner, fromScope2.Inner);   // distinct inner per scope
+    }
+
+    [Fact]
+    public void Decorate_FactoryCreatedInner_IsDisposedWithTheProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IWidget>(_ => new DisposableWidget());
+
+        DecorateWidget(services);
+        var provider = services.BuildServiceProvider();
+        var decorator = Assert.IsType<WidgetDecorator>(provider.GetRequiredService<IWidget>());
+        var inner = Assert.IsType<DisposableWidget>(decorator.Inner);
+
+        provider.Dispose();
+
+        Assert.True(inner.Disposed); // the container materialised it, so the container disposes it
+    }
+
+    [Fact]
+    public void Decorate_InstanceRegisteredInner_IsNotDisposedWithTheProvider()
+    {
+        var instance = new DisposableWidget();
+        var services = new ServiceCollection();
+        services.AddSingleton<IWidget>(instance);
+
+        DecorateWidget(services);
+        var provider = services.BuildServiceProvider();
+        Assert.IsType<WidgetDecorator>(provider.GetRequiredService<IWidget>());
+
+        provider.Dispose();
+
+        Assert.False(instance.Disposed); // the container never owned it — external ownership preserved
+    }
+
+    [Fact]
+    public void Decorate_KeyedRegistrationsOfTheServiceType_AreIgnoredAndLeftUndecorated()
+    {
+        var keyed = new Widget("keyed");
+        var nonKeyed = new Widget("plain");
+        var services = new ServiceCollection();
+        services.AddKeyedSingleton<IWidget>("my-key", keyed);
+        services.AddSingleton<IWidget>(nonKeyed);
+
+        DecorateWidget(services);
+        using var provider = services.BuildServiceProvider();
+
+        var decorator = Assert.IsType<WidgetDecorator>(provider.GetRequiredService<IWidget>());
+        Assert.Same(nonKeyed, decorator.Inner);
+        Assert.Same(keyed, provider.GetRequiredKeyedService<IWidget>("my-key")); // untouched
+    }
+
+    [Fact]
+    public void Decorate_CalledTwice_StacksDecoratorsWithoutRecursion()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IWidget>(_ => new Widget("core"));
+
+        DecorateWidget(services);
+        DecorateWidget(services);
+        using var provider = services.BuildServiceProvider();
+
+        var outer = Assert.IsType<WidgetDecorator>(provider.GetRequiredService<IWidget>());
+        var middle = Assert.IsType<WidgetDecorator>(outer.Inner);
+        Assert.Equal("core", Assert.IsType<Widget>(middle.Inner).Name);
     }
 }

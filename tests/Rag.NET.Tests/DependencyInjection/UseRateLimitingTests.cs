@@ -176,6 +176,81 @@ public class UseRateLimitingTests
             })));
     }
 
+    [Fact]
+    public void UseRateLimiting_OneSurfaceMissing_ThrowsWithoutDecoratingTheOther()
+    {
+        var chatInner = RespondingChatClient("ok");
+        var services = new ServiceCollection();
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            services.AddRagNet(rag =>
+            {
+                rag.Services.AddSingleton(chatInner);
+                rag.UseRateLimiting(o =>
+                {
+                    o.ChatRequestsPerMinute = 60;
+                    o.EmbeddingRequestsPerMinute = 60; // no IEmbeddingGenerator registered
+                });
+            }));
+        Assert.Contains("IEmbeddingGenerator", ex.Message, StringComparison.Ordinal);
+
+        // Transactional: the failure left the chat surface untouched — no decoration, no limiter.
+        using var sp = services.BuildServiceProvider();
+        Assert.Same(chatInner, sp.GetRequiredService<IChatClient>());
+        Assert.Null(sp.GetKeyedService<IRateLimiter>(RagBuilderExtensions.ChatRateLimiterKey));
+    }
+
+    // ── Idempotence per surface ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task UseRateLimiting_CalledTwiceForChat_FirstConfigurationWins_NoStacking()
+    {
+        var inner = RespondingChatClient("ok");
+        var services = new ServiceCollection();
+        services.AddRagNet(rag =>
+        {
+            rag.Services.AddSingleton(inner);
+            rag.UseRateLimiting(o => o.ChatRequestsPerMinute = 60);
+            rag.UseRateLimiting(o => o.ChatRequestsPerMinute = 120); // ignored: surface already limited
+        });
+
+        Assert.Equal(1, services.Count(d =>
+            d.IsKeyedService && Equals(d.ServiceKey, RagBuilderExtensions.ChatRateLimiterKey)));
+
+        using var sp = services.BuildServiceProvider();
+        var client = Assert.IsType<RateLimitedChatClient>(sp.GetRequiredService<IChatClient>());
+        var result = await AskAsync(client, TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal("ok", result.Text);
+        await inner.Received(1).GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void UseRateLimiting_SecondCall_AddsOnlyTheNewlyConfiguredSurface()
+    {
+        var services = new ServiceCollection();
+        services.AddRagNet(rag =>
+        {
+            rag.Services.AddSingleton(RespondingChatClient("ok"));
+            rag.Services.AddSingleton(RespondingEmbeddingGenerator());
+            rag.UseRateLimiting(o => o.ChatRequestsPerMinute = 60);
+            rag.UseRateLimiting(o =>
+            {
+                o.ChatRequestsPerMinute = 60;       // already limited: skipped
+                o.EmbeddingRequestsPerMinute = 60;  // new surface: decorated
+            });
+        });
+
+        Assert.Equal(1, services.Count(d =>
+            d.IsKeyedService && Equals(d.ServiceKey, RagBuilderExtensions.ChatRateLimiterKey)));
+        Assert.Equal(1, services.Count(d =>
+            d.IsKeyedService && Equals(d.ServiceKey, RagBuilderExtensions.EmbeddingRateLimiterKey)));
+
+        using var sp = services.BuildServiceProvider();
+        Assert.IsType<RateLimitedChatClient>(sp.GetRequiredService<IChatClient>());
+        Assert.IsType<RateLimitedEmbeddingGenerator>(sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>());
+    }
+
     // ── Limiter independence ─────────────────────────────────────────────────
 
     [Fact]

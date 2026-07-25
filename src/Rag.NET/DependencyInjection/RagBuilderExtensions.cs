@@ -215,7 +215,11 @@ public static class RagBuilderExtensions
     /// decorates whatever is registered when it runs, so register the underlying client
     /// (provider registration, <c>UseFallbackChain</c>, …) before calling
     /// <c>UseRateLimiting</c> — a configured surface with no underlying registration fails
-    /// at registration time.
+    /// at registration time, before either surface is decorated (no half-applied state).
+    /// Idempotent per surface: a surface whose limiter is already registered keeps its
+    /// first configuration (same first-wins convention as <c>UseEmbeddingVersioning</c>) —
+    /// budgets are never stacked or re-applied; a repeat call only adds surfaces that were
+    /// not configured before.
     /// </remarks>
     /// <param name="builder">The RAG builder.</param>
     /// <param name="configure">
@@ -236,16 +240,36 @@ public static class RagBuilderExtensions
         ValidateRateLimitingOptions(options, nameof(configure));
         int? maxQueuedRequests = options.MaxQueuedRequests;
 
-        if (options.ChatRequestsPerMinute is { } chatRpm)
+        // Idempotence per surface: an already-limited surface keeps its first configuration.
+        bool limitChat = options.ChatRequestsPerMinute is not null
+            && !ContainsServiceKey(builder.Services, ChatRateLimiterKey);
+        bool limitEmbedding = options.EmbeddingRequestsPerMinute is not null
+            && !ContainsServiceKey(builder.Services, EmbeddingRateLimiterKey);
+
+        // Pre-check every surface to be decorated BEFORE decorating any, so a missing
+        // registration throws without leaving the other surface half-applied.
+        if (limitChat)
         {
+            ServiceDecorationHelper.EnsureRegistered<IChatClient>(builder.Services);
+        }
+
+        if (limitEmbedding)
+        {
+            ServiceDecorationHelper.EnsureRegistered<IEmbeddingGenerator<string, Embedding<float>>>(builder.Services);
+        }
+
+        if (limitChat)
+        {
+            int chatRpm = options.ChatRequestsPerMinute!.Value;
             builder.Services.AddKeyedSingleton<IRateLimiter>(ChatRateLimiterKey,
                 (_, _) => new TokenBucketRateLimiterAdapter(chatRpm, "chat", maxQueuedRequests));
             ServiceDecorationHelper.Decorate<IChatClient>(builder.Services, (inner, sp) =>
                 new RateLimitedChatClient(inner, sp.GetRequiredKeyedService<IRateLimiter>(ChatRateLimiterKey)));
         }
 
-        if (options.EmbeddingRequestsPerMinute is { } embeddingRpm)
+        if (limitEmbedding)
         {
+            int embeddingRpm = options.EmbeddingRequestsPerMinute!.Value;
             builder.Services.AddKeyedSingleton<IRateLimiter>(EmbeddingRateLimiterKey,
                 (_, _) => new TokenBucketRateLimiterAdapter(embeddingRpm, "embedding", maxQueuedRequests));
             ServiceDecorationHelper.Decorate<IEmbeddingGenerator<string, Embedding<float>>>(builder.Services, (inner, sp) =>
@@ -253,6 +277,19 @@ public static class RagBuilderExtensions
         }
 
         return builder;
+    }
+
+    private static bool ContainsServiceKey(IServiceCollection services, string serviceKey)
+    {
+        for (int i = 0; i < services.Count; i++)
+        {
+            if (services[i].IsKeyedService && Equals(services[i].ServiceKey, serviceKey))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ValidateRateLimitingOptions(RateLimitingOptions options, string paramName)

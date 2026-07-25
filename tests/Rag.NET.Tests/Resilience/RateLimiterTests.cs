@@ -140,6 +140,33 @@ public class RateLimiterTests
             adapter.AcquireAsync(cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
         Assert.Contains("MaxQueuedRequests", ex.Message, StringComparison.Ordinal);
+        // Local limiter saturation must never read as a provider failure: the wording is
+        // deliberately outside FallbackChatClient's transient keywords, or a saturated
+        // limiter nested in a fallback chain would trigger provider fallback.
+        Assert.False(FallbackChatClient.IsTransient(ex));
+    }
+
+    [Fact]
+    public async Task AcquireAsync_PermitsExceedBucketCapacity_ThrowsFriendlyInvalidOperation()
+    {
+        using var adapter = new TokenBucketRateLimiterAdapter(
+            ManualBucket(tokenLimit: 1, queueLimit: 10), "chat", capacity: 1);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            adapter.AcquireAsync(permits: 2, TestContext.Current.CancellationToken).AsTask());
+
+        Assert.Contains("2 permits", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("capacity of 1", ex.Message, StringComparison.Ordinal);
+        Assert.False(FallbackChatClient.IsTransient(ex)); // same non-transient wording rule as queue-full
+    }
+
+    [Fact]
+    public async Task AcquireAsync_NegativePermits_ThrowsArgumentOutOfRange()
+    {
+        using var adapter = new TokenBucketRateLimiterAdapter(ManualBucket(tokenLimit: 1, queueLimit: 0), "chat");
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            adapter.AcquireAsync(permits: -1, TestContext.Current.CancellationToken).AsTask());
     }
 
     [Fact]
