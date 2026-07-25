@@ -15,6 +15,9 @@
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Zendesk\Rag.NET.DataProviders.Zendesk.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Web\Rag.NET.DataProviders.Web.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.MicrosoftTeams\Rag.NET.DataProviders.MicrosoftTeams.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Exchange\Rag.NET.DataProviders.Exchange.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Linear\Rag.NET.DataProviders.Linear.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Email\Rag.NET.Parsers.Email.csproj" />
     <ProjectReference Include="..\Rag.NET.Testing\Rag.NET.Testing.csproj" />
     <PackageReference Include="Microsoft.Graph" Version="5.*" />
     <!-- Audit lift: Microsoft.Graph 5.x pins Microsoft.Kiota.Abstractions 1.21.1 (GHSA-7j59-v9qr-6fq9, patched in 1.22.0). -->

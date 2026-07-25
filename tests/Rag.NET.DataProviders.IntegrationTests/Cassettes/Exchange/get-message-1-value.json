@@ -1,0 +1,12 @@
+{
+  "Guid": "e5f6a7b8-c9d0-1234-ef01-345678900002",
+  "Request": {
+    "Path": { "Matchers": [{ "Name": "WildcardMatcher", "Pattern": "/v1.0/users/*/messages/msg-1/*" }] },
+    "Methods": ["GET"]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": { "Content-Type": "message/rfc822" },
+    "Body": "From: Alice <alice@contoso.com>\r\nTo: Ingest <ingest@contoso.com>\r\nSubject: Quarterly Report\r\nDate: Sun, 01 Mar 2026 10:00:00 +0000\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nPlease find the quarterly numbers below.\r\n"
+  }
+}

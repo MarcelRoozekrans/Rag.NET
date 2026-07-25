@@ -458,18 +458,22 @@ Producers push `IngestionJob`s (byte payload + metadata) onto a bounded `IIngest
 ### Email Connectors (Outlook / Exchange)
 **Package:** `Rag.NET.DataProviders.Exchange`
 
-Ingest emails and attachments from Outlook/Exchange via Microsoft Graph (`/me/messages`, `/me/mailFolders`). Supports folder filtering, date-range watermarks, and attachment parsing (delegates to existing parsers for PDF/Word/Excel attachments). Complements the existing Gmail connector.
+Ingest emails and attachments from Outlook/Exchange via Microsoft Graph (`/users/{mailbox}/mailFolders/{folder}/messages`, app-only auth). Emits raw RFC 822 `.eml` entries (Graph `$value`), so a registered `AddEmailParser()` parses subject/body and delegates attachment parsing to the existing parsers (PDF/Word/text/…). Supports folder filtering, a `receivedDateTime` watermark (`GetDeltaToken()`), and `MaxResults` capping. Complements the existing Gmail connector.
 
 **Why:** Exchange/Outlook is the dominant enterprise email system. Enterprise RAG over internal communications requires both Gmail and Exchange coverage.
+
+**Status:** ✅ Done
 
 ---
 
 ### Linear Issue Tracker
 **Package:** `Rag.NET.DataProviders.Linear`
 
-Ingest issues, comments, and projects from Linear via the GraphQL API. Supports team filtering, state filtering (active/completed/cancelled), and delta ingestion via `updatedAt` watermark.
+Ingest issues and comments from Linear via the GraphQL API (`POST /graphql`, the repo's first GraphQL connector — built on the existing ZeroAlloc.Rest POST-with-body pattern, no new client dependency). Issues are exported as Markdown with state/project/assignee and comment attribution. Supports team filtering, state-type filtering (`triage`/`backlog`/`unstarted`/`started`/`completed`/`canceled`), and delta ingestion via an `updatedAt` watermark (`GetDeltaToken()`; advances only on a complete traversal since Linear does not document pagination sort direction).
 
 **Why:** Linear is the issue tracker of choice for many engineering teams. Ingesting it alongside GitHub and Jira gives complete engineering knowledge coverage.
+
+**Status:** ✅ Done
 
 ---
 
@@ -1040,7 +1044,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
 | [x] | EPUB Parser | Low | `VersOne.Epub` |
 | [x] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
-| [ ] | Linear Issue Tracker | Low | Linear GraphQL API |
+| [x] | Linear Issue Tracker | Low | Linear GraphQL API |
 | [ ] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | Evaluation Dataset Builder | Medium | `IChatClient` |
 | [ ] | A/B Testing Framework | Medium | `IRagEvaluator` |
@@ -1055,7 +1059,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Proposition Extraction Chunking | Medium | `IChatClient` |
 | [x] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core minimal API + `System.Threading.Channels` (Service Bus deferred) |
 | [ ] | OpenTelemetry Tracing & Metrics | Medium | `System.Diagnostics.ActivitySource` |
-| [ ] | Email Connector (Outlook/Exchange) | Medium | Microsoft Graph SDK |
+| [x] | Email Connector (Outlook/Exchange) | Medium | Microsoft Graph SDK |
 | [x] | PII Detection and Redaction | Medium | Regex / `IChatClient` |
 | [x] | Role-Based Access Control (RBAC) | Medium | `IRetrievalGuard` extension |
 | [x] | Audit Log | Medium | `IAuditLog` + SQLite |

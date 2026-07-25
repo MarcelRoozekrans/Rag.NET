@@ -87,6 +87,8 @@ var tokenProvider = new OAuthClientCredentialsTokenProvider(
 | Slack | `Rag.NET.DataProviders.Slack` | Bearer bot token | `oldest` Unix timestamp | Channel messages exported as plain text |
 | Microsoft Teams | `Rag.NET.DataProviders.MicrosoftTeams` | OAuth2 client credentials | Not yet supported | Graph SDK; messages exported as HTML |
 | Gmail | `Rag.NET.DataProviders.Gmail` | OAuth2 (`SaslMechanismOAuth2`) | IMAP UniqueId watermark | MailKit IMAP; emails exported as plain text |
+| Exchange / Outlook | `Rag.NET.DataProviders.Exchange` | `ClientSecretCredential` (tenant/client/secret) | `receivedDateTime` watermark | Graph SDK; emits raw RFC 822 `.eml` — requires `AddEmailParser()` |
+| Linear | `Rag.NET.DataProviders.Linear` | Personal API key (bare `Authorization` header) | `updatedAt` watermark | GraphQL API; issues + comments exported as Markdown |
 | GitLab | `Rag.NET.DataProviders.GitLab` | PAT (`PRIVATE-TOKEN` header) | Commit SHA compare | Repository files; same delta pattern as GitHub |
 | Bitbucket | `Rag.NET.DataProviders.Bitbucket` | App Password (Basic Auth) | Commit hash diffstat | Repository files via REST API |
 | Zendesk (Tickets) | `Rag.NET.DataProviders.Zendesk` | API Token (Basic Auth `email/token:key`) | Incremental cursor (`start_time`) | Tickets exported as HTML |
@@ -345,6 +347,109 @@ services.AddGmailDataProvider(tokenProvider, opts =>
 });
 ```
 
+### Exchange / Outlook
+
+The Exchange connector emits each message as a raw RFC 822 **`.eml`** entry (fetched from
+Graph's `/users/{mailbox}/messages/{id}/$value`) rather than pre-rendered Markdown. This is
+deliberate: it lets `EmailDocumentParser` parse subject/body **and dispatch attachments to
+the other registered parsers** (PDF, Word, text, …). Ingesting the emitted entries therefore
+**requires `AddEmailParser()`** from `Rag.NET.Parsers.Email`:
+
+```csharp
+services.AddRagNet(rag => rag.AddEmailParser()); // .eml → message/rfc822 parser + attachment dispatch
+
+services.AddExchangeMailDataProvider(
+    tenantId:     "00000000-0000-0000-0000-000000000000",
+    clientId:     "my-app-client-id",
+    clientSecret: "my-app-client-secret",
+    configure: opts =>
+    {
+        opts.Mailbox    = "ingest@contoso.com";        // required mailbox UPN
+        opts.FolderIds  = ["inbox", "archive"];        // null = Inbox only
+        opts.MaxResults = 500;                         // default
+        opts.DeltaToken = settings.ExchangeDeltaToken; // receivedDateTime watermark; null on first run
+    });
+```
+
+**App registration:** uses app-only authentication (client credentials flow); the Azure AD
+app registration needs the **`Mail.Read` application permission** (Microsoft Graph →
+Application permissions) with admin consent. Delegated `/me` flows are out of scope.
+Note that app-only `Mail.Read` grants read access to **every mailbox in the tenant** —
+scope the app to the ingest mailbox with an Exchange application access policy
+(`New-ApplicationAccessPolicy`) or RBAC for Applications.
+
+**Watermark persistence:** after a run, read the new watermark from the provider and persist
+it for the next run — the connector filters with `receivedDateTime ge {DeltaToken}`.
+Persist the token **only after an error-free run**: the watermark advances during
+enumeration, before per-entry ingestion outcomes are known. When a run is truncated by
+`MaxResults` in the **last (or only) folder**, the token advances to the truncation point
+(messages are enumerated oldest-first, so everything unseen is newer) — a backlog larger
+than `MaxResults` therefore drains at `MaxResults` per run. `GetDeltaToken()` returns
+`null` when the run failed or was truncated **before the last folder was reached** — keep
+the previous token in that case, otherwise the never-visited folders' messages would be
+skipped forever:
+
+```csharp
+var provider = (ExchangeMailDataProvider)sp.GetRequiredService<IFileContentProvider>();
+var result   = await pipeline.IngestFromProviderAsync(provider, new ProviderId("exchange"), hashStore);
+
+if (result.Errors.Count == 0 && provider.GetDeltaToken() is { } token)
+    settings.ExchangeDeltaToken = token;
+```
+
+> Graph delta queries (`/mailFolders/{id}/messages/delta`) are intentionally **not** used in
+> v1 — the `receivedDateTime` watermark plus the hash-store ETag skip covers incremental
+> ingestion; same-timestamp duplicates on the next run are skipped by content hash.
+
+### Linear
+
+The Linear connector is the repo's first **GraphQL** connector: it issues a single paginated
+`issues` query against `https://api.linear.app/graphql` (POST with a typed request body via
+the existing ZeroAlloc.Rest pattern — no dedicated GraphQL client dependency). Each issue is
+emitted as a Markdown entry (`{identifier} {title}.md`) containing the title heading, a
+state/project/assignee line, the description, and a `## Comments` section, with
+team/state/state_type/project/url metadata (plus `comments_truncated` when an issue's comments exceed the fetched page — see Comments below).
+
+```csharp
+services.AddLinearDataProvider(
+    apiKey: "lin_api_...",                        // personal API key (Settings → API)
+    configure: opts =>
+    {
+        opts.TeamKeys   = ["ENG", "OPS"];         // null = all teams
+        opts.States     = ["started", "completed"]; // state *types*; null = all
+        opts.PageSize   = 50;                     // issues per GraphQL page (default)
+        opts.DeltaToken = settings.LinearDeltaToken; // updatedAt watermark; null on first run
+    });
+```
+
+**Authentication:** Linear personal API keys are sent as a **bare** `Authorization` header —
+`Authorization: lin_api_...` with **no `Bearer` prefix** (`Bearer` is only used for OAuth2
+access tokens).
+
+**State filtering** uses Linear's workflow state *types* (categories), not display names:
+`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled` — note the American
+spelling of `canceled`. Invalid values throw at registration.
+
+**Comments:** up to 100 comments per issue are fetched inline; an issue with more is still
+emitted (with the first 100) but flagged with a `comments_truncated: "true"` metadata entry
+and a logged warning.
+
+**Watermark:** the connector filters with `updatedAt > DeltaToken` and tracks the max
+`updatedAt` seen. Because Linear does not document the sort direction of
+`orderBy: updatedAt`, `GetDeltaToken()` only returns a token after a **complete** traversal
+(all pages consumed without a failure); a run that failed mid-pagination returns `null` —
+keep the previous token in that case:
+
+```csharp
+var provider = (LinearDataProvider)sp.GetRequiredService<IFileContentProvider>();
+var result   = await pipeline.IngestFromProviderAsync(provider, new ProviderId("linear"), hashStore);
+
+if (result.Errors.Count == 0 && provider.GetDeltaToken() is { } token)
+    settings.LinearDeltaToken = token;
+```
+
+> **`baseUrl`** (optional) — overrides the default base URL (`https://api.linear.app`). Useful when routing through a proxy or pointing at a local mock during testing.
+
 ### GitLab
 
 ```csharp
@@ -493,6 +598,8 @@ services.AddSharePointDataProvider(tenantId, clientId, clientSecret, siteId, dri
 | Slack | Unix timestamp (string) | Passed as `oldest` to `conversations.history` |
 | Microsoft Teams | Not yet supported | Delta ingestion is not yet implemented for this connector |
 | Gmail | IMAP UniqueId (string) | Messages with a UID greater than the watermark are fetched |
+| Exchange / Outlook | ISO 8601 `receivedDateTime` (string) | Applied as a `receivedDateTime ge` filter; `GetDeltaToken()` returns the max value seen, the truncation point when `MaxResults` fired in the last folder (backlogs drain per run), or `null` when the run failed or was truncated earlier (keep the previous token) |
+| Linear | ISO 8601 `updatedAt` (string) | Applied as an `updatedAt >` GraphQL filter; `GetDeltaToken()` returns the max value seen after a complete traversal, or `null` when the run failed mid-pagination (keep the previous token) |
 | GitLab | Commit SHA (string) | HEAD commit SHA at last successful ingest; compare API returns changed files |
 | Bitbucket | Commit hash (string) | HEAD commit hash at last successful ingest; diffstat API returns changed files |
 | Zendesk | Unix epoch (string) | Passed as `start_time` to the incremental export API |
@@ -645,6 +752,9 @@ Both filters are applied before the file content is downloaded, so excluded file
 | Slack `invalid_auth` / `token_revoked` | Exception propagated; re-issue the bot token and redeploy |
 | Microsoft Teams Graph errors | Handled the same way as SharePoint/OneDrive Graph errors; check app permissions (`ChannelMessage.Read.All`) |
 | Gmail IMAP connection refused | Check that IMAP is enabled for the mailbox and that the OAuth2 token has the `https://mail.google.com/` scope |
+| Exchange Graph errors | Surface as `RagError.HttpFailed` results; check the app registration has the `Mail.Read` application permission with admin consent |
+| Exchange `NoParserFound (message/rfc822)` | Register `AddEmailParser()` — the connector emits raw `.eml` entries by design |
+| 429 Too Many Requests (Linear) | Retried by the resilience pipeline; query-complexity rejections instead surface as GraphQL-error failures (`RagError.HttpFailed` naming the messages) — reduce `PageSize` |
 | 429 Too Many Requests (GitLab) | GitLab rate-limits at 300–2000 requests/min depending on tier; the resilience pipeline retries with back-off |
 | 401 Unauthorized (GitLab) | Verify the `PRIVATE-TOKEN` is valid and has `read_repository` scope |
 | 429 Too Many Requests (Bitbucket) | Bitbucket Cloud rate-limits at 1000 requests/hour; the resilience pipeline retries with back-off |

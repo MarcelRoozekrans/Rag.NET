@@ -397,6 +397,32 @@ services.AddRagNet(rag => rag
 
 ---
 
+## Writing a GraphQL connector (data providers)
+
+REST connectors are built on `[ZeroAllocRestClient]` interfaces; a GraphQL API needs no new
+client dependency — model it as a single POST with a typed body. The Linear connector
+(`src/Rag.NET.DataProviders.Linear`) is the reference implementation; the conventions:
+
+1. **Envelope record** — one `[Post("/graphql")]` method taking a
+   `record GraphQlRequest(string Query, TVariables Variables)` body; the shared
+   `SystemTextJsonSerializer` (camelCase) serializes records cleanly — pin every property
+   name with `[JsonPropertyName]` as the Linear DTOs do, rather than relying on the casing policy.
+2. **Typed variables, omitted nulls** — model variables/filters as records with
+   `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` on optional members:
+   an *omitted* GraphQL filter field means "no constraint", an explicit `null` does not.
+3. **Const query document** — keep the query a `const string` with `$variables`; never
+   string-interpolate user input into the document.
+4. **Errors array** — GraphQL errors arrive with HTTP 200; treat a non-empty top-level
+   `errors` array as a `Result` failure naming the messages (and a response with neither
+   `data` nor `errors` as malformed).
+5. **Auth** — some GraphQL APIs (Linear included) expect a bare `Authorization: <key>`
+   header without a `Bearer` prefix; pin the verified format in a comment at registration.
+
+See the [data providers guide](data-providers.md#linear) for the connector-facing
+behaviour (pagination, watermark, filters).
+
+---
+
 ## Answer engines: `CreateFromServices` pattern
 
 All built-in `IAnswerEngine` implementations (`ChatAnswerEngine`, `MapReduceAnswerEngine`, `RefineAnswerEngine`, `FlareAnswerEngine`) expose a static `CreateFromServices(IServiceProvider)` factory that centralizes dependency resolution. When adding a new engine, follow the same pattern:

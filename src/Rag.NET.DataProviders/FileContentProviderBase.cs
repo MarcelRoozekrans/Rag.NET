@@ -48,7 +48,8 @@ public abstract class FileContentProviderBase : IFileContentProvider
                 Id:               new EntryId(handle.Id),
                 FileName:         handle.FileName,
                 OpenContentAsync: handle.OpenContentAsync,
-                ETag:             handle.ETag));
+                ETag:             handle.ETag,
+                Metadata:         handle.Metadata));
         }
     }
 

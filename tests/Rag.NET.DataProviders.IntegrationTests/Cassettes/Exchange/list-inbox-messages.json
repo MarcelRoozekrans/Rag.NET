@@ -1,0 +1,12 @@
+{
+  "Guid": "e5f6a7b8-c9d0-1234-ef01-345678900001",
+  "Request": {
+    "Path": { "Matchers": [{ "Name": "WildcardMatcher", "Pattern": "/v1.0/users/*/mailFolders/inbox/messages" }] },
+    "Methods": ["GET"]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": { "Content-Type": "application/json; charset=utf-8" },
+    "Body": "{\"value\":[{\"id\":\"msg-1\",\"subject\":\"Quarterly Report\",\"receivedDateTime\":\"2026-03-01T10:00:00Z\",\"lastModifiedDateTime\":\"2026-03-01T10:05:00Z\",\"hasAttachments\":false},{\"id\":\"msg-2\",\"subject\":\"With Attachment\",\"receivedDateTime\":\"2026-03-02T11:00:00Z\",\"lastModifiedDateTime\":\"2026-03-02T11:00:00Z\",\"hasAttachments\":true}]}"
+  }
+}

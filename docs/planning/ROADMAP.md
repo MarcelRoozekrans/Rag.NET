@@ -4,6 +4,24 @@ Backlog source: the unchecked items in `docs/reference/features.md` (31 items as
 Every backlog item is assigned to exactly one phase below. When a phase completes, tick the
 corresponding rows in features.md.
 
+## Recorded follow-up debts (cross-phase, from review cycles)
+
+- **Connector metadata consistency** (Phase 1.6): only Exchange/Linear populate the new
+  `FileHandle.Metadata`; ~20 sibling connectors have obvious candidates (Gmail from/date,
+  Teams team/channel, Zendesk status, …) currently inlined into rendered Markdown.
+- **Graph transport-exception mapping** (Phase 1.6): raw `HttpRequestException` bypasses the
+  Result channel in all Graph connectors (Exchange inherits the sibling posture).
+- **Shared `SanitizeFileName` helper** (Phase 1.6): now three verbatim copies (Gmail,
+  Exchange, Linear) — extract into `Rag.NET.DataProviders`.
+- **Embedded-message recursion** (Phase 1.5): EML `MessagePart` / MSG nested `Storage.Message`
+  are warn-and-skipped; recursing them is the natural follow-up.
+- **PDF table dominance-guard refinement** (Phase 1.5): exempt runs averaging <= ~2 words/cell
+  to rescue full-page Key/Value tables (candidate noted in the guide).
+- **Persistent-memory score normalization** (Phase 1.2): `PersistentConversationMemory`'s
+  MinScore filter is incompatible with federated RRF scores (documented limitation).
+- **`ConfigureResilience` dangling pipeline** (pre-existing): registered but unconsumed
+  (documented in observability.md + resilience.md).
+
 ## Milestone 1: Feature Backlog [status: active]
 **Goal:** Work the remaining feature backlog to completion — chunking, retrieval techniques, ingestion ops, resilience, parsers, connectors, and vector stores.
 **Started:** 2026-07-24
@@ -37,8 +55,10 @@ corresponding rows in features.md.
 **Plan:** `docs/plans/2026-07-25-document-parsers-design.md` + `-implementation.md`
 **Completed:** 2026-07-25 (OCR = Tesseract behind the `EnableOcr` compile gate; Azure Document Intelligence and PDF rasterization deferred)
 
-### Phase 1.6: Connectors [status: pending]
+### Phase 1.6: Connectors [status: complete]
 **Backlog items:** Email Connector (Outlook/Exchange); Linear Issue Tracker
+**Plan:** `docs/plans/2026-07-25-connectors-design.md` + `-implementation.md`
+**Completed:** 2026-07-25
 
 ### Phase 1.7: Vector Stores [status: pending]
 **Backlog items:** Weaviate Vector Store; Chroma Vector Store; Pinecone Vector Store

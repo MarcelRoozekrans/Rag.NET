@@ -43,6 +43,8 @@
     <Project Path="src/Rag.NET.DataProviders.Slack/Rag.NET.DataProviders.Slack.csproj" />
     <Project Path="src/Rag.NET.DataProviders.MicrosoftTeams/Rag.NET.DataProviders.MicrosoftTeams.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Gmail/Rag.NET.DataProviders.Gmail.csproj" />
+    <Project Path="src/Rag.NET.DataProviders.Exchange/Rag.NET.DataProviders.Exchange.csproj" />
+    <Project Path="src/Rag.NET.DataProviders.Linear/Rag.NET.DataProviders.Linear.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Bitbucket/Rag.NET.DataProviders.Bitbucket.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Zendesk/Rag.NET.DataProviders.Zendesk.csproj" />
     <Project Path="src/Rag.NET.DataProviders.GitLab/Rag.NET.DataProviders.GitLab.csproj" />
@@ -105,6 +107,8 @@
     <Project Path="tests/Rag.NET.DataProviders.Slack.Tests/Rag.NET.DataProviders.Slack.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.MicrosoftTeams.Tests/Rag.NET.DataProviders.MicrosoftTeams.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Gmail.Tests/Rag.NET.DataProviders.Gmail.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.Exchange.Tests/Rag.NET.DataProviders.Exchange.Tests.csproj" />
+    <Project Path="tests/Rag.NET.DataProviders.Linear.Tests/Rag.NET.DataProviders.Linear.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Bitbucket.Tests/Rag.NET.DataProviders.Bitbucket.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Zendesk.Tests/Rag.NET.DataProviders.Zendesk.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.GitLab.Tests/Rag.NET.DataProviders.GitLab.Tests.csproj" />
