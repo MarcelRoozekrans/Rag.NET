@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -122,6 +123,116 @@ public class FallbackChatClientTests
 
         Assert.Single(updates);
         Assert.Equal("streamed", updates[0].Text);
+    }
+
+    // ── Per-client timeout ───────────────────────────────────────────────────
+
+    [Fact]
+    public void Ctor_NonPositivePerClientTimeout_Throws()
+    {
+        var client = Substitute.For<IChatClient>();
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new FallbackChatClient([client], perClientTimeout: TimeSpan.Zero));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new FallbackChatClient([client], perClientTimeout: TimeSpan.FromMilliseconds(-1)));
+    }
+
+    [Fact]
+    public async Task GetResponseAsync_HungPrimaryWithTimeout_SecondaryServes()
+    {
+        var primary = Substitute.For<IChatClient>();
+        var secondary = Substitute.For<IChatClient>();
+        primary.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => HangUntilCancelledAsync(ci.Arg<CancellationToken>()));
+        secondary.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "fallback ok")));
+
+        var sut = new FallbackChatClient([primary, secondary], perClientTimeout: TimeSpan.FromMilliseconds(50));
+        var result = await sut.GetResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        Assert.Equal("fallback ok", result.Text);
+    }
+
+    [Fact]
+    public async Task GetResponseAsync_CallerCancelsDuringHungPrimary_ThrowsOceSecondaryUntouched()
+    {
+        var primary = Substitute.For<IChatClient>();
+        var secondary = Substitute.For<IChatClient>();
+        primary.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => HangUntilCancelledAsync(ci.Arg<CancellationToken>()));
+        using var callerCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        var sut = new FallbackChatClient([primary, secondary], perClientTimeout: TimeSpan.FromSeconds(30));
+        var task = sut.GetResponseAsync(AnyMessages(), cancellationToken: callerCts.Token);
+
+        await callerCts.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        await secondary.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetResponseAsync_NoTimeoutConfigured_HungPrimaryStaysHung()
+    {
+        var primary = Substitute.For<IChatClient>();
+        var secondary = Substitute.For<IChatClient>();
+        primary.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => HangUntilCancelledAsync(ci.Arg<CancellationToken>()));
+        using var callerCts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        var sut = new FallbackChatClient([primary, secondary]);
+        var task = sut.GetResponseAsync(AnyMessages(), cancellationToken: callerCts.Token);
+
+        // Bounded observation window: the call must still be pending — no implicit timeout.
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            task.WaitAsync(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken));
+        Assert.False(task.IsCompleted);
+
+        // Clean up deterministically: cancel the hung call.
+        await callerCts.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        await secondary.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetStreamingResponseAsync_HungPrimaryWithTimeout_SecondaryStreams()
+    {
+        var primary = Substitute.For<IChatClient>();
+        var secondary = Substitute.For<IChatClient>();
+        primary.GetStreamingResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => HangingStreamAsync(ci.Arg<CancellationToken>()));
+        secondary.GetStreamingResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(YieldUpdates(new ChatResponseUpdate { Contents = [new TextContent("streamed")] }));
+
+        var sut = new FallbackChatClient([primary, secondary], perClientTimeout: TimeSpan.FromMilliseconds(50));
+        var updates = new List<ChatResponseUpdate>();
+        await foreach (var update in sut.GetStreamingResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken))
+            updates.Add(update);
+
+        Assert.Single(updates);
+        Assert.Equal("streamed", updates[0].Text);
+    }
+
+    // Helper: chat call that never completes but honors cancellation (like a real HTTP client)
+    private static async Task<ChatResponse> HangUntilCancelledAsync(CancellationToken cancellationToken)
+    {
+        var tcs = new TaskCompletionSource<ChatResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+        return await tcs.Task;
+    }
+
+    // Helper: streaming call that hangs before the first token but honors cancellation
+    private static async IAsyncEnumerable<ChatResponseUpdate> HangingStreamAsync(
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+        await tcs.Task;
+        yield break;
     }
 
     // Helper: async enumerable that throws immediately

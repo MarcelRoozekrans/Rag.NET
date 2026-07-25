@@ -11,13 +11,28 @@ namespace Rag.NET.Resilience;
 /// when the current one raises a transient error (rate-limit, timeout, service-unavailable).
 /// Non-transient errors propagate immediately without consulting further clients.
 /// </summary>
+/// <remarks>
+/// When <paramref name="perClientTimeout"/> is set, each per-client attempt is bounded:
+/// the client call runs under a token linked to the caller's token with
+/// <see cref="CancellationTokenSource.CancelAfter(TimeSpan)"/> armed. A timeout
+/// (linked token fired while the caller's token is not cancelled) is treated as a
+/// transient failure and the next client is tried; caller cancellation always
+/// propagates immediately. For streaming, the timeout spans the whole per-client
+/// attempt (first token through stream completion), not just time-to-first-token.
+/// </remarks>
 public sealed class FallbackChatClient(
     IReadOnlyList<IChatClient> clients,
-    ILogger<FallbackChatClient>? logger = null) : IChatClient
+    ILogger<FallbackChatClient>? logger = null,
+    TimeSpan? perClientTimeout = null) : IChatClient
 {
     private readonly IReadOnlyList<IChatClient> _clients = clients.Count > 0
         ? clients
         : throw new ArgumentOutOfRangeException(nameof(clients), "At least one client is required.");
+
+    private readonly TimeSpan? _perClientTimeout = perClientTimeout is null || perClientTimeout > TimeSpan.Zero
+        ? perClientTimeout
+        : throw new ArgumentOutOfRangeException(nameof(perClientTimeout), perClientTimeout,
+            "Per-client timeout must be greater than zero when set.");
 
     private static readonly string[] s_transientKeywords = ["rate limit", "throttl", "timeout", "unavailable"];
 
@@ -31,7 +46,15 @@ public sealed class FallbackChatClient(
         {
             try
             {
-                return await _clients[i].GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+                return await GetResponseWithTimeoutAsync(_clients[i], messages, options, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException ex) when (_perClientTimeout is not null && !cancellationToken.IsCancellationRequested)
+            {
+                // The linked per-client timeout fired, not the caller: transient → next client.
+                last = ex;
+                if (i < _clients.Count - 1)
+                    logger?.LogWarning(ex, "Client {Index} timed out after {Timeout}; trying next client.",
+                        i.ToString(CultureInfo.InvariantCulture), _perClientTimeout.Value.ToString("c", CultureInfo.InvariantCulture));
             }
             catch (OperationCanceledException)
             {
@@ -45,6 +68,26 @@ public sealed class FallbackChatClient(
             }
         }
         throw last!;
+    }
+
+    private async Task<ChatResponse> GetResponseWithTimeoutAsync(
+        IChatClient client,
+        IEnumerable<ChatMessage> messages,
+        ChatOptions? options,
+        CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CreateTimeoutCts(cancellationToken);
+        return await client.GetResponseAsync(messages, options, timeoutCts?.Token ?? cancellationToken).ConfigureAwait(false);
+    }
+
+    private CancellationTokenSource? CreateTimeoutCts(CancellationToken cancellationToken)
+    {
+        if (_perClientTimeout is not { } timeout)
+            return null;
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(timeout);
+        return cts;
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -78,50 +121,74 @@ public sealed class FallbackChatClient(
         [EnumeratorCancellation] CancellationToken cancellationToken,
         StreamState state)
     {
+        using var timeoutCts = CreateTimeoutCts(cancellationToken);
+        var effectiveToken = timeoutCts?.Token ?? cancellationToken;
+
         var enumerator = _clients[clientIndex]
-            .GetStreamingResponseAsync(messages, options, cancellationToken)
-            .GetAsyncEnumerator(cancellationToken);
+            .GetStreamingResponseAsync(messages, options, effectiveToken)
+            .GetAsyncEnumerator(effectiveToken);
 
         try
         {
-            bool hasNext;
-            try
-            {
-                hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex) when (IsTransient(ex))
-            {
-                state.TransientException = ex;
-                if (clientIndex < _clients.Count - 1)
-                    logger?.LogWarning(ex, "Streaming client {Index} failed before first token; trying next client.", clientIndex.ToString(CultureInfo.InvariantCulture));
-                yield break;
-            }
-
             int itemsYielded = 0;
-            while (hasNext)
+            bool? hasNext = await MoveNextOrClassifyAsync(enumerator, clientIndex, itemsYielded, timeoutCts is not null, cancellationToken, state).ConfigureAwait(false);
+            while (hasNext == true)
             {
                 yield return enumerator.Current;
                 itemsYielded++;
-                try
-                {
-                    hasNext = await enumerator.MoveNextAsync().ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex) when (IsTransient(ex))
-                {
-                    state.TransientException = ex;
-                    if (clientIndex < _clients.Count - 1)
-                        logger?.LogWarning(ex, "Streaming client {Index} failed mid-stream after {Count} token(s); restarting with next client.",
-                            clientIndex.ToString(CultureInfo.InvariantCulture), itemsYielded.ToString(CultureInfo.InvariantCulture));
-                    yield break;
-                }
+                hasNext = await MoveNextOrClassifyAsync(enumerator, clientIndex, itemsYielded, timeoutCts is not null, cancellationToken, state).ConfigureAwait(false);
             }
         }
         finally
         {
             await enumerator.DisposeAsync().ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Advances the stream. Returns <see langword="true"/>/<see langword="false"/> for a normal
+    /// move, or <see langword="null"/> when a transient failure (including a per-client timeout)
+    /// was recorded in <paramref name="state"/>; caller cancellation and non-transient
+    /// exceptions propagate.
+    /// </summary>
+    private async ValueTask<bool?> MoveNextOrClassifyAsync(
+        IAsyncEnumerator<ChatResponseUpdate> enumerator,
+        int clientIndex,
+        int itemsYielded,
+        bool timeoutArmed,
+        CancellationToken callerToken,
+        StreamState state)
+    {
+        try
+        {
+            return await enumerator.MoveNextAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException ex) when (timeoutArmed && !callerToken.IsCancellationRequested)
+        {
+            // The linked per-client timeout fired, not the caller: transient → next client.
+            state.TransientException = ex;
+            LogStreamFailure(clientIndex, itemsYielded, ex);
+            return null;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) when (IsTransient(ex))
+        {
+            state.TransientException = ex;
+            LogStreamFailure(clientIndex, itemsYielded, ex);
+            return null;
+        }
+    }
+
+    private void LogStreamFailure(int clientIndex, int itemsYielded, Exception ex)
+    {
+        if (clientIndex >= _clients.Count - 1)
+            return;
+
+        if (itemsYielded == 0)
+            logger?.LogWarning(ex, "Streaming client {Index} failed before first token; trying next client.", clientIndex.ToString(CultureInfo.InvariantCulture));
+        else
+            logger?.LogWarning(ex, "Streaming client {Index} failed mid-stream after {Count} token(s); restarting with next client.",
+                clientIndex.ToString(CultureInfo.InvariantCulture), itemsYielded.ToString(CultureInfo.InvariantCulture));
     }
 
     public object? GetService(Type serviceType, object? serviceKey = null)
