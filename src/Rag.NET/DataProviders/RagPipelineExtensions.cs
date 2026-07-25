@@ -29,6 +29,10 @@ public static class RagPipelineExtensions
         IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        var optionsError = ValidateOptions(options);
+        if (optionsError is not null)
+            return new ProviderIngestionResult(0, 0, 0, [optionsError]);
+
         var ingested = 0;
         var skipped = 0;
         var deleted = 0;
@@ -73,6 +77,38 @@ public static class RagPipelineExtensions
         }
 
         return new ProviderIngestionResult(ingested, skipped, deleted, errors.ToList());
+    }
+
+    /// <summary>
+    /// Fail-fast validation of the caller-supplied options: one failure result up front
+    /// instead of one identical <see cref="RagError.ValidationFailed"/> per document.
+    /// </summary>
+    private static RagError? ValidateOptions(IngestionOptions? options)
+    {
+        if (options is null)
+            return null;
+
+        var failures = new List<Models.ValidationFailure>();
+
+        var validation = new IngestionOptionsValidator().Validate(options);
+        if (!validation.IsValid)
+        {
+            foreach (ref readonly var failureRef in validation.Failures)
+            {
+                var failure = failureRef; // explicit copy: member access on 'ref readonly' would hide one
+                failures.Add(new Models.ValidationFailure(failure.PropertyName, failure.ErrorMessage));
+            }
+        }
+
+        // ParallelOptions accepts -1 as "unbounded" — preserve that; only 0 and < -1 are invalid.
+        if (options.MaxDegreeOfParallelism == 0 || options.MaxDegreeOfParallelism < -1)
+        {
+            failures.Add(new Models.ValidationFailure(
+                nameof(IngestionOptions.MaxDegreeOfParallelism),
+                "MaxDegreeOfParallelism must be -1 (unbounded) or greater than 0."));
+        }
+
+        return failures.Count > 0 ? new RagError.ValidationFailed(failures) : null;
     }
 
     private static async Task<EntryOutcome> ProcessEntryAsync(

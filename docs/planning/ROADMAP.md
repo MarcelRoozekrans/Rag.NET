@@ -22,8 +22,10 @@ corresponding rows in features.md.
 **Plan:** `docs/plans/2026-07-24-retrieval-techniques-design.md` + `-implementation.md`
 **Completed:** 2026-07-24 (SPLADE delivered for Qdrant + in-memory; PgVector sparse storage deferred)
 
-### Phase 1.3: Ingestion Operations [status: pending]
+### Phase 1.3: Ingestion Operations [status: complete]
 **Backlog items:** Batch Ingestion Optimiser; Webhook / Event-Driven Ingestion; Embedding Versioning & Re-indexing
+**Plan:** `docs/plans/2026-07-24-ingestion-operations-design.md` + `-implementation.md`
+**Completed:** 2026-07-24 (Service Bus trigger and the CLI reindex command deferred as planned)
 
 ### Phase 1.4: Resilience & Cost Controls [status: pending]
 **Backlog items:** LLM Fallback Chain; Rate Limiting & Cost Budgeting

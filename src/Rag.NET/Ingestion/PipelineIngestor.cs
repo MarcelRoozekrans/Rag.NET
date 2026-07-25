@@ -23,6 +23,7 @@ public sealed class PipelineIngestor : IIngestor
     [Inject] public ChunkingOptions ChunkingOptions { get; set; } = null!;
     [Inject(Required = false)] public IParentChunkStore? ParentStore { get; set; }
     [Inject(Required = false)] public IRagDataManager? DataManager { get; set; }
+    [Inject(Required = false)] public IEmbeddingVersionStore? VersionStore { get; set; }
 
     private int _nextBm25DocId;
 
@@ -33,18 +34,9 @@ public sealed class PipelineIngestor : IIngestor
         IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var chunkingValidation = new ChunkingOptionsValidator().Validate(ChunkingOptions);
-        if (!chunkingValidation.IsValid)
-            return Result<IngestionResult, RagError>.Failure(
-                new RagError.ValidationFailed(MapFailures(chunkingValidation.Failures)));
-
-        var validationResult = new DocumentMetadataValidator().Validate(metadata);
-        if (!validationResult.IsValid)
-            return Result<IngestionResult, RagError>.Failure(
-                new RagError.ValidationFailed(MapFailures(validationResult.Failures)));
-
-        if (!document.CanRead)
-            return Result<IngestionResult, RagError>.Failure(new RagError.NonSeekableStream());
+        var invalid = ValidateRequest(document, metadata, options);
+        if (invalid is not null)
+            return invalid.Value;
 
         var ctx = new IngestionContext
         {
@@ -92,6 +84,35 @@ public sealed class PipelineIngestor : IIngestor
         Bm25Index.Remove(documentId);
         ParentStore?.Remove(documentId);
         DataManager?.Remove(documentId);
+        if (VersionStore is not null)
+            await VersionStore.RemoveAsync(documentId, cancellationToken).ConfigureAwait(false);
+    }
+
+    private Result<IngestionResult, RagError>? ValidateRequest(
+        Stream document, DocumentMetadata metadata, IngestionOptions? options)
+    {
+        var chunkingValidation = new ChunkingOptionsValidator().Validate(ChunkingOptions);
+        if (!chunkingValidation.IsValid)
+            return Result<IngestionResult, RagError>.Failure(
+                new RagError.ValidationFailed(MapFailures(chunkingValidation.Failures)));
+
+        var validationResult = new DocumentMetadataValidator().Validate(metadata);
+        if (!validationResult.IsValid)
+            return Result<IngestionResult, RagError>.Failure(
+                new RagError.ValidationFailed(MapFailures(validationResult.Failures)));
+
+        if (options is not null)
+        {
+            var optionsValidation = new IngestionOptionsValidator().Validate(options);
+            if (!optionsValidation.IsValid)
+                return Result<IngestionResult, RagError>.Failure(
+                    new RagError.ValidationFailed(MapFailures(optionsValidation.Failures)));
+        }
+
+        if (!document.CanRead)
+            return Result<IngestionResult, RagError>.Failure(new RagError.NonSeekableStream());
+
+        return null;
     }
 
     private static IReadOnlyList<Models.ValidationFailure> MapFailures(ReadOnlySpan<ZeroAlloc.Validation.ValidationFailure> failures)

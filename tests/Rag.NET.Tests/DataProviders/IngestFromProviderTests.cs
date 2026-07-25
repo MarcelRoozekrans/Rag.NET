@@ -404,6 +404,54 @@ public sealed class IngestFromProviderTests : IDisposable
     }
 
     [Fact]
+    public async Task IngestFromProviderAsync_MaxDegreeOfParallelismZero_FailsFastWithSingleValidationError()
+    {
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            options: new IngestionOptions { MaxDegreeOfParallelism = 0 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.Ingested);
+        var error = Assert.IsType<RagError.ValidationFailed>(Assert.Single(result.Errors));
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("MaxDegreeOfParallelism", StringComparison.OrdinalIgnoreCase));
+        // Fail-fast: the provider is never enumerated.
+        _ = provider.DidNotReceive().GetFilesAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_MaxDegreeOfParallelismMinusOne_IsAcceptedAsUnbounded()
+    {
+        var provider = MakeProvider(
+            ("id-1", "a.txt", "hello", null),
+            ("id-2", "b.txt", "world", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            options: new IngestionOptions { MaxDegreeOfParallelism = -1 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Empty(result.Errors);
+        Assert.Equal(2, result.Ingested);
+    }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_EmbedBatchSizeZero_FailsFastWithoutEnumeratingProvider()
+    {
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            options: new IngestionOptions { EmbedBatchSize = 0 },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.Ingested);
+        var error = Assert.IsType<RagError.ValidationFailed>(Assert.Single(result.Errors));
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("EmbedBatchSize", StringComparison.OrdinalIgnoreCase));
+        _ = provider.DidNotReceive().GetFilesAsync(Arg.Any<CancellationToken>());
+        _ = await _pipeline.DidNotReceive().IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
+            Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task IngestFromProviderAsync_MixedSuccessAndHttpFailure_IngestsSuccessesRecordsFailure()
     {
         var entry = new FileEntry(

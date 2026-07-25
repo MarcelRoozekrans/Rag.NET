@@ -441,13 +441,15 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 ---
 
 ### Webhook / Event-Driven Ingestion
-**Package:** `Rag.NET.DataProviders`
+**Packages:** `Rag.NET.DataProviders` (queue, processor, polling), `Rag.NET.Api` (webhook endpoint)
 
-An `IIngestionTrigger` abstraction that lets connectors push documents to the pipeline reactively rather than polling. Implementations:
+**Status:** ✅ Done — webhook endpoint + polling trigger delivered; Azure Service Bus trigger and provider-specific payload parsers (GitHub/Notion/Slack) deferred (the `IIngestionJobQueue` seam is ready for both).
 
-- `WebhookIngestionEndpoint` — a minimal ASP.NET Core endpoint that accepts connector webhook payloads (GitHub push events, Notion page updates, Slack message events) and dispatches them as ingestion jobs
-- `AzureServiceBusIngestionTrigger` — consumes messages from a Service Bus queue/topic and ingests the referenced documents
-- `BackgroundPollingTrigger` — wraps any `IFileContentProvider` in a `BackgroundService` that polls on a configurable schedule (cron expression via `NCrontab`)
+Producers push `IngestionJob`s (byte payload + metadata) onto a bounded `IIngestionJobQueue` (`ChannelIngestionJobQueue`, `BoundedChannelFullMode.Wait` backpressure, capacity via `EventDrivenIngestionOptions.QueueCapacity`); the `IngestionJobProcessor` `BackgroundService` drains it into `IIngestor.IngestAsync` with per-job failure isolation. Registered via `UseEventDrivenIngestion`. Triggers:
+
+- `MapRagNetWebhooks` (`Rag.NET.Api`) — minimal API POST endpoint verified by HMAC-SHA256 over the raw body (timing-safe, `sha256=` prefix tolerated, exempt from API-key auth); payloads parsed by the pluggable `IWebhookPayloadParser` (generic `{documentId, content, metadata?}` parser shipped)
+- `BackgroundPollingTrigger` + `UsePollingIngestion` — wraps any `IFileContentProvider` and re-runs `IngestFromProviderAsync` (hash-skip preserved) on a configurable interval; each registration is an independent poller. Interval only — cron/NCrontab deferred
+- `AzureServiceBusIngestionTrigger` — deferred (not in this phase)
 
 **Why:** The current data providers are pull-only — a scheduler or human must kick off re-ingestion. Event-driven ingestion keeps the index current without polling overhead or operator intervention.
 
@@ -870,9 +872,11 @@ A `FallbackChatClient` (implements `IChatClient`) that tries a primary client, c
 ### Embedding Versioning & Re-indexing
 **Package:** `Rag.NET` (core)
 
-Track which embedding model (name + version) produced each stored vector, persisted alongside the content hash. When the embedding model changes, detect stale vectors and re-embed only affected documents. Exposes `RagManager.ReindexStaleCllectionsAsync()` and a CLI command.
+`UseEmbeddingVersioning` registers a SQLite `IEmbeddingVersionStore`; after each successful store the ingestion pipeline stamps the document with the embedding model identity (from `EmbeddingGeneratorMetadata` or the explicit `EmbeddingVersioningOptions.ModelId` override) and vector dimension, and `DeleteAsync` removes the stamp. `pipeline.ReindexStaleAsync(...)` finds documents whose stamp differs from the current model or dimension and re-embeds them from the chunk text stored by the registered `IRagDataManager` (re-store replaces by `(DocumentId, ChunkIndex)`; sparse vectors are regenerated when a sparse encoder + sparse-capable store are present). Without a data manager, stale documents are reported for caller-driven re-ingest.
 
-**Why:** Switching embedding models (a common upgrade path) currently requires wiping and re-ingesting the entire corpus. Version tracking makes incremental re-indexing possible.
+**Why:** Switching embedding models (a common upgrade path) previously required wiping and re-ingesting the entire corpus. Version tracking makes incremental re-indexing possible.
+
+**Status:** ✅ Done (library API in Phase 1.3; the `ragnet reindex --stale` CLI command lands with the CLI tool in Milestone 3)
 
 ---
 
@@ -888,11 +892,11 @@ An `IRateLimiter` abstraction with a token-bucket implementation that throttles 
 ### Batch Ingestion Optimiser
 **Package:** `Rag.NET` (core)
 
-Parallelise the embedding and storage steps during bulk ingestion: embed chunks in configurable batches (default 100) with `Parallel.ForEachAsync`, bulk-upsert to the vector store rather than one-by-one. Reduces large-corpus ingestion time from O(n) sequential API calls to O(n/batch) parallel calls.
+Chunk-batch embedding inside a single document: `EmbeddingBehavior` slices pending chunks into batches of `IngestionOptions.EmbedBatchSize` (default 100) and embeds the batches concurrently with `Parallel.ForEachAsync`, bounded by `IngestionOptions.MaxConcurrentEmbeddingBatches` (default 2). Results reassemble by original chunk index, and documents at or below the batch size keep the original single-call path. This complements two things that already existed before this feature: document-level parallelism (`IngestFromProviderAsync` + `IngestionOptions.MaxDegreeOfParallelism`) and the single bulk upsert to the vector store in `StorageBehavior`.
 
-**Why:** Ingesting 100,000 chunks one-at-a-time can take hours. Batched parallel embedding with bulk upsert can reduce this to minutes. The current pipeline is sequential.
+**Why:** A large document embedded as one giant generator call serialises the slowest step of ingestion and can exceed embedding-API request limits. Document-level parallelism only helps across documents; chunk batching with bounded concurrency speeds up large individual documents without overwhelming embedding-service rate limits.
 
-**Status:** ✅ Done
+**Status:** ✅ Done (chunk-batch embedding added in Phase 1.3; document-level parallelism and bulk upsert pre-existed)
 
 ---
 
@@ -1045,7 +1049,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Contextual Compression | Medium | `IChatClient` or embeddings |
 | [x] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
 | [x] | Proposition Extraction Chunking | Medium | `IChatClient` |
-| [ ] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core / Service Bus |
+| [x] | Webhook / Event-Driven Ingestion | Medium | ASP.NET Core minimal API + `System.Threading.Channels` (Service Bus deferred) |
 | [ ] | OpenTelemetry Tracing & Metrics | Medium | `System.Diagnostics.ActivitySource` |
 | [ ] | Email Connector (Outlook/Exchange) | Medium | Microsoft Graph SDK |
 | [x] | PII Detection and Redaction | Medium | Regex / `IChatClient` |
@@ -1053,7 +1057,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Audit Log | Medium | `IAuditLog` + SQLite |
 | [ ] | LLM Fallback Chain | Medium | `IChatClient` decorator |
 | [ ] | Rate Limiting & Cost Budgeting | Medium | Token bucket |
-| [ ] | Batch Ingestion Optimiser | Medium | `Parallel.ForEachAsync` |
+| [x] | Batch Ingestion Optimiser | Medium | `Parallel.ForEachAsync` |
 | [ ] | Sample Applications | Medium | All packages |
 | [ ] | Rag.NET CLI Tool | Medium | `dotnet tool` |
 | [ ] | Pipeline Debugger / Trace Viewer | Medium | ASP.NET Core middleware |
@@ -1061,4 +1065,4 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | FLARE | High | `IChatClient` (self-assessment scorer; logprob scorer = extension point) |
 | [x] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store (Qdrant + in-memory; PgVector deferred) |
 | [x] | Late Chunking | High | Token-level embedding model |
-| [ ] | Embedding Versioning & Re-indexing | High | Content hash store |
+| [x] | Embedding Versioning & Re-indexing | High | SQLite version store (CLI command deferred to Milestone 3) |

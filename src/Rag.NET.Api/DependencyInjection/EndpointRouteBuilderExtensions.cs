@@ -1,4 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -6,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 using Rag.NET.Api.Contracts;
 using Rag.NET.Api.Mapping;
+using Rag.NET.Api.Webhooks;
 using Rag.NET.Mediator.Requests;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -78,6 +81,81 @@ public static class EndpointRouteBuilderExtensions
         });
 
         return app;
+    }
+
+    /// <summary>
+    /// Maps POST <c>{WebhookOptions.RoutePrefix}/ingest</c>: an HMAC-SHA256-verified webhook
+    /// endpoint that parses the payload via the registered <see cref="IWebhookPayloadParser"/>
+    /// and enqueues the resulting jobs on the <see cref="IIngestionJobQueue"/>. Requires
+    /// <c>AddRagNetWebhooks</c>. The route is exempt from API-key auth — the signature over
+    /// the raw body replaces the key. Responses: 202 Accepted <c>{ enqueued: n }</c>;
+    /// 401 missing/invalid signature; 400 invalid JSON or rejected payload; 503 when no
+    /// <see cref="IIngestionJobQueue"/> is registered.
+    /// </summary>
+    public static IEndpointRouteBuilder MapRagNetWebhooks(this IEndpointRouteBuilder app)
+    {
+        var options = app.ServiceProvider.GetService<WebhookOptions>()
+            ?? throw new InvalidOperationException(
+                "WebhookOptions not registered. Call services.AddRagNetWebhooks(o => ...) before MapRagNetWebhooks().");
+        var prefix = options.RoutePrefix.TrimEnd('/');
+
+        app.MapPost($"{prefix}/ingest",
+            (HttpContext ctx, CancellationToken ct) => HandleWebhookIngestAsync(ctx, options, ct));
+
+        return app;
+    }
+
+    private static async Task<IResult> HandleWebhookIngestAsync(
+        HttpContext ctx, WebhookOptions options, CancellationToken ct)
+    {
+        byte[] body;
+        using (var buffer = new MemoryStream())
+        {
+            await ctx.Request.Body.CopyToAsync(buffer, ct).ConfigureAwait(false);
+            body = buffer.ToArray();
+        }
+
+        ctx.Request.Headers.TryGetValue(options.SignatureHeader, out var signature);
+        if (!WebhookSignatureValidator.IsValid(body, signature.ToString(), options.Secret))
+            return Results.Unauthorized();
+
+        if (!TryParseJobs(ctx, body, out var jobs))
+        {
+            return Results.BadRequest(new
+            {
+                error = "Invalid payload: body must be valid JSON matching { documentId, content, metadata? } (single object or array) with non-empty documentId and content.",
+            });
+        }
+
+        var queue = ctx.RequestServices.GetService<IIngestionJobQueue>();
+        if (queue is null)
+        {
+            return Results.Problem(
+                detail: "No IIngestionJobQueue is registered — accepted webhook jobs would never be processed. Call UseEventDrivenIngestion() on the RAG builder (Rag.NET.DataProviders package).",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        foreach (var job in jobs)
+            await queue.EnqueueAsync(job, ct).ConfigureAwait(false);
+
+        return Results.Accepted(value: new { enqueued = jobs.Count });
+    }
+
+    /// <summary>Returns <see langword="false"/> for invalid JSON or a parser-rejected payload (both → 400).</summary>
+    private static bool TryParseJobs(
+        HttpContext ctx, byte[] body, [NotNullWhen(true)] out IReadOnlyList<IngestionJob>? jobs)
+    {
+        jobs = null;
+        var parser = ctx.RequestServices.GetRequiredService<IWebhookPayloadParser>();
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return parser.TryParse(document.RootElement, out jobs);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static IResult MapRagError(RagError err) => err switch

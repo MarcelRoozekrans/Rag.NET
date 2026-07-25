@@ -42,4 +42,44 @@ public class PipelineIngestorValidationTests
 
         Assert.True(result.IsSuccess);
     }
+
+    [Fact]
+    public async Task IngestAsync_EmbedBatchSizeZero_ReturnsValidationFailed()
+    {
+        var sut = CreateSut();
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "file.txt" };
+        var options = new IngestionOptions { EmbedBatchSize = 0 };
+
+        var result = await sut.IngestAsync(new MemoryStream([1]), metadata, options, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("EmbedBatchSize", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task IngestAsync_MaxConcurrentEmbeddingBatchesZero_ReturnsValidationFailed()
+    {
+        var sut = CreateSut();
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "file.txt" };
+        var options = new IngestionOptions { MaxConcurrentEmbeddingBatches = 0 };
+
+        var result = await sut.IngestAsync(new MemoryStream([1]), metadata, options, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("MaxConcurrentEmbeddingBatches", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task IngestAsync_ValidBatchOptions_Succeeds()
+    {
+        var sut = CreateSut();
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-1"), FileName = "file.txt" };
+        var options = new IngestionOptions { EmbedBatchSize = 10, MaxConcurrentEmbeddingBatches = 4 };
+
+        var result = await sut.IngestAsync(new MemoryStream([1]), metadata, options, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsSuccess);
+    }
 }

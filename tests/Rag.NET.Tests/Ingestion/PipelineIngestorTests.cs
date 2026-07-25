@@ -16,6 +16,7 @@ public class PipelineIngestorTests
         IBm25Index? bm25 = null,
         IParentChunkStore? parentStore = null,
         IRagDataManager? dataManager = null,
+        IEmbeddingVersionStore? versionStore = null,
         Pipeline<IngestionContext, IngestionResult>? pipeline = null) =>
         new()
         {
@@ -27,6 +28,7 @@ public class PipelineIngestorTests
             ChunkingOptions = new ChunkingOptions(),
             ParentStore = parentStore,
             DataManager = dataManager,
+            VersionStore = versionStore,
         };
 
     [Fact]
@@ -69,6 +71,18 @@ public class PipelineIngestorTests
         bm25.Received(1).Remove("doc-1");
         parentStore.Received(1).Remove("doc-1");
         dataManager.Received(1).Remove("doc-1");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RemovesEmbeddingVersionStamp()
+    {
+        var versionStore = Substitute.For<IEmbeddingVersionStore>();
+        var sut = CreateSut(versionStore: versionStore);
+        var ct = TestContext.Current.CancellationToken;
+
+        await sut.DeleteAsync("doc-1", ct);
+
+        await versionStore.Received(1).RemoveAsync("doc-1", ct);
     }
 
     [Fact]
