@@ -1036,7 +1036,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Structured Logging Enrichment | Low | None |
 | [x] | Sliding Window Chunking with Overlap | Low | None |
 | [x] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
-| [ ] | EPUB Parser | Low | `VersOne.Epub` |
+| [x] | EPUB Parser | Low | `VersOne.Epub` |
 | [ ] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
 | [ ] | Linear Issue Tracker | Low | Linear GraphQL API |
 | [ ] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |

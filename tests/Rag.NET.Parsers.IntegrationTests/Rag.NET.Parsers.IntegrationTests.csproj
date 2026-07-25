@@ -9,6 +9,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Word\Rag.NET.Parsers.Word.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Epub\Rag.NET.Parsers.Epub.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Excel\Rag.NET.Parsers.Excel.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.PowerPoint\Rag.NET.Parsers.PowerPoint.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />

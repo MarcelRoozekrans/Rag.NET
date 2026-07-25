@@ -2,6 +2,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using Rag.NET.Models;
+using Rag.NET.Parsers.Epub;
 using Rag.NET.Parsers.Excel;
 using Rag.NET.Parsers.Html;
 using Rag.NET.Parsers.Pdf;
@@ -36,6 +37,29 @@ public sealed class DocumentParserTests
         Assert.NotEmpty(sections);
         Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
         Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
+    }
+
+    // ── EPUB ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EpubParser_ParsesEmbeddedEpubFile_ReturnsNonEmptySections()
+    {
+        var sut = new EpubDocumentParser(new HtmlDocumentParser());
+        var meta = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("epub-1"),
+            FileName = "sample.epub",
+            ContentType = "application/epub+zip",
+        };
+
+        await using var stream = OpenResource("sample.epub");
+        var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(sections);
+        Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+        Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
+        Assert.Contains(sections, s => s.Text.Contains("Second Chapter", StringComparison.Ordinal));
     }
 
     // ── PDF ──────────────────────────────────────────────────────────────────
