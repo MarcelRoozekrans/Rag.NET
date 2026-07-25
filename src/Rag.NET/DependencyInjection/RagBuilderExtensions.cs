@@ -194,4 +194,87 @@ public static class RagBuilderExtensions
         });
         return builder;
     }
+
+    /// <summary>Service key of the chat-surface <see cref="IRateLimiter"/> registered by <c>UseRateLimiting</c>.</summary>
+    internal const string ChatRateLimiterKey = "ragnet.ratelimit.chat";
+
+    /// <summary>Service key of the embedding-surface <see cref="IRateLimiter"/> registered by <c>UseRateLimiting</c>.</summary>
+    internal const string EmbeddingRateLimiterKey = "ragnet.ratelimit.embedding";
+
+    /// <summary>
+    /// Wraps the registered <see cref="IChatClient"/> and/or
+    /// <c>IEmbeddingGenerator&lt;string, Embedding&lt;float&gt;&gt;</c> with rate-limiting
+    /// decorators backed by a token bucket: calls over the configured per-minute budget
+    /// wait for a permit (they are only rejected when
+    /// <see cref="RateLimitingOptions.MaxQueuedRequests"/> is set and the wait queue is full).
+    /// </summary>
+    /// <remarks>
+    /// Each configured surface gets its own independent limiter. A streaming chat call
+    /// acquires one permit before the stream starts; an embedding call acquires one permit
+    /// per call regardless of how many values it embeds. Ordering matters: this extension
+    /// decorates whatever is registered when it runs, so register the underlying client
+    /// (provider registration, <c>UseFallbackChain</c>, …) before calling
+    /// <c>UseRateLimiting</c> — a configured surface with no underlying registration fails
+    /// at registration time.
+    /// </remarks>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="configure">
+    /// Configures the <see cref="RateLimitingOptions"/>; at least one surface budget is required.
+    /// </param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when no surface budget is configured, or when a configured surface has no
+    /// underlying registration to decorate.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when a configured value is not positive.</exception>
+    public static TBuilder UseRateLimiting<TBuilder>(this TBuilder builder, Action<RateLimitingOptions> configure)
+        where TBuilder : IRagBuilder
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var options = new RateLimitingOptions();
+        configure(options);
+        ValidateRateLimitingOptions(options, nameof(configure));
+        int? maxQueuedRequests = options.MaxQueuedRequests;
+
+        if (options.ChatRequestsPerMinute is { } chatRpm)
+        {
+            builder.Services.AddKeyedSingleton<IRateLimiter>(ChatRateLimiterKey,
+                (_, _) => new TokenBucketRateLimiterAdapter(chatRpm, "chat", maxQueuedRequests));
+            ServiceDecorationHelper.Decorate<IChatClient>(builder.Services, (inner, sp) =>
+                new RateLimitedChatClient(inner, sp.GetRequiredKeyedService<IRateLimiter>(ChatRateLimiterKey)));
+        }
+
+        if (options.EmbeddingRequestsPerMinute is { } embeddingRpm)
+        {
+            builder.Services.AddKeyedSingleton<IRateLimiter>(EmbeddingRateLimiterKey,
+                (_, _) => new TokenBucketRateLimiterAdapter(embeddingRpm, "embedding", maxQueuedRequests));
+            ServiceDecorationHelper.Decorate<IEmbeddingGenerator<string, Embedding<float>>>(builder.Services, (inner, sp) =>
+                new RateLimitedEmbeddingGenerator(inner, sp.GetRequiredKeyedService<IRateLimiter>(EmbeddingRateLimiterKey)));
+        }
+
+        return builder;
+    }
+
+    private static void ValidateRateLimitingOptions(RateLimitingOptions options, string paramName)
+    {
+        if (options.ChatRequestsPerMinute is null && options.EmbeddingRequestsPerMinute is null)
+        {
+            throw new InvalidOperationException(
+                "UseRateLimiting requires at least one surface budget: set RateLimitingOptions.ChatRequestsPerMinute " +
+                "and/or RateLimitingOptions.EmbeddingRequestsPerMinute.");
+        }
+
+        ThrowIfNonPositive(options.ChatRequestsPerMinute, nameof(RateLimitingOptions.ChatRequestsPerMinute), paramName);
+        ThrowIfNonPositive(options.EmbeddingRequestsPerMinute, nameof(RateLimitingOptions.EmbeddingRequestsPerMinute), paramName);
+        ThrowIfNonPositive(options.MaxQueuedRequests, nameof(RateLimitingOptions.MaxQueuedRequests), paramName);
+    }
+
+    private static void ThrowIfNonPositive(int? value, string propertyName, string paramName)
+    {
+        if (value is <= 0)
+        {
+            throw new ArgumentOutOfRangeException(paramName, value,
+                $"RateLimitingOptions.{propertyName} must be greater than zero when set.");
+        }
+    }
 }
