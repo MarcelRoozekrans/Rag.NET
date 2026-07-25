@@ -1,8 +1,11 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.Models.Options;
 using Rag.NET.QueryTechniques.ContextualCompression;
+using Rag.NET.Resilience;
 using Rag.NET.Retrieval.Behaviors;
 using Rag.NET.Storage;
 
@@ -123,6 +126,62 @@ public static class RagBuilderExtensions
         builder.Services.TryAddSingleton(opts);
         builder.Services.TryAddSingleton<IEmbeddingVersionStore>(
             sp => new SqliteEmbeddingVersionStore(sp.GetRequiredService<EmbeddingVersioningOptions>().DatabasePath));
+        return builder;
+    }
+
+    /// <summary>
+    /// Registers a <see cref="FallbackChatClient"/> as the <see cref="IChatClient"/>:
+    /// calls try the configured clients in order, falling through to the next on transient
+    /// failures (HTTP 429/503, timeouts, rate-limit/unavailable error text) and — when
+    /// <see cref="FallbackChainOptions.PerClientTimeout"/> is set — when a client exceeds
+    /// the per-attempt timeout. Non-transient errors propagate immediately.
+    /// </summary>
+    /// <remarks>
+    /// This registration supersedes any prior <see cref="IChatClient"/> registration
+    /// (standard last-wins container semantics, same convention as
+    /// <c>UseFederatedSearch</c>). Clients are configured as factories so each
+    /// per-provider client can be built from the service provider without the chain
+    /// wrapping itself — do not resolve <see cref="IChatClient"/> inside a factory:
+    /// that resolves the chain recursively. Construct the provider client directly, e.g.
+    /// <c>o.AddClient(sp =&gt; new OpenAIChatClient(sp.GetRequiredService&lt;OpenAIClient&gt;(), "gpt-4o"))</c>.
+    /// </remarks>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="configure">
+    /// Configures the <see cref="FallbackChainOptions"/>; at least 2 clients are required.
+    /// </param>
+    /// <exception cref="InvalidOperationException">Thrown when fewer than 2 clients are configured.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <see cref="FallbackChainOptions.PerClientTimeout"/> is set but not positive.
+    /// </exception>
+    public static TBuilder UseFallbackChain<TBuilder>(this TBuilder builder, Action<FallbackChainOptions> configure)
+        where TBuilder : IRagBuilder
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var options = new FallbackChainOptions();
+        configure(options);
+
+        if (options.Clients.Count < 2)
+        {
+            throw new InvalidOperationException(
+                "UseFallbackChain requires at least 2 clients; add them via FallbackChainOptions.AddClient. " +
+                "With a single client there is nothing to fall back to — register it as IChatClient directly.");
+        }
+
+        if (options.PerClientTimeout is { } timeout && timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(configure), timeout,
+                "FallbackChainOptions.PerClientTimeout must be greater than zero when set.");
+        }
+
+        builder.Services.AddSingleton<IChatClient>(sp =>
+        {
+            var chain = new List<IChatClient>(options.Clients.Count);
+            foreach (var factory in options.Clients)
+                chain.Add(factory(sp));
+
+            return new FallbackChatClient(chain, sp.GetService<ILogger<FallbackChatClient>>(), options.PerClientTimeout);
+        });
         return builder;
     }
 }
