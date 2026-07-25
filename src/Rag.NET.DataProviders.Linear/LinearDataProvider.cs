@@ -26,6 +26,11 @@ namespace Rag.NET.DataProviders.Linear;
 /// GraphQL-level <c>errors</c> become <see cref="RagError.HttpFailed"/> failures naming
 /// the error messages.
 /// </para>
+/// <para>
+/// Watermark state (<see cref="GetDeltaToken"/>) is per-instance and not safe under
+/// concurrent <c>IngestFromProviderAsync</c> calls against the same registration — the
+/// documented run-then-persist flow is assumed.
+/// </para>
 /// </summary>
 public sealed class LinearDataProvider : FileContentProviderBase
 {
