@@ -1,0 +1,22 @@
+{
+  "Guid": "d4e5f6a7-b8c9-0123-def4-56789abcdef0",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/graphql",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "POST" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"data\":{\"issues\":{\"nodes\":[{\"identifier\":\"ENG-1\",\"title\":\"Fix login bug\",\"description\":\"Users cannot log in with SSO.\",\"updatedAt\":\"2026-07-01T12:00:00.000Z\",\"url\":\"https://linear.app/acme/issue/ENG-1\",\"state\":{\"name\":\"In Progress\",\"type\":\"started\"},\"project\":{\"name\":\"Auth\"},\"assignee\":{\"name\":\"Alice\"},\"team\":{\"key\":\"ENG\"},\"comments\":{\"nodes\":[{\"body\":\"Reproduced on staging.\",\"createdAt\":\"2026-07-01T10:30:00.000Z\",\"user\":{\"name\":\"Bob\"}}]}},{\"identifier\":\"ENG-2\",\"title\":\"Add audit log\",\"description\":null,\"updatedAt\":\"2026-07-02T08:00:00.000Z\",\"url\":\"https://linear.app/acme/issue/ENG-2\",\"state\":{\"name\":\"Todo\",\"type\":\"unstarted\"},\"project\":null,\"assignee\":null,\"team\":{\"key\":\"ENG\"},\"comments\":{\"nodes\":[]}}],\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null}}}}"
+  }
+}

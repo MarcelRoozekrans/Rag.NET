@@ -88,6 +88,7 @@ var tokenProvider = new OAuthClientCredentialsTokenProvider(
 | Microsoft Teams | `Rag.NET.DataProviders.MicrosoftTeams` | OAuth2 client credentials | Not yet supported | Graph SDK; messages exported as HTML |
 | Gmail | `Rag.NET.DataProviders.Gmail` | OAuth2 (`SaslMechanismOAuth2`) | IMAP UniqueId watermark | MailKit IMAP; emails exported as plain text |
 | Exchange / Outlook | `Rag.NET.DataProviders.Exchange` | `ClientSecretCredential` (tenant/client/secret) | `receivedDateTime` watermark | Graph SDK; emits raw RFC 822 `.eml` — requires `AddEmailParser()` |
+| Linear | `Rag.NET.DataProviders.Linear` | Personal API key (bare `Authorization` header) | `updatedAt` watermark | GraphQL API; issues + comments exported as Markdown |
 | GitLab | `Rag.NET.DataProviders.GitLab` | PAT (`PRIVATE-TOKEN` header) | Commit SHA compare | Repository files; same delta pattern as GitHub |
 | Bitbucket | `Rag.NET.DataProviders.Bitbucket` | App Password (Basic Auth) | Commit hash diffstat | Repository files via REST API |
 | Zendesk (Tickets) | `Rag.NET.DataProviders.Zendesk` | API Token (Basic Auth `email/token:key`) | Incremental cursor (`start_time`) | Tickets exported as HTML |
@@ -400,6 +401,51 @@ if (result.Errors.Count == 0 && provider.GetDeltaToken() is { } token)
 > v1 — the `receivedDateTime` watermark plus the hash-store ETag skip covers incremental
 > ingestion; same-timestamp duplicates on the next run are skipped by content hash.
 
+### Linear
+
+The Linear connector is the repo's first **GraphQL** connector: it issues a single paginated
+`issues` query against `https://api.linear.app/graphql` (POST with a typed request body via
+the existing ZeroAlloc.Rest pattern — no dedicated GraphQL client dependency). Each issue is
+emitted as a Markdown entry (`{identifier} {title}.md`) containing the title heading, a
+state/project/assignee line, the description, and a `## Comments` section, with
+team/state/project/url metadata.
+
+```csharp
+services.AddLinearDataProvider(
+    apiKey: "lin_api_...",                        // personal API key (Settings → API)
+    configure: opts =>
+    {
+        opts.TeamKeys   = ["ENG", "OPS"];         // null = all teams
+        opts.States     = ["started", "completed"]; // state *types*; null = all
+        opts.PageSize   = 50;                     // issues per GraphQL page (default)
+        opts.DeltaToken = settings.LinearDeltaToken; // updatedAt watermark; null on first run
+    });
+```
+
+**Authentication:** Linear personal API keys are sent as a **bare** `Authorization` header —
+`Authorization: lin_api_...` with **no `Bearer` prefix** (`Bearer` is only used for OAuth2
+access tokens).
+
+**State filtering** uses Linear's workflow state *types* (categories), not display names:
+`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled` — note the American
+spelling of `canceled`. Invalid values throw at registration.
+
+**Watermark:** the connector filters with `updatedAt > DeltaToken` and tracks the max
+`updatedAt` seen. Because Linear does not document the sort direction of
+`orderBy: updatedAt`, `GetDeltaToken()` only returns a token after a **complete** traversal
+(all pages consumed without a failure); a run that failed mid-pagination returns `null` —
+keep the previous token in that case:
+
+```csharp
+var provider = (LinearDataProvider)sp.GetRequiredService<IFileContentProvider>();
+var result   = await pipeline.IngestFromProviderAsync(provider, new ProviderId("linear"), hashStore);
+
+if (result.Errors.Count == 0 && provider.GetDeltaToken() is { } token)
+    settings.LinearDeltaToken = token;
+```
+
+> **`baseUrl`** (optional) — overrides the default base URL (`https://api.linear.app`). Useful when routing through a proxy or pointing at a local mock during testing.
+
 ### GitLab
 
 ```csharp
@@ -549,6 +595,7 @@ services.AddSharePointDataProvider(tenantId, clientId, clientSecret, siteId, dri
 | Microsoft Teams | Not yet supported | Delta ingestion is not yet implemented for this connector |
 | Gmail | IMAP UniqueId (string) | Messages with a UID greater than the watermark are fetched |
 | Exchange / Outlook | ISO 8601 `receivedDateTime` (string) | Applied as a `receivedDateTime ge` filter; `GetDeltaToken()` returns the max value seen, the truncation point when `MaxResults` fired in the last folder (backlogs drain per run), or `null` when the run failed or was truncated earlier (keep the previous token) |
+| Linear | ISO 8601 `updatedAt` (string) | Applied as an `updatedAt >` GraphQL filter; `GetDeltaToken()` returns the max value seen after a complete traversal, or `null` when the run failed mid-pagination (keep the previous token) |
 | GitLab | Commit SHA (string) | HEAD commit SHA at last successful ingest; compare API returns changed files |
 | Bitbucket | Commit hash (string) | HEAD commit hash at last successful ingest; diffstat API returns changed files |
 | Zendesk | Unix epoch (string) | Passed as `start_time` to the incremental export API |

@@ -37,8 +37,10 @@ corresponding rows in features.md.
 **Plan:** `docs/plans/2026-07-25-document-parsers-design.md` + `-implementation.md`
 **Completed:** 2026-07-25 (OCR = Tesseract behind the `EnableOcr` compile gate; Azure Document Intelligence and PDF rasterization deferred)
 
-### Phase 1.6: Connectors [status: pending]
+### Phase 1.6: Connectors [status: complete]
 **Backlog items:** Email Connector (Outlook/Exchange); Linear Issue Tracker
+**Plan:** `docs/plans/2026-07-25-connectors-design.md` + `-implementation.md`
+**Completed:** 2026-07-25
 
 ### Phase 1.7: Vector Stores [status: pending]
 **Backlog items:** Weaviate Vector Store; Chroma Vector Store; Pinecone Vector Store
