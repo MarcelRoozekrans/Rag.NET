@@ -405,7 +405,8 @@ client dependency — model it as a single POST with a typed body. The Linear co
 
 1. **Envelope record** — one `[Post("/graphql")]` method taking a
    `record GraphQlRequest(string Query, TVariables Variables)` body; the shared
-   `SystemTextJsonSerializer` (camelCase) serializes records cleanly.
+   `SystemTextJsonSerializer` (camelCase) serializes records cleanly — pin every property
+   name with `[JsonPropertyName]` as the Linear DTOs do, rather than relying on the casing policy.
 2. **Typed variables, omitted nulls** — model variables/filters as records with
    `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]` on optional members:
    an *omitted* GraphQL filter field means "no constraint", an explicit `null` does not.

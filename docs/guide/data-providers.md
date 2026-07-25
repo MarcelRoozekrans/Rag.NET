@@ -408,7 +408,7 @@ The Linear connector is the repo's first **GraphQL** connector: it issues a sing
 the existing ZeroAlloc.Rest pattern — no dedicated GraphQL client dependency). Each issue is
 emitted as a Markdown entry (`{identifier} {title}.md`) containing the title heading, a
 state/project/assignee line, the description, and a `## Comments` section, with
-team/state/project/url metadata.
+team/state/state_type/project/url metadata (plus `comments_truncated` when an issue's comments exceed the fetched page — see Comments below).
 
 ```csharp
 services.AddLinearDataProvider(
