@@ -12,9 +12,15 @@ namespace Rag.NET.Parsers.Pdf.TableExtraction;
 /// column empty (ragged header tolerance); anything less consistent, or a run that looks
 /// like multi-column prose (see <see cref="PassesPlausibilityGuards"/>), bails to prose.
 ///
-/// Known limitations (documented for the parser guide):
+/// Known limitations (documented for the parser guide) — the guards prefer conservative
+/// false negatives (prose, today's behavior) over false-positive tables:
 /// - The first detected row is assumed to be the header when rendering Markdown.
 /// - Extraction is per page: a table spanning a page break is emitted as two tables.
+/// - Column gutters narrower than 1.5x the median word height are not detected
+///   (very tight tables degrade to prose).
+/// - Cells averaging more than 4 words degrade to prose (e.g. long description columns).
+/// - A 2- or 3-column run of 8+ rows spanning more than half the page's rows is treated
+///   as a multi-column page layout: whole-page 2/3-column tables are missed by design.
 /// </summary>
 internal static class PdfTableExtractor
 {
@@ -41,10 +47,21 @@ internal static class PdfTableExtractor
     private const double MaxAverageWordsPerCell = 4.0;
 
     /// <summary>
-    /// Prose-layout guard: a 2-column candidate spanning more than this fraction of the
-    /// page's rows is treated as a two-column page layout (e.g. academic paper), not a table.
+    /// Layout-dominance guard: a maximal run with at most <see cref="MaxLayoutColumns"/>
+    /// columns, at least <see cref="MinLayoutRunRows"/> rows, and spanning more than this
+    /// fraction of the page's rows is a multi-column page layout (academic two-column,
+    /// newsletter three-column), not a table — the whole run stays prose.
     /// </summary>
-    private const double TwoColumnDominanceFraction = 0.5;
+    private const double LayoutDominanceFraction = 0.5;
+
+    /// <summary>Column-count ceiling for the layout-dominance guard (2-3 column page layouts).</summary>
+    private const int MaxLayoutColumns = 3;
+
+    /// <summary>
+    /// Row floor for the layout-dominance guard: shorter runs are plausible tables even when
+    /// they span most of a page's rows (a small grid on an otherwise sparse page).
+    /// </summary>
+    private const int MinLayoutRunRows = 8;
 
     internal static (IReadOnlyList<DetectedTable> Tables, IReadOnlyList<WordBox> ProseWords) Extract(
         IReadOnlyList<WordBox> words, PdfParserOptions options)
@@ -163,6 +180,13 @@ internal static class PdfTableExtractor
                 end++;
             }
 
+            if (IsLayoutDominated(table, end - start + 1, rows.Count))
+            {
+                // Skip the entire run unconsumed (its sub-windows are equally layout prose).
+                start = end + 1;
+                continue;
+            }
+
             tables.Add(table);
             Array.Fill(consumed, true, start, end - start + 1);
             start = end + 1;
@@ -228,11 +252,10 @@ internal static class PdfTableExtractor
     }
 
     /// <summary>
-    /// Guards against multi-column prose layouts masquerading as tables:
-    /// (a) genuine table cells are short — bail when the average words per non-empty cell
-    ///     exceeds <see cref="MaxAverageWordsPerCell"/> (prose half-lines run longer);
-    /// (b) a 2-column candidate spanning more than <see cref="TwoColumnDominanceFraction"/>
-    ///     of the page's rows is a two-column page layout, not a table.
+    /// Per-window guard against multi-column prose masquerading as a table: genuine table
+    /// cells are short — bail when the average words per non-empty cell exceeds
+    /// <see cref="MaxAverageWordsPerCell"/> (prose half-lines run longer). The complementary
+    /// layout-dominance guard runs post-extension in <see cref="DetectTables"/>.
     /// </summary>
     private static bool PassesPlausibilityGuards(
         List<List<WordBox>> rows, int start, int end, List<IReadOnlyList<string>> cells)
@@ -256,15 +279,22 @@ internal static class PdfTableExtractor
             }
         }
 
-        if (nonEmptyCells == 0 || (double)totalWords / nonEmptyCells > MaxAverageWordsPerCell)
-        {
-            return false;
-        }
-
-        int columnCount = cells[0].Count;
-        int runRows = end - start + 1;
-        return columnCount != 2 || runRows <= rows.Count * TwoColumnDominanceFraction;
+        return nonEmptyCells > 0 && (double)totalWords / nonEmptyCells <= MaxAverageWordsPerCell;
     }
+
+    /// <summary>
+    /// Layout-dominance guard, applied to the MAXIMAL run (not per window — a per-window
+    /// check would merely cap the run and still emit a sub-run of the layout as a table):
+    /// a run with at most <see cref="MaxLayoutColumns"/> columns that is at least
+    /// <see cref="MinLayoutRunRows"/> rows long and spans more than
+    /// <see cref="LayoutDominanceFraction"/> of the page's rows is a multi-column page
+    /// layout; the whole run is skipped as prose. The row floor keeps small genuine tables
+    /// (which may well be 100% of a sparse page's rows) detectable.
+    /// </summary>
+    private static bool IsLayoutDominated(DetectedTable table, int runRows, int totalRows) =>
+        table.Rows[0].Count <= MaxLayoutColumns
+        && runRows >= MinLayoutRunRows
+        && runRows > totalRows * LayoutDominanceFraction;
 
     // ── Gap geometry ─────────────────────────────────────────────────────────
 

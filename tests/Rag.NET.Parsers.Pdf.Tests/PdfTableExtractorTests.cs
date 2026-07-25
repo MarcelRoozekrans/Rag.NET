@@ -251,6 +251,43 @@ public class PdfTableExtractorTests
     }
 
     [Fact]
+    public void ThreeColumnPageLayout_NewsletterStyle_NoTables()
+    {
+        // Reviewer probe (c): a 20-line newsletter-style THREE-column layout (~165pt
+        // columns at x = 0/190/380, 3 words per column-line, cyclic seeded spacing).
+        // At 3 words per "cell" this slips under the words-per-cell guard, so the
+        // layout-dominance guard must reject it: a <= 3-column maximal run of 8+ rows
+        // spanning more than half the page's rows is a page layout — the WHOLE run stays
+        // prose (a per-window cap would still emit a sub-run as a false table).
+        double[] widths = [44, 52, 47, 55, 41];
+        double[] gaps = [5, 7, 4, 6, 8];
+        var words = new List<WordBox>();
+        for (int line = 0; line < 20; line++)
+        {
+            AddThirdLine(words, line, startX: 0, widths, gaps);
+            AddThirdLine(words, line, startX: 190, widths, gaps);
+            AddThirdLine(words, line, startX: 380, widths, gaps);
+        }
+
+        var (tables, prose) = PdfTableExtractor.Extract(words, new PdfParserOptions());
+
+        Assert.Empty(tables);
+        Assert.Equal(words.Count, prose.Count);
+    }
+
+    private static void AddThirdLine(
+        List<WordBox> words, int line, double startX, double[] widths, double[] gaps)
+    {
+        double x = startX;
+        for (int i = 0; i < 3; i++)
+        {
+            double width = widths[(line + i) % widths.Length];
+            words.Add(W($"w{line}_{startX}_{i}", x, line * 20, width));
+            x += width + gaps[(line + i) % gaps.Length];
+        }
+    }
+
+    [Fact]
     public void InconsistentColumns_BailsToProse()
     {
         // Rows disagree on column count: two-word rows (cols 1+3) dominate around a single
