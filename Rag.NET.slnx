@@ -81,6 +81,7 @@
     <Project Path="tests/Rag.NET.Parsers.Epub.Tests/Rag.NET.Parsers.Epub.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Excel.Tests/Rag.NET.Parsers.Excel.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.IntegrationTests/Rag.NET.Parsers.IntegrationTests.csproj" />
+    <Project Path="tests/Rag.NET.Parsers.Pdf.Tests/Rag.NET.Parsers.Pdf.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.PowerPoint.Tests/Rag.NET.Parsers.PowerPoint.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.GitHub.Tests/Rag.NET.DataProviders.GitHub.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Tests/Rag.NET.DataProviders.Tests.csproj" />
