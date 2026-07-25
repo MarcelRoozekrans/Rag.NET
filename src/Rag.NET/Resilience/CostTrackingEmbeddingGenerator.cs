@@ -15,8 +15,10 @@ namespace Rag.NET.Resilience;
 /// <remarks>
 /// Embedding providers rarely report usage, so input tokens are always estimated with the
 /// tiktoken cl100k tokenizer over the input values; output tokens are 0 (embeddings have
-/// no completion side). The gate is pre-call, so a single in-flight call can overshoot the
-/// limit by its own cost. Ledger read/write failures degrade to warnings — they never
+/// no completion side). The gate is pre-call: every call admitted before the limit is
+/// reached completes, so the overshoot can be several in-flight calls' worth under
+/// concurrency — parallel ingestion routinely has N embedding batches in flight.
+/// Ledger read/write failures degrade to warnings — they never
 /// block or fail calls. The decorator owns neither the inner generator nor the ledger, so
 /// <see cref="Dispose"/> disposes nothing.
 /// </remarks>
@@ -69,10 +71,13 @@ public sealed class CostTrackingEmbeddingGenerator : IEmbeddingGenerator<string,
     }
 
     /// <inheritdoc/>
-    public object? GetService(Type serviceType, object? serviceKey = null) =>
-        serviceKey is null && serviceType?.IsInstanceOfType(this) == true
+    public object? GetService(Type serviceType, object? serviceKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(serviceType);
+        return serviceKey is null && serviceType.IsInstanceOfType(this)
             ? this
-            : _inner.GetService(serviceType!, serviceKey);
+            : _inner.GetService(serviceType, serviceKey);
+    }
 
     /// <inheritdoc/>
     public void Dispose() { /* inner generator and ledger are externally owned */ }

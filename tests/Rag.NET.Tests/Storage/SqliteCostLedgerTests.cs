@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Rag.NET.Models;
 using Rag.NET.Storage;
 using Xunit;
@@ -79,6 +80,32 @@ public sealed class SqliteCostLedgerTests : IDisposable
 
         await sut.RecordAsync(Entry(CostKind.Chat, 10, 5, 0.40m), TestContext.Current.CancellationToken);
         Assert.Equal(0.40m, await sut.GetSpendAsync(CostWindow.Month, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task RecordAsync_ConcurrentWritesSameBucket_AccumulateExactly()
+    {
+        // Pins the BEGIN IMMEDIATE read-modify-write: interleaved writers must neither lose
+        // an update nor drift the decimal total.
+        var sut = CreateLedger(new FakeUtcTimeProvider(s_midJuly));
+
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, 20),
+            TestContext.Current.CancellationToken,
+            async (_, ct) => await sut.RecordAsync(Entry(CostKind.Chat, 3, 2, 0.001m), ct));
+
+        Assert.Equal(0.020m, await sut.GetSpendAsync(CostWindow.Day, TestContext.Current.CancellationToken));
+
+        // Token counters (SQL-accumulated) must be exact too — read the row directly.
+        using var conn = new SqliteConnection($"Data Source={_dbPath};Pooling=False");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT tokens_in, tokens_out FROM cost_ledger WHERE kind = 'Chat'";
+        using var reader = cmd.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal(60, reader.GetInt64(0));
+        Assert.Equal(40, reader.GetInt64(1));
+        Assert.False(reader.Read()); // exactly one accumulated row
     }
 
     // ── Precision ────────────────────────────────────────────────────────────

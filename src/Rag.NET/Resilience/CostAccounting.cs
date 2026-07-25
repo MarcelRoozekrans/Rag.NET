@@ -93,12 +93,13 @@ internal static class CostAccounting
         CancellationToken cancellationToken)
     {
         // Telemetry first: the counters must not silently drop usage because the ledger is down.
-        var kindTag = new KeyValuePair<string, object?>("kind", entry.Kind == CostKind.Chat ? "chat" : "embedding");
+        // "surface" is the unified chat|embedding tag name shared with ragnet.ratelimit.wait.duration.
+        var surfaceTag = new KeyValuePair<string, object?>("surface", entry.Kind == CostKind.Chat ? "chat" : "embedding");
         RagTelemetry.LlmTokens.Add(entry.InputTokens,
-            new TagList { kindTag, new KeyValuePair<string, object?>("direction", "in") });
+            new TagList { surfaceTag, new KeyValuePair<string, object?>("direction", "in") });
         RagTelemetry.LlmTokens.Add(entry.OutputTokens,
-            new TagList { kindTag, new KeyValuePair<string, object?>("direction", "out") });
-        RagTelemetry.LlmCost.Add((double)entry.Cost, new TagList { kindTag });
+            new TagList { surfaceTag, new KeyValuePair<string, object?>("direction", "out") });
+        RagTelemetry.LlmCost.Add((double)entry.Cost, new TagList { surfaceTag });
 
         try
         {

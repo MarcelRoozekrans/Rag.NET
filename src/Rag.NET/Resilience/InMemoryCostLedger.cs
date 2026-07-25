@@ -6,12 +6,14 @@ namespace Rag.NET.Resilience;
 /// <summary>
 /// In-memory <see cref="ICostLedger"/> for tests and development: same per-(UTC day, kind)
 /// accumulation and day/month window semantics as <c>SqliteCostLedger</c>, without
-/// persistence. Thread-safe via a lock.
+/// persistence. Only cost is accumulated — token counts are accepted but not retained
+/// (<see cref="GetSpendAsync"/> is the sole read surface here; the SQLite ledger keeps the
+/// token columns as the queryable record). Thread-safe via a lock.
 /// </summary>
 public sealed class InMemoryCostLedger(TimeProvider? timeProvider = null) : ICostLedger
 {
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
-    private readonly Dictionary<(DateOnly Day, CostKind Kind), Bucket> _buckets = [];
+    private readonly Dictionary<(DateOnly Day, CostKind Kind), decimal> _spend = [];
     private readonly Lock _lock = new();
 
     /// <summary>No-op: there is no storage to prepare.</summary>
@@ -24,13 +26,7 @@ public sealed class InMemoryCostLedger(TimeProvider? timeProvider = null) : ICos
         var key = (Today(), entry.Kind);
         lock (_lock)
         {
-            var bucket = _buckets.TryGetValue(key, out var existing) ? existing : new Bucket();
-            _buckets[key] = new Bucket
-            {
-                TokensIn = bucket.TokensIn + entry.InputTokens,
-                TokensOut = bucket.TokensOut + entry.OutputTokens,
-                Cost = bucket.Cost + entry.Cost,
-            };
+            _spend[key] = _spend.TryGetValue(key, out var existing) ? existing + entry.Cost : entry.Cost;
         }
 
         return Task.CompletedTask;
@@ -44,11 +40,11 @@ public sealed class InMemoryCostLedger(TimeProvider? timeProvider = null) : ICos
         decimal total = 0m;
         lock (_lock)
         {
-            foreach (var (key, bucket) in _buckets)
+            foreach (var (key, cost) in _spend)
             {
                 if (key.Day >= lower && key.Day <= today)
                 {
-                    total += bucket.Cost;
+                    total += cost;
                 }
             }
         }
@@ -57,11 +53,4 @@ public sealed class InMemoryCostLedger(TimeProvider? timeProvider = null) : ICos
     }
 
     private DateOnly Today() => DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime);
-
-    private readonly record struct Bucket
-    {
-        public long TokensIn { get; init; }
-        public long TokensOut { get; init; }
-        public decimal Cost { get; init; }
-    }
 }

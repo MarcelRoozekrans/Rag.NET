@@ -334,6 +334,17 @@ public class FallbackChatClientTests
 #pragma warning restore CS0162
     }
 
+    [Fact]
+    public void IsTransient_BudgetExceededException_IsNotTransient()
+    {
+        // Pinned by TYPE (mirroring the limiter's queue-full wording pins): a blown budget
+        // must never trigger provider fallback — retrying against the next client would
+        // keep spending past the limit.
+        var ex = new Rag.NET.Models.BudgetExceededException(Rag.NET.Models.CostWindow.Day, limit: 10m, spend: 10m);
+
+        Assert.False(FallbackChatClient.IsTransient(ex));
+    }
+
     // Helper: async enumerable yielding items
     private static async IAsyncEnumerable<T> YieldUpdates<T>(params T[] items)
     {

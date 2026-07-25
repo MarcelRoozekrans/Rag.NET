@@ -3,6 +3,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Rag.NET.Models;
 
 namespace Rag.NET.Resilience;
 
@@ -217,14 +218,16 @@ public sealed class FallbackChatClient(
     /// </summary>
     public object? GetService(Type serviceType, object? serviceKey = null)
     {
-        if (serviceKey is null && serviceType?.IsInstanceOfType(this) == true)
+        ArgumentNullException.ThrowIfNull(serviceType);
+
+        if (serviceKey is null && serviceType.IsInstanceOfType(this))
         {
             return this;
         }
 
         foreach (var client in _clients)
         {
-            var svc = client.GetService(serviceType!, serviceKey);
+            var svc = client.GetService(serviceType, serviceKey);
             if (svc is not null) return svc;
         }
         return null;
@@ -234,6 +237,12 @@ public sealed class FallbackChatClient(
 
     internal static bool IsTransient(Exception ex)
     {
+        // A blown budget must NEVER trigger provider fallback — retrying against the next
+        // client would keep spending past the limit. Pinned by type (not message wording)
+        // so the exception text can evolve freely.
+        if (ex is BudgetExceededException)
+            return false;
+
         if (ex is OperationCanceledException or TaskCanceledException or TimeoutException)
             return true;
 

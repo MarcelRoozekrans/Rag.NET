@@ -300,8 +300,11 @@ public static class RagBuilderExtensions
     /// as <c>UseRateLimiting</c>) — a surface registered afterwards is not tracked.
     /// Idempotent: repeated calls are no-ops keyed on a sentinel registration, so
     /// decorators never stack and the first configuration wins (same first-wins
-    /// convention as <c>UseRateLimiting</c>). The budget gate is pre-call, so a single
-    /// in-flight call can overshoot a limit by its own cost.
+    /// convention as <c>UseRateLimiting</c>). The budget gate is pre-call: every call
+    /// admitted before a limit is reached runs to completion, so the overshoot can be
+    /// several in-flight calls' worth under concurrency — parallel ingestion routinely has
+    /// N embedding batches in flight — and limits should be sized with headroom for your
+    /// concurrency level.
     /// </remarks>
     /// <param name="builder">The RAG builder.</param>
     /// <param name="configure">

@@ -15,8 +15,9 @@ namespace Rag.NET.Resilience;
 /// afterwards.
 /// </summary>
 /// <remarks>
-/// The gate is pre-call, so a single in-flight call can overshoot the limit by its own
-/// cost (documented). Token counts come from <see cref="ChatResponse.Usage"/> when the
+/// The gate is pre-call: every call admitted before the limit is reached completes, so
+/// the overshoot can be several in-flight calls' worth under concurrency (documented).
+/// Token counts come from <see cref="ChatResponse.Usage"/> when the
 /// provider reports BOTH input and output counts; otherwise both sides are estimated with
 /// the tiktoken cl100k tokenizer. Streaming responses record ONCE after the stream
 /// completes, using the last <see cref="UsageContent"/> the provider emitted in the
@@ -53,9 +54,12 @@ public sealed class CostTrackingChatClient : IChatClient
     {
         await CostAccounting.EnforceBudgetAsync(_ledger, _options, _logger, cancellationToken).ConfigureAwait(false);
 
-        var response = await _inner.GetResponseAsync(messages, options, cancellationToken).ConfigureAwait(false);
+        // Materialise once: the messages are re-enumerated for estimation when the provider
+        // does not report usage, and a lazy enumerable must not be walked twice.
+        var messageList = messages as IReadOnlyList<ChatMessage> ?? [.. messages];
+        var response = await _inner.GetResponseAsync(messageList, options, cancellationToken).ConfigureAwait(false);
 
-        await RecordUsageAsync(messages, response.Text, response.Usage, cancellationToken).ConfigureAwait(false);
+        await RecordUsageAsync(messageList, response.Text, response.Usage, cancellationToken).ConfigureAwait(false);
         return response;
     }
 
@@ -67,9 +71,12 @@ public sealed class CostTrackingChatClient : IChatClient
     {
         await CostAccounting.EnforceBudgetAsync(_ledger, _options, _logger, cancellationToken).ConfigureAwait(false);
 
+        // Materialise once: the messages are re-enumerated for estimation when the provider
+        // does not report usage, and a lazy enumerable must not be walked twice.
+        var messageList = messages as IReadOnlyList<ChatMessage> ?? [.. messages];
         var accumulatedText = new StringBuilder();
         UsageDetails? usage = null;
-        await foreach (var update in _inner.GetStreamingResponseAsync(messages, options, cancellationToken).ConfigureAwait(false))
+        await foreach (var update in _inner.GetStreamingResponseAsync(messageList, options, cancellationToken).ConfigureAwait(false))
         {
             usage = ExtractUsage(update) ?? usage; // providers emit usage in a (typically final) update
             accumulatedText.Append(update.Text);
@@ -78,7 +85,7 @@ public sealed class CostTrackingChatClient : IChatClient
 
         // Reached only when the stream completed normally: cancellation or a fault mid-stream
         // skips recording on purpose (partial usage is unknown; see class remarks).
-        await RecordUsageAsync(messages, accumulatedText.ToString(), usage, cancellationToken).ConfigureAwait(false);
+        await RecordUsageAsync(messageList, accumulatedText.ToString(), usage, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Last <see cref="UsageContent"/> in the update's contents, if any.</summary>
@@ -129,10 +136,13 @@ public sealed class CostTrackingChatClient : IChatClient
     }
 
     /// <inheritdoc/>
-    public object? GetService(Type serviceType, object? serviceKey = null) =>
-        serviceKey is null && serviceType?.IsInstanceOfType(this) == true
+    public object? GetService(Type serviceType, object? serviceKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(serviceType);
+        return serviceKey is null && serviceType.IsInstanceOfType(this)
             ? this
-            : _inner.GetService(serviceType!, serviceKey);
+            : _inner.GetService(serviceType, serviceKey);
+    }
 
     /// <inheritdoc/>
     public void Dispose() { /* inner client and ledger are externally owned */ }
