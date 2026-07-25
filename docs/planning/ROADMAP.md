@@ -32,8 +32,10 @@ corresponding rows in features.md.
 **Plan:** `docs/plans/2026-07-25-resilience-cost-controls-design.md` + `-implementation.md`
 **Completed:** 2026-07-25
 
-### Phase 1.5: Document Parsers [status: pending]
+### Phase 1.5: Document Parsers [status: complete]
 **Backlog items:** EPUB Parser; Email File Parser (EML/MSG); PDF Table Extraction; OCR for Scanned PDFs
+**Plan:** `docs/plans/2026-07-25-document-parsers-design.md` + `-implementation.md`
+**Completed:** 2026-07-25 (OCR = Tesseract behind the `EnableOcr` compile gate; Azure Document Intelligence and PDF rasterization deferred)
 
 ### Phase 1.6: Connectors [status: pending]
 **Backlog items:** Email Connector (Outlook/Exchange); Linear Issue Tracker

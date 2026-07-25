@@ -55,49 +55,38 @@ public sealed class EmailDocumentParser(
         DocumentMetadata metadata,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        foreach (var attachment in message.Attachments.OfType<MimePart>())
+        foreach (var entity in message.Attachments)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // Embedded/forwarded emails surface as MessagePart; recursing into them is a
+            // follow-up — warn instead of silently dropping them.
+            if (entity is MessagePart embedded)
+            {
+                if (logger is not null)
+                {
+                    EmailParserLog.EmbeddedMessageSkipped(
+                        logger,
+                        embedded.Message?.Subject ?? embedded.ContentDisposition?.FileName ?? "(no subject)");
+                }
+
+                continue;
+            }
+
+            if (entity is not MimePart attachment)
+                continue;
 
             if (string.IsNullOrWhiteSpace(attachment.FileName) || attachment.Content is null)
                 continue;
 
             var mimeType = $"{attachment.ContentType.MediaType}/{attachment.ContentType.MediaSubtype}";
 
-            IDocumentParser? parser = null;
-            foreach (var p in parsers)
-            {
-                if (ReferenceEquals(p, this)) continue;
-                if (p.CanParse(mimeType))
-                {
-                    parser = p;
-                    break;
-                }
-            }
-
-            if (parser is null)
-            {
-                logger?.LogWarning("No parser registered for attachment content type {ContentType}; skipping {FileName}",
-                    mimeType, attachment.FileName);
-                continue;
-            }
-
-            var attachmentMetadata = new DocumentMetadata
-            {
-                DocumentId = metadata.DocumentId,
-                FileName = attachment.FileName,
-                ContentType = mimeType,
-                Tags = metadata.Tags is { Count: > 0 }
-                    ? new Dictionary<string, string>(metadata.Tags, StringComparer.Ordinal)
-                    : metadata.Tags,
-                CreatedAt = metadata.CreatedAt,
-            };
-
             using var attachmentStream = new MemoryStream();
             await attachment.Content.DecodeToAsync(attachmentStream, cancellationToken).ConfigureAwait(false);
             attachmentStream.Position = 0;
 
-            await foreach (var section in parser.ParseAsync(attachmentStream, attachmentMetadata, cancellationToken).ConfigureAwait(false))
+            await foreach (var section in EmailAttachmentDispatcher.DispatchAsync(
+                parsers, this, attachment.FileName, mimeType, attachmentStream, metadata, logger, cancellationToken).ConfigureAwait(false))
             {
                 yield return section;
             }
@@ -112,6 +101,7 @@ public sealed class EmailDocumentParser(
         // Prefer plain text
         if (!string.IsNullOrWhiteSpace(message.TextBody))
         {
+            cancellationToken.ThrowIfCancellationRequested();
             yield return new DocumentSection
             {
                 Text = message.TextBody.Trim(),

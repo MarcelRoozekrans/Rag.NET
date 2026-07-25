@@ -1,0 +1,8 @@
+From: Sender <sender@example.com>
+To: Recipient <recipient@example.com>
+Subject: Integration Test Document
+Date: Fri, 25 Jul 2026 09:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+This document is used for integration testing.

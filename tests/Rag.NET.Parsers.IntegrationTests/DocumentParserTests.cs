@@ -2,6 +2,8 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using Rag.NET.Models;
+using Rag.NET.Parsers.Email;
+using Rag.NET.Parsers.Epub;
 using Rag.NET.Parsers.Excel;
 using Rag.NET.Parsers.Html;
 using Rag.NET.Parsers.Pdf;
@@ -38,6 +40,74 @@ public sealed class DocumentParserTests
         Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
     }
 
+    // ── EPUB ─────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EpubParser_ParsesEmbeddedEpubFile_ReturnsNonEmptySections()
+    {
+        var sut = new EpubDocumentParser(new HtmlDocumentParser());
+        var meta = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("epub-1"),
+            FileName = "sample.epub",
+            ContentType = "application/epub+zip",
+        };
+
+        await using var stream = OpenResource("sample.epub");
+        var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(sections);
+        Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+        Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
+        Assert.Contains(sections, s => s.Text.Contains("Second Chapter", StringComparison.Ordinal));
+    }
+
+    // ── Email (EML) ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task EmailParser_ParsesEmbeddedEmlFile_ReturnsNonEmptySections()
+    {
+        var sut = new EmailDocumentParser([], new HtmlDocumentParser());
+        var meta = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("eml-1"),
+            FileName = "sample.eml",
+            ContentType = "message/rfc822",
+        };
+
+        await using var stream = OpenResource("sample.eml");
+        var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(sections);
+        Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+        Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
+    }
+
+    // ── Email (MSG) ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task MsgParser_ParsesEmbeddedMsgFile_ReturnsNonEmptySections()
+    {
+        var sut = new MsgDocumentParser([], new HtmlDocumentParser());
+        var meta = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("msg-1"),
+            FileName = "sample.msg",
+            ContentType = "application/vnd.ms-outlook",
+        };
+
+        await using var stream = OpenResource("sample.msg");
+        var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(sections);
+        Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+        Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
+        Assert.Contains(sections, s => s.Text.Contains("integration testing", StringComparison.Ordinal));
+    }
+
     // ── PDF ──────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -57,6 +127,27 @@ public sealed class DocumentParserTests
 
         Assert.NotEmpty(sections);
         Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+    }
+
+    [Fact]
+    public async Task PdfParser_ParsesEmbeddedTablePdf_EmitsTableSection()
+    {
+        var sut = new PdfDocumentParser();
+        var meta = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("pdf-2"),
+            FileName = "sample-table.pdf",
+            ContentType = "application/pdf",
+        };
+
+        await using var stream = OpenResource("sample-table.pdf");
+        var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(sections);
+        var table = Assert.Single(sections, s => string.Equals(s.Heading, "table", StringComparison.Ordinal));
+        Assert.Contains("| Alice | 30 | Paris |", table.Text, StringComparison.Ordinal);
+        Assert.Contains(sections, s => s.Heading is null && s.Text.Contains("Introduction", StringComparison.Ordinal));
     }
 
     // ── Word ─────────────────────────────────────────────────────────────────
@@ -143,6 +234,19 @@ public sealed class DocumentParserTests
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+    //
+    // Fixture provenance (Resources/):
+    // - sample.epub  — generated by the in-code EPUB builder mirrored in
+    //   tests/Rag.NET.Parsers.Epub.Tests/EpubDocumentParserTests.CreateEpub (write its output to disk to regenerate).
+    // - sample.eml   — hand-written minimal RFC 5322 message; edit the text file directly.
+    // - sample.msg   — generated by the in-code CFB builder mirrored in
+    //   tests/Rag.NET.Parsers.Email.Tests/MsgFixtureBuilder (write its output to disk to regenerate).
+    // - sample.html / sample.pdf — pre-existing static fixtures.
+    // - sample-table.pdf — generated by the in-code PdfPig PdfDocumentBuilder mirrored in
+    //   tests/Rag.NET.Parsers.Pdf.Tests/TableFixtureGenerator (write its output to disk to regenerate).
+    // - sample-scanned.pdf — generated by tests/Rag.NET.Parsers.Pdf.Tests/ScannedFixtureGenerator
+    //   (embeds that project's Resources/ocr-sample.png; exercised by the Pdf tests' OCR suite —
+    //   no matrix entry here because OCR needs the EnableOcr compile gate).
 
     private static Stream OpenResource(string fileName)
     {

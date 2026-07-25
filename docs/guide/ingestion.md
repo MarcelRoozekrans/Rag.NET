@@ -133,7 +133,7 @@ Parsers implement `IDocumentParser`. The pipeline selects the first registered p
 
 | Content type | Package | Notes |
 |-------------|---------|-------|
-| `application/pdf` | `Rag.NET.Parsers.Pdf` | |
+| `application/pdf` | `Rag.NET.Parsers.Pdf` | Table extraction (default on) + compile-gated OCR fallback — see [below](#pdf-table-extraction-and-ocr) |
 | `text/html` | `Rag.NET.Parsers.Html` | Heading-aware (AngleSharp) |
 | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `Rag.NET.Parsers.Word` | OpenXml |
 | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | `Rag.NET.Parsers.Excel` | OpenXml |
@@ -158,6 +158,92 @@ To register your own parser implementation directly:
 services.AddRagNet(rag => rag
     .AddParser<MyXmlParser>());
 ```
+
+### PDF: table extraction and OCR
+
+The PDF parser accepts `PdfParserOptions` via a configuring overload:
+
+```csharp
+services.AddRagNet(rag => rag
+    .AddPdfParser(options =>
+    {
+        options.ExtractTables = true;    // default
+        options.MinTableRows = 3;        // default
+        options.MinTableColumns = 2;     // default
+        options.UseOcrFallback = false;  // default; requires <EnableOcr>true</EnableOcr>
+        options.OcrMinCharacters = 50;   // default
+        options.TessDataPath = "./tessdata"; // default
+        options.OcrLanguage = "eng";     // default
+    }));
+```
+
+#### Table extraction
+
+Table extraction is **on by default**. A pure-geometry heuristic clusters each page's words
+into rows by baseline Y-bands and detects column gutters — word-free X-intervals that persist
+across at least `MinTableRows` vertically adjacent rows. Each detected table is emitted as a
+pipe-delimited Markdown table in its own `DocumentSection` with `Heading = "table"` and
+`PageNumber` set; the page's remaining prose is emitted as separate sections interleaved in
+document order (above → table → below).
+
+Two behavioral notes versus the pre-table parser:
+
+- **Reading order:** on pages *with* a detected table, prose text is reassembled from word
+  geometry (sorted top-down, then left-to-right) rather than taken verbatim from
+  `page.Text`, so whitespace can differ slightly. Pages without tables keep the exact
+  legacy `page.Text` output.
+- **Header assumption:** the first detected row is rendered as the Markdown header row.
+
+Known limitations (the guards deliberately prefer a conservative false negative — the page
+parses as prose, exactly the old behavior — over a false-positive table):
+
+- Extraction is per page: a table spanning a page break is emitted as two tables.
+- Column gutters narrower than 1.5x the median word height are not detected, so very tight
+  tables degrade to prose.
+- Tables whose cells average more than 4 words degrade to prose (e.g. long description
+  columns).
+- A 2-3-column run of 8 or more rows spanning more than half the page's rows is treated as a
+  multi-column page layout (academic two-column, newsletter three-column) and stays prose —
+  whole-page 2/3-column tables are missed by design. Refining this dominance guard with
+  per-run words-per-cell statistics (layout half-lines run long, table cells run short) is a
+  noted improvement candidate.
+- Any extractor failure logs a warning and the page parses as plain text (degraded, never
+  broken).
+
+#### OCR fallback for scanned PDFs
+
+Scanned pages are full-page images with no text layer. When `UseOcrFallback` is enabled and a
+page's extracted text is shorter than `OcrMinCharacters`, the parser extracts the page's
+embedded images (largest display area first) and runs Tesseract OCR over each until one
+yields text, emitted as a `DocumentSection` with `Heading = "ocr"` and `PageNumber` set.
+When OCR succeeds, its output replaces any sub-threshold extracted text for that page. If
+the page has no embedded images, OCR finds no text, or the engine fails, the parser logs a
+warning and falls back to the plain-text path — short-but-real extracted text is preserved,
+and genuinely empty pages emit nothing (today's empty-page behavior).
+
+OCR is **off by default** and compile-gated (the same pattern as `Rag.NET.Parsers.Vision`):
+
+1. Add `<EnableOcr>true</EnableOcr>` to your project file — this defines `ENABLE_OCR` and
+   pulls in the `Tesseract` package for `Rag.NET.Parsers.Pdf`.
+2. Provide a tessdata directory (e.g. download `eng.traineddata` from
+   [tessdata](https://github.com/tesseract-ocr/tessdata)) and point `TessDataPath` at it.
+3. Set `OcrLanguage` to the language code matching your traineddata (default `eng`).
+4. Set `UseOcrFallback = true`.
+
+Enabling `UseOcrFallback` without compiling the gate throws an instructive
+`InvalidOperationException` at parser construction — misconfiguration fails fast, not at the
+first scanned page.
+
+Limitations:
+
+- Only **embedded images** are OCR-ed. Vector-only scanned pages (no embedded images) cannot
+  be OCR-ed without a PDF rasterizer and degrade to the plain-text path with a warning.
+- CCITT G4 / JBIG2-compressed scans (common in real scanned PDFs) may not decode via PdfPig's
+  PNG re-encoding, and their raw streams are not loadable by Leptonica — such pages also
+  degrade to the plain-text path.
+- Tesseract engines are not thread-safe: the parser serializes OCR calls, so scanned-page
+  throughput does not scale with parallel document ingestion.
+- Azure Document Intelligence as an alternative higher-accuracy engine is deferred.
 
 ## `DocumentSection`
 

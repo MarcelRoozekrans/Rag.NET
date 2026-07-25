@@ -510,6 +510,7 @@ Transcribe WAV, MP3, FLAC, OGG, and other audio files using [Whisper.net](https:
 
 ### PDF Table Extraction
 **Package:** `Rag.NET.Parsers.Pdf`
+**Status:** ✅ Done — pure-geometry heuristic over PdfPig word boxes (Y-band row clustering + persistent X-gap column detection), on by default (`PdfParserOptions.ExtractTables`); tables emit as pipe-delimited Markdown sections with `Heading = "table"`, prose interleaved in document order; conservative guards bail to prose (per-page only, tight-gutter/long-cell/2-3-column-layout runs degrade to prose — see the ingestion guide).
 
 Detect and extract tables from PDFs as structured text rather than flowing prose. Use heuristic line/column detection (via PdfPig's geometry primitives) to reconstruct table rows as pipe-delimited Markdown tables. Each table becomes its own `DocumentSection` with `Heading = "table"` so chunking and retrieval can treat them distinctly.
 
@@ -519,6 +520,7 @@ Detect and extract tables from PDFs as structured text rather than flowing prose
 
 ### OCR for Scanned PDFs
 **Package:** `Rag.NET.Parsers.Pdf`
+**Status:** ✅ Done — Tesseract behind the `<EnableOcr>` compile gate (mirrors `Rag.NET.Parsers.Vision`); per-page fallback when extracted text is below `OcrMinCharacters`, OCR-ing embedded images largest-first into `Heading = "ocr"` sections; OCR failure falls back losslessly to the plain-text path. Vector-only scanned pages (no embedded images) degrade to plain text — no rasterizer dependency. Azure Document Intelligence deferred.
 
 Add an OCR pass for PDFs where `PdfPig` extracts no text (scanned documents). Integrate `Tesseract` (via `Tesseract.Net`) or delegate to `Azure Document Intelligence` for higher accuracy. Falls back automatically when text extraction yields fewer than a configurable minimum character count per page.
 
@@ -544,7 +546,7 @@ Parse `.eml` (RFC 5322) and `.msg` (Outlook) files into sections: subject → he
 
 **Why:** Email archives are a major enterprise knowledge source. The existing Gmail/Exchange connectors ingest live mailboxes, but `.eml`/`.msg` exports from archives or migrations are unaddressed.
 
-**Status:** ✅ Done (EML only; MSG is a follow-up)
+**Status:** ✅ Done (EML via MimeKit, MSG via MsgReader; embedded/forwarded messages are not yet recursed — logged as a warning, follow-up)
 
 ---
 
@@ -1036,8 +1038,8 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Structured Logging Enrichment | Low | None |
 | [x] | Sliding Window Chunking with Overlap | Low | None |
 | [x] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
-| [ ] | EPUB Parser | Low | `VersOne.Epub` |
-| [ ] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
+| [x] | EPUB Parser | Low | `VersOne.Epub` |
+| [x] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
 | [ ] | Linear Issue Tracker | Low | Linear GraphQL API |
 | [ ] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | Evaluation Dataset Builder | Medium | `IChatClient` |
@@ -1046,8 +1048,8 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Chroma Vector Store | Medium | Chroma REST API |
 | [ ] | Pinecone Vector Store | Medium | Pinecone REST API |
 | [x] | Multi-Index Federation | Medium | `IVectorStore` composition (dense-only) |
-| [ ] | PDF Table Extraction | Medium | PdfPig geometry |
-| [ ] | OCR for Scanned PDFs | Medium | Tesseract / Azure Doc Intelligence |
+| [x] | PDF Table Extraction | Medium | PdfPig geometry |
+| [x] | OCR for Scanned PDFs | Medium | Tesseract via `EnableOcr` gate (Azure Doc Intelligence deferred) |
 | [x] | Contextual Compression | Medium | `IChatClient` or embeddings |
 | [x] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
 | [x] | Proposition Extraction Chunking | Medium | `IChatClient` |
