@@ -12,6 +12,7 @@ public static class EmailParserBuilderExtensions
     {
         builder.Services.TryAddSingleton<HtmlDocumentParser>();
         builder.AddParser<EmailDocumentParser>();
+        builder.AddParser<MsgDocumentParser>();
         return builder;
     }
 }

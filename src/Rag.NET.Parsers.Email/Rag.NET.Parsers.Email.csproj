@@ -3,13 +3,14 @@
   <PropertyGroup>
     <RootNamespace>Rag.NET.Parsers.Email</RootNamespace>
     <PackageId>Rag.NET.Parsers.Email</PackageId>
-    <Description>EML email parser for Rag.NET</Description>
+    <Description>EML/MSG email parser for Rag.NET</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
     <ProjectReference Include="..\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
     <PackageReference Include="MimeKit" Version="4.*" />
+    <PackageReference Include="MsgReader" Version="6.*" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
   </ItemGroup>
 
