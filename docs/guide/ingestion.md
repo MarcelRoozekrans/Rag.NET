@@ -215,9 +215,11 @@ parses as prose, exactly the old behavior — over a false-positive table):
 Scanned pages are full-page images with no text layer. When `UseOcrFallback` is enabled and a
 page's extracted text is shorter than `OcrMinCharacters`, the parser extracts the page's
 embedded images (largest display area first) and runs Tesseract OCR over each until one
-yields text, emitted as a `DocumentSection` with `Heading = "ocr"` and `PageNumber` set. If
+yields text, emitted as a `DocumentSection` with `Heading = "ocr"` and `PageNumber` set.
+When OCR succeeds, its output replaces any sub-threshold extracted text for that page. If
 the page has no embedded images, OCR finds no text, or the engine fails, the parser logs a
-warning and skips the page — matching the empty-page behavior of the non-OCR path.
+warning and falls back to the plain-text path — short-but-real extracted text is preserved,
+and genuinely empty pages emit nothing (today's empty-page behavior).
 
 OCR is **off by default** and compile-gated (the same pattern as `Rag.NET.Parsers.Vision`):
 
@@ -235,7 +237,10 @@ first scanned page.
 Limitations:
 
 - Only **embedded images** are OCR-ed. Vector-only scanned pages (no embedded images) cannot
-  be OCR-ed without a PDF rasterizer and are skipped with a warning.
+  be OCR-ed without a PDF rasterizer and degrade to the plain-text path with a warning.
+- CCITT G4 / JBIG2-compressed scans (common in real scanned PDFs) may not decode via PdfPig's
+  PNG re-encoding, and their raw streams are not loadable by Leptonica — such pages also
+  degrade to the plain-text path.
 - Tesseract engines are not thread-safe: the parser serializes OCR calls, so scanned-page
   throughput does not scale with parallel document ingestion.
 - Azure Document Intelligence as an alternative higher-accuracy engine is deferred.

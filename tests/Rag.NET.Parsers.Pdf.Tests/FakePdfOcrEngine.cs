@@ -9,19 +9,23 @@ namespace Rag.NET.Parsers.Pdf.Tests;
 /// </summary>
 internal sealed class FakePdfOcrEngine : IPdfOcrEngine
 {
-    private readonly string? _result;
-    private readonly Exception? _exception;
+    private readonly Func<byte[], string?> _behavior;
     private int _calls;
     private int _active;
     private int _overlapped;
 
-    public FakePdfOcrEngine(string? result) => _result = result;
+    public FakePdfOcrEngine(string? result) => _behavior = _ => result;
 
-    public FakePdfOcrEngine(Exception exception) => _exception = exception;
+    public FakePdfOcrEngine(Exception exception) => _behavior = _ => throw exception;
+
+    public FakePdfOcrEngine(Func<byte[], string?> behavior) => _behavior = behavior;
 
     public int Calls => Volatile.Read(ref _calls);
 
     public bool SawOverlap => Volatile.Read(ref _overlapped) == 1;
+
+    /// <summary>Byte length of each image handed to <see cref="Recognize"/>, in call order.</summary>
+    public List<int> ByteLengths { get; } = [];
 
     public string? Recognize(byte[] imageBytes)
     {
@@ -33,9 +37,10 @@ internal sealed class FakePdfOcrEngine : IPdfOcrEngine
         try
         {
             Interlocked.Increment(ref _calls);
+            ByteLengths.Add(imageBytes.Length);
             // Widen the race window so unserialized parallel calls reliably overlap.
             Thread.Sleep(10);
-            return _exception is null ? _result : throw _exception;
+            return _behavior(imageBytes);
         }
         finally
         {

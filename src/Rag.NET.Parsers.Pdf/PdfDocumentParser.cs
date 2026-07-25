@@ -10,7 +10,7 @@ using UglyToad.PdfPig.Content;
 
 namespace Rag.NET.Parsers.Pdf;
 
-public sealed class PdfDocumentParser : IDocumentParser
+public sealed class PdfDocumentParser : IDocumentParser, IDisposable
 {
     private readonly PdfParserOptions _options;
     private readonly ILogger<PdfDocumentParser>? _logger;
@@ -37,6 +37,13 @@ public sealed class PdfDocumentParser : IDocumentParser
         // first OCR-needed page.
         _ocrEngine = ocrEngine ?? (_options.UseOcrFallback ? PdfOcrEngineFactory.Create(_options) : null);
     }
+
+    /// <summary>
+    /// Disposes the OCR engine when one was created (only in <c>EnableOcr</c> builds the
+    /// engine holds native Tesseract resources). The DI container disposes singleton
+    /// parsers at shutdown; direct-construction users should dispose explicitly.
+    /// </summary>
+    public void Dispose() => (_ocrEngine as IDisposable)?.Dispose();
 
     public bool CanParse(string contentType) =>
         contentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase);
@@ -99,10 +106,12 @@ public sealed class PdfDocumentParser : IDocumentParser
     /// OCR fallback for a page whose extracted text is below
     /// <see cref="PdfParserOptions.OcrMinCharacters"/> (scanned pages are full-page embedded
     /// images with no text layer): runs the engine over the page's embedded images,
-    /// largest display area first, until one yields text. Degraded, never broken — no
-    /// images, no recognized text, or an engine failure logs a warning and skips the page,
-    /// matching the empty-page skip of the non-OCR path. Vector-only pages (no embedded
-    /// images) cannot be OCR-ed without a rasterizer and are skipped.
+    /// largest display area first, until one yields text. Degraded, never broken — and
+    /// lossless: no images, no recognized text, or an engine failure logs a warning and
+    /// falls back to the plain-text path, so short-but-real extracted text is never lost by
+    /// enabling OCR; genuinely empty pages still emit nothing (today's empty-page behavior).
+    /// Vector-only pages (no embedded images) cannot be OCR-ed without a rasterizer and
+    /// take the same plain-text fallback.
     /// </summary>
     private List<DocumentSection> OcrSections(IPdfOcrEngine engine, Page page, DocumentMetadata metadata)
     {
@@ -116,7 +125,7 @@ public sealed class PdfDocumentParser : IDocumentParser
                     PdfParserLog.OcrNoImages(_logger, page.Number);
                 }
 
-                return [];
+                return PlainTextSections(page, metadata);
             }
 
             for (int i = 0; i < images.Count; i++)
@@ -142,7 +151,7 @@ public sealed class PdfDocumentParser : IDocumentParser
                 PdfParserLog.OcrNoText(_logger, page.Number);
             }
 
-            return [];
+            return PlainTextSections(page, metadata);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -151,7 +160,7 @@ public sealed class PdfDocumentParser : IDocumentParser
                 PdfParserLog.OcrFailed(_logger, page.Number, exception);
             }
 
-            return [];
+            return PlainTextSections(page, metadata);
         }
     }
 

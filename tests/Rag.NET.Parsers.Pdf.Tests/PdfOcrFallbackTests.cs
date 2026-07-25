@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Rag.NET.Models;
 using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.Core;
+using UglyToad.PdfPig.Fonts.Standard14Fonts;
 using UglyToad.PdfPig.Writer;
 using Xunit;
 
@@ -42,11 +44,39 @@ public class PdfOcrFallbackTests
         return sections;
     }
 
+    /// <summary>A 1x1 transparent PNG — a valid image whose re-encoded bytes stay tiny.</summary>
+    private static readonly byte[] TinyPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
+
     /// <summary>A one-page PDF with no text and no images (OCR fallback finds nothing to do).</summary>
     private static MemoryStream CreateEmptyPagePdf()
     {
         using var builder = new PdfDocumentBuilder();
         _ = builder.AddPage(PageSize.Letter, isPortrait: true);
+        return new MemoryStream(builder.Build());
+    }
+
+    /// <summary>A one-page PDF with short real text (below the default threshold) plus an image.</summary>
+    private static MemoryStream CreateShortTextWithImagePdf()
+    {
+        using var builder = new PdfDocumentBuilder();
+        var font = builder.AddStandard14Font(Standard14Font.Helvetica);
+        var page = builder.AddPage(PageSize.Letter, isPortrait: true);
+        _ = page.AddText("Short scanned page", 12, new PdfPoint(100, 700), font);
+        _ = page.AddPng(ScannedFixtureGenerator.ReadPngResource(), new PdfRectangle(56, 400, 556, 517));
+        return new MemoryStream(builder.Build());
+    }
+
+    /// <summary>
+    /// A one-page PDF with two images: the tiny 1x1 PNG displayed LARGE (500x500 — must be
+    /// tried first, ordering is by display area) and the 600x140 text PNG displayed small.
+    /// </summary>
+    private static MemoryStream CreateTwoImagePdf()
+    {
+        using var builder = new PdfDocumentBuilder();
+        var page = builder.AddPage(PageSize.Letter, isPortrait: true);
+        _ = page.AddPng(TinyPng, new PdfRectangle(50, 200, 550, 700));
+        _ = page.AddPng(ScannedFixtureGenerator.ReadPngResource(), new PdfRectangle(50, 50, 150, 73));
         return new MemoryStream(builder.Build());
     }
 
@@ -145,6 +175,67 @@ public class PdfOcrFallbackTests
         Assert.Empty(sections);
         Assert.Contains(logger.Entries, e =>
             e.Level == LogLevel.Warning && e.Message.Contains("OCR fallback failed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task OcrFallback_NoImages_ShortRealTextPreserved()
+    {
+        // Lossless: sample.pdf's page has 25 chars of real text and no images. A 30-char
+        // threshold sends it down the OCR path, which finds no images — the original
+        // plain-text section must still be emitted; enabling OCR must never lose text the
+        // parser could already extract.
+        var engine = new FakePdfOcrEngine("should never appear");
+        var sut = new PdfDocumentParser(
+            new PdfParserOptions { UseOcrFallback = true, OcrMinCharacters = 30 }, logger: null, engine);
+        await using var stream = OpenResource("sample.pdf");
+
+        var sections = await ParseAsync(sut, stream);
+
+        var section = Assert.Single(sections);
+        Assert.Null(section.Heading);
+        Assert.False(string.IsNullOrWhiteSpace(section.Text));
+        Assert.Equal(0, engine.Calls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OcrFallback_FailedOcr_ShortRealTextPreserved(bool engineThrows)
+    {
+        // Lossless: a page with short real text AND an image triggers OCR; when the engine
+        // yields nothing (or fails), the page falls back to its plain-text section instead
+        // of being dropped.
+        var engine = engineThrows
+            ? new FakePdfOcrEngine(new InvalidOperationException("engine failure"))
+            : new FakePdfOcrEngine(string.Empty);
+        var sut = new PdfDocumentParser(new PdfParserOptions { UseOcrFallback = true }, logger: null, engine);
+        using var stream = CreateShortTextWithImagePdf();
+
+        var sections = await ParseAsync(sut, stream);
+
+        var section = Assert.Single(sections);
+        Assert.Null(section.Heading);
+        Assert.Contains("Short", section.Text, StringComparison.Ordinal);
+        Assert.Equal(1, engine.Calls);
+    }
+
+    [Fact]
+    public async Task OcrFallback_MultipleImages_LargestDisplayFirst_UntilOneYieldsText()
+    {
+        // Ordering is by display area, not byte size: the tiny 1x1 PNG shown at 500x500 is
+        // tried first (and yields nothing), then the small-displayed text PNG succeeds.
+        var engine = new FakePdfOcrEngine(bytes => bytes.Length < 1000 ? string.Empty : "Recognized second");
+        var sut = new PdfDocumentParser(new PdfParserOptions { UseOcrFallback = true }, logger: null, engine);
+        using var stream = CreateTwoImagePdf();
+
+        var sections = await ParseAsync(sut, stream);
+
+        var section = Assert.Single(sections);
+        Assert.Equal("ocr", section.Heading);
+        Assert.Equal("Recognized second", section.Text);
+        Assert.Equal(2, engine.Calls);
+        // First call received the 1x1 image's (tiny) bytes: largest display area first.
+        Assert.True(engine.ByteLengths[0] < engine.ByteLengths[1]);
     }
 
     [Fact]

@@ -520,7 +520,7 @@ Detect and extract tables from PDFs as structured text rather than flowing prose
 
 ### OCR for Scanned PDFs
 **Package:** `Rag.NET.Parsers.Pdf`
-**Status:** ✅ Done — Tesseract behind the `<EnableOcr>` compile gate (mirrors `Rag.NET.Parsers.Vision`); per-page fallback when extracted text is below `OcrMinCharacters`, OCR-ing embedded images largest-first into `Heading = "ocr"` sections. Vector-only scanned pages (no embedded images) are skipped — no rasterizer dependency. Azure Document Intelligence deferred.
+**Status:** ✅ Done — Tesseract behind the `<EnableOcr>` compile gate (mirrors `Rag.NET.Parsers.Vision`); per-page fallback when extracted text is below `OcrMinCharacters`, OCR-ing embedded images largest-first into `Heading = "ocr"` sections; OCR failure falls back losslessly to the plain-text path. Vector-only scanned pages (no embedded images) degrade to plain text — no rasterizer dependency. Azure Document Intelligence deferred.
 
 Add an OCR pass for PDFs where `PdfPig` extracts no text (scanned documents). Integrate `Tesseract` (via `Tesseract.Net`) or delegate to `Azure Document Intelligence` for higher accuracy. Falls back automatically when text extraction yields fewer than a configurable minimum character count per page.
 
