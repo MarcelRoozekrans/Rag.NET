@@ -33,7 +33,8 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
     private readonly IWeaviateApi _api;
     private readonly WeaviateOptions _options;
     private readonly HttpClient? _ownedHttpClient;
-    private bool _initialized;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+    private volatile bool _initialized;
 
     public WeaviateVectorStore(WeaviateOptions options)
     {
@@ -110,8 +111,10 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
+        // properties: ["text"] scopes the BM25 side to the chunk text (the design contract);
+        // without it Weaviate would also keyword-score the word-tokenized meta_* properties.
         var query = BuildGetQuery(
-            $"hybrid: {{query: {GraphQlString(textQuery)}, vector: {FormatVector(queryEmbedding.Span)}}}",
+            $"hybrid: {{query: {GraphQlString(textQuery)}, vector: {FormatVector(queryEmbedding.Span)}, properties: [\"text\"]}}",
             options,
             additionalField: "score");
         var hits = await ExecuteGetQueryAsync(query, cancellationToken).ConfigureAwait(false);
@@ -123,23 +126,45 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(documentId);
-        var result = await _api.BatchDeleteAsync(
-            new WeaviateBatchDeleteRequest
+        var request = new WeaviateBatchDeleteRequest
+        {
+            Match = new WeaviateBatchDeleteMatch
             {
-                Match = new WeaviateBatchDeleteMatch
+                Class = _options.ClassName,
+                Where = new WeaviateWhereFilter
                 {
-                    Class = _options.ClassName,
-                    Where = new WeaviateWhereFilter
-                    {
-                        Path = ["document_id"],
-                        Operator = "Equal",
-                        ValueText = documentId,
-                    },
+                    Path = ["document_id"],
+                    Operator = "Equal",
+                    ValueText = documentId,
                 },
             },
-            _options.Tenant,
-            cancellationToken).ConfigureAwait(false);
-        Unwrap(result, "batch delete");
+        };
+
+        // Weaviate caps every batch delete at results.limit objects (default 10,000) and
+        // reports per-call counters in a 200 response — so a partial failure or an over-cap
+        // document would otherwise vanish silently. Loop until a pass matches fewer objects
+        // than the cap, and throw as soon as any pass reports failures.
+        while (true)
+        {
+            var result = await _api.BatchDeleteAsync(request, _options.Tenant, cancellationToken)
+                .ConfigureAwait(false);
+            var counters = Unwrap(result, "batch delete").Results;
+            if (counters is null)
+                return; // no counters to verify — nothing more actionable
+
+            if (counters.Failed > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Weaviate batch delete for document '{documentId}' failed for " +
+                    $"{counters.Failed} of {counters.Matches} matched object(s).");
+            }
+
+            // Fewer matches than the cap ⇒ this pass saw the tail of the document. The
+            // Successful == 0 guard makes an (unexpected) zero-progress pass terminate
+            // instead of looping forever.
+            if (counters.Matches < counters.Limit || counters.Successful == 0)
+                return;
+        }
     }
 
     public async Task CreateCollectionAsync(
@@ -182,7 +207,11 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
             $"Weaviate class probe for '{name}' failed with HTTP {(int)result.Error.StatusCode}: {result.Error.Message}");
     }
 
-    public void Dispose() => _ownedHttpClient?.Dispose();
+    public void Dispose()
+    {
+        _initLock.Dispose();
+        _ownedHttpClient?.Dispose();
+    }
 
     /// <summary>
     /// Deterministic object id per <c>(DocumentId, ChunkIndex)</c> (SHA-256 truncated to a
@@ -206,21 +235,34 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         if (_initialized)
             return;
 
-        var exists = await CollectionExistsAsync(_options.ClassName, cancellationToken)
-            .ConfigureAwait(false);
-        if (!exists)
+        // The store is a singleton: without the lock, two concurrent first writes would race
+        // the exists-probe and the loser's CreateCollectionAsync would throw a spurious 422.
+        await _initLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            await CreateCollectionAsync(_options.ClassName, _options.VectorDimensions, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        else if (_options.Tenant is { } tenant)
-        {
-            // Tenant creation is idempotent (verified against Weaviate 1.39: re-POSTing an
-            // existing tenant answers 200), so an existing class can safely gain the tenant.
-            await CreateTenantAsync(_options.ClassName, tenant, cancellationToken).ConfigureAwait(false);
-        }
+            if (_initialized)
+                return;
 
-        _initialized = true;
+            var exists = await CollectionExistsAsync(_options.ClassName, cancellationToken)
+                .ConfigureAwait(false);
+            if (!exists)
+            {
+                await CreateCollectionAsync(_options.ClassName, _options.VectorDimensions, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else if (_options.Tenant is { } tenant)
+            {
+                // Tenant creation is idempotent (verified against Weaviate 1.39: re-POSTing an
+                // existing tenant answers 200), so an existing class can safely gain the tenant.
+                await CreateTenantAsync(_options.ClassName, tenant, cancellationToken).ConfigureAwait(false);
+            }
+
+            _initialized = true;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
     }
 
     private async Task CreateTenantAsync(string className, string tenant, CancellationToken cancellationToken)
@@ -316,24 +358,43 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
             if (score < minScore)
                 continue;
 
-            var metadataResult = MetadataSerializer.DeserializeMetadata(
-                hit.GetProperty("metadata_json").GetString());
+            var documentId = hit.GetProperty("document_id").GetString()!;
+            var chunkIndex = hit.GetProperty("chunk_index").GetInt32();
             results.Add(new SearchResult
             {
                 Chunk = new TextChunk
                 {
                     Text = hit.GetProperty("text").GetString() ?? string.Empty,
-                    DocumentId = new DocumentId(hit.GetProperty("document_id").GetString()!),
-                    ChunkIndex = hit.GetProperty("chunk_index").GetInt32(),
-                    Metadata = metadataResult.IsSuccess
-                        ? metadataResult.Value
-                        : new Dictionary<string, string>(StringComparer.Ordinal),
+                    DocumentId = new DocumentId(documentId),
+                    ChunkIndex = chunkIndex,
+                    Metadata = DeserializeMetadataOrThrow(hit, documentId, chunkIndex),
                 },
                 Score = score,
             });
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Corrupt <c>metadata_json</c> is backend corruption — the store posture is to throw
+    /// naming the object, never to silently return the chunk with its metadata dropped.
+    /// </summary>
+    private static Dictionary<string, string> DeserializeMetadataOrThrow(
+        JsonElement hit,
+        string documentId,
+        int chunkIndex)
+    {
+        var metadataResult = MetadataSerializer.DeserializeMetadata(
+            hit.GetProperty("metadata_json").GetString());
+        if (metadataResult.IsFailure)
+        {
+            throw new InvalidOperationException(
+                $"Weaviate object {DeterministicObjectId(documentId, chunkIndex)} " +
+                $"(document '{documentId}', chunk {chunkIndex}) has a corrupt metadata_json property.");
+        }
+
+        return metadataResult.Value;
     }
 
     /// <summary>Cosine distance (0 identical … 2 opposite) → similarity in [0, 1].</summary>

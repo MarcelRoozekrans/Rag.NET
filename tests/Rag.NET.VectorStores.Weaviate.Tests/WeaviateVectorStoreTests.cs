@@ -84,13 +84,16 @@ public class WeaviateVectorStoreTests
     public async Task Search_MetadataFilter_FiltersServerSide()
     {
         using var store = CreateStore(UniqueClassName());
+        // The chunk NEAREST to the query vector is always excluded by the filters below,
+        // and TopK = 1: only server-side filtering can return the farther matching chunk —
+        // a client-side post-filter of the top-1 hit would come back empty.
         await store.StoreAsync(
             [
-                Chunk("doc-f1", 0, "engineering core doc", [1.0f, 0.0f, 0.0f],
-                    Meta(("department", "engineering"), ("team", "core"))),
-                Chunk("doc-f2", 0, "marketing core doc", [0.9f, 0.1f, 0.0f],
+                Chunk("doc-f1", 0, "marketing core doc", [1.0f, 0.0f, 0.0f],
                     Meta(("department", "marketing"), ("team", "core"))),
-                Chunk("doc-f3", 0, "engineering web doc", [0.8f, 0.2f, 0.0f],
+                Chunk("doc-f2", 0, "engineering core doc", [0.8f, 0.6f, 0.0f],
+                    Meta(("department", "engineering"), ("team", "core"))),
+                Chunk("doc-f3", 0, "engineering web doc", [0.6f, 0.8f, 0.0f],
                     Meta(("department", "engineering"), ("team", "web"))),
             ],
             TestContext.Current.CancellationToken);
@@ -99,25 +102,27 @@ public class WeaviateVectorStoreTests
             new float[] { 1.0f, 0.0f, 0.0f },
             new SearchOptions
             {
-                TopK = 10,
+                TopK = 1,
                 MetadataFilter = Meta(("department", "engineering")),
             },
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, singleKey.Count);
-        Assert.All(singleKey, r => Assert.Equal("engineering", r.Chunk.Metadata["department"]));
+        var singleKeyHit = Assert.Single(singleKey);
+        Assert.Equal("engineering core doc", singleKeyHit.Chunk.Text);
 
+        // And-composition: the nearest chunk overall (marketing) and the nearest engineering
+        // chunk (team=core) are both excluded — only doc-f3 satisfies both keys.
         var twoKeysAnd = await store.SearchAsync(
             new float[] { 1.0f, 0.0f, 0.0f },
             new SearchOptions
             {
-                TopK = 10,
-                MetadataFilter = Meta(("department", "engineering"), ("team", "core")),
+                TopK = 1,
+                MetadataFilter = Meta(("department", "engineering"), ("team", "web")),
             },
             TestContext.Current.CancellationToken);
 
-        var result = Assert.Single(twoKeysAnd);
-        Assert.Equal("engineering core doc", result.Chunk.Text);
+        var twoKeysHit = Assert.Single(twoKeysAnd);
+        Assert.Equal("engineering web doc", twoKeysHit.Chunk.Text);
     }
 
     [Fact]
@@ -158,6 +163,10 @@ public class WeaviateVectorStoreTests
             [
                 Chunk("doc-h1", 0, "alpha bravo charlie", [1.0f, 0.0f, 0.0f]),
                 Chunk("doc-h2", 0, "zebra quantum xylophone", [0.0f, 1.0f, 0.0f]),
+                // Keyword only in metadata, orthogonal vector: BM25 is scoped to the text
+                // property, so this chunk must not receive any fused score.
+                Chunk("doc-h3", 0, "completely unrelated words", [0.0f, 0.0f, 1.0f],
+                    Meta(("tag", "zebra quantum xylophone"))),
             ],
             TestContext.Current.CancellationToken);
 
@@ -173,6 +182,18 @@ public class WeaviateVectorStoreTests
             r => string.Equals(r.Chunk.Text, "zebra quantum xylophone", StringComparison.Ordinal));
         Assert.InRange(keywordHit.Score, 0.0, 1.0);
         Assert.True(keywordHit.Score > 0.0, "the fused score of the BM25 match must be positive");
+
+        // Pins the properties: ["text"] scoping — a keyword match in a meta_* property must
+        // contribute nothing to the BM25 side (its vector side is orthogonal too, so ~0).
+        foreach (var result in results)
+        {
+            if (string.Equals((string)result.Chunk.DocumentId, "doc-h3", StringComparison.Ordinal))
+            {
+                Assert.True(
+                    result.Score <= 0.01,
+                    $"meta_* properties must not feed BM25, but doc-h3 scored {result.Score}");
+            }
+        }
     }
 
     [Fact]
