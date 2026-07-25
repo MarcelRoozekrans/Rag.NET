@@ -211,11 +211,20 @@ public sealed class FallbackChatClient(
                 clientIndex.ToString(CultureInfo.InvariantCulture), itemsYielded.ToString(CultureInfo.InvariantCulture));
     }
 
+    /// <summary>
+    /// Answers for its own type first (so a stacked decorator chain is probeable layer by
+    /// layer), then asks each chained client in order.
+    /// </summary>
     public object? GetService(Type serviceType, object? serviceKey = null)
     {
+        if (serviceKey is null && serviceType?.IsInstanceOfType(this) == true)
+        {
+            return this;
+        }
+
         foreach (var client in _clients)
         {
-            var svc = client.GetService(serviceType, serviceKey);
+            var svc = client.GetService(serviceType!, serviceKey);
             if (svc is not null) return svc;
         }
         return null;

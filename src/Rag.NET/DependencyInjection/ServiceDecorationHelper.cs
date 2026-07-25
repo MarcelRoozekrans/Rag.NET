@@ -79,6 +79,15 @@ internal static class ServiceDecorationHelper
         }
     }
 
+    /// <summary>
+    /// Whether a non-keyed <typeparamref name="TService"/> registration exists (i.e. whether
+    /// <see cref="Decorate{TService}"/> would succeed). Lets callers decorate only the
+    /// surfaces the user actually registered.
+    /// </summary>
+    internal static bool IsRegistered<TService>(IServiceCollection services)
+        where TService : class =>
+        FindLast<TService>(services) is not null;
+
     private static ServiceDescriptor? FindLast<TService>(IServiceCollection services)
     {
         for (int i = services.Count - 1; i >= 0; i--)

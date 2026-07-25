@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.QueryTechniques.ContextualCompression;
 using Rag.NET.Resilience;
@@ -277,6 +278,123 @@ public static class RagBuilderExtensions
         }
 
         return builder;
+    }
+
+    /// <summary>Sentinel service key marking that <c>UseCostBudgeting</c> has been applied.</summary>
+    internal const string CostBudgetingAppliedKey = "ragnet.costbudget.applied";
+
+    /// <summary>
+    /// Wraps the registered <see cref="IChatClient"/> and/or
+    /// <c>IEmbeddingGenerator&lt;string, Embedding&lt;float&gt;&gt;</c> with cost-tracking
+    /// decorators: every call is gated on the configured daily/monthly spend limits
+    /// (throwing <see cref="BudgetExceededException"/> once a limit is reached) and its
+    /// token usage and cost — priced with the user-supplied
+    /// <see cref="CostBudgetOptions"/> rates — are recorded to an <see cref="ICostLedger"/>.
+    /// </summary>
+    /// <remarks>
+    /// The ledger defaults to the SQLite-backed <see cref="SqliteCostLedger"/> at
+    /// <see cref="CostBudgetOptions.DatabasePath"/> and is registered with <c>TryAdd</c>:
+    /// an <see cref="ICostLedger"/> registered BEFORE this call (e.g.
+    /// <see cref="InMemoryCostLedger"/> or a custom store) wins. Each registered surface
+    /// is decorated; at least one must be registered before this call (same ordering rule
+    /// as <c>UseRateLimiting</c>) — a surface registered afterwards is not tracked.
+    /// Idempotent: repeated calls are no-ops keyed on a sentinel registration, so
+    /// decorators never stack and the first configuration wins (same first-wins
+    /// convention as <c>UseRateLimiting</c>). The budget gate is pre-call, so a single
+    /// in-flight call can overshoot a limit by its own cost.
+    /// </remarks>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="configure">
+    /// Configures the <see cref="CostBudgetOptions"/>; at least one of
+    /// <see cref="CostBudgetOptions.DailyLimit"/>/<see cref="CostBudgetOptions.MonthlyLimit"/>
+    /// is required.
+    /// </param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when no limit is configured, or when neither surface has an underlying
+    /// registration to decorate.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when a price or limit is negative.</exception>
+    /// <exception cref="ArgumentException">Thrown when <see cref="CostBudgetOptions.DatabasePath"/> is empty.</exception>
+    public static TBuilder UseCostBudgeting<TBuilder>(this TBuilder builder, Action<CostBudgetOptions> configure)
+        where TBuilder : IRagBuilder
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var options = new CostBudgetOptions();
+        configure(options);
+        ValidateCostBudgetOptions(options, nameof(configure));
+
+        // Idempotence: repeated UseCostBudgeting must not stack decorators (first-wins,
+        // mirroring UseRateLimiting). A sentinel key is used instead of probing for the
+        // ICostLedger registration because a user-registered custom ledger would otherwise
+        // read as "already applied" and silently skip decoration.
+        if (ContainsServiceKey(builder.Services, CostBudgetingAppliedKey))
+        {
+            return builder;
+        }
+
+        bool trackChat = ServiceDecorationHelper.IsRegistered<IChatClient>(builder.Services);
+        bool trackEmbedding = ServiceDecorationHelper.IsRegistered<IEmbeddingGenerator<string, Embedding<float>>>(builder.Services);
+        if (!trackChat && !trackEmbedding)
+        {
+            throw new InvalidOperationException(
+                "UseCostBudgeting found no IChatClient or IEmbeddingGenerator registration to decorate. " +
+                "Register the underlying client/generator (provider registration, UseFallbackChain, …) " +
+                "before calling UseCostBudgeting — decoration wraps whatever is registered at that point.");
+        }
+
+        builder.Services.AddKeyedSingleton<object>(CostBudgetingAppliedKey, (_, _) => new object());
+        // TryAdd: a custom/in-memory ICostLedger registered earlier wins over the SQLite default.
+        builder.Services.TryAddSingleton<ICostLedger>(sp =>
+            new SqliteCostLedger(options.DatabasePath, sp.GetService<TimeProvider>() ?? TimeProvider.System));
+
+        if (trackChat)
+        {
+            ServiceDecorationHelper.Decorate<IChatClient>(builder.Services, (inner, sp) =>
+                new CostTrackingChatClient(inner, sp.GetRequiredService<ICostLedger>(), options,
+                    sp.GetService<ILogger<CostTrackingChatClient>>()));
+        }
+
+        if (trackEmbedding)
+        {
+            ServiceDecorationHelper.Decorate<IEmbeddingGenerator<string, Embedding<float>>>(builder.Services, (inner, sp) =>
+                new CostTrackingEmbeddingGenerator(inner, sp.GetRequiredService<ICostLedger>(), options,
+                    sp.GetService<ILogger<CostTrackingEmbeddingGenerator>>()));
+        }
+
+        return builder;
+    }
+
+    private static void ValidateCostBudgetOptions(CostBudgetOptions options, string paramName)
+    {
+        if (options.DailyLimit is null && options.MonthlyLimit is null)
+        {
+            throw new InvalidOperationException(
+                "UseCostBudgeting requires at least one limit: set CostBudgetOptions.DailyLimit " +
+                "and/or CostBudgetOptions.MonthlyLimit.");
+        }
+
+        ThrowIfNegative(options.InputPricePerMTokens, nameof(CostBudgetOptions.InputPricePerMTokens), paramName);
+        ThrowIfNegative(options.OutputPricePerMTokens, nameof(CostBudgetOptions.OutputPricePerMTokens), paramName);
+        ThrowIfNegative(options.EmbeddingPricePerMTokens, nameof(CostBudgetOptions.EmbeddingPricePerMTokens), paramName);
+        // A zero limit is allowed on purpose: it is an explicit kill switch (block all calls).
+        ThrowIfNegative(options.DailyLimit ?? 0m, nameof(CostBudgetOptions.DailyLimit), paramName);
+        ThrowIfNegative(options.MonthlyLimit ?? 0m, nameof(CostBudgetOptions.MonthlyLimit), paramName);
+
+        if (string.IsNullOrWhiteSpace(options.DatabasePath))
+        {
+            throw new ArgumentException(
+                "CostBudgetOptions.DatabasePath must be a non-empty string.", paramName);
+        }
+    }
+
+    private static void ThrowIfNegative(decimal value, string propertyName, string paramName)
+    {
+        if (value < 0m)
+        {
+            throw new ArgumentOutOfRangeException(paramName, value,
+                $"CostBudgetOptions.{propertyName} must not be negative.");
+        }
     }
 
     private static bool ContainsServiceKey(IServiceCollection services, string serviceKey)

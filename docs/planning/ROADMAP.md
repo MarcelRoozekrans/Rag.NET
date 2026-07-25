@@ -27,8 +27,10 @@ corresponding rows in features.md.
 **Plan:** `docs/plans/2026-07-24-ingestion-operations-design.md` + `-implementation.md`
 **Completed:** 2026-07-24 (Service Bus trigger and the CLI reindex command deferred as planned)
 
-### Phase 1.4: Resilience & Cost Controls [status: pending]
+### Phase 1.4: Resilience & Cost Controls [status: complete]
 **Backlog items:** LLM Fallback Chain; Rate Limiting & Cost Budgeting
+**Plan:** `docs/plans/2026-07-25-resilience-cost-controls-design.md` + `-implementation.md`
+**Completed:** 2026-07-25
 
 ### Phase 1.5: Document Parsers [status: pending]
 **Backlog items:** EPUB Parser; Email File Parser (EML/MSG); PDF Table Extraction; OCR for Scanned PDFs

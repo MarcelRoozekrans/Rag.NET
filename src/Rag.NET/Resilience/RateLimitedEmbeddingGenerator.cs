@@ -33,8 +33,14 @@ public sealed class RateLimitedEmbeddingGenerator(
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Answers for its own type first (so a stacked decorator chain is probeable layer by
+    /// layer), then delegates to the inner generator.
+    /// </remarks>
     public object? GetService(Type serviceType, object? serviceKey = null) =>
-        _inner.GetService(serviceType, serviceKey);
+        serviceKey is null && serviceType?.IsInstanceOfType(this) == true
+            ? this
+            : _inner.GetService(serviceType!, serviceKey);
 
     /// <inheritdoc/>
     public void Dispose() { /* inner generator and limiter are externally owned */ }
