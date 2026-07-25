@@ -170,6 +170,87 @@ public class PdfTableExtractorTests
     }
 
     [Fact]
+    public void NarrowAlignedGaps_NotColumns()
+    {
+        // Pins the minimum gutter width (median height 10 * 1.5 = 15): a grid whose
+        // aligned word-free intervals are only 12pt wide — ordinary word spacing — must
+        // not be detected as columns, while the 60pt gutters in the tests above are.
+        List<WordBox> words =
+        [
+            W("a", 0, 0), W("b", 52, 0), W("c", 104, 0),
+            W("d", 0, 20), W("e", 52, 20), W("f", 104, 20),
+            W("g", 0, 40), W("h", 52, 40), W("i", 104, 40),
+        ];
+
+        var (tables, prose) = PdfTableExtractor.Extract(words, new PdfParserOptions());
+
+        Assert.Empty(tables);
+        Assert.Equal(9, prose.Count);
+    }
+
+    [Fact]
+    public void RaggedSingleColumnProse_TwentyLines_NoTables()
+    {
+        // Reviewer probe (a): 20 lines of ragged single-column prose with deterministic
+        // ("seeded") spacing. Inter-word gaps are 4-8pt (< the 15pt minimum gutter width),
+        // every 3-row window contains a full-width line that kills trailing gaps, and
+        // windows with two short lines fail the ragged tolerance — zero tables.
+        double[] widths = [38, 55, 47, 62, 41, 50, 58, 44];
+        double[] gaps = [4, 6, 5, 7, 8, 4, 6, 5];
+        var words = new List<WordBox>();
+        for (int line = 0; line < 20; line++)
+        {
+            int wordCount = line % 2 == 0 ? 8 : 5 + (line % 3);
+            double x = 0;
+            for (int i = 0; i < wordCount; i++)
+            {
+                double width = widths[(line + i) % widths.Length];
+                words.Add(W($"w{line}_{i}", x, line * 20, width));
+                x += width + gaps[(line + i) % gaps.Length];
+            }
+        }
+
+        var (tables, prose) = PdfTableExtractor.Extract(words, new PdfParserOptions());
+
+        Assert.Empty(tables);
+        Assert.Equal(words.Count, prose.Count);
+    }
+
+    [Fact]
+    public void TwoColumnPageLayout_WideCenterGutter_NoTables()
+    {
+        // Reviewer probe (b): a 20-line two-column page layout with a persistent ~50pt
+        // center gutter (well above the minimum gutter width). The plausibility guards
+        // reject it: half-lines average 5 words per "cell" (> 4), and a 2-column run
+        // spanning all of the page's rows is a layout, not a table.
+        double[] widths = [36, 42, 38, 46, 40];
+        double[] gaps = [5, 7, 6, 4, 8];
+        var words = new List<WordBox>();
+        for (int line = 0; line < 20; line++)
+        {
+            AddHalfLine(words, line, startX: 0, widths, gaps);
+            AddHalfLine(words, line, startX: 280, widths, gaps);
+        }
+
+        var (tables, prose) = PdfTableExtractor.Extract(words, new PdfParserOptions());
+
+        Assert.Empty(tables);
+        Assert.Equal(words.Count, prose.Count);
+    }
+
+    private static void AddHalfLine(
+        List<WordBox> words, int line, double startX, double[] widths, double[] gaps)
+    {
+        double x = startX;
+        for (int i = 0; i < 5; i++)
+        {
+            double width = widths[(line + i) % widths.Length];
+            words.Add(W($"w{line}_{startX}_{i}", x, line * 20, width));
+            x += width + gaps[(line + i) % gaps.Length];
+        }
+    }
+
+    [Fact]
     public void InconsistentColumns_BailsToProse()
     {
         // Rows disagree on column count: two-word rows (cols 1+3) dominate around a single

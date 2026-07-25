@@ -4,19 +4,47 @@ namespace Rag.NET.Parsers.Pdf.TableExtraction;
 
 /// <summary>
 /// Pure-geometry table detection over word boxes (no PdfPig types). Algorithm:
-/// words are clustered into rows by Y bands (tolerance = median word height *
-/// <see cref="RowBandToleranceFactor"/>); column gutters are X-intervals that stay word-free
-/// across every row of a candidate run of >= <see cref="PdfParserOptions.MinTableRows"/>
-/// vertically adjacent rows; a maximal such run is one table. One row per run may leave at
-/// most one column empty (ragged header tolerance); anything less consistent bails to prose.
+/// words are clustered into rows by baseline (bottom-edge) Y bands (tolerance = median word
+/// height * <see cref="RowBandToleranceFactor"/>); column gutters are X-intervals at least
+/// <see cref="MinGutterWidthFactor"/> * median word height wide that stay word-free across
+/// every row of a candidate run of >= <see cref="PdfParserOptions.MinTableRows"/> vertically
+/// adjacent rows; a maximal such run is one table. One row per run may leave at most one
+/// column empty (ragged header tolerance); anything less consistent, or a run that looks
+/// like multi-column prose (see <see cref="PassesPlausibilityGuards"/>), bails to prose.
+///
+/// Known limitations (documented for the parser guide):
+/// - The first detected row is assumed to be the header when rendering Markdown.
+/// - Extraction is per page: a table spanning a page break is emitted as two tables.
 /// </summary>
 internal static class PdfTableExtractor
 {
     /// <summary>
-    /// Row-banding tolerance factor: a word joins the current Y band when its top is within
-    /// (median word height * this factor) of the band's first word top.
+    /// Row-banding tolerance factor: a word joins the current Y band when its baseline
+    /// (bottom edge) is within (median word height * this factor) of the band's first
+    /// word baseline.
     /// </summary>
     private const double RowBandToleranceFactor = 0.6;
+
+    /// <summary>
+    /// Minimum column-gutter width as a factor of the median word height: an intersected
+    /// word-free interval only counts as a column gutter when at least this wide. Ordinary
+    /// inter-word spaces (roughly 0.3-0.8x the word height) that happen to align across
+    /// adjacent prose lines must not become columns.
+    /// </summary>
+    private const double MinGutterWidthFactor = 1.5;
+
+    /// <summary>
+    /// Prose-layout guard: bail when the average number of words per non-empty cell exceeds
+    /// this value. Genuine table cells are short (typically 1-3 words); half-lines of
+    /// multi-column prose run longer.
+    /// </summary>
+    private const double MaxAverageWordsPerCell = 4.0;
+
+    /// <summary>
+    /// Prose-layout guard: a 2-column candidate spanning more than this fraction of the
+    /// page's rows is treated as a two-column page layout (e.g. academic paper), not a table.
+    /// </summary>
+    private const double TwoColumnDominanceFraction = 0.5;
 
     internal static (IReadOnlyList<DetectedTable> Tables, IReadOnlyList<WordBox> ProseWords) Extract(
         IReadOnlyList<WordBox> words, PdfParserOptions options)
@@ -26,13 +54,17 @@ internal static class PdfTableExtractor
             return ([], []);
         }
 
-        var rows = ClusterRows(words);
-        var (tables, consumed) = DetectTables(rows, options);
+        double medianHeight = MedianHeight(words);
+        var rows = ClusterRows(words, medianHeight * RowBandToleranceFactor);
+        var (tables, consumed) = DetectTables(rows, options, medianHeight * MinGutterWidthFactor);
         var prose = CollectWords(rows, consumed);
         return (tables, prose);
     }
 
-    /// <summary>Renders a detected table as a Markdown pipe table (header separator after row 1).</summary>
+    /// <summary>
+    /// Renders a detected table as a Markdown pipe table. The first detected row is assumed
+    /// to be the header row (separator emitted after row 1) — a heuristic assumption.
+    /// </summary>
     internal static string RenderMarkdown(DetectedTable table)
     {
         var builder = new StringBuilder();
@@ -50,7 +82,7 @@ internal static class PdfTableExtractor
 
     // ── Row clustering ───────────────────────────────────────────────────────
 
-    private static List<List<WordBox>> ClusterRows(IReadOnlyList<WordBox> words)
+    private static List<List<WordBox>> ClusterRows(IReadOnlyList<WordBox> words, double tolerance)
     {
         var sorted = new List<WordBox>(words.Count);
         for (int i = 0; i < words.Count; i++)
@@ -58,20 +90,22 @@ internal static class PdfTableExtractor
             sorted.Add(words[i]);
         }
 
-        sorted.Sort(static (a, b) => a.Y.CompareTo(b.Y));
+        // Band on the bottom edge (the baseline): words sharing a visual line align on
+        // their baseline even when font sizes differ, whereas their top edges diverge.
+        sorted.Sort(static (a, b) => (a.Y + a.Height).CompareTo(b.Y + b.Height));
 
-        double tolerance = MedianHeight(sorted) * RowBandToleranceFactor;
         var rows = new List<List<WordBox>>();
         List<WordBox>? current = null;
-        double bandTop = 0;
+        double bandBaseline = 0;
         for (int i = 0; i < sorted.Count; i++)
         {
             var word = sorted[i];
-            if (current is null || word.Y - bandTop > tolerance)
+            double baseline = word.Y + word.Height;
+            if (current is null || baseline - bandBaseline > tolerance)
             {
                 current = [];
                 rows.Add(current);
-                bandTop = word.Y;
+                bandBaseline = baseline;
             }
 
             current.Add(word);
@@ -85,7 +119,7 @@ internal static class PdfTableExtractor
         return rows;
     }
 
-    private static double MedianHeight(List<WordBox> words)
+    private static double MedianHeight(IReadOnlyList<WordBox> words)
     {
         var heights = new double[words.Count];
         for (int i = 0; i < words.Count; i++)
@@ -101,7 +135,7 @@ internal static class PdfTableExtractor
     // ── Run detection ────────────────────────────────────────────────────────
 
     private static (List<DetectedTable> Tables, bool[] Consumed) DetectTables(
-        List<List<WordBox>> rows, PdfParserOptions options)
+        List<List<WordBox>> rows, PdfParserOptions options, double minGutterWidth)
     {
         var tables = new List<DetectedTable>();
         var consumed = new bool[rows.Count];
@@ -109,7 +143,7 @@ internal static class PdfTableExtractor
         while (start + options.MinTableRows <= rows.Count)
         {
             int end = start + options.MinTableRows - 1;
-            var table = TryBuildTable(rows, start, end, options);
+            var table = TryBuildTable(rows, start, end, options, minGutterWidth);
             if (table is null)
             {
                 start++;
@@ -119,7 +153,7 @@ internal static class PdfTableExtractor
             // Maximal run: extend downward while the enlarged window still forms a table.
             while (end + 1 < rows.Count)
             {
-                var extended = TryBuildTable(rows, start, end + 1, options);
+                var extended = TryBuildTable(rows, start, end + 1, options, minGutterWidth);
                 if (extended is null)
                 {
                     break;
@@ -138,7 +172,7 @@ internal static class PdfTableExtractor
     }
 
     private static DetectedTable? TryBuildTable(
-        List<List<WordBox>> rows, int start, int end, PdfParserOptions options)
+        List<List<WordBox>> rows, int start, int end, PdfParserOptions options, double minGutterWidth)
     {
         var (left, right) = ComputeExtent(rows, start, end);
         var persistent = ComputeRowGaps(rows[start], left, right);
@@ -147,6 +181,7 @@ internal static class PdfTableExtractor
             persistent = IntersectGaps(persistent, ComputeRowGaps(rows[r], left, right));
         }
 
+        persistent = FilterNarrowGutters(persistent, minGutterWidth);
         if (persistent.Count < options.MinTableColumns - 1)
         {
             return null;
@@ -164,8 +199,71 @@ internal static class PdfTableExtractor
             return null;
         }
 
+        if (!PassesPlausibilityGuards(rows, start, end, cells))
+        {
+            return null;
+        }
+
         var (top, bottom) = ComputeYRange(rows, start, end);
         return new DetectedTable { Rows = cells, TopY = top, BottomY = bottom };
+    }
+
+    /// <summary>
+    /// Drops intersected word-free intervals narrower than the minimum gutter width:
+    /// ordinary inter-word spaces aligning across a few lines are not column gutters.
+    /// </summary>
+    private static List<(double Start, double End)> FilterNarrowGutters(
+        List<(double Start, double End)> gaps, double minGutterWidth)
+    {
+        var result = new List<(double Start, double End)>(gaps.Count);
+        for (int i = 0; i < gaps.Count; i++)
+        {
+            if (gaps[i].End - gaps[i].Start >= minGutterWidth)
+            {
+                result.Add(gaps[i]);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Guards against multi-column prose layouts masquerading as tables:
+    /// (a) genuine table cells are short — bail when the average words per non-empty cell
+    ///     exceeds <see cref="MaxAverageWordsPerCell"/> (prose half-lines run longer);
+    /// (b) a 2-column candidate spanning more than <see cref="TwoColumnDominanceFraction"/>
+    ///     of the page's rows is a two-column page layout, not a table.
+    /// </summary>
+    private static bool PassesPlausibilityGuards(
+        List<List<WordBox>> rows, int start, int end, List<IReadOnlyList<string>> cells)
+    {
+        int totalWords = 0;
+        for (int r = start; r <= end; r++)
+        {
+            totalWords += rows[r].Count;
+        }
+
+        int nonEmptyCells = 0;
+        for (int r = 0; r < cells.Count; r++)
+        {
+            var row = cells[r];
+            for (int c = 0; c < row.Count; c++)
+            {
+                if (row[c].Length > 0)
+                {
+                    nonEmptyCells++;
+                }
+            }
+        }
+
+        if (nonEmptyCells == 0 || (double)totalWords / nonEmptyCells > MaxAverageWordsPerCell)
+        {
+            return false;
+        }
+
+        int columnCount = cells[0].Count;
+        int runRows = end - start + 1;
+        return columnCount != 2 || runRows <= rows.Count * TwoColumnDominanceFraction;
     }
 
     // ── Gap geometry ─────────────────────────────────────────────────────────
