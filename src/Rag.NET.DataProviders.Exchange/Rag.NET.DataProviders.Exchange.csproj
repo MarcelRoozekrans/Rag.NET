@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.DataProviders.Exchange</RootNamespace>
+    <PackageId>Rag.NET.DataProviders.Exchange</PackageId>
+    <Description>Exchange / Outlook email data provider for Rag.NET</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
+    <PackageReference Include="Microsoft.Graph" Version="5.*" />
+    <!-- Audit lift: Microsoft.Graph 5.x pins Microsoft.Kiota.Abstractions 1.21.1 (GHSA-7j59-v9qr-6fq9, patched in 1.22.0). -->
+    <PackageReference Include="Microsoft.Kiota.Abstractions" Version="1.22.0" />
+    <PackageReference Include="Azure.Identity" Version="1.*" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.DataProviders.Exchange.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>
