@@ -147,14 +147,15 @@ Before each call the decorator checks the recorded spend of the current UTC day 
 Things to know:
 
 - **Prices are user-supplied.** There is no built-in price table — provider prices churn too fast to ship. All monetary values (prices, limits, ledger totals, the `ragnet.llm.cost` counter) share whatever currency you quote the prices in.
-- **Token counts are estimates unless the provider reports usage.** Chat calls use `ChatResponse.Usage` when the provider reports *both* input and output counts; otherwise both sides are estimated with the tiktoken `cl100k_base` tokenizer (over the request messages and response text). Embedding usage is always estimated (providers rarely report it). Treat the ledger as a close approximation, not an invoice.
+- **Token counts are estimates unless the provider reports usage.** Chat calls use `ChatResponse.Usage` when the provider reports *both* input and output counts; otherwise both sides are estimated with the tiktoken `cl100k_base` tokenizer (over the request messages and response text). Embedding usage is always estimated (providers rarely report it). Note that `cl100k_base` is an **OpenAI** tokenizer — estimates for non-OpenAI models (Anthropic, Mistral, local models, …) can deviate systematically from the provider's own accounting. Estimated and provider-reported entries are **indistinguishable in the ledger** (an accepted trade-off to keep the schema simple). Treat the ledger as a close approximation, not an invoice.
 - **Streaming records once, after the stream completes**, using the usage the provider emitted in the update stream (`UsageContent`) when present, else estimating from the accumulated text. A stream abandoned mid-way — cancelled or faulted — is deliberately **not recorded**: its true usage is unknown, and guessing would corrupt the ledger.
-- **The gate is pre-call, so a budget can overshoot by one call.** A call admitted at spend 24.99 against a 25.00 limit still runs to completion and records its full cost; enforcement kicks in for the *next* call. Size limits with one call's worth of headroom in mind.
+- **The gate is pre-call, so a budget can overshoot by all in-flight calls.** Every call admitted before the limit is reached runs to completion and records its full cost — and under concurrency that is *several* calls, not one: parallel ingestion routinely has N embedding batches in flight (`IngestionOptions.MaxConcurrentEmbeddingBatches` × `MaxDegreeOfParallelism`), all of which pass the gate before any of them records. Size limits with headroom for your concurrency level, not just one call's worth.
 - **Ledger failures degrade, never break.** If the ledger cannot be read, the call proceeds ungated (with a warning); if it cannot be written, the call still succeeds (with a warning). Budget enforcement is best-effort under storage failure.
 - **The ledger is replaceable.** `UseCostBudgeting` registers `SqliteCostLedger` with `TryAdd`, so an `ICostLedger` registered *before* the call — the shipped `InMemoryCostLedger`, or your own store — wins.
 - Windows are UTC calendar windows: `Day` is the current UTC date, `Month` runs from the first of the current UTC month.
+- Every gated call currently reads the ledger (once per configured window). Caching gate reads for a short interval is noted as future work should ledger reads ever become a bottleneck.
 
-Usage is also observable via the `ragnet.llm.tokens` counter (tagged `direction=in|out`, `kind=chat|embedding`) and the `ragnet.llm.cost` counter (tagged `kind`; unit nominally "usd" — actually the options' currency).
+Usage is also observable via the `ragnet.llm.tokens` counter (tagged `direction=in|out`, `surface=chat|embedding`) and the `ragnet.llm.cost` counter (tagged `surface`; unit nominally "usd" — actually the options' currency). The `surface` tag name is shared with the rate-limit histogram.
 
 ## Composing the resilience features
 
@@ -184,7 +185,9 @@ services.AddRagNet(rag =>
 });
 ```
 
-The resolved `IChatClient` is `CostTracking(RateLimited(Fallback(providers)))`. **Why this order:** cheapest gate first — a blown budget throws before consuming a rate permit, and a throttled call waits before starting a fallback sequence (so retries against secondary providers don't multiply your request rate). Each decorator answers `GetService` for its own type, so the stack is probeable layer by layer.
+The resolved `IChatClient` is `CostTracking(RateLimited(Fallback(providers)))`. **Why this order:** cheapest gate first — a blown budget throws before consuming a rate permit, and a throttled call waits before starting a fallback sequence (so retries against secondary providers don't multiply your request rate). A `BudgetExceededException` is pinned as **non-transient** by type, so even a fallback chain nested *outside* the budget gate would never treat a blown budget as a provider failure to retry. Each decorator answers `GetService` for its own type, so the stack is probeable layer by layer.
+
+One estimation caveat specific to this example: the chain mixes OpenAI and Anthropic providers, but estimation (used whenever a provider omits usage counts) is always `cl100k_base` — an OpenAI tokenizer — so estimated entries for the Anthropic fallback leg can deviate systematically from Anthropic's own token accounting.
 
 ## Known issue: `ConfigureResilience` registers a dangling pipeline
 
