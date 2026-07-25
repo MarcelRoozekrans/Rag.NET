@@ -64,40 +64,12 @@ public sealed class EmailDocumentParser(
 
             var mimeType = $"{attachment.ContentType.MediaType}/{attachment.ContentType.MediaSubtype}";
 
-            IDocumentParser? parser = null;
-            foreach (var p in parsers)
-            {
-                if (ReferenceEquals(p, this)) continue;
-                if (p.CanParse(mimeType))
-                {
-                    parser = p;
-                    break;
-                }
-            }
-
-            if (parser is null)
-            {
-                logger?.LogWarning("No parser registered for attachment content type {ContentType}; skipping {FileName}",
-                    mimeType, attachment.FileName);
-                continue;
-            }
-
-            var attachmentMetadata = new DocumentMetadata
-            {
-                DocumentId = metadata.DocumentId,
-                FileName = attachment.FileName,
-                ContentType = mimeType,
-                Tags = metadata.Tags is { Count: > 0 }
-                    ? new Dictionary<string, string>(metadata.Tags, StringComparer.Ordinal)
-                    : metadata.Tags,
-                CreatedAt = metadata.CreatedAt,
-            };
-
             using var attachmentStream = new MemoryStream();
             await attachment.Content.DecodeToAsync(attachmentStream, cancellationToken).ConfigureAwait(false);
             attachmentStream.Position = 0;
 
-            await foreach (var section in parser.ParseAsync(attachmentStream, attachmentMetadata, cancellationToken).ConfigureAwait(false))
+            await foreach (var section in EmailAttachmentDispatcher.DispatchAsync(
+                parsers, this, attachment.FileName, mimeType, attachmentStream, metadata, logger, cancellationToken).ConfigureAwait(false))
             {
                 yield return section;
             }
