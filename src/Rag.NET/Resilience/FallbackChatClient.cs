@@ -19,6 +19,9 @@ namespace Rag.NET.Resilience;
 /// transient failure and the next client is tried; caller cancellation always
 /// propagates immediately. For streaming, the timeout spans the whole per-client
 /// attempt (first token through stream completion), not just time-to-first-token.
+/// When every client fails and the last failure was a per-client timeout, a
+/// <see cref="TimeoutException"/> (wrapping the last cancellation) is thrown so a
+/// total provider outage is not mistaken for caller cancellation.
 /// </remarks>
 public sealed class FallbackChatClient(
     IReadOnlyList<IChatClient> clients,
@@ -44,17 +47,18 @@ public sealed class FallbackChatClient(
         Exception? last = null;
         for (int i = 0; i < _clients.Count; i++)
         {
+            using var timeoutCts = CreateTimeoutCts(cancellationToken);
             try
             {
-                return await GetResponseWithTimeoutAsync(_clients[i], messages, options, cancellationToken).ConfigureAwait(false);
+                return await _clients[i].GetResponseAsync(messages, options, timeoutCts?.Token ?? cancellationToken).ConfigureAwait(false);
             }
-            catch (OperationCanceledException ex) when (_perClientTimeout is not null && !cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException ex) when (IsPerClientTimeout(timeoutCts, cancellationToken))
             {
-                // The linked per-client timeout fired, not the caller: transient → next client.
+                // The linked per-client timeout actually fired, not the caller: transient → next client.
                 last = ex;
                 if (i < _clients.Count - 1)
                     logger?.LogWarning(ex, "Client {Index} timed out after {Timeout}; trying next client.",
-                        i.ToString(CultureInfo.InvariantCulture), _perClientTimeout.Value.ToString("c", CultureInfo.InvariantCulture));
+                        i.ToString(CultureInfo.InvariantCulture), _perClientTimeout!.Value.ToString("c", CultureInfo.InvariantCulture));
             }
             catch (OperationCanceledException)
             {
@@ -67,17 +71,7 @@ public sealed class FallbackChatClient(
                     logger?.LogWarning(ex, "Client {Index} failed transiently; trying next client.", i.ToString(CultureInfo.InvariantCulture));
             }
         }
-        throw last!;
-    }
-
-    private async Task<ChatResponse> GetResponseWithTimeoutAsync(
-        IChatClient client,
-        IEnumerable<ChatMessage> messages,
-        ChatOptions? options,
-        CancellationToken cancellationToken)
-    {
-        using var timeoutCts = CreateTimeoutCts(cancellationToken);
-        return await client.GetResponseAsync(messages, options, timeoutCts?.Token ?? cancellationToken).ConfigureAwait(false);
+        throw FinalException(last!, cancellationToken);
     }
 
     private CancellationTokenSource? CreateTimeoutCts(CancellationToken cancellationToken)
@@ -88,6 +82,32 @@ public sealed class FallbackChatClient(
         var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(timeout);
         return cts;
+    }
+
+    /// <summary>
+    /// True only when the per-client timeout CTS actually fired while the caller's token
+    /// did not: a spontaneous client OCE (neither token cancelled) is NOT a timeout and
+    /// falls through to the rethrow path, matching no-timeout behavior.
+    /// </summary>
+    private static bool IsPerClientTimeout(CancellationTokenSource? timeoutCts, CancellationToken callerToken) =>
+        timeoutCts is not null && timeoutCts.IsCancellationRequested && !callerToken.IsCancellationRequested;
+
+    /// <summary>
+    /// Wraps an all-clients-exhausted cancellation in a <see cref="TimeoutException"/> when it
+    /// stems from the per-client timeout rather than the caller: a total provider outage must
+    /// not masquerade as caller cancellation (e.g. ASP.NET treats OCE as client disconnect).
+    /// </summary>
+    private Exception FinalException(Exception last, CancellationToken cancellationToken)
+    {
+        if (last is OperationCanceledException && !cancellationToken.IsCancellationRequested && _perClientTimeout is { } timeout)
+        {
+            return new TimeoutException(
+                string.Create(CultureInfo.InvariantCulture,
+                    $"All {_clients.Count} clients failed; the last attempt exceeded the per-client timeout of {timeout:c}."),
+                last);
+        }
+
+        return last;
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -111,7 +131,7 @@ public sealed class FallbackChatClient(
             yield break;
         }
 
-        throw last!;
+        throw FinalException(last!, cancellationToken);
     }
 
     private async IAsyncEnumerable<ChatResponseUpdate> TryStreamClientAsync(
@@ -131,12 +151,12 @@ public sealed class FallbackChatClient(
         try
         {
             int itemsYielded = 0;
-            bool? hasNext = await MoveNextOrClassifyAsync(enumerator, clientIndex, itemsYielded, timeoutCts is not null, cancellationToken, state).ConfigureAwait(false);
+            bool? hasNext = await MoveNextOrClassifyAsync(enumerator, clientIndex, itemsYielded, timeoutCts, cancellationToken, state).ConfigureAwait(false);
             while (hasNext == true)
             {
                 yield return enumerator.Current;
                 itemsYielded++;
-                hasNext = await MoveNextOrClassifyAsync(enumerator, clientIndex, itemsYielded, timeoutCts is not null, cancellationToken, state).ConfigureAwait(false);
+                hasNext = await MoveNextOrClassifyAsync(enumerator, clientIndex, itemsYielded, timeoutCts, cancellationToken, state).ConfigureAwait(false);
             }
         }
         finally
@@ -155,7 +175,7 @@ public sealed class FallbackChatClient(
         IAsyncEnumerator<ChatResponseUpdate> enumerator,
         int clientIndex,
         int itemsYielded,
-        bool timeoutArmed,
+        CancellationTokenSource? timeoutCts,
         CancellationToken callerToken,
         StreamState state)
     {
@@ -163,9 +183,9 @@ public sealed class FallbackChatClient(
         {
             return await enumerator.MoveNextAsync().ConfigureAwait(false);
         }
-        catch (OperationCanceledException ex) when (timeoutArmed && !callerToken.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (IsPerClientTimeout(timeoutCts, callerToken))
         {
-            // The linked per-client timeout fired, not the caller: transient → next client.
+            // The linked per-client timeout actually fired, not the caller: transient → next client.
             state.TransientException = ex;
             LogStreamFailure(clientIndex, itemsYielded, ex);
             return null;

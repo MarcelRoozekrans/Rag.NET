@@ -178,7 +178,17 @@ public static class RagBuilderExtensions
         {
             var chain = new List<IChatClient>(options.Clients.Count);
             foreach (var factory in options.Clients)
+            {
+                if (factory is null)
+                {
+                    throw new ArgumentException(
+                        "FallbackChainOptions.Clients contains a null factory. Add clients via " +
+                        "FallbackChainOptions.AddClient(...), which rejects null, instead of mutating Clients directly.",
+                        nameof(configure));
+                }
+
                 chain.Add(factory(sp));
+            }
 
             return new FallbackChatClient(chain, sp.GetService<ILogger<FallbackChatClient>>(), options.PerClientTimeout);
         });

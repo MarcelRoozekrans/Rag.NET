@@ -217,6 +217,95 @@ public class FallbackChatClientTests
         Assert.Equal("streamed", updates[0].Text);
     }
 
+    [Fact]
+    public async Task GetStreamingResponseAsync_MidStreamTimeout_NextClientRestartsFromBeginning()
+    {
+        var primary = Substitute.For<IChatClient>();
+        var secondary = Substitute.For<IChatClient>();
+        primary.GetStreamingResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => YieldThenHangAsync(
+                new ChatResponseUpdate { Contents = [new TextContent("partial")] }, ci.Arg<CancellationToken>()));
+        secondary.GetStreamingResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(YieldUpdates(new ChatResponseUpdate { Contents = [new TextContent("restarted")] }));
+
+        var sut = new FallbackChatClient([primary, secondary], perClientTimeout: TimeSpan.FromMilliseconds(50));
+        var updates = new List<ChatResponseUpdate>();
+        await foreach (var update in sut.GetStreamingResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken))
+            updates.Add(update);
+
+        // The already-yielded prefix is not retracted; the next client streams from the beginning.
+        Assert.Equal(2, updates.Count);
+        Assert.Equal("partial", updates[0].Text);
+        Assert.Equal("restarted", updates[1].Text);
+    }
+
+    [Fact]
+    public async Task GetResponseAsync_AllClientsTimeout_ThrowsTimeoutExceptionWithInnerOce()
+    {
+        var primary = Substitute.For<IChatClient>();
+        var secondary = Substitute.For<IChatClient>();
+        primary.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => HangUntilCancelledAsync(ci.Arg<CancellationToken>()));
+        secondary.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => HangUntilCancelledAsync(ci.Arg<CancellationToken>()));
+
+        var sut = new FallbackChatClient([primary, secondary], perClientTimeout: TimeSpan.FromMilliseconds(50));
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() =>
+            sut.GetResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        Assert.IsAssignableFrom<OperationCanceledException>(ex.InnerException);
+        Assert.Contains("per-client timeout", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetStreamingResponseAsync_AllClientsTimeout_ThrowsTimeoutExceptionWithInnerOce()
+    {
+        var primary = Substitute.For<IChatClient>();
+        var secondary = Substitute.For<IChatClient>();
+        primary.GetStreamingResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => HangingStreamAsync(ci.Arg<CancellationToken>()));
+        secondary.GetStreamingResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => HangingStreamAsync(ci.Arg<CancellationToken>()));
+
+        var sut = new FallbackChatClient([primary, secondary], perClientTimeout: TimeSpan.FromMilliseconds(50));
+        var ex = await Assert.ThrowsAsync<TimeoutException>(async () =>
+        {
+            await foreach (var _ in sut.GetStreamingResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken))
+            {
+            }
+        });
+
+        Assert.IsAssignableFrom<OperationCanceledException>(ex.InnerException);
+    }
+
+    [Fact]
+    public async Task GetResponseAsync_SpontaneousClientOceWithTimeoutArmed_RethrowsWithoutFallback()
+    {
+        var primary = Substitute.For<IChatClient>();
+        var secondary = Substitute.For<IChatClient>();
+        primary.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException("client's own internal cancellation"));
+
+        var sut = new FallbackChatClient([primary, secondary], perClientTimeout: TimeSpan.FromSeconds(30));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            sut.GetResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken));
+
+        await secondary.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    // Helper: streaming call that yields one update, then hangs but honors cancellation
+    private static async IAsyncEnumerable<ChatResponseUpdate> YieldThenHangAsync(
+        ChatResponseUpdate first,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await Task.Yield();
+        yield return first;
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
+        await tcs.Task;
+    }
+
     // Helper: chat call that never completes but honors cancellation (like a real HTTP client)
     private static async Task<ChatResponse> HangUntilCancelledAsync(CancellationToken cancellationToken)
     {

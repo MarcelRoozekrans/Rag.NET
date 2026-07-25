@@ -52,7 +52,10 @@ Two things to know about the registration:
 
 - When the timeout elapses and the **caller's** token has not been cancelled, the attempt counts as a transient failure and the next client is tried — a hung provider no longer stalls the whole chain.
 - Caller cancellation always propagates immediately; it is never rerouted to a fallback client.
+- If **every** client times out, the caller receives a `TimeoutException` (with the last cancellation as its inner exception) rather than an `OperationCanceledException` — a total provider outage must not masquerade as caller cancellation (e.g. ASP.NET treats OCE as a client disconnect).
 - For streaming responses the timeout spans the **whole per-client attempt** (first token through stream completion), not just time-to-first-token. If it fires mid-stream, the chain restarts the request against the next client (see logging below).
+- Mid-stream restarts affect consumers: **already-yielded updates are not retracted**. The next client streams the response from the beginning, so a consumer sees the failed client's prefix followed by the full restarted stream — discard accumulated output when a restart is logged if duplicates matter for your use case.
+- Because the streaming timeout covers the whole attempt, the clock **keeps running while your consumer processes updates** — a slow consumer eats into the provider's time budget. Size `PerClientTimeout` for end-to-end stream consumption, not just provider latency.
 
 The timeout must be greater than zero when set; this is validated both at registration and by the `FallbackChatClient` constructor.
 
