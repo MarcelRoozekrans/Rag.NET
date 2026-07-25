@@ -87,6 +87,7 @@ public class RateLimiterTests
     public void Ctor_BlankSurface_Throws()
     {
         Assert.Throws<ArgumentException>(() => new TokenBucketRateLimiterAdapter(ManualBucket(1, 0), " "));
+        Assert.Throws<ArgumentException>(() => new TokenBucketRateLimiterAdapter(60, " "));
     }
 
     // ── Waiting semantics (deterministic via manual replenish) ───────────────

@@ -34,8 +34,18 @@ public sealed class TokenBucketRateLimiterAdapter : IRateLimiter
     /// instead of waiting. <see langword="null"/> (default) means an unbounded queue.
     /// </param>
     public TokenBucketRateLimiterAdapter(int requestsPerMinute, string surface, int? maxQueuedRequests = null)
-        : this(new TokenBucketRateLimiter(CreateBucketOptions(requestsPerMinute, maxQueuedRequests)), surface)
+        : this(CreateLimiter(requestsPerMinute, surface, maxQueuedRequests), surface)
     {
+    }
+
+    /// <summary>
+    /// Validates all arguments before constructing the limiter so an invalid call cannot
+    /// leak a live auto-replenishment timer.
+    /// </summary>
+    private static TokenBucketRateLimiter CreateLimiter(int requestsPerMinute, string surface, int? maxQueuedRequests)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(surface);
+        return new TokenBucketRateLimiter(CreateBucketOptions(requestsPerMinute, maxQueuedRequests));
     }
 
     /// <summary>

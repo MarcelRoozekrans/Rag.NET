@@ -124,6 +124,16 @@ public class UseRateLimitingTests
     }
 
     [Fact]
+    public void UseRateLimiting_NoPriorEmbeddingRegistration_ThrowsWithFriendlyServiceName()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            new ServiceCollection().AddRagNet(rag => rag.UseRateLimiting(o => o.EmbeddingRequestsPerMinute = 60)));
+
+        Assert.Contains("IEmbeddingGenerator", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("`", ex.Message, StringComparison.Ordinal); // no generic-arity noise
+    }
+
+    [Fact]
     public void UseRateLimiting_NoSurfaceConfigured_Throws()
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>

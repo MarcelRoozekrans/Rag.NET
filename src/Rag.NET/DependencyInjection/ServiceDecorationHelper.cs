@@ -36,15 +36,20 @@ internal static class ServiceDecorationHelper
 
         if (original is null)
         {
+            var serviceName = FriendlyName(typeof(TService));
             throw new InvalidOperationException(
-                $"Cannot decorate {typeof(TService).Name}: no prior registration was found. " +
-                $"Register the underlying {typeof(TService).Name} (e.g. your provider client) before " +
+                $"Cannot decorate {serviceName}: no prior registration was found. " +
+                $"Register the underlying {serviceName} (e.g. your provider client) before " +
                 "the decorating Use* extension — decoration wraps whatever is registered at that point.");
         }
 
         services.Remove(original);
         services.AddSingleton(sp => decorate(MaterialiseOriginal<TService>(sp, original), sp));
     }
+
+    /// <summary>Type name without the generic-arity suffix (e.g. <c>IEmbeddingGenerator</c>, not <c>IEmbeddingGenerator`2</c>).</summary>
+    private static string FriendlyName(Type type) =>
+        type.IsGenericType ? type.Name[..type.Name.IndexOf('`')] : type.Name;
 
     private static TService MaterialiseOriginal<TService>(
         IServiceProvider serviceProvider,
