@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Rag.NET.DataProviders;
 
 namespace Rag.NET.DataProviders.Linear;
@@ -63,7 +64,9 @@ public static class LinearDataProviderExtensions
             .AddStandardResilienceHandler();
 
         return services.AddSingleton<IFileContentProvider>(sp =>
-            new LinearDataProvider(sp.GetRequiredService<ILinearApi>(), opts));
+            new LinearDataProvider(
+                sp.GetRequiredService<ILinearApi>(), opts,
+                sp.GetService<ILogger<LinearDataProvider>>()));
     }
 
     /// <summary>Returns the first state value not in <see cref="LinearOptions.ValidStateTypes"/>, or <see langword="null"/>.</summary>

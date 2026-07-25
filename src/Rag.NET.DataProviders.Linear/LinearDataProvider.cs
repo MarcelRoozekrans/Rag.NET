@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Rag.NET.DataProviders;
 using Rag.NET.Models;
 using ZeroAlloc.Results;
@@ -61,15 +62,21 @@ public sealed class LinearDataProvider : FileContentProviderBase
 
     private readonly ILinearApi    _api;
     private readonly LinearOptions _options;
+    private readonly ILogger<LinearDataProvider>? _logger;
 
     private DateTimeOffset? _maxUpdated;
     private bool            _completedTraversal;
 
-    internal LinearDataProvider(ILinearApi api, LinearOptions options) : base(options)
+    internal LinearDataProvider(
+        ILinearApi api,
+        LinearOptions options,
+        ILogger<LinearDataProvider>? logger = null)
+        : base(options)
     {
         ArgumentNullException.ThrowIfNull(api);
         _api     = api;
         _options = options;
+        _logger  = logger;
     }
 
     /// <summary>
@@ -108,9 +115,8 @@ public sealed class LinearDataProvider : FileContentProviderBase
             yield break;
         }
 
-        string? after   = null;
-        bool    hasNext = true;
-        while (hasNext)
+        string? after = null;
+        while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -133,8 +139,19 @@ public sealed class LinearDataProvider : FileContentProviderBase
                 yield return Result<FileHandle, RagError>.Success(ToHandle(issue));
             }
 
-            after   = page.PageInfo.EndCursor;
-            hasNext = page.PageInfo.HasNextPage && !string.IsNullOrEmpty(after);
+            if (!page.PageInfo.HasNextPage)
+                break;
+
+            if (string.IsNullOrEmpty(page.PageInfo.EndCursor))
+            {
+                // Malformed page: hasNextPage without a cursor to follow. The traversal is
+                // incomplete, so the watermark stays withheld (GetDeltaToken returns null).
+                if (_logger is not null)
+                    LinearLog.PaginationStoppedMalformedPage(_logger, page.PageInfo.EndCursor);
+                yield break;
+            }
+
+            after = page.PageInfo.EndCursor;
         }
 
         _completedTraversal = true;

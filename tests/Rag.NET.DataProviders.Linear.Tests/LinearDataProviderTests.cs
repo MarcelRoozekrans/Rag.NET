@@ -11,8 +11,11 @@ namespace Rag.NET.DataProviders.Linear.Tests;
 
 public sealed class LinearDataProviderTests
 {
-    private static LinearDataProvider MakeProvider(ILinearApi api, LinearOptions? options = null)
-        => new(api, options ?? new LinearOptions());
+    private static LinearDataProvider MakeProvider(
+        ILinearApi api,
+        LinearOptions? options = null,
+        Microsoft.Extensions.Logging.ILogger<LinearDataProvider>? logger = null)
+        => new(api, options ?? new LinearOptions(), logger);
 
     private static async Task<string> ReadContentAsync(FileEntry entry)
     {
@@ -256,6 +259,32 @@ public sealed class LinearDataProviderTests
         // Sort direction of orderBy is undocumented — an incomplete traversal returns null
         // (keep the previous token) rather than the max updatedAt seen so far.
         Assert.Null(sut.GetDeltaToken());
+    }
+
+    // 6c. Malformed page (hasNextPage true, no endCursor): stop, withhold watermark, warn.
+    [Fact]
+    public async Task GetFilesAsync_HasNextPageWithoutEndCursor_StopsAndWithholdsWatermark()
+    {
+        var api = new FakeLinearApi(Page(
+            hasNext: true, endCursor: null,
+            Issue(identifier: "ENG-1", updatedAt: new DateTimeOffset(2026, 7, 2, 9, 0, 0, TimeSpan.Zero))));
+        var logger = new CapturingLogger<LinearDataProvider>();
+        var sut    = MakeProvider(api, logger: logger);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // The loop exits after the malformed page instead of re-requesting forever.
+        var single = Assert.Single(results);
+        Assert.True(single.IsSuccess);
+        _ = Assert.Single(api.Requests);
+
+        // The traversal is incomplete — the watermark must not advance past unseen issues.
+        Assert.Null(sut.GetDeltaToken());
+
+        var warning = Assert.Single(logger.Entries,
+            e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning);
+        Assert.Contains("hasNextPage", warning.Message, StringComparison.Ordinal);
     }
 
     // 7. Invalid state value throws at registration.
