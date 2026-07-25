@@ -232,9 +232,59 @@ public sealed class ExchangeMailDataProviderTests
 
         var entry = Assert.Single(entries);
         Assert.Equal("inbox/msg-1", entry.Value.Id.Value);
-        // Truncated run: the watermark must not advance.
+        // Truncated in the only (= last) folder: watermark advances to the truncation
+        // point so the backlog drains at MaxResults per run; the run is still incomplete.
         Assert.False(sut.CompletedFullTraversal);
-        Assert.Null(sut.GetDeltaToken());
+        Assert.Equal(
+            new DateTimeOffset(2026, 3, 1, 10, 0, 0, TimeSpan.Zero).ToString("o", CultureInfo.InvariantCulture),
+            sut.GetDeltaToken());
+    }
+
+    // -------------------------------------------------------------------------
+    // 7a-bis. Capped backlog drains: truncation token feeds the next run's filter
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Watermark_SingleFolderCap_AdvancesAndNextRunResumesFromTruncationPoint()
+    {
+        const string twoMessages = """
+            {
+              "value": [
+                { "id": "msg-1", "subject": "First", "receivedDateTime": "2026-03-01T10:00:00Z", "hasAttachments": false },
+                { "id": "msg-2", "subject": "Second", "receivedDateTime": "2026-03-01T11:00:00Z", "hasAttachments": false }
+              ]
+            }
+            """;
+        var handler1 = MakeHandler((InboxKey, HttpStatusCode.OK, twoMessages));
+        var logger   = new CapturingLogger<ExchangeMailDataProvider>();
+        var run1     = MakeProvider(handler1, o => o.MaxResults = 1, logger);
+
+        _ = await run1.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var token = run1.GetDeltaToken();
+        Assert.Equal(
+            new DateTimeOffset(2026, 3, 1, 10, 0, 0, TimeSpan.Zero).ToString("o", CultureInfo.InvariantCulture),
+            token);
+        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("advanced", warning.Message, StringComparison.Ordinal);
+
+        // Second run with the returned token requests the NEXT batch via the ge filter.
+        var handler2 = MakeHandler((InboxKey, HttpStatusCode.OK, twoMessages));
+        var run2     = MakeProvider(handler2, o =>
+        {
+            o.MaxResults = 1;
+            o.DeltaToken = token;
+        });
+
+        _ = await run2.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var listRequest = Assert.Single(handler2.Requests, u => u.Contains(InboxKey, StringComparison.Ordinal));
+        Assert.Contains(
+            "receivedDateTime ge 2026-03-01T10:00:00Z",
+            Uri.UnescapeDataString(listRequest),
+            StringComparison.Ordinal);
     }
 
     // -------------------------------------------------------------------------
@@ -276,7 +326,12 @@ public sealed class ExchangeMailDataProviderTests
         string[] expectedIds = ["inbox/msg-1", "inbox/msg-2", "archive/msg-a1"];
         Assert.Equal(expectedIds, entries.Select(e => e.Value.Id.Value).ToList());
         Assert.False(sut.CompletedFullTraversal);
-        Assert.Null(sut.GetDeltaToken());
+        // Cap fired in the LAST folder: the token is that folder's last-seen
+        // receivedDateTime (2026-01-01), NOT the global max (inbox, 2026-03-01) —
+        // using the global max would skip archive/msg-a2 forever.
+        Assert.Equal(
+            new DateTimeOffset(2026, 1, 1, 8, 0, 0, TimeSpan.Zero).ToString("o", CultureInfo.InvariantCulture),
+            sut.GetDeltaToken());
     }
 
     // -------------------------------------------------------------------------
@@ -317,9 +372,12 @@ public sealed class ExchangeMailDataProviderTests
         _ = Assert.Single(entries);
         Assert.DoesNotContain(handler.Requests, u => u.Contains(ArchiveKey, StringComparison.Ordinal));
         Assert.False(sut.CompletedFullTraversal);
+        // Cap fired in a NON-last folder: archive was never visited, so no safe
+        // watermark exists — the token is withheld entirely.
         Assert.Null(sut.GetDeltaToken());
         var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
         Assert.Contains("MaxResults=1", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("withheld", warning.Message, StringComparison.Ordinal);
     }
 
     // -------------------------------------------------------------------------

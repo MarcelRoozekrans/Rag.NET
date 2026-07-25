@@ -380,9 +380,13 @@ scope the app to the ingest mailbox with an Exchange application access policy
 **Watermark persistence:** after a run, read the new watermark from the provider and persist
 it for the next run — the connector filters with `receivedDateTime ge {DeltaToken}`.
 Persist the token **only after an error-free run**: the watermark advances during
-enumeration, before per-entry ingestion outcomes are known. `GetDeltaToken()` returns
-`null` when the traversal was truncated (`MaxResults`) or failed — keep the previous token
-in that case, otherwise the skipped messages would never be re-fetched:
+enumeration, before per-entry ingestion outcomes are known. When a run is truncated by
+`MaxResults` in the **last (or only) folder**, the token advances to the truncation point
+(messages are enumerated oldest-first, so everything unseen is newer) — a backlog larger
+than `MaxResults` therefore drains at `MaxResults` per run. `GetDeltaToken()` returns
+`null` when the run failed or was truncated **before the last folder was reached** — keep
+the previous token in that case, otherwise the never-visited folders' messages would be
+skipped forever:
 
 ```csharp
 var provider = (ExchangeMailDataProvider)sp.GetRequiredService<IFileContentProvider>();
@@ -544,7 +548,7 @@ services.AddSharePointDataProvider(tenantId, clientId, clientSecret, siteId, dri
 | Slack | Unix timestamp (string) | Passed as `oldest` to `conversations.history` |
 | Microsoft Teams | Not yet supported | Delta ingestion is not yet implemented for this connector |
 | Gmail | IMAP UniqueId (string) | Messages with a UID greater than the watermark are fetched |
-| Exchange / Outlook | ISO 8601 `receivedDateTime` (string) | Applied as a `receivedDateTime ge` filter; `GetDeltaToken()` returns the max value seen, or `null` when the run was truncated/failed (keep the previous token) |
+| Exchange / Outlook | ISO 8601 `receivedDateTime` (string) | Applied as a `receivedDateTime ge` filter; `GetDeltaToken()` returns the max value seen, the truncation point when `MaxResults` fired in the last folder (backlogs drain per run), or `null` when the run failed or was truncated earlier (keep the previous token) |
 | GitLab | Commit SHA (string) | HEAD commit SHA at last successful ingest; compare API returns changed files |
 | Bitbucket | Commit hash (string) | HEAD commit hash at last successful ingest; diffstat API returns changed files |
 | Zendesk | Unix epoch (string) | Passed as `start_time` to the incremental export API |

@@ -48,7 +48,9 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
     private readonly ExchangeMailOptions _options;
     private readonly ILogger<ExchangeMailDataProvider>? _logger;
 
-    private DateTimeOffset? _maxReceived;
+    private DateTimeOffset? _maxReceived;          // global max across all folders (full-traversal token)
+    private DateTimeOffset? _lastSeenInFolder;     // last-seen in the folder currently enumerating
+    private DateTimeOffset? _truncationWatermark;  // safe token when the cap fired in the LAST folder
 
     public ExchangeMailDataProvider(
         GraphServiceClient graph,
@@ -65,34 +67,45 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
     /// <summary>
     /// <see langword="true"/> when the most recent enumeration visited every configured
     /// folder to completion — i.e. it neither hit <see cref="ExchangeMailOptions.MaxResults"/>
-    /// nor stopped on a failure. Only then is the watermark trustworthy.
+    /// nor stopped on a failure. This signals <b>completeness</b>, not watermark safety:
+    /// a run truncated in the last folder still yields a safe partial-progress token from
+    /// <see cref="GetDeltaToken"/> even though this property is <see langword="false"/>.
     /// </summary>
     public bool CompletedFullTraversal { get; private set; }
 
     /// <summary>
-    /// Returns the watermark from the last enumeration — the maximum
-    /// <c>receivedDateTime</c> seen, in ISO-8601 round-trip format. Callers persist this
-    /// value and pass it back via <see cref="CloudStorageOptions.DeltaToken"/> for
-    /// incremental runs.
+    /// Returns the watermark from the last enumeration in ISO-8601 round-trip format.
+    /// Callers persist this value and pass it back via
+    /// <see cref="CloudStorageOptions.DeltaToken"/> for incremental runs.
     /// <para>
-    /// Returns <see langword="null"/> when the traversal did not complete
-    /// (<see cref="ExchangeMailOptions.MaxResults"/> truncation or a failure) or saw no
-    /// messages — a <see langword="null"/> return means <b>keep the previous token</b>;
-    /// advancing it would permanently skip the messages that were never enumerated.
+    /// Full traversal → the maximum <c>receivedDateTime</c> seen across all folders.
+    /// Truncated by <see cref="ExchangeMailOptions.MaxResults"/> while enumerating the
+    /// <b>last</b> configured folder → that folder's last-seen <c>receivedDateTime</c>
+    /// (provably safe: messages are ordered ascending, so everything unseen in that folder
+    /// is newer, and all earlier folders completed) — backlogs larger than
+    /// <c>MaxResults</c> therefore drain at <c>MaxResults</c> per run.
+    /// Truncated in a non-last folder, failed, or no messages seen →
+    /// <see langword="null"/>, which means <b>keep the previous token</b>; advancing it
+    /// would permanently skip messages that were never enumerated.
+    /// </para>
+    /// <para>
     /// Persist the token only after an error-free run: the watermark advances during
     /// enumeration, before per-entry ingestion outcomes are known.
     /// Same-timestamp duplicates on the next run are caught by the hash-store skip.
     /// </para>
     /// </summary>
-    public string? GetDeltaToken() =>
-        CompletedFullTraversal
-            ? _maxReceived?.ToString("o", CultureInfo.InvariantCulture)
-            : null;
+    public string? GetDeltaToken()
+    {
+        var watermark = CompletedFullTraversal ? _maxReceived : _truncationWatermark;
+        return watermark?.ToString("o", CultureInfo.InvariantCulture);
+    }
 
     protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         _maxReceived           = null;
+        _lastSeenInFolder      = null;
+        _truncationWatermark   = null;
         CompletedFullTraversal = false;
 
         string? filter = null;
@@ -121,6 +134,8 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
         var total = 0;
         for (int f = 0; f < folders.Count; f++)
         {
+            _lastSeenInFolder = null;
+
             await foreach (var result in EnumerateFolderAsync(folders[f], filter, total, cancellationToken)
                 .ConfigureAwait(false))
             {
@@ -130,16 +145,39 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
 
                 if (++total >= _options.MaxResults)
                 {
-                    // Truncated: the watermark must not advance — folders (or pages) after
-                    // the cap were never seen, and advancing would skip their mail forever.
-                    if (_logger is not null)
-                        ExchangeMailLog.EnumerationTruncated(_logger, _options.Mailbox, _options.MaxResults);
+                    HandleTruncation(isLastFolder: f == folders.Count - 1);
                     yield break;
                 }
             }
         }
 
         CompletedFullTraversal = true;
+    }
+
+    /// <summary>
+    /// The cap fired. When it fired in the last configured folder, the folder's last-seen
+    /// <c>receivedDateTime</c> is a safe watermark (ascending order: everything unseen in
+    /// that folder is newer; all earlier folders completed) — backlogs then drain at
+    /// <see cref="ExchangeMailOptions.MaxResults"/> per run. When it fired earlier, the
+    /// watermark is withheld: later folders were never seen and advancing would skip their
+    /// mail forever.
+    /// </summary>
+    private void HandleTruncation(bool isLastFolder)
+    {
+        if (isLastFolder && _lastSeenInFolder is { } lastSeen)
+        {
+            _truncationWatermark = lastSeen;
+            if (_logger is not null)
+            {
+                ExchangeMailLog.EnumerationTruncatedWithProgress(
+                    _logger, _options.Mailbox, _options.MaxResults,
+                    lastSeen.ToString("o", CultureInfo.InvariantCulture));
+            }
+        }
+        else if (_logger is not null)
+        {
+            ExchangeMailLog.EnumerationTruncatedWithheld(_logger, _options.Mailbox, _options.MaxResults);
+        }
     }
 
     private async IAsyncEnumerable<Result<FileHandle, RagError>> EnumerateFolderAsync(
@@ -167,10 +205,14 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
                 if (string.IsNullOrEmpty(message.Id))
                     continue;
 
-                if (message.ReceivedDateTime is { } received &&
-                    (_maxReceived is null || received > _maxReceived))
+                if (message.ReceivedDateTime is { } received)
                 {
-                    _maxReceived = received;
+                    // Last-seen in this folder (ascending $orderby) — the safe watermark
+                    // when the cap fires in the last folder. Tracked separately from the
+                    // global max: an earlier folder's max can exceed it.
+                    _lastSeenInFolder = received;
+                    if (_maxReceived is null || received > _maxReceived)
+                        _maxReceived = received;
                 }
 
                 yield return Result<FileHandle, RagError>.Success(ToHandle(folderId, message));
