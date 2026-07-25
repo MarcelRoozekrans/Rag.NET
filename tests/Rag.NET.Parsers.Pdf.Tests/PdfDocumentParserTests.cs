@@ -60,12 +60,18 @@ public class PdfDocumentParserTests
 
         var sections = await ParseAsync(sut, stream);
 
-        var prose = Assert.Single(sections, s => s.Heading is null);
-        // Leftover words joined with spaces in reading order (top-down Y, then X);
-        // whitespace differs from the legacy page.Text concatenation by design.
-        Assert.Equal("Introduction Conclusion", prose.Text);
-        // Prose precedes the table on the page, so it gets the lower SectionIndex.
-        Assert.Equal(0, prose.SectionIndex);
+        // Document order: prose is partitioned around the table into separate sections
+        // (above → table → below), each joined with spaces in reading order; whitespace
+        // differs from the legacy page.Text concatenation by design.
+        Assert.Equal(3, sections.Count);
+        Assert.Equal("Introduction", sections[0].Text);
+        Assert.Null(sections[0].Heading);
+        Assert.Equal(0, sections[0].SectionIndex);
+        Assert.Equal("table", sections[1].Heading);
+        Assert.Equal(1, sections[1].SectionIndex);
+        Assert.Equal("Conclusion", sections[2].Text);
+        Assert.Null(sections[2].Heading);
+        Assert.Equal(2, sections[2].SectionIndex);
     }
 
     [Fact]

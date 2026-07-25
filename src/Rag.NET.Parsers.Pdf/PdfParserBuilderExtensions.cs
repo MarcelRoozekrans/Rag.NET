@@ -6,6 +6,7 @@ namespace Rag.NET.Parsers.Pdf;
 
 public static class PdfParserBuilderExtensions
 {
+    /// <summary>Registers the PDF parser with default <see cref="PdfParserOptions"/>.</summary>
     public static TBuilder AddPdfParser<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
     {
@@ -13,6 +14,14 @@ public static class PdfParserBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Registers the PDF parser with configured <see cref="PdfParserOptions"/>.
+    /// Calling any <c>AddPdfParser</c> overload more than once registers multiple parser
+    /// instances — the pipeline uses the first whose <c>CanParse</c> matches (first
+    /// registration wins at parse time), while the <see cref="PdfParserOptions"/> singleton
+    /// resolved from DI is the most recently registered one (last wins); each parser
+    /// instance keeps the options it was configured with.
+    /// </summary>
     public static TBuilder AddPdfParser<TBuilder>(this TBuilder builder, Action<PdfParserOptions>? configure)
         where TBuilder : IRagBuilder
     {

@@ -100,39 +100,73 @@ public sealed class PdfDocumentParser : IDocumentParser
             return PlainTextSections(page, metadata);
         }
 
-        // Prose (space-joined leftover words in reading order) and table sections are
-        // ordered by their top Y so SectionIndex follows the on-page document order.
-        var ordered = new List<(double TopY, DocumentSection Section)>();
-        var proseText = JoinWords(proseWords);
-        if (proseText.Length > 0)
+        // Document order: prose words are partitioned into segments above/between/below the
+        // detected tables (by table top Y) and emitted interleaved with the table sections,
+        // so SectionIndex follows the on-page reading order.
+        var segments = PartitionProse(proseWords, tables);
+        var sections = new List<DocumentSection>();
+        for (int t = 0; t <= tables.Count; t++)
         {
-            ordered.Add((proseWords[0].Y, new DocumentSection
+            AddProseSection(sections, segments[t], metadata, page.Number);
+            if (t < tables.Count)
             {
-                Text = proseText,
-                DocumentId = metadata.DocumentId,
-                PageNumber = page.Number,
-            }));
-        }
-
-        for (int i = 0; i < tables.Count; i++)
-        {
-            ordered.Add((tables[i].TopY, new DocumentSection
-            {
-                Text = PdfTableExtractor.RenderMarkdown(tables[i]),
-                Heading = "table",
-                DocumentId = metadata.DocumentId,
-                PageNumber = page.Number,
-            }));
-        }
-
-        ordered.Sort(static (a, b) => a.TopY.CompareTo(b.TopY));
-        var sections = new List<DocumentSection>(ordered.Count);
-        for (int i = 0; i < ordered.Count; i++)
-        {
-            sections.Add(ordered[i].Section);
+                sections.Add(new DocumentSection
+                {
+                    Text = PdfTableExtractor.RenderMarkdown(tables[t]),
+                    Heading = "table",
+                    DocumentId = metadata.DocumentId,
+                    PageNumber = page.Number,
+                });
+            }
         }
 
         return sections;
+    }
+
+    /// <summary>
+    /// Splits prose words into (tables.Count + 1) segments: segment 0 is above the first
+    /// table, segment i sits between table i-1 and table i, the last segment is below the
+    /// final table. Tables arrive in top-down order; prose words keep their reading order.
+    /// </summary>
+    private static List<List<WordBox>> PartitionProse(
+        IReadOnlyList<WordBox> proseWords, IReadOnlyList<DetectedTable> tables)
+    {
+        var segments = new List<List<WordBox>>(tables.Count + 1);
+        for (int i = 0; i <= tables.Count; i++)
+        {
+            segments.Add([]);
+        }
+
+        for (int i = 0; i < proseWords.Count; i++)
+        {
+            int segment = 0;
+            while (segment < tables.Count && proseWords[i].Y > tables[segment].TopY)
+            {
+                segment++;
+            }
+
+            segments[segment].Add(proseWords[i]);
+        }
+
+        return segments;
+    }
+
+    private static void AddProseSection(
+        List<DocumentSection> sections, IReadOnlyList<WordBox> segment,
+        DocumentMetadata metadata, int pageNumber)
+    {
+        var text = JoinWords(segment);
+        if (text.Length == 0)
+        {
+            return;
+        }
+
+        sections.Add(new DocumentSection
+        {
+            Text = text,
+            DocumentId = metadata.DocumentId,
+            PageNumber = pageNumber,
+        });
     }
 
     private static List<WordBox> NormalizeWords(Page page)
