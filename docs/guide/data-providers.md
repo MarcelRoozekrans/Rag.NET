@@ -373,14 +373,23 @@ services.AddExchangeMailDataProvider(
 **App registration:** uses app-only authentication (client credentials flow); the Azure AD
 app registration needs the **`Mail.Read` application permission** (Microsoft Graph →
 Application permissions) with admin consent. Delegated `/me` flows are out of scope.
+Note that app-only `Mail.Read` grants read access to **every mailbox in the tenant** —
+scope the app to the ingest mailbox with an Exchange application access policy
+(`New-ApplicationAccessPolicy`) or RBAC for Applications.
 
 **Watermark persistence:** after a run, read the new watermark from the provider and persist
-it for the next run — the connector filters with `receivedDateTime ge {DeltaToken}`:
+it for the next run — the connector filters with `receivedDateTime ge {DeltaToken}`.
+Persist the token **only after an error-free run**: the watermark advances during
+enumeration, before per-entry ingestion outcomes are known. `GetDeltaToken()` returns
+`null` when the traversal was truncated (`MaxResults`) or failed — keep the previous token
+in that case, otherwise the skipped messages would never be re-fetched:
 
 ```csharp
 var provider = (ExchangeMailDataProvider)sp.GetRequiredService<IFileContentProvider>();
 var result   = await pipeline.IngestFromProviderAsync(provider, new ProviderId("exchange"), hashStore);
-settings.ExchangeDeltaToken = provider.GetDeltaToken() ?? settings.ExchangeDeltaToken;
+
+if (result.Errors.Count == 0 && provider.GetDeltaToken() is { } token)
+    settings.ExchangeDeltaToken = token;
 ```
 
 > Graph delta queries (`/mailFolders/{id}/messages/delta`) are intentionally **not** used in
@@ -535,7 +544,7 @@ services.AddSharePointDataProvider(tenantId, clientId, clientSecret, siteId, dri
 | Slack | Unix timestamp (string) | Passed as `oldest` to `conversations.history` |
 | Microsoft Teams | Not yet supported | Delta ingestion is not yet implemented for this connector |
 | Gmail | IMAP UniqueId (string) | Messages with a UID greater than the watermark are fetched |
-| Exchange / Outlook | ISO 8601 `receivedDateTime` (string) | Applied as a `receivedDateTime ge` filter; `GetDeltaToken()` returns the max value seen |
+| Exchange / Outlook | ISO 8601 `receivedDateTime` (string) | Applied as a `receivedDateTime ge` filter; `GetDeltaToken()` returns the max value seen, or `null` when the run was truncated/failed (keep the previous token) |
 | GitLab | Commit SHA (string) | HEAD commit SHA at last successful ingest; compare API returns changed files |
 | Bitbucket | Commit hash (string) | HEAD commit hash at last successful ingest; diffstat API returns changed files |
 | Zendesk | Unix epoch (string) | Passed as `start_time` to the incremental export API |

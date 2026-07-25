@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Models.ODataErrors;
@@ -28,6 +29,11 @@ namespace Rag.NET.DataProviders.Exchange;
 /// (<c>/delta</c>) are intentionally not used — the date-range watermark plus the
 /// hash-store skip covers incremental ingestion.
 /// </para>
+/// <para>
+/// Watermark state (<see cref="GetDeltaToken"/>, <see cref="CompletedFullTraversal"/>) is
+/// per-instance and not safe under concurrent <c>IngestFromProviderAsync</c> calls against
+/// the same registration — the documented run-then-persist flow is assumed.
+/// </para>
 /// </summary>
 public sealed class ExchangeMailDataProvider : FileContentProviderBase
 {
@@ -40,30 +46,55 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
 
     private readonly GraphServiceClient  _graph;
     private readonly ExchangeMailOptions _options;
+    private readonly ILogger<ExchangeMailDataProvider>? _logger;
 
     private DateTimeOffset? _maxReceived;
 
-    public ExchangeMailDataProvider(GraphServiceClient graph, ExchangeMailOptions options)
+    public ExchangeMailDataProvider(
+        GraphServiceClient graph,
+        ExchangeMailOptions options,
+        ILogger<ExchangeMailDataProvider>? logger = null)
         : base(options)
     {
         ArgumentNullException.ThrowIfNull(graph);
         _graph   = graph;
         _options = options;
+        _logger  = logger;
     }
 
     /// <summary>
-    /// Returns the watermark from the last completed traversal — the maximum
+    /// <see langword="true"/> when the most recent enumeration visited every configured
+    /// folder to completion — i.e. it neither hit <see cref="ExchangeMailOptions.MaxResults"/>
+    /// nor stopped on a failure. Only then is the watermark trustworthy.
+    /// </summary>
+    public bool CompletedFullTraversal { get; private set; }
+
+    /// <summary>
+    /// Returns the watermark from the last enumeration — the maximum
     /// <c>receivedDateTime</c> seen, in ISO-8601 round-trip format. Callers persist this
     /// value and pass it back via <see cref="CloudStorageOptions.DeltaToken"/> for
-    /// incremental runs. <see langword="null"/> when no messages were enumerated.
+    /// incremental runs.
+    /// <para>
+    /// Returns <see langword="null"/> when the traversal did not complete
+    /// (<see cref="ExchangeMailOptions.MaxResults"/> truncation or a failure) or saw no
+    /// messages — a <see langword="null"/> return means <b>keep the previous token</b>;
+    /// advancing it would permanently skip the messages that were never enumerated.
+    /// Persist the token only after an error-free run: the watermark advances during
+    /// enumeration, before per-entry ingestion outcomes are known.
     /// Same-timestamp duplicates on the next run are caught by the hash-store skip.
+    /// </para>
     /// </summary>
     public string? GetDeltaToken() =>
-        _maxReceived?.ToString("o", CultureInfo.InvariantCulture);
+        CompletedFullTraversal
+            ? _maxReceived?.ToString("o", CultureInfo.InvariantCulture)
+            : null;
 
     protected override async IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        _maxReceived           = null;
+        CompletedFullTraversal = false;
+
         string? filter = null;
         if (_options.DeltaToken is not null)
         {
@@ -94,10 +125,21 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
                 .ConfigureAwait(false))
             {
                 yield return result;
-                if (result.IsFailure || ++total >= _options.MaxResults)
+                if (result.IsFailure)
                     yield break;
+
+                if (++total >= _options.MaxResults)
+                {
+                    // Truncated: the watermark must not advance — folders (or pages) after
+                    // the cap were never seen, and advancing would skip their mail forever.
+                    if (_logger is not null)
+                        ExchangeMailLog.EnumerationTruncated(_logger, _options.Mailbox, _options.MaxResults);
+                    yield break;
+                }
             }
         }
+
+        CompletedFullTraversal = true;
     }
 
     private async IAsyncEnumerable<Result<FileHandle, RagError>> EnumerateFolderAsync(

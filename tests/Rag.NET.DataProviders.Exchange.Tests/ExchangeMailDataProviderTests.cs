@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Rag.NET.Models;
 using Xunit;
@@ -231,6 +232,94 @@ public sealed class ExchangeMailDataProviderTests
 
         var entry = Assert.Single(entries);
         Assert.Equal("inbox/msg-1", entry.Value.Id.Value);
+        // Truncated run: the watermark must not advance.
+        Assert.False(sut.CompletedFullTraversal);
+        Assert.Null(sut.GetDeltaToken());
+    }
+
+    // -------------------------------------------------------------------------
+    // 7b. MaxResults cap spans multiple folders ("across all folders")
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Enumerate_MaxResults_SpansFolders()
+    {
+        const string inboxTwo = """
+            {
+              "value": [
+                { "id": "msg-1", "subject": "One", "receivedDateTime": "2026-03-01T10:00:00Z", "hasAttachments": false },
+                { "id": "msg-2", "subject": "Two", "receivedDateTime": "2026-03-01T11:00:00Z", "hasAttachments": false }
+              ]
+            }
+            """;
+        const string archiveTwo = """
+            {
+              "value": [
+                { "id": "msg-a1", "subject": "Old One", "receivedDateTime": "2026-01-01T08:00:00Z", "hasAttachments": false },
+                { "id": "msg-a2", "subject": "Old Two", "receivedDateTime": "2026-01-02T08:00:00Z", "hasAttachments": false }
+              ]
+            }
+            """;
+        var handler = MakeHandler(
+            (InboxKey, HttpStatusCode.OK, inboxTwo),
+            (ArchiveKey, HttpStatusCode.OK, archiveTwo));
+        var sut = MakeProvider(handler, o =>
+        {
+            o.FolderIds  = ["inbox", "archive"];
+            o.MaxResults = 3;
+        });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, entries.Count);
+        string[] expectedIds = ["inbox/msg-1", "inbox/msg-2", "archive/msg-a1"];
+        Assert.Equal(expectedIds, entries.Select(e => e.Value.Id.Value).ToList());
+        Assert.False(sut.CompletedFullTraversal);
+        Assert.Null(sut.GetDeltaToken());
+    }
+
+    // -------------------------------------------------------------------------
+    // 7c. Truncated multi-folder run withholds the watermark and warns
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Watermark_TruncatedMultiFolderRun_WithholdsTokenAndWarns()
+    {
+        const string inboxTwo = """
+            {
+              "value": [
+                { "id": "msg-1", "subject": "One", "receivedDateTime": "2026-03-01T10:00:00Z", "hasAttachments": false },
+                { "id": "msg-2", "subject": "Two", "receivedDateTime": "2026-03-01T11:00:00Z", "hasAttachments": false }
+              ]
+            }
+            """;
+        const string archiveOne = """
+            {
+              "value": [
+                { "id": "msg-a1", "subject": "Old", "receivedDateTime": "2026-01-01T08:00:00Z", "hasAttachments": false }
+              ]
+            }
+            """;
+        var handler = MakeHandler(
+            (InboxKey, HttpStatusCode.OK, inboxTwo),
+            (ArchiveKey, HttpStatusCode.OK, archiveOne));
+        var logger = new CapturingLogger<ExchangeMailDataProvider>();
+        var sut = MakeProvider(handler, o =>
+        {
+            o.FolderIds  = ["inbox", "archive"];
+            o.MaxResults = 1; // cap hits mid-inbox; archive is never visited
+        }, logger);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(entries);
+        Assert.DoesNotContain(handler.Requests, u => u.Contains(ArchiveKey, StringComparison.Ordinal));
+        Assert.False(sut.CompletedFullTraversal);
+        Assert.Null(sut.GetDeltaToken());
+        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("MaxResults=1", warning.Message, StringComparison.Ordinal);
     }
 
     // -------------------------------------------------------------------------
@@ -254,6 +343,9 @@ public sealed class ExchangeMailDataProviderTests
         var failure = Assert.IsType<RagError.HttpFailed>(result.Error);
         Assert.Equal(HttpStatusCode.InternalServerError, failure.StatusCode);
         Assert.Contains("mailbox unavailable", failure.Content, StringComparison.Ordinal);
+        // Failed run: the watermark must not advance.
+        Assert.False(sut.CompletedFullTraversal);
+        Assert.Null(sut.GetDeltaToken());
     }
 
     // -------------------------------------------------------------------------
@@ -290,6 +382,7 @@ public sealed class ExchangeMailDataProviderTests
         _ = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
+        Assert.True(sut.CompletedFullTraversal);
         Assert.Equal(
             new DateTimeOffset(2026, 3, 2, 9, 0, 0, TimeSpan.Zero).ToString("o", CultureInfo.InvariantCulture),
             sut.GetDeltaToken());
@@ -370,6 +463,20 @@ public sealed class ExchangeMailDataProviderTests
         Assert.Contains("Mailbox", ex.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void AddExchangeMailDataProvider_NonPositiveMaxResults_Throws()
+    {
+        var services = new ServiceCollection();
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            services.AddExchangeMailDataProvider("tenant", "client", "secret", o =>
+            {
+                o.Mailbox    = "ingest@contoso.com";
+                o.MaxResults = 0;
+            }));
+        Assert.Contains("MaxResults", ex.Message, StringComparison.Ordinal);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
@@ -388,11 +495,13 @@ public sealed class ExchangeMailDataProviderTests
     }
 
     private static ExchangeMailDataProvider MakeProvider(
-        FakeGraphHandler handler, Action<ExchangeMailOptions>? configure = null)
+        FakeGraphHandler handler,
+        Action<ExchangeMailOptions>? configure = null,
+        ILogger<ExchangeMailDataProvider>? logger = null)
     {
         var opts = new ExchangeMailOptions { Mailbox = "user1" };
         configure?.Invoke(opts);
-        return new ExchangeMailDataProvider(MakeGraphClient(handler), opts);
+        return new ExchangeMailDataProvider(MakeGraphClient(handler), opts, logger);
     }
 }
 

@@ -1,5 +1,6 @@
 using Azure.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Rag.NET.DataProviders;
 
@@ -44,6 +45,13 @@ public static class ExchangeMailDataProviderExtensions
                 nameof(configure));
         }
 
+        if (opts.MaxResults <= 0)
+        {
+            throw new ArgumentException(
+                "ExchangeMailOptions.MaxResults must be greater than zero.",
+                nameof(configure));
+        }
+
         services.AddDataProviderHttpClient("Exchange");
 
         return services.AddSingleton<IFileContentProvider>(sp =>
@@ -52,7 +60,8 @@ public static class ExchangeMailDataProviderExtensions
                 .CreateClient("Exchange");
             var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
             var graph      = new GraphServiceClient(httpClient, credential);
-            return new ExchangeMailDataProvider(graph, opts);
+            return new ExchangeMailDataProvider(
+                graph, opts, sp.GetService<ILogger<ExchangeMailDataProvider>>());
         });
     }
 }
