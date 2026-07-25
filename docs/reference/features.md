@@ -861,11 +861,11 @@ Structured audit trail of every pipeline operation: who asked what, which chunks
 ### LLM Fallback Chain
 **Package:** `Rag.NET` (core)
 
-A `FallbackChatClient` (implements `IChatClient`) that tries a primary client, catches transient failures or rate limits, and retries with a secondary client. Configurable fallback list with per-client timeout and error classification. Wraps any `IChatClient` transparently.
+A `FallbackChatClient` (implements `IChatClient`) that tries a primary client, catches transient failures or rate limits, and retries with a secondary client. Configurable fallback list with per-client timeout and error classification. Wraps any `IChatClient` transparently. Registered via `UseFallbackChain` (ordered client factories + optional `PerClientTimeout`); supersedes any prior `IChatClient` registration.
 
 **Why:** Production RAG systems cannot tolerate a single LLM provider as a hard dependency. A fallback chain from OpenAI → Anthropic → local Ollama gives resilience without changing pipeline code.
 
-**Status:** ✅ Done
+**Status:** ✅ Done — `FallbackChatClient` with per-client timeout, DI registration via `UseFallbackChain`, documented in the [resilience guide](../guide/resilience.md)
 
 ---
 
@@ -883,9 +883,11 @@ A `FallbackChatClient` (implements `IChatClient`) that tries a primary client, c
 ### Rate Limiting & Cost Budgeting
 **Package:** `Rag.NET` (core)
 
-An `IRateLimiter` abstraction with a token-bucket implementation that throttles embedding and LLM calls to stay within API rate limits. A `ICostBudget` abstraction tracks estimated spend (tokens × price per token) and throws `BudgetExceededException` when a configured daily/monthly limit is reached.
+An `IRateLimiter` abstraction with a token-bucket implementation (`System.Threading.RateLimiting`) that throttles chat and embedding calls to stay within API rate limits — callers over the per-minute budget wait rather than fail. Registered via `UseRateLimiting`, which decorates whatever `IChatClient`/`IEmbeddingGenerator` is registered. An `ICostLedger` abstraction (SQLite-persisted `SqliteCostLedger`, in-memory alternative) tracks spend (tokens × user-supplied price) across restarts, and the `UseCostBudgeting` decorators throw `BudgetExceededException` when a configured daily/monthly limit is reached; token counts use provider-reported usage when available, tiktoken estimation otherwise.
 
 **Why:** Uncontrolled LLM API usage in production can produce surprise invoices. Rate limiting prevents 429 cascades; budgeting provides a hard guardrail for cost-sensitive deployments.
+
+**Status:** ✅ Done — `UseRateLimiting` + `UseCostBudgeting` with stacking support over the fallback chain, documented in the [resilience guide](../guide/resilience.md)
 
 ---
 
@@ -1055,8 +1057,8 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | PII Detection and Redaction | Medium | Regex / `IChatClient` |
 | [x] | Role-Based Access Control (RBAC) | Medium | `IRetrievalGuard` extension |
 | [x] | Audit Log | Medium | `IAuditLog` + SQLite |
-| [ ] | LLM Fallback Chain | Medium | `IChatClient` decorator |
-| [ ] | Rate Limiting & Cost Budgeting | Medium | Token bucket |
+| [x] | LLM Fallback Chain | Medium | `IChatClient` decorator |
+| [x] | Rate Limiting & Cost Budgeting | Medium | Token bucket |
 | [x] | Batch Ingestion Optimiser | Medium | `Parallel.ForEachAsync` |
 | [ ] | Sample Applications | Medium | All packages |
 | [ ] | Rag.NET CLI Tool | Medium | `dotnet tool` |

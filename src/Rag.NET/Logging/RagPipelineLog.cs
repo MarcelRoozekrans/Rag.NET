@@ -96,4 +96,10 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Re-indexing failed for document '{DocumentId}'; continuing with the remaining stale documents")]
     internal static partial void ReindexDocumentFailed(ILogger logger, string documentId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cost ledger read failed; proceeding without budget enforcement for this call")]
+    internal static partial void CostLedgerReadFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cost ledger write failed; the call succeeded but its usage was not recorded")]
+    internal static partial void CostLedgerRecordFailed(ILogger logger, Exception exception);
 }

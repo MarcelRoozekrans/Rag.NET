@@ -143,13 +143,9 @@ services.AddRagNet(rag => rag
         })));
 ```
 
-### How the pipeline is resolved
+### Known issue: the pipeline is registered but not wired
 
-`ConfigureResilience` internally calls `services.AddResiliencePipeline("rag-net", ...)`. During `IRagPipeline` construction, `ServiceCollectionExtensions` resolves `ResiliencePipelineProvider<string>` from DI and retrieves the pipeline named `"rag-net"`. If `ConfigureResilience` was never called, `resiliencePipeline` is `null` and no retry wrapper is applied.
-
-### Which calls are wrapped
-
-The `ResiliencePipeline` instance is available to `RagPipeline` for wrapping embedding and vector store calls. If you need per-call resilience customisation (e.g., different timeouts for ingest vs. retrieval), wrap calls at the `IEmbeddingGenerator` or `IVectorStore` level using the `Microsoft.Extensions.AI` middleware pipeline instead.
+`ConfigureResilience` internally calls `services.AddResiliencePipeline("rag-net", ...)` — but **nothing in the library currently consumes that pipeline**: no code resolves `ResiliencePipelineProvider<string>` or executes the `"rag-net"` pipeline, so calling `ConfigureResilience` configures retry policy on a pipeline no call path runs. This is a pre-existing known issue (see the [resilience guide](resilience.md)); the supported resilience mechanisms are the `UseFallbackChain`, `UseRateLimiting`, and `UseCostBudgeting` decorators documented there. If you need retry/circuit-breaker behaviour today, wrap calls at the `IEmbeddingGenerator` or `IVectorStore` level using the `Microsoft.Extensions.AI` middleware pipeline instead.
 
 ## Combining all three
 

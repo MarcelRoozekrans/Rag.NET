@@ -19,6 +19,14 @@ internal static class RagTelemetry
         Meter.CreateHistogram<double>("ragnet.retrieve.duration", "ms", "End-to-end retrieval time per query");
     internal static readonly Histogram<double> AskDuration =
         Meter.CreateHistogram<double>("ragnet.ask.duration", "ms", "Answer generation time per query");
+    // Tagged surface=chat|embedding and outcome=granted|rejected|cancelled|faulted
+    // ("rejected" only for the two deliberate rejections — queue overflow and
+    // over-capacity permits; unexpected failures record "faulted"). Recorded for
+    // every acquire outcome — it measures time held at the limiter; rejection DETAILS remain
+    // observable through the caller's exception handling, per the conservative-instrument
+    // convention below.
+    internal static readonly Histogram<double> RateLimitWaitDuration =
+        Meter.CreateHistogram<double>("ragnet.ratelimit.wait.duration", "ms", "Time spent waiting for a rate-limit permit");
 
     // Counters
     internal static readonly Counter<long> ChunksStored =
@@ -32,4 +40,16 @@ internal static class RagTelemetry
     // ragnet.ask.errors is intentionally omitted: answer-generation failures are observable through
     // the ragnet.ask span status (ActivityStatusCode.Error) and the caller's exception handling.
     // An error counter would require exposing a public metric surface for a single call site.
+
+    // Tagged direction=in|out and surface=chat|embedding (the same surface tag name as
+    // ragnet.ratelimit.wait.duration). Counts are provider-reported when the response carries
+    // full usage, tiktoken cl100k estimates otherwise — the same numbers the cost ledger
+    // records. Per-call estimation DETAILS (which source was used) are deliberately not a
+    // metric, per the conservative-instrument convention above.
+    internal static readonly Counter<long> LlmTokens =
+        Meter.CreateCounter<long>("ragnet.llm.tokens", "tokens", "LLM tokens consumed by chat and embedding calls");
+    // Tagged surface=chat|embedding. Unit "usd" is nominal: values are in whatever currency the
+    // user-supplied CostBudgetOptions prices are quoted in.
+    internal static readonly Counter<double> LlmCost =
+        Meter.CreateCounter<double>("ragnet.llm.cost", "usd", "LLM spend computed from configured prices");
 }

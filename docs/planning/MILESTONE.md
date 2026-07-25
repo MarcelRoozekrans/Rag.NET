@@ -24,7 +24,7 @@ Each feature ships with tests and a features.md entry ticked.
 1. Phase 1.1 — Chunking Strategies [complete — 2026-07-24]
 2. Phase 1.2 — Retrieval Techniques [complete — 2026-07-24]
 3. Phase 1.3 — Ingestion Operations [complete — 2026-07-24]
-4. Phase 1.4 — Resilience & Cost Controls [pending]
+4. Phase 1.4 — Resilience & Cost Controls [complete — 2026-07-25]
 5. Phase 1.5 — Document Parsers [pending]
 6. Phase 1.6 — Connectors [pending]
 7. Phase 1.7 — Vector Stores [pending]
