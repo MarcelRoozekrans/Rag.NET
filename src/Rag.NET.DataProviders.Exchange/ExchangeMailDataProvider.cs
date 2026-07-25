@@ -24,8 +24,10 @@ namespace Rag.NET.DataProviders.Exchange;
 /// </para>
 /// <para>
 /// A delta run uses <see cref="CloudStorageOptions.DeltaToken"/> as a
-/// <c>receivedDateTime ge</c> filter; <see cref="GetDeltaToken"/> returns the max
-/// <c>receivedDateTime</c> seen for the caller to persist. Graph delta queries
+/// <c>receivedDateTime ge</c> filter; <see cref="GetDeltaToken"/> returns a safe watermark
+/// for the caller to persist — the max <c>receivedDateTime</c> seen on a full traversal,
+/// the truncation point when <see cref="ExchangeMailOptions.MaxResults"/> fired in the last
+/// folder, or <see langword="null"/> (keep the previous token) otherwise. Graph delta queries
 /// (<c>/delta</c>) are intentionally not used — the date-range watermark plus the
 /// hash-store skip covers incremental ingestion.
 /// </para>
