@@ -90,7 +90,7 @@ public sealed record SearchResult
 
 `Score` semantics depend on the search mode:
 - **Semantic (pure dense):** cosine similarity in `[0, 1]` (pgvector: `1 - cosine_distance`).
-- **Hybrid via `IHybridSearchable`:** the score comes from the backend (Azure AI Search uses its own BM25+vector fusion score; values are not bounded to `[0, 1]`).
+- **Hybrid via `IHybridSearchable`:** the score comes from the backend (Azure AI Search uses its own BM25+vector fusion score, not bounded to `[0, 1]`; Weaviate returns a relative-score-fusion value in `[0, 1]`).
 - **Hybrid via in-memory BM25 fallback:** Reciprocal Rank Fusion score, typically in `(0, 0.05]`.
 
 ## Semantic search
@@ -139,11 +139,11 @@ flowchart TD
 | `IVectorStore` also implements `IHybridSearchable` | Calls `HybridSearchAsync` — the backend handles fusion natively |
 | `IVectorStore` does not implement `IHybridSearchable` | Dense search and in-memory BM25 run concurrently; results merged via Reciprocal Rank Fusion |
 
-Azure AI Search implements `IHybridSearchable` and performs server-side BM25+vector fusion. pgvector and Qdrant do not; they fall back to the in-memory BM25 index maintained by `RagPipeline`.
+Azure AI Search and Weaviate implement `IHybridSearchable` and perform server-side BM25+vector fusion. pgvector and Qdrant do not; they fall back to the in-memory BM25 index maintained by `RagPipeline`.
 
 ### In-memory BM25 index
 
-`RagPipeline` maintains a thread-safe `InMemoryBm25Index` using BM25 parameters k1=1.5, b=0.75 (Lucene defaults). Every chunk stored via `IngestAsync` is indexed automatically. The index is process-local by default — it is rebuilt each time the application starts. To persist the index across restarts without re-ingestion, see [SQLite Persistence](#sqlite-persistence) below. For stores that need persistent keyword search without native hybrid support, use Azure AI Search.
+`RagPipeline` maintains a thread-safe `InMemoryBm25Index` using BM25 parameters k1=1.5, b=0.75 (Lucene defaults). Every chunk stored via `IngestAsync` is indexed automatically. The index is process-local by default — it is rebuilt each time the application starts. To persist the index across restarts without re-ingestion, see [SQLite Persistence](#sqlite-persistence) below. For stores that need persistent keyword search without native hybrid support, use Azure AI Search or Weaviate.
 
 ### Reciprocal Rank Fusion (RRF)
 

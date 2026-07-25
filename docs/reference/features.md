@@ -306,9 +306,11 @@ Track which document content hashes have been written to which vector store name
 ### Weaviate Vector Store
 **Package:** `Rag.NET.VectorStores.Weaviate`
 
-Implement `IVectorStore` and `ICollectionManageable` backed by Weaviate via the official `WeaviateSharp` or REST client. Supports hybrid search (BM25 + vector), metadata filtering via Weaviate's `where` filter, and multi-tenancy. Registration: `.UseWeaviate(endpoint, collection, vectorDimensions)`.
+Implement `IVectorStore` and `ICollectionManageable` backed by Weaviate via a hand-rolled REST + GraphQL client (`ZeroAlloc.Rest`; no maintained first-party .NET client exists). Supports hybrid search (BM25 + vector), metadata filtering via Weaviate's `where` filter, and multi-tenancy. Registration: `.UseWeaviate(endpoint, className, vectorDimensions)`.
 
 **Why:** Weaviate is a popular managed vector store with native hybrid search and a generous free tier. Adds a third open-source option alongside PgVector and Qdrant.
+
+**Status:** Delivered. `WeaviateVectorStore` (register with `UseWeaviate(endpoint, className, vectorDimensions, configure?)`) serves `IVectorStore`, `IHybridSearchable` (native BM25+vector relative-score fusion — the second store with native hybrid after Azure AI Search), and `ICollectionManageable` from one singleton. REST handles schema/batch writes, a single GraphQL POST handles search (arguments inlined — Weaviate's GraphQL rejects variables for its custom scalar types). Deterministic object ids per `(DocumentId, ChunkIndex)` make re-ingestion replace chunks; metadata keys become filterable `meta_*` properties via auto-schema with `Equal`/`And` `where` composition; dense scores map `1 - distance/2` (identical vector ⇒ 1), hybrid scores are Weaviate's 0..1 fusion scores. Optional `Tenant` creates the class multi-tenancy-enabled and scopes every read/write. Tested against the official image via Testcontainers.
 
 ---
 
@@ -1048,7 +1050,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | Evaluation Dataset Builder | Medium | `IChatClient` |
 | [ ] | A/B Testing Framework | Medium | `IRagEvaluator` |
-| [ ] | Weaviate Vector Store | Medium | `WeaviateSharp` |
+| [x] | Weaviate Vector Store | Medium | REST + GraphQL via `ZeroAlloc.Rest` |
 | [ ] | Chroma Vector Store | Medium | Chroma REST API |
 | [ ] | Pinecone Vector Store | Medium | Pinecone REST API |
 | [x] | Multi-Index Federation | Medium | `IVectorStore` composition (dense-only) |

@@ -6,21 +6,21 @@ sidebar_position: 6
 
 # Vector Stores
 
-The vector store is the persistence layer for embedded chunks. Rag.NET ships three implementations, each registered via a fluent extension method on `RagBuilder`. The interface is designed to be swapped without changing any pipeline code.
+The vector store is the persistence layer for embedded chunks. Rag.NET ships four implementations, each registered via a fluent extension method on `RagBuilder`. The interface is designed to be swapped without changing any pipeline code.
 
 ## Feature matrix
 
-| Feature | `PgVectorStore` | `QdrantVectorStore` | `AzureAISearchVectorStore` |
-|---------|:-:|:-:|:-:|
-| Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` |
-| Dense (semantic) search | Yes | Yes | Yes |
-| Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) |
-| Sparse search (SPLADE, `ISparseSearchable`) | No (deferred) | Yes (`enableSparseVectors: true`) | No |
-| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) |
-| `ICollectionManageable` | Yes | Yes | Yes |
-| Similarity function | Cosine (via `<=>`) | Cosine | Cosine |
-| Index algorithm | IVFFlat / HNSW (pgvector) | HNSW | HNSW |
-| Persistence | PostgreSQL | Qdrant server | Azure managed |
+| Feature | `PgVectorStore` | `QdrantVectorStore` | `AzureAISearchVectorStore` | `WeaviateVectorStore` |
+|---------|:-:|:-:|:-:|:-:|
+| Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` | `Rag.NET.VectorStores.Weaviate` |
+| Dense (semantic) search | Yes | Yes | Yes | Yes |
+| Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) |
+| Sparse search (SPLADE, `ISparseSearchable`) | No (deferred) | Yes (`enableSparseVectors: true`) | No | No |
+| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) | Yes (`where` on `meta_*` props) |
+| `ICollectionManageable` | Yes | Yes | Yes | Yes |
+| Similarity function | Cosine (via `<=>`) | Cosine | Cosine | Cosine |
+| Index algorithm | IVFFlat / HNSW (pgvector) | HNSW | HNSW | HNSW |
+| Persistence | PostgreSQL | Qdrant server | Azure managed | Weaviate server |
 
 ## Interface hierarchy
 
@@ -45,6 +45,8 @@ classDiagram
     }
     class AzureAISearchVectorStore {
     }
+    class WeaviateVectorStore {
+    }
     IVectorStore <|.. PgVectorStore
     ICollectionManageable <|.. PgVectorStore
     IVectorStore <|.. QdrantVectorStore
@@ -52,11 +54,14 @@ classDiagram
     IVectorStore <|.. AzureAISearchVectorStore
     IHybridSearchable <|.. AzureAISearchVectorStore
     ICollectionManageable <|.. AzureAISearchVectorStore
+    IVectorStore <|.. WeaviateVectorStore
+    IHybridSearchable <|.. WeaviateVectorStore
+    ICollectionManageable <|.. WeaviateVectorStore
 ```
 
 ## Shared interface
 
-All three implement `IVectorStore`:
+All four implement `IVectorStore`:
 
 ```csharp
 public interface IVectorStore
@@ -76,7 +81,7 @@ public interface IVectorStore
 
 ## Collection management
 
-All three also implement `ICollectionManageable`, registered alongside `IVectorStore` in the DI container:
+All four also implement `ICollectionManageable`, registered alongside `IVectorStore` in the DI container:
 
 ```csharp
 public interface ICollectionManageable
@@ -211,7 +216,7 @@ Pass `enableSparseVectors: true` to `UseQdrant` to register `QdrantSparseVectorS
 
 **Package:** `Rag.NET.VectorStores.AzureAISearch`
 
-Stores chunks as Azure AI Search documents. Implements both `IVectorStore` and `IHybridSearchable` — it is the only built-in store with **native** hybrid search, combining BM25 full-text search with HNSW vector search at the service level.
+Stores chunks as Azure AI Search documents. Implements both `IVectorStore` and `IHybridSearchable` — **native** hybrid search combining BM25 full-text search with HNSW vector search at the service level (as does [Weaviate](#weaviate)).
 
 ### Setup
 
@@ -281,6 +286,83 @@ Multiple filter entries are combined with `and`.
 ### Indexing latency
 
 Azure AI Search indexing is near real-time. `StoreAsync` includes a 1-second delay after batch upload to allow the index to become consistent before a subsequent `SearchAsync` call. This delay is intentional and sourced from the implementation; plan for it in integration tests.
+
+---
+
+## Weaviate
+
+**Package:** `Rag.NET.VectorStores.Weaviate`
+
+Stores chunks as objects of a single Weaviate class (`vectorizer: none` — Rag.NET brings its own vectors; cosine distance). Implements `IVectorStore`, `IHybridSearchable` (native BM25+vector fusion), and `ICollectionManageable`, all served by one singleton. Object ids are deterministic per `(DocumentId, ChunkIndex)`, so re-ingesting a chunk replaces it.
+
+### Local quickstart
+
+```bash
+docker run -p 8080:8080 \
+  -e AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED=true \
+  -e PERSISTENCE_DATA_PATH=/var/lib/weaviate \
+  -e DEFAULT_VECTORIZER_MODULE=none \
+  cr.weaviate.io/semitechnologies/weaviate:latest
+```
+
+### Setup
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseWeaviate(
+        endpoint:         new Uri("http://localhost:8080"),
+        className:        "RagChunks",   // capital letter + letters/digits/underscores
+        vectorDimensions: 1536));
+```
+
+The class name doubles as a GraphQL field, so Weaviate requires a capitalized GraphQL-valid name (validated eagerly at registration). Optional settings via the `configure` callback:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseWeaviate(new Uri("https://my-cluster.weaviate.cloud"), "RagChunks", 1536, options =>
+    {
+        options.ApiKey = "wcs-api-key";   // sent as Authorization: Bearer
+        options.Tenant = "customer_a";    // opt into multi-tenancy
+    }));
+```
+
+### Class schema and initialisation
+
+`InitializeAsync` creates the class if missing: fixed properties `document_id` (text, `field` tokenization so `Equal` filters match whole ids), `chunk_index` (int), `text` (text — feeds BM25), and `metadata_json` (serialised metadata for lossless round-tripping). `StoreAsync` also initialises lazily on first write, so a forgotten `InitializeAsync` can never let Weaviate's auto-schema create the class with the wrong tokenization.
+
+```csharp
+var store = provider.GetRequiredService<IVectorStore>() as WeaviateVectorStore;
+await store!.InitializeAsync();
+```
+
+### Scores
+
+Dense search maps Weaviate's cosine `distance` (0 = identical … 2 = opposite) to `Score = 1 - distance / 2`, so an identical vector scores 1.0. Hybrid search returns Weaviate's relative-score-fusion value, already in `[0, 1]`. `MinScore` is applied to the mapped score in both modes.
+
+### Native hybrid search
+
+When `UseHybridSearch = true`, the pipeline calls `HybridSearchAsync` directly — a single GraphQL `hybrid: {query, vector}` request lets Weaviate fuse BM25 and vector rankings server-side, so a chunk that matches only by keyword is still found. See [Retrieval — Hybrid search](retrieval.md#hybrid-search-bm25--vector).
+
+### Metadata filtering and auto-schema
+
+Each chunk metadata key is written as an extra `meta_{key}` text property; Weaviate's auto-schema (enabled by default in the official image) adds these properties on first write, making them server-side filterable:
+
+```csharp
+// Generates: where: {path: ["meta_department"], operator: Equal, valueText: "finance"}
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    MetadataFilter = new Dictionary<string, string>
+    {
+        ["department"] = "finance",
+    },
+});
+```
+
+Multiple filter entries are wrapped in a single `And` operand. Note that auto-schema created `meta_*` properties use Weaviate's default `word` tokenization, so `Equal` on a multi-word value matches per token — keep filterable metadata values single-token.
+
+### Multi-tenancy
+
+Set `WeaviateOptions.Tenant` to isolate data per tenant: the class is created with `multiTenancyConfig: {enabled: true}`, the tenant itself is created during initialisation (idempotent), and every store/search/delete carries it. Two stores configured with different tenants on the same class never see each other's chunks.
 
 ---
 
