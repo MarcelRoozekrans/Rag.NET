@@ -190,6 +190,35 @@ The resolved `IChatClient` is `CostTracking(RateLimited(Fallback(providers)))`. 
 
 One estimation caveat specific to this example: the chain mixes OpenAI and Anthropic providers, but estimation (used whenever a provider omits usage counts) is always `cl100k_base` — an OpenAI tokenizer — so estimated entries for the Anthropic fallback leg can deviate systematically from Anthropic's own token accounting.
 
-## Known issue: `ConfigureResilience` registers a dangling pipeline
+## Retrying embedding and vector-store calls: `ConfigureResilience`
 
-Pre-existing and not addressed by the features above: `RagBuilder.ConfigureResilience` registers a Polly resilience pipeline named `"rag-net"` that nothing in the library consumes. Calling it configures retry policy on a pipeline no code executes. The decorators on this page (`UseFallbackChain`, `UseRateLimiting`, `UseCostBudgeting`) are the supported resilience mechanisms; `ConfigureResilience` is tracked as a known issue.
+The three decorators above cover the chat surface and the spend/rate gates. Retry lives in a fourth: `RagBuilder.ConfigureResilience` registers a Polly resilience pipeline named `"rag-net"` and wraps the registered `IEmbeddingGenerator<string, Embedding<float>>` and `IVectorStore` with decorators that execute every call through it. Both surfaces genuinely lack retry otherwise — embedding providers have none, and Qdrant (gRPC), Pinecone (SDK) and PgVector (Npgsql) are not HTTP-typed clients.
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseQdrant("http://localhost:6334")
+    .ConfigureResilience());   // 3 attempts, 1 s base delay, exponential, jitter
+```
+
+It follows the same ordering rule as the decorators above — it wraps whatever is registered at that point, so register the store and embedding generator first. Calling it with neither registered throws with an actionable message instead of silently doing nothing. Repeated calls re-configure the pipeline (last wins) but never stack a second decorator layer.
+
+Cancellation is never retried: the caller's token flows into every attempt and the default retry predicate excludes `OperationCanceledException`, so a cancelled call fails on its first attempt. `BudgetExceededException` is excluded for the same reason — it is a deliberate kill switch, not a provider blip. Supply a `configure` delegate to replace the default policy; a custom pipeline owns its own predicates and should exclude both too.
+
+**Where it sits in the stack.** `UseRateLimiting` and `UseCostBudgeting` decorate the same embedding surface, so call `ConfigureResilience` *after* them to make retry the outermost layer:
+
+```csharp
+services.AddRagNet(rag =>
+{
+    rag.UseQdrant("http://localhost:6334");
+    rag.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(/* your provider */);
+    rag.UseRateLimiting(o => o.EmbeddingRequestsPerMinute = 300);
+    rag.UseCostBudgeting(o => { o.EmbeddingPricePerMTokens = 0.13m; o.DailyLimit = 25m; });
+    rag.ConfigureResilience();   // outermost: a retried attempt re-acquires a permit and is billed
+});
+```
+
+That ordering is deliberate — a retry is a real second API call, so it should consume a rate permit and land in the ledger. Calling `ConfigureResilience` first would nest retry *inside* the gates, letting retries bypass both.
+
+> **Warning — double retry with Weaviate and Chroma:** those two stores configure `AddStandardResilienceHandler` on their own `HttpClient`, so `ConfigureResilience` stacks **on top of** transport-level retries and the attempt counts multiply (3 decorator attempts × 3 transport attempts = up to 9 requests, each with its own back-off). Configure one layer or the other: either skip `ConfigureResilience` for those stores and tune the HTTP handler, or keep it and accept the multiplication knowingly. Qdrant, Pinecone and PgVector have no transport-level retry, so for them the decorator is the only layer.
+
+Full details — coverage, capability probes, custom policies — are in the [observability guide](observability.md#polly-resilience-pipeline).
