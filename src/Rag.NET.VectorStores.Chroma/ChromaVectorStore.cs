@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
@@ -36,8 +37,9 @@ namespace Rag.NET.Chroma;
 /// </summary>
 public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDisposable
 {
-    private static readonly Dictionary<string, string> CosineSpaceMetadata =
-        new(StringComparer.Ordinal) { ["hnsw:space"] = "cosine" };
+    private static readonly FrozenDictionary<string, string> CosineSpaceMetadata =
+        new Dictionary<string, string>(StringComparer.Ordinal) { ["hnsw:space"] = "cosine" }
+            .ToFrozenDictionary(StringComparer.Ordinal);
 
     private static readonly string[] IncludeSections = ["documents", "metadatas", "distances"];
 
@@ -149,7 +151,14 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         var result = await _api.DeleteCollectionAsync(
             _options.Tenant, _options.Database, name, cancellationToken).ConfigureAwait(false);
-        Unwrap(result, $"delete collection '{name}'");
+        // Delete-of-missing is a no-op (the ICollectionManageable contract, matching
+        // Weaviate's server-idempotent delete and PgVector's DROP TABLE IF EXISTS) —
+        // Chroma itself answers 404, so exactly that case is swallowed; other failures throw.
+        if (result.IsFailure && result.Error.StatusCode != HttpStatusCode.NotFound)
+        {
+            throw new InvalidOperationException(
+                $"Chroma delete collection '{name}' failed with {FormatHttpError(result.Error)}.");
+        }
 
         // Deleting the configured collection through this store makes any cached UUID stale.
         if (string.Equals(name, _options.CollectionName, StringComparison.Ordinal))
@@ -254,6 +263,10 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
     private void ThrowIfNotCosine(ChromaCollectionInfo collection)
     {
         var space = collection.Configuration?.Hnsw?.Space;
+        // A null space passes deliberately: lenient toward servers/versions that omit
+        // configuration_json.hnsw.space. Trade-off: a future key rename would silently
+        // disable this guard — the :latest container suite's non-cosine fail-fast test is
+        // the drift alarm.
         if (space is null || string.Equals(space, "cosine", StringComparison.Ordinal))
             return;
 
@@ -341,6 +354,13 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         {
             throw new InvalidOperationException(
                 "Chroma query response is missing distances for the returned records.");
+        }
+
+        if ((documents is not null && documents.Count != ids.Count)
+            || (metadatas is not null && metadatas.Count != ids.Count))
+        {
+            throw new InvalidOperationException(
+                "Chroma query response returned ragged documents/metadatas rows for the returned records.");
         }
 
         var results = new List<SearchResult>(ids.Count);

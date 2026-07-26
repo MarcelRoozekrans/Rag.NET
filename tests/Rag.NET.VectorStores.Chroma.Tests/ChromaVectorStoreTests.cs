@@ -209,6 +209,10 @@ public class ChromaVectorStoreTests
 
         await manageable.DeleteCollectionAsync(collectionName, TestContext.Current.CancellationToken);
         Assert.False(await manageable.CollectionExistsAsync(collectionName, TestContext.Current.CancellationToken));
+
+        // Delete-of-missing is a no-op (the ICollectionManageable contract): Chroma
+        // answers 404, which the store swallows instead of throwing.
+        await manageable.DeleteCollectionAsync(collectionName, TestContext.Current.CancellationToken);
     }
 
     [Fact]
