@@ -257,7 +257,7 @@ Cancellation must pass through untouched — a caller's `OperationCanceledExcept
 - `docs/guide/observability.md:101` — correct it to describe what now happens.
 - `docs/guide/observability.md:148` — delete the retraction.
 - `docs/guide/resilience.md:193-195` — delete the "Known issue" section.
-- Add the **double-retry** note: Weaviate and Chroma configure `AddStandardResilienceHandler` on their own HTTP clients, so for those stores the decorator stacks on top of transport-level retries. Tell users to configure one layer or the other. Do not hide this.
+- Add the **double-retry** note: Weaviate and Chroma hand-build a retry-only `ResilienceHandler` on their own HTTP clients (`AddRetry(new HttpRetryStrategyOptions())`, *not* `AddStandardResilienceHandler`), so for those stores the decorator stacks on top of transport-level retries. Tell users to configure one layer or the other. Do not hide this.
 
 **Commit:** `feat(resilience): wire ConfigureResilience into embedding and vector-store calls`
 

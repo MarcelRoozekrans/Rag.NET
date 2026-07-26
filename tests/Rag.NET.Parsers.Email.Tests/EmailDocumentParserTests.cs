@@ -222,6 +222,73 @@ public class EmailDocumentParserTests
         Assert.Equal(64, provider.GetRequiredService<EmailParserOptions>().MaxEmbeddedDepth);
     }
 
+    // ── The ceiling is absolute, not merely validated ────────────────────────
+
+    /// <summary>
+    /// <c>AddEmailParser</c> is only one of three ways to reach an <see cref="EmailParserOptions"/>:
+    /// both parsers take one on a public constructor, and the instance registered in DI is the
+    /// same one both parsers captured. The setter therefore clamps, so no path can arm a depth
+    /// above <see cref="EmailParserOptions.MaxSupportedEmbeddedDepth"/> — beyond which recursion
+    /// is an uncatchable 0xC00000FD process kill. Nothing here drives a real overflow.
+    /// </summary>
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(3, 3)]
+    [InlineData(EmailParserOptions.MaxSupportedEmbeddedDepth, EmailParserOptions.MaxSupportedEmbeddedDepth)]
+    [InlineData(EmailParserOptions.MaxSupportedEmbeddedDepth + 1, EmailParserOptions.MaxSupportedEmbeddedDepth)]
+    [InlineData(10_000, EmailParserOptions.MaxSupportedEmbeddedDepth)]
+    [InlineData(int.MaxValue, EmailParserOptions.MaxSupportedEmbeddedDepth)]
+    public void MaxEmbeddedDepth_Setter_ClampsToTheCeiling(int assigned, int expected)
+    {
+        var options = new EmailParserOptions { MaxEmbeddedDepth = assigned };
+
+        Assert.Equal(expected, options.MaxEmbeddedDepth);
+    }
+
+    [Fact]
+    public void MaxEmbeddedDepth_DirectConstruction_CannotExceedTheCeiling()
+    {
+        // The bypass: EmailDocumentParser/MsgDocumentParser have public constructors taking the
+        // options, so ValidateOptions never runs on this instance.
+        var options = new EmailParserOptions { MaxEmbeddedDepth = 10_000 };
+        var parsers = new List<IDocumentParser>();
+        var parser = new EmailDocumentParser(parsers, new HtmlDocumentParser(), null, options);
+        parsers.Add(parser);
+
+        Assert.Equal(EmailParserOptions.MaxSupportedEmbeddedDepth, options.MaxEmbeddedDepth);
+    }
+
+    [Fact]
+    public void MaxEmbeddedDepth_MutatingTheDiResolvedInstance_CannotExceedTheCeiling()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+        builder.AddEmailParser(o => o.MaxEmbeddedDepth = 3);
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<EmailParserOptions>();
+
+        // The second bypass: Register puts the very instance both parsers captured into DI, so
+        // a post-validation write would re-arm what startup validation had just rejected.
+        options.MaxEmbeddedDepth = 10_000;
+
+        Assert.Equal(EmailParserOptions.MaxSupportedEmbeddedDepth, options.MaxEmbeddedDepth);
+    }
+
+    [Fact]
+    public void MaxEmbeddedDepth_AboveTheCeiling_StillThrowsFromAddEmailParser()
+    {
+        // Clamping must not silence the startup check: the clamp keeps the process alive, the
+        // throw keeps the misconfiguration loud. Both hold at once because the setter remembers
+        // the unclamped request for ValidateOptions to read.
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(
+            () => builder.AddEmailParser(o => o.MaxEmbeddedDepth = 10_000));
+
+        Assert.Equal(10_000, ex.ActualValue); // the value the caller asked for, not the clamp
+    }
+
     // ── EML fixture builder ──────────────────────────────────────────────────
 
     private static async Task<MemoryStream> CreateEmlAsync(

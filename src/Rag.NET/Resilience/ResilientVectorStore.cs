@@ -55,6 +55,20 @@ public class ResilientVectorStore : IVectorStore, IScoreScaleAware
     private protected ResiliencePipeline Pipeline { get; }
 
     /// <summary>
+    /// The runtime <see cref="Type"/> of the decorated store, for diagnostics that need to name
+    /// the store rather than the decorator.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately the type and not the store itself: <see cref="Inner"/> stays
+    /// <c>private protected</c> so no caller can reach around the pipeline, while a log line
+    /// such as persistent memory's opaque-scale warning — whose entire job is naming the store
+    /// responsible for the score scale — can still say <c>FederatedVectorStore</c> instead of
+    /// <c>ResilientVectorStore</c>. Decoration is idempotent (<c>ConfigureResilience</c> never
+    /// stacks a second layer), so one level of unwrapping is all there is.
+    /// </remarks>
+    public Type InnerStoreType => Inner.GetType();
+
+    /// <summary>
     /// The inner store's declared scale, or <see cref="ScoreScale.Similarity"/> when it
     /// declares none — the documented meaning of the interface's absence.
     /// </summary>

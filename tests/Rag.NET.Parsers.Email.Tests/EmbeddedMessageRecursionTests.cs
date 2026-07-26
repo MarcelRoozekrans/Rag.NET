@@ -240,6 +240,29 @@ public class EmbeddedMessageRecursionTests
         Assert.Single(harness.Warnings);
     }
 
+    [Fact]
+    public async Task DepthAboveTheCeiling_DirectConstruction_IsClampedAtParseTime()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // The parsers are constructed straight over the options here, so AddEmailParser's
+        // validation never ran — the bypass the setter's clamp closes. The assertion is that
+        // the ceiling is what actually bounds the parse; 65 levels is two orders of magnitude
+        // below the ~480-level survival floor, so no real stack overflow is provoked.
+        var options = new EmailParserOptions { MaxEmbeddedDepth = 10_000, MaxEmbeddedMessages = 500 };
+        Assert.Equal(EmailParserOptions.MaxSupportedEmbeddedDepth, options.MaxEmbeddedDepth);
+
+        var harness = new ParserHarness(options);
+        var outer = await BuildEmbeddedEmlChainAsync(EmailParserOptions.MaxSupportedEmbeddedDepth + 1, ct);
+
+        using var stream = new MemoryStream(outer);
+        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(2 * (EmailParserOptions.MaxSupportedEmbeddedDepth + 1), sections.Count);
+        Assert.DoesNotContain(sections, s => string.Equals(s.Text, InnermostMarker, StringComparison.Ordinal));
+        Assert.Contains("maximum embedded depth of 64", Assert.Single(harness.Warnings), StringComparison.Ordinal);
+    }
+
     // ── Reserved tags ────────────────────────────────────────────────────────
 
     [Fact]

@@ -61,14 +61,22 @@ public static class EmailParserBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Reads <see cref="EmailParserOptions.RequestedMaxEmbeddedDepth"/> rather than
+    /// <see cref="EmailParserOptions.MaxEmbeddedDepth"/>: the setter already clamped the
+    /// effective value to <see cref="EmailParserOptions.MaxSupportedEmbeddedDepth"/> (that is
+    /// what makes the ceiling absolute on every construction path), so the property alone can
+    /// no longer be out of range and validating it would never fire. The two are equal unless
+    /// the caller asked for more than the ceiling, which is exactly the case that must throw.
+    /// </summary>
     private static void ValidateOptions(EmailParserOptions options, string paramName)
     {
-        ThrowIfNegative(options.MaxEmbeddedDepth, nameof(EmailParserOptions.MaxEmbeddedDepth), paramName);
+        ThrowIfNegative(options.RequestedMaxEmbeddedDepth, nameof(EmailParserOptions.MaxEmbeddedDepth), paramName);
         ThrowIfNegative(options.MaxEmbeddedMessages, nameof(EmailParserOptions.MaxEmbeddedMessages), paramName);
 
-        if (options.MaxEmbeddedDepth > EmailParserOptions.MaxSupportedEmbeddedDepth)
+        if (options.RequestedMaxEmbeddedDepth > EmailParserOptions.MaxSupportedEmbeddedDepth)
         {
-            throw new ArgumentOutOfRangeException(paramName, options.MaxEmbeddedDepth,
+            throw new ArgumentOutOfRangeException(paramName, options.RequestedMaxEmbeddedDepth,
                 $"{nameof(EmailParserOptions)}.{nameof(EmailParserOptions.MaxEmbeddedDepth)} must not exceed " +
                 $"{EmailParserOptions.MaxSupportedEmbeddedDepth}. Recursion into an embedded message is " +
                 "stack-recursive: 480 levels were measured to survive and 500+ to terminate the process with " +

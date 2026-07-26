@@ -73,9 +73,17 @@ adding a package dependency from a parser to the connector assembly for one call
 judged worse than a local copy; this section's own premise is that the copies are the problem,
 so the decision is recorded rather than buried. Reviewed against `FileNameSanitizer` and found
 behaviourally consistent (same pinned invalid set, trimming, trailing dots, length cap,
-surrogate guard) except that it does not collapse an all-replacement result to the fallback:
-`"///"` yields `"___"` here and `"embedded-message"` there. Cosmetic — the name is display and
-provenance metadata, never a path. The right fix is to move `FileNameSanitizer` somewhere both
+surrogate guard) except for three divergences: (1) it does not collapse an all-replacement
+result to the fallback — `"///"` yields `"___"` here and `"embedded-message"` there; (2) the
+length cap differs — `FileNameSanitizer`'s `maxLength` defaults to 128, while
+`EmbeddedMessageMetadata.MaxNameLength` is 64, so the same subject truncates at different
+points; (3) post-truncation trimming differs — `FileNameSanitizer.TrimEdges` re-trims to a
+fixed point (trailing dots and whitespace re-expose each other) and treats all
+`char.IsWhiteSpace` characters as whitespace, while `EmbeddedMessageMetadata` truncates *after*
+its single `Trim()` and then applies `TrimEnd('.', ' ')`, which will not remove a re-exposed
+non-breaking space (U+00A0) or tab. All three are cosmetic — the name is display and
+provenance metadata, never a path — but the eventual unification must reconcile them rather
+than assume a single behavioural gap. The right fix is to move `FileNameSanitizer` somewhere both
 assemblies can reference (`Rag.NET.Abstractions` is the obvious home) and delete both copies,
 which is a package-layout change and not this phase's business.
 
@@ -292,10 +300,13 @@ issue. The original design intended exactly the promised wiring; it was never im
   (Npgsql) are not HTTP-typed clients.
 - Decoration is applied only when `ConfigureResilience` is called, so the default DI graph is
   unchanged.
-- **Double-retry is real and must be documented, not hidden:** Weaviate and Chroma configure
-  `AddStandardResilienceHandler` on their own HTTP clients, so for those stores the decorator
-  stacks on top of transport-level retries. The guide states this plainly and tells users to
-  configure one layer or the other.
+- **Double-retry is real and must be documented, not hidden:** Weaviate and Chroma hand-build a
+  retry-only `ResilienceHandler` on their own HTTP clients (a bare
+  `AddRetry(new HttpRetryStrategyOptions())` pipeline — *not* `AddStandardResilienceHandler`,
+  so no transport-level timeout, circuit breaker or concurrency limiter), so for those stores
+  the decorator stacks on top of transport-level retries. Both layers default to
+  `MaxRetryAttempts = 3`, which Polly counts as retries — 4 attempts per layer, 16 requests
+  worst case. The guide states this plainly and tells users to configure one layer or the other.
 - Cancellation and `OperationCanceledException` pass through the pipeline untouched; the
   decorator must not convert a caller cancellation into a retry.
 

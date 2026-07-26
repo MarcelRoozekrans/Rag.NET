@@ -310,9 +310,14 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// ledger, which is what a real second API call costs.
     /// </para>
     /// <para>
-    /// Double retry: the Weaviate and Chroma stores configure <c>AddStandardResilienceHandler</c>
-    /// on their own <c>HttpClient</c>, so for those stores this decorator stacks on top of
-    /// transport-level retries (attempts multiply). Configure one layer or the other.
+    /// Double retry: the Weaviate and Chroma stores hand-build a retry-only
+    /// <c>ResilienceHandler</c> on their own <c>HttpClient</c> (a bare
+    /// <c>AddRetry(new HttpRetryStrategyOptions())</c> pipeline — not
+    /// <c>AddStandardResilienceHandler</c>, so no transport-level timeout, circuit breaker or
+    /// concurrency limiter). For those stores this decorator stacks on top of transport-level
+    /// retries and attempts multiply: both layers default to <c>MaxRetryAttempts = 3</c>, which
+    /// Polly counts as retries, so each layer makes 1 + 3 = 4 attempts and the worst case is
+    /// 4 × 4 = up to 16 requests. Configure one layer or the other.
     /// </para>
     /// </remarks>
     /// <param name="configure">

@@ -287,6 +287,30 @@ public class PersistentConversationMemoryScoreScaleTests
         Assert.Contains("second", prefix, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Naming the store whose scale forced the option to be ignored is the warning's entire
+    /// job, so it must see past the decorator: <c>vectorStore.GetType().Name</c> reports
+    /// <c>"ResilientVectorStore"</c> for every graph <c>ConfigureResilience</c> touched, which
+    /// tells the reader nothing about which store to reconfigure.
+    /// </summary>
+    [Fact]
+    public async Task OpaqueStore_BehindTheResilienceDecorator_WarningNamesTheInnerStore()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var logger = new CountingLogger();
+        var store = ResilientVectorStore.Create(
+            new OpaqueVectorStore(Match("recalled", 0.0328)),
+            ResiliencePipeline.Empty);
+        var sut = Memory(store, new PersistentMemoryOptions { MinScore = 0.7, TopK = 3 }, logger);
+
+        Assert.NotNull(RecalledPrefix(await sut.ProcessAsync(Ask(), ct)));
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(1, WarningCount(logger));
+        Assert.Contains(nameof(OpaqueVectorStore), entry.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(nameof(ResilientVectorStore), entry.Message, StringComparison.Ordinal);
+    }
+
     /// <summary>The decorator does not falsely upgrade a similarity store: the threshold still applies.</summary>
     [Fact]
     public async Task SimilarityStore_BehindTheResilienceDecorator_StillAppliesMinScore()
