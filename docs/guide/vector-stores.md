@@ -6,21 +6,21 @@ sidebar_position: 6
 
 # Vector Stores
 
-The vector store is the persistence layer for embedded chunks. Rag.NET ships five implementations, each registered via a fluent extension method on `RagBuilder`. The interface is designed to be swapped without changing any pipeline code.
+The vector store is the persistence layer for embedded chunks. Rag.NET ships six implementations, each registered via a fluent extension method on `RagBuilder`. The interface is designed to be swapped without changing any pipeline code.
 
 ## Feature matrix
 
-| Feature | `PgVectorStore` | `QdrantVectorStore` | `AzureAISearchVectorStore` | `WeaviateVectorStore` | `ChromaVectorStore` |
-|---------|:-:|:-:|:-:|:-:|:-:|
-| Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` | `Rag.NET.VectorStores.Weaviate` | `Rag.NET.VectorStores.Chroma` |
-| Dense (semantic) search | Yes | Yes | Yes | Yes | Yes |
-| Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) | No — BM25 fallback |
-| Sparse search (SPLADE, `ISparseSearchable`) | No (deferred) | Yes (`enableSparseVectors: true`) | No | No | No |
-| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) | Yes (`where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) |
-| `ICollectionManageable` | Yes | Yes | Yes | Yes | Yes |
-| Similarity function | Cosine (via `<=>`) | Cosine | Cosine | Cosine | Cosine |
-| Index algorithm | IVFFlat / HNSW (pgvector) | HNSW | HNSW | HNSW | HNSW |
-| Persistence | PostgreSQL | Qdrant server | Azure managed | Weaviate server | Chroma server |
+| Feature | `PgVectorStore` | `QdrantVectorStore` | `AzureAISearchVectorStore` | `WeaviateVectorStore` | `ChromaVectorStore` | `PineconeVectorStore` |
+|---------|:-:|:-:|:-:|:-:|:-:|:-:|
+| Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` | `Rag.NET.VectorStores.Weaviate` | `Rag.NET.VectorStores.Chroma` | `Rag.NET.VectorStores.Pinecone` |
+| Dense (semantic) search | Yes | Yes | Yes | Yes | Yes | Yes |
+| Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) | No — BM25 fallback | No — BM25 fallback |
+| Sparse search (SPLADE, `ISparseSearchable`) | No (deferred) | Yes (`enableSparseVectors: true`) | No | No | No | Yes (`EnableSparseVectors = true`) |
+| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) | Yes (`where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) | Yes (filter `$eq`/`$and`) |
+| `ICollectionManageable` | Yes | Yes | Yes | Yes | Yes | Yes |
+| Similarity function | Cosine (via `<=>`) | Cosine | Cosine | Cosine | Cosine | Cosine (dotproduct when sparse) |
+| Index algorithm | IVFFlat / HNSW (pgvector) | HNSW | HNSW | HNSW | HNSW | Serverless (managed) |
+| Persistence | PostgreSQL | Qdrant server | Azure managed | Weaviate server | Chroma server | Pinecone managed |
 
 ## Interface hierarchy
 
@@ -49,6 +49,8 @@ classDiagram
     }
     class ChromaVectorStore {
     }
+    class PineconeVectorStore {
+    }
     IVectorStore <|.. PgVectorStore
     ICollectionManageable <|.. PgVectorStore
     IVectorStore <|.. QdrantVectorStore
@@ -61,11 +63,13 @@ classDiagram
     ICollectionManageable <|.. WeaviateVectorStore
     IVectorStore <|.. ChromaVectorStore
     ICollectionManageable <|.. ChromaVectorStore
+    IVectorStore <|.. PineconeVectorStore
+    ICollectionManageable <|.. PineconeVectorStore
 ```
 
 ## Shared interface
 
-All five implement `IVectorStore`:
+All six implement `IVectorStore`:
 
 ```csharp
 public interface IVectorStore
@@ -85,7 +89,7 @@ public interface IVectorStore
 
 ## Collection management
 
-All five also implement `ICollectionManageable`, registered alongside `IVectorStore` in the DI container:
+All six also implement `ICollectionManageable`, registered alongside `IVectorStore` in the DI container:
 
 ```csharp
 public interface ICollectionManageable
@@ -413,7 +417,7 @@ The store **requires the cosine space**. If the configured collection already ex
 
 ### Hybrid search
 
-`ChromaVectorStore` does not implement `IHybridSearchable` (or `ISparseSearchable`) — Chroma has no native BM25+vector fusion for externally supplied embeddings. When `UseHybridSearch = true`, the pipeline falls back to the in-memory BM25 index + RRF merge; if you want *native* hybrid or sparse search, use [Qdrant](#qdrant) (sparse/SPLADE), [Weaviate](#weaviate), or [Azure AI Search](#azure-ai-search) instead. See [Retrieval — Hybrid search](retrieval.md#hybrid-search-bm25--vector).
+`ChromaVectorStore` does not implement `IHybridSearchable` (or `ISparseSearchable`) — Chroma has no native BM25+vector fusion for externally supplied embeddings. When `UseHybridSearch = true`, the pipeline falls back to the in-memory BM25 index + RRF merge; if you want *native* hybrid or sparse search, use [Qdrant](#qdrant) or [Pinecone](#pinecone) (sparse/SPLADE), [Weaviate](#weaviate), or [Azure AI Search](#azure-ai-search) instead. See [Retrieval — Hybrid search](retrieval.md#hybrid-search-bm25--vector).
 
 ### Metadata filtering
 
@@ -432,6 +436,98 @@ var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 ```
 
 Note that `document_id` and `chunk_index` are reserved record-metadata keys (a same-named chunk metadata key would be overwritten by them).
+
+---
+
+## Pinecone
+
+**Package:** `Rag.NET.VectorStores.Pinecone`
+
+Stores chunks as records of a Pinecone **serverless** index via the official `Pinecone.Client` SDK. Implements `IVectorStore` and `ICollectionManageable`, served by one singleton; the opt-in sparse variant adds `ISparseSearchable` (see below). Record ids are `{documentId}:{chunkIndex}`, so re-ingesting a chunk upserts (replaces) it.
+
+Pinecone stores no document body: the chunk text lives in record metadata (key `text`) next to `document_id` and `chunk_index`, and is read back into `SearchResult.Text`. Keep chunks comfortably under Pinecone's **~40 KB metadata limit per record** — text plus all metadata must fit.
+
+> **SDK version note:** the package pins `Pinecone.Client` **3.1.0**, not 4.x. The 4.x control-plane models require a `vector_type` response field that Pinecone Local (API version 2025-01) does not send, so index create/describe/list fail against the emulator ([pinecone-dotnet-client#54](https://github.com/pinecone-io/pinecone-dotnet-client/issues/54); the SDK repository was archived in July 2026, so no fix is expected). 3.1.0 targets the same API version as the emulator and works against both it and the real service.
+
+### Setup
+
+```csharp
+services.AddRagNet(rag => rag
+    .UsePinecone(
+        apiKey:           "your-api-key",
+        indexName:        "rag-chunks",   // 1-45 chars: lowercase letters/digits/-, alphanumeric ends
+        vectorDimensions: 1536));
+```
+
+Optional settings via the `configure` callback:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UsePinecone("your-api-key", "rag-chunks", 1536, options =>
+    {
+        options.Namespace = "customer-a";              // namespace isolation (see below)
+        options.EnableSparseVectors = true;            // sparse variant — dotproduct index required
+        options.Cloud  = ServerlessSpecCloud.Aws;      // serverless placement, default aws
+        options.Region = "us-east-1";                  //   ... default us-east-1
+        options.Endpoint = new Uri("http://localhost:5080");  // Pinecone Local
+    }));
+```
+
+### Index lifecycle
+
+`CreateCollectionAsync(name, dimensions)` creates a serverless index (cloud/region from the options; cosine metric — dotproduct when sparse vectors are enabled) and polls `describe` until the index reports ready, bounded by `PineconeOptions.IndexReadyTimeout` (default 2 minutes; serverless creation typically takes under a minute, Pinecone Local is ready instantly). Deleting a missing index is a no-op; storing or searching against a missing index fails fast with an exception naming `CreateCollectionAsync` as the fix.
+
+### Local development (Pinecone Local)
+
+Pinecone Local is an in-memory emulator of the control and data planes — no account or API key needed (keys are accepted and ignored):
+
+```bash
+docker run -p 5080-5090:5080-5090 \
+  -e PORT=5080 -e PINECONE_HOST=localhost \
+  ghcr.io/pinecone-io/pinecone-local:latest
+```
+
+Point the store at it with `options.Endpoint = new Uri("http://localhost:5080")` — the `http` scheme also switches the SDK's data-plane gRPC channels to plaintext. The emulator serves the control plane on port 5080 and gives every index its own data-plane port from 5081–5090, advertised as `localhost:{port}` — hence the port-range publish (and a cap of ten live indexes). Emulator limitations to plan around: data is not persisted across restarts, at most 100,000 records per index, and **no sparse values on dense indexes** (see the sparse section below); delete-by-metadata-filter is rejected exactly like the real serverless service.
+
+### Scores
+
+Pinecone returns native similarity scores, so `MinScore` applies directly: cosine similarity in `[-1, 1]` on the default metric (identical vector ⇒ 1.0, orthogonal ⇒ 0.0). On a dotproduct index (sparse variant) dense scores are raw dot products and sparse scores are sums of matching term-weight products — both unbounded above, so tune `MinScore` for that scale.
+
+### Namespace isolation
+
+Set `PineconeOptions.Namespace` to scope every upsert, query, and delete to one Pinecone namespace — the features.md "namespace-based collection isolation". Two stores configured with different namespaces on the same index never see each other's chunks, and `DeleteByDocumentIdAsync` only deletes within its own namespace. Leave it null for the default namespace.
+
+### Metadata filtering
+
+Chunk metadata keys are stored as-is on each record and filtered server-side with Pinecone's `$eq` operator; multiple filter entries are composed with `$and`:
+
+```csharp
+// Generates: filter: {"$and": [{"department": {"$eq": "finance"}}, {"team": {"$eq": "core"}}]}
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    MetadataFilter = new Dictionary<string, string>
+    {
+        ["department"] = "finance",
+        ["team"]       = "core",
+    },
+});
+```
+
+`document_id`, `chunk_index`, and `text` are reserved record-metadata keys (a same-named chunk metadata key would be overwritten by them).
+
+### Delete by document
+
+Serverless indexes do not support delete-by-metadata-filter (the service answers "Serverless and Starter indexes do not support deleting with metadata filtering" — Pinecone Local included), so `DeleteByDocumentIdAsync` lists vector ids by the `{documentId}:` prefix and deletes by id, in batches. Ids whose remainder after the prefix is not purely digits are skipped — they belong to a longer document id that merely starts the same way (e.g. deleting `doc` never touches `doc:7`'s chunks).
+
+### Sparse vectors (SPLADE)
+
+Set `EnableSparseVectors = true` in the `configure` callback to register `PineconeSparseVectorStore` — a subtype that serves `ISparseSearchable` next to the dense interfaces. The dense-only `PineconeVectorStore` deliberately does **not** implement `ISparseSearchable`, so the pipelines' capability probe is honest and no SPLADE encoding work happens against a store that cannot persist it (the same type-split as [Qdrant](#sparse-vectors-splade)). Pair it with `UseSpladeEncoder` — see [Sparse retrieval (SPLADE)](retrieval.md#sparse-retrieval-splade) for the full setup.
+
+Sparse values ride on the same records as the dense embeddings: `StoreSparseAsync` re-upserts the full record (dense + sparse + metadata), so ordering against `StoreAsync` does not matter. `SearchSparseAsync` issues a sparse query with an all-zero dense vector (Pinecone requires a dense vector on every query; zeroing it nulls the dense contribution — the documented `alpha = 0` weighting).
+
+Pinecone only accepts sparse values on **dotproduct** indexes. The sparse variant's `CreateCollectionAsync` therefore creates dotproduct indexes, and its first data-plane use fails fast with an `InvalidOperationException` naming the fix when the configured index has a different metric — the real service would accept sparse upserts into a cosine index and only reject at *query* time.
+
+**Pinecone Local gap:** the emulator does not support sparse values on dense indexes (its gRPC upsert rejects them; its REST path silently drops them), so the sparse round-trip is only exercisable against the real serverless service. The container suite covers everything else about the sparse variant (dotproduct index creation, dense ops through it, the cosine fail-fast) and skips the sparse round-trip with that documented reason.
 
 ---
 

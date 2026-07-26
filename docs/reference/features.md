@@ -332,6 +332,8 @@ Implement `IVectorStore` backed by Pinecone's serverless index via the official 
 
 **Why:** Pinecone is the dominant managed vector store in production enterprise deployments. Many teams choose Rag.NET for the pipeline but already have Pinecone in their stack.
 
+**Status:** Delivered. `PineconeVectorStore` (register with `UsePinecone(apiKey, indexName, vectorDimensions, configure?)`) serves `IVectorStore` and `ICollectionManageable` from one singleton on the official `Pinecone.Client` SDK — pinned to 3.1.0 because the 4.x control-plane models cannot deserialize Pinecone Local's responses (upstream #54; SDK repo archived). `ICollectionManageable` manages serverless indexes (cloud/region options, readiness-polled create, idempotent delete); record ids `{documentId}:{chunkIndex}` make re-ingestion upsert-replace; chunk text lives in record metadata next to `document_id`/`chunk_index` and is read back into results (~40 KB metadata cap per record). Native cosine scores with `MinScore` applied directly, `$eq`/`$and` server-side metadata filters, and optional `Namespace` scoping every operation. Delete-by-document uses list-ids-by-prefix + delete-by-ids (serverless rejects delete-by-metadata-filter) with an exact-document guard for ids containing `:`. Opt-in `EnableSparseVectors` registers `PineconeSparseVectorStore : ISparseSearchable` (Qdrant type-split precedent): sparse values ride on the same records, dotproduct metric enforced fail-fast, sparse-only queries via a zero dense vector. Tested against Pinecone Local via Testcontainers (sparse round-trip skipped there — the emulator drops sparse values on dense indexes; documented in the guide).
+
 ---
 
 ## Ingestion Sources
@@ -1054,7 +1056,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | A/B Testing Framework | Medium | `IRagEvaluator` |
 | [x] | Weaviate Vector Store | Medium | REST + GraphQL via `ZeroAlloc.Rest` |
 | [x] | Chroma Vector Store | Medium | Chroma REST API |
-| [ ] | Pinecone Vector Store | Medium | Pinecone REST API |
+| [x] | Pinecone Vector Store | Medium | Official `Pinecone.Client` SDK (3.1.0) |
 | [x] | Multi-Index Federation | Medium | `IVectorStore` composition (dense-only) |
 | [x] | PDF Table Extraction | Medium | PdfPig geometry |
 | [x] | OCR for Scanned PDFs | Medium | Tesseract via `EnableOcr` gate (Azure Doc Intelligence deferred) |
