@@ -165,7 +165,7 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
         }
     }
 
-    private FileHandle ToHandle(JiraIssue issue)
+    private static FileHandle ToHandle(JiraIssue issue)
     {
         var markdown = ToMarkdown(issue);
         return new FileHandle(

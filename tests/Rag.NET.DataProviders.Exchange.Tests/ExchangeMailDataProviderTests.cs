@@ -3,6 +3,7 @@ using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 
@@ -576,6 +577,27 @@ public sealed class ExchangeMailDataProviderTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await sut.GetFilesAsync(cts.Token).ToListAsync(cts.Token));
+    }
+
+    // -------------------------------------------------------------------------
+    // 11. Shared connector-metadata contract
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_AllEntriesSatisfyMetadataContract()
+    {
+        // Two folders off the same fixture: 'folder' varies per entry, so the check sees
+        // every key this connector emits rather than a single folder's worth.
+        var handler = MakeHandler(
+            (InboxKey, HttpStatusCode.OK, InboxMessagesJson),
+            (ArchiveKey, HttpStatusCode.OK, InboxMessagesJson));
+        var sut = MakeProvider(handler, o => o.FolderIds = ["inbox", "archive"]);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, entries.Count);
+        MetadataContract.AssertAll(entries.Select(e => e.Value));
     }
 
     // -------------------------------------------------------------------------

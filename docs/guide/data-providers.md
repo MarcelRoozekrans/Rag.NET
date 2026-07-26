@@ -738,7 +738,7 @@ Both filters are applied before the file content is downloaded, so excluded file
 
 ## Metadata
 
-Every connector attaches a small dictionary of tags to each entry it emits — `FileHandle.Metadata`, or `FileEntry.Metadata` for the three Web providers, which do not extend `FileContentProviderBase`. `IngestFromProviderAsync` merges those tags into `DocumentMetadata.Tags`, and `MetadataBehavior` copies them onto every chunk produced from the document. They are what `HasTagSpec` filters on at query time.
+Connectors attach a small dictionary of tags to the entries they emit — `FileHandle.Metadata`, or `FileEntry.Metadata` for the three Web providers, which do not extend `FileContentProviderBase`. Nearly every entry carries one; a connector with nothing to say about a particular entry emits `null` instead (Box on a delta `UPLOAD` event, Google Drive when neither `mime_type` nor `folder_id` applies), which the table below marks per connector. `IngestFromProviderAsync` merges those tags into `DocumentMetadata.Tags`, and `MetadataBehavior` copies them onto every chunk produced from the document. They are what `HasTagSpec` filters on at query time.
 
 Where a connector already renders a value into the Markdown body it emits (`**Status:** …`), that line **stays** and the value is *additionally* emitted as a tag. The body is what gets embedded, so it drives semantic recall; the tag is what gets filtered. Neither substitutes for the other.
 
@@ -786,8 +786,8 @@ A key in the **Always** column is still omitted if its source value comes back e
 | Jira | `issue_key`, `project`, `status`, `updated_at` | `priority` — when set; `assignee` — when assigned |
 | Notion | `page_id`, `updated_at` | — (no container key; see the caveats) |
 | Asana | `workspace`, `completed` (`"true"`/`"false"`) | `assignee`, `due_on`, `updated_at`; `project` — when `ProjectGid` narrowed the enumeration |
-| Slack | `channel`, `channel_id`, `date`, `message_count` | — |
-| Microsoft Teams | `team_id`, `channel_id`, `channel`, `date`, `message_count` | — |
+| Slack | `channel`, `channel_id`, `date` (`yyyy-MM-dd` — the day this rollup covers), `message_count` | — |
+| Microsoft Teams | `team_id`, `channel_id`, `channel`, `date` (`yyyy-MM-dd` — the day this rollup covers), `message_count` | — |
 | Gmail | `date` (ISO-8601), `has_attachments` | `from` — when the message has a `From` header |
 | Exchange / Outlook | `folder` (the Graph mail-folder id or well-known name being enumerated, e.g. `inbox`), `has_attachments` | `received_at` (ISO-8601) — when Graph returned `receivedDateTime` |
 | Linear | `url` | `team` (team key); `state` **and** `state_type` together — when the issue has a workflow state; `project` (project name); `comments_truncated` = `"true"` — only when the issue's comments exceeded the fetched page, never `"false"` |
@@ -795,7 +795,7 @@ A key in the **Always** column is still omitted if its source value comes back e
 | Zendesk (Articles) | `article_id`, `updated_at`, `subdomain` | `section_id` — when the article belongs to a Help Center section |
 | Airtable | `base_id`, `table`, `record_id` | attachment entries additionally carry `field` (the source field name) and `attachment_id` |
 | Web — Crawler | `url`, `depth` (BFS distance from the seed; the seed is `"0"`), `host` | — |
-| Web — RSS / Atom | `url` | `author`; `published_at` — normalised to ISO-8601 |
+| Web — RSS / Atom | `url` | `author`; `published_at` — normalised to ISO-8601 when the feed's timestamp parses, otherwise passed through verbatim |
 | Web — Sitemap | `url` | `lastmod` — passed through verbatim |
 
 `LocalFilesDataProvider` emits no tags of its own; its documents carry `provider_id` only.
@@ -842,7 +842,11 @@ Only step 2 is reserved-key guarded. Base metadata is deliberately left unguarde
 
 **`path` and `parent_path` are not interchangeable.** Across the file/blob connectors `path` is the *file's own* full path — the value you would filter with `path` starts-with `docs/`. OneDrive and SharePoint emit **`parent_path`** instead, because Graph's `DriveItem` exposes `ParentReference.Path`, which is the *containing folder* and carries a `/drive/root:` namespace prefix. Filing that under `path` would make a cross-connector `path` filter silently match nothing on those two connectors.
 
-**`updated_at` is not comparable across connectors.** Asana, Jira, Notion and Zendesk each write `updated_at` straight through from their API in whatever format that vendor returns — the connector does not reformat it. The values are useful for exact-match and for per-connector ordering when a vendor's format happens to sort lexically, but a cross-connector range filter over `updated_at` is not sound. This is distinct from RSS's `published_at`, which *is* normalised to ISO-8601 (Atom carries ISO-8601, RSS 2.0 carries RFC 822 `pubDate`; both are parsed and re-rendered) and therefore *is* ordered and comparable. Sitemap's `lastmod` is passed through verbatim by design, because the sitemap protocol permits both a full W3C datetime and a bare date and normalising would discard which precision the site published.
+**`updated_at` is not comparable across connectors.** Asana, Jira, Notion and Zendesk each write `updated_at` straight through from their API in whatever format that vendor returns — the connector does not reformat it. The values are useful for exact-match and for per-connector ordering when a vendor's format happens to sort lexically, but a cross-connector range filter over `updated_at` is not sound. RSS's `published_at` is the better-behaved case: it is normalised to ISO-8601 **whenever the feed's timestamp parses** (Atom carries ISO-8601, RSS 2.0 carries RFC 822 `pubDate`; both are parsed and re-rendered), and is ordered and comparable for those entries. A timestamp that does not parse — a hand-written `pubDate` such as `sometime last Tuesday` — is passed through **verbatim** rather than dropped, so a feed with malformed dates can still yield unsortable values on this key. Sitemap's `lastmod` is passed through verbatim by design, because the sitemap protocol permits both a full W3C datetime and a bare date and normalising would discard which precision the site published.
+
+**`date` means two different things, in two different formats.** Slack and Teams emit `date` as `yyyy-MM-dd` — a *day-bucket label* identifying the day their per-day rollup document covers. Gmail emits `date` as a full ISO-8601 round-trip timestamp — the *instant* a single message carries. A cross-connector `date` filter therefore compares `2026-03-01` against `2026-03-01T10:00:00.0000000+00:00`, which matches nothing and sorts wrongly. This is more treacherous than the `updated_at` case above precisely because the values *look* comparable: filter `date` per connector, never across them.
+
+**Several other keys are per-connector-scoped rather than globally comparable** — each table row is correct on its own, but a filter written against one connector's meaning will not transfer to another: `project` carries four unrelated meanings (GitLab's configured id or `namespace/project`, Jira's project key, Asana's `ProjectGid`, Linear's project *name*), `folder` two (Dropbox's configured root path vs Exchange's Graph mail-folder id), and `status` two disjoint vocabularies (Jira status names vs Zendesk ticket statuses).
 
 **Notion has no container key.** It is the one record connector without one. `NotionOptions.DatabaseId` is not a filter the connector applies — the `POST /v1/search` request it issues returns every accessible page and accepts no database scope — so tagging pages with it would write a database id onto documents provably not in that database, and `HasTagSpec("database_id", …)` would return the wrong documents with no signal that anything was off. The absence is deliberate; the key becomes available honestly once the connector queries `/v1/databases/{id}/query`.
 
