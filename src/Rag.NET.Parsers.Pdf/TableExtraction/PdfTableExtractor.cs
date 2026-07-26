@@ -70,9 +70,10 @@ internal static class PdfTableExtractor
     /// many words per non-empty cell is Key/Value-style tabular content (labels and short
     /// values), not prose columns, and stays a table even when it dominates the page.
     ///
-    /// The value is tight by necessity and is not a free parameter: newsletter-style
-    /// three-column prose sits at exactly 3.0 words per cell, so anything above ~2.5 would
-    /// reclassify a page layout as a table. It is strictly nested inside
+    /// The value is tight by necessity and is not a free parameter. Two fixtures pin it from
+    /// above: newsletter-style three-column prose sits at exactly 3.0 words per cell, and a
+    /// full-page two-column layout fixture sits at 2.50 — the latter is the binding one, so
+    /// anything above ~2.5 reclassifies a page layout as a table. It is strictly nested inside
     /// <see cref="MaxAverageWordsPerCell"/> — a run must already have passed that (4.0) to
     /// reach this check at all.
     /// </summary>
@@ -281,7 +282,9 @@ internal static class PdfTableExtractor
     /// on the <see cref="DetectedTable"/>; that guard has no row data of its own.
     /// </summary>
     /// <param name="averageWordsPerCell">
-    /// Words per non-empty cell over the window, or 0 when the window has no non-empty cells.
+    /// Words per non-empty cell over the window, or 0 when the window has no non-empty cells —
+    /// in which case the method returns false and no table is built, so a 0 ratio never
+    /// reaches the dominance guard (where it would otherwise read as "exempt").
     /// </param>
     private static bool PassesPlausibilityGuards(
         List<List<WordBox>> rows,
