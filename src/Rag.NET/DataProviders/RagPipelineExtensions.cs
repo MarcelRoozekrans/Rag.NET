@@ -46,20 +46,18 @@ public static class RagPipelineExtensions
     /// — this <b>escapes the method</b>: it is a deterministic authoring bug that would otherwise
     /// repeat once per document while shipping a corrupted ranking.
     /// <para>
-    /// It arrives <b>unwrapped</b>: although
+    /// It arrives <b>unwrapped</b>, including under parallel ingestion: although
     /// <see cref="Parallel.ForEachAsync{TSource}(IEnumerable{TSource}, ParallelOptions, Func{TSource, CancellationToken, ValueTask})"/>
-    /// faults its task through an <see cref="AggregateException"/>, awaiting unwraps it, so
-    /// <c>catch (ReservedMetadataKeyException)</c> works directly. Pinned by
-    /// <c>IngestFromProviderAsync_ReservedKeyCollisionUnderParallelism_EscapesUnwrapped</c> on
-    /// the multi-worker path, where the aggregate really does hold several inner exceptions.
+    /// faults its task through an <see cref="AggregateException"/>, awaiting unwraps it — so
+    /// <c>catch (ReservedMetadataKeyException)</c> is safe and needs no
+    /// <see cref="AggregateException"/> handling.
     /// </para>
     /// <para>
     /// <b>Ingestion is left partially complete.</b> When a connector emits the reserved key on
     /// only some entries, the clean ones already processed are ingested and — with a
-    /// <paramref name="hashStore"/> — hash-recorded; the throw unwinds none of that. Pinned by
-    /// <c>IngestFromProviderAsync_ReservedKeyCollision_LeavesAlreadyProcessedEntriesIngested</c>.
-    /// Because the method throws rather than returns, the accumulated error bag is discarded and
-    /// cleanup for <see cref="CleanupMode.Full"/> is skipped, so no document is deleted.
+    /// <paramref name="hashStore"/> — hash-recorded; the throw unwinds none of that. Because the
+    /// method throws rather than returns, the accumulated error bag is discarded and cleanup for
+    /// <see cref="CleanupMode.Full"/> is skipped, so no document is deleted.
     /// </para>
     /// <para>
     /// <b>Re-running after the fix is safe.</b> Whatever was ingested was collision-free by
@@ -198,6 +196,8 @@ public static class RagPipelineExtensions
         // ReservedMetadataKeyException is deliberately excluded alongside cancellation: it is a
         // connector authoring bug that repeats identically for every entry, so downgrading it to
         // a per-entry RagError would emit N copies of one bug and still ship a corrupted ranking.
+        // Removing that exclusion silently reverts the escape — see the tests named at the throw
+        // site in BuildMetadata.
         catch (Exception ex) when (ex is not OperationCanceledException and not ReservedMetadataKeyException)
         {
             errors.Add(new RagError.StorageFailed(ex));
@@ -299,6 +299,16 @@ public static class RagPipelineExtensions
         {
             foreach (var (k, v) in entry.Metadata)
             {
+                // Before changing this throw — or the catch filter in ProcessEntryAsync that lets
+                // it past, or the escape path through Parallel.ForEachAsync — note that two tests
+                // pin the contract documented on IngestFromProviderAsync, and neither is obvious
+                // from this line alone:
+                //   IngestFromProviderAsync_ReservedKeyCollisionUnderParallelism_EscapesUnwrapped
+                //     — callers receive this bare, not inside an AggregateException, even when
+                //       several parallel workers throw at once.
+                //   IngestFromProviderAsync_ReservedKeyCollision_LeavesAlreadyProcessedEntriesIngested
+                //     — entries ingested before the collision surfaces stay ingested.
+                // Both live in tests/Rag.NET.Tests/DataProviders/IngestFromProviderTests.cs.
                 if (ReservedMetadataKeys.IsReserved(k))
                     throw new ReservedMetadataKeyException(k, providerId.Value, entry.Id.Value);
                 tags[k] = v;
