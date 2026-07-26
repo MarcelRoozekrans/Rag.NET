@@ -17,10 +17,15 @@ namespace Rag.NET.Parsers.Email;
 public sealed class MsgDocumentParser(
     IEnumerable<IDocumentParser> parsers,
     HtmlDocumentParser htmlParser,
-    ILogger<MsgDocumentParser>? logger = null) : IDocumentParser
+    ILogger<MsgDocumentParser>? logger = null,
+    EmailParserOptions? options = null) : IDocumentParser
 {
+    internal const string MsgContentType = "application/vnd.ms-outlook";
+
+    private readonly EmailParserOptions options = options ?? new EmailParserOptions();
+
     public bool CanParse(string contentType) =>
-        contentType.Equals("application/vnd.ms-outlook", StringComparison.OrdinalIgnoreCase);
+        contentType.Equals(MsgContentType, StringComparison.OrdinalIgnoreCase);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,
@@ -28,7 +33,23 @@ public sealed class MsgDocumentParser(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         using var message = new Storage.Message(stream, FileAccess.Read, leaveStreamOpen: true);
+        var context = EmbeddedMessageContext.Create(metadata, options);
         int sectionIndex = 0;
+
+        // SectionIndex is stamped exactly once, here: everything below — including any
+        // nested message parsed in-process — yields unstamped sections.
+        await foreach (var section in ParseMessageAsync(message, context, cancellationToken).ConfigureAwait(false))
+        {
+            yield return section with { SectionIndex = sectionIndex++ };
+        }
+    }
+
+    private async IAsyncEnumerable<DocumentSection> ParseMessageAsync(
+        Storage.Message message,
+        EmbeddedMessageContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var metadata = context.Metadata;
 
         // Subject section
         if (!string.IsNullOrWhiteSpace(message.Subject))
@@ -39,20 +60,20 @@ public sealed class MsgDocumentParser(
                 DocumentId = metadata.DocumentId,
                 Heading = message.Subject,
                 HeadingLevel = 1,
-                SectionIndex = sectionIndex++,
+                SectionIndex = 0, // stamped by ParseAsync
             };
         }
 
         // Body sections
         await foreach (var section in ParseBodyAsync(message, metadata, cancellationToken).ConfigureAwait(false))
         {
-            yield return section with { SectionIndex = sectionIndex++ };
+            yield return section;
         }
 
         // Attachment sections
-        await foreach (var section in ParseAttachmentsAsync(message, metadata, cancellationToken).ConfigureAwait(false))
+        await foreach (var section in ParseAttachmentsAsync(message, context, cancellationToken).ConfigureAwait(false))
         {
-            yield return section with { SectionIndex = sectionIndex++ };
+            yield return section;
         }
     }
 
@@ -69,7 +90,7 @@ public sealed class MsgDocumentParser(
             {
                 Text = message.BodyText.Trim(),
                 DocumentId = metadata.DocumentId,
-                SectionIndex = 0, // re-stamped by caller
+                SectionIndex = 0, // stamped by ParseAsync
             };
             yield break;
         }
@@ -87,7 +108,7 @@ public sealed class MsgDocumentParser(
 
     private async IAsyncEnumerable<DocumentSection> ParseAttachmentsAsync(
         Storage.Message message,
-        DocumentMetadata metadata,
+        EmbeddedMessageContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Storage.Message.Attachments is a List<object> mixing file attachments
@@ -128,7 +149,7 @@ public sealed class MsgDocumentParser(
             using var attachmentStream = new MemoryStream(attachment.Data);
 
             await foreach (var section in EmailAttachmentDispatcher.DispatchAsync(
-                parsers, this, attachment.FileName, mimeType, attachmentStream, metadata, logger, cancellationToken).ConfigureAwait(false))
+                parsers, attachment.FileName, mimeType, attachmentStream, context, logger, cancellationToken).ConfigureAwait(false))
             {
                 yield return section;
             }

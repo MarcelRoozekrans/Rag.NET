@@ -1,0 +1,212 @@
+using System.Text;
+using Microsoft.Extensions.Logging;
+using Rag.NET.Abstractions;
+using Rag.NET.Models;
+using Rag.NET.Parsers.Html;
+using Xunit;
+
+namespace Rag.NET.Parsers.Email.Tests;
+
+/// <summary>
+/// Covers the depth/node bounds on embedded-message recursion, including the alternating
+/// <c>.eml</c> → <c>.msg</c> → <c>.eml</c> chain that the old <c>ReferenceEquals(self)</c>
+/// skip never caught: consecutive levels of that chain are handled by two <i>different</i>
+/// parser instances, so the skip never fired and nothing bounded the chain.
+/// </summary>
+public class EmbeddedMessageRecursionTests
+{
+    private const string InnermostMarker = "INNERMOST-CHAIN-MARKER";
+
+    private static DocumentMetadata CreateMetadata(IDictionary<string, string>? tags = null) => new()
+    {
+        DocumentId = new DocumentId("chain-1"),
+        FileName = "outer.eml",
+        ContentType = "message/rfc822",
+        Tags = tags ?? new Dictionary<string, string>(StringComparer.Ordinal),
+    };
+
+    // ── The alternating chain (Task C1) ──────────────────────────────────────
+
+    [Fact]
+    public async Task AlternatingEmlMsgChain_Completes_WithinBoundedTime()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        bounded.CancelAfter(TimeSpan.FromSeconds(30));
+
+        var outer = await BuildAlternatingChainAsync(10, ct);
+        var harness = new ParserHarness();
+
+        using var stream = new MemoryStream(outer);
+        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(), bounded.Token).ToListAsync(bounded.Token);
+
+        // Bounded: the top-level message plus MaxEmbeddedDepth nested ones, two sections each.
+        // Without the depth limit all ten levels were traversed instead.
+        Assert.Equal(2 * (harness.Options.MaxEmbeddedDepth + 1), sections.Count);
+        Assert.DoesNotContain(sections, s => string.Equals(s.Text, InnermostMarker, StringComparison.Ordinal));
+        Assert.Contains(harness.Warnings, w => w.Contains("maximum embedded depth", StringComparison.Ordinal));
+    }
+
+    // ── Limits ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DepthExceeded_WarnsAndSkips_OuterContentStillParses()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var harness = new ParserHarness(new EmailParserOptions { MaxEmbeddedDepth = 2 });
+        var outer = await BuildAlternatingChainAsync(6, ct);
+
+        using var stream = new MemoryStream(outer);
+        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(6, sections.Count); // depths 0, 1 and 2 — subject + body each
+        Assert.Equal("Level 6", sections[0].Heading); // the outermost content survives
+        Assert.Equal("Body 6.", sections[1].Text);
+        var warning = Assert.Single(harness.Warnings);
+        Assert.Contains("maximum embedded depth of 2", warning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task NodeCapExceeded_WarnsAndSkips()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var harness = new ParserHarness(new EmailParserOptions { MaxEmbeddedDepth = 10, MaxEmbeddedMessages = 2 });
+        var outer = await BuildAlternatingChainAsync(6, ct);
+
+        using var stream = new MemoryStream(outer);
+        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(6, sections.Count); // the top-level message plus two embedded ones
+        var warning = Assert.Single(harness.Warnings);
+        Assert.Contains("maximum of 2 embedded messages", warning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task NodeCap_IsTotal_AcrossSiblingBranches()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var harness = new ParserHarness(new EmailParserOptions { MaxEmbeddedDepth = 10, MaxEmbeddedMessages = 3 });
+
+        // Two sibling branches of two nested messages each. A per-branch budget would admit
+        // all four; a total budget admits three and warns once.
+        var outer = await EmlFixtureBuilder.CreateAsync("Root", "Root body.",
+            [
+                ("a.msg", "application/vnd.ms-outlook", BuildTwoLevelBranch()),
+                ("b.msg", "application/vnd.ms-outlook", BuildTwoLevelBranch()),
+            ],
+            ct);
+
+        using var stream = new MemoryStream(outer);
+        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(8, sections.Count); // root + 3 embedded messages, two sections each
+        Assert.Single(harness.Warnings);
+    }
+
+    // ── Reserved tags ────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task DepthTag_NotLeakedIntoSectionMetadata()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var text = new FakeTextParser();
+        var harness = new ParserHarness(extraParsers: [text]);
+
+        // outer.eml → inner.msg → note.txt: the text parser sits below an embedded message,
+        // so it is the first place a leaked depth tag would show up.
+        using var inner = MsgFixtureBuilder.Create("Inner", "Inner body.",
+            attachments: [("note.txt", Encoding.UTF8.GetBytes("Note."), "text/plain")]);
+        var outer = await EmlFixtureBuilder.CreateAsync("Outer", "Outer body.",
+            [("inner.msg", "application/vnd.ms-outlook", inner.ToArray())], ct);
+
+        var callerTags = new Dictionary<string, string>(StringComparer.Ordinal) { ["source"] = "unit-test" };
+        using var stream = new MemoryStream(outer);
+        _ = await harness.Eml.ParseAsync(stream, CreateMetadata(callerTags), ct).ToListAsync(ct);
+
+        var received = Assert.Single(text.ReceivedMetadata);
+        Assert.Equal("unit-test", received.Tags["source"]);
+        Assert.DoesNotContain(received.Tags, t => t.Key.StartsWith("__rag_email", StringComparison.Ordinal));
+
+        // The caller's own dictionary is what reaches stored chunk metadata; it must be untouched.
+        Assert.Equal(["source"], callerTags.Keys);
+    }
+
+    // ── Fixtures ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds <paramref name="nestedLevels"/> messages nested inside one another, alternating
+    /// container format at every level so consecutive levels are handled by two different
+    /// parser instances. Every level is carried as an ordinary binary attachment, so the whole
+    /// chain travels through <c>EmailAttachmentDispatcher</c>. <paramref name="nestedLevels"/>
+    /// must be even, which makes the outermost container an <c>.eml</c>.
+    /// </summary>
+    private static async Task<byte[]> BuildAlternatingChainAsync(int nestedLevels, CancellationToken cancellationToken)
+    {
+        Assert.Equal(0, nestedLevels % 2);
+
+        var current = await EmlFixtureBuilder.CreateAsync("Level 0", InnermostMarker, null, cancellationToken);
+        bool currentIsEml = true;
+
+        for (int level = 1; level <= nestedLevels; level++)
+        {
+            if (currentIsEml)
+            {
+                using var msg = MsgFixtureBuilder.Create(
+                    $"Level {level}",
+                    $"Body {level}.",
+                    attachments: [("inner.eml", current, "message/rfc822")]);
+                current = msg.ToArray();
+            }
+            else
+            {
+                current = await EmlFixtureBuilder.CreateAsync(
+                    $"Level {level}",
+                    $"Body {level}.",
+                    [("inner.msg", "application/vnd.ms-outlook", current)],
+                    cancellationToken);
+            }
+
+            currentIsEml = !currentIsEml;
+        }
+
+        return current;
+    }
+
+    /// <summary>A <c>.msg</c> holding one further <c>.msg</c> — two embedded messages in one branch.</summary>
+    private static byte[] BuildTwoLevelBranch()
+    {
+        using var leaf = MsgFixtureBuilder.Create("Leaf", "Leaf body.");
+        using var branch = MsgFixtureBuilder.Create("Branch", "Branch body.",
+            attachments: [("leaf.msg", leaf.ToArray(), null)]);
+        return branch.ToArray();
+    }
+
+    /// <summary>An EML and an MSG parser sharing one parser list, options and warning sink.</summary>
+    private sealed class ParserHarness
+    {
+        private readonly CapturingLogger<EmailDocumentParser> emlLog = new();
+        private readonly CapturingLogger<MsgDocumentParser> msgLog = new();
+
+        public ParserHarness(EmailParserOptions? options = null, IDocumentParser[]? extraParsers = null)
+        {
+            Options = options ?? new EmailParserOptions();
+            var parsers = new List<IDocumentParser>();
+            Eml = new EmailDocumentParser(parsers, new HtmlDocumentParser(), emlLog, Options);
+            Msg = new MsgDocumentParser(parsers, new HtmlDocumentParser(), msgLog, Options);
+            parsers.Add(Eml);
+            parsers.Add(Msg);
+            parsers.AddRange(extraParsers ?? []);
+        }
+
+        public EmailParserOptions Options { get; }
+
+        public EmailDocumentParser Eml { get; }
+
+        public MsgDocumentParser Msg { get; }
+
+        public IEnumerable<string> Warnings =>
+            emlLog.Entries.Concat(msgLog.Entries)
+                .Where(e => e.Level == LogLevel.Warning)
+                .Select(e => e.Message);
+    }
+}
