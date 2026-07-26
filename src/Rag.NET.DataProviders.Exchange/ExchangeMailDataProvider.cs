@@ -1,13 +1,11 @@
 using System.Globalization;
 using System.Net;
 using System.Runtime.CompilerServices;
-using Azure.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
-using Microsoft.Graph.Models.ODataErrors;
-using Microsoft.Kiota.Abstractions;
 using Rag.NET.DataProviders;
+using Rag.NET.DataProviders.Graph;
 using Rag.NET.Models;
 using ZeroAlloc.Results;
 
@@ -246,53 +244,18 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
 
             return page is not null
                 ? Result<MessageCollectionResponse, RagError>.Success(page)
+                // Synthetic status per the RagError.HttpFailed convention: the server answered,
+                // but with no payload this connector can proceed from.
                 : Result<MessageCollectionResponse, RagError>.Failure(new RagError.HttpFailed(
                     HttpStatusCode.NoContent, $"Graph returned an empty response for folder '{folderId}'."));
         }
-        // Caller cancellation is never a Result failure. Must precede the transport
-        // catches: TaskCanceledException derives from OperationCanceledException.
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        // GraphErrorMapping.IsMappable lets caller cancellation through untouched; everything
+        // else it accepts becomes a Result failure rather than an escaping exception.
+        catch (Exception ex) when (GraphErrorMapping.IsMappable(ex, ct))
         {
-            throw;
-        }
-        catch (ODataError ex)
-        {
-            return Result<MessageCollectionResponse, RagError>.Failure(
-                FromApiException(ex, ex.Error?.Message));
-        }
-        catch (ApiException ex)
-        {
-            return Result<MessageCollectionResponse, RagError>.Failure(FromApiException(ex, null));
-        }
-        // DNS, TLS, socket reset — no response was ever received.
-        catch (HttpRequestException ex)
-        {
-            return Result<MessageCollectionResponse, RagError>.Failure(new RagError.TransportFailed(ex));
-        }
-        // The caller's token is not signalled (filtered above), so this is an HttpClient timeout.
-        catch (TaskCanceledException ex)
-        {
-            return Result<MessageCollectionResponse, RagError>.Failure(new RagError.TransportFailed(ex));
-        }
-        catch (AuthenticationFailedException ex)
-        {
-            return Result<MessageCollectionResponse, RagError>.Failure(new RagError.TransportFailed(ex));
+            return Result<MessageCollectionResponse, RagError>.Failure(GraphErrorMapping.Map(ex));
         }
     }
-
-    /// <summary>
-    /// Maps a Kiota <see cref="ApiException"/> to the matching <see cref="RagError"/>.
-    /// <para>
-    /// Kiota leaves <see cref="ApiException.ResponseStatusCode"/> at <c>0</c> when no HTTP
-    /// response was ever received, and <c>(HttpStatusCode)0</c> is not a valid status —
-    /// that case becomes <see cref="RagError.TransportFailed"/> rather than a
-    /// <see cref="RagError.HttpFailed"/> carrying an out-of-range status.
-    /// </para>
-    /// </summary>
-    private static RagError FromApiException(ApiException ex, string? message)
-        => ex.ResponseStatusCode == 0
-            ? new RagError.TransportFailed(ex)
-            : new RagError.HttpFailed((HttpStatusCode)ex.ResponseStatusCode, message ?? ex.Message);
 
     private FileHandle ToHandle(string folderId, Message message)
     {

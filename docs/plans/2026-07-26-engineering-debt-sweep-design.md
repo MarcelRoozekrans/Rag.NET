@@ -82,11 +82,29 @@ and let everything else throw; **Microsoft Teams has no catch at all**.
 
 **Design:**
 
-- Add `public sealed record TransportFailed(Exception Inner) : RagError` to the closed union
-  in `src/Rag.NET.Abstractions/Models/RagError.cs`. This breaks exhaustive `switch`
-  expressions at compile time — which pre-1.0 is the desired outcome: the alternative is
-  misreporting a DNS failure as an HTTP status. Every existing exhaustive match in the repo
-  is updated.
+- Add `public sealed record TransportFailed(Exception Inner) : RagError` in
+  `src/Rag.NET.Abstractions/Models/RagError.cs`. The reason is honest modelling, not
+  compile-time enforcement: a DNS failure has no HTTP status, so reporting one is a lie, and
+  the only value available to lie with — `(HttpStatusCode)0` — is not even a valid status.
+  Every existing match on `RagError` is reviewed and updated to handle the new case
+  deliberately.
+
+  > **Corrected after implementation.** An earlier revision of this bullet claimed the new case
+  > "breaks exhaustive `switch` expressions at compile time", and leaned on that break as the
+  > mechanism that keeps matches honest. That is wrong, twice over:
+  >
+  > - C# does no closed-hierarchy exhaustiveness analysis on reference types. A `switch`
+  >   expression over `RagError` with no `_` arm does not enumerate the subtypes; it emits
+  >   **CS8509** ("the switch expression does not handle all possible values") and, under this
+  >   repo's warnings-as-errors, fails the build outright. A discard-free match is therefore
+  >   not an exhaustiveness check — it is a standing build break.
+  > - `RagError` is not a closed union at all. It is an ordinary `public abstract record` with
+  >   no `private protected` constructor, so any external assembly can derive from it.
+  >
+  > In practice the repo's only two matches both already carried a `_` arm, so adding the case
+  > broke nothing and nothing had to be fixed to make the build pass. Whether to actually close
+  > the union (a `private protected` constructor — a public-API decision with its own
+  > extensibility trade-off) is deliberately **out of scope for this phase**.
 - Map in all four Graph connectors: `HttpRequestException`, `TaskCanceledException` that is
   *not* caller cancellation (an HttpClient timeout), and `Azure.Identity`'s
   `AuthenticationFailedException` → `TransportFailed`.

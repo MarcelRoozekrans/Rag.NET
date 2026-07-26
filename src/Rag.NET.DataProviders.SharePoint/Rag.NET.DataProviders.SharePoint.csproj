@@ -5,6 +5,12 @@
     <Description>SharePoint data provider for Rag.NET via Microsoft Graph</Description>
   </PropertyGroup>
   <ItemGroup>
+    <!-- One definition, compiled into each Graph connector. It cannot live in the shared
+         Rag.NET.DataProviders package: that package references neither Microsoft.Graph,
+         Kiota, nor Azure.Identity, and must not start. -->
+    <Compile Include="..\Shared\GraphErrorMapping.cs" Link="Graph\GraphErrorMapping.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
     <PackageReference Include="Microsoft.Graph" Version="5.*" />
     <!-- Audit lift: Microsoft.Graph 5.x pins Microsoft.Kiota.Abstractions 1.21.1 (GHSA-7j59-v9qr-6fq9, patched in 1.22.0). -->

@@ -545,13 +545,34 @@ public sealed class ExchangeMailDataProviderTests
     }
 
     [Fact]
+    public async Task HttpClientTimeout_MapsToTransportFailure()
+    {
+        // An HttpClient timeout surfaces as a TaskCanceledException while the caller's token
+        // is NOT signalled. That is a transport failure, not a cancellation.
+        var handler = new ThrowingGraphHandler(
+            () => new TaskCanceledException("The request was canceled due to HttpClient.Timeout."));
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        var failure = Assert.IsType<RagError.TransportFailed>(result.Error);
+        _ = Assert.IsType<TaskCanceledException>(failure.Inner);
+    }
+
+    [Fact]
     public async Task CallerCancellation_Throws_AndIsNotMappedToAFailure()
     {
-        var handler = MakeHandler((InboxKey, HttpStatusCode.OK, InboxMessagesJson));
-        var sut     = MakeProvider(handler);
-
+        // Cancellation is driven from INSIDE the HTTP call. Cancelling before enumeration
+        // would be vacuous: EnumerateFolderAsync's ThrowIfCancellationRequested fires at the
+        // top of the paging loop and the exception never reaches FetchPageAsync's catch.
+        // Signalling mid-send makes GraphErrorMapping.IsMappable's cancellation guard — and
+        // nothing else — the thing that decides between throwing and mapping. Removing that
+        // guard turns this test red.
         using var cts = new CancellationTokenSource();
-        await cts.CancelAsync();
+        var sut = MakeProvider(new CancellingGraphHandler(cts));
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await sut.GetFilesAsync(cts.Token).ToListAsync(cts.Token));
@@ -652,5 +673,27 @@ file sealed class ThrowingGraphHandler(Func<Exception> exceptionFactory) : HttpM
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
         => throw exceptionFactory();
+}
+
+/// <summary>
+/// Signals the caller's <see cref="CancellationTokenSource"/> from inside the HTTP call, then
+/// fails the way <see cref="HttpClient"/> does when a token trips mid-flight.
+/// <para>
+/// This is what keeps the caller-cancellation test honest. Cancelling before enumeration
+/// starts is vacuous — the provider's own <c>ThrowIfCancellationRequested</c> fires at the top
+/// of the paging loop and the exception never reaches the mapping code at all. Cancelling from
+/// here means the token is only signalled once execution is already inside the fetch, so the
+/// cancellation guard in <c>GraphErrorMapping.IsMappable</c> is the only thing standing
+/// between a propagated <see cref="OperationCanceledException"/> and a mapped failure.
+/// </para>
+/// </summary>
+file sealed class CancellingGraphHandler(CancellationTokenSource cancelOnSend) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        cancelOnSend.Cancel();
+        throw new TaskCanceledException("A task was canceled.");
+    }
 }
 

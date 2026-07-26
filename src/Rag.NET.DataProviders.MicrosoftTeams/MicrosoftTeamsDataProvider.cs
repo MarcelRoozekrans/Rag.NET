@@ -1,13 +1,10 @@
-using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
-using Azure.Identity;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
-using Microsoft.Graph.Models.ODataErrors;
-using Microsoft.Kiota.Abstractions;
 using Rag.NET.DataProviders;
+using Rag.NET.DataProviders.Graph;
 using Rag.NET.Models;
 using ZeroAlloc.Results;
 
@@ -107,9 +104,9 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
         {
             result = await _graph.Me.JoinedTeams.GetAsync(cancellationToken: ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (IsMappable(ex, ct))
+        catch (Exception ex) when (GraphErrorMapping.IsMappable(ex, ct))
         {
-            return Result<List<(string, string)>, RagError>.Failure(Map(ex));
+            return Result<List<(string, string)>, RagError>.Failure(GraphErrorMapping.Map(ex));
         }
 
         var teams = new List<(string, string)>();
@@ -135,9 +132,9 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
             result = await _graph.Teams[teamId].Channels.GetAsync(cancellationToken: ct)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (IsMappable(ex, ct))
+        catch (Exception ex) when (GraphErrorMapping.IsMappable(ex, ct))
         {
-            return Result<List<(string, string)>, RagError>.Failure(Map(ex));
+            return Result<List<(string, string)>, RagError>.Failure(GraphErrorMapping.Map(ex));
         }
 
         var channels = new List<(string, string)>();
@@ -188,42 +185,11 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
                 : await builder.GetAsync(cancellationToken: ct).ConfigureAwait(false);
             return Result<ChatMessageCollectionResponse?, RagError>.Success(page);
         }
-        catch (Exception ex) when (IsMappable(ex, ct))
+        catch (Exception ex) when (GraphErrorMapping.IsMappable(ex, ct))
         {
-            return Result<ChatMessageCollectionResponse?, RagError>.Failure(Map(ex));
+            return Result<ChatMessageCollectionResponse?, RagError>.Failure(GraphErrorMapping.Map(ex));
         }
     }
-
-    /// <summary>
-    /// Whether <paramref name="ex"/> is a Graph failure this provider converts into a
-    /// <see cref="Result{TValue,TError}"/> failure rather than letting it escape.
-    /// <para>
-    /// The cancellation test comes first and wins: an HttpClient timeout surfaces as a
-    /// <see cref="TaskCanceledException"/>, which derives from
-    /// <see cref="OperationCanceledException"/>, so only the caller's token separates a
-    /// timeout (a transport failure) from a caller cancellation (which must propagate).
-    /// </para>
-    /// </summary>
-    private static bool IsMappable(Exception ex, CancellationToken cancellationToken)
-        => !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested)
-        && ex is ApiException or HttpRequestException or TaskCanceledException
-              or AuthenticationFailedException;
-
-    /// <summary>
-    /// Classifies a mappable Graph exception. Kiota leaves
-    /// <see cref="ApiException.ResponseStatusCode"/> at <c>0</c> when no HTTP response was
-    /// received at all, and <c>(HttpStatusCode)0</c> is not a valid status — that case is a
-    /// transport failure, not an HTTP failure.
-    /// </summary>
-    private static RagError Map(Exception ex) => ex switch
-    {
-        ApiException { ResponseStatusCode: 0 } => new RagError.TransportFailed(ex),
-        ODataError odata => new RagError.HttpFailed(
-            (HttpStatusCode)odata.ResponseStatusCode, odata.Error?.Message ?? odata.Message),
-        ApiException api => new RagError.HttpFailed(
-            (HttpStatusCode)api.ResponseStatusCode, api.Message),
-        _ => new RagError.TransportFailed(ex),
-    };
 
     private static List<FileHandle> GroupByDay(
         string teamId, string channelId, string channelName,

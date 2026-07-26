@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Graph;
 using Rag.NET.DataProviders.SharePoint;
 using Xunit;
@@ -184,6 +185,69 @@ public sealed class SharePointDataProviderTests
     }
 
     // -------------------------------------------------------------------------
+    // Stale delta token → full-traversal fallback; every other ODataError → failure
+    // -------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("resyncRequired", HttpStatusCode.Gone)]
+    [InlineData("itemNotFound",   HttpStatusCode.NotFound)]
+    public async Task GetFilesAsync_StaleDeltaToken_FallsBackToFullTraversal(
+        string errorCode, HttpStatusCode status)
+    {
+        const string driveId  = "drive-1";
+        const string deltaUrl = "https://graph.microsoft.com/v1.0/drives/drive-1/items/root/delta?token=stale";
+        var childrenJson = """
+            { "value": [ { "id": "file-1", "name": "readme.md", "file": {}, "eTag": "etag-1" } ] }
+            """;
+
+        var responses = new Dictionary<string, (HttpStatusCode, string)>(StringComparer.Ordinal)
+        {
+            [deltaUrl] = (status, $$"""{ "error": { "code": "{{errorCode}}", "message": "delta token no longer valid" } }"""),
+            [$"/drives/{driveId}/items/root/children"] = (HttpStatusCode.OK, childrenJson),
+        };
+        var opts = new SharePointOptions { SiteId = "site-1", DriveId = driveId, DeltaToken = deltaUrl };
+        var sut  = new SharePointDataProvider(MakeStatusGraphClient(responses), opts);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // The stale token is not a failure — it means "start over with a full traversal",
+        // and the full traversal's payload must actually be yielded.
+        var entry = Assert.Single(results);
+        Assert.True(entry.IsSuccess);
+        Assert.Equal("readme.md", entry.Value.FileName);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_NonStaleODataError_FailsInsteadOfFallingBack()
+    {
+        const string driveId  = "drive-1";
+        const string deltaUrl = "https://graph.microsoft.com/v1.0/drives/drive-1/items/root/delta?token=tok1";
+        var childrenJson = """
+            { "value": [ { "id": "file-1", "name": "readme.md", "file": {}, "eTag": "etag-1" } ] }
+            """;
+
+        var responses = new Dictionary<string, (HttpStatusCode, string)>(StringComparer.Ordinal)
+        {
+            [deltaUrl] = (HttpStatusCode.Forbidden,
+                """{ "error": { "code": "accessDenied", "message": "insufficient privileges" } }"""),
+            // Reachable, so a silent fallback would look like success — that is the bug guarded against.
+            [$"/drives/{driveId}/items/root/children"] = (HttpStatusCode.OK, childrenJson),
+        };
+        var opts = new SharePointOptions { SiteId = "site-1", DriveId = driveId, DeltaToken = deltaUrl };
+        var sut  = new SharePointDataProvider(MakeStatusGraphClient(responses), opts);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        var failure = Assert.IsType<Rag.NET.Models.RagError.HttpFailed>(result.Error);
+        Assert.Equal(HttpStatusCode.Forbidden, failure.StatusCode);
+        Assert.Contains("insufficient privileges", failure.Content, StringComparison.Ordinal);
+    }
+
+    // -------------------------------------------------------------------------
     // Helper — builds a GraphServiceClient backed by a fake HTTP handler
     // -------------------------------------------------------------------------
 
@@ -192,6 +256,10 @@ public sealed class SharePointDataProviderTests
 
     private static GraphServiceClient MakeThrowingGraphClient(Func<Exception> exceptionFactory)
         => MakeGraphClient(new ThrowingGraphHandler(exceptionFactory));
+
+    private static GraphServiceClient MakeStatusGraphClient(
+        Dictionary<string, (HttpStatusCode Status, string Body)> responses)
+        => MakeGraphClient(new StatusGraphHandler(responses));
 
     private static GraphServiceClient MakeGraphClient(HttpMessageHandler handler)
     {
@@ -239,6 +307,44 @@ file sealed class ThrowingGraphHandler(Func<Exception> exceptionFactory) : HttpM
     protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
         => throw exceptionFactory();
+}
+
+/// <summary>
+/// Like <see cref="FakeGraphHandler"/> but carries a status code per route, so a route can
+/// return an OData error body and the Graph SDK will surface it as an <c>ODataError</c>.
+/// Full-URL match first, then the longest matching substring key.
+/// </summary>
+file sealed class StatusGraphHandler(
+    Dictionary<string, (HttpStatusCode Status, string Body)> responses) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var url = request.RequestUri!.ToString();
+        if (responses.TryGetValue(url, out var exact))
+            return Task.FromResult(ToResponse(exact));
+
+        string? bestKey = null;
+        int     bestLen = -1;
+        foreach (var k in responses.Keys)
+        {
+            if (url.Contains(k, StringComparison.Ordinal) && k.Length > bestLen)
+            {
+                bestKey = k;
+                bestLen = k.Length;
+            }
+        }
+
+        return Task.FromResult(bestKey is null
+            ? new HttpResponseMessage(HttpStatusCode.NotFound)
+            : ToResponse(responses[bestKey]));
+    }
+
+    private static HttpResponseMessage ToResponse((HttpStatusCode Status, string Body) canned)
+        => new(canned.Status)
+        {
+            Content = new StringContent(canned.Body, System.Text.Encoding.UTF8, "application/json"),
+        };
 }
 
 /// <summary>Minimal stub to satisfy the <see cref="GraphServiceClient"/> constructor.</summary>

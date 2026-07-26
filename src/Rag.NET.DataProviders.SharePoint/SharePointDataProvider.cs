@@ -1,12 +1,10 @@
-using System.Net;
 using System.Runtime.CompilerServices;
-using Azure.Identity;
 using Microsoft.Graph;
 using Microsoft.Graph.Drives.Item.Items.Item.Delta;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Models.ODataErrors;
-using Microsoft.Kiota.Abstractions;
 using Rag.NET.DataProviders;
+using Rag.NET.DataProviders.Graph;
 using Rag.NET.Models;
 using ZeroAlloc.Results;
 
@@ -148,9 +146,9 @@ public sealed class SharePointDataProvider : FileContentProviderBase
                 : await builder.GetAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
             return Result<DriveItemCollectionResponse?, RagError>.Success(page);
         }
-        catch (Exception ex) when (IsMappable(ex, cancellationToken))
+        catch (Exception ex) when (GraphErrorMapping.IsMappable(ex, cancellationToken))
         {
-            return Result<DriveItemCollectionResponse?, RagError>.Failure(Map(ex));
+            return Result<DriveItemCollectionResponse?, RagError>.Failure(GraphErrorMapping.Map(ex));
         }
     }
 
@@ -164,9 +162,9 @@ public sealed class SharePointDataProvider : FileContentProviderBase
                 .ConfigureAwait(false);
             return Result<DeltaGetResponse?, RagError>.Success(page);
         }
-        catch (Exception ex) when (IsMappable(ex, cancellationToken))
+        catch (Exception ex) when (GraphErrorMapping.IsMappable(ex, cancellationToken))
         {
-            return Result<DeltaGetResponse?, RagError>.Failure(Map(ex));
+            return Result<DeltaGetResponse?, RagError>.Failure(GraphErrorMapping.Map(ex));
         }
     }
 
@@ -191,46 +189,13 @@ public sealed class SharePointDataProvider : FileContentProviderBase
                 .ConfigureAwait(false);
             return Result<DeltaGetResponse?, RagError>.Success(page);
         }
-        catch (ODataError ex)
-            when (string.Equals(ex.Error?.Code, "resyncRequired", StringComparison.Ordinal)
-               || string.Equals(ex.Error?.Code, "itemNotFound", StringComparison.Ordinal))
+        catch (ODataError ex) when (GraphErrorMapping.IsStaleDeltaToken(ex))
         {
             return Result<DeltaGetResponse?, RagError>.Success(null);
         }
-        catch (Exception ex) when (IsMappable(ex, cancellationToken))
+        catch (Exception ex) when (GraphErrorMapping.IsMappable(ex, cancellationToken))
         {
-            return Result<DeltaGetResponse?, RagError>.Failure(Map(ex));
+            return Result<DeltaGetResponse?, RagError>.Failure(GraphErrorMapping.Map(ex));
         }
     }
-
-    /// <summary>
-    /// Whether <paramref name="ex"/> is a Graph failure this provider converts into a
-    /// <see cref="Result{TValue,TError}"/> failure rather than letting it escape.
-    /// <para>
-    /// The cancellation test comes first and wins: an HttpClient timeout surfaces as a
-    /// <see cref="TaskCanceledException"/>, which derives from
-    /// <see cref="OperationCanceledException"/>, so only the caller's token separates a
-    /// timeout (a transport failure) from a caller cancellation (which must propagate).
-    /// </para>
-    /// </summary>
-    private static bool IsMappable(Exception ex, CancellationToken cancellationToken)
-        => !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested)
-        && ex is ApiException or HttpRequestException or TaskCanceledException
-              or AuthenticationFailedException;
-
-    /// <summary>
-    /// Classifies a mappable Graph exception. Kiota leaves
-    /// <see cref="ApiException.ResponseStatusCode"/> at <c>0</c> when no HTTP response was
-    /// received at all, and <c>(HttpStatusCode)0</c> is not a valid status — that case is a
-    /// transport failure, not an HTTP failure.
-    /// </summary>
-    private static RagError Map(Exception ex) => ex switch
-    {
-        ApiException { ResponseStatusCode: 0 } => new RagError.TransportFailed(ex),
-        ODataError odata => new RagError.HttpFailed(
-            (HttpStatusCode)odata.ResponseStatusCode, odata.Error?.Message ?? odata.Message),
-        ApiException api => new RagError.HttpFailed(
-            (HttpStatusCode)api.ResponseStatusCode, api.Message),
-        _ => new RagError.TransportFailed(ex),
-    };
 }

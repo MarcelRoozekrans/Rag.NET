@@ -158,15 +158,29 @@ public static class EndpointRouteBuilderExtensions
         }
     }
 
+    /// <summary>
+    /// Projects a <see cref="RagError"/> onto an HTTP response.
+    /// <para>
+    /// Both upstream-dependency cases answer 502. An upstream status is never echoed as this
+    /// API's own: Graph returning 404 for a mailbox does not make <i>this</i> resource
+    /// missing, and a 403 upstream is not a 403 against this API's caller. The distinction the
+    /// two cases preserve is whether an HTTP exchange happened at all.
+    /// </para>
+    /// </summary>
     private static IResult MapRagError(RagError err) => err switch
     {
         RagError.ValidationFailed v => Results.UnprocessableEntity(new { errors = v.Failures.Select(f => new { f.PropertyName, f.ErrorMessage }) }),
         RagError.NoParserFound n    => Results.BadRequest(new { error = $"No parser for content type: {n.ContentType}" }),
         RagError.NonSeekableStream  => Results.BadRequest(new { error = "Document stream is not readable." }),
         RagError.StorageFailed s    => Results.Problem($"Storage error: {s.Inner.Message}"),
-        // No HTTP response was received at all (DNS/TLS/socket/timeout) — a bad gateway,
-        // not an internal error.
+        // An upstream dependency answered, but with a failing status.
+        RagError.HttpFailed h       => Results.Problem($"Upstream HTTP error: {(int)h.StatusCode}", statusCode: 502),
+        // No HTTP response was received at all (DNS/TLS/socket/timeout/token acquisition).
         RagError.TransportFailed t  => Results.Problem($"Transport error: {t.Inner.Message}", statusCode: 502),
+        // Unreachable for every case defined on RagError today. RagError is not a sealed
+        // hierarchy — it has no private protected constructor, so an external assembly can
+        // derive from it — and C# has no exhaustiveness checking for reference types, so
+        // omitting this arm would emit CS8509 and fail the build under warnings-as-errors.
         _                           => Results.StatusCode(500),
     };
 }
