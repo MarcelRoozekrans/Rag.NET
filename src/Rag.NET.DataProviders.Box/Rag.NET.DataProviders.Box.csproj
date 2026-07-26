@@ -13,4 +13,12 @@
     <PackageReference Include="Box.V2" Version="3.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- BoxClient is a concrete type with no injectable transport, so the enumeration paths
+         cannot be driven from a unit test. ToHandle/MapChangeStatus are the seam that pins the
+         metadata this connector emits. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.DataProviders.Box.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>
