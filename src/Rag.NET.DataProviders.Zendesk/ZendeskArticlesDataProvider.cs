@@ -83,7 +83,9 @@ public sealed partial class ZendeskArticlesDataProvider : FileContentProviderBas
     public string? GetDeltaToken() =>
         _lastEndTime > 0 ? _lastEndTime.ToString(CultureInfo.InvariantCulture) : null;
 
-    private static FileHandle ToHandle(ZendeskArticle article)
+    // Instance rather than static so the Zendesk subdomain — the container context callers
+    // filter on — is reachable from _options.
+    private FileHandle ToHandle(ZendeskArticle article)
     {
         var markdown = ToMarkdown(article);
         return new FileHandle(
@@ -91,7 +93,25 @@ public sealed partial class ZendeskArticlesDataProvider : FileContentProviderBas
             FileName: $"article-{article.Id}.md",
             ETag: article.UpdatedAt,
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata: BuildMetadata(article));
+    }
+
+    /// <summary>
+    /// The article's filterable fields. <c>section_id</c> is the Help Center section the article
+    /// lives in — already parsed off the wire and, until now, used nowhere.
+    /// </summary>
+    private Dictionary<string, string>? BuildMetadata(ZendeskArticle article)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["article_id"] = article.Id.ToString(CultureInfo.InvariantCulture),
+        };
+        if (article.SectionId is { } sectionId)
+            metadata["section_id"] = sectionId.ToString(CultureInfo.InvariantCulture);
+        if (!string.IsNullOrEmpty(article.UpdatedAt))  metadata["updated_at"] = article.UpdatedAt;
+        if (!string.IsNullOrEmpty(_options.Subdomain)) metadata["subdomain"]  = _options.Subdomain;
+        return metadata;
     }
 
     private static string ToMarkdown(ZendeskArticle article)

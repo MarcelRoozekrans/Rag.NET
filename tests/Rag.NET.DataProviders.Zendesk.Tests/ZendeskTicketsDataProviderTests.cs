@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.DataProviders.Zendesk;
 using Rag.NET.Models;
 using Xunit;
@@ -515,6 +516,82 @@ public sealed class ZendeskTicketsDataProviderTests
         var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
 
         Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsTicketKeys()
+    {
+        const string ticketsJson = """
+            {
+              "tickets": [
+                { "id": 7, "subject": "Login issue", "description": "Cannot login", "status": "open", "priority": "high", "updated_at": "2026-01-01T00:00:00Z" }
+              ],
+              "after_cursor": null,
+              "end_of_stream": true,
+              "end_time": 1735700000
+            }
+            """;
+        const string commentsJson = """{ "comments": [] }""";
+
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v2/incremental/tickets/cursor.json"] = ticketsJson,
+            ["/api/v2/tickets/"] = commentsJson
+        });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("7",                    metadata["ticket_id"]);
+        Assert.Equal("open",                 metadata["status"]);
+        Assert.Equal("high",                 metadata["priority"]);
+        Assert.Equal("2026-01-01T00:00:00Z", metadata["updated_at"]);
+        // Container context, reachable only because ToHandle became an instance method.
+        Assert.Equal("test", metadata["subdomain"]);
+        Assert.Equal(5, metadata.Count);
+
+        // Status and priority stay in the Markdown body — that is what gets embedded.
+        var content = await ReadContentAsync(results[0].Value);
+        Assert.Contains("**Status:** open", content, StringComparison.Ordinal);
+        Assert.Contains("**Priority:** high", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_NullPriority_MetadataOmitsIt()
+    {
+        const string ticketsJson = """
+            {
+              "tickets": [
+                { "id": 8, "subject": "No priority", "description": "x", "status": "solved", "priority": null, "updated_at": "2026-03-01T00:00:00Z" }
+              ],
+              "after_cursor": null,
+              "end_of_stream": true,
+              "end_time": 1735700000
+            }
+            """;
+        const string commentsJson = """{ "comments": [] }""";
+
+        var handler = new FakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v2/incremental/tickets/cursor.json"] = ticketsJson,
+            ["/api/v2/tickets/"] = commentsJson
+        });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("8",      metadata["ticket_id"]);
+        Assert.Equal("solved", metadata["status"]);
+        Assert.False(metadata.ContainsKey("priority"));
+        Assert.Equal(4, metadata.Count);
     }
 }
 
