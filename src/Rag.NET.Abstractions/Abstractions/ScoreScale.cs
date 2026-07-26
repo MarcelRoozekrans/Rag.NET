@@ -1,5 +1,10 @@
 namespace Rag.NET.Abstractions;
 
+// Placement is deliberate: this enum lives in Abstractions/ next to IScoreScaleAware, whose
+// contract it is, rather than in Models/ with the standalone enums. It is part of the
+// capability interface's signature, and relocating it later would change its namespace —
+// a source-breaking change for consumers that implement or probe the interface.
+
 /// <summary>
 /// The scale on which an <see cref="IVectorStore"/> reports
 /// <see cref="Models.SearchResult.Score"/>, declared through

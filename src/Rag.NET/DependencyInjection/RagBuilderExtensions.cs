@@ -31,13 +31,16 @@ public static class RagBuilderExtensions
     /// (<c>IHybridSearchable</c>, <c>ICollectionManageable</c>, sparse search) are not
     /// federated and keep pointing at whatever registered them.
     /// <para>
-    /// Known limitation — persistent conversation memory: merged results carry RRF scores
-    /// (roughly <c>0.033</c> at best for two stores), not similarity scores.
-    /// <c>UsePersistentMemory</c> resolves the DI <see cref="IVectorStore"/> and filters
-    /// recalls by <c>PersistentMemoryOptions.MinScore</c> (default 0.7) on the similarity
-    /// scale, so against a federated store it would silently never recall. Point
-    /// persistent memory at a dedicated store instead of the federated one until score
-    /// normalization lands.
+    /// Persistent conversation memory: merged results carry RRF scores (roughly
+    /// <c>0.033</c> at best for two stores), not similarity scores, so
+    /// <see cref="FederatedVectorStore"/> declares
+    /// <see cref="IScoreScaleAware"/> with <see cref="ScoreScale.OpaqueRanking"/>.
+    /// <c>UsePersistentMemory</c> probes that and skips
+    /// <c>PersistentMemoryOptions.MinScore</c> (default 0.7) rather than filtering every
+    /// recall away: it injects the top <c>TopK</c> matches in rank order and warns once
+    /// per memory instance. Recall works, but a minimum relevance cannot be enforced
+    /// against a federated store — lower <c>TopK</c>, or point persistent memory at a
+    /// dedicated similarity-scaled store when a real threshold matters.
     /// </para>
     /// </remarks>
     /// <param name="builder">The RAG builder.</param>

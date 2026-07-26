@@ -235,6 +235,9 @@ public class PersistentConversationMemoryScoreScaleTests
         var store = new OpaqueVectorStore(Match("recalled", 0.0328));
         var sut = Memory(store, new PersistentMemoryOptions(), logger);
 
+        // The fakes complete synchronously, so these recalls do not actually run in
+        // parallel — this pins repeated invocation, not thread interleaving. The
+        // once-flag's thread safety rests on Interlocked, which is not under test here.
         var recalls = new List<Task<IReadOnlyList<ChatMessage>>>(8);
         while (recalls.Count < 8) recalls.Add(sut.ProcessAsync(Ask(), ct));
         await Task.WhenAll(recalls);
