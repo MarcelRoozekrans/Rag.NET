@@ -1,5 +1,6 @@
 using Microsoft.Graph;
 using Rag.NET.DataProviders.MicrosoftTeams;
+using Rag.NET.DataProviders.Testing;
 using Xunit;
 
 namespace Rag.NET.DataProviders.MicrosoftTeams.Tests;
@@ -428,6 +429,78 @@ public sealed class MicrosoftTeamsDataProviderTests
         var result = Assert.Single(results);
         Assert.True(result.IsFailure);
         _ = Assert.IsType<Rag.NET.Models.RagError.TransportFailed>(result.Error);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsTeamChannelDateAndMessageCount()
+    {
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [JoinedTeamsKey] = JoinedTeamsJson,
+            [ChannelsKey]    = ChannelsJson,
+            [MessagesKey]    = MessagesJson,
+        };
+        var graph = MakeGraphClient(responses);
+        var sut   = new MicrosoftTeamsDataProvider(graph, new MicrosoftTeamsOptions());
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(entries.Select(e => e.Value));
+
+        var metadata = Assert.Single(entries).Value.Metadata!;
+        Assert.Equal("team-1",     metadata["team_id"]);
+        Assert.Equal("chan-1",     metadata["channel_id"]);
+        Assert.Equal("general",    metadata["channel"]);
+        Assert.Equal("2026-03-01", metadata["date"]);
+        Assert.Equal("1",          metadata["message_count"]);
+        Assert.Equal(5, metadata.Count);
+
+        // The channel and date stay in the Markdown heading — that is what gets embedded.
+        var content = await ReadContentAsync(entries[0].Value);
+        Assert.Contains("# general — 2026-03-01", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_MultipleMessagesInADay_MessageCountReflectsThem()
+    {
+        const string twoMessagesJson = """
+            {
+              "value": [
+                {
+                  "id": "msg-1",
+                  "createdDateTime": "2026-03-01T10:00:00Z",
+                  "lastModifiedDateTime": "2026-03-01T10:00:00Z",
+                  "from": { "user": { "displayName": "Alice" } },
+                  "body": { "content": "First", "contentType": "text" }
+                },
+                {
+                  "id": "msg-2",
+                  "createdDateTime": "2026-03-01T11:00:00Z",
+                  "lastModifiedDateTime": "2026-03-01T11:00:00Z",
+                  "from": { "user": { "displayName": "Bob" } },
+                  "body": { "content": "Second", "contentType": "text" }
+                }
+              ]
+            }
+            """;
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [MessagesKey] = twoMessagesJson,
+        };
+        var graph = MakeGraphClient(responses);
+        var opts  = new MicrosoftTeamsOptions { TeamId = "team-1", ChannelId = "chan-1" };
+        var sut   = new MicrosoftTeamsDataProvider(graph, opts);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(entries.Select(e => e.Value));
+
+        var metadata = Assert.Single(entries).Value.Metadata!;
+        Assert.Equal("2", metadata["message_count"]);
+        // With both ids pinned, the channel display name falls back to the id.
+        Assert.Equal("chan-1", metadata["channel"]);
     }
 
     // -------------------------------------------------------------------------

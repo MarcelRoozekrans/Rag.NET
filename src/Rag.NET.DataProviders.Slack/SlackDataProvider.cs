@@ -104,8 +104,28 @@ public sealed class SlackDataProvider : FileContentProviderBase
                     channel.Name, $"channel-{channel.Id}")}-{dateStr}.md",
                 ETag:             latestTs,
                 OpenContentAsync: _ => Task.FromResult<Stream>(
-                    new MemoryStream(Encoding.UTF8.GetBytes(md)))));
+                    new MemoryStream(Encoding.UTF8.GetBytes(md))),
+                Metadata:         BuildMetadata(channel, dateStr, dayMsgs.Count)));
         }
+    }
+
+    /// <summary>
+    /// The day document's filterable fields. Built synchronously — a dictionary assembled inside
+    /// the async iterator above would trip HLQ012.
+    /// <para>
+    /// Channel and date are <i>also</i> rendered into the Markdown heading: the body drives
+    /// semantic recall, the tags drive filtering.
+    /// </para>
+    /// </summary>
+    private static Dictionary<string, string>? BuildMetadata(
+        SlackChannel channel, string date, int messageCount)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(channel.Name)) metadata["channel"]    = channel.Name;
+        if (!string.IsNullOrEmpty(channel.Id))   metadata["channel_id"] = channel.Id;
+        if (!string.IsNullOrEmpty(date))         metadata["date"]       = date;
+        metadata["message_count"] = messageCount.ToString(CultureInfo.InvariantCulture);
+        return metadata.Count == 0 ? null : metadata;
     }
 
     private static Dictionary<DateTime, List<SlackMessage>> GroupByDay(IList<SlackMessage> messages)

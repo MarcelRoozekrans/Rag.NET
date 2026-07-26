@@ -234,9 +234,27 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
                     channelName, $"channel-{channelId}")}-{dateStr}.md",
                 ETag:             lastMod,
                 OpenContentAsync: _ => Task.FromResult<Stream>(
-                    new MemoryStream(Encoding.UTF8.GetBytes(markdown)))));
+                    new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+                Metadata:         BuildMetadata(teamId, channelId, channelName, dateStr, dayMsgs.Count)));
         }
         return handles;
+    }
+
+    /// <summary>
+    /// The day document's filterable fields. Channel and date are <i>also</i> rendered into the
+    /// Markdown heading: the body drives semantic recall, the tags drive filtering.
+    /// </summary>
+    private static Dictionary<string, string>? BuildMetadata(
+        string teamId, string channelId, string channelName, string date, int messageCount)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(teamId))      metadata["team_id"]    = teamId;
+        if (!string.IsNullOrEmpty(channelId))   metadata["channel_id"] = channelId;
+        if (!string.IsNullOrEmpty(channelName)) metadata["channel"]    = channelName;
+        if (!string.IsNullOrEmpty(date))        metadata["date"]       = date;
+        metadata["message_count"] = messageCount.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        return metadata.Count == 0 ? null : metadata;
     }
 
     private static string BuildDayMarkdown(
