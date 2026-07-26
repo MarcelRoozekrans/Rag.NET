@@ -148,7 +148,9 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
         }
     }
 
-    private static FileHandle ToHandle(ConfluencePage p)
+    // Instance rather than static so the configured space — the container context callers
+    // filter on — is reachable from _options.
+    private FileHandle ToHandle(ConfluencePage p)
     {
         var markdown = ToMarkdown(p);
         return new FileHandle(
@@ -156,7 +158,23 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
             FileName:        $"{FileNameSanitizer.Sanitize(p.Title, $"page-{p.Id}")}.md",
             ETag:            p.Version.Number.ToString(System.Globalization.CultureInfo.InvariantCulture),
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata:        BuildMetadata(p));
+    }
+
+    /// <summary>
+    /// The page's filterable fields. <c>space</c> comes from the configured
+    /// <see cref="ConfluenceOptions.SpaceKey"/> and is omitted when the run is unscoped: the
+    /// API response itself does not carry the space, because the request does not expand it.
+    /// </summary>
+    private Dictionary<string, string>? BuildMetadata(ConfluencePage p)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(p.Id)) metadata["page_id"] = p.Id;
+        metadata["version"] = p.Version.Number.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        if (!string.IsNullOrEmpty(_options.SpaceKey)) metadata["space"] = _options.SpaceKey;
+        return metadata.Count == 0 ? null : metadata;
     }
 
     private static string ToMarkdown(ConfluencePage p)

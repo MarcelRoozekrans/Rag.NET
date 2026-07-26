@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders.Confluence;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Rest;
@@ -480,6 +481,63 @@ public sealed class ConfluenceDataProviderTests
         Assert.True(single.IsFailure);
         var err = Assert.IsType<RagError.HttpFailed>(single.Error);
         Assert.Equal(HttpStatusCode.Forbidden, err.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsPageKeysAndSpace()
+    {
+        const string json = """
+            {
+              "results": [
+                { "id": "123", "title": "Guide", "body": { "storage": { "value": "<p>Hello</p>" } }, "version": { "number": 3 } }
+              ],
+              "_links": {}
+            }
+            """;
+        var sut = MakeProvider(json, new ConfluenceOptions
+        {
+            BaseUrl  = "https://test.atlassian.net",
+            Email    = "test@test.com",
+            SpaceKey = "DEV"
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("123", metadata["page_id"]);
+        Assert.Equal("3",   metadata["version"]);
+        Assert.Equal("DEV", metadata["space"]);
+        Assert.Equal(3, metadata.Count);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_NoSpaceKey_MetadataOmitsSpace()
+    {
+        // The request never expands the page's own space, so an unscoped run genuinely has
+        // nothing to say — the key is omitted rather than written empty.
+        const string json = """
+            {
+              "results": [
+                { "id": "77", "title": "Loose", "body": { "storage": { "value": "<p>x</p>" } }, "version": { "number": 1 } }
+              ],
+              "_links": {}
+            }
+            """;
+        var sut = MakeProvider(json);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("77", metadata["page_id"]);
+        Assert.Equal("1",  metadata["version"]);
+        Assert.False(metadata.ContainsKey("space"));
+        Assert.Equal(2, metadata.Count);
     }
 
     private static async Task<string> ReadContentAsync(Rag.NET.DataProviders.FileEntry entry)
