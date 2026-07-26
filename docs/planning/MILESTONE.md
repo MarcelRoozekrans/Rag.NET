@@ -1,37 +1,59 @@
-# Milestone 1: Feature Backlog
+# Milestone 2: Deferred Items & Technical Debt
 
-**Status:** complete
-**Started:** 2026-07-24
-**Completed:** 2026-07-26
+**Status:** active
+**Started:** 2026-07-26
 
 ## Goal
 
-Work the remaining feature backlog from `docs/reference/features.md` to completion:
-chunking strategies (sliding window, proposition extraction, late chunking), retrieval
-techniques (HyDE v2, FLARE, SPLADE, multi-index federation), ingestion operations
-(batch optimiser, webhooks, embedding versioning), resilience and cost controls
-(fallback chain, rate limiting), document parsers (EPUB, EML/MSG, PDF tables, OCR),
-connectors (Outlook/Exchange, Linear), and vector stores (Weaviate, Chroma, Pinecone).
-Each feature ships with tests and a features.md entry ticked.
+Follow through on everything Milestone 1 delivered *around* rather than *through*: the
+features that were scoped out during brainstorming, and the engineering debt that review
+cycles surfaced but that did not belong on an unrelated phase's branch. When this milestone
+closes, no delivered feature row should carry an unstated caveat.
+
+Completed milestones are archived under `docs/planning/milestones/`.
 
 ## Definition of Done
 
-- [x] All planned phases complete
-- [x] Every feature row covered by this milestone ticked in features.md with tests and docs
-- [x] All tests passing
+- [ ] All planned phases complete
+- [ ] Every deferral recorded in the Milestone 1 audit either delivered or re-recorded with a
+      current reason (not simply carried forward)
+- [ ] The follow-up debt list in ROADMAP.md is empty or explicitly re-justified
+- [ ] All tests passing; solution builds 0 warnings / 0 errors
+
+## Scope
+
+Carried from the Milestone 1 audit and the ROADMAP follow-up debt list:
+
+| Item | Origin | Phase |
+|---|---|---|
+| Shared filename sanitizer (Exchange + Linear verbatim copies, Gmail divergent) | Phase 1.6 review | 2.1 |
+| Graph transport-exception mapping (`HttpRequestException` bypasses the Result channel) | Phase 1.6 review | 2.1 |
+| Embedded-message recursion (EML `MessagePart` / MSG nested `Storage.Message`) | Phase 1.5 review | 2.1 |
+| PDF table dominance-guard refinement (rescue full-page Key/Value tables) | Phase 1.5 review | 2.1 |
+| Persistent-memory score normalization vs federated RRF scores | Phase 1.2 review | 2.1 |
+| `ConfigureResilience` registers a `"rag-net"` pipeline nothing consumes | Pre-existing | 2.1 |
+| `FileHandle.Metadata` populated by only 2 of 21 connectors | Phase 1.6 review | 2.2 |
+| PgVector sparse storage (SPLADE) | Phase 1.2 scope decision | 2.3 |
+| Azure Document Intelligence OCR | Phase 1.5 scope decision | 2.4 |
+| Service Bus ingestion trigger | Phase 1.3 scope decision | 2.5 |
+
+## Explicitly not in scope
+
+- **CLI reindex command** — depends on the `Rag.NET CLI Tool` that does not exist yet; it
+  belongs with the CLI in the release milestone, not here.
+- **Pinecone live sparse-write verification** — requires a live Pinecone account; the local
+  emulator rejects sparse writes. Decision (2026-07-26): leave it documented as a labelled
+  coverage gap rather than redesign around the emulator.
 
 ## Phases
 
-1. Phase 1.1 — Chunking Strategies [complete — 2026-07-24]
-2. Phase 1.2 — Retrieval Techniques [complete — 2026-07-24]
-3. Phase 1.3 — Ingestion Operations [complete — 2026-07-24]
-4. Phase 1.4 — Resilience & Cost Controls [complete — 2026-07-25]
-5. Phase 1.5 — Document Parsers [complete — 2026-07-25]
-6. Phase 1.6 — Connectors [complete — 2026-07-25]
-7. Phase 1.7 — Vector Stores [complete — 2026-07-26]
+1. Phase 2.1 — Engineering Debt Sweep [pending]
+2. Phase 2.2 — Connector Metadata Consistency [pending]
+3. Phase 2.3 — PgVector Sparse Storage [pending]
+4. Phase 2.4 — Azure Document Intelligence OCR [pending]
+5. Phase 2.5 — Service Bus Ingestion Trigger [pending]
 
 ## Audit History
 
 | Date | Verdict | Gaps |
 |---|---|---|
-| 2026-07-26 | **Pass** — all 7 phases complete; the 21 backlog rows this milestone covers are ticked with tests and docs (the 10 rows still unticked in features.md all belong to Milestones 2 and 3). Solution builds 0 warnings / 0 errors; Rag.NET.Tests 1202/1202 plus every vector-store and integration suite green. | Deferred within delivered features, each documented where a user would meet it: PgVector sparse storage (SPLADE runs on Qdrant, Pinecone, in-memory); Service Bus ingestion trigger and the CLI reindex command; OCR limited to Tesseract behind the `EnableOcr` gate (Azure Document Intelligence deferred); Pinecone's same-record sparse write path unverified against live serverless. Cross-phase engineering debts are tracked in ROADMAP.md. |
