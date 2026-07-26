@@ -60,8 +60,10 @@ corresponding rows in features.md.
 **Plan:** `docs/plans/2026-07-25-connectors-design.md` + `-implementation.md`
 **Completed:** 2026-07-25
 
-### Phase 1.7: Vector Stores [status: pending]
+### Phase 1.7: Vector Stores [status: complete]
 **Backlog items:** Weaviate Vector Store; Chroma Vector Store; Pinecone Vector Store
+**Plan:** `docs/plans/2026-07-25-vector-stores-design.md` + `-implementation.md`
+**Completed:** 2026-07-26 (Pinecone pinned to the official SDK 3.1.0 — the 4.x control-plane models cannot deserialize Pinecone Local's responses; its sparse write path is unverified against live Pinecone)
 
 ## Milestone 2: Quality Hardening & Evaluation [status: pending]
 **Goal:** Close the evaluation-tooling gap and harden quality: RAGAS metrics, dataset tooling, A/B testing, pipeline debugging, and CI coverage for the Docker-dependent suites.

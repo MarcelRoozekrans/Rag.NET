@@ -209,7 +209,7 @@ var results = await pipeline.RetrieveAsync("ISO 27001 compliance checklist", new
 - The sparse arm runs only when an `ISparseEmbeddingGenerator` is registered **and** the store implements `ISparseSearchable` (Qdrant with `enableSparseVectors: true`, Pinecone with `EnableSparseVectors = true`, or `InMemoryVectorStore`). Otherwise hybrid search behaves exactly as the two-arm dense+BM25 fusion above.
 - Degraded, never broken: sparse encoding or search failures are logged and the remaining arms serve the request; sparse ingestion failures fall back to dense-only storage.
 - Qdrant sparse mode uses deterministic point ids derived from `(DocumentId, ChunkIndex)`, making chunk upserts idempotent. Collections created without sparse support must be recreated to enable it.
-- PgVector sparse storage is deferred — use Qdrant or the in-memory store for SPLADE today.
+- PgVector sparse storage is deferred — use Qdrant, Pinecone, or the in-memory store for SPLADE today. Qdrant is the most exercised path; Pinecone's sparse *write* path is covered by construction only (Pinecone Local rejects sparse writes, so it is untested against a live serverless index — see [Vector stores — Pinecone](vector-stores.md#sparse-vectors-splade-1)).
 
 ## Hypothetical Document Embeddings (HyDE)
 

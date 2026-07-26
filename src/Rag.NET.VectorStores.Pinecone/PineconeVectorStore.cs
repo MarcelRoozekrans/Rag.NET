@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Pinecone;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
@@ -26,6 +27,11 @@ namespace Rag.NET.Pinecone;
 /// (fail-fast when it does not exist) and cached; create/delete of that index through
 /// this store invalidates the cache.
 /// </para>
+/// <para>
+/// Deliberately NOT <see cref="IDisposable"/> (unlike the sibling stores that own an
+/// <c>HttpClient</c>): the SDK's <c>PineconeClient</c>/<c>IndexClient</c> implement no
+/// disposal interface, so there is nothing to release.
+/// </para>
 /// </summary>
 public class PineconeVectorStore : IVectorStore, ICollectionManageable
 {
@@ -37,6 +43,13 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
 
     /// <summary>Pinecone's documented cap on ids per delete request.</summary>
     private const int DeleteBatchSize = 1000;
+
+    /// <summary>
+    /// Ids per list-by-prefix page while collecting a document's chunks for deletion.
+    /// Matches Pinecone's own default; sent explicitly so the paging contract does not
+    /// depend on an unstated server default.
+    /// </summary>
+    private const uint ListPageSize = 100;
 
     private static readonly TimeSpan ReadyPollInterval = TimeSpan.FromMilliseconds(500);
 
@@ -307,8 +320,9 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
 
     private protected IReadOnlyList<SearchResult> MapMatches(QueryResponse response, double minScore)
     {
-        var results = new List<SearchResult>();
-        foreach (var match in response.Matches ?? [])
+        var matches = response.Matches ?? [];
+        var results = new List<SearchResult>(matches.TryGetNonEnumeratedCount(out var count) ? count : 0);
+        foreach (var match in matches)
         {
             var score = (double)(match.Score ?? 0f);
             if (score < minScore)
@@ -372,7 +386,15 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         do
         {
             var page = await index.ListAsync(
-                new ListRequest { Prefix = prefix, Namespace = _options.Namespace, PaginationToken = paginationToken },
+                new ListRequest
+                {
+                    Prefix = prefix,
+                    Namespace = _options.Namespace,
+                    PaginationToken = paginationToken,
+                    // Stated, not inherited from the server default (which happens to be
+                    // the same): the page size is what the >100-chunk deletion test pins.
+                    Limit = ListPageSize,
+                },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             foreach (var item in page.Vectors ?? [])
             {
@@ -412,10 +434,10 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
     private async Task WaitUntilReadyAsync(
         string name, PineconeIndexModel model, CancellationToken cancellationToken)
     {
-        var start = System.Diagnostics.Stopwatch.GetTimestamp();
+        var start = Stopwatch.GetTimestamp();
         while (model.Status?.Ready != true)
         {
-            if (System.Diagnostics.Stopwatch.GetElapsedTime(start) >= _options.IndexReadyTimeout)
+            if (Stopwatch.GetElapsedTime(start) >= _options.IndexReadyTimeout)
             {
                 throw new InvalidOperationException(
                     $"Pinecone index '{name}' did not become ready within {_options.IndexReadyTimeout} " +

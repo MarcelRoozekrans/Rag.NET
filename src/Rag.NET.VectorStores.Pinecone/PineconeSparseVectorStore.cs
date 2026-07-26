@@ -40,6 +40,13 @@ namespace Rag.NET.Pinecone;
 /// </summary>
 public sealed class PineconeSparseVectorStore : PineconeVectorStore, ISparseSearchable
 {
+    /// <summary>
+    /// The all-zero dense vector every sparse query carries, cached per resolved
+    /// dimension (1536 floats = ~6 KB — not worth reallocating per query). Rebuilt only
+    /// if the index dimension resolves to something else.
+    /// </summary>
+    private float[] _zeroDenseVector = [];
+
     public PineconeSparseVectorStore(PineconeOptions options)
         : base(options)
     {
@@ -106,7 +113,7 @@ public sealed class PineconeSparseVectorStore : PineconeVectorStore, ISparseSear
                 // cosine is the metric that rejects zero vectors). Its length comes from
                 // the LIVE index (resolved by the GetIndexAsync describe above), not the
                 // configured option — a disagreeing option would fail every query.
-                Vector = new float[VectorDimensions],
+                Vector = ZeroDenseVector(),
                 SparseVector = ToSparseValues(query),
                 TopK = (uint)options.TopK,
                 Filter = BuildFilter(options.MetadataFilter),
@@ -115,6 +122,25 @@ public sealed class PineconeSparseVectorStore : PineconeVectorStore, ISparseSear
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return MapMatches(response, options.MinScore);
+    }
+
+    /// <summary>
+    /// Returns the cached all-zero dense vector for the current resolved dimension,
+    /// reallocating only when the dimension differs (i.e. once, right after the first
+    /// describe resolves the live index). Publishing a fully built array by reference is
+    /// safe under concurrent queries: readers either see the previous correct array or
+    /// the new one, never a partially filled buffer.
+    /// </summary>
+    private float[] ZeroDenseVector()
+    {
+        var dimensions = VectorDimensions;
+        var cached = Volatile.Read(ref _zeroDenseVector);
+        if (cached.Length == dimensions)
+            return cached;
+
+        var zeroes = new float[dimensions];
+        Volatile.Write(ref _zeroDenseVector, zeroes);
+        return zeroes;
     }
 
     private static SparseValues ToSparseValues(SparseVector sparse)

@@ -445,7 +445,7 @@ Note that `document_id` and `chunk_index` are reserved record-metadata keys (a s
 
 Stores chunks as records of a Pinecone **serverless** index via the official `Pinecone.Client` SDK. Implements `IVectorStore` and `ICollectionManageable`, served by one singleton; the opt-in sparse variant adds `ISparseSearchable` (see below). Record ids are `{documentId}:{chunkIndex}`, so re-ingesting a chunk upserts (replaces) it.
 
-Pinecone stores no document body: the chunk text lives in record metadata (key `text`) next to `document_id` and `chunk_index`, and is read back into `SearchResult.Text`. Keep chunks comfortably under Pinecone's **~40 KB metadata limit per record** — text plus all metadata must fit.
+Pinecone stores no document body: the chunk text lives in record metadata (key `text`) next to `document_id` and `chunk_index`, and is read back into `SearchResult.Chunk.Text`. Keep chunks comfortably under Pinecone's **~40 KB metadata limit per record** — text plus all metadata must fit.
 
 > **SDK version note:** the package pins `Pinecone.Client` **3.1.0**, not 4.x. The 4.x control-plane models require a `vector_type` response field that Pinecone Local does not send, so index create/describe/list fail against the emulator ([pinecone-dotnet-client#54](https://github.com/pinecone-io/pinecone-dotnet-client/issues/54); the SDK repository was archived in July 2026, so no fix is expected).
 >
@@ -529,7 +529,7 @@ Sparse values ride on the same records as the dense embeddings: `StoreSparseAsyn
 
 Pinecone only accepts sparse values on **dotproduct** indexes. The sparse variant's `CreateCollectionAsync` therefore creates dotproduct indexes, and its first data-plane use fails fast with an `InvalidOperationException` naming the fix when the configured index has a different metric — the real service would accept sparse upserts into a cosine index and only reject at *query* time.
 
-**Pinecone Local gap:** the emulator does not support sparse values on dense indexes (its gRPC upsert rejects them; its REST path silently drops them), so the sparse round-trip is only exercisable against the real serverless service. The container suite covers everything else about the sparse variant (dotproduct index creation, dense ops through it, the cosine fail-fast) and skips the sparse round-trip with that documented reason.
+**Pinecone Local gap:** the emulator rejects sparse values on *writes* to dense indexes (its gRPC upsert answers `INVALID_ARGUMENT`; its REST path silently drops them), though it does serve sparse *queries*. Concretely, the container suite covers: dotproduct index creation by the sparse variant, dense store/search through it, the non-dotproduct fail-fast, and sparse querying (including that the zero dense vector is sized from the live index rather than the configured `VectorDimensions`). It does **not** cover storing sparse values or the sparse store-then-search round-trip — that test is skipped with this reason, so the same-record sparse write path has only been verified by construction, never executed against a live Pinecone serverless index. Treat it as unproven until you run it against the real service.
 
 ---
 

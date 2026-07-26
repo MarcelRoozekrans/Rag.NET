@@ -427,6 +427,43 @@ public class PineconeVectorStoreTests
     }
 
     [Fact]
+    public async Task SearchSparse_ConfiguredDimensionsDisagreeWithIndex_UsesIndexDimension()
+    {
+        var indexName = UniqueIndexName();
+        // Deliberately wrong VectorDimensions (the 1536 default) against a dim-3 index —
+        // the mismatch a user hits by forgetting the third UsePinecone argument. The
+        // sparse query's zero dense vector must be sized from the LIVE index: Pinecone
+        // rejects a dim-1536 vector against a dim-3 index ("Vector dimension 1536 does
+        // not match the dimension of the index 3"). Pinecone Local rejects sparse
+        // UPSERTS but serves sparse QUERIES, so this covers the resolution path even
+        // though Sparse_StoreAndSearch_RoundTrip cannot run here.
+        var store = new PineconeSparseVectorStore(new PineconeOptions
+        {
+            ApiKey = "pclocal",
+            IndexName = indexName,
+            VectorDimensions = 1536,
+            EnableSparseVectors = true,
+            Endpoint = _fixture.Endpoint,
+        });
+        try
+        {
+            await store.CreateCollectionAsync(indexName, 3, TestContext.Current.CancellationToken);
+
+            var results = await store.SearchSparseAsync(
+                Sparse((5, 1.0f), (42, 1.0f)),
+                new SearchOptions { TopK = 5 },
+                TestContext.Current.CancellationToken);
+
+            // Empty (nothing stored) but NOT an exception — the dimension was corrected.
+            Assert.Empty(results);
+        }
+        finally
+        {
+            await store.DeleteCollectionAsync(indexName, TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task SparseVariant_OnCosineIndex_FailsFast()
     {
         var indexName = UniqueIndexName();
