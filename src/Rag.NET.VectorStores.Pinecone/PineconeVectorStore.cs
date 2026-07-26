@@ -43,6 +43,7 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
     private readonly PineconeClient _client;
     private readonly PineconeOptions _options;
     private IndexClient? _index;
+    private int _resolvedDimensions;
 
     public PineconeVectorStore(PineconeOptions options)
     {
@@ -58,8 +59,17 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
     /// <summary>The configured index name (used by subclass error messages).</summary>
     private protected string IndexName => _options.IndexName;
 
-    /// <summary>Configured dense dimensions (the sparse subtype's zero-vector length).</summary>
-    private protected int VectorDimensions => _options.VectorDimensions;
+    /// <summary>
+    /// Dense dimensions of the live index, learned from the describe in
+    /// <see cref="GetIndexAsync"/> — the authority for anything sent to the data plane
+    /// (the sparse subtype's zero dense vector). Falls back to the configured
+    /// <see cref="PineconeOptions.VectorDimensions"/> until the index has been resolved,
+    /// or when the index reports none (sparse-only indexes).
+    /// </summary>
+    private protected int VectorDimensions =>
+        Volatile.Read(ref _resolvedDimensions) is var resolved and > 0
+            ? resolved
+            : _options.VectorDimensions;
 
     /// <summary>Configured namespace, shared with the sparse subtype's queries.</summary>
     private protected string? Namespace => _options.Namespace;
@@ -233,6 +243,12 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         }
 
         ValidateIndexModel(model);
+        // The index is the authority on its dimensions — a configured VectorDimensions
+        // that disagrees would otherwise break every generated vector (e.g. the sparse
+        // subtype's zero dense vector). Published before the client so any reader that
+        // sees the cached client also sees the dimensions.
+        if (model.Dimension is > 0 and var dimension)
+            Volatile.Write(ref _resolvedDimensions, dimension);
         var resolved = _client.Index(name: _options.IndexName, host: model.Host);
         Interlocked.CompareExchange(ref _index, resolved, null);
         return Volatile.Read(ref _index) ?? resolved;
@@ -366,7 +382,9 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
 
             paginationToken = page.Pagination?.Next;
         }
-        while (paginationToken is not null);
+        // Empty string, not just null, ends the listing: Pinecone's last page may carry a
+        // present-but-blank pagination token, which would otherwise loop forever.
+        while (!string.IsNullOrEmpty(paginationToken));
         return ids;
     }
 

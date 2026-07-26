@@ -20,19 +20,66 @@ public class PineconeVectorStoreTests
     {
         var indexName = UniqueIndexName();
         ICollectionManageable manageable = CreateStore(indexName);
+        try
+        {
+            Assert.False(await manageable.CollectionExistsAsync(indexName, TestContext.Current.CancellationToken));
 
-        Assert.False(await manageable.CollectionExistsAsync(indexName, TestContext.Current.CancellationToken));
+            // CreateCollectionAsync polls describe until the index reports ready.
+            await manageable.CreateCollectionAsync(indexName, 3, TestContext.Current.CancellationToken);
+            Assert.True(await manageable.CollectionExistsAsync(indexName, TestContext.Current.CancellationToken));
 
-        // CreateCollectionAsync polls describe until the index reports ready.
-        await manageable.CreateCollectionAsync(indexName, 3, TestContext.Current.CancellationToken);
-        Assert.True(await manageable.CollectionExistsAsync(indexName, TestContext.Current.CancellationToken));
+            await manageable.DeleteCollectionAsync(indexName, TestContext.Current.CancellationToken);
+            Assert.False(await manageable.CollectionExistsAsync(indexName, TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            // Also the assertion-failure safety net: the emulator allocates one data-plane
+            // port per index from a range of ten, so a leaked index starves later tests.
+            // Delete-of-missing is a no-op (the ICollectionManageable contract): Pinecone
+            // answers 404, which the store swallows instead of throwing — so this doubles
+            // as the second-delete assertion of the happy path.
+            await manageable.DeleteCollectionAsync(indexName, TestContext.Current.CancellationToken);
+        }
+    }
 
-        await manageable.DeleteCollectionAsync(indexName, TestContext.Current.CancellationToken);
-        Assert.False(await manageable.CollectionExistsAsync(indexName, TestContext.Current.CancellationToken));
+    [Fact]
+    public async Task DeleteByDocumentId_MoreChunksThanOneListPage_DeletesAll()
+    {
+        var indexName = UniqueIndexName();
+        var store = CreateStore(indexName);
+        try
+        {
+            await store.CreateCollectionAsync(indexName, 3, TestContext.Current.CancellationToken);
+            // list-by-prefix pages at 100 ids, so 120 chunks force the store's do/while
+            // pagination loop to fetch a second page — a single-page implementation would
+            // leave the tail behind.
+            const int ChunkCount = 120;
+            var chunks = new List<EmbeddedChunk>(ChunkCount + 1);
+            for (var i = 0; i < ChunkCount; i++)
+                chunks.Add(Chunk("doc-paged", i, $"paged chunk {i}", [1.0f, 0.0f, 0.0f]));
+            chunks.Add(Chunk("doc-keep", 0, "keep me", [0.0f, 1.0f, 0.0f]));
+            await store.StoreAsync(chunks, TestContext.Current.CancellationToken);
 
-        // Delete-of-missing is a no-op (the ICollectionManageable contract): Pinecone
-        // answers 404, which the store swallows instead of throwing.
-        await manageable.DeleteCollectionAsync(indexName, TestContext.Current.CancellationToken);
+            var beforeDelete = await store.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = ChunkCount + 1 },
+                TestContext.Current.CancellationToken);
+            Assert.Equal(ChunkCount + 1, beforeDelete.Count);
+
+            await store.DeleteByDocumentIdAsync("doc-paged", TestContext.Current.CancellationToken);
+
+            var results = await store.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = ChunkCount + 1 },
+                TestContext.Current.CancellationToken);
+
+            var survivor = Assert.Single(results);
+            Assert.Equal("doc-keep", (string)survivor.Chunk.DocumentId);
+        }
+        finally
+        {
+            await store.DeleteCollectionAsync(indexName, TestContext.Current.CancellationToken);
+        }
     }
 
     [Fact]

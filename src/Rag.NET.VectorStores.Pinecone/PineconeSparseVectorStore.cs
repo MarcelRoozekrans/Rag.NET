@@ -11,9 +11,17 @@ namespace Rag.NET.Pinecone;
 /// <summary>
 /// Sparse-capable <see cref="PineconeVectorStore"/>: serves <see cref="ISparseSearchable"/>
 /// through Pinecone's native sparse values, stored on the same records as the dense
-/// vectors. Record ids are already deterministic (<c>{documentId}:{chunkIndex}</c>), so
-/// <see cref="StoreSparseAsync"/> simply re-upserts the full record (dense + sparse +
-/// metadata) — idempotent regardless of ordering with <c>StoreAsync</c>.
+/// vectors. Record ids are already deterministic (<c>{documentId}:{chunkIndex}</c>) and
+/// <see cref="StoreSparseAsync"/> upserts the FULL record (dense + sparse + metadata), so
+/// it needs no prior <see cref="PineconeVectorStore.StoreAsync"/> call for the chunk.
+/// <para>
+/// ORDERING CONTRACT: a Pinecone upsert replaces the entire record, and
+/// <c>StoreAsync</c> writes records without sparse values — so calling <c>StoreAsync</c>
+/// AFTER <c>StoreSparseAsync</c> for the same chunk silently drops its sparse vector.
+/// Always store dense first, sparse second (in-repo ingestion does: <c>StorageBehavior</c>
+/// and <c>RegenerateSparseAsync</c> both order it that way). Re-ingesting a chunk means
+/// re-running both steps.
+/// </para>
 /// <para>
 /// Pinecone only accepts sparse values on indexes with the <b>dotproduct</b> metric
 /// (a cosine index accepts the upsert but rejects the query — a silent time bomb), so
@@ -95,7 +103,9 @@ public sealed class PineconeSparseVectorStore : PineconeVectorStore, ISparseSear
                 // Pinecone requires a dense vector on every query, even for sparse-only
                 // intent. An all-zero dense vector nulls the dense contribution — the
                 // documented alpha-weighting scheme with alpha = 0 (valid on dotproduct;
-                // cosine is the metric that rejects zero vectors).
+                // cosine is the metric that rejects zero vectors). Its length comes from
+                // the LIVE index (resolved by the GetIndexAsync describe above), not the
+                // configured option — a disagreeing option would fail every query.
                 Vector = new float[VectorDimensions],
                 SparseVector = ToSparseValues(query),
                 TopK = (uint)options.TopK,
