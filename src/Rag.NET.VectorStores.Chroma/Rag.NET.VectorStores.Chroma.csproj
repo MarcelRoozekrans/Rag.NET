@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.VectorStores.Chroma</RootNamespace>
+    <PackageId>Rag.NET.VectorStores.Chroma</PackageId>
+    <Description>Chroma vector store for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <PackageReference Include="ZeroAlloc.Rest" Version="1.1.3" />
+    <PackageReference Include="ZeroAlloc.Rest.SystemTextJson" Version="1.1.3" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.VectorStores.Chroma.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>
