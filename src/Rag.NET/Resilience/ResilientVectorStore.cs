@@ -22,28 +22,52 @@ namespace Rag.NET.Resilience;
 /// Capability probes: use <see cref="Create"/> rather than the constructor. It returns a
 /// <see cref="ResilientSparseVectorStore"/> when the inner store is
 /// <see cref="ISparseSearchable"/>, so an <c>is ISparseSearchable</c> probe on the resolved
-/// <see cref="IVectorStore"/> stays honest after decoration. <see cref="ICollectionManageable"/>
-/// and <see cref="IHybridSearchable"/> are registered separately in DI by the store's own
+/// <see cref="IVectorStore"/> stays honest after decoration. <see cref="IScoreScaleAware"/>
+/// needs no variant: the decorator always implements it and delegates (see
+/// <see cref="ScoreScale"/>). <see cref="ICollectionManageable"/> and
+/// <see cref="IHybridSearchable"/> are registered separately in DI by the store's own
 /// <c>Use*</c> extension and therefore resolve to the undecorated store — collection
 /// management and native hybrid search are not retried.
 /// </para>
 /// </remarks>
-public class ResilientVectorStore : IVectorStore
+public class ResilientVectorStore : IVectorStore, IScoreScaleAware
 {
     /// <summary>Creates a decorator over <paramref name="inner"/>.</summary>
     /// <param name="inner">The store to decorate.</param>
     /// <param name="pipeline">The resilience pipeline every call is executed through.</param>
-    public ResilientVectorStore(IVectorStore inner, ResiliencePipeline pipeline)
+    /// <remarks>
+    /// Deliberately not public: constructing this type directly over an
+    /// <see cref="ISparseSearchable"/> store would silently drop the sparse capability —
+    /// the degradation <see cref="Create"/> exists to prevent. <see cref="Create"/> is
+    /// therefore the only public way to obtain this type, and it picks the variant matching
+    /// the inner store's capabilities.
+    /// </remarks>
+    private protected ResilientVectorStore(IVectorStore inner, ResiliencePipeline pipeline)
     {
         Inner = inner ?? throw new ArgumentNullException(nameof(inner));
         Pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
     }
 
     /// <summary>The decorated store. Exposed so capability-forwarding subclasses can reach it.</summary>
-    protected IVectorStore Inner { get; }
+    private protected IVectorStore Inner { get; }
 
     /// <summary>The resilience pipeline every call is executed through.</summary>
-    protected ResiliencePipeline Pipeline { get; }
+    private protected ResiliencePipeline Pipeline { get; }
+
+    /// <summary>
+    /// The inner store's declared scale, or <see cref="ScoreScale.Similarity"/> when it
+    /// declares none — the documented meaning of the interface's absence.
+    /// </summary>
+    /// <remarks>
+    /// Implemented unconditionally rather than split into a variant (the way
+    /// <see cref="ISparseSearchable"/> is): the capability has a defined value for absence,
+    /// so delegating is exactly semantics-preserving in both directions. Without it a
+    /// decorated <c>FederatedVectorStore</c> would read as <see cref="ScoreScale.Similarity"/>
+    /// and consumers such as persistent memory would threshold RRF scores that peak near
+    /// <c>0.033</c> against a similarity-calibrated <c>MinScore</c>, recalling nothing.
+    /// </remarks>
+    public ScoreScale ScoreScale =>
+        Inner is IScoreScaleAware aware ? aware.ScoreScale : ScoreScale.Similarity;
 
     /// <summary>
     /// Creates the decorator variant that preserves <paramref name="inner"/>'s capability

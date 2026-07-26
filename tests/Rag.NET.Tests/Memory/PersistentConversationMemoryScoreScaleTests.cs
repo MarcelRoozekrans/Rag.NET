@@ -1,9 +1,11 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Polly;
 using Rag.NET.Abstractions;
 using Rag.NET.Memory;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Resilience;
 using Rag.NET.Storage;
 using Xunit;
 using SearchOptions = Rag.NET.Models.Options.SearchOptions;
@@ -261,6 +263,45 @@ public class PersistentConversationMemoryScoreScaleTests
         Assert.Contains("kept", prefix, StringComparison.Ordinal);
         Assert.DoesNotContain("dropped", prefix, StringComparison.Ordinal);
         Assert.Empty(logger.Entries);
+    }
+
+    /// <summary>
+    /// End to end through the resilience decorator, which is what <c>ConfigureResilience</c>
+    /// puts in front of the store: memory probes the decorator, not the store it wraps, so a
+    /// decorator that dropped <see cref="IScoreScaleAware"/> would silently reinstate the
+    /// threshold and recall nothing from a federated store.
+    /// </summary>
+    [Fact]
+    public async Task OpaqueStore_BehindTheResilienceDecorator_StillRecallsTopK()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = ResilientVectorStore.Create(
+            new OpaqueVectorStore(Match("first", 0.0328), Match("second", 0.0323)),
+            ResiliencePipeline.Empty);
+        var sut = Memory(store, new PersistentMemoryOptions { MinScore = 0.7, TopK = 2 });
+
+        var prefix = RecalledPrefix(await sut.ProcessAsync(Ask(), ct));
+
+        Assert.NotNull(prefix);
+        Assert.Contains("first", prefix, StringComparison.Ordinal);
+        Assert.Contains("second", prefix, StringComparison.Ordinal);
+    }
+
+    /// <summary>The decorator does not falsely upgrade a similarity store: the threshold still applies.</summary>
+    [Fact]
+    public async Task SimilarityStore_BehindTheResilienceDecorator_StillAppliesMinScore()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = ResilientVectorStore.Create(
+            new ScriptedVectorStore(Match("kept", 0.9), Match("dropped", 0.1)),
+            ResiliencePipeline.Empty);
+        var sut = Memory(store, new PersistentMemoryOptions { MinScore = 0.7 });
+
+        var prefix = RecalledPrefix(await sut.ProcessAsync(Ask(), ct));
+
+        Assert.NotNull(prefix);
+        Assert.Contains("kept", prefix, StringComparison.Ordinal);
+        Assert.DoesNotContain("dropped", prefix, StringComparison.Ordinal);
     }
 
     [Fact]
