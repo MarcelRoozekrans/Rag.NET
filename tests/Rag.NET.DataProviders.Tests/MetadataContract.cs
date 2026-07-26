@@ -1,5 +1,6 @@
 using Rag.NET.Models;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Testing;
 
@@ -68,6 +69,25 @@ internal static class MetadataContract
             AssertValid(entry);
     }
 
+    /// <summary>
+    /// Asserts every successful result's metadata satisfies the convention. This is the shape
+    /// <c>GetFilesAsync().ToListAsync()</c> actually yields, so connector suites can pass it
+    /// straight through instead of hand-rolling the unwrap.
+    /// </summary>
+    /// <remarks>
+    /// Failure results are skipped, not asserted on: whether a connector is <i>supposed</i> to
+    /// fail on a given fixture is a per-connector question this shared check has no view on.
+    /// </remarks>
+    public static void AssertAll(IEnumerable<Result<FileEntry, RagError>> results)
+    {
+        ArgumentNullException.ThrowIfNull(results);
+        foreach (var result in results)
+        {
+            if (result.IsSuccess)
+                AssertValid(result.Value);
+        }
+    }
+
     /// <summary>Rules about the dictionary itself rather than its contents.</summary>
     private static void CollectShapeViolations(
         IReadOnlyDictionary<string, string> metadata, List<string> violations)
@@ -121,6 +141,12 @@ internal static class MetadataContract
         }
     }
 
+    /// <summary>
+    /// Deliberately hand-rolled rather than a <c>[GeneratedRegex]</c>: this file is linked into
+    /// 22 assemblies, and a generated regex would pull the regex source generator into every
+    /// connector test project and force <c>partial</c> plumbing through all of them. The loop
+    /// allocates nothing and is the same handful of lines. Please leave it alone.
+    /// </summary>
     private static bool IsSnakeCase(string key)
     {
         if (key.Length == 0 || key[0] == '_' || key[^1] == '_')

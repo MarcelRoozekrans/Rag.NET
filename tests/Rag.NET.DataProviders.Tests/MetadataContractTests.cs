@@ -2,6 +2,7 @@ using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using Xunit.Sdk;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.DataProviders.Tests;
 
@@ -174,6 +175,40 @@ public sealed class MetadataContractTests
     [Fact]
     public void AssertAll_AcceptsAllValidEntries()
         => MetadataContract.AssertAll([Entry(Valid()), Entry(null)]);
+
+    // --- the Result overload: the shape GetFilesAsync().ToListAsync() actually yields ---
+
+    [Fact]
+    public void AssertAllResults_RejectsWhenAnySuccessViolates()
+    {
+        var results = new[]
+        {
+            Result<FileEntry, RagError>.Success(Entry(Valid())),
+            Result<FileEntry, RagError>.Success(
+                Entry(new Dictionary<string, string>(StringComparer.Ordinal) { ["Repo"] = "x" })),
+        };
+
+        var ex = Assert.ThrowsAny<XunitException>(() => MetadataContract.AssertAll(results));
+        Assert.Contains("is not snake_case", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Failure results carry no metadata to check, and whether a connector is supposed to fail
+    /// on a fixture is a per-connector question. They must be skipped, not thrown on.
+    /// </summary>
+    [Fact]
+    public void AssertAllResults_SkipsFailureResults()
+    {
+        var results = new[]
+        {
+            Result<FileEntry, RagError>.Failure(
+                new RagError.HttpFailed(System.Net.HttpStatusCode.Unauthorized, null)),
+            Result<FileEntry, RagError>.Success(Entry(Valid())),
+            Result<FileEntry, RagError>.Success(Entry(null)),
+        };
+
+        MetadataContract.AssertAll(results);
+    }
 
     /// <summary>
     /// An <see cref="IReadOnlyDictionary{TKey,TValue}"/> that is not a

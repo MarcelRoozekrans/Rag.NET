@@ -18,6 +18,46 @@ public static class RagPipelineExtensions
     /// <paramref name="hashStore"/> is supplied. Optionally deletes disappeared documents
     /// when <paramref name="cleanupMode"/> is <see cref="CleanupMode.Full"/>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Every ingested document is tagged with <see cref="ReservedMetadataKeys.ProviderId"/></b>
+    /// carrying <paramref name="providerId"/>, so documents can be filtered or re-ingested by
+    /// source without per-connector work. It is written last and therefore overrides any
+    /// <c>provider_id</c> in <paramref name="baseMetadata"/>'s tags.
+    /// </para>
+    /// <para>
+    /// <b>Precedence:</b> <paramref name="baseMetadata"/> tags first, then the entry's own
+    /// metadata (entry wins on collision), then <c>provider_id</c> (wins over both).
+    /// </para>
+    /// <para>
+    /// <b>Why only entry metadata is reserved-key guarded.</b> Entry metadata comes from
+    /// connector code, where a reserved key is always a bug. <paramref name="baseMetadata"/>
+    /// comes from the caller and is deliberately left unguarded, because it is the sanctioned —
+    /// and only — channel for setting <see cref="ReservedMetadataKeys.AllowedRoles"/> and
+    /// <see cref="ReservedMetadataKeys.TrustLevel"/>: those two keys are reserved but written by
+    /// nobody in the framework, which only ever reads them (in the RBAC and trust-level
+    /// retrieval guards). Guarding base metadata would break RBAC and trust-level tagging
+    /// outright. The asymmetry is intentional, not an oversight.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ReservedMetadataKeyException">
+    /// A connector emitted an entry-metadata key the framework reserves for itself. Unlike every
+    /// other failure here — which is collected into <see cref="ProviderIngestionResult.Errors"/>
+    /// — this <b>escapes the method</b>: it is a deterministic authoring bug that would otherwise
+    /// repeat once per document while shipping a corrupted ranking.
+    /// <para>
+    /// <b>Ingestion is left partially complete.</b> Entries are processed through
+    /// <see cref="Parallel.ForEachAsync{TSource}(IEnumerable{TSource}, ParallelOptions, Func{TSource, CancellationToken, ValueTask})"/>,
+    /// so when a connector emits the reserved key on only some entries, the clean ones already
+    /// processed are ingested and — with a <paramref name="hashStore"/> — hash-recorded. Because
+    /// the method throws rather than returns, the accumulated error bag is discarded and
+    /// cleanup for <see cref="CleanupMode.Full"/> is skipped, so no document is deleted.
+    /// </para>
+    /// <para>
+    /// <b>Re-running after the fix is safe.</b> Whatever was ingested was collision-free by
+    /// definition, and the hash store makes the re-run skip it as unchanged.
+    /// </para>
+    /// </exception>
     public static async Task<ProviderIngestionResult> IngestFromProviderAsync(
         this IRagPipeline pipeline,
         IFileContentProvider provider,

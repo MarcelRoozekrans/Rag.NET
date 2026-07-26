@@ -43,8 +43,10 @@ public static class ReservedMetadataKeys
     /// <summary>Trust classification of a chunk, enforced by <c>TrustLevelRetrievalGuard</c>.</summary>
     public const string TrustLevel = "trust_level";
 
-    /// <summary>Every reserved key, ordinal-compared.</summary>
-    public static IReadOnlySet<string> All { get; } = new[]
+    // Held as FrozenSet, not IReadOnlySet: IsReserved runs once per connector tag per document,
+    // and calling Contains through the interface would forfeit the specialised, inlineable
+    // implementation that is the entire reason for freezing the set.
+    private static readonly FrozenSet<string> AllKeys = new[]
     {
         DocumentId,
         FileName,
@@ -55,6 +57,9 @@ public static class ReservedMetadataKeys
         TrustLevel,
     }.ToFrozenSet(StringComparer.Ordinal);
 
+    /// <summary>Every reserved key, ordinal-compared.</summary>
+    public static IReadOnlySet<string> All => AllKeys;
+
     /// <summary>True when <paramref name="key"/> is one the framework writes itself.</summary>
-    public static bool IsReserved(string key) => All.Contains(key);
+    public static bool IsReserved(string key) => AllKeys.Contains(key);
 }
