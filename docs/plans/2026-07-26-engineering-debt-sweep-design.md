@@ -119,6 +119,17 @@ self-recursion, which stops EML-in-EML — but an `.eml` containing a `.msg` con
 has no depth control today and is reachable from a crafted file. The depth counter this item
 introduces is therefore a bug fix first and a feature second.
 
+**Correction (measured during implementation, 2026-07-26).** The paragraph above was written
+from reading the dispatcher, and the Part C test that was supposed to prove a crash did not
+fail. Measured on the pre-fix code, the *absence of a bound* is confirmed — an alternating
+chain parsed every level to depth 56, `sections == 2 × (depth + 1)` throughout, so the
+`ReferenceEquals` guard genuinely never fires. But the consequence is **resource
+amplification, not a crash**: each nesting level costs only ~1.18× in bytes (base64 on the
+EML wrap, raw in the CFB wrap), so ~26 levels fit in 1 MB and 56 levels need 124 MB, while
+async iterators unwind per `await` and never approach the stack limit. A ~1 MB file drives
+27 nested parses materialising roughly 1.5× its size in intermediate streams. Worth bounding;
+not the stack-overflow this section originally implied.
+
 **Design:**
 
 - New `EmailParserOptions` with `MaxEmbeddedDepth` (default 3) and `MaxEmbeddedMessages`
