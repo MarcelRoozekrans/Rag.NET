@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.Extensions.Logging;
+using MimeKit;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Parsers.Html;
@@ -45,6 +46,92 @@ public class EmbeddedMessageRecursionTests
         Assert.Equal(2 * (harness.Options.MaxEmbeddedDepth + 1), sections.Count);
         Assert.DoesNotContain(sections, s => string.Equals(s.Text, InnermostMarker, StringComparison.Ordinal));
         Assert.Contains(harness.Warnings, w => w.Contains("maximum embedded depth", StringComparison.Ordinal));
+    }
+
+    // ── In-place recursion (Task C3) ─────────────────────────────────────────
+
+    [Fact]
+    public async Task Eml_WithEmbeddedEml_YieldsNestedBody()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var harness = new ParserHarness();
+        var nested = EmlFixtureBuilder.CreateNested("Forwarded Subject", "Forwarded body.");
+        var outer = await EmlFixtureBuilder.CreateWithEmbeddedAsync("Outer", "Outer body.", nested, ct);
+
+        using var stream = new MemoryStream(outer);
+        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(4, sections.Count);
+        Assert.Equal("Outer", sections[0].Heading);
+        Assert.Equal("Outer body.", sections[1].Text);
+        Assert.Equal("Forwarded Subject", sections[2].Heading);
+        Assert.Equal("Forwarded body.", sections[3].Text);
+        Assert.Empty(harness.Warnings);
+
+        // SectionIndex is stamped once, at the top level; recursion must not re-stamp.
+        Assert.Equal([0, 1, 2, 3], sections.Select(s => s.SectionIndex));
+        Assert.All(sections, s => Assert.Equal(new DocumentId("chain-1"), s.DocumentId));
+    }
+
+    [Fact]
+    public async Task Msg_WithNestedMsg_YieldsNestedBody()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var harness = new ParserHarness();
+        using var stream = MsgFixtureBuilder.Create(
+            "Outer", "Outer body.",
+            embeddedMessageSubject: "Forwarded Subject",
+            embeddedMessageBody: "Forwarded body.");
+
+        var sections = await harness.Msg.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(4, sections.Count);
+        Assert.Equal("Forwarded Subject", sections[2].Heading);
+        Assert.Equal("Forwarded body.", sections[3].Text);
+        Assert.Empty(harness.Warnings);
+        Assert.Equal([0, 1, 2, 3], sections.Select(s => s.SectionIndex));
+    }
+
+    [Fact]
+    public async Task NestedAttachments_StillDispatchToOwnParsers()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var text = new FakeTextParser();
+        var harness = new ParserHarness(extraParsers: [text]);
+
+        var nested = EmlFixtureBuilder.CreateNested("Forwarded Subject", "Forwarded body.",
+            attachments: [("notes.txt", "text/plain", Encoding.UTF8.GetBytes("Attached note."))]);
+        var outer = await EmlFixtureBuilder.CreateWithEmbeddedAsync("Outer", "Outer body.", nested, ct);
+
+        using var stream = new MemoryStream(outer);
+        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(5, sections.Count);
+        Assert.Equal("Attached note.", sections[4].Text);
+
+        // Dispatch from inside an embedded message scopes metadata exactly as it does at the
+        // top level: the attachment's own name and type, the parent document's id.
+        var received = Assert.Single(text.ReceivedMetadata);
+        Assert.Equal(new DocumentId("chain-1"), received.DocumentId);
+        Assert.Equal("notes.txt", received.FileName);
+        Assert.Equal("text/plain", received.ContentType);
+    }
+
+    [Fact]
+    public async Task EmbeddedMessageChain_DepthExceeded_WarnsAndSkips()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var harness = new ParserHarness();
+        var outer = await BuildEmbeddedEmlChainAsync(harness.Options.MaxEmbeddedDepth + 1, ct);
+
+        using var stream = new MemoryStream(outer);
+        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(2 * (harness.Options.MaxEmbeddedDepth + 1), sections.Count);
+        Assert.Equal("Outer", sections[0].Heading); // outer content still parses
+        Assert.DoesNotContain(sections, s => string.Equals(s.Text, InnermostMarker, StringComparison.Ordinal));
+        var warning = Assert.Single(harness.Warnings);
+        Assert.Contains("maximum embedded depth of 3", warning, StringComparison.Ordinal);
     }
 
     // ── Limits ───────────────────────────────────────────────────────────────
@@ -170,6 +257,24 @@ public class EmbeddedMessageRecursionTests
         }
 
         return current;
+    }
+
+    /// <summary>
+    /// Builds one <c>.eml</c> holding a chain of <paramref name="nestedLevels"/> messages
+    /// nested as live <c>MessagePart</c>s — the in-place recursion path, not the dispatcher.
+    /// </summary>
+    private static async Task<byte[]> BuildEmbeddedEmlChainAsync(int nestedLevels, CancellationToken cancellationToken)
+    {
+        MimeMessage? inner = null;
+        for (int level = 0; level < nestedLevels; level++)
+        {
+            inner = EmlFixtureBuilder.CreateNested(
+                $"Nested {level}",
+                level == 0 ? InnermostMarker : $"Nested body {level}.",
+                inner);
+        }
+
+        return await EmlFixtureBuilder.CreateWithEmbeddedAsync("Outer", "Outer body.", inner!, cancellationToken);
     }
 
     /// <summary>A <c>.msg</c> holding one further <c>.msg</c> — two embedded messages in one branch.</summary>

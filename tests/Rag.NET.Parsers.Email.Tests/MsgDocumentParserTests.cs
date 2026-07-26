@@ -114,24 +114,7 @@ public class MsgDocumentParserTests
         Assert.Equal("text/plain", Assert.Single(fake.ReceivedMetadata).ContentType);
     }
 
-    [Fact]
-    public async Task Parse_Msg_EmbeddedMessage_WarnsAndSkips()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var logger = new CapturingLogger<MsgDocumentParser>();
-        var sut = new MsgDocumentParser([new FakeTextParser()], new HtmlDocumentParser(), logger);
-        using var stream = MsgFixtureBuilder.Create(
-            "Outer", "Outer body.",
-            embeddedMessageSubject: "Forwarded Subject",
-            embeddedMessageBody: "Forwarded body.");
-
-        var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
-
-        Assert.Equal(2, sections.Count); // subject + body only
-        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
-        Assert.Contains("Forwarded Subject", warning.Message, StringComparison.Ordinal);
-        Assert.Contains("not yet recursed", warning.Message, StringComparison.Ordinal);
-    }
+    // Nested Storage.Message recursion is covered by EmbeddedMessageRecursionTests.
 
     [Fact]
     public async Task Parse_NoBody_EmitsSubjectOnly()

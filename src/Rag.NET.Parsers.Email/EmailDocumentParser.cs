@@ -80,15 +80,14 @@ public sealed class EmailDocumentParser(
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Embedded/forwarded emails surface as MessagePart; recursing into them is a
-            // follow-up — warn instead of silently dropping them.
+            // Embedded/forwarded emails surface as MessagePart: a live MimeMessage owned by
+            // this message's object graph, so it is parsed in place rather than re-entering
+            // the stream-based ParseAsync.
             if (entity is MessagePart embedded)
             {
-                if (logger is not null)
+                await foreach (var section in ParseEmbeddedAsync(embedded, context, cancellationToken).ConfigureAwait(false))
                 {
-                    EmailParserLog.EmbeddedMessageSkipped(
-                        logger,
-                        embedded.Message?.Subject ?? embedded.ContentDisposition?.FileName ?? "(no subject)");
+                    yield return section;
                 }
 
                 continue;
@@ -111,6 +110,33 @@ public sealed class EmailDocumentParser(
             {
                 yield return section;
             }
+        }
+    }
+
+    /// <summary>
+    /// Parses an embedded message in place, or yields nothing after a warning when either
+    /// embedded-message limit is reached. Never throws: the parser degrades rather than breaks.
+    /// </summary>
+    private async IAsyncEnumerable<DocumentSection> ParseEmbeddedAsync(
+        MessagePart embedded,
+        EmbeddedMessageContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var nested = embedded.Message;
+        if (nested is null)
+            yield break;
+
+        var name = !string.IsNullOrWhiteSpace(nested.Subject)
+            ? nested.Subject
+            : embedded.ContentDisposition?.FileName ?? "(no subject)";
+
+        if (!context.TryEnterEmbedded(name, logger))
+            yield break;
+
+        var metadata = EmbeddedMessageMetadata.Create(context.Metadata, name, ".eml", EmlContentType);
+        await foreach (var section in ParseMessageAsync(nested, context.Descend(metadata), cancellationToken).ConfigureAwait(false))
+        {
+            yield return section;
         }
     }
 

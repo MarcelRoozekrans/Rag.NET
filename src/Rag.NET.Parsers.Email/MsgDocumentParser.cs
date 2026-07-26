@@ -77,6 +77,29 @@ public sealed class MsgDocumentParser(
         }
     }
 
+    /// <summary>
+    /// Parses a nested message in place, or yields nothing after a warning when either
+    /// embedded-message limit is reached. Never throws: the parser degrades rather than breaks.
+    /// </summary>
+    private async IAsyncEnumerable<DocumentSection> ParseEmbeddedAsync(
+        Storage.Message embedded,
+        EmbeddedMessageContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var name = !string.IsNullOrWhiteSpace(embedded.Subject)
+            ? embedded.Subject
+            : embedded.FileName ?? "(no subject)";
+
+        if (!context.TryEnterEmbedded(name, logger))
+            yield break;
+
+        var metadata = EmbeddedMessageMetadata.Create(context.Metadata, name, ".msg", MsgContentType);
+        await foreach (var section in ParseMessageAsync(embedded, context.Descend(metadata), cancellationToken).ConfigureAwait(false))
+        {
+            yield return section;
+        }
+    }
+
     private async IAsyncEnumerable<DocumentSection> ParseBodyAsync(
         Storage.Message message,
         DocumentMetadata metadata,
@@ -119,15 +142,14 @@ public sealed class MsgDocumentParser(
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Embedded/forwarded emails surface as nested Storage.Message; recursing into
-            // them is a follow-up — warn instead of silently dropping them.
+            // Embedded/forwarded emails surface as a nested Storage.Message owned by the
+            // outer message's `using`, so it is parsed in place rather than re-entering the
+            // stream-based ParseAsync. It must not be disposed here.
             if (item is Storage.Message embedded)
             {
-                if (logger is not null)
+                await foreach (var section in ParseEmbeddedAsync(embedded, context, cancellationToken).ConfigureAwait(false))
                 {
-                    EmailParserLog.EmbeddedMessageSkipped(
-                        logger,
-                        !string.IsNullOrWhiteSpace(embedded.Subject) ? embedded.Subject : embedded.FileName ?? "(no subject)");
+                    yield return section;
                 }
 
                 continue;

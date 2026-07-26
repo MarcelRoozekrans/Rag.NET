@@ -118,22 +118,7 @@ public class EmailDocumentParserTests
         Assert.DoesNotContain(sections, s => string.Equals(s.Heading, "Html Heading", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task Parse_EmbeddedMessageAttachment_WarnsAndSkips()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var logger = new CapturingLogger<EmailDocumentParser>();
-        var sut = new EmailDocumentParser([new FakeTextParser()], new HtmlDocumentParser(), logger);
-        using var stream = await CreateEmlWithEmbeddedMessageAsync(
-            "Outer", "Outer body.", "Forwarded Subject", "Forwarded body.", ct);
-
-        var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
-
-        Assert.Equal(2, sections.Count); // subject + body only
-        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
-        Assert.Contains("Forwarded Subject", warning.Message, StringComparison.Ordinal);
-        Assert.Contains("not yet recursed", warning.Message, StringComparison.Ordinal);
-    }
+    // MessagePart recursion is covered by EmbeddedMessageRecursionTests.
 
     [Fact]
     public async Task Parse_TextAttachment_MetadataContract()
@@ -205,35 +190,6 @@ public class EmailDocumentParserTests
         }
 
         message.Body = builder.ToMessageBody();
-
-        return await WriteToStreamAsync(message, cancellationToken);
-    }
-
-    private static async Task<MemoryStream> CreateEmlWithEmbeddedMessageAsync(
-        string subject,
-        string textBody,
-        string nestedSubject,
-        string nestedBody,
-        CancellationToken cancellationToken)
-    {
-        var nested = new MimeMessage();
-        nested.From.Add(new MailboxAddress("Original Sender", "original@example.com"));
-        nested.Subject = nestedSubject;
-        nested.Body = new TextPart("plain") { Text = nestedBody };
-
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress("Sender", "sender@example.com"));
-        message.To.Add(new MailboxAddress("Recipient", "recipient@example.com"));
-        message.Subject = subject;
-        message.Body = new Multipart("mixed")
-        {
-            new TextPart("plain") { Text = textBody },
-            new MessagePart
-            {
-                Message = nested,
-                ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
-            },
-        };
 
         return await WriteToStreamAsync(message, cancellationToken);
     }

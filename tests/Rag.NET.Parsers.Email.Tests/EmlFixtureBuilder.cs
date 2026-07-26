@@ -43,41 +43,45 @@ internal static class EmlFixtureBuilder
         string subject,
         string textBody,
         MimeMessage embedded,
-        CancellationToken cancellationToken)
-    {
-        var message = CreateEnvelope(subject);
-        message.Body = new Multipart("mixed")
-        {
-            new TextPart("plain") { Text = textBody },
-            new MessagePart
-            {
-                Message = embedded,
-                ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
-            },
-        };
-
-        return await WriteAsync(message, cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        await WriteAsync(CreateNested(subject, textBody, embedded), cancellationToken);
 
     /// <summary>Builds an in-memory message for use as a nested <see cref="MessagePart"/> payload.</summary>
-    public static MimeMessage CreateNested(string subject, string textBody, MimeMessage? embedded = null)
+    public static MimeMessage CreateNested(
+        string subject,
+        string textBody,
+        MimeMessage? embedded = null,
+        (string FileName, string ContentType, byte[] Data)[]? attachments = null)
     {
         var message = CreateEnvelope(subject);
-        if (embedded is null)
+        if (embedded is null && attachments is not { Length: > 0 })
         {
             message.Body = new TextPart("plain") { Text = textBody };
             return message;
         }
 
-        message.Body = new Multipart("mixed")
+        var multipart = new Multipart("mixed") { new TextPart("plain") { Text = textBody } };
+        foreach (var (fileName, contentType, data) in attachments ?? [])
         {
-            new TextPart("plain") { Text = textBody },
-            new MessagePart
+            multipart.Add(new MimePart(ContentType.Parse(contentType))
+            {
+                Content = new MimeContent(new MemoryStream(data)),
+                ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+                ContentTransferEncoding = ContentEncoding.Base64,
+                FileName = fileName,
+            });
+        }
+
+        if (embedded is not null)
+        {
+            multipart.Add(new MessagePart
             {
                 Message = embedded,
                 ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
-            },
-        };
+            });
+        }
+
+        message.Body = multipart;
         return message;
     }
 
