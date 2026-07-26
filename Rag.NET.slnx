@@ -78,6 +78,7 @@
     <Project Path="tests/Rag.NET.Api.Tests/Rag.NET.Api.Tests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.AzureAISearch.Tests/Rag.NET.VectorStores.AzureAISearch.Tests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.Weaviate.Tests/Rag.NET.VectorStores.Weaviate.Tests.csproj" />
+    <Project Path="tests/Rag.NET.VectorStores.Chroma.Tests/Rag.NET.VectorStores.Chroma.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Html.Tests/Rag.NET.Parsers.Html.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Word.Tests/Rag.NET.Parsers.Word.Tests.csproj" />
     <Project Path="tests/Rag.NET.Mcp.Tests/Rag.NET.Mcp.Tests.csproj" />
