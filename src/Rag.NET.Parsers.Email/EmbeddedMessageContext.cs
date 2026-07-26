@@ -77,8 +77,18 @@ internal sealed class EmbeddedMessageContext
             CreatedAt = metadata.CreatedAt,
         };
 
-        var budget = new EmbeddedMessageBudget(ReadTag(tags, BudgetTag, options.MaxEmbeddedMessages), tags);
-        return new EmbeddedMessageContext(scoped, options, budget, ReadTag(tags, DepthTag, 0));
+        // The tags are attacker-reachable: DocumentMetadata comes from the caller, and a
+        // connector can populate Tags from remote data. A larger depth is more restrictive, so
+        // it is taken as read; a larger budget is less restrictive, so it is clamped to the
+        // configured cap and can only ever lower it.
+        int depth = ReadTag(tags, DepthTag, 0);
+        int remaining = Math.Min(ReadTag(tags, BudgetTag, options.MaxEmbeddedMessages), options.MaxEmbeddedMessages);
+
+        // Write-back is adopted only below the top level. At depth 0 the dictionary belongs to
+        // the caller — it reaches stored chunk metadata — and must never be written to, even
+        // when the caller happens to have set a reserved key itself.
+        var sink = depth > 0 ? tags : null;
+        return new EmbeddedMessageContext(scoped, options, new EmbeddedMessageBudget(remaining, sink), depth);
     }
 
     /// <summary>Derives the context an embedded message parsed in-process runs under.</summary>
@@ -89,8 +99,15 @@ internal sealed class EmbeddedMessageContext
     /// Reserves one embedded message against both limits. Returns <see langword="false"/>
     /// after logging which limit was hit, in which case the caller skips the branch.
     /// </summary>
+    /// <remarks>
+    /// <c>MaxEmbeddedDepth = 0</c> skips silently: recursion was turned off deliberately, so a
+    /// warning per embedded message is noise rather than signal.
+    /// </remarks>
     public bool TryEnterEmbedded(string name, ILogger? logger)
     {
+        if (Options.MaxEmbeddedDepth == 0)
+            return false;
+
         if (ChildDepth > Options.MaxEmbeddedDepth)
         {
             if (logger is not null)

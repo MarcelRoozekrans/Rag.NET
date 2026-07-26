@@ -25,6 +25,12 @@ follows the same rule: record it with its origin, then schedule it.
   MinScore filter is incompatible with federated RRF scores (documented limitation). → 2.1
 - **`ConfigureResilience` dangling pipeline** (pre-existing): registered but unconsumed
   (documented in observability.md + resilience.md). → 2.1
+- **Fourth filename sanitizer** (Phase 2.1, Part C): `EmbeddedMessageMetadata.Sanitize` in
+  `Rag.NET.Parsers.Email` duplicates `FileNameSanitizer` because that type lives in
+  `Rag.NET.DataProviders`, which parsers do not reference. Behaviourally consistent bar the
+  all-replacement fallback (`"///"` → `"___"` vs `"embedded-message"`). Fix is to relocate
+  `FileNameSanitizer` to `Rag.NET.Abstractions` and delete both copies — a package-layout
+  change, so deliberately not done inside 2.1. → unscheduled
 
 ## Milestone 1: Feature Backlog [status: complete]
 **Goal:** Work the remaining feature backlog to completion — chunking, retrieval techniques, ingestion ops, resilience, parsers, connectors, and vector stores.

@@ -13,8 +13,25 @@ namespace Rag.NET.Parsers.Email;
 public sealed class EmailParserOptions
 {
     /// <summary>
+    /// Hard ceiling on <see cref="MaxEmbeddedDepth"/>, enforced by <c>AddEmailParser</c>.
+    /// </summary>
+    /// <remarks>
+    /// Recursion into an embedded message is <b>stack-recursive</b>: each level adds frames
+    /// that are not unwound until the nested enumeration finishes. Measured on this parser,
+    /// 480 levels survive and 500+ terminate the process with <c>0xC00000FD</c>
+    /// (<c>STATUS_STACK_OVERFLOW</c>) — uncatchable, so no amount of degraded-never-broken
+    /// handling helps. About 40 KB of hand-crafted MIME reaches 500 levels, which makes the
+    /// crash cheap to trigger once the depth bound allows it. 64 is 21× the default and leaves
+    /// an order of magnitude of headroom below the measured floor.
+    /// </remarks>
+    public const int MaxSupportedEmbeddedDepth = 64;
+
+    /// <summary>
     /// Maximum nesting level followed below the top-level message. <c>0</c> disables
-    /// recursion entirely; the default of <c>3</c> covers a forward of a forward of a forward.
+    /// recursion entirely (embedded messages are skipped without a warning, since the skip is
+    /// then deliberate); the default of <c>3</c> covers a forward of a forward of a forward.
+    /// Must not exceed <see cref="MaxSupportedEmbeddedDepth"/> — see that field for why the
+    /// ceiling is not a preference.
     /// </summary>
     public int MaxEmbeddedDepth { get; set; } = 3;
 

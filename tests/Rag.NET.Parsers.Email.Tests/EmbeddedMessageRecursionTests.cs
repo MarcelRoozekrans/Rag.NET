@@ -29,17 +29,14 @@ public class EmbeddedMessageRecursionTests
     // ── The alternating chain (Task C1) ──────────────────────────────────────
 
     [Fact]
-    public async Task AlternatingEmlMsgChain_Completes_WithinBoundedTime()
+    public async Task AlternatingEmlMsgChain_StopsAtMaxEmbeddedDepth()
     {
         var ct = TestContext.Current.CancellationToken;
-        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        bounded.CancelAfter(TimeSpan.FromSeconds(30));
-
         var outer = await BuildAlternatingChainAsync(10, ct);
         var harness = new ParserHarness();
 
         using var stream = new MemoryStream(outer);
-        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(), bounded.Token).ToListAsync(bounded.Token);
+        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
 
         // Bounded: the top-level message plus MaxEmbeddedDepth nested ones, two sections each.
         // Without the depth limit all ten levels were traversed instead.
@@ -166,6 +163,59 @@ public class EmbeddedMessageRecursionTests
         Assert.Equal(6, sections.Count); // the top-level message plus two embedded ones
         var warning = Assert.Single(harness.Warnings);
         Assert.Contains("maximum of 2 embedded messages", warning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ZeroDepth_DisablesRecursion_WithoutWarningOrLosingOuterContent()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var text = new FakeTextParser();
+        var harness = new ParserHarness(new EmailParserOptions { MaxEmbeddedDepth = 0 }, extraParsers: [text]);
+
+        var nested = EmlFixtureBuilder.CreateNested("Forwarded Subject", "Forwarded body.");
+        var outer = await EmlFixtureBuilder.CreateWithEmbeddedAsync("Outer", "Outer body.", nested, ct);
+        var withAttachment = await EmlFixtureBuilder.CreateAsync("Outer", "Outer body.",
+            [("notes.txt", "text/plain", Encoding.UTF8.GetBytes("Attached note."))], ct);
+
+        using var embeddedStream = new MemoryStream(outer);
+        var embeddedSections = await harness.Eml.ParseAsync(embeddedStream, CreateMetadata(), ct).ToListAsync(ct);
+
+        using var attachmentStream = new MemoryStream(withAttachment);
+        var attachmentSections = await harness.Eml.ParseAsync(attachmentStream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal(2, embeddedSections.Count); // subject + body; the embedded message is skipped
+        Assert.Equal("Outer body.", embeddedSections[1].Text);
+
+        // Turning recursion off must not disturb ordinary attachment dispatch.
+        Assert.Equal(3, attachmentSections.Count);
+        Assert.Equal("Attached note.", attachmentSections[2].Text);
+
+        // The skip is deliberate, so it is silent rather than one warning per message.
+        Assert.Empty(harness.Warnings);
+    }
+
+    [Fact]
+    public async Task BudgetTag_FromCaller_CannotRaiseTheCap()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var harness = new ParserHarness(new EmailParserOptions { MaxEmbeddedDepth = 10, MaxEmbeddedMessages = 2 });
+        var outer = await BuildAlternatingChainAsync(6, ct);
+
+        // Reserved tags are attacker-reachable — DocumentMetadata.Tags can be populated from
+        // remote data by a connector. A larger budget must be clamped back to the configured cap.
+        var hostileTags = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["__rag_email_budget"] = "1000000",
+        };
+
+        using var stream = new MemoryStream(outer);
+        var sections = await harness.Eml.ParseAsync(stream, CreateMetadata(hostileTags), ct).ToListAsync(ct);
+
+        Assert.Equal(6, sections.Count); // the configured cap of 2 still applies
+        Assert.Single(harness.Warnings);
+
+        // Depth was 0, so the caller's dictionary is never adopted as a write-back sink.
+        Assert.Equal("1000000", hostileTags["__rag_email_budget"]);
     }
 
     [Fact]

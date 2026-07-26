@@ -66,6 +66,19 @@ tenth synthesizing site, but in a different assembly (`Rag.NET.Api`, which does 
 `Rag.NET.DataProviders`) and outside this phase's connector scope. Found during the Part A
 review; noted here so it is not rediscovered as new.
 
+**Recorded, not fixed (added during Part C):** Part C introduced a *fourth* sanitizer —
+`EmbeddedMessageMetadata.Sanitize` in `src/Rag.NET.Parsers.Email/` — for the composed file name
+of an embedded message. `Rag.NET.Parsers.Email` does not reference `Rag.NET.DataProviders`, and
+adding a package dependency from a parser to the connector assembly for one call site was
+judged worse than a local copy; this section's own premise is that the copies are the problem,
+so the decision is recorded rather than buried. Reviewed against `FileNameSanitizer` and found
+behaviourally consistent (same pinned invalid set, trimming, trailing dots, length cap,
+surrogate guard) except that it does not collapse an all-replacement result to the fallback:
+`"///"` yields `"___"` here and `"embedded-message"` there. Cosmetic — the name is display and
+provenance metadata, never a path. The right fix is to move `FileNameSanitizer` somewhere both
+assemblies can reference (`Rag.NET.Abstractions` is the obvious home) and delete both copies,
+which is a package-layout change and not this phase's business.
+
 **Testing:** unit tests for the helper (each invalid class, trimming, trailing dots, empty →
 fallback, length cap, and a determinism test asserting the set does not vary with
 `Path.GetInvalidFileNameChars()`). Existing connector tests pin exact filenames
@@ -137,16 +150,35 @@ self-recursion, which stops EML-in-EML — but an `.eml` containing a `.msg` con
 has no depth control today and is reachable from a crafted file. The depth counter this item
 introduces is therefore a bug fix first and a feature second.
 
-**Correction (measured during implementation, 2026-07-26).** The paragraph above was written
-from reading the dispatcher, and the Part C test that was supposed to prove a crash did not
-fail. Measured on the pre-fix code, the *absence of a bound* is confirmed — an alternating
-chain parsed every level to depth 56, `sections == 2 × (depth + 1)` throughout, so the
-`ReferenceEquals` guard genuinely never fires. But the consequence is **resource
-amplification, not a crash**: each nesting level costs only ~1.18× in bytes (base64 on the
-EML wrap, raw in the CFB wrap), so ~26 levels fit in 1 MB and 56 levels need 124 MB, while
-async iterators unwind per `await` and never approach the stack limit. A ~1 MB file drives
-27 nested parses materialising roughly 1.5× its size in intermediate streams. Worth bounding;
-not the stack-overflow this section originally implied.
+**Correction (measured during implementation, 2026-07-26; mechanism corrected after review).**
+The paragraph above was written from reading the dispatcher, and the Part C test that was
+supposed to prove a crash did not fail. Measured on the pre-fix code, the *absence of a bound*
+is confirmed — an alternating chain parsed every level to depth 56,
+`sections == 2 × (depth + 1)` throughout, so the `ReferenceEquals` guard genuinely never
+fires. But the pre-fix consequence is **resource amplification, not a crash**, and the reason
+is the fixture's size growth, *not* anything about async iterators:
+
+- **The recursion is stack-recursive.** An earlier revision of this paragraph claimed "async
+  iterators unwind per `await` and never approach the stack limit". That is **false**, and it
+  is the exact reasoning someone would use to justify raising `MaxEmbeddedDepth` into a crash.
+  Each nesting level adds frames that are not unwound until the nested enumeration finishes.
+  Measured against the shipped parser with the depth bound raised: **480 levels survive; 500+
+  terminate the process with exit code `-1073741571` (`0xC00000FD`,
+  `STATUS_STACK_OVERFLOW`)** — uncatchable, so the degraded-never-broken posture cannot help.
+- **Depth is cheap to craft, if something lets you reach it.** Hand-written raw MIME costs
+  ~81 bytes per level, so ~500 levels is ~40 KB. The Part C fixtures used MimeKit's writer and
+  cost ~1.18× *multiplicatively* per level (base64 on the EML wrap, raw in the CFB wrap), which
+  is why 56 levels needed 124 MB there and the crash depth looked unreachable. MimeKit's own
+  `MimeMessage.LoadAsync` parses 5,000 levels from a 404 KB file without trouble — its parser
+  is iterative, so it is not the limiting factor; this parser's traversal is.
+- **Both the pre-fix path and the shipped defaults are nonetheless safe.** Pre-fix, the only
+  reachable chains were the multiplicative ones, so the crash depth cost hundreds of MB. Post-
+  fix, `MaxEmbeddedDepth = 3` means the same 404 KB / 5,000-level file yields 4 sections and no
+  crash. What was missing was a ceiling on the *option*: `MaxEmbeddedDepth` is now capped at
+  `EmailParserOptions.MaxSupportedEmbeddedDepth = 64` (21× the default, an order of magnitude
+  below the measured floor), rejected at `AddEmailParser` time with the measurement in the
+  exception message. Without that cap the option was a documented "safety bound" that silently
+  became a process-kill primitive when raised.
 
 **Design:**
 

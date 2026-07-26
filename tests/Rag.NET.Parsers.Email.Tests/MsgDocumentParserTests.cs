@@ -55,7 +55,7 @@ public class MsgDocumentParserTests
     }
 
     [Fact]
-    public async Task Parse_MsgAttachment_ReEntersItself_BoundedByDepth()
+    public async Task Parse_MsgAttachment_ReEntersItself()
     {
         var ct = TestContext.Current.CancellationToken;
         var logger = new CapturingLogger<MsgDocumentParser>();

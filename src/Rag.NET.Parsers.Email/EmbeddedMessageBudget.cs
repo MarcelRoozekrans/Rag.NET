@@ -11,8 +11,14 @@ namespace Rag.NET.Parsers.Email;
 /// <paramref name="sink"/> is the tag dictionary the dispatcher built for this child. Writing
 /// each decrement back into it lets the parent recover the count after enumeration — without
 /// that, the cap would reset for every dispatched branch and the real bound would be
-/// <c>cap ^ depth</c> rather than <c>cap</c>. It is never the caller's own dictionary: at the
-/// top level <paramref name="sink"/> is <see langword="null"/>.
+/// <c>cap ^ depth</c> rather than <c>cap</c>.
+/// </remarks>
+/// <remarks>
+/// <see cref="EmbeddedMessageContext.Create"/> supplies a sink only below depth 0, so this
+/// type never writes into the caller's own dictionary. That is enforced there rather than
+/// assumed here: a caller is free to set a reserved tag on the metadata it passes to
+/// <c>ParseAsync</c>, and before the depth test that dictionary was adopted as the sink and
+/// mutated on every <see cref="Consume"/>.
 /// </remarks>
 internal sealed class EmbeddedMessageBudget(int remaining, IDictionary<string, string>? sink)
 {

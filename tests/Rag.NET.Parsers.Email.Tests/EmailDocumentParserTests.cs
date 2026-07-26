@@ -162,6 +162,64 @@ public class EmailDocumentParserTests
         Assert.Contains(parsers, p => p is EmailDocumentParser);
         Assert.Contains(parsers, p => p is MsgDocumentParser);
         Assert.NotNull(provider.GetService<HtmlDocumentParser>());
+        Assert.Null(provider.GetService<EmailParserOptions>()); // only the configuring overload registers them
+    }
+
+    [Fact]
+    public async Task AddEmailParser_Configured_OptionsReachBothParserInstances()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        builder.AddEmailParser(o => o.MaxEmbeddedDepth = 0);
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Equal(0, provider.GetRequiredService<EmailParserOptions>().MaxEmbeddedDepth);
+        var parsers = provider.GetServices<IDocumentParser>().ToList();
+
+        // Recursion off is observable: each parser yields subject + body only for a message
+        // that embeds another. Asserting it on both pins that both instances got the options.
+        var eml = Assert.Single(parsers.OfType<EmailDocumentParser>());
+        var nested = EmlFixtureBuilder.CreateNested("Forwarded", "Forwarded body.");
+        using var emlStream = new MemoryStream(
+            await EmlFixtureBuilder.CreateWithEmbeddedAsync("Outer", "Outer body.", nested, ct));
+        Assert.Equal(2, await eml.ParseAsync(emlStream, CreateMetadata(), ct).CountAsync(ct));
+
+        var msg = Assert.Single(parsers.OfType<MsgDocumentParser>());
+        using var msgStream = MsgFixtureBuilder.Create("Outer", "Outer body.",
+            embeddedMessageSubject: "Forwarded", embeddedMessageBody: "Forwarded body.");
+        Assert.Equal(2, await msg.ParseAsync(msgStream, CreateMetadata(), ct).CountAsync(ct));
+    }
+
+    [Theory]
+    [InlineData(-1, 50)]
+    [InlineData(3, -1)]
+    [InlineData(EmailParserOptions.MaxSupportedEmbeddedDepth + 1, 50)]
+    public void AddEmailParser_InvalidOptions_Throws(int maxDepth, int maxMessages)
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => builder.AddEmailParser(o =>
+        {
+            o.MaxEmbeddedDepth = maxDepth;
+            o.MaxEmbeddedMessages = maxMessages;
+        }));
+    }
+
+    [Fact]
+    public void AddEmailParser_DepthAtTheCeiling_IsAccepted()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        // The ceiling is what keeps MaxEmbeddedDepth below the stack-overflow floor: recursion
+        // into an embedded message is stack-recursive and ~500 levels kills the process with
+        // an uncatchable 0xC00000FD. 64 must be the last accepted value, 65 the first rejected.
+        builder.AddEmailParser(o => o.MaxEmbeddedDepth = EmailParserOptions.MaxSupportedEmbeddedDepth);
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Equal(64, provider.GetRequiredService<EmailParserOptions>().MaxEmbeddedDepth);
     }
 
     // ── EML fixture builder ──────────────────────────────────────────────────

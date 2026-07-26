@@ -142,9 +142,14 @@ public sealed class MsgDocumentParser(
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Embedded/forwarded emails surface as a nested Storage.Message owned by the
-            // outer message's `using`, so it is parsed in place rather than re-entering the
-            // stream-based ParseAsync. It must not be disposed here.
+            // Embedded/forwarded emails surface as a nested Storage.Message: a live object,
+            // not a stream, so it is parsed in place rather than re-entering the stream-based
+            // ParseAsync. It is deliberately not disposed here — it belongs to the outer
+            // message's Attachments collection, and disposing an item while enumerating that
+            // collection would be the parser destroying data its caller may still read.
+            // (Probed against MsgReader 6.1.0: a nested child's BodyText is still readable
+            // after the outer message's Dispose(), so the parent does not tear children down.
+            // Ownership is by convention here, not enforced by the library.)
             if (item is Storage.Message embedded)
             {
                 await foreach (var section in ParseEmbeddedAsync(embedded, context, cancellationToken).ConfigureAwait(false))

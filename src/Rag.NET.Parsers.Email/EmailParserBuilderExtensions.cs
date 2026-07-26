@@ -65,6 +65,16 @@ public static class EmailParserBuilderExtensions
     {
         ThrowIfNegative(options.MaxEmbeddedDepth, nameof(EmailParserOptions.MaxEmbeddedDepth), paramName);
         ThrowIfNegative(options.MaxEmbeddedMessages, nameof(EmailParserOptions.MaxEmbeddedMessages), paramName);
+
+        if (options.MaxEmbeddedDepth > EmailParserOptions.MaxSupportedEmbeddedDepth)
+        {
+            throw new ArgumentOutOfRangeException(paramName, options.MaxEmbeddedDepth,
+                $"{nameof(EmailParserOptions)}.{nameof(EmailParserOptions.MaxEmbeddedDepth)} must not exceed " +
+                $"{EmailParserOptions.MaxSupportedEmbeddedDepth}. Recursion into an embedded message is " +
+                "stack-recursive: 480 levels were measured to survive and 500+ to terminate the process with " +
+                "0xC00000FD (STATUS_STACK_OVERFLOW), which is uncatchable. Roughly 40 KB of crafted MIME reaches " +
+                "500 levels, so this is a process-kill primitive rather than a tuning knob.");
+        }
     }
 
     private static void ThrowIfNegative(int value, string propertyName, string paramName)
