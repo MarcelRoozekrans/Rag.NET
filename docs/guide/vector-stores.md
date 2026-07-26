@@ -570,7 +570,18 @@ At least two stores are required (validated at registration). Store factories re
 
 `UseFederatedSearch` supersedes any earlier `IVectorStore` registration (standard last-wins container semantics). Do not combine it with `UsePgVector`/`UseQdrant`-style calls — add those stores through the builder instead.
 
-**Persistent conversation memory (known limitation):** `UsePersistentMemory` resolves the DI `IVectorStore` and filters recalled exchanges by `PersistentMemoryOptions.MinScore` (default 0.7), which is calibrated to the similarity scale. Federated results carry RRF scores (about 0.033 at best for two stores), so persistent memory backed by the federated store would silently never recall anything. Point persistent memory at a dedicated (non-federated) store until score normalization lands.
+**Persistent conversation memory:** `UsePersistentMemory` resolves the DI `IVectorStore` and normally filters recalled exchanges by `PersistentMemoryOptions.MinScore` (default 0.7), a threshold calibrated to the similarity scale. Federated results carry RRF scores (about 0.033 at best for two stores), so that threshold would discard every match. `FederatedVectorStore` therefore declares `IScoreScaleAware` with `ScoreScale.OpaqueRanking`, and persistent memory reacts by **skipping `MinScore` entirely**: it injects the store's top `TopK` matches in rank order and logs one warning per memory instance naming the store type and the ignored threshold. Recall works against a federated store; what you give up is the ability to require a minimum relevance — every recall injects the best `TopK` the federation returns, however weak. Lower `TopK` (default 3) if that is too much context, or point persistent memory at a dedicated similarity-scaled store when you need a real threshold.
+
+### Score scale (`IScoreScaleAware`)
+
+`IScoreScaleAware` is an opt-in capability interface declaring what a store's `SearchResult.Score` means:
+
+| Scale | Meaning | Declared by |
+|-------|---------|-------------|
+| `ScoreScale.Similarity` | Comparable, roughly `[0, 1]`, safe to threshold against a fixed cut-off | The assumed default — stores that do **not** implement the interface |
+| `ScoreScale.OpaqueRanking` | Ordinal only; magnitude is not comparable and must not be thresholded | `FederatedVectorStore` (RRF sums), `AzureAISearchVectorStore` (unbounded relevance scores) |
+
+Consumers probe with `store is IScoreScaleAware { ScoreScale: ScoreScale.OpaqueRanking }`. Every other store in the library is unchanged and continues to be treated as similarity-scaled, so `SearchOptions.MinScore` on the retrieval path behaves exactly as before; the probe currently affects persistent conversation memory only.
 
 ### Limitations
 

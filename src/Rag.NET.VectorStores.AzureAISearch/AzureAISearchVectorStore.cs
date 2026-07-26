@@ -9,7 +9,7 @@ using RagSearchOptions = Rag.NET.Models.Options.SearchOptions;
 
 namespace Rag.NET.AzureAISearch;
 
-public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable
+public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, ICollectionManageable, IScoreScaleAware
 {
     private readonly SearchIndexClient _indexClient;
     private readonly SearchClient _searchClient;
@@ -41,6 +41,14 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         _indexName = indexName;
         _vectorDimensions = vectorDimensions;
     }
+
+    /// <summary>
+    /// Always <see cref="ScoreScale.OpaqueRanking"/>. Azure AI Search returns a relevance
+    /// score, not a similarity: it is unbounded, and on the hybrid path it is a Reciprocal
+    /// Rank Fusion score over the vector and keyword rankings. Ordering results by it is
+    /// meaningful; thresholding it against a fixed cut-off is not.
+    /// </summary>
+    public ScoreScale ScoreScale => ScoreScale.OpaqueRanking;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {

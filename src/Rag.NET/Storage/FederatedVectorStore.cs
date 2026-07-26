@@ -19,9 +19,11 @@ namespace Rag.NET.Storage;
 /// Each merged result's <see cref="TextChunk.Metadata"/> gains a <c>source.store</c>
 /// entry naming the store it came from (<see cref="FederatedStoreOptions.StoreNames"/>
 /// or the store index). Federation is dense-only: <c>IHybridSearchable</c> and other
-/// capability interfaces of the underlying stores are not federated.
+/// capability interfaces of the underlying stores are not federated. The one capability it
+/// declares for itself is <see cref="IScoreScaleAware"/>: merged scores are RRF, so they are
+/// <see cref="ScoreScale.OpaqueRanking"/>.
 /// </remarks>
-public sealed class FederatedVectorStore : IVectorStore
+public sealed class FederatedVectorStore : IVectorStore, IScoreScaleAware
 {
     private const string SourceStoreMetadataKey = "source.store";
 
@@ -65,6 +67,15 @@ public sealed class FederatedVectorStore : IVectorStore
         _options = options;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Always <see cref="ScoreScale.OpaqueRanking"/>. Merged scores are Reciprocal Rank
+    /// Fusion sums — <c>1 / (RrfK + rank)</c> per contributing store, so at most about
+    /// <c>0.033</c> for two stores with the default <c>RrfK</c> of 60 — not similarities.
+    /// Ranking them is meaningful; thresholding them is not. This is not delegated to the
+    /// underlying stores: their scales are lost in fusion regardless of what they were.
+    /// </summary>
+    public ScoreScale ScoreScale => ScoreScale.OpaqueRanking;
 
     /// <summary>Stores the chunks in the primary store only.</summary>
     public Task StoreAsync(IReadOnlyList<EmbeddedChunk> chunks, CancellationToken cancellationToken = default) =>
