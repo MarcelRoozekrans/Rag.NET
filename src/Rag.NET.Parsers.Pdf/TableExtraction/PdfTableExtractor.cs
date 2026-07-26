@@ -20,7 +20,9 @@ namespace Rag.NET.Parsers.Pdf.TableExtraction;
 ///   (very tight tables degrade to prose).
 /// - Cells averaging more than 4 words degrade to prose (e.g. long description columns).
 /// - A 2- or 3-column run of 8+ rows spanning more than half the page's rows is treated
-///   as a multi-column page layout: whole-page 2/3-column tables are missed by design.
+///   as a multi-column page layout and stays prose, UNLESS its cells average 2 words or
+///   fewer (dense Key/Value content). Whole-page 2/3-column tables whose cells run longer
+///   than that are still missed by design.
 /// </summary>
 internal static class PdfTableExtractor
 {
@@ -62,6 +64,20 @@ internal static class PdfTableExtractor
     /// they span most of a page's rows (a small grid on an otherwise sparse page).
     /// </summary>
     private const int MinLayoutRunRows = 8;
+
+    /// <summary>
+    /// Dense-content exemption from the layout-dominance guard: a run averaging at most this
+    /// many words per non-empty cell is Key/Value-style tabular content (labels and short
+    /// values), not prose columns, and stays a table even when it dominates the page.
+    ///
+    /// The value is tight by necessity and is not a free parameter. Two fixtures pin it from
+    /// above: newsletter-style three-column prose sits at exactly 3.0 words per cell, and a
+    /// full-page two-column layout fixture sits at 2.50 — the latter is the binding one, so
+    /// anything above ~2.5 reclassifies a page layout as a table. It is strictly nested inside
+    /// <see cref="MaxAverageWordsPerCell"/> — a run must already have passed that (4.0) to
+    /// reach this check at all.
+    /// </summary>
+    private const double DenseCellExemptionWordsPerCell = 2.0;
 
     internal static (IReadOnlyList<DetectedTable> Tables, IReadOnlyList<WordBox> ProseWords) Extract(
         IReadOnlyList<WordBox> words, PdfParserOptions options)
@@ -223,13 +239,19 @@ internal static class PdfTableExtractor
             return null;
         }
 
-        if (!PassesPlausibilityGuards(rows, start, end, cells))
+        if (!PassesPlausibilityGuards(rows, start, end, cells, out double averageWordsPerCell))
         {
             return null;
         }
 
         var (top, bottom) = ComputeYRange(rows, start, end);
-        return new DetectedTable { Rows = cells, TopY = top, BottomY = bottom };
+        return new DetectedTable
+        {
+            Rows = cells,
+            TopY = top,
+            BottomY = bottom,
+            AverageWordsPerCell = averageWordsPerCell,
+        };
     }
 
     /// <summary>
@@ -255,10 +277,21 @@ internal static class PdfTableExtractor
     /// Per-window guard against multi-column prose masquerading as a table: genuine table
     /// cells are short — bail when the average words per non-empty cell exceeds
     /// <see cref="MaxAverageWordsPerCell"/> (prose half-lines run longer). The complementary
-    /// layout-dominance guard runs post-extension in <see cref="DetectTables"/>.
+    /// layout-dominance guard runs post-extension in <see cref="DetectTables"/> and reuses
+    /// the ratio computed here via <paramref name="averageWordsPerCell"/>, which is carried
+    /// on the <see cref="DetectedTable"/>; that guard has no row data of its own.
     /// </summary>
+    /// <param name="averageWordsPerCell">
+    /// Words per non-empty cell over the window, or 0 when the window has no non-empty cells —
+    /// in which case the method returns false and no table is built, so a 0 ratio never
+    /// reaches the dominance guard (where it would otherwise read as "exempt").
+    /// </param>
     private static bool PassesPlausibilityGuards(
-        List<List<WordBox>> rows, int start, int end, List<IReadOnlyList<string>> cells)
+        List<List<WordBox>> rows,
+        int start,
+        int end,
+        List<IReadOnlyList<string>> cells,
+        out double averageWordsPerCell)
     {
         int totalWords = 0;
         for (int r = start; r <= end; r++)
@@ -279,7 +312,14 @@ internal static class PdfTableExtractor
             }
         }
 
-        return nonEmptyCells > 0 && (double)totalWords / nonEmptyCells <= MaxAverageWordsPerCell;
+        if (nonEmptyCells == 0)
+        {
+            averageWordsPerCell = 0;
+            return false;
+        }
+
+        averageWordsPerCell = (double)totalWords / nonEmptyCells;
+        return averageWordsPerCell <= MaxAverageWordsPerCell;
     }
 
     /// <summary>
@@ -289,12 +329,15 @@ internal static class PdfTableExtractor
     /// <see cref="MinLayoutRunRows"/> rows long and spans more than
     /// <see cref="LayoutDominanceFraction"/> of the page's rows is a multi-column page
     /// layout; the whole run is skipped as prose. The row floor keeps small genuine tables
-    /// (which may well be 100% of a sparse page's rows) detectable.
+    /// (which may well be 100% of a sparse page's rows) detectable, and the
+    /// <see cref="DenseCellExemptionWordsPerCell"/> conjunct keeps full-page Key/Value tables
+    /// detectable: prose columns carry more words per cell than dense label/value pairs.
     /// </summary>
     private static bool IsLayoutDominated(DetectedTable table, int runRows, int totalRows) =>
         table.Rows[0].Count <= MaxLayoutColumns
         && runRows >= MinLayoutRunRows
-        && runRows > totalRows * LayoutDominanceFraction;
+        && runRows > totalRows * LayoutDominanceFraction
+        && table.AverageWordsPerCell > DenseCellExemptionWordsPerCell;
 
     // ── Gap geometry ─────────────────────────────────────────────────────────
 

@@ -162,6 +162,7 @@ public class PdfTableExtractorTests
             ],
             TopY = 0,
             BottomY = 30,
+            AverageWordsPerCell = 1,
         };
 
         var markdown = PdfTableExtractor.RenderMarkdown(table);
@@ -284,6 +285,98 @@ public class PdfTableExtractorTests
             double width = widths[(line + i) % widths.Length];
             words.Add(W($"w{line}_{startX}_{i}", x, line * 20, width));
             x += width + gaps[(line + i) % gaps.Length];
+        }
+    }
+
+    // A 14-row Key/Value table: a two-word label and a one-word value per row.
+    private static readonly (string KeyA, string KeyB, string Value)[] KeyValueRows =
+    [
+        ("Invoice", "Number", "INV-1001"),
+        ("Order", "Date", "2026-01-04"),
+        ("Due", "Date", "2026-02-03"),
+        ("Customer", "Name", "Contoso"),
+        ("Billing", "Country", "NL"),
+        ("Shipping", "Method", "Express"),
+        ("Payment", "Terms", "Net30"),
+        ("Currency", "Code", "EUR"),
+        ("Tax", "Rate", "21"),
+        ("Discount", "Code", "SPRING26"),
+        ("Sales", "Rep", "A.Jansen"),
+        ("Purchase", "Order", "PO-88421"),
+        ("Contract", "Id", "CT-7734"),
+        ("Renewal", "Date", "2027-01-04"),
+    ];
+
+    [Fact]
+    public void FullPageKeyValueTable_IsExtracted()
+    {
+        // The rescue case for the dense-cell exemption. A 2-column Key/Value table filling
+        // the whole page: label words at x = 0 and x = 39/43 (alternating 38/42pt widths,
+        // 5pt inter-word gap, right edge a constant 85pt), value word at x = 300.
+        // The 5pt intra-label gap is below the 15pt minimum gutter width and is filtered;
+        // the (85, 300) center gutter persists across every row → exactly 2 columns.
+        // Value widths cycle 50/46/54 so the widest row leaves no trailing gap to intersect.
+        //
+        // 3 words / 2 non-empty cells = 1.50 words per cell — at or under the 2.0 exemption.
+        // Without the exemption the layout-dominance guard rejects this run outright:
+        // 2 columns (<= 3), 14 rows (>= 8), covering 14/14 of the page's rows (> 0.5).
+        double[] keyWidths = [38, 42];
+        double[] valueWidths = [50, 46, 54];
+        var words = new List<WordBox>();
+        for (int line = 0; line < KeyValueRows.Length; line++)
+        {
+            var row = KeyValueRows[line];
+            double firstWidth = keyWidths[line % keyWidths.Length];
+            words.Add(W(row.KeyA, 0, line * 20, firstWidth));
+            words.Add(W(row.KeyB, firstWidth + 5, line * 20, keyWidths[(line + 1) % keyWidths.Length]));
+            words.Add(W(row.Value, 300, line * 20, valueWidths[line % valueWidths.Length]));
+        }
+
+        var (tables, prose) = PdfTableExtractor.Extract(words, new PdfParserOptions());
+
+        var table = Assert.Single(tables);
+        Assert.Empty(prose);
+        Assert.Equal(KeyValueRows.Length, table.Rows.Count);
+        Assert.Equal(1.5, table.AverageWordsPerCell);
+        Assert.Equal(new[] { "Invoice Number", "INV-1001" }, table.Rows[0]);
+        Assert.Equal(new[] { "Tax Rate", "21" }, table.Rows[8]);
+        Assert.Equal(new[] { "Renewal Date", "2027-01-04" }, table.Rows[13]);
+    }
+
+    [Fact]
+    public void TwoColumnPageLayout_TwoAndAHalfWordsPerCell_NoTables()
+    {
+        // Pins the dense-cell exemption tight from the other side. Same full-page 2-column
+        // shape as the Key/Value fixture (persistent 146pt center gutter at (134, 280)),
+        // but the left column carries 3 words and the right column 2:
+        // 5 words / 2 non-empty cells = 2.50 words per cell. That clears the 4.0
+        // words-per-cell guard, so the run reaches the layout-dominance guard — and 2.50
+        // is above the 2.0 exemption, so it is still rejected as a page layout.
+        // Loosening the exemption to 3.0 would turn this red (and the newsletter test too).
+        double[] leftWidths = [40, 44, 38];
+        double[] rightWidths = [46, 50];
+        var words = new List<WordBox>();
+        for (int line = 0; line < 20; line++)
+        {
+            AddDenseProseColumn(words, line, startX: 0, wordCount: 3, leftWidths);
+            AddDenseProseColumn(words, line, startX: 280, wordCount: 2, rightWidths);
+        }
+
+        var (tables, prose) = PdfTableExtractor.Extract(words, new PdfParserOptions());
+
+        Assert.Empty(tables);
+        Assert.Equal(words.Count, prose.Count);
+    }
+
+    private static void AddDenseProseColumn(
+        List<WordBox> words, int line, double startX, int wordCount, double[] widths)
+    {
+        double x = startX;
+        for (int i = 0; i < wordCount; i++)
+        {
+            double width = widths[(line + i) % widths.Length];
+            words.Add(W($"w{line}_{startX}_{i}", x, line * 20, width));
+            x += width + 6;
         }
     }
 
