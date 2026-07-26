@@ -175,18 +175,37 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
         }
     }
 
+    /// <summary>
+    /// Builds the handle for one drive item. Synchronous by design: the metadata dictionary is
+    /// never built inside the async iterator (design §1).
+    /// </summary>
+    /// <remarks>
+    /// Metadata emitted: <c>drive_id</c> (always) and <c>path</c> — the parent folder path Graph
+    /// reports on <c>parentReference</c>. Graph omits <c>parentReference</c> on some delta
+    /// payloads, so <c>path</c> is optional and is left out entirely rather than written empty.
+    /// </remarks>
     private FileHandle ToHandle(string driveId, DriveItem item)
     {
         var capturedId = item.Id!;
         var capturedDriveId = driveId;
+        var parentPath = item.ParentReference?.Path;
+
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["drive_id"] = driveId,
+        };
+        if (!string.IsNullOrEmpty(parentPath))
+            metadata["path"] = parentPath;
+
         return new FileHandle(
-            Id:               (item.ParentReference?.Path ?? string.Empty) + "/" + item.Name,
+            Id:               (parentPath ?? string.Empty) + "/" + item.Name,
             FileName:         item.Name ?? capturedId,
             ETag:             item.ETag,
             OpenContentAsync: async ct =>
                 await _graph.Drives[capturedDriveId].Items[capturedId].Content
                     .GetAsync(cancellationToken: ct).ConfigureAwait(false)
-                    ?? Stream.Null);
+                    ?? Stream.Null,
+            Metadata:         metadata);
     }
 
     private async Task<Result<DriveItemCollectionResponse?, RagError>> FetchChildrenPageAsync(
