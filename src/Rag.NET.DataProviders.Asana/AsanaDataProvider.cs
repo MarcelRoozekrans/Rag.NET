@@ -97,7 +97,30 @@ public sealed class AsanaDataProvider : FileContentProviderBase
             FileName:         $"{FileNameSanitizer.Sanitize(task.Name, $"task-{task.Gid}")}.md",
             ETag:             task.ModifiedAt ?? string.Empty,
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata:         BuildMetadata(task));
+    }
+
+    /// <summary>
+    /// The task's filterable fields. These are <i>also</i> rendered into the Markdown body by
+    /// <see cref="ToMarkdown"/> — the body drives semantic recall, the tags drive filtering, and
+    /// removing either would silently degrade the other.
+    /// <para>
+    /// <c>completed</c> is written as the literal <c>"true"</c>/<c>"false"</c>, deliberately
+    /// unlike the Markdown line's <c>bool.ToString()</c> rendering (<c>"True"</c>), which would
+    /// not match ordinally in <c>HasTagSpec</c>.
+    /// </para>
+    /// </summary>
+    private static Dictionary<string, string> BuildMetadata(AsanaTask task)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["completed"] = task.Completed ? "true" : "false",
+        };
+        if (!string.IsNullOrEmpty(task.Assignee?.Name)) metadata["assignee"]   = task.Assignee.Name;
+        if (!string.IsNullOrEmpty(task.DueOn))          metadata["due_on"]     = task.DueOn;
+        if (!string.IsNullOrEmpty(task.ModifiedAt))     metadata["updated_at"] = task.ModifiedAt;
+        return metadata;
     }
 
     private static string ToMarkdown(AsanaTask task, IReadOnlyList<AsanaTask> subtasks)
