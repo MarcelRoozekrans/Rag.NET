@@ -165,7 +165,9 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
         }
     }
 
-    private static FileHandle ToHandle(JiraIssue issue)
+    // Instance rather than static so the configured project — the container context callers
+    // filter on — is reachable from _options.
+    private FileHandle ToHandle(JiraIssue issue)
     {
         var markdown = ToMarkdown(issue);
         return new FileHandle(
@@ -173,7 +175,33 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
             FileName:         $"{issue.Key}.md",
             ETag:             issue.Fields.Updated,
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata:         BuildMetadata(issue));
+    }
+
+    /// <summary>
+    /// The issue's filterable fields. Status, priority and assignee are <i>also</i> rendered
+    /// into the Markdown body by <see cref="ToMarkdown"/>: the body drives semantic recall, the
+    /// tags drive filtering, and neither substitutes for the other.
+    /// <para>
+    /// <c>project</c> comes from the configured <see cref="JiraOptions.ProjectKey"/> and is
+    /// omitted when the run is unscoped — the <c>fields=</c> selection does not request the
+    /// issue's own project, so it is not in hand.
+    /// </para>
+    /// </summary>
+    private Dictionary<string, string>? BuildMetadata(JiraIssue issue)
+    {
+        var fields = issue.Fields;
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(issue.Key))          metadata["issue_key"]  = issue.Key;
+        if (!string.IsNullOrEmpty(fields.Status.Name)) metadata["status"]     = fields.Status.Name;
+        if (!string.IsNullOrEmpty(fields.Priority?.Name))
+            metadata["priority"] = fields.Priority.Name;
+        if (!string.IsNullOrEmpty(fields.Assignee?.DisplayName))
+            metadata["assignee"] = fields.Assignee.DisplayName;
+        if (!string.IsNullOrEmpty(fields.Updated))     metadata["updated_at"] = fields.Updated;
+        if (!string.IsNullOrEmpty(_options.ProjectKey)) metadata["project"]   = _options.ProjectKey;
+        return metadata.Count == 0 ? null : metadata;
     }
 
     private static string ToMarkdown(JiraIssue issue)
