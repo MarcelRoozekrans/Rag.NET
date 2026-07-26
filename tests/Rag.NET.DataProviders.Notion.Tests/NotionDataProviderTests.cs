@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Notion;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Rest;
@@ -526,6 +527,75 @@ public sealed class NotionDataProviderTests
         var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
 
         Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsPageKeysAndDatabaseId()
+    {
+        const string searchJson = """
+            {
+              "results": [
+                {
+                  "id": "page-md",
+                  "last_edited_time": "2026-03-01T10:00:00.000Z",
+                  "properties": { "title": { "title": [{ "plain_text": "My Page" }] } }
+                }
+              ],
+              "has_more": false
+            }
+            """;
+        const string blocksJson = """{ "results": [], "has_more": false }""";
+
+        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/v1/search"] = searchJson,
+            ["page-md"]    = blocksJson
+        }, new NotionOptions { DatabaseId = "db-42" });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("page-md",                  metadata["page_id"]);
+        Assert.Equal("db-42",                    metadata["database_id"]);
+        Assert.Equal("2026-03-01T10:00:00.000Z", metadata["updated_at"]);
+        Assert.Equal(3, metadata.Count);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_NoDatabaseId_MetadataOmitsIt()
+    {
+        const string searchJson = """
+            {
+              "results": [
+                {
+                  "id": "page-nodb",
+                  "last_edited_time": "2026-03-02T10:00:00.000Z",
+                  "properties": { "title": { "title": [{ "plain_text": "Loose Page" }] } }
+                }
+              ],
+              "has_more": false
+            }
+            """;
+        const string blocksJson = """{ "results": [], "has_more": false }""";
+
+        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/v1/search"] = searchJson,
+            ["page-nodb"]  = blocksJson
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("page-nodb", metadata["page_id"]);
+        Assert.False(metadata.ContainsKey("database_id"));
+        Assert.Equal(2, metadata.Count);
     }
 }
 

@@ -97,7 +97,26 @@ public sealed class NotionDataProvider : FileContentProviderBase
             FileName:         $"{FileNameSanitizer.Sanitize(title, $"page-{page.Id}")}.md",
             ETag:             page.LastEditedTime,
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown)))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata:         BuildMetadata(page)));
+    }
+
+    /// <summary>
+    /// The page's filterable fields.
+    /// <para>
+    /// <c>database_id</c> is the <i>configured</i> <see cref="NotionOptions.DatabaseId"/>, not a
+    /// value read back from the page: <c>POST /v1/search</c> returns no parent, and the option is
+    /// documented as reserved for a future database-scoped implementation. It therefore records
+    /// the scope the run was configured with, and is omitted when none was configured.
+    /// </para>
+    /// </summary>
+    private Dictionary<string, string>? BuildMetadata(NotionPage page)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(page.Id))             metadata["page_id"]     = page.Id;
+        if (!string.IsNullOrEmpty(_options.DatabaseId)) metadata["database_id"] = _options.DatabaseId;
+        if (!string.IsNullOrEmpty(page.LastEditedTime)) metadata["updated_at"]  = page.LastEditedTime;
+        return metadata.Count == 0 ? null : metadata;
     }
 
     private async Task<Result<IReadOnlyList<NotionBlock>, RagError>> FetchBlocksAsync(
