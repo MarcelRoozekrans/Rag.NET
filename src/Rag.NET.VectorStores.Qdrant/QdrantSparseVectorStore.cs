@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Qdrant.Client.Grpc;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
@@ -139,19 +137,12 @@ public sealed class QdrantSparseVectorStore : QdrantVectorStore, ISparseSearchab
     }
 
     /// <summary>
-    /// Deterministic point id per <c>(DocumentId, ChunkIndex)</c> (SHA-256 truncated to a
-    /// GUID with version/variant bits set) so dense upserts and sparse vector updates address
-    /// the same point, and re-ingesting a chunk replaces it instead of duplicating it.
-    /// PERSISTENT STORAGE CONTRACT: existing collections hold points with these ids — the
-    /// algorithm must never change (pinned by a unit test).
+    /// Deterministic point id per <c>(DocumentId, ChunkIndex)</c> so dense upserts and
+    /// sparse vector updates address the same point, and re-ingesting a chunk replaces it
+    /// instead of duplicating it. Delegates to the shared <see cref="DeterministicChunkId"/>
+    /// derivation (also used by the Weaviate store) — see its PERSISTENT STORAGE CONTRACT;
+    /// the pinned-value unit test lives in this store's suite.
     /// </summary>
-    internal static Guid DeterministicPointId(string documentId, int chunkIndex)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{documentId}\n{chunkIndex}"));
-        Span<byte> guidBytes = stackalloc byte[16];
-        hash.AsSpan(0, 16).CopyTo(guidBytes);
-        guidBytes[7] = (byte)((guidBytes[7] & 0x0F) | 0x80); // version 8 (custom, RFC 9562)
-        guidBytes[8] = (byte)((guidBytes[8] & 0x3F) | 0x80); // RFC 4122 variant
-        return new Guid(guidBytes);
-    }
+    internal static Guid DeterministicPointId(string documentId, int chunkIndex) =>
+        DeterministicChunkId.Derive(documentId, chunkIndex);
 }

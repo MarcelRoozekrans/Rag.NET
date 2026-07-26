@@ -196,7 +196,8 @@ public static class RagPipelineReindexExtensions
         // was already returning wrong-embedding-space results. Sparse vectors are covered
         // too: DeleteByDocumentIdAsync removes them on the sparse-capable stores
         // (InMemoryVectorStore clears its postings; QdrantSparseVectorStore shares point ids
-        // with the dense side).
+        // with the dense side; PineconeSparseVectorStore stores sparse values on the same
+        // records, which the delete removes whole).
         await vectorStore.DeleteByDocumentIdAsync(documentId, ct).ConfigureAwait(false);
         await vectorStore.StoreAsync(embedded, ct).ConfigureAwait(false);
         await RegenerateSparseAsync(vectorStore, sparseGenerator, embedded, documentId, logger, ct).ConfigureAwait(false);

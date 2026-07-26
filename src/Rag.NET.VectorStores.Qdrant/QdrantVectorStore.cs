@@ -111,8 +111,20 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         string name,
         CancellationToken cancellationToken = default)
     {
-        await Client.DeleteCollectionAsync(name, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await Client.DeleteCollectionAsync(name, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (QdrantException)
+        {
+            // Qdrant answers result:false when the collection does not exist, which
+            // QdrantClient surfaces as a QdrantException. The ICollectionManageable contract
+            // makes delete-of-missing a no-op, so absorb exactly that case: if the collection
+            // is still there, the delete genuinely failed and the exception stands.
+            if (await Client.CollectionExistsAsync(name, cancellationToken).ConfigureAwait(false))
+                throw;
+        }
     }
 
     public async Task<bool> CollectionExistsAsync(

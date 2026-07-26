@@ -306,9 +306,11 @@ Track which document content hashes have been written to which vector store name
 ### Weaviate Vector Store
 **Package:** `Rag.NET.VectorStores.Weaviate`
 
-Implement `IVectorStore` and `ICollectionManageable` backed by Weaviate via the official `WeaviateSharp` or REST client. Supports hybrid search (BM25 + vector), metadata filtering via Weaviate's `where` filter, and multi-tenancy. Registration: `.UseWeaviate(endpoint, collection, vectorDimensions)`.
+Implement `IVectorStore` and `ICollectionManageable` backed by Weaviate via a hand-rolled REST + GraphQL client (`ZeroAlloc.Rest`; no maintained first-party .NET client exists). Supports hybrid search (BM25 + vector), metadata filtering via Weaviate's `where` filter, and multi-tenancy. Registration: `.UseWeaviate(endpoint, className, vectorDimensions)`.
 
 **Why:** Weaviate is a popular managed vector store with native hybrid search and a generous free tier. Adds a third open-source option alongside PgVector and Qdrant.
+
+**Status:** Delivered. `WeaviateVectorStore` (register with `UseWeaviate(endpoint, className, vectorDimensions, configure?)`) serves `IVectorStore`, `IHybridSearchable` (native BM25+vector relative-score fusion — the second store with native hybrid after Azure AI Search), and `ICollectionManageable` from one singleton. REST handles schema/batch writes, a single GraphQL POST handles search (arguments inlined — Weaviate's GraphQL rejects variables for its custom scalar types). Deterministic object ids per `(DocumentId, ChunkIndex)` make re-ingestion replace chunks; metadata keys become filterable `meta_*` properties via auto-schema with `Equal`/`And` `where` composition; dense scores map `1 - distance/2` (identical vector ⇒ 1), hybrid scores are Weaviate's 0..1 fusion scores. Optional `Tenant` creates the class multi-tenancy-enabled and scopes every read/write. Tested against the official image via Testcontainers.
 
 ---
 
@@ -319,6 +321,8 @@ Implement `IVectorStore` backed by ChromaDB via its REST API. Chroma is the most
 
 **Why:** Chroma is commonly used in prototyping and local development. A lightweight adapter makes Rag.NET accessible to teams already invested in Chroma.
 
+**Status:** Delivered. `ChromaVectorStore` (register with `UseChroma(endpoint, collectionName, configure?)`) serves `IVectorStore` and `ICollectionManageable` from one singleton — deliberately the lightweight dense-only adapter (no hybrid/sparse; the pipeline's BM25 fallback applies). Hand-rolled `ZeroAlloc.Rest` client against the REST v2 API (`/api/v2/tenants/{tenant}/databases/{database}/...`, defaults overridable via options, optional Bearer token). Record ids `{documentId}:{chunkIndex}` make re-ingestion upsert-replace; chunk text is the record document, metadata is stored as-is plus `document_id`/`chunk_index` and filtered server-side with `$eq`/`$and`. Collections are created with the cosine space (dimensions inferred by Chroma on first upsert) and addressed by UUID: the name→UUID resolution is cached and transparently re-resolved once when the collection is recreated behind the store's back. Scores map `1 - cosine distance` (identical vector ⇒ 1). Tested against the official image via Testcontainers.
+
 ---
 
 ### Pinecone Vector Store
@@ -327,6 +331,8 @@ Implement `IVectorStore` backed by ChromaDB via its REST API. Chroma is the most
 Implement `IVectorStore` backed by Pinecone's serverless index via the official REST API. Supports namespace-based collection isolation (maps to `collectionName`), metadata filtering, and sparse-dense hybrid search via Pinecone's native sparse vectors.
 
 **Why:** Pinecone is the dominant managed vector store in production enterprise deployments. Many teams choose Rag.NET for the pipeline but already have Pinecone in their stack.
+
+**Status:** Delivered. `PineconeVectorStore` (register with `UsePinecone(apiKey, indexName, vectorDimensions, configure?)`) serves `IVectorStore` and `ICollectionManageable` from one singleton on the official `Pinecone.Client` SDK — pinned to 3.1.0 because the 4.x control-plane models cannot deserialize Pinecone Local's responses (upstream #54; SDK repo archived). `ICollectionManageable` manages serverless indexes (cloud/region options, readiness-polled create, idempotent delete); record ids `{documentId}:{chunkIndex}` make re-ingestion upsert-replace; chunk text lives in record metadata next to `document_id`/`chunk_index` and is read back into results (~40 KB metadata cap per record). Native cosine scores with `MinScore` applied directly, `$eq`/`$and` server-side metadata filters, and optional `Namespace` scoping every operation. Delete-by-document uses list-ids-by-prefix + delete-by-ids (serverless rejects delete-by-metadata-filter) with an exact-document guard for ids containing `:`. Opt-in `EnableSparseVectors` registers `PineconeSparseVectorStore : ISparseSearchable` (Qdrant type-split precedent): sparse values ride on the same records, dotproduct metric enforced fail-fast, sparse-only queries via a zero dense vector. Tested against Pinecone Local via Testcontainers (sparse round-trip skipped there — the emulator drops sparse values on dense indexes; documented in the guide).
 
 ---
 
@@ -812,13 +818,13 @@ Generate the answer incrementally sentence by sentence. When a sentence scores b
 ---
 
 ### Sparse Embedding Retrieval (SPLADE)
-**Package:** `Rag.NET.Embeddings.Onnx` (encoder) + `Rag.NET` (in-memory store, ensemble) + `Rag.NET.VectorStores.Qdrant`
+**Package:** `Rag.NET.Embeddings.Onnx` (encoder) + `Rag.NET` (in-memory store, ensemble) + `Rag.NET.VectorStores.Qdrant` / `Rag.NET.VectorStores.Pinecone`
 
 Generate sparse embedding vectors via SPLADE (Sparse Lexical and Expansion Model) using an ONNX model, stored alongside dense vectors. Retrieval combines sparse and dense scores natively in the vector store (Qdrant supports this natively; PgVector via separate column + RRF merge).
 
 **Why:** SPLADE outperforms BM25 on out-of-vocabulary terms while remaining sparse enough for efficient retrieval. Pairs with dense embeddings for state-of-the-art hybrid search without a separate BM25 index.
 
-**Status:** Delivered for Qdrant + in-memory; PgVector sparse storage deferred. `OnnxSpladeEncoder` (register with `UseSpladeEncoder(...)`; e.g. an ONNX export of `naver/splade-cocondenser-ensembledistil`) pools MLM logits per chunk/query into a pruned `SparseVector` (`log(1 + ReLU(logit))`, max over tokens, `TopTerms` largest). Ingestion computes sparse vectors automatically (`SparseEmbeddingBehavior`) when the store implements the `ISparseSearchable` capability — `QdrantSparseVectorStore` via `UseQdrant(..., enableSparseVectors: true)` (named sparse vector "splade" on the same points, deterministic point ids, fail-fast on pre-existing dense-only collections) or `InMemoryVectorStore` (inverted postings, dot product). Retrieval: `EnsembleBehavior` grows a third arm fused by weighted RRF (`EnsembleOptions.SparseWeight`; `RetrievalOptions.UseSparseSearch` null follows `UseHybridSearch`). Degraded-never-broken: sparse failures at ingest or query time log a warning and continue dense/BM25-only.
+**Status:** Delivered for Qdrant + Pinecone + in-memory; PgVector sparse storage deferred. `OnnxSpladeEncoder` (register with `UseSpladeEncoder(...)`; e.g. an ONNX export of `naver/splade-cocondenser-ensembledistil`) pools MLM logits per chunk/query into a pruned `SparseVector` (`log(1 + ReLU(logit))`, max over tokens, `TopTerms` largest). Ingestion computes sparse vectors automatically (`SparseEmbeddingBehavior`) when the store implements the `ISparseSearchable` capability — `QdrantSparseVectorStore` via `UseQdrant(..., enableSparseVectors: true)` (named sparse vector "splade" on the same points, deterministic point ids, fail-fast on pre-existing dense-only collections), `PineconeSparseVectorStore` via `UsePinecone(..., configure: o => o.EnableSparseVectors = true)` (native sparse values on the same records, dotproduct metric enforced fail-fast; the sparse *write* path is verified by construction only — Pinecone Local rejects sparse writes, so it is untested against a live serverless index), or `InMemoryVectorStore` (inverted postings, dot product). Retrieval: `EnsembleBehavior` grows a third arm fused by weighted RRF (`EnsembleOptions.SparseWeight`; `RetrievalOptions.UseSparseSearch` null follows `UseHybridSearch`). Degraded-never-broken: sparse failures at ingest or query time log a warning and continue dense/BM25-only.
 
 ---
 
@@ -1048,9 +1054,9 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | Evaluation Dataset Builder | Medium | `IChatClient` |
 | [ ] | A/B Testing Framework | Medium | `IRagEvaluator` |
-| [ ] | Weaviate Vector Store | Medium | `WeaviateSharp` |
-| [ ] | Chroma Vector Store | Medium | Chroma REST API |
-| [ ] | Pinecone Vector Store | Medium | Pinecone REST API |
+| [x] | Weaviate Vector Store | Medium | REST + GraphQL via `ZeroAlloc.Rest` |
+| [x] | Chroma Vector Store | Medium | Chroma REST API |
+| [x] | Pinecone Vector Store | Medium | Official `Pinecone.Client` SDK (3.1.0) |
 | [x] | Multi-Index Federation | Medium | `IVectorStore` composition (dense-only) |
 | [x] | PDF Table Extraction | Medium | PdfPig geometry |
 | [x] | OCR for Scanned PDFs | Medium | Tesseract via `EnableOcr` gate (Azure Doc Intelligence deferred) |

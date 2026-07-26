@@ -244,8 +244,18 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
     public async Task DeleteCollectionAsync(string name, CancellationToken cancellationToken = default)
     {
-        await _indexClient.DeleteIndexAsync(name, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await _indexClient.DeleteIndexAsync(name, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Azure.RequestFailedException ex) when (ex.Status == 404)
+        {
+            // Delete-of-missing is a no-op (the ICollectionManageable contract). The service
+            // answers 404 for an absent index, which the SDK raises. The local simulator used
+            // by the tests returns success instead, so this guard is verified against the
+            // documented service behaviour rather than by the container suite.
+        }
     }
 
     public async Task<bool> CollectionExistsAsync(string name, CancellationToken cancellationToken = default)

@@ -55,6 +55,18 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task DeleteCollection_Missing_IsNoOp()
+    {
+        // The ICollectionManageable contract makes delete-of-missing a no-op; the Azure SDK
+        // surfaces the service's 404 as a RequestFailedException, so the store absorbs it.
+        ICollectionManageable manageable = _sut;
+
+        await manageable.DeleteCollectionAsync(
+            $"never-created-{Guid.CreateVersion7():N}"[..24],
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
     public async Task StoreAndSearch_ReturnsRelevantResults()
     {
         var docId = $"ais-{Guid.CreateVersion7():N}";

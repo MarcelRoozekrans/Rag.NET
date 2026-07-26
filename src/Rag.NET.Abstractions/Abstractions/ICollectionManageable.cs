@@ -7,6 +7,10 @@ public interface ICollectionManageable
         int vectorDimensions,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Deletes a collection and all its records. Deleting a collection that does not
+    /// exist is a no-op.
+    /// </summary>
     Task DeleteCollectionAsync(
         string name,
         CancellationToken cancellationToken = default);

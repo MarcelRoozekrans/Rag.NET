@@ -90,7 +90,7 @@ public sealed record SearchResult
 
 `Score` semantics depend on the search mode:
 - **Semantic (pure dense):** cosine similarity in `[0, 1]` (pgvector: `1 - cosine_distance`).
-- **Hybrid via `IHybridSearchable`:** the score comes from the backend (Azure AI Search uses its own BM25+vector fusion score; values are not bounded to `[0, 1]`).
+- **Hybrid via `IHybridSearchable`:** the score comes from the backend (Azure AI Search uses its own BM25+vector fusion score, not bounded to `[0, 1]`; Weaviate returns a relative-score-fusion value in `[0, 1]`).
 - **Hybrid via in-memory BM25 fallback:** Reciprocal Rank Fusion score, typically in `(0, 0.05]`.
 
 ## Semantic search
@@ -139,11 +139,11 @@ flowchart TD
 | `IVectorStore` also implements `IHybridSearchable` | Calls `HybridSearchAsync` — the backend handles fusion natively |
 | `IVectorStore` does not implement `IHybridSearchable` | Dense search and in-memory BM25 run concurrently; results merged via Reciprocal Rank Fusion |
 
-Azure AI Search implements `IHybridSearchable` and performs server-side BM25+vector fusion. pgvector and Qdrant do not; they fall back to the in-memory BM25 index maintained by `RagPipeline`.
+Azure AI Search and Weaviate implement `IHybridSearchable` and perform server-side BM25+vector fusion. pgvector and Qdrant do not; they fall back to the in-memory BM25 index maintained by `RagPipeline`.
 
 ### In-memory BM25 index
 
-`RagPipeline` maintains a thread-safe `InMemoryBm25Index` using BM25 parameters k1=1.5, b=0.75 (Lucene defaults). Every chunk stored via `IngestAsync` is indexed automatically. The index is process-local by default — it is rebuilt each time the application starts. To persist the index across restarts without re-ingestion, see [SQLite Persistence](#sqlite-persistence) below. For stores that need persistent keyword search without native hybrid support, use Azure AI Search.
+`RagPipeline` maintains a thread-safe `InMemoryBm25Index` using BM25 parameters k1=1.5, b=0.75 (Lucene defaults). Every chunk stored via `IngestAsync` is indexed automatically. The index is process-local by default — it is rebuilt each time the application starts. To persist the index across restarts without re-ingestion, see [SQLite Persistence](#sqlite-persistence) below. For stores that need persistent keyword search without native hybrid support, use Azure AI Search or Weaviate.
 
 ### Reciprocal Rank Fusion (RRF)
 
@@ -180,6 +180,9 @@ services.AddRagNet(rag =>
     // Qdrant: named sparse vector "splade" next to the dense vector on the same points.
     rag.UseQdrant("localhost", 6334, "docs", vectorDimensions: 1536, enableSparseVectors: true);
 
+    // Or Pinecone: sparse values on the same records (dotproduct serverless index):
+    // rag.UsePinecone("api-key", "docs", 1536, o => o.EnableSparseVectors = true);
+
     // Or in-process (tests / small corpora):
     // rag.Services.AddSingleton<IVectorStore>(new InMemoryVectorStore());
 });
@@ -203,10 +206,10 @@ var results = await pipeline.RetrieveAsync("ISO 27001 compliance checklist", new
 ### Behaviour and degradation
 
 - `RetrievalOptions.UseSparseSearch` — `null` (default) follows `UseHybridSearch`; `false` disables the sparse arm per call. `true` without `UseHybridSearch` has no effect: sparse search only participates in the ensemble.
-- The sparse arm runs only when an `ISparseEmbeddingGenerator` is registered **and** the store implements `ISparseSearchable` (Qdrant with `enableSparseVectors: true`, or `InMemoryVectorStore`). Otherwise hybrid search behaves exactly as the two-arm dense+BM25 fusion above.
+- The sparse arm runs only when an `ISparseEmbeddingGenerator` is registered **and** the store implements `ISparseSearchable` (Qdrant with `enableSparseVectors: true`, Pinecone with `EnableSparseVectors = true`, or `InMemoryVectorStore`). Otherwise hybrid search behaves exactly as the two-arm dense+BM25 fusion above.
 - Degraded, never broken: sparse encoding or search failures are logged and the remaining arms serve the request; sparse ingestion failures fall back to dense-only storage.
 - Qdrant sparse mode uses deterministic point ids derived from `(DocumentId, ChunkIndex)`, making chunk upserts idempotent. Collections created without sparse support must be recreated to enable it.
-- PgVector sparse storage is deferred — use Qdrant or the in-memory store for SPLADE today.
+- PgVector sparse storage is deferred — use Qdrant, Pinecone, or the in-memory store for SPLADE today. Qdrant is the most exercised path; Pinecone's sparse *write* path is covered by construction only (Pinecone Local rejects sparse writes, so it is untested against a live serverless index — see [Vector stores — Pinecone](vector-stores.md#sparse-vectors-splade-1)).
 
 ## Hypothetical Document Embeddings (HyDE)
 

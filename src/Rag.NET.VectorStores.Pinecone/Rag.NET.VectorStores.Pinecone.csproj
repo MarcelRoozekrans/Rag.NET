@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.VectorStores.Pinecone</RootNamespace>
+    <PackageId>Rag.NET.VectorStores.Pinecone</PackageId>
+    <Description>Pinecone vector store for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <!-- Pinned to 3.1.0, NOT the newest 4.0.2: the 4.x control-plane models mark
+         `vector_type` as JSON-required, but Pinecone Local's control plane omits it, so
+         CreateIndex/DescribeIndex/ListIndexes all fail to deserialize against the
+         emulator (pinecone-dotnet-client#54, open; the repo was archived 2026-07-03, so
+         no fix is coming). 3.1.0 covers everything this store needs (serverless index
+         lifecycle, upsert/query with metadata filter + sparse values, list-by-prefix,
+         namespaces).
+         VERIFIED EMPIRICALLY 2026-07-26 AGAINST PINECONE LOCAL ONLY — no live Pinecone
+         account was available, so the real-service path is unverified here. 3.1.0 pins
+         X-Pinecone-API-Version 2025-01, which is already past Pinecone's 12-month
+         guaranteed support window; porting to 4.x (source-breaking: MetricType,
+         DescribeIndex/List response models) becomes necessary if 2025-01 is retired or
+         if 2025-04+ features are needed — native sparse indexes above all. That port
+         also means giving up Pinecone Local coverage for index management unless #54 is
+         fixed upstream or worked around. -->
+    <PackageReference Include="Pinecone.Client" Version="3.1.0" />
+    <!-- Lifts Pinecone.Client's transitive Grpc.Net.ClientFactory 2.63.0 (repo convention
+         wildcard, matching Rag.NET.Api.Grpc.Client): 2.63.0 and earlier trigger the
+         Microsoft.Extensions.Http.Resilience known-issue build warning in consumers that
+         also reference the resilience handler (e.g. via the Weaviate/Chroma stores). -->
+    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.VectorStores.Pinecone.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

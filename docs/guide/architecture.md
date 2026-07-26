@@ -122,7 +122,7 @@ public interface IVectorStore
 
 ### `IHybridSearchable`
 
-Optional interface that vector stores may implement to provide native hybrid search (e.g., Azure AI Search BM25 + vector). When a store implements both `IVectorStore` and `IHybridSearchable`, the pipeline uses `HybridSearchAsync` directly instead of the in-memory BM25 fallback.
+Optional interface that vector stores may implement to provide native hybrid search (e.g., Azure AI Search or Weaviate BM25 + vector). When a store implements both `IVectorStore` and `IHybridSearchable`, the pipeline uses `HybridSearchAsync` directly instead of the in-memory BM25 fallback.
 
 ```csharp
 public interface IHybridSearchable
