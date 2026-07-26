@@ -17,6 +17,11 @@
          this store needs (serverless index lifecycle, upsert/query with metadata filter
          + sparse values, list-by-prefix, namespaces). Verified empirically 2026-07-26. -->
     <PackageReference Include="Pinecone.Client" Version="3.1.0" />
+    <!-- Lifts Pinecone.Client's transitive Grpc.Net.ClientFactory 2.63.0 (repo convention
+         wildcard, matching Rag.NET.Api.Grpc.Client): 2.63.0 and earlier trigger the
+         Microsoft.Extensions.Http.Resilience known-issue build warning in consumers that
+         also reference the resilience handler (e.g. via the Weaviate/Chroma stores). -->
+    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.*" />
   </ItemGroup>
 
   <ItemGroup>
