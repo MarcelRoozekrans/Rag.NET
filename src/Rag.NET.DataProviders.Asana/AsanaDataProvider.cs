@@ -89,7 +89,9 @@ public sealed class AsanaDataProvider : FileContentProviderBase
         while (offset is not null);
     }
 
-    private static FileHandle ToHandle(AsanaTask task, IReadOnlyList<AsanaTask> subtasks)
+    // Instance rather than static so the workspace and project the request was scoped to — the
+    // container context callers filter on — are reachable from _options.
+    private FileHandle ToHandle(AsanaTask task, IReadOnlyList<AsanaTask> subtasks)
     {
         var markdown = ToMarkdown(task, subtasks);
         return new FileHandle(
@@ -97,7 +99,37 @@ public sealed class AsanaDataProvider : FileContentProviderBase
             FileName:         $"{FileNameSanitizer.Sanitize(task.Name, $"task-{task.Gid}")}.md",
             ETag:             task.ModifiedAt ?? string.Empty,
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata:         BuildMetadata(task));
+    }
+
+    /// <summary>
+    /// The task's filterable fields. These are <i>also</i> rendered into the Markdown body by
+    /// <see cref="ToMarkdown"/> — the body drives semantic recall, the tags drive filtering, and
+    /// removing either would silently degrade the other.
+    /// <para>
+    /// <c>completed</c> is written as the literal <c>"true"</c>/<c>"false"</c>, deliberately
+    /// unlike the Markdown line's <c>bool.ToString()</c> rendering (<c>"True"</c>), which would
+    /// not match ordinally in <c>HasTagSpec</c>.
+    /// </para>
+    /// <para>
+    /// <c>workspace</c> is unconditional because <see cref="AsanaOptions.WorkspaceGid"/> is
+    /// <c>required</c> and every request is scoped by it; <c>project</c> appears only when
+    /// <see cref="AsanaOptions.ProjectGid"/> narrowed the enumeration to one project.
+    /// </para>
+    /// </summary>
+    private Dictionary<string, string> BuildMetadata(AsanaTask task)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["completed"] = task.Completed ? "true" : "false",
+        };
+        if (!string.IsNullOrEmpty(task.Assignee?.Name)) metadata["assignee"]   = task.Assignee.Name;
+        if (!string.IsNullOrEmpty(task.DueOn))          metadata["due_on"]     = task.DueOn;
+        if (!string.IsNullOrEmpty(task.ModifiedAt))     metadata["updated_at"] = task.ModifiedAt;
+        if (!string.IsNullOrEmpty(_options.WorkspaceGid)) metadata["workspace"] = _options.WorkspaceGid;
+        if (!string.IsNullOrEmpty(_options.ProjectGid))   metadata["project"]   = _options.ProjectGid;
+        return metadata;
     }
 
     private static string ToMarkdown(AsanaTask task, IReadOnlyList<AsanaTask> subtasks)

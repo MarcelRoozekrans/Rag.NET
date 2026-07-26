@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Jira;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Rest;
@@ -471,6 +472,148 @@ public sealed class JiraDataProviderTests
         Assert.True(single.IsFailure);
         var err = Assert.IsType<RagError.HttpFailed>(single.Error);
         Assert.Equal(HttpStatusCode.InternalServerError, err.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsIssueKeys()
+    {
+        const string json = """
+            {
+              "issues": [
+                {
+                  "id": "10001",
+                  "key": "PROJ-1",
+                  "fields": {
+                    "summary": "Fix login bug",
+                    "description": "Users cannot login",
+                    "status": { "name": "In Progress" },
+                    "priority": { "name": "High" },
+                    "assignee": { "displayName": "Alice" },
+                    "comment": { "comments": [] },
+                    "updated": "2026-03-01T10:00:00Z"
+                  }
+                }
+              ],
+              "total": 1
+            }
+            """;
+        // No ProjectKey configured — project is still emitted, derived from the issue key.
+        var sut = MakeProvider(json);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("PROJ-1",               metadata["issue_key"]);
+        Assert.Equal("In Progress",          metadata["status"]);
+        Assert.Equal("High",                 metadata["priority"]);
+        Assert.Equal("Alice",                metadata["assignee"]);
+        Assert.Equal("2026-03-01T10:00:00Z", metadata["updated_at"]);
+        Assert.Equal("PROJ",                 metadata["project"]);
+        Assert.Equal(6, metadata.Count);
+
+        // The same values stay in the Markdown body — that is what gets embedded.
+        var content = await ReadContentAsync(results[0].Value);
+        Assert.Contains("**Status:** In Progress", content, StringComparison.Ordinal);
+        Assert.Contains("**Priority:** High", content, StringComparison.Ordinal);
+        Assert.Contains("**Assignee:** Alice", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_NullPriorityAndAssignee_MetadataOmitsThem()
+    {
+        const string json = """
+            {
+              "issues": [
+                {
+                  "id": "10002",
+                  "key": "PROJ-2",
+                  "fields": {
+                    "summary": "Bare issue",
+                    "description": null,
+                    "status": { "name": "Open" },
+                    "priority": null,
+                    "assignee": null,
+                    "comment": null,
+                    "updated": "2026-03-10T08:00:00Z"
+                  }
+                }
+              ],
+              "total": 1
+            }
+            """;
+        var sut = MakeProvider(json);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("PROJ-2", metadata["issue_key"]);
+        Assert.Equal("Open",   metadata["status"]);
+        Assert.Equal("PROJ",   metadata["project"]);
+        Assert.False(metadata.ContainsKey("priority"));
+        Assert.False(metadata.ContainsKey("assignee"));
+        Assert.Equal(4, metadata.Count);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_CustomJqlSpanningProjects_ProjectTracksEachIssue()
+    {
+        // The case that decided deriving project from the issue key rather than from options:
+        // a caller-supplied Jql can span projects with ProjectKey unset, where a single
+        // options-derived value would be wrong for most results.
+        const string json = """
+            {
+              "issues": [
+                {
+                  "id": "1",
+                  "key": "ALPHA-1",
+                  "fields": {
+                    "summary": "In Alpha",
+                    "description": null,
+                    "status": { "name": "Open" },
+                    "priority": null,
+                    "assignee": null,
+                    "comment": null,
+                    "updated": "2026-03-01T10:00:00Z"
+                  }
+                },
+                {
+                  "id": "2",
+                  "key": "BETA-27",
+                  "fields": {
+                    "summary": "In Beta",
+                    "description": null,
+                    "status": { "name": "Done" },
+                    "priority": null,
+                    "assignee": null,
+                    "comment": null,
+                    "updated": "2026-03-02T10:00:00Z"
+                  }
+                }
+              ],
+              "total": 2
+            }
+            """;
+        var sut = MakeProvider(json, new JiraOptions
+        {
+            BaseUrl = "https://test.atlassian.net",
+            Email   = "test@test.com",
+            Jql     = "labels = urgent order by updated DESC"
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal("ALPHA", results[0].Value.Metadata!["project"]);
+        Assert.Equal("BETA",  results[1].Value.Metadata!["project"]);
     }
 
     private static async Task<string> ReadContentAsync(FileEntry entry)

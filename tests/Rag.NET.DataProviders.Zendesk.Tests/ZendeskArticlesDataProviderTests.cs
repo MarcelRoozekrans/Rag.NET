@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.DataProviders.Zendesk;
 using Rag.NET.Models;
 using Xunit;
@@ -419,6 +420,69 @@ public sealed class ZendeskArticlesDataProviderTests
         var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
 
         Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsArticleKeysIncludingSectionId()
+    {
+        const string articlesJson = """
+            {
+              "articles": [
+                { "id": 300, "title": "Getting started", "body": "Welcome.", "updated_at": "2026-01-01T00:00:00Z", "section_id": 42 }
+              ],
+              "end_time": 1735700000,
+              "count": 1
+            }
+            """;
+
+        var handler = new ArticleFakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v2/help_center/incremental/articles.json"] = articlesJson
+        });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("300",                  metadata["article_id"]);
+        // SectionId has been parsed off the wire since the connector was written and used nowhere.
+        Assert.Equal("42",                   metadata["section_id"]);
+        Assert.Equal("2026-01-01T00:00:00Z", metadata["updated_at"]);
+        Assert.Equal("test",                 metadata["subdomain"]);
+        Assert.Equal(4, metadata.Count);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_NullSectionId_MetadataOmitsIt()
+    {
+        const string articlesJson = """
+            {
+              "articles": [
+                { "id": 301, "title": "Orphan", "body": "No section.", "updated_at": "2026-01-05T00:00:00Z", "section_id": null }
+              ],
+              "end_time": 1735700000,
+              "count": 1
+            }
+            """;
+
+        var handler = new ArticleFakeHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/v2/help_center/incremental/articles.json"] = articlesJson
+        });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("301", metadata["article_id"]);
+        Assert.False(metadata.ContainsKey("section_id"));
+        Assert.Equal(3, metadata.Count);
     }
 }
 

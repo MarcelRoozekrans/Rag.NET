@@ -1,3 +1,4 @@
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.DataProviders.Web;
 using Xunit;
 
@@ -122,5 +123,40 @@ public sealed class SitemapDataProviderTests
 
         await using var stream = await entries[0].Value.OpenContentAsync(TestContext.Current.CancellationToken);
         Assert.True(stream.CanSeek, "stream must be seekable for parent-document retrieval");
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsUrlAndLastmod()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+              <url>
+                <loc>https://example.com/page1</loc>
+                <lastmod>2024-01-15</lastmod>
+              </url>
+              <url><loc>https://example.com/page2</loc></url>
+            </urlset>
+            """;
+        var client = MakeClient(new Dictionary<string, string>(StringComparer.Ordinal)
+            { ["https://example.com/sitemap.xml"] = xml });
+        var sut = new SitemapDataProvider("https://example.com/sitemap.xml", client);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        foreach (var entry in entries)
+            MetadataContract.AssertValid(entry.Value.Metadata, entry.Value.Id.Value);
+
+        var first = entries[0].Value.Metadata!;
+        Assert.Equal("https://example.com/page1", first["url"]);
+        Assert.Equal("2024-01-15", first["lastmod"]);
+        Assert.Equal(2, first.Count);
+
+        // <lastmod> is optional in the sitemap protocol — omitted, never written empty.
+        var second = entries[1].Value.Metadata!;
+        Assert.Equal("https://example.com/page2", second["url"]);
+        Assert.False(second.ContainsKey("lastmod"));
+        _ = Assert.Single(second);
     }
 }

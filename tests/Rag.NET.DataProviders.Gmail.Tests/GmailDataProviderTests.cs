@@ -5,6 +5,7 @@ using MimeKit;
 using NSubstitute;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Gmail;
+using Rag.NET.DataProviders.Testing;
 using Xunit;
 
 namespace Rag.NET.DataProviders.Gmail.Tests;
@@ -276,6 +277,61 @@ public sealed class GmailDataProviderTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await sut.GetFilesAsync(cts.Token)
                 .ToListAsync(cts.Token));
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsFromDateAndHasAttachments()
+    {
+        var message = MakeMessage();
+        var (client, _) = MakeMocks([new UniqueId(1)], message);
+        var sut = MakeProvider(client);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("\"Alice\" <alice@example.com>", metadata["from"]);
+        // ISO-8601 round-trip, not the header's RFC 822 rendering.
+        Assert.Equal("2026-03-01T10:00:00.0000000+00:00", metadata["date"]);
+        Assert.Equal("false", metadata["has_attachments"]);
+        Assert.Equal(3, metadata.Count);
+
+        // From and Date stay in the Markdown header — that is what gets embedded.
+        var content = await ReadContentAsync(results[0].Value);
+        Assert.Contains("**From:**", content, StringComparison.Ordinal);
+        Assert.Contains("**Date:**", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_MessageWithAttachment_HasAttachmentsIsTrue()
+    {
+        var message = MakeMessage();
+        var multipart = new Multipart("mixed")
+        {
+            new TextPart("plain") { Text = "Body" },
+            new MimePart("application", "octet-stream")
+            {
+                Content                 = new MimeContent(new MemoryStream([1, 2, 3])),
+                ContentDisposition      = new ContentDisposition(ContentDisposition.Attachment),
+                ContentTransferEncoding = ContentEncoding.Base64,
+                FileName                = "data.bin",
+            },
+        };
+        message.Body = multipart;
+
+        var (client, _) = MakeMocks([new UniqueId(1)], message);
+        var sut = MakeProvider(client);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        // The literal "true", never bool.ToString()'s "True" — HasTagSpec matches ordinally.
+        Assert.Equal("true", metadata["has_attachments"]);
     }
 
     private static async Task<string> ReadContentAsync(FileEntry file)
