@@ -6,21 +6,21 @@ sidebar_position: 6
 
 # Vector Stores
 
-The vector store is the persistence layer for embedded chunks. Rag.NET ships four implementations, each registered via a fluent extension method on `RagBuilder`. The interface is designed to be swapped without changing any pipeline code.
+The vector store is the persistence layer for embedded chunks. Rag.NET ships five implementations, each registered via a fluent extension method on `RagBuilder`. The interface is designed to be swapped without changing any pipeline code.
 
 ## Feature matrix
 
-| Feature | `PgVectorStore` | `QdrantVectorStore` | `AzureAISearchVectorStore` | `WeaviateVectorStore` |
-|---------|:-:|:-:|:-:|:-:|
-| Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` | `Rag.NET.VectorStores.Weaviate` |
-| Dense (semantic) search | Yes | Yes | Yes | Yes |
-| Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) |
-| Sparse search (SPLADE, `ISparseSearchable`) | No (deferred) | Yes (`enableSparseVectors: true`) | No | No |
-| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) | Yes (`where` on `meta_*` props) |
-| `ICollectionManageable` | Yes | Yes | Yes | Yes |
-| Similarity function | Cosine (via `<=>`) | Cosine | Cosine | Cosine |
-| Index algorithm | IVFFlat / HNSW (pgvector) | HNSW | HNSW | HNSW |
-| Persistence | PostgreSQL | Qdrant server | Azure managed | Weaviate server |
+| Feature | `PgVectorStore` | `QdrantVectorStore` | `AzureAISearchVectorStore` | `WeaviateVectorStore` | `ChromaVectorStore` |
+|---------|:-:|:-:|:-:|:-:|:-:|
+| Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` | `Rag.NET.VectorStores.Weaviate` | `Rag.NET.VectorStores.Chroma` |
+| Dense (semantic) search | Yes | Yes | Yes | Yes | Yes |
+| Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) | No — BM25 fallback |
+| Sparse search (SPLADE, `ISparseSearchable`) | No (deferred) | Yes (`enableSparseVectors: true`) | No | No | No |
+| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) | Yes (`where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) |
+| `ICollectionManageable` | Yes | Yes | Yes | Yes | Yes |
+| Similarity function | Cosine (via `<=>`) | Cosine | Cosine | Cosine | Cosine |
+| Index algorithm | IVFFlat / HNSW (pgvector) | HNSW | HNSW | HNSW | HNSW |
+| Persistence | PostgreSQL | Qdrant server | Azure managed | Weaviate server | Chroma server |
 
 ## Interface hierarchy
 
@@ -47,6 +47,8 @@ classDiagram
     }
     class WeaviateVectorStore {
     }
+    class ChromaVectorStore {
+    }
     IVectorStore <|.. PgVectorStore
     ICollectionManageable <|.. PgVectorStore
     IVectorStore <|.. QdrantVectorStore
@@ -57,11 +59,13 @@ classDiagram
     IVectorStore <|.. WeaviateVectorStore
     IHybridSearchable <|.. WeaviateVectorStore
     ICollectionManageable <|.. WeaviateVectorStore
+    IVectorStore <|.. ChromaVectorStore
+    ICollectionManageable <|.. ChromaVectorStore
 ```
 
 ## Shared interface
 
-All four implement `IVectorStore`:
+All five implement `IVectorStore`:
 
 ```csharp
 public interface IVectorStore
@@ -81,7 +85,7 @@ public interface IVectorStore
 
 ## Collection management
 
-All four also implement `ICollectionManageable`, registered alongside `IVectorStore` in the DI container:
+All five also implement `ICollectionManageable`, registered alongside `IVectorStore` in the DI container:
 
 ```csharp
 public interface ICollectionManageable
@@ -363,6 +367,69 @@ Multiple filter entries are wrapped in a single `And` operand. Note that auto-sc
 ### Multi-tenancy
 
 Set `WeaviateOptions.Tenant` to isolate data per tenant: the class is created with `multiTenancyConfig: {enabled: true}`, the tenant itself is created during initialisation (idempotent), and every store/search/delete carries it. Two stores configured with different tenants on the same class never see each other's chunks.
+
+---
+
+## Chroma
+
+**Package:** `Rag.NET.VectorStores.Chroma`
+
+Stores chunks as records of a single Chroma collection via the REST v2 API — deliberately the lightweight, **dense-only** adapter. Implements `IVectorStore` and `ICollectionManageable`, served by one singleton. Record ids are `{documentId}:{chunkIndex}`, so re-ingesting a chunk upserts (replaces) it; the chunk text rides as the record's document and metadata carries the chunk metadata plus `document_id` and `chunk_index`.
+
+### Local quickstart
+
+```bash
+docker run -p 8000:8000 chromadb/chroma
+```
+
+### Setup
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseChroma(
+        endpoint:       new Uri("http://localhost:8000"),
+        collectionName: "rag-chunks"));   // 3-512 chars: letters/digits/._-, alphanumeric ends
+```
+
+The collection is created automatically (with the cosine space) on first use; Chroma infers vector dimensions from the first upsert, so no dimension parameter is needed. Optional settings via the `configure` callback:
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseChroma(new Uri("http://localhost:8000"), "rag-chunks", options =>
+    {
+        options.Tenant   = "my_tenant";     // default: default_tenant
+        options.Database = "my_database";   // default: default_database
+        options.ApiKey   = "static-token";  // sent as Authorization: Bearer
+    }));
+```
+
+Chroma addresses collections by UUID internally; the store resolves the configured name to its UUID once and caches it. If the collection is deleted or recreated behind the store's back, the next operation transparently re-resolves and retries once.
+
+### Scores
+
+Chroma returns cosine `distance = 1 - cosine similarity` (0 = identical … 2 = opposite), mapped to `Score = 1 - distance`, so an identical vector scores 1.0 and an orthogonal one 0.0 (opposite vectors go negative). `MinScore` is applied to the converted score.
+
+### Hybrid search
+
+`ChromaVectorStore` does not implement `IHybridSearchable` (or `ISparseSearchable`) — Chroma has no native BM25+vector fusion for externally supplied embeddings. When `UseHybridSearch = true`, the pipeline falls back to the in-memory BM25 index + RRF merge; if you want *native* hybrid or sparse search, use [Qdrant](#qdrant) (sparse/SPLADE), [Weaviate](#weaviate), or [Azure AI Search](#azure-ai-search) instead. See [Retrieval — Hybrid search](retrieval.md#hybrid-search-bm25--vector).
+
+### Metadata filtering
+
+Chunk metadata keys are stored as-is on each record and filtered server-side with Chroma's `$eq` operator; multiple filter entries are composed with `$and`:
+
+```csharp
+// Generates: where: {"$and": [{"department": {"$eq": "finance"}}, {"team": {"$eq": "core"}}]}
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    MetadataFilter = new Dictionary<string, string>
+    {
+        ["department"] = "finance",
+        ["team"]       = "core",
+    },
+});
+```
+
+Note that `document_id` and `chunk_index` are reserved record-metadata keys (a same-named chunk metadata key would be overwritten by them).
 
 ---
 

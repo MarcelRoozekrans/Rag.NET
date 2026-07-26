@@ -321,6 +321,8 @@ Implement `IVectorStore` backed by ChromaDB via its REST API. Chroma is the most
 
 **Why:** Chroma is commonly used in prototyping and local development. A lightweight adapter makes Rag.NET accessible to teams already invested in Chroma.
 
+**Status:** Delivered. `ChromaVectorStore` (register with `UseChroma(endpoint, collectionName, configure?)`) serves `IVectorStore` and `ICollectionManageable` from one singleton — deliberately the lightweight dense-only adapter (no hybrid/sparse; the pipeline's BM25 fallback applies). Hand-rolled `ZeroAlloc.Rest` client against the REST v2 API (`/api/v2/tenants/{tenant}/databases/{database}/...`, defaults overridable via options, optional Bearer token). Record ids `{documentId}:{chunkIndex}` make re-ingestion upsert-replace; chunk text is the record document, metadata is stored as-is plus `document_id`/`chunk_index` and filtered server-side with `$eq`/`$and`. Collections are created with the cosine space (dimensions inferred by Chroma on first upsert) and addressed by UUID: the name→UUID resolution is cached and transparently re-resolved once when the collection is recreated behind the store's back. Scores map `1 - cosine distance` (identical vector ⇒ 1). Tested against the official image via Testcontainers.
+
 ---
 
 ### Pinecone Vector Store
@@ -1051,7 +1053,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [ ] | Evaluation Dataset Builder | Medium | `IChatClient` |
 | [ ] | A/B Testing Framework | Medium | `IRagEvaluator` |
 | [x] | Weaviate Vector Store | Medium | REST + GraphQL via `ZeroAlloc.Rest` |
-| [ ] | Chroma Vector Store | Medium | Chroma REST API |
+| [x] | Chroma Vector Store | Medium | Chroma REST API |
 | [ ] | Pinecone Vector Store | Medium | Pinecone REST API |
 | [x] | Multi-Index Federation | Medium | `IVectorStore` composition (dense-only) |
 | [x] | PDF Table Extraction | Medium | PdfPig geometry |
