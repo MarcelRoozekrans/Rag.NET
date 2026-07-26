@@ -47,7 +47,7 @@ Carried from the Milestone 1 audit and the ROADMAP follow-up debt list:
 
 ## Phases
 
-1. Phase 2.1 — Engineering Debt Sweep [pending]
+1. Phase 2.1 — Engineering Debt Sweep [complete — 2026-07-26]
 2. Phase 2.2 — Connector Metadata Consistency [pending]
 3. Phase 2.3 — PgVector Sparse Storage [pending]
 4. Phase 2.4 — Azure Document Intelligence OCR [pending]

@@ -6,25 +6,13 @@ corresponding rows in features.md.
 
 ## Recorded follow-up debts (cross-phase, from review cycles)
 
-All of these are now scheduled into **Milestone 2** rather than left open — see
-`docs/planning/MILESTONE.md` for the phase each lands in. Anything added here in future
-follows the same rule: record it with its origin, then schedule it.
+Anything added here follows one rule: record it with its origin, then schedule it into a
+phase or re-justify it. Closed items move to the list below rather than vanishing, so a
+future reader can tell the difference between "never existed" and "dealt with".
 
 - **Connector metadata consistency** (Phase 1.6): only Exchange/Linear populate the new
   `FileHandle.Metadata`; the other 19 connectors have obvious candidates (Gmail from/date,
   Teams team/channel, Zendesk status, …) currently inlined into rendered Markdown. → 2.2
-- **Graph transport-exception mapping** (Phase 1.6): raw `HttpRequestException` bypasses the
-  Result channel in all Graph connectors (Exchange inherits the sibling posture). → 2.1
-- **Shared `SanitizeFileName` helper** (Phase 1.6): two verbatim copies (Exchange, Linear)
-  plus a third divergent implementation in Gmail — extract into `Rag.NET.DataProviders`. → 2.1
-- **Embedded-message recursion** (Phase 1.5): EML `MessagePart` / MSG nested `Storage.Message`
-  are warn-and-skipped; recursing them is the natural follow-up. → 2.1
-- **PDF table dominance-guard refinement** (Phase 1.5): exempt runs averaging <= ~2 words/cell
-  to rescue full-page Key/Value tables (candidate noted in the guide). → 2.1
-- **Persistent-memory score normalization** (Phase 1.2): `PersistentConversationMemory`'s
-  MinScore filter is incompatible with federated RRF scores (documented limitation). → 2.1
-- **`ConfigureResilience` dangling pipeline** (pre-existing): registered but unconsumed
-  (documented in observability.md + resilience.md). → 2.1
 - **Fourth filename sanitizer** (Phase 2.1, Part C): `EmbeddedMessageMetadata.Sanitize` in
   `Rag.NET.Parsers.Email` duplicates `FileNameSanitizer` because that type lives in
   `Rag.NET.DataProviders`, which parsers do not reference. Behaviourally consistent bar three
@@ -35,6 +23,29 @@ follows the same rule: record it with its origin, then schedule it.
   re-exposed non-breaking space). Fix is to relocate
   `FileNameSanitizer` to `Rag.NET.Abstractions` and delete both copies — a package-layout
   change, so deliberately not done inside 2.1. → unscheduled
+- **Stack-recursive email traversal** (Phase 2.1, Part C): `MaxEmbeddedDepth` is capped at 64
+  because the embedded-message traversal recurses on the stack — ~500 levels (~40 KB of
+  crafted MIME at ~81 bytes/level) terminates the process with an uncatchable
+  `STATUS_STACK_OVERFLOW`. The ceiling is measured headroom, not a proof. Converting the
+  traversal to an explicit work queue would remove the class entirely and is the real fix if
+  a large `MaxEmbeddedDepth` is ever wanted. → unscheduled
+- **Unsanitized webhook filename** (found in the Phase 2.1 Part A review):
+  `src/Rag.NET.Api/Webhooks/GenericWebhookPayloadParser.cs:77` builds `$"{documentId}.txt"`
+  straight from an untrusted webhook payload. Different assembly (`Rag.NET.Api` does not
+  reference `Rag.NET.DataProviders`), so outside the connector scope of 2.1. → unscheduled
+
+### Closed
+
+- ~~**Graph transport-exception mapping**~~ (Phase 1.6) → closed in 2.1: `RagError.TransportFailed`
+  plus a shared `src/Shared/GraphErrorMapping.cs` linked into all four Graph connectors.
+- ~~**Shared `SanitizeFileName` helper**~~ (Phase 1.6) → closed in 2.1: `FileNameSanitizer`
+  adopted by nine connectors, six of which previously sanitized nothing.
+- ~~**Embedded-message recursion**~~ (Phase 1.5) → closed in 2.1, bounded by depth and node caps.
+- ~~**PDF table dominance-guard refinement**~~ (Phase 1.5) → closed in 2.1 at a ≤ 2 words/cell
+  exemption.
+- ~~**Persistent-memory score normalization**~~ (Phase 1.2) → closed in 2.1 via `IScoreScaleAware`.
+- ~~**`ConfigureResilience` dangling pipeline**~~ (pre-existing) → closed in 2.1: decorates
+  `IEmbeddingGenerator` and `IVectorStore`.
 
 ## Milestone 1: Feature Backlog [status: complete]
 **Goal:** Work the remaining feature backlog to completion — chunking, retrieval techniques, ingestion ops, resilience, parsers, connectors, and vector stores.
@@ -89,8 +100,10 @@ follows the same rule: record it with its origin, then schedule it.
 - [ ] The follow-up debt list above empty or explicitly re-justified
 - [ ] All tests passing
 
-### Phase 2.1: Engineering Debt Sweep [status: pending]
+### Phase 2.1: Engineering Debt Sweep [status: complete]
 **Items:** shared filename sanitizer; Graph transport-exception mapping; embedded-message recursion (EML/MSG); PDF table dominance-guard refinement; persistent-memory score normalization; `ConfigureResilience` wiring
+**Plan:** `docs/plans/2026-07-26-engineering-debt-sweep-design.md` + `-implementation.md`
+**Completed:** 2026-07-26 (three new debts recorded above: a fourth filename sanitizer, the stack-recursive email traversal behind the depth ceiling, and an unsanitized webhook filename)
 
 ### Phase 2.2: Connector Metadata Consistency [status: pending]
 **Items:** populate `FileHandle.Metadata` across the remaining 19 of 21 connectors
