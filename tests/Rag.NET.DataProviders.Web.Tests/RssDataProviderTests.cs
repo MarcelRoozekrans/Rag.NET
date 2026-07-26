@@ -1,3 +1,4 @@
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.DataProviders.Web;
 using Xunit;
 
@@ -199,5 +200,90 @@ public sealed class RssDataProviderTests
 
         await using var stream = await entries[0].Value.OpenContentAsync(TestContext.Current.CancellationToken);
         Assert.True(stream.CanSeek, "stream must be seekable for parent-document retrieval");
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Rss2_Metadata_PinsUrlPublishedAtAndAuthor()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <guid>https://example.com/post-1</guid>
+                  <link>https://example.com/post-1</link>
+                  <author>alice@example.com (Alice)</author>
+                  <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+                </item>
+                <item>
+                  <guid>https://example.com/post-2</guid>
+                  <link>https://example.com/post-2</link>
+                </item>
+              </channel>
+            </rss>
+            """;
+        var sut = new RssDataProvider("https://example.com/feed.rss",
+            MakeClient("https://example.com/feed.rss", xml));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        foreach (var entry in entries)
+            MetadataContract.AssertValid(entry.Value.Metadata, entry.Value.Id.Value);
+
+        var first = entries[0].Value.Metadata!;
+        Assert.Equal("https://example.com/post-1",     first["url"]);
+        Assert.Equal("Mon, 01 Jan 2024 00:00:00 GMT",  first["published_at"]);
+        Assert.Equal("alice@example.com (Alice)",      first["author"]);
+        Assert.Equal(3, first.Count);
+
+        // Both optional elements absent → omitted, never written empty.
+        var second = entries[1].Value.Metadata!;
+        Assert.Equal("https://example.com/post-2", second["url"]);
+        Assert.False(second.ContainsKey("published_at"));
+        Assert.False(second.ContainsKey("author"));
+        _ = Assert.Single(second);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Atom_Metadata_PinsUrlPublishedAtAndAuthor()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <id>https://example.com/post-1</id>
+                <link href="https://example.com/post-1"/>
+                <author><name>Alice</name></author>
+                <published>2024-01-01T00:00:00Z</published>
+                <updated>2024-02-02T00:00:00Z</updated>
+              </entry>
+              <entry>
+                <id>https://example.com/post-2</id>
+                <link href="https://example.com/post-2"/>
+                <updated>2024-03-03T00:00:00Z</updated>
+              </entry>
+            </feed>
+            """;
+        var sut = new RssDataProvider("https://example.com/atom.xml",
+            MakeClient("https://example.com/atom.xml", xml));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        foreach (var entry in entries)
+            MetadataContract.AssertValid(entry.Value.Metadata, entry.Value.Id.Value);
+
+        var first = entries[0].Value.Metadata!;
+        Assert.Equal("https://example.com/post-1", first["url"]);
+        // <published> wins over <updated> when both are present.
+        Assert.Equal("2024-01-01T00:00:00Z", first["published_at"]);
+        Assert.Equal("Alice",                first["author"]);
+
+        // No <published> → falls back to <updated>; no <author> → omitted.
+        var second = entries[1].Value.Metadata!;
+        Assert.Equal("2024-03-03T00:00:00Z", second["published_at"]);
+        Assert.False(second.ContainsKey("author"));
+        Assert.Equal(2, second.Count);
     }
 }

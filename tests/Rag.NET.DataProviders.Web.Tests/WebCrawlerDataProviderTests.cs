@@ -1,3 +1,4 @@
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.DataProviders.Web;
 using Xunit;
 
@@ -167,5 +168,33 @@ public sealed class WebCrawlerDataProviderTests
 
         Assert.Equal(2, entries.Count); // seed + /exists; /missing is skipped
         Assert.DoesNotContain(entries, e => e.Value.Id.Value.Contains("missing", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsUrlDepthAndHost()
+    {
+        var sut = new WebCrawlerDataProvider(SeedUrl, MakeClient(),
+            new WebCrawlerOptions { RespectRobotsTxt = false });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        foreach (var entry in entries)
+            MetadataContract.AssertValid(entry.Value.Metadata, entry.Value.Id.Value);
+
+        var byUrl = entries.ToDictionary(
+            e => e.Value.Id.Value, e => e.Value.Metadata!, StringComparer.Ordinal);
+
+        var seed = byUrl[SeedUrl];
+        Assert.Equal(SeedUrl,       seed["url"]);
+        Assert.Equal("0",           seed["depth"]);
+        Assert.Equal("example.com", seed["host"]);
+        Assert.Equal(3, seed.Count);
+
+        // A page reached by following one link is one hop deeper than the seed.
+        var page1 = byUrl["https://example.com/page1"];
+        Assert.Equal("https://example.com/page1", page1["url"]);
+        Assert.Equal("1",                         page1["depth"]);
+        Assert.Equal("example.com",               page1["host"]);
     }
 }

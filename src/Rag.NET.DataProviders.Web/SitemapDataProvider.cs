@@ -70,9 +70,23 @@ public sealed class SitemapDataProvider : IFileContentProvider
                         buffer.Position = 0;
                         return (Stream)buffer;
                     },
-                    ETag: lastMod));
+                    ETag: lastMod,
+                    Metadata: BuildMetadata(loc, lastMod)));
             }
         }
+    }
+
+    /// <summary>
+    /// Tags for a sitemap URL. <c>lastmod</c> is passed through verbatim — the sitemap protocol
+    /// permits both a full W3C datetime and a bare date, and normalising would discard which
+    /// precision the site actually published.
+    /// </summary>
+    private static Dictionary<string, string>? BuildMetadata(string url, string? lastMod)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(url))     metadata["url"]     = url;
+        if (!string.IsNullOrEmpty(lastMod)) metadata["lastmod"] = lastMod;
+        return metadata.Count == 0 ? null : metadata;
     }
 
     private static string InferFileName(string url)
