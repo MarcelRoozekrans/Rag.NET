@@ -263,9 +263,7 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
     private FileHandle ToHandle(string folderId, Message message)
     {
         var messageId = message.Id!;
-        var fileName  = string.IsNullOrWhiteSpace(message.Subject)
-            ? $"message-{messageId}.eml"
-            : $"{SanitizeFileName(message.Subject)}.eml";
+        var fileName  = $"{FileNameSanitizer.Sanitize(message.Subject, $"message-{messageId}")}.eml";
 
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -294,15 +292,5 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
             .GetAsync(cancellationToken: ct).ConfigureAwait(false);
         return stream ?? throw new InvalidOperationException(
             $"Graph returned no MIME content for message '{messageId}'.");
-    }
-
-    private static string SanitizeFileName(string subject)
-    {
-        // Mirrors the Gmail connector: replace invalid filename chars with underscore.
-        var invalid = Path.GetInvalidFileNameChars();
-        var safe    = new char[subject.Length];
-        for (int i = 0; i < subject.Length; i++)
-            safe[i] = Array.IndexOf(invalid, subject[i]) >= 0 ? '_' : subject[i];
-        return new string(safe);
     }
 }

@@ -256,7 +256,8 @@ public sealed class LinearDataProvider : FileContentProviderBase
 
         return new FileHandle(
             Id:               issue.Identifier,
-            FileName:         $"{SanitizeFileName($"{issue.Identifier} {issue.Title}")}.md",
+            FileName:         $"{FileNameSanitizer.Sanitize(
+                $"{issue.Identifier} {issue.Title}", $"issue-{issue.Identifier}")}.md",
             ETag:             issue.UpdatedAt.ToString("o", CultureInfo.InvariantCulture),
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
@@ -326,15 +327,5 @@ public sealed class LinearDataProvider : FileContentProviderBase
             var createdAt = comment.CreatedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
             sb.AppendLine(CultureInfo.InvariantCulture, $"**{author}** ({createdAt}): {comment.Body}");
         }
-    }
-
-    private static string SanitizeFileName(string name)
-    {
-        // Mirrors the sibling connectors: replace invalid filename chars with underscore.
-        var invalid = Path.GetInvalidFileNameChars();
-        var safe    = new char[name.Length];
-        for (int i = 0; i < name.Length; i++)
-            safe[i] = Array.IndexOf(invalid, name[i]) >= 0 ? '_' : name[i];
-        return new string(safe);
     }
 }
