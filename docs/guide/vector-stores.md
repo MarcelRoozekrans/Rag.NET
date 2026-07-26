@@ -108,6 +108,12 @@ if (!await manageable.CollectionExistsAsync("rag-index"))
     await manageable.CreateCollectionAsync("rag-index", vectorDimensions: 1536);
 ```
 
+`DeleteCollectionAsync` is uniform across all six stores: deleting a collection that does not
+exist is a no-op, so teardown code needs no exists-probe. The backends disagree underneath —
+Weaviate and PgVector are idempotent themselves, while Chroma answers 404, Pinecone raises
+`NotFoundError`, Qdrant reports `result: false`, and Azure AI Search answers 404 — and each
+store absorbs its own flavour.
+
 ---
 
 ## PostgreSQL + pgvector

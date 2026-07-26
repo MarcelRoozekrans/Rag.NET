@@ -160,4 +160,17 @@ public class QdrantVectorStoreTests : IAsyncLifetime
         await manageable.DeleteCollectionAsync("temp-collection", TestContext.Current.CancellationToken);
         Assert.False(await manageable.CollectionExistsAsync("temp-collection", TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task DeleteCollection_Missing_IsNoOp()
+    {
+        // The ICollectionManageable contract makes delete-of-missing a no-op. Qdrant answers
+        // result:false for an absent collection, which QdrantClient surfaces as an exception —
+        // the store has to absorb exactly that case.
+        ICollectionManageable manageable = _sut;
+
+        await manageable.DeleteCollectionAsync(
+            $"never-created-{Guid.CreateVersion7():N}",
+            TestContext.Current.CancellationToken);
+    }
 }
