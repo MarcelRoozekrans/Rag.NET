@@ -736,6 +736,122 @@ Both filters are applied before the file content is downloaded, so excluded file
 
 ---
 
+## Metadata
+
+Every connector attaches a small dictionary of tags to each entry it emits — `FileHandle.Metadata`, or `FileEntry.Metadata` for the three Web providers, which do not extend `FileContentProviderBase`. `IngestFromProviderAsync` merges those tags into `DocumentMetadata.Tags`, and `MetadataBehavior` copies them onto every chunk produced from the document. They are what `HasTagSpec` filters on at query time.
+
+Where a connector already renders a value into the Markdown body it emits (`**Status:** …`), that line **stays** and the value is *additionally* emitted as a tag. The body is what gets embedded, so it drives semantic recall; the tag is what gets filtered. Neither substitutes for the other.
+
+### The convention
+
+| Rule | Detail |
+|-------|--------|
+| Keys are `snake_case` | Lowercase letters, digits and underscores; unprefixed, no leading or trailing underscore. |
+| Values are always `string` | The dictionary is `IReadOnlyDictionary<string, string>`. Numeric values (`depth`, `version`, `message_count`, `section_id`) are rendered with the invariant culture. |
+| Booleans are `"true"` / `"false"` | Lowercase literals. `bool.ToString()` yields `"True"`, which does not match ordinally in `HasTagSpec` — so the tag deliberately differs from the same value's rendering in the Markdown body. |
+| Timestamps a connector formats itself are ISO-8601 round-trip | `ToString("o", CultureInfo.InvariantCulture)`. Values passed through verbatim from a vendor API are **not** normalised — see the caveats below. |
+| Optional fields are omitted, never written empty | An empty tag value is indistinguishable from a real one at query time, so a connector leaves the key out entirely. |
+| The dictionary is ordinal | `new Dictionary<string, string>(StringComparer.Ordinal)`, matching `DocumentMetadata.Tags`. |
+| Nothing to add → `null` | A connector with nothing to say returns `null`, not an empty dictionary — one representation, not two. |
+
+### `provider_id`
+
+`provider_id` is written **centrally**, by `IngestFromProviderAsync`, from the `ProviderId` you pass it. It is therefore present on **every** provider-ingested document regardless of connector, and it is what you filter on to scope a query to one source — or to find everything a given source contributed when you want to re-ingest it:
+
+```csharp
+await pipeline.IngestFromProviderAsync(provider, new ProviderId("eng-confluence"), hashStore);
+// every resulting chunk carries provider_id = "eng-confluence"
+```
+
+`LocalFilesDataProvider` and any custom `IFileContentProvider` that returns no metadata still get `provider_id` — it costs the connector nothing.
+
+### Per-connector keys
+
+All 21 connector packages are listed. Zendesk ships two providers and Web ships three, so the table has 24 rows.
+
+A key in the **Always** column is still omitted if its source value comes back empty — no connector ever writes an empty tag. In practice the vendor always supplies these.
+
+| Connector | Always | Conditional |
+|-----------|--------|-------------|
+| Azure Blob Storage | `path` (blob name), `container` | — |
+| SharePoint | `drive_id` | `parent_path` — when Graph returns `parentReference` (omitted on some delta payloads) |
+| OneDrive | `drive_id` | `parent_path` — as SharePoint |
+| Google Drive | — | `mime_type` — every call site's field selection fetches it, so in practice always; `folder_id` — folder-scoped traversal only, the whole-drive and Changes paths do not know the container. Metadata is `null` when neither applies. |
+| Dropbox | `path` | `folder` — when `FolderPath` is set (omitted at root) |
+| Box | — | `folder_id` — **full traversal only**; `change_status` — **delta runs, `COPY` events only**. A delta `UPLOAD` event yields no metadata at all. |
+| GitHub | `path`, `repo` (`owner/name`), `ref` (configured branch) | `change_status` — delta runs only; a full tree traversal has no notion of change |
+| GitLab | `path`, `project` (configured id or `namespace/project`), `ref` | `change_status` — delta runs only |
+| Bitbucket | `path`, `repo` (`workspace/slug`), `ref` | `change_status` — diffstat (delta) runs only |
+| Confluence | `page_id`, `version` | `space` — only when `SpaceKey` scoped the run; the API response does not carry it, so an unscoped run has no space to report |
+| Jira | `issue_key`, `project`, `status`, `updated_at` | `priority` — when set; `assignee` — when assigned |
+| Notion | `page_id`, `updated_at` | — (no container key; see the caveats) |
+| Asana | `workspace`, `completed` (`"true"`/`"false"`) | `assignee`, `due_on`, `updated_at`; `project` — when `ProjectGid` narrowed the enumeration |
+| Slack | `channel`, `channel_id`, `date`, `message_count` | — |
+| Microsoft Teams | `team_id`, `channel_id`, `channel`, `date`, `message_count` | — |
+| Gmail | `date` (ISO-8601), `has_attachments` | `from` — when the message has a `From` header |
+| Exchange / Outlook | `folder` (the Graph mail-folder id or well-known name being enumerated, e.g. `inbox`), `has_attachments` | `received_at` (ISO-8601) — when Graph returned `receivedDateTime` |
+| Linear | `url` | `team` (team key); `state` **and** `state_type` together — when the issue has a workflow state; `project` (project name); `comments_truncated` = `"true"` — only when the issue's comments exceeded the fetched page, never `"false"` |
+| Zendesk (Tickets) | `ticket_id`, `status`, `updated_at`, `subdomain` | `priority` — when set |
+| Zendesk (Articles) | `article_id`, `updated_at`, `subdomain` | `section_id` — when the article belongs to a Help Center section |
+| Airtable | `base_id`, `table`, `record_id` | attachment entries additionally carry `field` (the source field name) and `attachment_id` |
+| Web — Crawler | `url`, `depth` (BFS distance from the seed; the seed is `"0"`), `host` | — |
+| Web — RSS / Atom | `url` | `author`; `published_at` — normalised to ISO-8601 |
+| Web — Sitemap | `url` | `lastmod` — passed through verbatim |
+
+`LocalFilesDataProvider` emits no tags of its own; its documents carry `provider_id` only.
+
+### Reserved keys
+
+Seven keys are written (or read) by the framework itself and must never be emitted by a connector:
+
+| Key | Written by | Read by |
+|-----|-----------|---------|
+| `document_id` | `MetadataBehavior` | — |
+| `file_name` | `MetadataBehavior` | sanitisers, for diagnostics |
+| `created_at` | `MetadataBehavior` | `TimeWeightedRetriever` |
+| `provider_id` | `IngestFromProviderAsync` | — |
+| `_parentKey` | parent/child chunking | parent-document retrieval |
+| `allowed_roles` | *nobody* — supplied by the caller | `RbacRetrievalGuard` |
+| `trust_level` | *nobody* — supplied by the caller | `TrustLevelRetrievalGuard` |
+
+A connector that emits one of these throws `ReservedMetadataKeyException` out of `IngestFromProviderAsync`, naming the offending key, the provider id and the entry id.
+
+**Why it throws rather than collecting a per-entry error.** Everywhere else in provider ingestion a failure becomes a `Result` in `ProviderIngestionResult.Errors` and the run continues. A reserved-key collision is different in kind: a connector's tag keys are string literals in connector code, so the collision is deterministic and repeats identically for *every* document in the run. Collecting it would produce N copies of one authoring bug — and, worse, would ship the corruption it describes, because `MetadataBehavior` applies connector tags **first** with `TryAdd`: a connector tag named `created_at` does not lose to the framework value, it *shadows* it, and `TimeWeightedRetriever` then ranks on connector data with no warning. This is a programming error, not a data error, so it surfaces on the first document.
+
+Consequences worth knowing:
+
+- **It arrives unwrapped.** Even under parallel ingestion — `Parallel.ForEachAsync` faults through an `AggregateException`, but awaiting unwraps it — so `catch (ReservedMetadataKeyException)` is enough; no `AggregateException` handling is needed.
+- **Ingestion is left partially complete.** Entries processed before the collision surfaced stay ingested (and hash-recorded). Because the method throws rather than returns, the accumulated error bag is discarded and `CleanupMode.Full` cleanup is skipped — **nothing is deleted**.
+- **Re-running after the fix is safe.** Whatever was ingested was collision-free by definition, and the hash store skips it as unchanged on the next run.
+
+### Precedence
+
+Tags are assembled in three passes:
+
+1. `baseMetadata.Tags` (the `DocumentMetadata` you optionally pass to `IngestFromProviderAsync`).
+2. The entry's own connector metadata — **wins** over base metadata on collision.
+3. `provider_id` — written last, **wins over both**.
+
+Only step 2 is reserved-key guarded. Base metadata is deliberately left unguarded, and this asymmetry is intentional: base metadata is the sanctioned — and only — channel for setting `allowed_roles` and `trust_level`, two reserved keys the framework never writes and only ever *reads*, in the RBAC and trust-level retrieval guards. Guarding base metadata would break RBAC and trust-level tagging outright.
+
+### Caveats before you write a filter
+
+**`change_status` can never be `removed`.** The vocabulary is normalised to `added` / `modified` / `removed` / `renamed` across GitHub, GitLab, Bitbucket and Box, and all four map `removed` — but no connector can ever emit it. Each one filters deleted entries out *before* building a handle, which is correct: a deleted file has no content to chunk. `removed` exists so the vocabulary is complete, not because it is reachable. A `change_status = "removed"` filter will never match anything; use the pipeline's `CleanupMode.Full` deletion path instead.
+
+**Box's most common delta event carries no `change_status`.** Box raises a single `UPLOAD` event both for a brand-new file and for a new version of an existing file, and nothing verifiable in the payload distinguishes them. Since `added` and `modified` are disjoint in this vocabulary, guessing either would be outright false half the time — so the key is omitted. In practice `change_status` appears on Box only for `COPY` events.
+
+**`path` and `parent_path` are not interchangeable.** Across the file/blob connectors `path` is the *file's own* full path — the value you would filter with `path` starts-with `docs/`. OneDrive and SharePoint emit **`parent_path`** instead, because Graph's `DriveItem` exposes `ParentReference.Path`, which is the *containing folder* and carries a `/drive/root:` namespace prefix. Filing that under `path` would make a cross-connector `path` filter silently match nothing on those two connectors.
+
+**`updated_at` is not comparable across connectors.** Asana, Jira, Notion and Zendesk each write `updated_at` straight through from their API in whatever format that vendor returns — the connector does not reformat it. The values are useful for exact-match and for per-connector ordering when a vendor's format happens to sort lexically, but a cross-connector range filter over `updated_at` is not sound. This is distinct from RSS's `published_at`, which *is* normalised to ISO-8601 (Atom carries ISO-8601, RSS 2.0 carries RFC 822 `pubDate`; both are parsed and re-rendered) and therefore *is* ordered and comparable. Sitemap's `lastmod` is passed through verbatim by design, because the sitemap protocol permits both a full W3C datetime and a bare date and normalising would discard which precision the site published.
+
+**Notion has no container key.** It is the one record connector without one. `NotionOptions.DatabaseId` is not a filter the connector applies — the `POST /v1/search` request it issues returns every accessible page and accepts no database scope — so tagging pages with it would write a database id onto documents provably not in that database, and `HasTagSpec("database_id", …)` would return the wrong documents with no signal that anything was off. The absence is deliberate; the key becomes available honestly once the connector queries `/v1/databases/{id}/query`.
+
+**Jira's `project` comes from the issue, not from options.** It is derived from the issue key (`ENG-42` → `ENG`), so it is present on unscoped runs, stays correct when an issue moves between projects, and stays correct under a custom `Jql` spanning several projects — where a single options-derived value would be wrong for most results. Confluence's `space` is the opposite case: it comes from `SpaceKey` and is simply absent when the run is unscoped, because the API response does not carry the space.
+
+**Gmail's `from` is the full display form.** `"Alice" <alice@example.com>`, not a bare address — it is the message's `From` header as MailKit renders it. Match on it with a substring predicate rather than equality.
+
+---
+
 ## Error handling
 
 | Condition | Behaviour |
@@ -769,5 +885,7 @@ Both filters are applied before the file content is downloaded, so excluded file
 ---
 
 ## Implementation notes
+
+**Box and Dropbox metadata coverage.** Every connector's metadata keys are pinned by a test, but Box and Dropbox are pinned one level in: `BoxClient` and `DropboxClient` are concrete SDK types with no injectable transport, so their enumeration paths cannot be driven offline. Their tests call the internal `ToHandle` helper directly. That pins the emitted keys and values, but **not** the call-site argument wiring — a mistake in which `folderId` or `changeStatus` an enumeration path passes would not be caught. The other 19 connectors are exercised through their enumeration paths.
 
 **Static request headers** (`Accept: application/json`, `Notion-Version: 2022-06-28`) are set via `HttpClient.DefaultRequestHeaders` in each connector's registration method. The ZeroAlloc.Rest 0.2.0 `[Header]` attribute only supports method- and parameter-level targets, not interface-level — so headers cannot be declared on the API interface directly. This will be revisited when class-level header support is added to the library.
