@@ -409,6 +409,8 @@ Chroma addresses collections by UUID internally; the store resolves the configur
 
 Chroma returns cosine `distance = 1 - cosine similarity` (0 = identical … 2 = opposite), mapped to `Score = 1 - distance`, so an identical vector scores 1.0 and an orthogonal one 0.0 (opposite vectors go negative). `MinScore` is applied to the converted score.
 
+The store **requires the cosine space**. If the configured collection already exists with a different space (Chroma's default is squared L2), the first operation fails fast with an `InvalidOperationException` naming the actual space — the score conversion would otherwise be silently on the wrong scale and `MinScore` would misfilter. Delete and recreate the collection (re-ingesting its documents) or point the store at a cosine collection.
+
 ### Hybrid search
 
 `ChromaVectorStore` does not implement `IHybridSearchable` (or `ISparseSearchable`) — Chroma has no native BM25+vector fusion for externally supplied embeddings. When `UseHybridSearch = true`, the pipeline falls back to the in-memory BM25 index + RRF merge; if you want *native* hybrid or sparse search, use [Qdrant](#qdrant) (sparse/SPLADE), [Weaviate](#weaviate), or [Azure AI Search](#azure-ai-search) instead. See [Retrieval — Hybrid search](retrieval.md#hybrid-search-bm25--vector).

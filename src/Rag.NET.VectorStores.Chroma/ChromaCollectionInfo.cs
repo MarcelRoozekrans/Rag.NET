@@ -14,4 +14,8 @@ public sealed class ChromaCollectionInfo
 
     [JsonPropertyName("name")]
     public required string Name { get; init; }
+
+    /// <summary>Collection configuration; used to verify the distance space is cosine.</summary>
+    [JsonPropertyName("configuration_json")]
+    public ChromaCollectionConfiguration? Configuration { get; init; }
 }

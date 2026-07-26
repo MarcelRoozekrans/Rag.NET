@@ -15,7 +15,9 @@ public static class ChromaBuilderExtensions
     /// <param name="endpoint">Chroma HTTP endpoint, e.g. <c>http://localhost:8000</c>.</param>
     /// <param name="collectionName">
     /// Chroma collection to store chunks in — 3–512 characters of letters, digits,
-    /// <c>.</c>, <c>_</c>, or <c>-</c>, starting and ending with a letter or digit.
+    /// <c>.</c>, <c>_</c>, or <c>-</c>, starting and ending with a letter or digit, no
+    /// consecutive dots, not an IPv4 address. Validation matches Chroma's documented
+    /// rules; the server remains authoritative.
     /// </param>
     /// <param name="configure">
     /// Optional callback to set <see cref="ChromaOptions.Tenant"/>,
@@ -65,11 +67,13 @@ public static class ChromaBuilderExtensions
             throw new ArgumentException(
                 $"'{collectionName}' is not a valid Chroma collection name. Names must be " +
                 "3-512 characters of letters, digits, '.', '_', or '-', starting and " +
-                "ending with a letter or digit.",
+                "ending with a letter or digit, without consecutive dots, and not an " +
+                "IPv4 address.",
                 paramName);
         }
     }
 
+    /// <summary>Matches Chroma's documented naming rules; the server remains authoritative.</summary>
     private static bool IsValidCollectionName(string collectionName)
     {
         if (collectionName.Length is < 3 or > 512)
@@ -83,6 +87,34 @@ public static class ChromaBuilderExtensions
         foreach (var c in collectionName)
         {
             if (!char.IsAsciiLetterOrDigit(c) && c is not ('.' or '_' or '-'))
+                return false;
+        }
+
+        // The server additionally rejects consecutive dots and IPv4-address names
+        // (both verified to answer 400 against Chroma 1.0.0).
+        return !collectionName.Contains("..", StringComparison.Ordinal)
+            && !IsIpv4Address(collectionName);
+    }
+
+    private static bool IsIpv4Address(string collectionName)
+    {
+        var parts = collectionName.Split('.');
+        if (parts.Length != 4)
+            return false;
+
+        foreach (var part in parts)
+        {
+            if (part.Length is 0 or > 3)
+                return false;
+            var value = 0;
+            foreach (var c in part)
+            {
+                if (!char.IsAsciiDigit(c))
+                    return false;
+                value = (value * 10) + (c - '0');
+            }
+
+            if (value > 255)
                 return false;
         }
 

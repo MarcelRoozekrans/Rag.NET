@@ -203,7 +203,7 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
             result = await send(collectionId).ConfigureAwait(false);
         }
 
-        return Unwrap(result, operation);
+        return Unwrap(result, $"{operation} against collection '{_options.CollectionName}'");
     }
 
     /// <summary>
@@ -234,6 +234,7 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
                 },
                 cancellationToken).ConfigureAwait(false);
             var collection = Unwrap(result, $"resolve collection '{_options.CollectionName}'");
+            ThrowIfNotCosine(collection);
             Volatile.Write(ref _collectionId, collection.Id);
             return collection.Id;
         }
@@ -241,6 +242,26 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         {
             _resolveLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Honest-capability guard: <c>get_or_create</c> returns a pre-existing collection
+    /// unchanged, so a collection created elsewhere with another space (Chroma's default is
+    /// squared L2) would silently put <c>Score = 1 - distance</c> on the wrong scale and
+    /// break <c>MinScore</c>. Fail fast instead, naming the actual space and the fix
+    /// (Qdrant sparse bootstrap precedent).
+    /// </summary>
+    private void ThrowIfNotCosine(ChromaCollectionInfo collection)
+    {
+        var space = collection.Configuration?.Hnsw?.Space;
+        if (space is null || string.Equals(space, "cosine", StringComparison.Ordinal))
+            return;
+
+        throw new InvalidOperationException(
+            $"Chroma collection '{_options.CollectionName}' uses the '{space}' distance space, " +
+            "but ChromaVectorStore requires 'cosine' (its scores are computed as 1 - cosine " +
+            "distance). Delete and recreate the collection (re-ingesting its documents) or " +
+            "configure the store with a cosine collection.");
     }
 
     private static ChromaUpsertRequest BuildUpsertRequest(IReadOnlyList<EmbeddedChunk> chunks)
@@ -384,13 +405,16 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         };
     }
 
-    private T Unwrap<T>(Result<T, HttpError> result, string operation)
+    /// <summary>
+    /// <paramref name="operation"/> must name the collection it acted on (the collection
+    /// lifecycle methods take arbitrary names, not just the configured collection).
+    /// </summary>
+    private static T Unwrap<T>(Result<T, HttpError> result, string operation)
     {
         if (result.IsFailure)
         {
             throw new InvalidOperationException(
-                $"Chroma {operation} against collection '{_options.CollectionName}' failed " +
-                $"with {FormatHttpError(result.Error)}.");
+                $"Chroma {operation} failed with {FormatHttpError(result.Error)}.");
         }
 
         return result.Value;

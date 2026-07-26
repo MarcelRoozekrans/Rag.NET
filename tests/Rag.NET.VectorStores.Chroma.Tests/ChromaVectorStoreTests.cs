@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -54,10 +55,10 @@ public class ChromaVectorStoreTests
             new SearchOptions { TopK = 1 },
             TestContext.Current.CancellationToken);
 
-        // Pins the conversion: Chroma cosine distance 0 for the identical vector ⇒
-        // Score = 1 - distance ≈ 1 (also proves the collection really uses the cosine
-        // space — squared L2 would still be 0 here, but the TopK/MinScore test below
-        // would see orthogonal at 2.0 instead of 1.0).
+        // Pins the conversion for the identical vector: distance 0 ⇒ Score = 1 - distance ≈ 1.
+        // (This alone does not discriminate cosine from squared L2 — both give distance 0
+        // here; the cosine space itself is pinned by Search_TopKAndMinScore_Honored's
+        // orthogonal-score assertion.)
         var result = Assert.Single(results);
         Assert.InRange(result.Score, 0.99, 1.0001);
     }
@@ -156,6 +157,19 @@ public class ChromaVectorStoreTests
 
         var result = Assert.Single(minScore);
         Assert.Equal("identical", result.Chunk.Text);
+
+        // Pins the cosine space end-to-end: with the default MinScore (0.0) all three
+        // chunks come back and the orthogonal chunk scores ~0.0 (1 - cosine distance 1.0).
+        // Under Chroma's default squared-L2 space it would score -1.0 (1 - 2.0) and be
+        // filtered out — this assertion is what actually proves hnsw:space=cosine took.
+        var all = await store.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 10 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, all.Count);
+        Assert.Equal("orthogonal", all[2].Chunk.Text);
+        Assert.InRange(all[2].Score, -0.01, 0.01);
     }
 
     [Fact]
@@ -195,6 +209,35 @@ public class ChromaVectorStoreTests
 
         await manageable.DeleteCollectionAsync(collectionName, TestContext.Current.CancellationToken);
         Assert.False(await manageable.CollectionExistsAsync(collectionName, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Store_ExistingNonCosineCollection_FailsFast()
+    {
+        var collectionName = UniqueCollectionName();
+        // Pre-create the collection with the squared-L2 space behind the store's back,
+        // as a user's own tooling might have (l2 is also Chroma's default space).
+        using var http = new HttpClient();
+        using var response = await http.PostAsJsonAsync(
+            new Uri(_fixture.Endpoint, "/api/v2/tenants/default_tenant/databases/default_database/collections"),
+            new
+            {
+                name = collectionName,
+                metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["hnsw:space"] = "l2" },
+            },
+            TestContext.Current.CancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        // get_or_create returns the existing L2 collection unchanged — without the guard,
+        // Score = 1 - distance would silently be on the wrong scale.
+        using var store = CreateStore(collectionName);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.StoreAsync(
+                [Chunk("doc-space", 0, "wrong space", [1.0f, 0.0f, 0.0f])],
+                TestContext.Current.CancellationToken));
+
+        Assert.Contains("'l2'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("cosine", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

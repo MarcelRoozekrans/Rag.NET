@@ -9,7 +9,8 @@ public sealed class ChromaOptions
     /// <summary>
     /// Chroma collection holding the chunks. Required; Chroma names are 3–512 characters
     /// of letters, digits, <c>.</c>, <c>_</c>, or <c>-</c>, starting and ending with a
-    /// letter or digit.
+    /// letter or digit, without consecutive dots, and not an IPv4 address (validation
+    /// matches Chroma's documented rules; the server remains authoritative).
     /// </summary>
     public string CollectionName { get; set; } = string.Empty;
 

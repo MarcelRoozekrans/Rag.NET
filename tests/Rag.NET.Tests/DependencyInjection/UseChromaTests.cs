@@ -42,12 +42,14 @@ public class UseChromaTests
         Assert.Equal("collectionName", exception.ParamName);
     }
 
-    [Fact]
-    public void UseChroma_InvalidCollectionName_Throws()
+    [Theory]
+    [InlineData("-chunks-")]     // must start and end with a letter or digit
+    [InlineData("a..b")]         // no consecutive dots (server 400s)
+    [InlineData("192.168.5.4")]  // not an IPv4 address (server 400s)
+    public void UseChroma_InvalidCollectionName_Throws(string collectionName)
     {
-        // Chroma names must start and end with a letter or digit.
         var exception = Assert.Throws<ArgumentException>(
-            () => new ServiceCollection().AddRagNet(rag => rag.UseChroma(Endpoint, "-chunks-")));
+            () => new ServiceCollection().AddRagNet(rag => rag.UseChroma(Endpoint, collectionName)));
 
         Assert.Equal("collectionName", exception.ParamName);
     }
