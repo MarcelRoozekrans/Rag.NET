@@ -22,13 +22,14 @@ corresponding rows in features.md.
 - **`ConfigureResilience` dangling pipeline** (pre-existing): registered but unconsumed
   (documented in observability.md + resilience.md).
 
-## Milestone 1: Feature Backlog [status: active]
+## Milestone 1: Feature Backlog [status: complete]
 **Goal:** Work the remaining feature backlog to completion — chunking, retrieval techniques, ingestion ops, resilience, parsers, connectors, and vector stores.
 **Started:** 2026-07-24
+**Completed:** 2026-07-26
 **Definition of Done:**
-- [ ] All planned phases complete
-- [ ] Every feature row it covers ticked in features.md with tests and docs
-- [ ] All tests passing
+- [x] All planned phases complete
+- [x] Every feature row it covers ticked in features.md with tests and docs
+- [x] All tests passing
 
 ### Phase 1.1: Chunking Strategies [status: complete]
 **Backlog items:** Sliding Window Chunking with Overlap; Proposition Extraction Chunking; Late Chunking

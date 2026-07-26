@@ -1,7 +1,8 @@
 # Milestone 1: Feature Backlog
 
-**Status:** active
+**Status:** complete
 **Started:** 2026-07-24
+**Completed:** 2026-07-26
 
 ## Goal
 
@@ -15,9 +16,9 @@ Each feature ships with tests and a features.md entry ticked.
 
 ## Definition of Done
 
-- [ ] All planned phases complete
-- [ ] Every feature row covered by this milestone ticked in features.md with tests and docs
-- [ ] All tests passing
+- [x] All planned phases complete
+- [x] Every feature row covered by this milestone ticked in features.md with tests and docs
+- [x] All tests passing
 
 ## Phases
 
@@ -33,3 +34,4 @@ Each feature ships with tests and a features.md entry ticked.
 
 | Date | Verdict | Gaps |
 |---|---|---|
+| 2026-07-26 | **Pass** — all 7 phases complete; the 21 backlog rows this milestone covers are ticked with tests and docs (the 10 rows still unticked in features.md all belong to Milestones 2 and 3). Solution builds 0 warnings / 0 errors; Rag.NET.Tests 1202/1202 plus every vector-store and integration suite green. | Deferred within delivered features, each documented where a user would meet it: PgVector sparse storage (SPLADE runs on Qdrant, Pinecone, in-memory); Service Bus ingestion trigger and the CLI reindex command; OCR limited to Tesseract behind the `EnableOcr` gate (Azure Document Intelligence deferred); Pinecone's same-record sparse write path unverified against live serverless. Cross-phase engineering debts are tracked in ROADMAP.md. |
