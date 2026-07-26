@@ -270,12 +270,35 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Equal(0, result.Skipped);
     }
 
+    /// <summary>
+    /// Raises <paramref name="highWaterMark"/> to <paramref name="candidate"/> if it is larger.
+    /// A compare-and-swap loop is required: <c>Interlocked.Exchange(ref max, Math.Max(max, current))</c>
+    /// reads <c>max</c> outside the atomic write, so two racing callers can lose an update.
+    /// </summary>
+    private static void RecordHighWaterMark(ref int highWaterMark, int candidate)
+    {
+        var observed = Volatile.Read(ref highWaterMark);
+        while (candidate > observed)
+        {
+            var prior = Interlocked.CompareExchange(ref highWaterMark, candidate, observed);
+            if (prior == observed)
+                break;
+            observed = prior;
+        }
+    }
+
     [Fact]
     public async Task IngestFromProviderAsync_ParallelIngestion_RunsConcurrently()
     {
         var concurrentCount = 0;
         var maxConcurrent = 0;
         var gate = new SemaphoreSlim(0);
+
+        // Completes the moment a second ingestion is inside the fake alongside the first —
+        // exactly the property asserted below. Gating on the observation instead of sleeping
+        // makes the test deterministic: a fixed delay could elapse before any task reached
+        // the gate on a loaded machine, which made this test flaky (~1 run in 11).
+        var concurrencyObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         _pipeline.IngestAsync(
                 Arg.Any<Stream>(),
@@ -286,8 +309,12 @@ public sealed class IngestFromProviderTests : IDisposable
             .Returns(async _ =>
             {
                 var current = Interlocked.Increment(ref concurrentCount);
-                Interlocked.Exchange(ref maxConcurrent, Math.Max(maxConcurrent, current));
-                await gate.WaitAsync();
+                RecordHighWaterMark(ref maxConcurrent, current);
+
+                if (current > 1)
+                    concurrencyObserved.TrySetResult();
+
+                await gate.WaitAsync(TestContext.Current.CancellationToken);
                 Interlocked.Decrement(ref concurrentCount);
                 return Result<IngestionResult, RagError>.Success(
                     new IngestionResult { DocumentId = new DocumentId("x"), ChunksStored = 1 });
@@ -302,8 +329,11 @@ public sealed class IngestFromProviderTests : IDisposable
             options: new IngestionOptions { MaxDegreeOfParallelism = 3 },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // Give tasks time to start and block on the gate
-        await Task.Delay(100, TestContext.Current.CancellationToken);
+        // Wait for concurrency to actually be observed rather than assuming it by now.
+        // The timeout is a failure bound only — it is never part of the success path — so a
+        // serialised pipeline fails here with a clear timeout instead of hanging.
+        await concurrencyObserved.Task.WaitAsync(
+            TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
 
         // Release all
         gate.Release(3);
