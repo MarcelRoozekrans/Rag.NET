@@ -137,12 +137,79 @@ public sealed class OneDriveDataProviderTests
     }
 
     // -------------------------------------------------------------------------
+    // Transport failures (no HTTP response at all) → RagError.TransportFailed
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_TransportFailure_YieldsTransportFailedResult()
+    {
+        // Fails on the drive-ID resolution, the first Graph call the provider makes;
+        // before this mapping the HttpRequestException escaped the Result channel entirely.
+        var graph = MakeThrowingGraphClient(
+            () => new HttpRequestException("No such host is known (graph.microsoft.com:443)."));
+        var opts  = new OneDriveOptions { UserId = "user-1" };
+        var sut   = new OneDriveDataProvider(graph, opts);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        var failure = Assert.IsType<Rag.NET.Models.RagError.TransportFailed>(result.Error);
+        _ = Assert.IsType<HttpRequestException>(failure.Inner);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_DeltaRun_TransportFailure_YieldsTransportFailedResult()
+    {
+        const string deltaUrl =
+            "https://graph.microsoft.com/v1.0/drives/drive-abc/items/root/delta?token=tok1";
+        var graph = MakeThrowingGraphClient(() => new HttpRequestException("connection reset by peer"));
+        var opts  = new OneDriveOptions { UserId = "user-1", DeltaToken = deltaUrl };
+        var sut   = new OneDriveDataProvider(graph, opts);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        _ = Assert.IsType<Rag.NET.Models.RagError.TransportFailed>(result.Error);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_CallerCancellation_Throws()
+    {
+        const string userId  = "user-1";
+        const string driveId = "drive-abc";
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [$"/users/{userId}/drive"]                 = $$$"""{ "id": "{{{driveId}}}" }""",
+            [$"/drives/{driveId}/items/root/children"] = """{ "value": [] }""",
+        };
+        var graph = MakeGraphClient(responses);
+        var opts  = new OneDriveOptions { UserId = userId };
+        var sut   = new OneDriveDataProvider(graph, opts);
+
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        // Caller cancellation must not be reclassified as a transport failure.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await sut.GetFilesAsync(cts.Token).ToListAsync(cts.Token));
+    }
+
+    // -------------------------------------------------------------------------
     // Helper — builds a GraphServiceClient backed by a fake HTTP handler
     // -------------------------------------------------------------------------
 
     private static GraphServiceClient MakeGraphClient(Dictionary<string, string> responses)
+        => MakeGraphClient(new FakeGraphHandler(responses));
+
+    private static GraphServiceClient MakeThrowingGraphClient(Func<Exception> exceptionFactory)
+        => MakeGraphClient(new ThrowingGraphHandler(exceptionFactory));
+
+    private static GraphServiceClient MakeGraphClient(HttpMessageHandler handler)
     {
-        var handler = new FakeGraphHandler(responses);
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://graph.microsoft.com/") };
         return new GraphServiceClient(httpClient);
     }
@@ -173,6 +240,18 @@ file sealed class FakeGraphHandler(Dictionary<string, string> responses) : HttpM
             Content = new StringContent(responses[key], System.Text.Encoding.UTF8, "application/json"),
         });
     }
+}
+
+/// <summary>
+/// Fails every outbound Graph call before any HTTP response exists — the transport-failure
+/// counterpart to <see cref="FakeGraphHandler"/>, which always produces a response.
+/// A fresh exception instance is created per call so stack traces do not accumulate.
+/// </summary>
+file sealed class ThrowingGraphHandler(Func<Exception> exceptionFactory) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => throw exceptionFactory();
 }
 
 /// <summary>Minimal stub to satisfy the <see cref="GraphServiceClient"/> constructor.</summary>

@@ -1,8 +1,12 @@
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using Azure.Identity;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
+using Microsoft.Graph.Models.ODataErrors;
+using Microsoft.Kiota.Abstractions;
 using Rag.NET.DataProviders;
 using Rag.NET.Models;
 using ZeroAlloc.Results;
@@ -15,6 +19,13 @@ namespace Rag.NET.DataProviders.MicrosoftTeams;
 /// <para>
 /// HTML message bodies are stripped to plain text. Delta synchronisation is not yet
 /// supported; every run performs a full traversal of all messages.
+/// </para>
+/// <para>
+/// Graph failures reach the caller through the <see cref="Result{TValue,TError}"/> channel
+/// rather than as thrown exceptions: a response carrying a status becomes
+/// <see cref="RagError.HttpFailed"/>, and a failure with no response at all — DNS, TLS, socket
+/// reset, client-side timeout, token acquisition — becomes
+/// <see cref="RagError.TransportFailed"/>. Caller cancellation always propagates.
 /// </para>
 /// </summary>
 public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
@@ -37,38 +48,69 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
         CancellationToken cancellationToken)
         => GetFullHandlesAsync(cancellationToken);
 
+    /// <summary>
+    /// C# does not permit <c>yield</c> inside a <c>catch</c> clause, so every Graph call is
+    /// made eagerly by a helper that returns a <see cref="Result{TValue,TError}"/>; this
+    /// iterator only yields. The first failure ends the enumeration.
+    /// </summary>
     private async IAsyncEnumerable<Result<FileHandle, RagError>> GetFullHandlesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var teams = await GetTeamsAsync(cancellationToken).ConfigureAwait(false);
+        var teamsResult = await GetTeamsAsync(cancellationToken).ConfigureAwait(false);
+        if (teamsResult.IsFailure)
+        {
+            yield return Result<FileHandle, RagError>.Failure(teamsResult.Error);
+            yield break;
+        }
 
+        var teams = teamsResult.Value;
         for (int ti = 0; ti < teams.Count; ti++)
         {
             var (teamId, _) = teams[ti];
-            var channels = await GetChannelsAsync(teamId, cancellationToken).ConfigureAwait(false);
+            var channelsResult = await GetChannelsAsync(teamId, cancellationToken)
+                .ConfigureAwait(false);
+            if (channelsResult.IsFailure)
+            {
+                yield return Result<FileHandle, RagError>.Failure(channelsResult.Error);
+                yield break;
+            }
 
+            var channels = channelsResult.Value;
             for (int ci = 0; ci < channels.Count; ci++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var (channelId, channelName) = channels[ci];
 
-                var messages = await FetchMessagesAsync(teamId, channelId, cancellationToken)
+                var messagesResult = await FetchMessagesAsync(teamId, channelId, cancellationToken)
                     .ConfigureAwait(false);
+                if (messagesResult.IsFailure)
+                {
+                    yield return Result<FileHandle, RagError>.Failure(messagesResult.Error);
+                    yield break;
+                }
 
-                var handles = GroupByDay(teamId, channelId, channelName, messages);
+                var handles = GroupByDay(teamId, channelId, channelName, messagesResult.Value);
                 for (int hi = 0; hi < handles.Count; hi++)
                     yield return Result<FileHandle, RagError>.Success(handles[hi]);
             }
         }
     }
 
-    private async Task<List<(string Id, string Name)>> GetTeamsAsync(CancellationToken ct)
+    private async Task<Result<List<(string Id, string Name)>, RagError>> GetTeamsAsync(
+        CancellationToken ct)
     {
         if (_options.TeamId is not null)
-            return [(_options.TeamId, _options.TeamId)];
+            return Result<List<(string, string)>, RagError>.Success([(_options.TeamId, _options.TeamId)]);
 
-        var result = await _graph.Me.JoinedTeams.GetAsync(cancellationToken: ct)
-            .ConfigureAwait(false);
+        TeamCollectionResponse? result;
+        try
+        {
+            result = await _graph.Me.JoinedTeams.GetAsync(cancellationToken: ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsMappable(ex, ct))
+        {
+            return Result<List<(string, string)>, RagError>.Failure(Map(ex));
+        }
 
         var teams = new List<(string, string)>();
         var values = result?.Value ?? [];
@@ -78,17 +120,25 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
             if (!string.IsNullOrEmpty(t.Id))
                 teams.Add((t.Id, t.DisplayName ?? t.Id));
         }
-        return teams;
+        return Result<List<(string, string)>, RagError>.Success(teams);
     }
 
-    private async Task<List<(string Id, string Name)>> GetChannelsAsync(
+    private async Task<Result<List<(string Id, string Name)>, RagError>> GetChannelsAsync(
         string teamId, CancellationToken ct)
     {
         if (_options.ChannelId is not null)
-            return [(_options.ChannelId, _options.ChannelId)];
+            return Result<List<(string, string)>, RagError>.Success([(_options.ChannelId, _options.ChannelId)]);
 
-        var result = await _graph.Teams[teamId].Channels.GetAsync(cancellationToken: ct)
-            .ConfigureAwait(false);
+        ChannelCollectionResponse? result;
+        try
+        {
+            result = await _graph.Teams[teamId].Channels.GetAsync(cancellationToken: ct)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsMappable(ex, ct))
+        {
+            return Result<List<(string, string)>, RagError>.Failure(Map(ex));
+        }
 
         var channels = new List<(string, string)>();
         var values = result?.Value ?? [];
@@ -98,30 +148,82 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
             if (!string.IsNullOrEmpty(c.Id))
                 channels.Add((c.Id, c.DisplayName ?? c.Id));
         }
-        return channels;
+        return Result<List<(string, string)>, RagError>.Success(channels);
     }
 
-    private async Task<List<ChatMessage>> FetchMessagesAsync(
+    private async Task<Result<List<ChatMessage>, RagError>> FetchMessagesAsync(
         string teamId, string channelId, CancellationToken ct)
     {
-        var all  = new List<ChatMessage>();
-        var page = await _graph.Teams[teamId].Channels[channelId].Messages
-            .GetAsync(cancellationToken: ct).ConfigureAwait(false);
-
-        while (page is not null)
+        var all      = new List<ChatMessage>();
+        string? next = null;
+        do
         {
+            var pageResult = await FetchMessagePageAsync(teamId, channelId, next, ct)
+                .ConfigureAwait(false);
+            if (pageResult.IsFailure)
+                return Result<List<ChatMessage>, RagError>.Failure(pageResult.Error);
+
+            var page = pageResult.Value;
+            if (page is null)
+                break;
+
             var values = page.Value ?? [];
             for (int i = 0; i < values.Count; i++)
                 all.Add(values[i]);
 
-            page = page.OdataNextLink is not null
-                ? await _graph.Teams[teamId].Channels[channelId].Messages
-                    .WithUrl(page.OdataNextLink)
-                    .GetAsync(cancellationToken: ct).ConfigureAwait(false)
-                : null;
-        }
-        return all;
+            next = page.OdataNextLink;
+        } while (next is not null);
+
+        return Result<List<ChatMessage>, RagError>.Success(all);
     }
+
+    private async Task<Result<ChatMessageCollectionResponse?, RagError>> FetchMessagePageAsync(
+        string teamId, string channelId, string? nextLink, CancellationToken ct)
+    {
+        var builder = _graph.Teams[teamId].Channels[channelId].Messages;
+        try
+        {
+            var page = nextLink is not null
+                ? await builder.WithUrl(nextLink).GetAsync(cancellationToken: ct).ConfigureAwait(false)
+                : await builder.GetAsync(cancellationToken: ct).ConfigureAwait(false);
+            return Result<ChatMessageCollectionResponse?, RagError>.Success(page);
+        }
+        catch (Exception ex) when (IsMappable(ex, ct))
+        {
+            return Result<ChatMessageCollectionResponse?, RagError>.Failure(Map(ex));
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="ex"/> is a Graph failure this provider converts into a
+    /// <see cref="Result{TValue,TError}"/> failure rather than letting it escape.
+    /// <para>
+    /// The cancellation test comes first and wins: an HttpClient timeout surfaces as a
+    /// <see cref="TaskCanceledException"/>, which derives from
+    /// <see cref="OperationCanceledException"/>, so only the caller's token separates a
+    /// timeout (a transport failure) from a caller cancellation (which must propagate).
+    /// </para>
+    /// </summary>
+    private static bool IsMappable(Exception ex, CancellationToken cancellationToken)
+        => !(ex is OperationCanceledException && cancellationToken.IsCancellationRequested)
+        && ex is ApiException or HttpRequestException or TaskCanceledException
+              or AuthenticationFailedException;
+
+    /// <summary>
+    /// Classifies a mappable Graph exception. Kiota leaves
+    /// <see cref="ApiException.ResponseStatusCode"/> at <c>0</c> when no HTTP response was
+    /// received at all, and <c>(HttpStatusCode)0</c> is not a valid status — that case is a
+    /// transport failure, not an HTTP failure.
+    /// </summary>
+    private static RagError Map(Exception ex) => ex switch
+    {
+        ApiException { ResponseStatusCode: 0 } => new RagError.TransportFailed(ex),
+        ODataError odata => new RagError.HttpFailed(
+            (HttpStatusCode)odata.ResponseStatusCode, odata.Error?.Message ?? odata.Message),
+        ApiException api => new RagError.HttpFailed(
+            (HttpStatusCode)api.ResponseStatusCode, api.Message),
+        _ => new RagError.TransportFailed(ex),
+    };
 
     private static List<FileHandle> GroupByDay(
         string teamId, string channelId, string channelName,

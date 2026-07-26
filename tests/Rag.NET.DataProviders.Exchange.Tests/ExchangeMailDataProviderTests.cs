@@ -483,6 +483,81 @@ public sealed class ExchangeMailDataProviderTests
     }
 
     // -------------------------------------------------------------------------
+    // Transport failures (no HTTP response at all) → RagError.TransportFailed
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task TransportFailure_MapsToResultFailure_AndDoesNotAdvanceWatermark()
+    {
+        // DNS/TLS/socket failure: HttpRequestException escaped the Result channel before.
+        var handler = new ThrowingGraphHandler(
+            () => new HttpRequestException("No such host is known (graph.microsoft.com:443)."));
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        var failure = Assert.IsType<RagError.TransportFailed>(result.Error);
+        _ = Assert.IsType<HttpRequestException>(failure.Inner);
+        // Failed run: the watermark must not advance.
+        Assert.False(sut.CompletedFullTraversal);
+        Assert.Null(sut.GetDeltaToken());
+    }
+
+    [Fact]
+    public async Task ApiExceptionWithoutResponse_MapsToTransportFailedNotHttpFailed()
+    {
+        // Kiota leaves ResponseStatusCode at 0 when no response was received;
+        // (HttpStatusCode)0 is out of range, so this must not become HttpFailed.
+        var handler = new ThrowingGraphHandler(
+            () => new Microsoft.Kiota.Abstractions.ApiException("The request timed out.")
+            {
+                ResponseStatusCode = 0,
+            });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        var failure = Assert.IsType<RagError.TransportFailed>(result.Error);
+        Assert.Equal(0, Assert.IsType<Microsoft.Kiota.Abstractions.ApiException>(failure.Inner)
+            .ResponseStatusCode);
+        Assert.Null(sut.GetDeltaToken());
+    }
+
+    [Fact]
+    public async Task AuthenticationFailure_MapsToTransportFailure()
+    {
+        var handler = new ThrowingGraphHandler(
+            () => new Azure.Identity.AuthenticationFailedException("token endpoint unreachable"));
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        var failure = Assert.IsType<RagError.TransportFailed>(result.Error);
+        _ = Assert.IsType<Azure.Identity.AuthenticationFailedException>(failure.Inner);
+    }
+
+    [Fact]
+    public async Task CallerCancellation_Throws_AndIsNotMappedToAFailure()
+    {
+        var handler = MakeHandler((InboxKey, HttpStatusCode.OK, InboxMessagesJson));
+        var sut     = MakeProvider(handler);
+
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await sut.GetFilesAsync(cts.Token).ToListAsync(cts.Token));
+    }
+
+    // -------------------------------------------------------------------------
     // Constructor guard
     // -------------------------------------------------------------------------
 
@@ -546,14 +621,14 @@ public sealed class ExchangeMailDataProviderTests
             r => (r.Status, r.Body),
             StringComparer.Ordinal));
 
-    private static GraphServiceClient MakeGraphClient(FakeGraphHandler handler)
+    private static GraphServiceClient MakeGraphClient(HttpMessageHandler handler)
     {
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://graph.microsoft.com/") };
         return new GraphServiceClient(httpClient);
     }
 
     private static ExchangeMailDataProvider MakeProvider(
-        FakeGraphHandler handler,
+        HttpMessageHandler handler,
         Action<ExchangeMailOptions>? configure = null,
         ILogger<ExchangeMailDataProvider>? logger = null)
     {
@@ -561,5 +636,21 @@ public sealed class ExchangeMailDataProviderTests
         configure?.Invoke(opts);
         return new ExchangeMailDataProvider(MakeGraphClient(handler), opts, logger);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Test infrastructure
+// ---------------------------------------------------------------------------
+
+/// <summary>
+/// Fails every outbound Graph call before any HTTP response exists — the transport-failure
+/// counterpart to <see cref="FakeGraphHandler"/>, which always produces a response.
+/// A fresh exception instance is created per call so stack traces do not accumulate.
+/// </summary>
+file sealed class ThrowingGraphHandler(Func<Exception> exceptionFactory) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => throw exceptionFactory();
 }
 

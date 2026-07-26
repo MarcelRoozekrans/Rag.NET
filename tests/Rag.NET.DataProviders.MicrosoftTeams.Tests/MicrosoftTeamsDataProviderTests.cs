@@ -386,8 +386,48 @@ public sealed class MicrosoftTeamsDataProviderTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
+        // Caller cancellation must not be reclassified as a transport failure.
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
             await sut.GetFilesAsync(cts.Token).ToListAsync(cts.Token));
+    }
+
+    // -------------------------------------------------------------------------
+    // Transport failures (no HTTP response at all) → RagError.TransportFailed
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_TransportFailure_YieldsTransportFailedResult()
+    {
+        // This connector had no exception handling at all: the HttpRequestException from the
+        // joinedTeams call escaped GetFilesAsync entirely.
+        var graph = MakeThrowingGraphClient(
+            () => new HttpRequestException("No such host is known (graph.microsoft.com:443)."));
+        var sut   = new MicrosoftTeamsDataProvider(graph, new MicrosoftTeamsOptions());
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        var failure = Assert.IsType<Rag.NET.Models.RagError.TransportFailed>(result.Error);
+        _ = Assert.IsType<HttpRequestException>(failure.Inner);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_TransportFailureOnMessages_YieldsTransportFailedResult()
+    {
+        // Pinning the team and channel skips the first two Graph calls, so the failure lands
+        // on the message fetch — a separate helper with its own paging loop.
+        var graph = MakeThrowingGraphClient(() => new HttpRequestException("connection reset by peer"));
+        var opts  = new MicrosoftTeamsOptions { TeamId = "team-1", ChannelId = "chan-1" };
+        var sut   = new MicrosoftTeamsDataProvider(graph, opts);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        _ = Assert.IsType<Rag.NET.Models.RagError.TransportFailed>(result.Error);
     }
 
     // -------------------------------------------------------------------------
@@ -395,8 +435,13 @@ public sealed class MicrosoftTeamsDataProviderTests
     // -------------------------------------------------------------------------
 
     private static GraphServiceClient MakeGraphClient(Dictionary<string, string> responses)
+        => MakeGraphClient(new FakeGraphHandler(responses));
+
+    private static GraphServiceClient MakeThrowingGraphClient(Func<Exception> exceptionFactory)
+        => MakeGraphClient(new ThrowingGraphHandler(exceptionFactory));
+
+    private static GraphServiceClient MakeGraphClient(HttpMessageHandler handler)
     {
-        var handler    = new FakeGraphHandler(responses);
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://graph.microsoft.com/") };
         return new GraphServiceClient(httpClient);
     }
@@ -452,4 +497,16 @@ file sealed class FakeGraphHandler(Dictionary<string, string> responses) : HttpM
             Content = new StringContent(responses[bestKey], System.Text.Encoding.UTF8, "application/json"),
         });
     }
+}
+
+/// <summary>
+/// Fails every outbound Graph call before any HTTP response exists — the transport-failure
+/// counterpart to <see cref="FakeGraphHandler"/>, which always produces a response.
+/// A fresh exception instance is created per call so stack traces do not accumulate.
+/// </summary>
+file sealed class ThrowingGraphHandler(Func<Exception> exceptionFactory) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => throw exceptionFactory();
 }
