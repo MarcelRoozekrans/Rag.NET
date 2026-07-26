@@ -46,11 +46,19 @@ public static class RagPipelineExtensions
     /// — this <b>escapes the method</b>: it is a deterministic authoring bug that would otherwise
     /// repeat once per document while shipping a corrupted ranking.
     /// <para>
-    /// <b>Ingestion is left partially complete.</b> Entries are processed through
-    /// <see cref="Parallel.ForEachAsync{TSource}(IEnumerable{TSource}, ParallelOptions, Func{TSource, CancellationToken, ValueTask})"/>,
-    /// so when a connector emits the reserved key on only some entries, the clean ones already
-    /// processed are ingested and — with a <paramref name="hashStore"/> — hash-recorded. Because
-    /// the method throws rather than returns, the accumulated error bag is discarded and
+    /// It arrives <b>unwrapped</b>: although
+    /// <see cref="Parallel.ForEachAsync{TSource}(IEnumerable{TSource}, ParallelOptions, Func{TSource, CancellationToken, ValueTask})"/>
+    /// faults its task through an <see cref="AggregateException"/>, awaiting unwraps it, so
+    /// <c>catch (ReservedMetadataKeyException)</c> works directly. Pinned by
+    /// <c>IngestFromProviderAsync_ReservedKeyCollisionUnderParallelism_EscapesUnwrapped</c> on
+    /// the multi-worker path, where the aggregate really does hold several inner exceptions.
+    /// </para>
+    /// <para>
+    /// <b>Ingestion is left partially complete.</b> When a connector emits the reserved key on
+    /// only some entries, the clean ones already processed are ingested and — with a
+    /// <paramref name="hashStore"/> — hash-recorded; the throw unwinds none of that. Pinned by
+    /// <c>IngestFromProviderAsync_ReservedKeyCollision_LeavesAlreadyProcessedEntriesIngested</c>.
+    /// Because the method throws rather than returns, the accumulated error bag is discarded and
     /// cleanup for <see cref="CleanupMode.Full"/> is skipped, so no document is deleted.
     /// </para>
     /// <para>
