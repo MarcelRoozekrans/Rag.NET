@@ -175,18 +175,44 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
         }
     }
 
+    /// <summary>
+    /// Builds the handle for one drive item. Synchronous by design: the metadata dictionary is
+    /// never built inside the async iterator (design §1).
+    /// </summary>
+    /// <remarks>
+    /// Metadata emitted: <c>drive_id</c> (always) and <c>parent_path</c> — the parent folder path
+    /// Graph reports on <c>parentReference</c>. Graph omits <c>parentReference</c> on some delta
+    /// payloads, so <c>parent_path</c> is optional and is left out entirely rather than written
+    /// empty.
+    /// <para>
+    /// The key is <c>parent_path</c>, <b>not</b> <c>path</c>: everywhere else in the file/blob
+    /// connectors <c>path</c> is the file's own full path, but Graph gives the containing folder
+    /// (and prefixes it with the <c>/drive/root:</c> namespace token). Filing that under
+    /// <c>path</c> would make a cross-connector <c>path</c> filter silently match nothing here.
+    /// </para>
+    /// </remarks>
     private FileHandle ToHandle(string driveId, DriveItem item)
     {
         var capturedId = item.Id!;
         var capturedDriveId = driveId;
+        var parentPath = item.ParentReference?.Path;
+
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["drive_id"] = driveId,
+        };
+        if (!string.IsNullOrEmpty(parentPath))
+            metadata["parent_path"] = parentPath;
+
         return new FileHandle(
-            Id:               (item.ParentReference?.Path ?? string.Empty) + "/" + item.Name,
+            Id:               (parentPath ?? string.Empty) + "/" + item.Name,
             FileName:         item.Name ?? capturedId,
             ETag:             item.ETag,
             OpenContentAsync: async ct =>
                 await _graph.Drives[capturedDriveId].Items[capturedId].Content
                     .GetAsync(cancellationToken: ct).ConfigureAwait(false)
-                    ?? Stream.Null);
+                    ?? Stream.Null,
+            Metadata:         metadata);
     }
 
     private async Task<Result<DriveItemCollectionResponse?, RagError>> FetchChildrenPageAsync(

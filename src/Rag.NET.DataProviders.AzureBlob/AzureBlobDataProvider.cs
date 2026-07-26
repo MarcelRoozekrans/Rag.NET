@@ -33,20 +33,39 @@ public sealed class AzureBlobDataProvider : FileContentProviderBase
                 states: Azure.Storage.Blobs.Models.BlobStates.None)
             .ConfigureAwait(false))
         {
-            var etag = blob.Properties.ETag?.ToString("H");
-            var capturedName = blob.Name;
-
-            yield return Result<FileHandle, RagError>.Success(new FileHandle(
-                Id:               blob.Name,
-                FileName:         Path.GetFileName(blob.Name),
-                ETag:             etag,
-                OpenContentAsync: async ct =>
-                {
-                    var blobClient = _container.GetBlobClient(capturedName);
-                    var download = await blobClient.DownloadStreamingAsync(cancellationToken: ct)
-                        .ConfigureAwait(false);
-                    return download.Value.Content;
-                }));
+            yield return Result<FileHandle, RagError>.Success(ToHandle(blob));
         }
+    }
+
+    /// <summary>
+    /// Builds the handle for a single blob. Synchronous by design: the metadata dictionary is
+    /// never built inside the async iterator (design §1).
+    /// </summary>
+    /// <remarks>
+    /// Metadata emitted: <c>path</c> (the full blob name, which is the only path a blob has —
+    /// the container is flat and "directories" are just name prefixes) and <c>container</c>.
+    /// Both are always present, so the dictionary is never null here.
+    /// </remarks>
+    private FileHandle ToHandle(Azure.Storage.Blobs.Models.BlobItem blob)
+    {
+        var capturedName = blob.Name;
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["path"]      = blob.Name,
+            ["container"] = _container.Name,
+        };
+
+        return new FileHandle(
+            Id:               blob.Name,
+            FileName:         Path.GetFileName(blob.Name),
+            ETag:             blob.Properties.ETag?.ToString("H"),
+            OpenContentAsync: async ct =>
+            {
+                var blobClient = _container.GetBlobClient(capturedName);
+                var download = await blobClient.DownloadStreamingAsync(cancellationToken: ct)
+                    .ConfigureAwait(false);
+                return download.Value.Content;
+            },
+            Metadata:         metadata);
     }
 }
