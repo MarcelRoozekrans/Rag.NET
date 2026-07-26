@@ -58,11 +58,59 @@ public sealed class FileNameSanitizerTests
     }
 
     [Fact]
-    public void Sanitize_OnlyUnderscores_ReturnsFallback()
+    public void Sanitize_OnlyUnderscores_Unchanged()
     {
-        // Deliberate consequence of collapsing an all-substituted result: a name that was
-        // already nothing but underscores is equally uninformative.
-        Assert.Equal("issue-ENG-1", FileNameSanitizer.Sanitize("___", "issue-ENG-1"));
+        // Only underscores the sanitizer *introduced* count as "nothing survived"; a title the
+        // user really typed as "___" is kept, exactly as "a__" is.
+        Assert.Equal("___", FileNameSanitizer.Sanitize("___", "issue-ENG-1"));
+    }
+
+    [Theory]
+    [InlineData("name. . .")]
+    [InlineData("a. . . . .")]
+    [InlineData("Report </ . .")]
+    [InlineData(" . x . . ")]
+    public void Sanitize_AlternatingDotsAndSpaces_LeavesNeitherTrailing(string value)
+    {
+        // Regression: trimming dots re-exposes whitespace and vice versa, so the trailing pass
+        // has to run to a fixed point. A single pass of each left "name. " with a trailing
+        // space, violating the documented return contract.
+        var result = FileNameSanitizer.Sanitize(value, "fallback");
+
+        Assert.False(char.IsWhiteSpace(result[^1]), $"'{result}' ends in whitespace");
+        Assert.NotEqual('.', result[^1]);
+    }
+
+    [Fact]
+    public void Sanitize_AlternatingSuffix_TrimsToStem()
+    {
+        Assert.Equal("name", FileNameSanitizer.Sanitize("name. . .", "fallback"));
+        Assert.Equal("a", FileNameSanitizer.Sanitize("a. . . . .", "fallback"));
+        Assert.Equal("Report __", FileNameSanitizer.Sanitize("Report </ . .", "fallback"));
+    }
+
+    [Fact]
+    public void Sanitize_TruncationSplittingSurrogatePair_DropsTheLoneHighSurrogate()
+    {
+        // "ab" + an astral-plane emoji; a 3-char cap would split the pair.
+        var result = FileNameSanitizer.Sanitize("ab\U0001F600cd", "fallback", maxLength: 3);
+
+        Assert.Equal("ab", result);
+        Assert.False(char.IsHighSurrogate(result[^1]));
+    }
+
+    [Fact]
+    public void Sanitize_TruncationNotSplittingSurrogatePair_KeepsIt()
+    {
+        var result = FileNameSanitizer.Sanitize("ab\U0001F600cd", "fallback", maxLength: 4);
+
+        Assert.Equal("ab\U0001F600", result);
+    }
+
+    [Fact]
+    public void Sanitize_TruncationExposingTrailingDot_TrimsIt()
+    {
+        Assert.Equal("abc", FileNameSanitizer.Sanitize("abc. def", "fallback", maxLength: 4));
     }
 
     [Fact]
@@ -114,10 +162,14 @@ public sealed class FileNameSanitizerTests
     }
 
     [Fact]
-    public void Sanitize_IsHostIndependent()
+    public void Sanitize_CoversEveryCharThisHostConsidersInvalid()
     {
-        // The pinned set must cover everything this host considers invalid, so a Linux run
-        // (2 invalid chars) can never produce a laxer name than a Windows run (41).
+        // Asserts the pinned set is a superset of *this host's* invalid set, so the sanitizer
+        // is never laxer than the platform. Note this is a weak check off Windows: it covers
+        // 41 characters here and only 2 on Linux CI, which is precisely the host-dependence
+        // being designed out. The unconditional coverage of the pinned set lives in
+        // Sanitize_EachPinnedPunctuationChar_Replaced and Sanitize_EveryC0ControlChar_Replaced,
+        // which assert the same characters on every platform.
         foreach (var c in Path.GetInvalidFileNameChars())
         {
             var input  = string.Concat("a", c.ToString(), "b");

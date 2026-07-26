@@ -60,6 +60,12 @@ on a Linux host keeps `:` `*` `?` `"` `<` `>` `|` and control characters in its 
 **Not in scope:** `WebCrawlerDataProvider.InferFileName` and its RSS/Sitemap callers derive
 names from URL path segments — a different input domain with its own decoding concerns.
 
+**Recorded, not fixed:** `src/Rag.NET.Api/Webhooks/GenericWebhookPayloadParser.cs:77` builds
+`$"{documentId}.txt"` straight from an untrusted webhook payload with no sanitization. It is a
+tenth synthesizing site, but in a different assembly (`Rag.NET.Api`, which does not reference
+`Rag.NET.DataProviders`) and outside this phase's connector scope. Found during the Part A
+review; noted here so it is not rediscovered as new.
+
 **Testing:** unit tests for the helper (each invalid class, trimming, trailing dots, empty →
 fallback, length cap, and a determinism test asserting the set does not vary with
 `Path.GetInvalidFileNameChars()`). Existing connector tests pin exact filenames

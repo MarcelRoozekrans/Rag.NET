@@ -93,21 +93,27 @@ public static class FileNameSanitizer
         if (string.IsNullOrWhiteSpace(value))
             return string.Empty;
 
-        var replaced = Replace(value);
+        bool substituted = IndexOfInvalid(value) >= 0;
+        var  replaced    = substituted ? Replace(value) : value;
 
         int start = 0;
         int end   = replaced.Length;
         TrimEdges(replaced, ref start, ref end);
 
         if (end - start > maxLength)
+        {
             end = start + maxLength;
 
-        // Truncation can re-expose a trailing dot or space, so the edges are trimmed again;
-        // this also settles the "name . " case where a dot trim uncovers more whitespace.
-        TrimEdges(replaced, ref start, ref end);
+            // Never split a surrogate pair: a lone high surrogate renders as U+FFFD.
+            if (end > start && char.IsHighSurrogate(replaced[end - 1]))
+                end--;
+
+            // Truncation can re-expose a trailing dot or space.
+            TrimEdges(replaced, ref start, ref end);
+        }
 
         int length = end - start;
-        if (length <= 0 || IsAllReplacement(replaced, start, end))
+        if (length <= 0 || (substituted && IsAllReplacement(replaced, start, end)))
             return string.Empty;
 
         return length == replaced.Length ? replaced : replaced.Substring(start, length);
@@ -115,10 +121,14 @@ public static class FileNameSanitizer
 
     /// <summary>
     /// Reports whether nothing survived but the substitutions themselves. A name such as
-    /// <c>"___"</c> (from <c>"///"</c>) is no more usable than an empty one, so it collapses to
-    /// the caller's fallback. The consequence — an input that really was all underscores also
-    /// falls back — is deliberate: such a name carries no information either.
+    /// <c>"___"</c> produced from <c>"///"</c> is no more usable than an empty one, so it
+    /// collapses to the caller's fallback.
     /// </summary>
+    /// <remarks>
+    /// The caller gates this on whether a substitution actually happened, so a title the user
+    /// really did type as <c>"___"</c> is kept. Only underscores this type introduced count as
+    /// "nothing survived".
+    /// </remarks>
     private static bool IsAllReplacement(string value, int start, int end)
     {
         for (int i = start; i < end; i++)
@@ -130,23 +140,35 @@ public static class FileNameSanitizer
         return true;
     }
 
-    /// <summary>Narrows <paramref name="start"/>/<paramref name="end"/> past leading and
-    /// trailing whitespace, then past trailing dots.</summary>
+    /// <summary>
+    /// Narrows <paramref name="start"/>/<paramref name="end"/> past leading whitespace, then
+    /// past trailing whitespace and trailing dots.
+    /// </summary>
+    /// <remarks>
+    /// The trailing pass loops to a fixed point because the two conditions re-expose each
+    /// other: stripping the dots from <c>"name. . ."</c> uncovers a space, stripping that
+    /// space uncovers another dot, and so on. A single pass of each — or even two — leaves a
+    /// trailing space, breaking the guarantee this type's <c>Sanitize</c> makes about its
+    /// return value.
+    /// </remarks>
     private static void TrimEdges(string value, ref int start, ref int end)
     {
         while (start < end && char.IsWhiteSpace(value[start])) start++;
-        while (end > start && char.IsWhiteSpace(value[end - 1])) end--;
-        while (end > start && value[end - 1] == '.') end--;
+
+        int previous;
+        do
+        {
+            previous = end;
+            while (end > start && char.IsWhiteSpace(value[end - 1])) end--;
+            while (end > start && value[end - 1] == '.') end--;
+        }
+        while (end != previous);
     }
 
-    /// <summary>Substitutes every invalid character, returning the original instance when
-    /// there is nothing to substitute.</summary>
-    private static string Replace(string value)
-    {
-        if (IndexOfInvalid(value) < 0)
-            return value;
-
-        return string.Create(value.Length, value, static (destination, source) =>
+    /// <summary>Substitutes every invalid character. The caller has already established that
+    /// there is at least one.</summary>
+    private static string Replace(string value) =>
+        string.Create(value.Length, value, static (destination, source) =>
         {
             for (int i = 0; i < source.Length; i++)
             {
@@ -154,7 +176,6 @@ public static class FileNameSanitizer
                 destination[i] = InvalidChars.Contains(c) ? Replacement : c;
             }
         });
-    }
 
     private static int IndexOfInvalid(string value)
     {
