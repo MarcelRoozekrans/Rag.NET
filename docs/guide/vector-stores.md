@@ -278,7 +278,7 @@ var results = await pipeline.RetrieveAsync("ISO 27001 audit requirements", new R
 });
 ```
 
-The returned scores are Azure AI Search's internal BM25+vector fusion scores, not cosine similarities. They are positive and unbounded above; `MinScore` can still be applied to filter out low-confidence results.
+The returned scores are Azure AI Search's internal BM25+vector fusion scores, not cosine similarities. They are positive and unbounded above; `SearchOptions.MinScore` is still applied to them store-side, but tune it against these fusion scores rather than reusing a cosine threshold. This is the hybrid path only — plain `SearchAsync` issues a pure vector query whose score is a bounded function of the similarity metric, which is why the store is treated as similarity-scaled (see [Score scale](#score-scale-iscorescaleaware)).
 
 ### Metadata filtering
 
@@ -561,7 +561,7 @@ At least two stores are required (validated at registration). Store factories re
 ### Behaviour
 
 - **Search** fans out to all stores concurrently, then merges the per-store rankings with N-way Reciprocal Rank Fusion: each hit contributes `1 / (k + rank)` (1-based rank, `k` = `RrfK`) and the merged `Score` is the summed RRF score, not a cosine similarity. `TopK` is applied after the merge. Ties on the merged score are broken deterministically: the chunk that first appeared in the lower store index wins, then the lower per-store rank.
-- **`MinScore`** is applied by each store against its own similarity scale *before* fusion; the merged `Score` is RRF. Beware cross-backend coherence: the same `MinScore` value means different things to different backends (e.g. cosine similarity in `[0, 1]` for PgVector/Qdrant vs. Azure AI Search's unbounded hybrid scores), so a threshold tuned for one store may over- or under-filter another.
+- **`MinScore`** is applied by each store against its own similarity scale *before* fusion; the merged `Score` is RRF. Beware cross-backend coherence: the same `MinScore` value means different things to different backends (e.g. raw cosine similarity in `[0, 1]` for PgVector/Qdrant vs. Azure AI Search's rescaled relevance score, which for cosine bottoms out around `0.333`), so a threshold tuned for one store may over- or under-filter another. This is the store-side `SearchOptions.MinScore` applied during fan-out, which is unaffected by the score scale the *federated* store declares for its own merged results.
 - **Provenance:** every merged result's chunk metadata gains a `source.store` entry with the store's name (from `AddStore(..., name)`) or its zero-based index. The source store's own chunk is never mutated — the tag is written into a copied metadata dictionary.
 - **Writes and deletes** go to the primary store only. `DeleteByDocumentIdAsync` does **not** touch secondary stores — documents ingested directly into secondaries must be deleted there.
 - **Degraded, never broken:** a store that throws during search is skipped with a logged warning; the federated search itself only throws (`InvalidOperationException` naming the stores) when *every* store failed.
@@ -570,7 +570,20 @@ At least two stores are required (validated at registration). Store factories re
 
 `UseFederatedSearch` supersedes any earlier `IVectorStore` registration (standard last-wins container semantics). Do not combine it with `UsePgVector`/`UseQdrant`-style calls — add those stores through the builder instead.
 
-**Persistent conversation memory (known limitation):** `UsePersistentMemory` resolves the DI `IVectorStore` and filters recalled exchanges by `PersistentMemoryOptions.MinScore` (default 0.7), which is calibrated to the similarity scale. Federated results carry RRF scores (about 0.033 at best for two stores), so persistent memory backed by the federated store would silently never recall anything. Point persistent memory at a dedicated (non-federated) store until score normalization lands.
+**Persistent conversation memory:** `UsePersistentMemory` resolves the DI `IVectorStore` and normally filters recalled exchanges by `PersistentMemoryOptions.MinScore` (default 0.7), a threshold calibrated to the similarity scale. Federated results carry RRF scores (about 0.033 at best for two stores), so that threshold would discard every match. `FederatedVectorStore` therefore declares `IScoreScaleAware` with `ScoreScale.OpaqueRanking`, and persistent memory reacts by **skipping `MinScore` entirely**: it injects the store's top `TopK` matches in rank order and logs one warning per memory instance naming the store type and the ignored threshold. Recall works against a federated store; what you give up is the ability to require a minimum relevance — every recall injects the best `TopK` the federation returns, however weak. Lower `TopK` (default 3) if that is too much context, or point persistent memory at a dedicated similarity-scaled store when you need a real threshold.
+
+### Score scale (`IScoreScaleAware`)
+
+`IScoreScaleAware` is an opt-in capability interface declaring what a store's `SearchResult.Score` means:
+
+| Scale | Meaning | Declared by |
+|-------|---------|-------------|
+| `ScoreScale.Similarity` | Comparable, roughly `[0, 1]`, safe to threshold against a fixed cut-off | The assumed default — stores that do **not** implement the interface |
+| `ScoreScale.OpaqueRanking` | Ordinal only; magnitude is not comparable and must not be thresholded | `FederatedVectorStore` (RRF sums) |
+
+The declaration describes `IVectorStore.SearchAsync` — the interface `IScoreScaleAware` sits on — not any capability method the store also happens to offer. Consumers probe with `store is IScoreScaleAware { ScoreScale: ScoreScale.OpaqueRanking }`. Every other store in the library is unchanged and continues to be treated as similarity-scaled, so `SearchOptions.MinScore` on the retrieval path behaves exactly as before; the probe currently affects persistent conversation memory only.
+
+Azure AI Search was evaluated and deliberately left undeclared (i.e. similarity): its `SearchAsync` issues a pure vector query, whose `@search.score` is a bounded monotone function of the similarity metric and is thresholdable. Its **hybrid** scores (`HybridSearchAsync`) are a different matter — positive and unbounded — but no consumer thresholds them with a fixed cut-off, and `IScoreScaleAware` describes the dense path only.
 
 ### Limitations
 

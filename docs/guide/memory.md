@@ -109,7 +109,9 @@ Requires `IVectorStore` and `IEmbeddingGenerator` to be registered in DI.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `TopK` | `3` | Maximum number of past exchanges to inject per turn |
-| `MinScore` | `0.7` | Minimum cosine similarity for an exchange to be injected |
+| `MinScore` | `0.7` | Minimum cosine similarity for an exchange to be injected — **only on a similarity-scaled store** (see below) |
+
+**Score scale.** `MinScore` is a threshold on the similarity scale, and every store is assumed to be on that scale unless it says otherwise by implementing `IScoreScaleAware`. A store declaring `ScoreScale.OpaqueRanking` — currently `FederatedVectorStore`, whose scores are Reciprocal Rank Fusion sums peaking near `0.033` for two stores — has no thresholdable scale, so recall **ignores `MinScore`** there: it injects the store's top `TopK` matches in rank order and logs one warning per memory instance naming the store type and the ignored option. Recall works against such a store, but a minimum relevance cannot be enforced: every turn with a user message injects up to `TopK` past exchanges, however weakly related. Lower `TopK` if that is too much context, or back persistent memory with a dedicated similarity-scaled store when the threshold matters. See [vector stores](vector-stores.md#score-scale-iscorescaleaware).
 
 ### Storing exchanges
 
@@ -136,9 +138,14 @@ await memory.StoreAsync(
 ```mermaid
 flowchart TD
     Q["User query"] --> EMB["Embed last user message"]
-    EMB --> SEARCH["VectorStore.SearchAsync<br>(TopK, MinScore filter)"]
-    SEARCH -- "matches found" --> PREFIX["Prepend system message:<br>'From a previous conversation:\\n{matches}'"]
-    SEARCH -- "no matches" --> PASS["Pass history unmodified"]
+    EMB --> SEARCH["VectorStore.SearchAsync<br>(TopK)"]
+    SEARCH --> SCALE{"Store declares<br>ScoreScale.OpaqueRanking?"}
+    SCALE -- "no (default)" --> FILTER["Filter by MinScore"]
+    SCALE -- "yes (e.g. federated)" --> RANK["Skip MinScore:<br>top TopK by rank<br>(warn once)"]
+    FILTER -- "matches found" --> PREFIX["Prepend system message:<br>'From a previous conversation:\\n{matches}'"]
+    FILTER -- "no matches" --> PASS["Pass history unmodified"]
+    RANK -- "matches found" --> PREFIX
+    RANK -- "no matches" --> PASS
     PREFIX --> INNER["ConversationMemoryPipeline<br>(in-session trimming)"]
     PASS --> INNER
     INNER --> OUT["History passed to answer engine"]
@@ -158,7 +165,9 @@ Each stored exchange is a single `TextChunk`:
 | Vector store search fails | Logged as warning; history unchanged; inner pipeline called normally |
 | `StoreAsync` embedding fails | Logged as warning; exchange not persisted (non-fatal) |
 | `StoreAsync` store write fails | Logged as warning; exchange not persisted (non-fatal) |
-| All results below `MinScore` | No prefix injected; inner pipeline called normally |
+| All results below `MinScore` (similarity-scaled store) | No prefix injected; inner pipeline called normally |
+| Store declares `ScoreScale.OpaqueRanking` | `MinScore` is not applied; the top `TopK` matches are injected in rank order, with one warning logged per memory instance |
+| Store returns no matches at all | No prefix injected; inner pipeline called normally |
 
 ---
 

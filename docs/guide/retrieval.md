@@ -157,6 +157,8 @@ Each document's RRF score is the sum of its reciprocal ranks across both result 
 
 RRF scores are not cosine similarities. `MinScore` filtering is applied by each arm before merging — the dense arm against cosine similarity and the sparse arm against SPLADE dot-product scores, which are on a different scale — and the final RRF scores are not filtered by `MinScore`.
 
+A store whose own `IVectorStore.SearchAsync` scores are on a non-similarity scale says so by implementing `IScoreScaleAware` and returning `ScoreScale.OpaqueRanking`; `FederatedVectorStore`, whose merged scores are RRF sums, is the one store that does. Consumers that would otherwise apply a fixed cut-off to those scores skip the threshold and take results in rank order instead — today that is persistent conversation memory's `PersistentMemoryOptions.MinScore`. Every other store is treated as similarity-scaled, so nothing on the retrieval path above changes. See [vector stores](vector-stores.md#score-scale-iscorescaleaware).
+
 See [benchmarks](benchmarks.md#hybrid-search-bm25-fallback) for throughput data on the BM25+RRF path.
 
 ## Sparse retrieval (SPLADE)

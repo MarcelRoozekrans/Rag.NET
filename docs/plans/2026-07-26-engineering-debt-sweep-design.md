@@ -219,15 +219,30 @@ same assumption from the other direction.
   logs a one-time warning naming the store type and the ignored option.
 - Stores that do not implement the interface are treated as similarity — preserving today's
   behavior for every existing store, so this is additive.
-- Azure AI Search declares opaque ranking (its hybrid scores are unbounded), which fixes the
-  second half of the documented problem.
+- ~~Azure AI Search declares opaque ranking (its hybrid scores are unbounded), which fixes the
+  second half of the documented problem.~~ **Corrected during implementation — Azure AI Search
+  was evaluated and deliberately left as similarity (it does not implement the interface).**
+  The original premise was wrong: `PersistentConversationMemory` only ever calls
+  `IVectorStore.SearchAsync`, never `HybridSearchAsync`, and `AzureAISearchVectorStore.SearchAsync`
+  issues a pure vector query (`searchText: null`), whose `@search.score` is a bounded monotone
+  function of the similarity metric (~0.333–1.0 for cosine) and is therefore thresholdable.
+  Declaring it opaque would have fixed nothing — that path already worked — while regressing
+  existing Azure users, for whom `MinScore` would silently stop applying and every turn would
+  inject up to `TopK` past exchanges regardless of relevance. The governing rule:
+  `IScoreScaleAware` describes the scale of `IVectorStore.SearchAsync`, the interface it sits
+  on. Azure's is similarity; Federated's is RRF.
+- Recorded, not fixed: Azure AI Search's *hybrid* scores (`HybridSearchAsync`) are positive and
+  unbounded, so a fixed cross-backend cut-off remains meaningless there. No consumer currently
+  thresholds them with one, and the capability interface does not describe that path.
 
 **Testing:** memory backed by a similarity store still filters by `MinScore`; memory backed by
 a federated store recalls the top-K instead of silently nothing, and warns once (not per
 call); a store not implementing the interface behaves exactly as before.
 
 **Docs:** the known-limitation paragraphs in `vector-stores.md` and `retrieval.md` are
-replaced with the actual behavior.
+replaced with the actual behavior, along with the same claim where users actually meet it:
+the `UseFederatedSearch` `<remarks>`, the `PersistentMemoryOptions.MinScore` XML doc, and
+`memory.md`'s options table, flow diagram, and behavior table.
 
 ## 6. `ConfigureResilience` wiring
 
