@@ -136,7 +136,7 @@ public static class RagPipelineExtensions
             {
                 if (hashStore is null)
                 {
-                    var metadata = BuildMetadata(entry, baseMetadata);
+                    var metadata = BuildMetadata(entry, baseMetadata, providerId);
                     var ingestResult = await pipeline.IngestAsync(rawStream, metadata, options, progress, cancellationToken).ConfigureAwait(false);
                     if (!ingestResult.IsSuccess)
                         throw new InvalidOperationException($"Ingestion failed: {ingestResult.Error}");
@@ -147,7 +147,10 @@ public static class RagPipelineExtensions
                     options, progress, rawStream, cancellationToken).ConfigureAwait(false);
             }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // ReservedMetadataKeyException is deliberately excluded alongside cancellation: it is a
+        // connector authoring bug that repeats identically for every entry, so downgrading it to
+        // a per-entry RagError would emit N copies of one bug and still ship a corrupted ranking.
+        catch (Exception ex) when (ex is not OperationCanceledException and not ReservedMetadataKeyException)
         {
             errors.Add(new RagError.StorageFailed(ex));
             return EntryOutcome.Skipped;
@@ -179,7 +182,7 @@ public static class RagPipelineExtensions
         }
 
         buffer.Position = 0;
-        var metadata = BuildMetadata(entry, baseMetadata);
+        var metadata = BuildMetadata(entry, baseMetadata, providerId);
         var ingestResult = await pipeline.IngestAsync(buffer, metadata, options, progress, cancellationToken).ConfigureAwait(false);
         if (!ingestResult.IsSuccess)
             throw new InvalidOperationException($"Ingestion failed: {ingestResult.Error}");
@@ -222,7 +225,18 @@ public static class RagPipelineExtensions
         return Convert.ToHexString(hashBytes);
     }
 
-    private static DocumentMetadata BuildMetadata(FileEntry entry, DocumentMetadata? baseMetadata)
+    /// <summary>
+    /// Merges base and entry metadata into <see cref="DocumentMetadata.Tags"/>. Entry tags win
+    /// over base tags on collision.
+    /// </summary>
+    /// <exception cref="ReservedMetadataKeyException">
+    /// An entry tag uses a key the framework writes itself (<see cref="ReservedMetadataKeys"/>).
+    /// A connector tag does not lose to the framework value — <c>MetadataBehavior</c> applies
+    /// connector tags first with <c>TryAdd</c>, so it <i>shadows</i> it. See the type's remarks
+    /// for why this throws instead of yielding a per-entry failure.
+    /// </exception>
+    private static DocumentMetadata BuildMetadata(
+        FileEntry entry, DocumentMetadata? baseMetadata, ProviderId providerId)
     {
         var tags = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -235,7 +249,11 @@ public static class RagPipelineExtensions
         if (entry.Metadata is not null)
         {
             foreach (var (k, v) in entry.Metadata)
+            {
+                if (ReservedMetadataKeys.IsReserved(k))
+                    throw new ReservedMetadataKeyException(k, providerId.Value, entry.Id.Value);
                 tags[k] = v;
+            }
         }
 
         return new DocumentMetadata
