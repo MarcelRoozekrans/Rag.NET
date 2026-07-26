@@ -84,6 +84,31 @@ public sealed class MicrosoftTeamsDataProviderTests
     }
 
     [Fact]
+    public async Task GetFilesAsync_HostileChannelName_Sanitized()
+    {
+        // Teams channel names routinely contain '/' and ':'.
+        const string hostileChannelsJson = """
+            {
+              "value": [{ "id": "chan-1", "displayName": "Design/Review: Q1" }]
+            }
+            """;
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [JoinedTeamsKey] = JoinedTeamsJson,
+            [ChannelsKey]    = hostileChannelsJson,
+            [MessagesKey]    = MessagesJson,
+        };
+        var graph = MakeGraphClient(responses);
+        var sut   = new MicrosoftTeamsDataProvider(graph, new MicrosoftTeamsOptions());
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(entries);
+        Assert.Equal("Design_Review_ Q1-2026-03-01.md", entries[0].Value.FileName);
+    }
+
+    [Fact]
     public async Task GetFilesAsync_ExtensionFilter_ExcludesNonMatchingFiles()
     {
         var responses = new Dictionary<string, string>(StringComparer.Ordinal)

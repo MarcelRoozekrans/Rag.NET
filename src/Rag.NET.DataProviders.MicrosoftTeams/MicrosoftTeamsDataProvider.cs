@@ -160,7 +160,10 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
             var markdown = BuildDayMarkdown(channelName, dateStr, dayMsgs);
             handles.Add(new FileHandle(
                 Id:               $"{teamId}/{channelId}/{dateStr}",
-                FileName:         $"{channelName}-{dateStr}.md",
+                // Only the channel name is user-controlled; the date suffix is generated.
+                // Teams channel names routinely contain '/' and ':'.
+                FileName:         $"{FileNameSanitizer.Sanitize(
+                    channelName, $"channel-{channelId}")}-{dateStr}.md",
                 ETag:             lastMod,
                 OpenContentAsync: _ => Task.FromResult<Stream>(
                     new MemoryStream(Encoding.UTF8.GetBytes(markdown)))));

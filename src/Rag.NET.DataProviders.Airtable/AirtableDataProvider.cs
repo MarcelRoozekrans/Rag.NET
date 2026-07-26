@@ -100,7 +100,8 @@ public sealed class AirtableDataProvider : FileContentProviderBase
 
         return new FileHandle(
             Id:               record.Id ?? string.Empty,
-            FileName:         $"{GetRecordTitle(record)}.md",
+            FileName:         $"{FileNameSanitizer.Sanitize(
+                GetRecordTitle(record), $"record-{record.Id}")}.md",
             ETag:             etag,
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))));

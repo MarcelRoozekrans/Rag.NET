@@ -82,6 +82,39 @@ public sealed class AsanaDataProviderTests
     }
 
     [Fact]
+    public async Task GetFilesAsync_HostileTaskName_Sanitized()
+    {
+        const string tasksJson = """
+            {
+              "data": [
+                {
+                  "gid": "task-9",
+                  "name": "Ship v2: API/CLI",
+                  "notes": null,
+                  "due_on": null,
+                  "completed": false,
+                  "assignee": null,
+                  "modified_at": "2026-03-01T10:00:00Z"
+                }
+              ]
+            }
+            """;
+        const string subtasksJson = """{ "data": [] }""";
+
+        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/1.0/tasks"]  = tasksJson,
+            ["task-9/subtasks"] = subtasksJson
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.Equal("Ship v2_ API_CLI.md", results[0].Value.FileName);
+    }
+
+    [Fact]
     public async Task GetFilesAsync_DeltaTraversal_RequestContainsModifiedSince()
     {
         const string tasksJson = """{ "data": [] }""";

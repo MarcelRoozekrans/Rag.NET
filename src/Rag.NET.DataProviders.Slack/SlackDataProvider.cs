@@ -99,7 +99,9 @@ public sealed class SlackDataProvider : FileContentProviderBase
             var md = markdown!;
             yield return Result<FileHandle, RagError>.Success(new FileHandle(
                 Id:               $"{channel.Id}/{dateStr}",
-                FileName:         $"{channel.Name}-{dateStr}.md",
+                // Only the channel name is user-controlled; the date suffix is generated.
+                FileName:         $"{FileNameSanitizer.Sanitize(
+                    channel.Name, $"channel-{channel.Id}")}-{dateStr}.md",
                 ETag:             latestTs,
                 OpenContentAsync: _ => Task.FromResult<Stream>(
                     new MemoryStream(Encoding.UTF8.GetBytes(md)))));

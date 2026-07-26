@@ -81,6 +81,40 @@ public sealed class NotionDataProviderTests
     }
 
     [Fact]
+    public async Task GetFilesAsync_HostilePageTitle_Sanitized()
+    {
+        const string searchJson = """
+            {
+              "results": [
+                {
+                  "id": "page-9",
+                  "last_edited_time": "2026-03-01T10:00:00.000Z",
+                  "properties": {
+                    "title": {
+                      "title": [{ "plain_text": "Q1 Plan: Draft/Final" }]
+                    }
+                  }
+                }
+              ],
+              "has_more": false
+            }
+            """;
+        const string blocksJson = """{ "results": [], "has_more": false }""";
+
+        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/v1/search"] = searchJson,
+            ["page-9"]     = blocksJson
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.Equal("Q1 Plan_ Draft_Final.md", results[0].Value.FileName);
+    }
+
+    [Fact]
     public async Task GetFilesAsync_DeltaTraversal_SkipsOldPages()
     {
         const string searchJson = """
