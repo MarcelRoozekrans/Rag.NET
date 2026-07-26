@@ -102,20 +102,22 @@ public sealed class NotionDataProvider : FileContentProviderBase
     }
 
     /// <summary>
-    /// The page's filterable fields.
+    /// The page's filterable fields, both read off the page itself.
     /// <para>
-    /// <c>database_id</c> is the <i>configured</i> <see cref="NotionOptions.DatabaseId"/>, not a
-    /// value read back from the page: <c>POST /v1/search</c> returns no parent, and the option is
-    /// documented as reserved for a future database-scoped implementation. It therefore records
-    /// the scope the run was configured with, and is omitted when none was configured.
+    /// There is deliberately no <c>database_id</c>. <see cref="NotionOptions.DatabaseId"/> is
+    /// documented as reserved for a future implementation and appears nowhere in the
+    /// <c>POST /v1/search</c> request built above, which returns every accessible page and no
+    /// parent object. Tagging pages with it would write a database id onto documents provably
+    /// not in that database, so <c>HasTagSpec("database_id", …)</c> would return wrong documents
+    /// with no signal that anything was off. The key becomes available honestly once the
+    /// connector queries <c>/v1/databases/{id}/query</c>.
     /// </para>
     /// </summary>
-    private Dictionary<string, string>? BuildMetadata(NotionPage page)
+    private static Dictionary<string, string>? BuildMetadata(NotionPage page)
     {
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (!string.IsNullOrEmpty(page.Id))             metadata["page_id"]     = page.Id;
-        if (!string.IsNullOrEmpty(_options.DatabaseId)) metadata["database_id"] = _options.DatabaseId;
-        if (!string.IsNullOrEmpty(page.LastEditedTime)) metadata["updated_at"]  = page.LastEditedTime;
+        if (!string.IsNullOrEmpty(page.Id))             metadata["page_id"]    = page.Id;
+        if (!string.IsNullOrEmpty(page.LastEditedTime)) metadata["updated_at"] = page.LastEditedTime;
         return metadata.Count == 0 ? null : metadata;
     }
 

@@ -112,7 +112,7 @@ public sealed class ZendeskTicketsDataProvider : FileContentProviderBase
     /// Markdown body by <see cref="ToMarkdown"/>: the body drives semantic recall, the tags
     /// drive filtering, and neither substitutes for the other.
     /// </summary>
-    private Dictionary<string, string>? BuildMetadata(ZendeskTicket ticket)
+    private Dictionary<string, string> BuildMetadata(ZendeskTicket ticket)
     {
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {

@@ -530,7 +530,7 @@ public sealed class NotionDataProviderTests
     }
 
     [Fact]
-    public async Task GetFilesAsync_Metadata_PinsPageKeysAndDatabaseId()
+    public async Task GetFilesAsync_Metadata_PinsPageKeys()
     {
         const string searchJson = """
             {
@@ -546,6 +546,7 @@ public sealed class NotionDataProviderTests
             """;
         const string blocksJson = """{ "results": [], "has_more": false }""";
 
+        // DatabaseId is set precisely to prove it does NOT leak into the tags.
         var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["/v1/search"] = searchJson,
@@ -559,43 +560,13 @@ public sealed class NotionDataProviderTests
 
         var metadata = Assert.Single(results).Value.Metadata!;
         Assert.Equal("page-md",                  metadata["page_id"]);
-        Assert.Equal("db-42",                    metadata["database_id"]);
         Assert.Equal("2026-03-01T10:00:00.000Z", metadata["updated_at"]);
-        Assert.Equal(3, metadata.Count);
-    }
-
-    [Fact]
-    public async Task GetFilesAsync_NoDatabaseId_MetadataOmitsIt()
-    {
-        const string searchJson = """
-            {
-              "results": [
-                {
-                  "id": "page-nodb",
-                  "last_edited_time": "2026-03-02T10:00:00.000Z",
-                  "properties": { "title": { "title": [{ "plain_text": "Loose Page" }] } }
-                }
-              ],
-              "has_more": false
-            }
-            """;
-        const string blocksJson = """{ "results": [], "has_more": false }""";
-
-        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["/v1/search"] = searchJson,
-            ["page-nodb"]  = blocksJson
-        });
-
-        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
-            .ToListAsync(TestContext.Current.CancellationToken);
-
-        MetadataContract.AssertAll(results.Select(r => r.Value));
-
-        var metadata = Assert.Single(results).Value.Metadata!;
-        Assert.Equal("page-nodb", metadata["page_id"]);
-        Assert.False(metadata.ContainsKey("database_id"));
         Assert.Equal(2, metadata.Count);
+
+        // NotionOptions.DatabaseId is documented as "reserved for a future implementation" and
+        // appears nowhere in the /v1/search request, which returns every accessible page. Tagging
+        // pages with it would claim a parentage the API never confirmed.
+        Assert.False(metadata.ContainsKey("database_id"));
     }
 }
 

@@ -475,7 +475,7 @@ public sealed class JiraDataProviderTests
     }
 
     [Fact]
-    public async Task GetFilesAsync_Metadata_PinsIssueKeysAndProject()
+    public async Task GetFilesAsync_Metadata_PinsIssueKeys()
     {
         const string json = """
             {
@@ -497,12 +497,8 @@ public sealed class JiraDataProviderTests
               "total": 1
             }
             """;
-        var sut = MakeProvider(json, new JiraOptions
-        {
-            BaseUrl    = "https://test.atlassian.net",
-            Email      = "test@test.com",
-            ProjectKey = "PROJ"
-        });
+        // No ProjectKey configured — project is still emitted, derived from the issue key.
+        var sut = MakeProvider(json);
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -526,7 +522,7 @@ public sealed class JiraDataProviderTests
     }
 
     [Fact]
-    public async Task GetFilesAsync_NullPriorityAssigneeAndNoProject_MetadataOmitsThem()
+    public async Task GetFilesAsync_NullPriorityAndAssignee_MetadataOmitsThem()
     {
         const string json = """
             {
@@ -558,10 +554,66 @@ public sealed class JiraDataProviderTests
         var metadata = Assert.Single(results).Value.Metadata!;
         Assert.Equal("PROJ-2", metadata["issue_key"]);
         Assert.Equal("Open",   metadata["status"]);
+        Assert.Equal("PROJ",   metadata["project"]);
         Assert.False(metadata.ContainsKey("priority"));
         Assert.False(metadata.ContainsKey("assignee"));
-        Assert.False(metadata.ContainsKey("project"));
-        Assert.Equal(3, metadata.Count);
+        Assert.Equal(4, metadata.Count);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_CustomJqlSpanningProjects_ProjectTracksEachIssue()
+    {
+        // The case that decided deriving project from the issue key rather than from options:
+        // a caller-supplied Jql can span projects with ProjectKey unset, where a single
+        // options-derived value would be wrong for most results.
+        const string json = """
+            {
+              "issues": [
+                {
+                  "id": "1",
+                  "key": "ALPHA-1",
+                  "fields": {
+                    "summary": "In Alpha",
+                    "description": null,
+                    "status": { "name": "Open" },
+                    "priority": null,
+                    "assignee": null,
+                    "comment": null,
+                    "updated": "2026-03-01T10:00:00Z"
+                  }
+                },
+                {
+                  "id": "2",
+                  "key": "BETA-27",
+                  "fields": {
+                    "summary": "In Beta",
+                    "description": null,
+                    "status": { "name": "Done" },
+                    "priority": null,
+                    "assignee": null,
+                    "comment": null,
+                    "updated": "2026-03-02T10:00:00Z"
+                  }
+                }
+              ],
+              "total": 2
+            }
+            """;
+        var sut = MakeProvider(json, new JiraOptions
+        {
+            BaseUrl = "https://test.atlassian.net",
+            Email   = "test@test.com",
+            Jql     = "labels = urgent order by updated DESC"
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal("ALPHA", results[0].Value.Metadata!["project"]);
+        Assert.Equal("BETA",  results[1].Value.Metadata!["project"]);
     }
 
     private static async Task<string> ReadContentAsync(FileEntry entry)

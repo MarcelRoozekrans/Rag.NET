@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Xml.Linq;
 using Rag.NET.DataProviders;
@@ -111,10 +112,36 @@ public sealed class RssDataProvider : IFileContentProvider
         string url, string? publishedAt, string? author)
     {
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (!string.IsNullOrEmpty(url))         metadata["url"]          = url;
-        if (!string.IsNullOrEmpty(publishedAt)) metadata["published_at"] = publishedAt;
-        if (!string.IsNullOrEmpty(author))      metadata["author"]       = author;
+        if (!string.IsNullOrEmpty(url))    metadata["url"]    = url;
+        if (!string.IsNullOrEmpty(author)) metadata["author"] = author;
+
+        var normalised = NormaliseTimestamp(publishedAt);
+        if (normalised is not null) metadata["published_at"] = normalised;
+
         return metadata.Count == 0 ? null : metadata;
+    }
+
+    /// <summary>
+    /// Renders a feed timestamp as round-trip ISO-8601. The two feed shapes this provider handles
+    /// disagree on format — Atom carries ISO-8601, RSS 2.0 carries RFC 822 <c>pubDate</c> — and
+    /// writing both under one <c>published_at</c> key would make ordering and range filters
+    /// meaningless within a single provider. Both parse with <see cref="DateTimeOffset.TryParse"/>.
+    /// <para>
+    /// A value that does not parse is passed through unchanged rather than dropped: a
+    /// non-conforming feed is still better described by its own string than by nothing. This is
+    /// deliberately unlike the sitemap's <c>lastmod</c>, which varies only in precision within a
+    /// single format and is therefore sound as a pass-through.
+    /// </para>
+    /// </summary>
+    private static string? NormaliseTimestamp(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return null;
+
+        return DateTimeOffset.TryParse(
+            value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
+            ? parsed.ToString("o", CultureInfo.InvariantCulture)
+            : value;
     }
 
     private static string InferFileName(string url)

@@ -118,6 +118,40 @@ all today.
 The exact key list per connector is fixed in the implementation plan, not here, because it
 depends on field-by-field checking of what each DTO actually carries.
 
+### 5a. Amendments made during Part C
+
+Three decisions taken against the plan during implementation, recorded here so plan and code
+agree rather than drifting.
+
+**Notion emits no `database_id`.** The plan listed it, sourced from `NotionOptions.DatabaseId`.
+It is dropped. The distinction that decides it is whether the option actually scopes the
+request: Confluence builds CQL `space="{SpaceKey}" AND …` and Jira builds JQL
+`project = "{ProjectKey}"`, so both genuinely narrow the result set and their tags are true of
+every document returned — merely absent when the run is unscoped. Notion sends
+`NotionSearchRequest(NotionFilter("object","page"), …)` with `DatabaseId` appearing *nowhere*,
+so the tag would be written onto documents provably not in that database and
+`HasTagSpec("database_id", …)` would return wrong documents with no signal that anything was
+off. A rename to `configured_database_id` was considered and rejected: it would be a key whose
+only correct use is "ignore me", carrying no filtering value, that must be deleted the moment
+`/v1/databases/{id}/query` lands — precisely when the real key becomes available and the
+honest-but-useless one becomes actively confusing. Notion emits `page_id` and `updated_at`,
+both read off the page itself.
+
+**Jira's `project` is derived from `issue.Key`, not from options.** The plan said "from options
+after conversion". Jira issue keys are `{PROJECTKEY}-{number}` and project keys contain no
+hyphen, so the text before the last hyphen is exact. Deriving it from the issue makes `project`
+unconditional rather than present only on scoped runs, keeps it correct when an issue is moved
+between projects, and — the case that decided it — stays correct when a caller supplies a
+custom `JiraOptions.Jql` spanning several projects, where `ProjectKey` is typically unset and a
+single options-derived value would be wrong for most results. `JiraDataProvider.ToHandle`
+consequently needs no `_options` access and stays `static`.
+
+**Asana gains `workspace` and `project`.** The plan listed neither, which would have left Asana
+the only record connector with no container key at all. `AsanaOptions.WorkspaceGid` is
+`required` and genuinely scopes every request, so `workspace` is unconditional — it does not
+even have the appear/vanish wrinkle that `space` and `project` have on unscoped Confluence and
+Jira runs. `project` is added when `ProjectGid` narrowed the enumeration.
+
 ## 6. Static → instance conversion
 
 Roughly nine connectors build handles in `static` helpers (Asana, Confluence, Jira, Zendesk
@@ -125,6 +159,25 @@ Roughly nine connectors build handles in `static` helpers (Asana, Confluence, Ji
 the most useful filter dimension — cannot be emitted. These become instance methods. The diff
 is wide but mechanical, and it is a prerequisite for "only this Confluence space" or "only
 this Jira project" being expressible at all.
+
+**As actually applied in Part C**, the conversion is the means and the container key is the
+end, so it was done exactly where a key needed it — Airtable (`base_id`, `table`), Asana
+(`workspace`, `project`), Confluence (`space`), Zendesk tickets and articles (`subdomain`).
+Three of the listed connectors kept their `static` helpers because no key they emit reads
+`_options`, and converting them would have produced instance methods touching no instance
+state:
+
+- **Jira** — `project` turned out to be derivable from the issue key, which is strictly better
+  than the options value (§5a). Nothing else needs options.
+- **MicrosoftTeams** — `GroupByDay` already receives `teamId`, `channelId` and `channelName` as
+  arguments. Those are per-team and per-channel values from the traversal, so they stay correct
+  on an unscoped run enumerating several teams, where `_options.TeamId` is null. Reading options
+  here would have been a regression, not a fix.
+- **Gmail** — `GmailOptions` carries nothing that describes a message's container; the folder is
+  hardcoded to `Inbox`.
+
+`subdomain` on the two Zendesk providers is not in the plan's key table but is the container
+context this section names as the reason for converting them, so it is emitted.
 
 ## 7. Error handling
 

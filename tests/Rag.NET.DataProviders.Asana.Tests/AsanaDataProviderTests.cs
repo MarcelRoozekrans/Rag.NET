@@ -622,10 +622,51 @@ public sealed class AsanaDataProviderTests
         // Lowercase literal, deliberately unlike the Markdown line's bool.ToString() ("True"):
         // HasTagSpec matches ordinally.
         Assert.Equal("true", metadata["completed"]);
-        Assert.Equal(4, metadata.Count);
+        // WorkspaceGid is required and scopes every request, so workspace is unconditional.
+        Assert.Equal("ws-1", metadata["workspace"]);
+        Assert.False(metadata.ContainsKey("project"));
+        Assert.Equal(5, metadata.Count);
 
         var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("**Completed:** True", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ProjectGidSet_MetadataCarriesProject()
+    {
+        const string tasksJson = """
+            {
+              "data": [
+                {
+                  "gid": "task-pj",
+                  "name": "Scoped task",
+                  "notes": null,
+                  "due_on": null,
+                  "completed": false,
+                  "assignee": null,
+                  "modified_at": "2026-03-01T10:00:00Z"
+                }
+              ]
+            }
+            """;
+        const string subtasksJson = """{ "data": [] }""";
+
+        // ProjectGid routes to /projects/{gid}/tasks, so match on the shared "/tasks" suffix;
+        // the longer subtasks key still wins for the subtask fetch.
+        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/tasks"]           = tasksJson,
+            ["task-pj/subtasks"] = subtasksJson
+        }, new AsanaOptions { WorkspaceGid = "ws-1", ProjectGid = "proj-42" });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("ws-1",    metadata["workspace"]);
+        Assert.Equal("proj-42", metadata["project"]);
     }
 
     [Fact]
@@ -661,10 +702,12 @@ public sealed class AsanaDataProviderTests
 
         var metadata = Assert.Single(results).Value.Metadata!;
         Assert.Equal("false", metadata["completed"]);
+        Assert.Equal("ws-1",  metadata["workspace"]);
         Assert.False(metadata.ContainsKey("assignee"));
         Assert.False(metadata.ContainsKey("due_on"));
         Assert.False(metadata.ContainsKey("updated_at"));
-        _ = Assert.Single(metadata);
+        Assert.False(metadata.ContainsKey("project"));
+        Assert.Equal(2, metadata.Count);
     }
 }
 

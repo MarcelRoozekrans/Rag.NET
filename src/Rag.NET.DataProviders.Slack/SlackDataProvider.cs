@@ -117,15 +117,18 @@ public sealed class SlackDataProvider : FileContentProviderBase
     /// semantic recall, the tags drive filtering.
     /// </para>
     /// </summary>
-    private static Dictionary<string, string>? BuildMetadata(
+    private static Dictionary<string, string> BuildMetadata(
         SlackChannel channel, string date, int messageCount)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        // message_count is always present, so the dictionary is never empty and never null.
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["message_count"] = messageCount.ToString(CultureInfo.InvariantCulture),
+        };
         if (!string.IsNullOrEmpty(channel.Name)) metadata["channel"]    = channel.Name;
         if (!string.IsNullOrEmpty(channel.Id))   metadata["channel_id"] = channel.Id;
         if (!string.IsNullOrEmpty(date))         metadata["date"]       = date;
-        metadata["message_count"] = messageCount.ToString(CultureInfo.InvariantCulture);
-        return metadata.Count == 0 ? null : metadata;
+        return metadata;
     }
 
     private static Dictionary<DateTime, List<SlackMessage>> GroupByDay(IList<SlackMessage> messages)
