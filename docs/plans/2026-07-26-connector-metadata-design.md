@@ -107,6 +107,18 @@ additive: `path`, a container key (`repo`, `workspace`, `drive`, `folder`, `cont
 paths that already inspect it (GitHub `file.Status`, GitLab `IsNewFile`/`IsRenamedFile`,
 Bitbucket `entry.Status`, Box `ev.EventType`).
 
+**`path` means the file's own full path** — the value a user would filter with
+`path` starts-with `docs/`. **OneDrive and SharePoint emit `parent_path`, not `path`.**
+Graph's `DriveItem` exposes `ParentReference.Path`, which is the *containing folder* and
+carries a `/drive/root:` namespace prefix; it is not the file's path. This document
+originally specified `item.ParentReference?.Path` under the key `path` for those two
+connectors — that was **an error in this design**, corrected during Part B. Filing a parent
+folder path under `path` would have made a cross-connector `path` filter silently match
+nothing on OneDrive and SharePoint, which is precisely the "worse than no tag" outcome this
+phase exists to prevent. Emitting the file's own path there would require composing
+`ParentReference.Path` with `Name` and stripping the namespace prefix — new behaviour, so it
+is out of scope here and the honest parent-folder value keeps an honest key.
+
 **Record/document** — Airtable, Asana, Confluence, Jira, Notion, Slack, MicrosoftTeams,
 Zendesk (tickets + articles), Gmail, Web (Crawler/RSS/Sitemap): `url` where one exists,
 `status`/`state`, author or assignee, a container key (`space`, `project`, `channel`,

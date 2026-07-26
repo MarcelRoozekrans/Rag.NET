@@ -84,7 +84,6 @@ public sealed class GitLabDataProvider : FileContentProviderBase
     private FileHandle ToHandle(
         IRepositoryClient repo, string path, string? etag, string? changeStatus)
     {
-        var capturedPath = path;
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["path"]    = path,
@@ -101,7 +100,7 @@ public sealed class GitLabDataProvider : FileContentProviderBase
             OpenContentAsync: async ct =>
             {
                 var ms = new MemoryStream();
-                await repo.Files.GetRawAsync(capturedPath, stream => stream.CopyToAsync(ms, ct),
+                await repo.Files.GetRawAsync(path, stream => stream.CopyToAsync(ms, ct),
                     new GetRawFileRequest { Ref = _options.Ref }, ct).ConfigureAwait(false);
                 ms.Position = 0;
                 return (Stream)ms;

@@ -16,6 +16,9 @@ public sealed class GitHubDataProvider : FileContentProviderBase
 {
     private readonly string _owner;
     private readonly string _repo;
+    /// <summary>The <c>owner/name</c> slug emitted as the <c>repo</c> tag. Fixed for the
+    /// provider's lifetime, so it is built once rather than per file.</summary>
+    private readonly string _repoSlug;
     private readonly IGitHubClient _client;
     private readonly GitHubDataProviderOptions _options;
 
@@ -30,6 +33,7 @@ public sealed class GitHubDataProvider : FileContentProviderBase
         ArgumentException.ThrowIfNullOrWhiteSpace(repo);
         _owner = owner;
         _repo = repo;
+        _repoSlug = $"{owner}/{repo}";
         _client = client;
         _options = options;  // options is now guaranteed non-null by ??= above
     }
@@ -84,11 +88,10 @@ public sealed class GitHubDataProvider : FileContentProviderBase
     /// </remarks>
     private FileHandle ToHandle(string path, string? sha, string? changeStatus)
     {
-        var capturedPath = path;
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["path"] = path,
-            ["repo"] = $"{_owner}/{_repo}",
+            ["repo"] = _repoSlug,
             ["ref"]  = _options.Branch,
         };
         if (changeStatus is not null)
@@ -101,7 +104,7 @@ public sealed class GitHubDataProvider : FileContentProviderBase
             OpenContentAsync: async ct =>
             {
                 var bytes = await _client.Repository.Content
-                    .GetRawContent(_owner, _repo, capturedPath).ConfigureAwait(false);
+                    .GetRawContent(_owner, _repo, path).ConfigureAwait(false);
                 return (Stream)new MemoryStream(bytes);
             },
             Metadata:         metadata);

@@ -18,6 +18,9 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
     private readonly IBitbucketApi _api;
     private readonly HttpClient _http;
     private readonly BitbucketOptions _options;
+    /// <summary>The <c>workspace/slug</c> pair emitted as the <c>repo</c> tag. Fixed for the
+    /// provider's lifetime, so it is built once rather than per file.</summary>
+    private readonly string _repoSlug;
 
     internal BitbucketDataProvider(IBitbucketApi api, HttpClient http, BitbucketOptions options)
         : base(options)
@@ -27,6 +30,7 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
         _api = api;
         _http = http;
         _options = options;
+        _repoSlug = $"{options.Workspace}/{options.RepoSlug}";
     }
 
     protected override IAsyncEnumerable<Result<FileHandle, RagError>> GetFileHandlesAsync(
@@ -130,11 +134,10 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
     /// </remarks>
     private FileHandle ToHandle(string path, string? etag, string? changeStatus)
     {
-        var capturedPath = path;
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["path"] = path,
-            ["repo"] = $"{_options.Workspace}/{_options.RepoSlug}",
+            ["repo"] = _repoSlug,
             ["ref"]  = _options.Ref,
         };
         if (changeStatus is not null)
@@ -145,7 +148,7 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
             FileName:         Path.GetFileName(path),
             ETag:             etag,
             OpenContentAsync: ct => GetRawFileStreamAsync(
-                _options.Workspace, _options.RepoSlug, _options.Ref, capturedPath, ct),
+                _options.Workspace, _options.RepoSlug, _options.Ref, path, ct),
             Metadata:         metadata);
     }
 

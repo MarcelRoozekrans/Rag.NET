@@ -180,9 +180,16 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
     /// never built inside the async iterator (design §1).
     /// </summary>
     /// <remarks>
-    /// Metadata emitted: <c>drive_id</c> (always) and <c>path</c> — the parent folder path Graph
-    /// reports on <c>parentReference</c>. Graph omits <c>parentReference</c> on some delta
-    /// payloads, so <c>path</c> is optional and is left out entirely rather than written empty.
+    /// Metadata emitted: <c>drive_id</c> (always) and <c>parent_path</c> — the parent folder path
+    /// Graph reports on <c>parentReference</c>. Graph omits <c>parentReference</c> on some delta
+    /// payloads, so <c>parent_path</c> is optional and is left out entirely rather than written
+    /// empty.
+    /// <para>
+    /// The key is <c>parent_path</c>, <b>not</b> <c>path</c>: everywhere else in the file/blob
+    /// connectors <c>path</c> is the file's own full path, but Graph gives the containing folder
+    /// (and prefixes it with the <c>/drive/root:</c> namespace token). Filing that under
+    /// <c>path</c> would make a cross-connector <c>path</c> filter silently match nothing here.
+    /// </para>
     /// </remarks>
     private FileHandle ToHandle(string driveId, DriveItem item)
     {
@@ -195,7 +202,7 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
             ["drive_id"] = driveId,
         };
         if (!string.IsNullOrEmpty(parentPath))
-            metadata["path"] = parentPath;
+            metadata["parent_path"] = parentPath;
 
         return new FileHandle(
             Id:               (parentPath ?? string.Empty) + "/" + item.Name,

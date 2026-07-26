@@ -109,18 +109,22 @@ public sealed class BoxDataProvider : FileContentProviderBase
     /// built inside the async iterator (design §1).
     /// </summary>
     /// <remarks>
-    /// Metadata emitted: <c>folder_id</c> on the full run only (the traversal stack knows the
-    /// containing folder; the Events feed does not, and the <c>fields</c> selection deliberately
-    /// does not request <c>path_collection</c>), and <c>change_status</c> on the delta run only.
-    /// <para><b>Internal for testing.</b> <c>BoxClient</c> is a sealed-in-practice concrete type
-    /// with no injectable transport, so the enumeration paths cannot be driven from a unit test;
-    /// this is the seam that pins the emitted keys.</para>
+    /// Metadata emitted: <c>folder_id</c> on the full run only, and <c>change_status</c> on the
+    /// delta run only.
+    /// <para>
+    /// The delta run <i>could</i> supply <c>folder_id</c>: <c>BoxItem.Parent</c> is present on the
+    /// events source object, and the events call passes no field selection at all, so nothing
+    /// restricts it. This code simply does not read it today. (The
+    /// <c>fields: ["id","name","type","sha1"]</c> selection is on the <i>full</i> traversal's
+    /// <c>GetFolderItemsAsync</c> call and has no bearing on the delta path.)
+    /// </para>
+    /// <para><b>Internal for testing.</b> <c>BoxClient</c> is a concrete type with no injectable
+    /// transport, so the enumeration paths cannot be driven from a unit test; this is the seam
+    /// that pins the emitted keys.</para>
     /// </remarks>
     internal FileHandle ToHandle(
         string id, string name, string? sha1, string? folderId, string? changeStatus)
     {
-        var capturedId = id;
-
         Dictionary<string, string>? metadata = null;
         if (folderId is not null || changeStatus is not null)
         {
@@ -136,7 +140,7 @@ public sealed class BoxDataProvider : FileContentProviderBase
             OpenContentAsync: async ct =>
             {
                 ct.ThrowIfCancellationRequested();
-                return await _client.FilesManager.DownloadAsync(capturedId, null)
+                return await _client.FilesManager.DownloadAsync(id, null)
                     .ConfigureAwait(false);
             },
             Metadata:         metadata);
@@ -149,13 +153,20 @@ public sealed class BoxDataProvider : FileContentProviderBase
     /// <list type="bullet">
     /// <item><c>COPY</c> → <c>added</c>: a copy always produces a new item at the destination,
     /// which is the item this handle carries.</item>
-    /// <item><c>UPLOAD</c> → <c>modified</c>. <b>This mapping is lossy.</b> Box raises one
-    /// <c>UPLOAD</c> event for a brand-new file and for a new version of an existing file, and
-    /// the event payload carries nothing that distinguishes them. <c>modified</c> is the weaker
-    /// of the two claims and is therefore never actively wrong about a version upload; calling a
-    /// version upload <c>added</c> would be. Fixing this properly needs the <c>path_collection</c>
-    /// / <c>version_number</c> fields, which the <c>fields</c> selection does not request
-    /// (recorded as debt in the Phase 2.2 design).</item>
+    /// <item><c>UPLOAD</c> → <see langword="null"/>, so the key is <b>omitted</b>. Box raises one
+    /// <c>UPLOAD</c> event both for a brand-new file and for a new version of an existing file.
+    /// In this vocabulary <c>added</c> and <c>modified</c> are disjoint, so guessing either one
+    /// is outright false half the time — there is no "weaker, still-true" option. The design
+    /// prescribes omitting a field the connector cannot determine, and a sparse-but-true tag is
+    /// worth more than a dense half-false one.
+    /// <para>
+    /// This <i>is</i> resolvable: <c>BoxFile</c> carries <c>SequenceId</c> and
+    /// <c>VersionNumber</c>, <c>ev.Source</c> is already a <c>BoxFile</c>, and the events call
+    /// passes no field selection that would strip them. It is left undone only because whether
+    /// the API populates them on the user-events payload could not be confirmed against a real
+    /// response — the SDK declaring a property is not evidence the wire carries it. Confirm that
+    /// and <c>SequenceId == "0"</c> → <c>added</c>, otherwise <c>modified</c>, is the fix.
+    /// </para></item>
     /// <item>Anything else → <see langword="null"/>, and the key is omitted. Unreachable today:
     /// the delta loop only lets <c>UPLOAD</c> and <c>COPY</c> through.</item>
     /// </list>
@@ -163,8 +174,7 @@ public sealed class BoxDataProvider : FileContentProviderBase
     /// </summary>
     internal static string? MapChangeStatus(string? eventType) => eventType switch
     {
-        "UPLOAD" => "modified",
-        "COPY"   => "added",
-        _        => null,
+        "COPY" => "added",
+        _      => null,
     };
 }

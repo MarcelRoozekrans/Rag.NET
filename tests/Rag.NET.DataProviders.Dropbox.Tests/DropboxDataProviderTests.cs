@@ -136,6 +136,8 @@ public sealed class DropboxDataProviderTests
         Assert.Equal("/docs/readme.md", handle.Metadata["path"]);
         // path never ends up empty, so the key is never omitted.
         Assert.Equal(handle.Id, handle.Metadata["path"]);
+        Assert.False(handle.Metadata.ContainsKey("folder"));
+        _ = Assert.Single(handle.Metadata);
         MetadataContract.AssertValid(handle.Metadata, handle.Id);
     }
 }

@@ -110,13 +110,19 @@ public sealed class BoxDataProviderTests
         MetadataContract.AssertValid(handle.Metadata, handle.Id);
     }
 
-    [Theory]
-    // Box raises one UPLOAD event for a new file and for a new version of an existing file, and
-    // the payload cannot distinguish them; "modified" is the weaker claim and never actively wrong.
-    [InlineData("UPLOAD", "modified")]
-    [InlineData("COPY",   "added")]
-    public void MapChangeStatus_NormalisesBoxEventTypes(string eventType, string expected)
-        => Assert.Equal(expected, BoxDataProvider.MapChangeStatus(eventType));
+    [Fact]
+    public void MapChangeStatus_Copy_IsAdded()
+        => Assert.Equal("added", BoxDataProvider.MapChangeStatus("COPY"));
+
+    [Fact]
+    public void MapChangeStatus_Upload_IsUndeterminable_ReturnsNull()
+    {
+        // Box raises one UPLOAD event both for a brand-new file and for a new version of an
+        // existing file. In this vocabulary "added" and "modified" are disjoint, so either guess
+        // is outright false half the time — there is no weaker-but-still-true option. The key is
+        // omitted instead, per the design's rule for a field the connector cannot determine.
+        Assert.Null(BoxDataProvider.MapChangeStatus("UPLOAD"));
+    }
 
     [Theory]
     [InlineData("ITEM_TRASH")]
@@ -124,4 +130,18 @@ public sealed class BoxDataProviderTests
     [InlineData(null)]
     public void MapChangeStatus_UnmappedEventType_ReturnsNull(string? eventType)
         => Assert.Null(BoxDataProvider.MapChangeStatus(eventType));
+
+    [Fact]
+    public void ToHandle_UploadEvent_LeavesMetadataNull()
+    {
+        // The delta path passes MapChangeStatus's result straight through, so an UPLOAD event
+        // with no folder_id in hand yields no metadata at all rather than an empty dictionary.
+        var sut = new BoxDataProvider(MakeBoxClient());
+
+        var handle = sut.ToHandle("file-1", "readme.md", "sha1-abc",
+            folderId: null, BoxDataProvider.MapChangeStatus("UPLOAD"));
+
+        Assert.Null(handle.Metadata);
+        MetadataContract.AssertValid(handle.Metadata, handle.Id);
+    }
 }

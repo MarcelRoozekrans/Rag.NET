@@ -253,7 +253,7 @@ public sealed class SharePointDataProviderTests
     // -------------------------------------------------------------------------
 
     [Fact]
-    public async Task GetFilesAsync_FullTraversal_EmitsDriveIdAndPath()
+    public async Task GetFilesAsync_FullTraversal_EmitsDriveIdAndParentPath()
     {
         const string driveId = "drive-1";
         var childrenJson = """
@@ -279,13 +279,17 @@ public sealed class SharePointDataProviderTests
         var metadata = Assert.Single(entries).Value.Metadata;
         Assert.NotNull(metadata);
         Assert.Equal(driveId,             metadata["drive_id"]);
-        Assert.Equal("/drive/root:/docs", metadata["path"]);
+        // parent_path, not path: Graph gives the containing folder (with its /drive/root:
+        // namespace prefix), not the file's own path, so it must not shadow the cross-connector
+        // "path" key that every other file/blob connector fills with the file's full path.
+        Assert.Equal("/drive/root:/docs", metadata["parent_path"]);
+        Assert.False(metadata.ContainsKey("path"));
         Assert.Equal(2, metadata.Count);
         MetadataContract.AssertValid(entries[0].Value);
     }
 
     [Fact]
-    public async Task GetFilesAsync_NoParentReference_OmitsPath()
+    public async Task GetFilesAsync_NoParentReference_OmitsParentPath()
     {
         // Graph leaves parentReference off some delta payloads. An optional field is omitted,
         // never written empty — an empty value is indistinguishable from a real path at query time.
@@ -312,7 +316,7 @@ public sealed class SharePointDataProviderTests
         var metadata = Assert.Single(entries).Value.Metadata;
         Assert.NotNull(metadata);
         Assert.Equal(driveId, metadata["drive_id"]);
-        Assert.False(metadata.ContainsKey("path"));
+        Assert.False(metadata.ContainsKey("parent_path"));
         _ = Assert.Single(metadata);
         MetadataContract.AssertValid(entries[0].Value);
     }
