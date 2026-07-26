@@ -2,6 +2,7 @@ using NGitLab;
 using NGitLab.Models;
 using NSubstitute;
 using Rag.NET.DataProviders.GitLab;
+using Rag.NET.DataProviders.Testing;
 using Xunit;
 
 namespace Rag.NET.DataProviders.GitLab.Tests;
@@ -353,6 +354,90 @@ public sealed class GitLabDataProviderTests
         {
             Assert.Contains(entries, e => string.Equals(e.Value.Id, $"dir/file{i}.cs", StringComparison.Ordinal));
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Metadata — the exact keys and values this connector emits
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_FullTraversal_EmitsPathProjectAndRef()
+    {
+        var (client, _) = MakeClient(treeItems: [MakeTreeItem("docs/readme.md", "aaa111")]);
+        var opts = new GitLabOptions
+        {
+            BaseUrl = "https://gitlab.com",
+            ProjectIdOrPath = Project,
+            Ref = "develop",
+        };
+        var sut = new GitLabDataProvider(client, opts);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal("docs/readme.md", metadata["path"]);
+        Assert.Equal("org/repo",       metadata["project"]);
+        Assert.Equal("develop",        metadata["ref"]);
+        // A full tree traversal has no notion of change — the key must be absent, not empty.
+        Assert.False(metadata.ContainsKey("change_status"));
+        Assert.Equal(3, metadata.Count);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Theory]
+    [InlineData(true,  false, "added")]
+    [InlineData(false, true,  "renamed")]
+    [InlineData(false, false, "modified")]
+    public async Task GetFilesAsync_DeltaTraversal_NormalisesChangeStatus(
+        bool isNewFile, bool isRenamedFile, string expected)
+    {
+        var comparison = new CompareResults
+        {
+            Diff =
+            [
+                new Diff
+                {
+                    NewPath = "file.md",
+                    OldPath = "file.md",
+                    IsNewFile = isNewFile,
+                    IsRenamedFile = isRenamedFile,
+                    IsDeletedFile = false,
+                },
+            ],
+        };
+        var (client, _) = MakeClient(compareResults: comparison);
+        var sut = new GitLabDataProvider(client, MakeOptions(lastIngestedCommitSha: "old-sha"));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal(expected,   metadata["change_status"]);
+        Assert.Equal("file.md",  metadata["path"]);
+        Assert.Equal("org/repo", metadata["project"]);
+        Assert.Equal("main",     metadata["ref"]);
+        Assert.Equal(4, metadata.Count);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_AllEntriesSatisfyMetadataContract()
+    {
+        var (client, _) = MakeClient(treeItems:
+        [
+            MakeTreeItem("docs/readme.md", "aaa111"),
+            MakeTreeItem("src/main.cs", "bbb222"),
+        ]);
+        var sut = new GitLabDataProvider(client, MakeOptions());
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, entries.Count);
+        MetadataContract.AssertAll(entries.Select(e => e.Value));
     }
 
     /// <summary>Simple async enumerator over an array for test mocking.</summary>

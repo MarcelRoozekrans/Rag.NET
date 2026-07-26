@@ -66,15 +66,8 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
                 if (!string.Equals(entry.Type, "commit_file", StringComparison.Ordinal))
                     continue;
 
-                var capturedPath = entry.Path;
-                var etag = entry.Commit?.Hash;
-
-                yield return Result<FileHandle, RagError>.Success(new FileHandle(
-                    Id: capturedPath,
-                    FileName: Path.GetFileName(capturedPath),
-                    ETag: etag,
-                    OpenContentAsync: ct => GetRawFileStreamAsync(
-                        _options.Workspace, _options.RepoSlug, _options.Ref, capturedPath, ct)));
+                yield return Result<FileHandle, RagError>.Success(
+                    ToHandle(entry.Path, entry.Commit?.Hash, changeStatus: null));
             }
 
             pageToken = ExtractPageToken(page.Next);
@@ -117,20 +110,66 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
                 if (filePath is null)
                     continue;
 
-                var capturedPath = filePath;
-
-                yield return Result<FileHandle, RagError>.Success(new FileHandle(
-                    Id: capturedPath,
-                    FileName: Path.GetFileName(capturedPath),
-                    ETag: null,
-                    OpenContentAsync: ct => GetRawFileStreamAsync(
-                        _options.Workspace, _options.RepoSlug, _options.Ref, capturedPath, ct)));
+                yield return Result<FileHandle, RagError>.Success(
+                    ToHandle(filePath, etag: null, MapChangeStatus(entry.Status)));
             }
 
             pageToken = ExtractPageToken(page.Next);
         }
         while (pageToken is not null);
     }
+
+    /// <summary>
+    /// Builds the handle for one file. Synchronous by design: the metadata dictionary is never
+    /// built inside the async iterator (design §1).
+    /// </summary>
+    /// <remarks>
+    /// Metadata emitted: <c>path</c>, <c>repo</c> (<c>workspace/slug</c>) and <c>ref</c> on every
+    /// run, plus <c>change_status</c> on diffstat (delta) runs only — a source listing has no
+    /// notion of change.
+    /// </remarks>
+    private FileHandle ToHandle(string path, string? etag, string? changeStatus)
+    {
+        var capturedPath = path;
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["path"] = path,
+            ["repo"] = $"{_options.Workspace}/{_options.RepoSlug}",
+            ["ref"]  = _options.Ref,
+        };
+        if (changeStatus is not null)
+            metadata["change_status"] = changeStatus;
+
+        return new FileHandle(
+            Id:               path,
+            FileName:         Path.GetFileName(path),
+            ETag:             etag,
+            OpenContentAsync: ct => GetRawFileStreamAsync(
+                _options.Workspace, _options.RepoSlug, _options.Ref, capturedPath, ct),
+            Metadata:         metadata);
+    }
+
+    /// <summary>
+    /// Normalises Bitbucket's diffstat <c>status</c> onto the cross-connector
+    /// <c>change_status</c> vocabulary (<c>added</c>/<c>modified</c>/<c>removed</c>/<c>renamed</c>)
+    /// so the tag can be filtered on identically across GitHub, GitLab and Box.
+    /// <list type="bullet">
+    /// <item><c>added</c>, <c>modified</c> and <c>renamed</c> already match the vocabulary and
+    /// pass through unchanged — they are re-stated here rather than forwarded blind, so a new
+    /// vendor value cannot silently leak into the tag.</item>
+    /// <item><c>removed</c> → <c>removed</c>. Unreachable in practice: removed entries are
+    /// skipped before a handle is built. Mapped anyway so the vocabulary is complete.</item>
+    /// <item>Anything else → <see langword="null"/>, and the key is omitted.</item>
+    /// </list>
+    /// </summary>
+    private static string? MapChangeStatus(string? status) => status switch
+    {
+        "added"    => "added",
+        "modified" => "modified",
+        "renamed"  => "renamed",
+        "removed"  => "removed",
+        _          => null,
+    };
 
     private async Task<Stream> GetRawFileStreamAsync(
         string workspace, string repo, string @ref, string path, CancellationToken ct)

@@ -1,6 +1,7 @@
 using NSubstitute;
 using Octokit;
 using Rag.NET.DataProviders.GitHub;
+using Rag.NET.DataProviders.Testing;
 using Xunit;
 
 namespace Rag.NET.DataProviders.GitHub.Tests;
@@ -192,5 +193,98 @@ public sealed class GitHubDataProviderTests
 
         _ = Assert.Single(entries);
         Assert.Equal("changed.md", entries[0].Value.Id);
+    }
+
+    // -----------------------------------------------------------------------
+    // Metadata — the exact keys and values this connector emits
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_FullTree_EmitsPathRepoAndRef()
+    {
+        var tree = MakeTree(("docs/readme.md", "sha-1"));
+        var sut = new GitHubDataProvider(Owner, Repo, MakeClient(tree),
+            new GitHubDataProviderOptions { Branch = "develop" });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal("docs/readme.md", metadata["path"]);
+        Assert.Equal("org/repo",       metadata["repo"]);
+        Assert.Equal("develop",        metadata["ref"]);
+        // A full tree traversal has no notion of change — the key must be absent, not empty.
+        Assert.False(metadata.ContainsKey("change_status"));
+        Assert.Equal(3, metadata.Count);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Theory]
+    [InlineData("added",     "added")]
+    [InlineData("copied",    "added")]
+    [InlineData("modified",  "modified")]
+    [InlineData("changed",   "modified")]
+    [InlineData("renamed",   "renamed")]
+    public async Task GetFilesAsync_DeltaRun_NormalisesChangeStatus(
+        string githubStatus, string expected)
+    {
+        var sut = MakeDeltaProvider(("file.md", githubStatus));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal(expected,  metadata["change_status"]);
+        Assert.Equal("file.md", metadata["path"]);
+        Assert.Equal("org/repo", metadata["repo"]);
+        Assert.Equal("main",     metadata["ref"]);
+        Assert.Equal(4, metadata.Count);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_DeltaRun_UnmappedStatus_OmitsChangeStatus()
+    {
+        // "unchanged" asserts no change at all; forwarding it would put a vendor-only value in a
+        // tag the other connectors cannot produce, so the key is omitted instead.
+        var sut = MakeDeltaProvider(("file.md", "unchanged"));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.False(metadata.ContainsKey("change_status"));
+        Assert.Equal(3, metadata.Count);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_AllEntriesSatisfyMetadataContract()
+    {
+        var tree = MakeTree(("docs/readme.md", "sha-1"), ("src/main.cs", "sha-2"));
+        var sut = new GitHubDataProvider(Owner, Repo, MakeClient(tree));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, entries.Count);
+        MetadataContract.AssertAll(entries.Select(e => e.Value));
+    }
+
+    private static GitHubDataProvider MakeDeltaProvider(params (string path, string status)[] files)
+    {
+        var compareResult = new CompareResult(
+            url: "", htmlUrl: "", permalinkUrl: "", diffUrl: "", patchUrl: "",
+            baseCommit: null!, mergeBaseCommit: null!,
+            status: "ahead", aheadBy: 1, behindBy: 0, totalCommits: 1,
+            commits: [],
+            files: [.. files.Select(f =>
+                new GitHubCommitFile(f.path, 0, 0, 0, f.status, "", "", "", "sha", "", ""))]);
+
+        return new GitHubDataProvider(Owner, Repo, MakeClient(MakeTree(), compareResult),
+            new GitHubDataProviderOptions { LastIngestedCommitSha = "old-sha" });
     }
 }
