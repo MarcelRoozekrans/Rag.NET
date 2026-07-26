@@ -7,6 +7,7 @@ using Google.Apis.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.GoogleDrive;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Results;
@@ -138,6 +139,64 @@ public sealed class GoogleDriveDataProviderTests
         Assert.Equal("file-1", entries[0].Value.Id);
         Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "file-2", StringComparison.Ordinal));
         Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "file-3", StringComparison.Ordinal));
+    }
+
+    // -----------------------------------------------------------------------
+    // Metadata — the exact keys and values this connector emits
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_WholeDrive_EmitsMimeTypeAndOmitsFolderId()
+    {
+        // A whole-drive listing does not know which folder a file sits in, so folder_id is
+        // omitted rather than written empty.
+        var json = BuildFilesListJson([("file-1", "readme.md", "text/markdown", "md5-1")]);
+        var sut = new GoogleDriveDataProvider(MakeDriveServiceWithFakeHttp(json));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal("text/markdown", metadata["mime_type"]);
+        Assert.False(metadata.ContainsKey("folder_id"));
+        _ = Assert.Single(metadata);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_FolderTraversal_EmitsMimeTypeAndFolderId()
+    {
+        var json = BuildFilesListJson([("file-1", "readme.md", "text/markdown", "md5-1")]);
+        var opts = new GoogleDriveOptions { FolderId = "folder-abc" };
+        var sut = new GoogleDriveDataProvider(MakeDriveServiceWithFakeHttp(json), opts);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal("text/markdown", metadata["mime_type"]);
+        Assert.Equal("folder-abc",    metadata["folder_id"]);
+        Assert.Equal(2, metadata.Count);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_AllEntriesSatisfyMetadataContract()
+    {
+        var json = BuildFilesListJson(
+        [
+            ("file-1", "readme.md", "text/markdown", "md5-1"),
+            ("file-2", "notes.txt", "text/plain",    "md5-2"),
+        ]);
+        var sut = new GoogleDriveDataProvider(MakeDriveServiceWithFakeHttp(json));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, entries.Count);
+        MetadataContract.AssertAll(entries.Select(e => e.Value));
     }
 }
 
