@@ -98,7 +98,9 @@ services.AddApplicationInsightsTelemetry();
 
 ## Polly resilience pipeline
 
-Embedding API calls and vector store writes are remote operations subject to transient failures (rate limits, timeouts, network blips). `RagBuilder.ConfigureResilience` wraps the pipeline with a named [Polly](https://github.com/App-vNext/Polly) `ResiliencePipeline`.
+Embedding API calls and vector store calls are remote operations subject to transient failures (rate limits, timeouts, network blips). `RagBuilder.ConfigureResilience` registers a named [Polly](https://github.com/App-vNext/Polly) `ResiliencePipeline` (`"rag-net"`) and decorates the registered `IEmbeddingGenerator<string, Embedding<float>>` and `IVectorStore` so every call runs through it.
+
+**Ordering matters.** Only the surfaces registered at the time of the call are decorated — the same rule as `UseRateLimiting`/`UseCostBudgeting`. Register the store and embedding generator first; calling `ConfigureResilience` with neither registered throws with an actionable message rather than silently doing nothing.
 
 ### Default policy
 
@@ -143,9 +145,14 @@ services.AddRagNet(rag => rag
         })));
 ```
 
-### Known issue: the pipeline is registered but not wired
+### What is and is not covered
 
-`ConfigureResilience` internally calls `services.AddResiliencePipeline("rag-net", ...)` — but **nothing in the library currently consumes that pipeline**: no code resolves `ResiliencePipelineProvider<string>` or executes the `"rag-net"` pipeline, so calling `ConfigureResilience` configures retry policy on a pipeline no call path runs. This is a pre-existing known issue (see the [resilience guide](resilience.md)); the supported resilience mechanisms are the `UseFallbackChain`, `UseRateLimiting`, and `UseCostBudgeting` decorators documented there. If you need retry/circuit-breaker behaviour today, wrap calls at the `IEmbeddingGenerator` or `IVectorStore` level using the `Microsoft.Extensions.AI` middleware pipeline instead.
+- **Covered:** `IEmbeddingGenerator.GenerateAsync`, and `IVectorStore.StoreAsync`/`SearchAsync`/`DeleteByDocumentIdAsync`. Retries assume these are idempotent — `StoreAsync` is an upsert keyed by `(DocumentId, ChunkIndex)` and delete-of-missing is a no-op across the shipped stores, so a re-sent write does not duplicate.
+- **Capability surfaces:** decorating a sparse-capable store keeps the `store is ISparseSearchable` probe honest (the sparse operations are wrapped too). `ICollectionManageable` and `IHybridSearchable` are registered separately in DI by each store's own `Use*` extension and resolve to the undecorated store, so collection management and native hybrid search are **not** retried.
+- **Not covered:** `IChatClient`. Use `UseFallbackChain` for chat-side resilience (see the [resilience guide](resilience.md)).
+- **Cancellation is never retried.** The caller's `CancellationToken` flows into every attempt, and the default retry predicate excludes `OperationCanceledException` — so a cancelled call (and, deliberately, an `HttpClient` timeout surfacing as `TaskCanceledException`) fails on the first attempt. A custom `configure` delegate owns its own predicates and should exclude it too.
+
+> **Warning — double retry with Weaviate and Chroma:** those two stores configure `AddStandardResilienceHandler` on their own `HttpClient`, so this decorator stacks **on top of** transport-level retries and the attempt counts multiply (3 decorator attempts × 3 transport attempts = up to 9 requests, each with its own back-off). Configure one layer or the other: either skip `ConfigureResilience` for those stores and tune the HTTP handler, or keep `ConfigureResilience` and accept the multiplication knowingly. Qdrant (gRPC), Pinecone (SDK) and PgVector (Npgsql) are not HTTP-typed clients and have no transport-level retry, so for them the decorator is the only layer.
 
 ## Combining all three
 
@@ -154,7 +161,7 @@ flowchart LR
     PIPE["RagPipeline"]
     LOG["ILogger<br>structured log lines"]
     OTEL["ActivitySource<br>distributed traces"]
-    POLLY["Polly ResiliencePipeline<br>exponential back-off retry"]
+    POLLY["Polly ResiliencePipeline<br>retries embedding + vector store calls"]
 
     PIPE --> LOG
     PIPE --> OTEL
