@@ -92,18 +92,11 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
     private static FileHandle ToHandle(UniqueId uid, MimeMessage message)
     {
         var markdown = ToMarkdown(message);
-        var subject  = string.IsNullOrWhiteSpace(message.Subject)
-            ? $"message-{uid}" : message.Subject;
-
-        // Replace invalid filename chars with underscore
-        var invalid = Path.GetInvalidFileNameChars();
-        var safe    = new char[subject.Length];
-        for (int i = 0; i < subject.Length; i++)
-            safe[i] = Array.IndexOf(invalid, subject[i]) >= 0 ? '_' : subject[i];
+        var stem     = FileNameSanitizer.Sanitize(message.Subject, $"message-{uid}");
 
         return new FileHandle(
             Id:               uid.ToString(),
-            FileName:         $"{new string(safe)}.md",
+            FileName:         $"{stem}.md",
             ETag:             uid.ToString(),
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))));

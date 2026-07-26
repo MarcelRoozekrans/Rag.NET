@@ -17,10 +17,15 @@ namespace Rag.NET.Parsers.Email;
 public sealed class MsgDocumentParser(
     IEnumerable<IDocumentParser> parsers,
     HtmlDocumentParser htmlParser,
-    ILogger<MsgDocumentParser>? logger = null) : IDocumentParser
+    ILogger<MsgDocumentParser>? logger = null,
+    EmailParserOptions? options = null) : IDocumentParser
 {
+    internal const string MsgContentType = "application/vnd.ms-outlook";
+
+    private readonly EmailParserOptions options = options ?? new EmailParserOptions();
+
     public bool CanParse(string contentType) =>
-        contentType.Equals("application/vnd.ms-outlook", StringComparison.OrdinalIgnoreCase);
+        contentType.Equals(MsgContentType, StringComparison.OrdinalIgnoreCase);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,
@@ -28,7 +33,23 @@ public sealed class MsgDocumentParser(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         using var message = new Storage.Message(stream, FileAccess.Read, leaveStreamOpen: true);
+        var context = EmbeddedMessageContext.Create(metadata, options);
         int sectionIndex = 0;
+
+        // SectionIndex is stamped exactly once, here: everything below — including any
+        // nested message parsed in-process — yields unstamped sections.
+        await foreach (var section in ParseMessageAsync(message, context, cancellationToken).ConfigureAwait(false))
+        {
+            yield return section with { SectionIndex = sectionIndex++ };
+        }
+    }
+
+    private async IAsyncEnumerable<DocumentSection> ParseMessageAsync(
+        Storage.Message message,
+        EmbeddedMessageContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var metadata = context.Metadata;
 
         // Subject section
         if (!string.IsNullOrWhiteSpace(message.Subject))
@@ -39,20 +60,43 @@ public sealed class MsgDocumentParser(
                 DocumentId = metadata.DocumentId,
                 Heading = message.Subject,
                 HeadingLevel = 1,
-                SectionIndex = sectionIndex++,
+                SectionIndex = 0, // stamped by ParseAsync
             };
         }
 
         // Body sections
         await foreach (var section in ParseBodyAsync(message, metadata, cancellationToken).ConfigureAwait(false))
         {
-            yield return section with { SectionIndex = sectionIndex++ };
+            yield return section;
         }
 
         // Attachment sections
-        await foreach (var section in ParseAttachmentsAsync(message, metadata, cancellationToken).ConfigureAwait(false))
+        await foreach (var section in ParseAttachmentsAsync(message, context, cancellationToken).ConfigureAwait(false))
         {
-            yield return section with { SectionIndex = sectionIndex++ };
+            yield return section;
+        }
+    }
+
+    /// <summary>
+    /// Parses a nested message in place, or yields nothing after a warning when either
+    /// embedded-message limit is reached. Never throws: the parser degrades rather than breaks.
+    /// </summary>
+    private async IAsyncEnumerable<DocumentSection> ParseEmbeddedAsync(
+        Storage.Message embedded,
+        EmbeddedMessageContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var name = !string.IsNullOrWhiteSpace(embedded.Subject)
+            ? embedded.Subject
+            : embedded.FileName ?? "(no subject)";
+
+        if (!context.TryEnterEmbedded(name, logger))
+            yield break;
+
+        var metadata = EmbeddedMessageMetadata.Create(context.Metadata, name, ".msg", MsgContentType);
+        await foreach (var section in ParseMessageAsync(embedded, context.Descend(metadata), cancellationToken).ConfigureAwait(false))
+        {
+            yield return section;
         }
     }
 
@@ -69,7 +113,7 @@ public sealed class MsgDocumentParser(
             {
                 Text = message.BodyText.Trim(),
                 DocumentId = metadata.DocumentId,
-                SectionIndex = 0, // re-stamped by caller
+                SectionIndex = 0, // stamped by ParseAsync
             };
             yield break;
         }
@@ -87,7 +131,7 @@ public sealed class MsgDocumentParser(
 
     private async IAsyncEnumerable<DocumentSection> ParseAttachmentsAsync(
         Storage.Message message,
-        DocumentMetadata metadata,
+        EmbeddedMessageContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         // Storage.Message.Attachments is a List<object> mixing file attachments
@@ -98,15 +142,19 @@ public sealed class MsgDocumentParser(
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Embedded/forwarded emails surface as nested Storage.Message; recursing into
-            // them is a follow-up — warn instead of silently dropping them.
+            // Embedded/forwarded emails surface as a nested Storage.Message: a live object,
+            // not a stream, so it is parsed in place rather than re-entering the stream-based
+            // ParseAsync. It is deliberately not disposed here — it belongs to the outer
+            // message's Attachments collection, and disposing an item while enumerating that
+            // collection would be the parser destroying data its caller may still read.
+            // (Probed against MsgReader 6.1.0: a nested child's BodyText is still readable
+            // after the outer message's Dispose(), so the parent does not tear children down.
+            // Ownership is by convention here, not enforced by the library.)
             if (item is Storage.Message embedded)
             {
-                if (logger is not null)
+                await foreach (var section in ParseEmbeddedAsync(embedded, context, cancellationToken).ConfigureAwait(false))
                 {
-                    EmailParserLog.EmbeddedMessageSkipped(
-                        logger,
-                        !string.IsNullOrWhiteSpace(embedded.Subject) ? embedded.Subject : embedded.FileName ?? "(no subject)");
+                    yield return section;
                 }
 
                 continue;
@@ -128,7 +176,7 @@ public sealed class MsgDocumentParser(
             using var attachmentStream = new MemoryStream(attachment.Data);
 
             await foreach (var section in EmailAttachmentDispatcher.DispatchAsync(
-                parsers, this, attachment.FileName, mimeType, attachmentStream, metadata, logger, cancellationToken).ConfigureAwait(false))
+                parsers, attachment.FileName, mimeType, attachmentStream, context, logger, cancellationToken).ConfigureAwait(false))
             {
                 yield return section;
             }

@@ -55,13 +55,15 @@ public class MsgDocumentParserTests
     }
 
     [Fact]
-    public async Task Parse_MsgAttachment_SelfIsSkipped_WarnsWhenNoOtherParser()
+    public async Task Parse_MsgAttachment_ReEntersItself()
     {
         var ct = TestContext.Current.CancellationToken;
         var logger = new CapturingLogger<MsgDocumentParser>();
         var parsers = new List<Rag.NET.Abstractions.IDocumentParser>();
+        // The parser is the only one that CanParse a nested .msg, so it re-enters itself.
+        // That used to be blocked by a ReferenceEquals(self) skip; the depth limit replaced it.
         var sut = new MsgDocumentParser(parsers, new HtmlDocumentParser(), logger);
-        parsers.Add(sut); // sut CanParse the nested .msg's content type but must skip itself
+        parsers.Add(sut);
 
         using var nested = MsgFixtureBuilder.Create("Nested", "Nested body.");
         using var stream = MsgFixtureBuilder.Create(
@@ -69,10 +71,10 @@ public class MsgDocumentParserTests
 
         var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
 
-        Assert.Equal(2, sections.Count); // subject + body only
-        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
-        Assert.Contains("application/vnd.ms-outlook", warning.Message, StringComparison.Ordinal);
-        Assert.Contains("nested.msg", warning.Message, StringComparison.Ordinal);
+        Assert.Equal(4, sections.Count);
+        Assert.Equal("Nested", sections[2].Heading);
+        Assert.Equal("Nested body.", sections[3].Text);
+        Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Warning);
     }
 
     [Fact]
@@ -112,24 +114,7 @@ public class MsgDocumentParserTests
         Assert.Equal("text/plain", Assert.Single(fake.ReceivedMetadata).ContentType);
     }
 
-    [Fact]
-    public async Task Parse_Msg_EmbeddedMessage_WarnsAndSkips()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var logger = new CapturingLogger<MsgDocumentParser>();
-        var sut = new MsgDocumentParser([new FakeTextParser()], new HtmlDocumentParser(), logger);
-        using var stream = MsgFixtureBuilder.Create(
-            "Outer", "Outer body.",
-            embeddedMessageSubject: "Forwarded Subject",
-            embeddedMessageBody: "Forwarded body.");
-
-        var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
-
-        Assert.Equal(2, sections.Count); // subject + body only
-        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
-        Assert.Contains("Forwarded Subject", warning.Message, StringComparison.Ordinal);
-        Assert.Contains("not yet recursed", warning.Message, StringComparison.Ordinal);
-    }
+    // Nested Storage.Message recursion is covered by EmbeddedMessageRecursionTests.
 
     [Fact]
     public async Task Parse_NoBody_EmitsSubjectOnly()

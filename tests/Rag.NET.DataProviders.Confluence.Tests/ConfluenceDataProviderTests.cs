@@ -52,6 +52,26 @@ public sealed class ConfluenceDataProviderTests
     }
 
     [Fact]
+    public async Task GetFilesAsync_HostilePageTitle_Sanitized()
+    {
+        const string json = """
+            {
+              "results": [
+                { "id": "999", "title": "Runbook: Prod/Failover", "body": { "storage": { "value": "<p>x</p>" } }, "version": { "number": 1 } }
+              ],
+              "_links": {}
+            }
+            """;
+        var sut = MakeProvider(json);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.Equal("Runbook_ Prod_Failover.md", results[0].Value.FileName);
+    }
+
+    [Fact]
     public async Task GetFilesAsync_DeltaTraversal_UsesSearchEndpoint()
     {
         const string json = """

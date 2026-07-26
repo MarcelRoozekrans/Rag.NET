@@ -118,22 +118,7 @@ public class EmailDocumentParserTests
         Assert.DoesNotContain(sections, s => string.Equals(s.Heading, "Html Heading", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public async Task Parse_EmbeddedMessageAttachment_WarnsAndSkips()
-    {
-        var ct = TestContext.Current.CancellationToken;
-        var logger = new CapturingLogger<EmailDocumentParser>();
-        var sut = new EmailDocumentParser([new FakeTextParser()], new HtmlDocumentParser(), logger);
-        using var stream = await CreateEmlWithEmbeddedMessageAsync(
-            "Outer", "Outer body.", "Forwarded Subject", "Forwarded body.", ct);
-
-        var sections = await sut.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
-
-        Assert.Equal(2, sections.Count); // subject + body only
-        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
-        Assert.Contains("Forwarded Subject", warning.Message, StringComparison.Ordinal);
-        Assert.Contains("not yet recursed", warning.Message, StringComparison.Ordinal);
-    }
+    // MessagePart recursion is covered by EmbeddedMessageRecursionTests.
 
     [Fact]
     public async Task Parse_TextAttachment_MetadataContract()
@@ -177,6 +162,131 @@ public class EmailDocumentParserTests
         Assert.Contains(parsers, p => p is EmailDocumentParser);
         Assert.Contains(parsers, p => p is MsgDocumentParser);
         Assert.NotNull(provider.GetService<HtmlDocumentParser>());
+        Assert.Null(provider.GetService<EmailParserOptions>()); // only the configuring overload registers them
+    }
+
+    [Fact]
+    public async Task AddEmailParser_Configured_OptionsReachBothParserInstances()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        builder.AddEmailParser(o => o.MaxEmbeddedDepth = 0);
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Equal(0, provider.GetRequiredService<EmailParserOptions>().MaxEmbeddedDepth);
+        var parsers = provider.GetServices<IDocumentParser>().ToList();
+
+        // Recursion off is observable: each parser yields subject + body only for a message
+        // that embeds another. Asserting it on both pins that both instances got the options.
+        var eml = Assert.Single(parsers.OfType<EmailDocumentParser>());
+        var nested = EmlFixtureBuilder.CreateNested("Forwarded", "Forwarded body.");
+        using var emlStream = new MemoryStream(
+            await EmlFixtureBuilder.CreateWithEmbeddedAsync("Outer", "Outer body.", nested, ct));
+        Assert.Equal(2, await eml.ParseAsync(emlStream, CreateMetadata(), ct).CountAsync(ct));
+
+        var msg = Assert.Single(parsers.OfType<MsgDocumentParser>());
+        using var msgStream = MsgFixtureBuilder.Create("Outer", "Outer body.",
+            embeddedMessageSubject: "Forwarded", embeddedMessageBody: "Forwarded body.");
+        Assert.Equal(2, await msg.ParseAsync(msgStream, CreateMetadata(), ct).CountAsync(ct));
+    }
+
+    [Theory]
+    [InlineData(-1, 50)]
+    [InlineData(3, -1)]
+    [InlineData(EmailParserOptions.MaxSupportedEmbeddedDepth + 1, 50)]
+    public void AddEmailParser_InvalidOptions_Throws(int maxDepth, int maxMessages)
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => builder.AddEmailParser(o =>
+        {
+            o.MaxEmbeddedDepth = maxDepth;
+            o.MaxEmbeddedMessages = maxMessages;
+        }));
+    }
+
+    [Fact]
+    public void AddEmailParser_DepthAtTheCeiling_IsAccepted()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        // The ceiling is what keeps MaxEmbeddedDepth below the stack-overflow floor: recursion
+        // into an embedded message is stack-recursive and ~500 levels kills the process with
+        // an uncatchable 0xC00000FD. 64 must be the last accepted value, 65 the first rejected.
+        builder.AddEmailParser(o => o.MaxEmbeddedDepth = EmailParserOptions.MaxSupportedEmbeddedDepth);
+
+        using var provider = services.BuildServiceProvider();
+        Assert.Equal(64, provider.GetRequiredService<EmailParserOptions>().MaxEmbeddedDepth);
+    }
+
+    // ── The ceiling is absolute, not merely validated ────────────────────────
+
+    /// <summary>
+    /// <c>AddEmailParser</c> is only one of three ways to reach an <see cref="EmailParserOptions"/>:
+    /// both parsers take one on a public constructor, and the instance registered in DI is the
+    /// same one both parsers captured. The setter therefore clamps, so no path can arm a depth
+    /// above <see cref="EmailParserOptions.MaxSupportedEmbeddedDepth"/> — beyond which recursion
+    /// is an uncatchable 0xC00000FD process kill. Nothing here drives a real overflow.
+    /// </summary>
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(3, 3)]
+    [InlineData(EmailParserOptions.MaxSupportedEmbeddedDepth, EmailParserOptions.MaxSupportedEmbeddedDepth)]
+    [InlineData(EmailParserOptions.MaxSupportedEmbeddedDepth + 1, EmailParserOptions.MaxSupportedEmbeddedDepth)]
+    [InlineData(10_000, EmailParserOptions.MaxSupportedEmbeddedDepth)]
+    [InlineData(int.MaxValue, EmailParserOptions.MaxSupportedEmbeddedDepth)]
+    public void MaxEmbeddedDepth_Setter_ClampsToTheCeiling(int assigned, int expected)
+    {
+        var options = new EmailParserOptions { MaxEmbeddedDepth = assigned };
+
+        Assert.Equal(expected, options.MaxEmbeddedDepth);
+    }
+
+    [Fact]
+    public void MaxEmbeddedDepth_DirectConstruction_CannotExceedTheCeiling()
+    {
+        // The bypass: EmailDocumentParser/MsgDocumentParser have public constructors taking the
+        // options, so ValidateOptions never runs on this instance.
+        var options = new EmailParserOptions { MaxEmbeddedDepth = 10_000 };
+        var parsers = new List<IDocumentParser>();
+        var parser = new EmailDocumentParser(parsers, new HtmlDocumentParser(), null, options);
+        parsers.Add(parser);
+
+        Assert.Equal(EmailParserOptions.MaxSupportedEmbeddedDepth, options.MaxEmbeddedDepth);
+    }
+
+    [Fact]
+    public void MaxEmbeddedDepth_MutatingTheDiResolvedInstance_CannotExceedTheCeiling()
+    {
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+        builder.AddEmailParser(o => o.MaxEmbeddedDepth = 3);
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<EmailParserOptions>();
+
+        // The second bypass: Register puts the very instance both parsers captured into DI, so
+        // a post-validation write would re-arm what startup validation had just rejected.
+        options.MaxEmbeddedDepth = 10_000;
+
+        Assert.Equal(EmailParserOptions.MaxSupportedEmbeddedDepth, options.MaxEmbeddedDepth);
+    }
+
+    [Fact]
+    public void MaxEmbeddedDepth_AboveTheCeiling_StillThrowsFromAddEmailParser()
+    {
+        // Clamping must not silence the startup check: the clamp keeps the process alive, the
+        // throw keeps the misconfiguration loud. Both hold at once because the setter remembers
+        // the unclamped request for ValidateOptions to read.
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(
+            () => builder.AddEmailParser(o => o.MaxEmbeddedDepth = 10_000));
+
+        Assert.Equal(10_000, ex.ActualValue); // the value the caller asked for, not the clamp
     }
 
     // ── EML fixture builder ──────────────────────────────────────────────────
@@ -205,35 +315,6 @@ public class EmailDocumentParserTests
         }
 
         message.Body = builder.ToMessageBody();
-
-        return await WriteToStreamAsync(message, cancellationToken);
-    }
-
-    private static async Task<MemoryStream> CreateEmlWithEmbeddedMessageAsync(
-        string subject,
-        string textBody,
-        string nestedSubject,
-        string nestedBody,
-        CancellationToken cancellationToken)
-    {
-        var nested = new MimeMessage();
-        nested.From.Add(new MailboxAddress("Original Sender", "original@example.com"));
-        nested.Subject = nestedSubject;
-        nested.Body = new TextPart("plain") { Text = nestedBody };
-
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress("Sender", "sender@example.com"));
-        message.To.Add(new MailboxAddress("Recipient", "recipient@example.com"));
-        message.Subject = subject;
-        message.Body = new Multipart("mixed")
-        {
-            new TextPart("plain") { Text = textBody },
-            new MessagePart
-            {
-                Message = nested,
-                ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
-            },
-        };
 
         return await WriteToStreamAsync(message, cancellationToken);
     }

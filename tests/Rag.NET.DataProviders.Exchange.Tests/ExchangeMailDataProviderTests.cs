@@ -483,6 +483,102 @@ public sealed class ExchangeMailDataProviderTests
     }
 
     // -------------------------------------------------------------------------
+    // Transport failures (no HTTP response at all) → RagError.TransportFailed
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task TransportFailure_MapsToResultFailure_AndDoesNotAdvanceWatermark()
+    {
+        // DNS/TLS/socket failure: HttpRequestException escaped the Result channel before.
+        var handler = new ThrowingGraphHandler(
+            () => new HttpRequestException("No such host is known (graph.microsoft.com:443)."));
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        var failure = Assert.IsType<RagError.TransportFailed>(result.Error);
+        _ = Assert.IsType<HttpRequestException>(failure.Inner);
+        // Failed run: the watermark must not advance.
+        Assert.False(sut.CompletedFullTraversal);
+        Assert.Null(sut.GetDeltaToken());
+    }
+
+    [Fact]
+    public async Task ApiExceptionWithoutResponse_MapsToTransportFailedNotHttpFailed()
+    {
+        // Kiota leaves ResponseStatusCode at 0 when no response was received;
+        // (HttpStatusCode)0 is out of range, so this must not become HttpFailed.
+        var handler = new ThrowingGraphHandler(
+            () => new Microsoft.Kiota.Abstractions.ApiException("The request timed out.")
+            {
+                ResponseStatusCode = 0,
+            });
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        var failure = Assert.IsType<RagError.TransportFailed>(result.Error);
+        Assert.Equal(0, Assert.IsType<Microsoft.Kiota.Abstractions.ApiException>(failure.Inner)
+            .ResponseStatusCode);
+        Assert.Null(sut.GetDeltaToken());
+    }
+
+    [Fact]
+    public async Task AuthenticationFailure_MapsToTransportFailure()
+    {
+        var handler = new ThrowingGraphHandler(
+            () => new Azure.Identity.AuthenticationFailedException("token endpoint unreachable"));
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        var failure = Assert.IsType<RagError.TransportFailed>(result.Error);
+        _ = Assert.IsType<Azure.Identity.AuthenticationFailedException>(failure.Inner);
+    }
+
+    [Fact]
+    public async Task HttpClientTimeout_MapsToTransportFailure()
+    {
+        // An HttpClient timeout surfaces as a TaskCanceledException while the caller's token
+        // is NOT signalled. That is a transport failure, not a cancellation.
+        var handler = new ThrowingGraphHandler(
+            () => new TaskCanceledException("The request was canceled due to HttpClient.Timeout."));
+        var sut = MakeProvider(handler);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var result = Assert.Single(results);
+        Assert.True(result.IsFailure);
+        var failure = Assert.IsType<RagError.TransportFailed>(result.Error);
+        _ = Assert.IsType<TaskCanceledException>(failure.Inner);
+    }
+
+    [Fact]
+    public async Task CallerCancellation_Throws_AndIsNotMappedToAFailure()
+    {
+        // Cancellation is driven from INSIDE the HTTP call. Cancelling before enumeration
+        // would be vacuous: EnumerateFolderAsync's ThrowIfCancellationRequested fires at the
+        // top of the paging loop and the exception never reaches FetchPageAsync's catch.
+        // Signalling mid-send makes GraphErrorMapping.IsMappable's cancellation guard — and
+        // nothing else — the thing that decides between throwing and mapping. Removing that
+        // guard turns this test red.
+        using var cts = new CancellationTokenSource();
+        var sut = MakeProvider(new CancellingGraphHandler(cts));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await sut.GetFilesAsync(cts.Token).ToListAsync(cts.Token));
+    }
+
+    // -------------------------------------------------------------------------
     // Constructor guard
     // -------------------------------------------------------------------------
 
@@ -546,20 +642,58 @@ public sealed class ExchangeMailDataProviderTests
             r => (r.Status, r.Body),
             StringComparer.Ordinal));
 
-    private static GraphServiceClient MakeGraphClient(FakeGraphHandler handler)
+    private static GraphServiceClient MakeGraphClient(HttpMessageHandler handler)
     {
         var httpClient = new HttpClient(handler) { BaseAddress = new Uri("https://graph.microsoft.com/") };
         return new GraphServiceClient(httpClient);
     }
 
     private static ExchangeMailDataProvider MakeProvider(
-        FakeGraphHandler handler,
+        HttpMessageHandler handler,
         Action<ExchangeMailOptions>? configure = null,
         ILogger<ExchangeMailDataProvider>? logger = null)
     {
         var opts = new ExchangeMailOptions { Mailbox = "user1" };
         configure?.Invoke(opts);
         return new ExchangeMailDataProvider(MakeGraphClient(handler), opts, logger);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test infrastructure
+// ---------------------------------------------------------------------------
+
+/// <summary>
+/// Fails every outbound Graph call before any HTTP response exists — the transport-failure
+/// counterpart to <see cref="FakeGraphHandler"/>, which always produces a response.
+/// A fresh exception instance is created per call so stack traces do not accumulate.
+/// </summary>
+file sealed class ThrowingGraphHandler(Func<Exception> exceptionFactory) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+        => throw exceptionFactory();
+}
+
+/// <summary>
+/// Signals the caller's <see cref="CancellationTokenSource"/> from inside the HTTP call, then
+/// fails the way <see cref="HttpClient"/> does when a token trips mid-flight.
+/// <para>
+/// This is what keeps the caller-cancellation test honest. Cancelling before enumeration
+/// starts is vacuous — the provider's own <c>ThrowIfCancellationRequested</c> fires at the top
+/// of the paging loop and the exception never reaches the mapping code at all. Cancelling from
+/// here means the token is only signalled once execution is already inside the fetch, so the
+/// cancellation guard in <c>GraphErrorMapping.IsMappable</c> is the only thing standing
+/// between a propagated <see cref="OperationCanceledException"/> and a mapped failure.
+/// </para>
+/// </summary>
+file sealed class CancellingGraphHandler(CancellationTokenSource cancelOnSend) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        cancelOnSend.Cancel();
+        throw new TaskCanceledException("A task was canceled.");
     }
 }
 

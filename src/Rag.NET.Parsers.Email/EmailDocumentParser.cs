@@ -11,10 +11,15 @@ namespace Rag.NET.Parsers.Email;
 public sealed class EmailDocumentParser(
     IEnumerable<IDocumentParser> parsers,
     HtmlDocumentParser htmlParser,
-    ILogger<EmailDocumentParser>? logger = null) : IDocumentParser
+    ILogger<EmailDocumentParser>? logger = null,
+    EmailParserOptions? options = null) : IDocumentParser
 {
+    internal const string EmlContentType = "message/rfc822";
+
+    private readonly EmailParserOptions options = options ?? new EmailParserOptions();
+
     public bool CanParse(string contentType) =>
-        contentType.Equals("message/rfc822", StringComparison.OrdinalIgnoreCase);
+        contentType.Equals(EmlContentType, StringComparison.OrdinalIgnoreCase);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,
@@ -22,7 +27,23 @@ public sealed class EmailDocumentParser(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var message = await MimeMessage.LoadAsync(stream, cancellationToken).ConfigureAwait(false);
+        var context = EmbeddedMessageContext.Create(metadata, options);
         int sectionIndex = 0;
+
+        // SectionIndex is stamped exactly once, here: everything below — including any
+        // embedded message parsed in-process — yields unstamped sections.
+        await foreach (var section in ParseMessageAsync(message, context, cancellationToken).ConfigureAwait(false))
+        {
+            yield return section with { SectionIndex = sectionIndex++ };
+        }
+    }
+
+    private async IAsyncEnumerable<DocumentSection> ParseMessageAsync(
+        MimeMessage message,
+        EmbeddedMessageContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var metadata = context.Metadata;
 
         // Subject section
         if (!string.IsNullOrWhiteSpace(message.Subject))
@@ -33,41 +54,40 @@ public sealed class EmailDocumentParser(
                 DocumentId = metadata.DocumentId,
                 Heading = message.Subject,
                 HeadingLevel = 1,
-                SectionIndex = sectionIndex++,
+                SectionIndex = 0, // stamped by ParseAsync
             };
         }
 
         // Body sections
         await foreach (var section in ParseBodyAsync(message, metadata, cancellationToken).ConfigureAwait(false))
         {
-            yield return section with { SectionIndex = sectionIndex++ };
+            yield return section;
         }
 
         // Attachment sections
-        await foreach (var section in ParseAttachmentsAsync(message, metadata, cancellationToken).ConfigureAwait(false))
+        await foreach (var section in ParseAttachmentsAsync(message, context, cancellationToken).ConfigureAwait(false))
         {
-            yield return section with { SectionIndex = sectionIndex++ };
+            yield return section;
         }
     }
 
     private async IAsyncEnumerable<DocumentSection> ParseAttachmentsAsync(
         MimeMessage message,
-        DocumentMetadata metadata,
+        EmbeddedMessageContext context,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         foreach (var entity in message.Attachments)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Embedded/forwarded emails surface as MessagePart; recursing into them is a
-            // follow-up — warn instead of silently dropping them.
+            // Embedded/forwarded emails surface as MessagePart: a live MimeMessage owned by
+            // this message's object graph, so it is parsed in place rather than re-entering
+            // the stream-based ParseAsync.
             if (entity is MessagePart embedded)
             {
-                if (logger is not null)
+                await foreach (var section in ParseEmbeddedAsync(embedded, context, cancellationToken).ConfigureAwait(false))
                 {
-                    EmailParserLog.EmbeddedMessageSkipped(
-                        logger,
-                        embedded.Message?.Subject ?? embedded.ContentDisposition?.FileName ?? "(no subject)");
+                    yield return section;
                 }
 
                 continue;
@@ -86,10 +106,37 @@ public sealed class EmailDocumentParser(
             attachmentStream.Position = 0;
 
             await foreach (var section in EmailAttachmentDispatcher.DispatchAsync(
-                parsers, this, attachment.FileName, mimeType, attachmentStream, metadata, logger, cancellationToken).ConfigureAwait(false))
+                parsers, attachment.FileName, mimeType, attachmentStream, context, logger, cancellationToken).ConfigureAwait(false))
             {
                 yield return section;
             }
+        }
+    }
+
+    /// <summary>
+    /// Parses an embedded message in place, or yields nothing after a warning when either
+    /// embedded-message limit is reached. Never throws: the parser degrades rather than breaks.
+    /// </summary>
+    private async IAsyncEnumerable<DocumentSection> ParseEmbeddedAsync(
+        MessagePart embedded,
+        EmbeddedMessageContext context,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var nested = embedded.Message;
+        if (nested is null)
+            yield break;
+
+        var name = !string.IsNullOrWhiteSpace(nested.Subject)
+            ? nested.Subject
+            : embedded.ContentDisposition?.FileName ?? "(no subject)";
+
+        if (!context.TryEnterEmbedded(name, logger))
+            yield break;
+
+        var metadata = EmbeddedMessageMetadata.Create(context.Metadata, name, ".eml", EmlContentType);
+        await foreach (var section in ParseMessageAsync(nested, context.Descend(metadata), cancellationToken).ConfigureAwait(false))
+        {
+            yield return section;
         }
     }
 
@@ -106,7 +153,7 @@ public sealed class EmailDocumentParser(
             {
                 Text = message.TextBody.Trim(),
                 DocumentId = metadata.DocumentId,
-                SectionIndex = 0, // re-stamped by caller
+                SectionIndex = 0, // stamped by ParseAsync
             };
             yield break;
         }

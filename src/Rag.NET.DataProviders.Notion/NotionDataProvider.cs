@@ -94,7 +94,7 @@ public sealed class NotionDataProvider : FileContentProviderBase
         var markdown = BlocksToMarkdown(title, blocksResult.Value);
         return Result<FileHandle, RagError>.Success(new FileHandle(
             Id:               page.Id,
-            FileName:         $"{title}.md",
+            FileName:         $"{FileNameSanitizer.Sanitize(title, $"page-{page.Id}")}.md",
             ETag:             page.LastEditedTime,
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown)))));

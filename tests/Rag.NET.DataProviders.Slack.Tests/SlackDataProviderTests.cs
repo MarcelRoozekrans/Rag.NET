@@ -48,6 +48,25 @@ public sealed class SlackDataProviderTests
     }
 
     [Fact]
+    public async Task GetFilesAsync_HostileChannelName_Sanitized()
+    {
+        var api = new FakeSlackApi(
+            channels: [new SlackChannel("C001", "release/2026: prep")],
+            messages: [
+                new SlackMessage { Ts = "1711929600.000000", User = "U001", Text = "Hello" }
+            ],
+            realName: "Alice");
+
+        var sut = MakeProvider(api);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.Equal("release_2026_ prep-2024-04-01.md", results[0].Value.FileName);
+    }
+
+    [Fact]
     public async Task GetFilesAsync_DeltaRun_OldestForwardedToApi()
     {
         var api = new FakeSlackApi(

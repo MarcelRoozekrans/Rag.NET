@@ -94,7 +94,7 @@ public sealed class AsanaDataProvider : FileContentProviderBase
         var markdown = ToMarkdown(task, subtasks);
         return new FileHandle(
             Id:               task.Gid,
-            FileName:         $"{task.Name}.md",
+            FileName:         $"{FileNameSanitizer.Sanitize(task.Name, $"task-{task.Gid}")}.md",
             ETag:             task.ModifiedAt ?? string.Empty,
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))));

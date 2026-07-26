@@ -60,6 +60,33 @@ on a Linux host keeps `:` `*` `?` `"` `<` `>` `|` and control characters in its 
 **Not in scope:** `WebCrawlerDataProvider.InferFileName` and its RSS/Sitemap callers derive
 names from URL path segments — a different input domain with its own decoding concerns.
 
+**Recorded, not fixed:** `src/Rag.NET.Api/Webhooks/GenericWebhookPayloadParser.cs:77` builds
+`$"{documentId}.txt"` straight from an untrusted webhook payload with no sanitization. It is a
+tenth synthesizing site, but in a different assembly (`Rag.NET.Api`, which does not reference
+`Rag.NET.DataProviders`) and outside this phase's connector scope. Found during the Part A
+review; noted here so it is not rediscovered as new.
+
+**Recorded, not fixed (added during Part C):** Part C introduced a *fourth* sanitizer —
+`EmbeddedMessageMetadata.Sanitize` in `src/Rag.NET.Parsers.Email/` — for the composed file name
+of an embedded message. `Rag.NET.Parsers.Email` does not reference `Rag.NET.DataProviders`, and
+adding a package dependency from a parser to the connector assembly for one call site was
+judged worse than a local copy; this section's own premise is that the copies are the problem,
+so the decision is recorded rather than buried. Reviewed against `FileNameSanitizer` and found
+behaviourally consistent (same pinned invalid set, trimming, trailing dots, length cap,
+surrogate guard) except for three divergences: (1) it does not collapse an all-replacement
+result to the fallback — `"///"` yields `"___"` here and `"embedded-message"` there; (2) the
+length cap differs — `FileNameSanitizer`'s `maxLength` defaults to 128, while
+`EmbeddedMessageMetadata.MaxNameLength` is 64, so the same subject truncates at different
+points; (3) post-truncation trimming differs — `FileNameSanitizer.TrimEdges` re-trims to a
+fixed point (trailing dots and whitespace re-expose each other) and treats all
+`char.IsWhiteSpace` characters as whitespace, while `EmbeddedMessageMetadata` truncates *after*
+its single `Trim()` and then applies `TrimEnd('.', ' ')`, which will not remove a re-exposed
+non-breaking space (U+00A0) or tab. All three are cosmetic — the name is display and
+provenance metadata, never a path — but the eventual unification must reconcile them rather
+than assume a single behavioural gap. The right fix is to move `FileNameSanitizer` somewhere both
+assemblies can reference (`Rag.NET.Abstractions` is the obvious home) and delete both copies,
+which is a package-layout change and not this phase's business.
+
 **Testing:** unit tests for the helper (each invalid class, trimming, trailing dots, empty →
 fallback, length cap, and a determinism test asserting the set does not vary with
 `Path.GetInvalidFileNameChars()`). Existing connector tests pin exact filenames
@@ -76,11 +103,29 @@ and let everything else throw; **Microsoft Teams has no catch at all**.
 
 **Design:**
 
-- Add `public sealed record TransportFailed(Exception Inner) : RagError` to the closed union
-  in `src/Rag.NET.Abstractions/Models/RagError.cs`. This breaks exhaustive `switch`
-  expressions at compile time — which pre-1.0 is the desired outcome: the alternative is
-  misreporting a DNS failure as an HTTP status. Every existing exhaustive match in the repo
-  is updated.
+- Add `public sealed record TransportFailed(Exception Inner) : RagError` in
+  `src/Rag.NET.Abstractions/Models/RagError.cs`. The reason is honest modelling, not
+  compile-time enforcement: a DNS failure has no HTTP status, so reporting one is a lie, and
+  the only value available to lie with — `(HttpStatusCode)0` — is not even a valid status.
+  Every existing match on `RagError` is reviewed and updated to handle the new case
+  deliberately.
+
+  > **Corrected after implementation.** An earlier revision of this bullet claimed the new case
+  > "breaks exhaustive `switch` expressions at compile time", and leaned on that break as the
+  > mechanism that keeps matches honest. That is wrong, twice over:
+  >
+  > - C# does no closed-hierarchy exhaustiveness analysis on reference types. A `switch`
+  >   expression over `RagError` with no `_` arm does not enumerate the subtypes; it emits
+  >   **CS8509** ("the switch expression does not handle all possible values") and, under this
+  >   repo's warnings-as-errors, fails the build outright. A discard-free match is therefore
+  >   not an exhaustiveness check — it is a standing build break.
+  > - `RagError` is not a closed union at all. It is an ordinary `public abstract record` with
+  >   no `private protected` constructor, so any external assembly can derive from it.
+  >
+  > In practice the repo's only two matches both already carried a `_` arm, so adding the case
+  > broke nothing and nothing had to be fixed to make the build pass. Whether to actually close
+  > the union (a `private protected` constructor — a public-API decision with its own
+  > extensibility trade-off) is deliberately **out of scope for this phase**.
 - Map in all four Graph connectors: `HttpRequestException`, `TaskCanceledException` that is
   *not* caller cancellation (an HttpClient timeout), and `Azure.Identity`'s
   `AuthenticationFailedException` → `TransportFailed`.
@@ -112,6 +157,36 @@ self-recursion, which stops EML-in-EML — but an `.eml` containing a `.msg` con
 `.eml` routes between *two different parser instances*, so the guard never fires. That chain
 has no depth control today and is reachable from a crafted file. The depth counter this item
 introduces is therefore a bug fix first and a feature second.
+
+**Correction (measured during implementation, 2026-07-26; mechanism corrected after review).**
+The paragraph above was written from reading the dispatcher, and the Part C test that was
+supposed to prove a crash did not fail. Measured on the pre-fix code, the *absence of a bound*
+is confirmed — an alternating chain parsed every level to depth 56,
+`sections == 2 × (depth + 1)` throughout, so the `ReferenceEquals` guard genuinely never
+fires. But the pre-fix consequence is **resource amplification, not a crash**, and the reason
+is the fixture's size growth, *not* anything about async iterators:
+
+- **The recursion is stack-recursive.** An earlier revision of this paragraph claimed "async
+  iterators unwind per `await` and never approach the stack limit". That is **false**, and it
+  is the exact reasoning someone would use to justify raising `MaxEmbeddedDepth` into a crash.
+  Each nesting level adds frames that are not unwound until the nested enumeration finishes.
+  Measured against the shipped parser with the depth bound raised: **480 levels survive; 500+
+  terminate the process with exit code `-1073741571` (`0xC00000FD`,
+  `STATUS_STACK_OVERFLOW`)** — uncatchable, so the degraded-never-broken posture cannot help.
+- **Depth is cheap to craft, if something lets you reach it.** Hand-written raw MIME costs
+  ~81 bytes per level, so ~500 levels is ~40 KB. The Part C fixtures used MimeKit's writer and
+  cost ~1.18× *multiplicatively* per level (base64 on the EML wrap, raw in the CFB wrap), which
+  is why 56 levels needed 124 MB there and the crash depth looked unreachable. MimeKit's own
+  `MimeMessage.LoadAsync` parses 5,000 levels from a 404 KB file without trouble — its parser
+  is iterative, so it is not the limiting factor; this parser's traversal is.
+- **Both the pre-fix path and the shipped defaults are nonetheless safe.** Pre-fix, the only
+  reachable chains were the multiplicative ones, so the crash depth cost hundreds of MB. Post-
+  fix, `MaxEmbeddedDepth = 3` means the same 404 KB / 5,000-level file yields 4 sections and no
+  crash. What was missing was a ceiling on the *option*: `MaxEmbeddedDepth` is now capped at
+  `EmailParserOptions.MaxSupportedEmbeddedDepth = 64` (21× the default, an order of magnitude
+  below the measured floor), rejected at `AddEmailParser` time with the measurement in the
+  exception message. Without that cap the option was a documented "safety bound" that silently
+  became a process-kill primitive when raised.
 
 **Design:**
 
@@ -184,15 +259,30 @@ same assumption from the other direction.
   logs a one-time warning naming the store type and the ignored option.
 - Stores that do not implement the interface are treated as similarity — preserving today's
   behavior for every existing store, so this is additive.
-- Azure AI Search declares opaque ranking (its hybrid scores are unbounded), which fixes the
-  second half of the documented problem.
+- ~~Azure AI Search declares opaque ranking (its hybrid scores are unbounded), which fixes the
+  second half of the documented problem.~~ **Corrected during implementation — Azure AI Search
+  was evaluated and deliberately left as similarity (it does not implement the interface).**
+  The original premise was wrong: `PersistentConversationMemory` only ever calls
+  `IVectorStore.SearchAsync`, never `HybridSearchAsync`, and `AzureAISearchVectorStore.SearchAsync`
+  issues a pure vector query (`searchText: null`), whose `@search.score` is a bounded monotone
+  function of the similarity metric (~0.333–1.0 for cosine) and is therefore thresholdable.
+  Declaring it opaque would have fixed nothing — that path already worked — while regressing
+  existing Azure users, for whom `MinScore` would silently stop applying and every turn would
+  inject up to `TopK` past exchanges regardless of relevance. The governing rule:
+  `IScoreScaleAware` describes the scale of `IVectorStore.SearchAsync`, the interface it sits
+  on. Azure's is similarity; Federated's is RRF.
+- Recorded, not fixed: Azure AI Search's *hybrid* scores (`HybridSearchAsync`) are positive and
+  unbounded, so a fixed cross-backend cut-off remains meaningless there. No consumer currently
+  thresholds them with one, and the capability interface does not describe that path.
 
 **Testing:** memory backed by a similarity store still filters by `MinScore`; memory backed by
 a federated store recalls the top-K instead of silently nothing, and warns once (not per
 call); a store not implementing the interface behaves exactly as before.
 
 **Docs:** the known-limitation paragraphs in `vector-stores.md` and `retrieval.md` are
-replaced with the actual behavior.
+replaced with the actual behavior, along with the same claim where users actually meet it:
+the `UseFederatedSearch` `<remarks>`, the `PersistentMemoryOptions.MinScore` XML doc, and
+`memory.md`'s options table, flow diagram, and behavior table.
 
 ## 6. `ConfigureResilience` wiring
 
@@ -210,10 +300,13 @@ issue. The original design intended exactly the promised wiring; it was never im
   (Npgsql) are not HTTP-typed clients.
 - Decoration is applied only when `ConfigureResilience` is called, so the default DI graph is
   unchanged.
-- **Double-retry is real and must be documented, not hidden:** Weaviate and Chroma configure
-  `AddStandardResilienceHandler` on their own HTTP clients, so for those stores the decorator
-  stacks on top of transport-level retries. The guide states this plainly and tells users to
-  configure one layer or the other.
+- **Double-retry is real and must be documented, not hidden:** Weaviate and Chroma hand-build a
+  retry-only `ResilienceHandler` on their own HTTP clients (a bare
+  `AddRetry(new HttpRetryStrategyOptions())` pipeline — *not* `AddStandardResilienceHandler`,
+  so no transport-level timeout, circuit breaker or concurrency limiter), so for those stores
+  the decorator stacks on top of transport-level retries. Both layers default to
+  `MaxRetryAttempts = 3`, which Polly counts as retries — 4 attempts per layer, 16 requests
+  worst case. The guide states this plainly and tells users to configure one layer or the other.
 - Cancellation and `OperationCanceledException` pass through the pipeline untouched; the
   decorator must not convert a caller cancellation into a retry.
 

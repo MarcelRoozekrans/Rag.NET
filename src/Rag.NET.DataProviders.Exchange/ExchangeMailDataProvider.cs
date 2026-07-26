@@ -4,9 +4,8 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
-using Microsoft.Graph.Models.ODataErrors;
-using Microsoft.Kiota.Abstractions;
 using Rag.NET.DataProviders;
+using Rag.NET.DataProviders.Graph;
 using Rag.NET.Models;
 using ZeroAlloc.Results;
 
@@ -245,27 +244,23 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
 
             return page is not null
                 ? Result<MessageCollectionResponse, RagError>.Success(page)
+                // Synthetic status per the RagError.HttpFailed convention: the server answered,
+                // but with no payload this connector can proceed from.
                 : Result<MessageCollectionResponse, RagError>.Failure(new RagError.HttpFailed(
                     HttpStatusCode.NoContent, $"Graph returned an empty response for folder '{folderId}'."));
         }
-        catch (ODataError ex)
+        // GraphErrorMapping.IsMappable lets caller cancellation through untouched; everything
+        // else it accepts becomes a Result failure rather than an escaping exception.
+        catch (Exception ex) when (GraphErrorMapping.IsMappable(ex, ct))
         {
-            return Result<MessageCollectionResponse, RagError>.Failure(new RagError.HttpFailed(
-                (HttpStatusCode)ex.ResponseStatusCode, ex.Error?.Message ?? ex.Message));
-        }
-        catch (ApiException ex)
-        {
-            return Result<MessageCollectionResponse, RagError>.Failure(new RagError.HttpFailed(
-                (HttpStatusCode)ex.ResponseStatusCode, ex.Message));
+            return Result<MessageCollectionResponse, RagError>.Failure(GraphErrorMapping.Map(ex));
         }
     }
 
     private FileHandle ToHandle(string folderId, Message message)
     {
         var messageId = message.Id!;
-        var fileName  = string.IsNullOrWhiteSpace(message.Subject)
-            ? $"message-{messageId}.eml"
-            : $"{SanitizeFileName(message.Subject)}.eml";
+        var fileName  = $"{FileNameSanitizer.Sanitize(message.Subject, $"message-{messageId}")}.eml";
 
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -294,15 +289,5 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
             .GetAsync(cancellationToken: ct).ConfigureAwait(false);
         return stream ?? throw new InvalidOperationException(
             $"Graph returned no MIME content for message '{messageId}'.");
-    }
-
-    private static string SanitizeFileName(string subject)
-    {
-        // Mirrors the Gmail connector: replace invalid filename chars with underscore.
-        var invalid = Path.GetInvalidFileNameChars();
-        var safe    = new char[subject.Length];
-        for (int i = 0; i < subject.Length; i++)
-            safe[i] = Array.IndexOf(invalid, subject[i]) >= 0 ? '_' : subject[i];
-        return new string(safe);
     }
 }

@@ -203,10 +203,10 @@ parses as prose, exactly the old behavior — over a false-positive table):
 - Tables whose cells average more than 4 words degrade to prose (e.g. long description
   columns).
 - A 2-3-column run of 8 or more rows spanning more than half the page's rows is treated as a
-  multi-column page layout (academic two-column, newsletter three-column) and stays prose —
-  whole-page 2/3-column tables are missed by design. Refining this dominance guard with
-  per-run words-per-cell statistics (layout half-lines run long, table cells run short) is a
-  noted improvement candidate.
+  multi-column page layout (academic two-column, newsletter three-column) and stays prose,
+  **unless** its cells average 2 words or fewer — dense Key/Value content is extracted even
+  when it fills the page. Whole-page 2/3-column tables whose cells run longer than that are
+  still missed by design.
 - Any extractor failure logs a warning and the page parses as plain text (degraded, never
   broken).
 

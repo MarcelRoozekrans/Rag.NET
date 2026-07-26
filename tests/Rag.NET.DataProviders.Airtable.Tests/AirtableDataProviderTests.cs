@@ -145,6 +145,28 @@ public sealed class AirtableDataProviderTests
     }
 
     [Fact]
+    public async Task GetFilesAsync_HostileRecordTitle_Sanitized()
+    {
+        // The title is the first field's value — entirely user-controlled.
+        var record = MakeRecord("rec009", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"] = Json("\"Ops/Runbook: Prod\"")
+        });
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        var sut = MakeProvider(client);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        _ = Assert.Single(results);
+        Assert.Equal("Ops_Runbook_ Prod.md", results[0].Value.FileName);
+    }
+
+    [Fact]
     public async Task GetFilesAsync_ExtensionFilter_ExcludesNonMatching()
     {
         var record = MakeRecord("rec002", new Dictionary<string, object>(StringComparer.Ordinal)

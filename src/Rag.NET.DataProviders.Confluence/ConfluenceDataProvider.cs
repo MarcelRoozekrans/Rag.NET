@@ -153,7 +153,7 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
         var markdown = ToMarkdown(p);
         return new FileHandle(
             Id:              p.Id,
-            FileName:        $"{p.Title}.md",
+            FileName:        $"{FileNameSanitizer.Sanitize(p.Title, $"page-{p.Id}")}.md",
             ETag:            p.Version.Number.ToString(System.Globalization.CultureInfo.InvariantCulture),
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
