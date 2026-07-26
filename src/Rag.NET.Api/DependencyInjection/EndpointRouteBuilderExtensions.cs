@@ -164,6 +164,9 @@ public static class EndpointRouteBuilderExtensions
         RagError.NoParserFound n    => Results.BadRequest(new { error = $"No parser for content type: {n.ContentType}" }),
         RagError.NonSeekableStream  => Results.BadRequest(new { error = "Document stream is not readable." }),
         RagError.StorageFailed s    => Results.Problem($"Storage error: {s.Inner.Message}"),
+        // No HTTP response was received at all (DNS/TLS/socket/timeout) — a bad gateway,
+        // not an internal error.
+        RagError.TransportFailed t  => Results.Problem($"Transport error: {t.Inner.Message}", statusCode: 502),
         _                           => Results.StatusCode(500),
     };
 }

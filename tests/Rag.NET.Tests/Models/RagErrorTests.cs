@@ -60,6 +60,25 @@ public class RagErrorTests
     }
 
     [Fact]
+    public void TransportFailed_HoldsException()
+    {
+        var ex = new HttpRequestException("no such host is known");
+        var error = new RagError.TransportFailed(ex);
+        Assert.Same(ex, error.Inner);
+    }
+
+    [Fact]
+    public void TransportFailed_IsDistinctFromHttpAndStorageFailures()
+    {
+        var ex = new HttpRequestException("connection reset");
+        RagError error = new RagError.TransportFailed(ex);
+
+        Assert.IsType<RagError.TransportFailed>(error);
+        Assert.IsNotType<RagError.HttpFailed>(error);
+        Assert.IsNotType<RagError.StorageFailed>(error);
+    }
+
+    [Fact]
     public void RagError_HttpFailed_ContentIsAccessible()
     {
         RagError error = new RagError.HttpFailed(System.Net.HttpStatusCode.BadRequest, "Invalid CQL");

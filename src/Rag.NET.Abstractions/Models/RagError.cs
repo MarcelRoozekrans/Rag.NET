@@ -22,4 +22,23 @@ public abstract record RagError
     /// <param name="StatusCode">The HTTP status code returned by the server.</param>
     /// <param name="Content">The response body, if any.</param>
     public sealed record HttpFailed(System.Net.HttpStatusCode StatusCode, string? Content) : RagError;
+
+    /// <summary>
+    /// A call to an external service failed <b>before any HTTP response was received</b> —
+    /// DNS resolution, TLS handshake, socket reset, connection timeout, client-side request
+    /// timeout, or token acquisition.
+    /// <para>
+    /// Distinct from <see cref="HttpFailed"/>, which always carries a status code the server
+    /// actually returned: there is no status code here, because the server never answered.
+    /// Distinct from <see cref="StorageFailed"/>, which covers failures of a
+    /// <c>IVectorStore</c>/persistence operation rather than a network transport.
+    /// </para>
+    /// <para>
+    /// Caller cancellation is never reported as a transport failure — an
+    /// <see cref="OperationCanceledException"/> raised by the caller's token always
+    /// propagates.
+    /// </para>
+    /// </summary>
+    /// <param name="Inner">The transport-level exception that was caught.</param>
+    public sealed record TransportFailed(Exception Inner) : RagError;
 }
