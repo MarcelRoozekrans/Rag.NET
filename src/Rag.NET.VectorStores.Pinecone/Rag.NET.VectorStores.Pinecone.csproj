@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.VectorStores.Pinecone</RootNamespace>
+    <PackageId>Rag.NET.VectorStores.Pinecone</PackageId>
+    <Description>Pinecone vector store for Rag.NET</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <!-- Pinned to 3.1.0, NOT the newest 4.0.2: the 4.x control-plane models mark
+         `vector_type` as JSON-required, but Pinecone Local's control plane (API version
+         2025-01) omits it, so CreateIndex/DescribeIndex/ListIndexes all fail to
+         deserialize against the emulator (pinecone-dotnet-client#54, open; the repo was
+         archived 2026-07-03, so no fix is coming). 3.1.0 targets API 2025-01 itself,
+         works against both the real service and Pinecone Local, and covers everything
+         this store needs (serverless index lifecycle, upsert/query with metadata filter
+         + sparse values, list-by-prefix, namespaces). Verified empirically 2026-07-26. -->
+    <PackageReference Include="Pinecone.Client" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.VectorStores.Pinecone.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>
