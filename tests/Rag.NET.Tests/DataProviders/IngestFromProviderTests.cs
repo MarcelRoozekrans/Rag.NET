@@ -486,6 +486,76 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Equal("modified", tags["change_status"]);
     }
 
+    // provider_id is written centrally so all 21 connectors carry it without per-connector work.
+    // The two ingest paths are separate branches of ProcessEntryAsync, so both are covered.
+
+    [Fact]
+    public async Task IngestFromProviderAsync_WritesProviderIdTag_NoHashStore()
+    {
+        var captured = CaptureIngestedMetadata();
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov-42"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Ingested);
+        Assert.Equal("prov-42", Assert.Single(captured).Tags[ReservedMetadataKeys.ProviderId]);
+    }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_WritesProviderIdTag_HashStorePath()
+    {
+        var captured = CaptureIngestedMetadata();
+        var hashStore = new SqliteContentHashStore(_dbPath);
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov-42"),
+            hashStore: hashStore, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Ingested);
+        Assert.Equal("prov-42", Assert.Single(captured).Tags[ReservedMetadataKeys.ProviderId]);
+    }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_ConnectorCannotShadowProviderIdTag()
+    {
+        var provider = MakeProviderWithMetadata(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [ReservedMetadataKeys.ProviderId] = "impostor",
+        });
+
+        var ex = await Assert.ThrowsAsync<ReservedMetadataKeyException>(() =>
+            _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov-42"),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(ReservedMetadataKeys.ProviderId, ex.Key);
+    }
+
+    /// <summary>
+    /// Caller-supplied base metadata is not reserved-key guarded (it is not connector code), so
+    /// the central write happens last and stays authoritative.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_ProviderIdTagWinsOverBaseMetadata()
+    {
+        var captured = CaptureIngestedMetadata();
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+        var baseMetadata = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("id-1"),
+            FileName = "base.pdf",
+            Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [ReservedMetadataKeys.ProviderId] = "stale",
+            },
+        };
+
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov-42"),
+            baseMetadata: baseMetadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("prov-42", Assert.Single(captured).Tags[ReservedMetadataKeys.ProviderId]);
+    }
+
     [Fact]
     public async Task IngestFromProviderAsync_ProviderHttpFailure_AppearsInErrors()
     {

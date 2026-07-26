@@ -226,8 +226,9 @@ public static class RagPipelineExtensions
     }
 
     /// <summary>
-    /// Merges base and entry metadata into <see cref="DocumentMetadata.Tags"/>. Entry tags win
-    /// over base tags on collision.
+    /// Merges base and entry metadata into <see cref="DocumentMetadata.Tags"/>, then writes
+    /// <see cref="ReservedMetadataKeys.ProviderId"/>. Entry tags win over base tags on
+    /// collision; <c>provider_id</c> wins over both.
     /// </summary>
     /// <exception cref="ReservedMetadataKeyException">
     /// An entry tag uses a key the framework writes itself (<see cref="ReservedMetadataKeys"/>).
@@ -255,6 +256,10 @@ public static class RagPipelineExtensions
                 tags[k] = v;
             }
         }
+
+        // Written last, and reserved: every connector gains it without per-connector work, and
+        // neither an entry tag (guarded above) nor a caller-supplied base tag can shadow it.
+        tags[ReservedMetadataKeys.ProviderId] = providerId.Value;
 
         return new DocumentMetadata
         {
