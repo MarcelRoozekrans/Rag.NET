@@ -71,11 +71,12 @@ worst defect in the package: it fails upward, silently, on the metric users most
 
 ### API honesty
 
-- **`IRagasMetric` is public but unusable.** `RagasEvaluationSuite`'s constructor is `internal`
-  and the builder exposes only four fixed `Add*` methods. Nobody can implement the interface and
-  register it.
-- **`features.md` claims each metric is "a standalone `IRagEvaluator<T>`".** They implement
-  `IRagasMetric`, which is unrelated to `IRagEvaluator`.
+- **`features.md` claims each metric is "a standalone `IRagEvaluator<T>` so they can be composed
+  into a `RagasEvaluationSuite`".** Both halves are wrong. They implement `IRagasMetric`, which is
+  unrelated to `IRagEvaluator`; and they cannot be composed by a caller, because
+  `RagasEvaluationSuite`'s constructor is `internal` and the builder exposes only four fixed
+  `Add*` methods. The evaluator classes *are* public with public `ScoreAsync`, so they can be
+  constructed and called standalone — that part works, and is what the docs should say instead.
 - **No per-sample results.** `RagasReport` carries four aggregate means. A score of 0.62 gives no
   way to find which sample caused it — while the sibling `LlmJudgeResult` already exposes
   per-sample detail.
@@ -139,11 +140,14 @@ will notice.
 
 ## 7. API changes
 
-`IRagasMetric` becomes `internal`. Public API that cannot be implemented or registered is a
-promise the package does not keep; nothing is published, so making it honest costs nothing.
-Custom metric registration becomes a recorded non-goal rather than an implied feature.
-
 `RagasReport` gains `Samples` and the per-metric excluded counts.
+
+**Correction to an earlier draft of this design:** it proposed making `IRagasMetric` internal.
+It already is (`IRagasMetric.cs:5`), so there is nothing to change. The four evaluator classes
+are public and implement it with public members, which means they are directly constructible and
+callable standalone; only *suite composition* is closed. That is a defensible shape and stays as
+it is. Custom metric registration remains a non-goal, and the docs describe what is actually
+usable rather than implying more.
 
 ## 8. Testing
 
