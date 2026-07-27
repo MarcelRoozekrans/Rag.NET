@@ -7,7 +7,15 @@ using Rag.NET.Models.Options;
 
 namespace Rag.NET.PgVector;
 
-public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable, IDisposable
+/// <summary>
+/// PostgreSQL/pgvector-backed <see cref="IVectorStore"/> (dense vectors only). For SPLADE
+/// sparse vector support use <see cref="PgVectorSparseVectorStore"/> — deliberately a separate
+/// type so an <c>is ISparseSearchable</c> capability probe on the registered store is honest: a
+/// dense-only PgVector store never advertises sparse support, and the ingestion/retrieval
+/// pipelines skip sparse work entirely instead of computing SPLADE vectors that nothing could
+/// store.
+/// </summary>
+public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDisposable
 {
     /// <summary>
     /// pgvector refuses to build an HNSW index on a column wider than this
@@ -20,8 +28,8 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
     private const int IterativeScanUnsupported = 0;
     private const int IterativeScanSupported = 1;
 
-    private readonly NpgsqlDataSource _dataSource;
-    private readonly int _vectorDimensions;
+    private protected readonly NpgsqlDataSource _dataSource;
+    private protected readonly int _vectorDimensions;
 
     /// <summary>
     /// Cached answer to "does this server's pgvector understand <c>hnsw.iterative_scan</c>?"
@@ -83,7 +91,7 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
     /// unique key cannot be created. The message carries the duplicate-key count and the query
     /// to inspect them.
     /// </exception>
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    public virtual async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
@@ -256,7 +264,7 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
         }
     }
 
-    private static async Task<IReadOnlyList<SearchResult>> ReadSearchResultsAsync(
+    private protected static async Task<IReadOnlyList<SearchResult>> ReadSearchResultsAsync(
         NpgsqlCommand cmd,
         CancellationToken cancellationToken)
     {
@@ -288,6 +296,19 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
         if (_vectorDimensions > HnswDimensionLimit)
             return;
 
+        await ApplyIterativeScanCoreAsync(conn, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Issues the <c>hnsw.iterative_scan</c> setting when the server understands it, with no
+    /// dense-dimension guard — for callers that search a different HNSW index than
+    /// <c>embedding</c> (the sparse subtype's <c>sparsevec</c> index, which exists regardless of
+    /// the dense width).
+    /// </summary>
+    private protected async Task ApplyIterativeScanCoreAsync(
+        NpgsqlConnection conn,
+        CancellationToken cancellationToken)
+    {
         if (!await SupportsIterativeScanAsync(conn, cancellationToken).ConfigureAwait(false))
             return;
 
@@ -301,15 +322,27 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
         if (cached != IterativeScanUnknown)
             return cached == IterativeScanSupported;
 
+        var version = await ReadExtensionVersionAsync(conn, cancellationToken).ConfigureAwait(false);
+        var supported = SupportsIterativeScan(version);
+        Volatile.Write(
+            ref _iterativeScanSupport,
+            supported ? IterativeScanSupported : IterativeScanUnsupported);
+        return supported;
+    }
+
+    /// <summary>
+    /// Reads <c>pg_extension.extversion</c> for the <c>vector</c> extension, or
+    /// <see langword="null"/> when it is not installed in this database.
+    /// </summary>
+    private protected static async Task<string?> ReadExtensionVersionAsync(
+        NpgsqlConnection conn,
+        CancellationToken cancellationToken)
+    {
         var cmd = new NpgsqlCommand("SELECT extversion FROM pg_extension WHERE extname = 'vector'", conn);
         await using (cmd.ConfigureAwait(false))
         {
             var result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            var supported = SupportsIterativeScan(result as string);
-            Volatile.Write(
-                ref _iterativeScanSupport,
-                supported ? IterativeScanSupported : IterativeScanUnsupported);
-            return supported;
+            return result as string;
         }
     }
 
@@ -319,20 +352,29 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
     /// as unsupported: issuing the <c>SET</c> against an older extension errors, and losing
     /// iterative scanning is far cheaper than failing every search.
     /// </summary>
-    internal static bool SupportsIterativeScan(string? extensionVersion)
+    internal static bool SupportsIterativeScan(string? extensionVersion) =>
+        AtLeastVersion(extensionVersion, major: 0, minor: 8);
+
+    /// <summary>
+    /// True when <paramref name="extensionVersion"/> parses as a <c>major.minor[.patch]</c>
+    /// version at or above <paramref name="major"/>.<paramref name="minor"/>. An absent or
+    /// unreadable version reads as <see langword="false"/> — every caller gates a capability on
+    /// this, and "assume present" would trade a clear failure for an obscure one.
+    /// </summary>
+    internal static bool AtLeastVersion(string? extensionVersion, int major, int minor)
     {
         if (string.IsNullOrWhiteSpace(extensionVersion))
             return false;
 
         var parts = extensionVersion.Split('.');
         if (parts.Length < 2
-            || !int.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out var major)
-            || !int.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var minor))
+            || !int.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out var actualMajor)
+            || !int.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var actualMinor))
         {
             return false;
         }
 
-        return major > 0 || minor >= 8;
+        return actualMajor > major || (actualMajor == major && actualMinor >= minor);
     }
 
     public async Task DeleteByDocumentIdAsync(
@@ -445,7 +487,7 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
                 nameof(name));
     }
 
-    private static string CreateTableSql(string tableSql, int vectorDimensions) => $$"""
+    private protected static string CreateTableSql(string tableSql, int vectorDimensions) => $$"""
         CREATE TABLE IF NOT EXISTS {{tableSql}} (
             id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             document_id TEXT NOT NULL,
@@ -490,14 +532,14 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
         ) d
         """;
 
-    private static async Task EnableVectorExtensionAsync(NpgsqlConnection conn, CancellationToken cancellationToken)
+    private protected static async Task EnableVectorExtensionAsync(NpgsqlConnection conn, CancellationToken cancellationToken)
     {
         await ExecuteNonQueryAsync(conn, "CREATE EXTENSION IF NOT EXISTS vector", cancellationToken)
             .ConfigureAwait(false);
         await conn.ReloadTypesAsync().ConfigureAwait(false);
     }
 
-    private static async Task ExecuteNonQueryAsync(NpgsqlConnection conn, string sql, CancellationToken cancellationToken)
+    private protected static async Task ExecuteNonQueryAsync(NpgsqlConnection conn, string sql, CancellationToken cancellationToken)
     {
         var cmd = new NpgsqlCommand(sql, conn);
         await using (cmd.ConfigureAwait(false))
@@ -670,7 +712,7 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
         }
     }
 
-    private static TextChunk ReadChunk(Npgsql.NpgsqlDataReader reader)
+    private protected static TextChunk ReadChunk(Npgsql.NpgsqlDataReader reader)
     {
         var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(3));
         var metadata = metadataResult.IsSuccess
@@ -686,5 +728,15 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
         };
     }
 
-    public void Dispose() => _dataSource.Dispose();
+    public void Dispose()
+    {
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (disposing)
+            _dataSource.Dispose();
+    }
 }
