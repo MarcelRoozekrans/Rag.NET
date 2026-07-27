@@ -29,7 +29,7 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     private const int IterativeScanSupported = 1;
 
     private protected readonly NpgsqlDataSource _dataSource;
-    private protected readonly int _vectorDimensions;
+    private readonly int _vectorDimensions;
 
     /// <summary>
     /// Cached answer to "does this server's pgvector understand <c>hnsw.iterative_scan</c>?"
@@ -487,7 +487,7 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
                 nameof(name));
     }
 
-    private protected static string CreateTableSql(string tableSql, int vectorDimensions) => $$"""
+    private static string CreateTableSql(string tableSql, int vectorDimensions) => $$"""
         CREATE TABLE IF NOT EXISTS {{tableSql}} (
             id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             document_id TEXT NOT NULL,
@@ -532,7 +532,7 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         ) d
         """;
 
-    private protected static async Task EnableVectorExtensionAsync(NpgsqlConnection conn, CancellationToken cancellationToken)
+    private static async Task EnableVectorExtensionAsync(NpgsqlConnection conn, CancellationToken cancellationToken)
     {
         await ExecuteNonQueryAsync(conn, "CREATE EXTENSION IF NOT EXISTS vector", cancellationToken)
             .ConfigureAwait(false);
@@ -712,7 +712,7 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         }
     }
 
-    private protected static TextChunk ReadChunk(Npgsql.NpgsqlDataReader reader)
+    private static TextChunk ReadChunk(Npgsql.NpgsqlDataReader reader)
     {
         var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(3));
         var metadata = metadataResult.IsSuccess

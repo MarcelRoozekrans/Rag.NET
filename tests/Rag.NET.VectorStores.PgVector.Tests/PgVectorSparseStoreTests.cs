@@ -117,19 +117,81 @@ public class PgVectorSparseStoreTests : IAsyncLifetime
         await _sut.StoreSparseAsync([(chunk, Sparse([5], [1.0f]))], ct);
         await ExecuteAsync("ANALYZE rag_chunks");
 
-        var indexed = await ExplainAsync($$"""
-            SELECT document_id FROM rag_chunks
-            WHERE sparse_embedding IS NOT NULL
-            ORDER BY sparse_embedding <#> '{6:1}/{{VocabularySize}}' LIMIT 10
-            """);
-        var negated = await ExplainAsync($$"""
-            SELECT document_id FROM rag_chunks
-            WHERE sparse_embedding IS NOT NULL
-            ORDER BY -(sparse_embedding <#> '{6:1}/{{VocabularySize}}') LIMIT 10
-            """);
+        // The full predicate set SearchSparseSql always emits — not a reduced form, so a future
+        // predicate that defeated the index would fail this test rather than slip through.
+        var indexed = await ExplainAsync(SparseSearchSql(hasFilter: false, negatedOrderBy: false));
+        var filtered = await ExplainAsync(SparseSearchSql(hasFilter: true, negatedOrderBy: false));
+        var negated = await ExplainAsync(SparseSearchSql(hasFilter: false, negatedOrderBy: true));
 
         Assert.Contains("Index Scan using idx_rag_chunks_sparse", indexed, StringComparison.Ordinal);
+        Assert.Contains("Index Scan using idx_rag_chunks_sparse", filtered, StringComparison.Ordinal);
         Assert.DoesNotContain("idx_rag_chunks_sparse", negated, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The shape <c>PgVectorSparseVectorStore.SearchSparseSql</c> builds, with the parameters
+    /// inlined as literals so EXPLAIN can plan it. <paramref name="negatedOrderBy"/> produces the
+    /// wrong variant the production query deliberately avoids.
+    /// </summary>
+    private static string SparseSearchSql(bool hasFilter, bool negatedOrderBy)
+    {
+        var query = "'{6:1}/" + VocabularySize.ToString(System.Globalization.CultureInfo.InvariantCulture) + "'";
+
+        var sql = $"""
+            SELECT document_id, chunk_index, text, metadata,
+                   -(sparse_embedding <#> {query}) AS score
+            FROM rag_chunks
+            WHERE sparse_embedding IS NOT NULL
+              AND -(sparse_embedding <#> {query}) > 0
+              AND -(sparse_embedding <#> {query}) >= 0
+            """;
+
+        if (hasFilter)
+        {
+            sql += "\n  AND metadata @> '{\"tag\":\"needle\"}'::jsonb";
+        }
+
+        var order = negatedOrderBy
+            ? $"-(sparse_embedding <#> {query})"
+            : $"sparse_embedding <#> {query}";
+
+        return sql + $"\nORDER BY {order}\nLIMIT 10";
+    }
+
+    [Fact]
+    public async Task InitializeAsync_ExistingSparseColumnOfADifferentDimension_FailsFast()
+    {
+        // ADD COLUMN IF NOT EXISTS matches on the column NAME: without the typmod probe this
+        // second store initializes "successfully" against the sparsevec(100) column the fixture
+        // created, and then every sparse write and read fails on the dimension mismatch — both
+        // of which StorageBehavior and EnsembleBehavior swallow, leaving a silently dense-only
+        // deployment behind a single log line.
+        using var mismatched = new PgVectorSparseVectorStore(
+            _postgres.GetConnectionString(),
+            vectorDimensions: 3,
+            sparseVocabularySize: PgVectorSparseVectorStore.DefaultSparseVocabularySize);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => mismatched.InitializeAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("rag_chunks", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("sparse_embedding", ex.Message, StringComparison.Ordinal);
+        Assert.Contains($"sparsevec({VocabularySize})", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            $"sparsevec({PgVectorSparseVectorStore.DefaultSparseVocabularySize})",
+            ex.Message,
+            StringComparison.Ordinal);
+        Assert.Contains($"sparseVocabularySize: {VocabularySize}", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("DROP COLUMN sparse_embedding", ex.Message, StringComparison.Ordinal);
+
+        // Nothing was altered: the column the fixture created is untouched.
+        Assert.Equal($"sparsevec({VocabularySize})", await ScalarAsync<string>(
+            """
+            SELECT format_type(a.atttypid, a.atttypmod)
+            FROM pg_attribute a
+            WHERE a.attrelid = to_regclass('rag_chunks') AND a.attname = 'sparse_embedding'
+              AND NOT a.attisdropped
+            """));
     }
 
     private static EmbeddedChunk MakeChunk(string docId, int chunkIndex, string text) => new()

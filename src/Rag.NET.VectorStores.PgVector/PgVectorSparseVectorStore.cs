@@ -63,7 +63,10 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
     /// <param name="sparseVocabularySize">
     /// Dimension of the <c>sparsevec</c> column: the sparse encoder's vocabulary size, which must
     /// be strictly greater than every term id it emits. Defaults to
-    /// <see cref="DefaultSparseVocabularySize"/>.
+    /// <see cref="DefaultSparseVocabularySize"/>. A term id at or above this value is rejected by
+    /// PostgreSQL with <c>ERROR: sparsevec index out of bounds</c>, which names neither the column
+    /// nor this option — no gate guards it because a SPLADE encoder emits ids below its own
+    /// vocabulary size by construction.
     /// </param>
     public PgVectorSparseVectorStore(
         string connectionString,
@@ -87,7 +90,8 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
     /// here too.
     /// </remarks>
     /// <exception cref="InvalidOperationException">
-    /// The server's pgvector predates 0.7.0 and has no <c>sparsevec</c> type.
+    /// The server's pgvector predates 0.7.0 and has no <c>sparsevec</c> type, or the table
+    /// already carries a <c>sparse_embedding</c> column of a different dimension.
     /// </exception>
     public override async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -97,6 +101,7 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
         await using (conn.ConfigureAwait(false))
         {
             await EnsureSparseVectorsSupportedAsync(conn, cancellationToken).ConfigureAwait(false);
+            await EnsureSparseColumnDimensionAsync(conn, cancellationToken).ConfigureAwait(false);
 
             await ExecuteNonQueryAsync(
                 conn,
@@ -147,6 +152,64 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
     /// </summary>
     internal static bool SupportsSparseVectors(string? extensionVersion) =>
         AtLeastVersion(extensionVersion, MinimumSparseMajor, MinimumSparseMinor);
+
+    /// <summary>
+    /// Fails fast when the table already carries a <c>sparse_embedding</c> column declared at a
+    /// different dimension than <c>sparseVocabularySize</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>ADD COLUMN IF NOT EXISTS</c> matches on the column <i>name</i> only: against an
+    /// existing <c>sparsevec(100)</c> it emits a NOTICE, leaves the dimension alone, and reports
+    /// success — and the <c>CREATE INDEX IF NOT EXISTS</c> after it then no-ops for the same
+    /// reason. Initialization would therefore complete cleanly while every subsequent write
+    /// failed with "expected 100 dimensions, not 30522" and every read with "different sparsevec
+    /// dimensions 100 and 30522". Both of those are <i>swallowed</i> upstream —
+    /// <c>StorageBehavior</c> logs and continues so ingestion survives a sparse-side fault, and
+    /// <c>EnsembleBehavior</c> degrades to the dense results — so the visible outcome is
+    /// successful ingestion, successful retrieval, and permanently dense-only quality behind one
+    /// log line. That is strictly harder to diagnose than the raw error the version gate above
+    /// exists to prevent, which is why this probe is not optional.
+    /// </para>
+    /// <para>
+    /// This is the third instance in this store of "IF NOT EXISTS matches on name, not shape" —
+    /// see <c>EnsureChunkKeyIndexAsync</c> and <c>ValidateCollectionNameLength</c>. The probe runs
+    /// <b>before</b> the <c>ADD COLUMN</c>, and an absent column (no row) is the ordinary
+    /// first-run path, not a failure. <c>to_regclass</c> rather than <c>::regclass</c> so a
+    /// missing table yields NULL instead of throwing, matching
+    /// <c>UniqueChunkKeyIndexExistsAsync</c>.
+    /// </para>
+    /// </remarks>
+    private async Task EnsureSparseColumnDimensionAsync(
+        NpgsqlConnection conn,
+        CancellationToken cancellationToken)
+    {
+        var cmd = new NpgsqlCommand(
+            $"""
+            SELECT a.atttypmod
+            FROM pg_attribute a
+            WHERE a.attrelid = to_regclass('rag_chunks') AND a.attname = '{SparseColumn}'
+              AND NOT a.attisdropped
+            """, conn);
+
+        await using (cmd.ConfigureAwait(false))
+        {
+            var result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            if (result is not int existingDimension || existingDimension == _sparseVocabularySize)
+                return; // no column yet (the first-run path), or it already matches
+
+            throw new InvalidOperationException(
+                $"Table rag_chunks already has a '{SparseColumn}' column of sparsevec({existingDimension}), " +
+                $"but this store is configured for sparsevec({_sparseVocabularySize}). ALTER TABLE ... " +
+                "ADD COLUMN IF NOT EXISTS matches on the column name alone, so it would leave the " +
+                $"existing dimension in place and report success — after which every sparse write and " +
+                "read would fail on the dimension mismatch, and the pipeline would swallow both and " +
+                "degrade silently to dense-only. Either construct the store with " +
+                $"sparseVocabularySize: {existingDimension} to match the column, or run " +
+                $"'ALTER TABLE rag_chunks DROP COLUMN {SparseColumn}' and initialize again — which " +
+                "discards every sparse vector already stored (RegenerateSparseAsync can rebuild them).");
+        }
+    }
 
     /// <inheritdoc />
     /// <remarks>
