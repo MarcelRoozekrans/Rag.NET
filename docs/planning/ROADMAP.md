@@ -131,18 +131,29 @@ future reader can tell the difference between "never existed" and "dealt with".
 
 **Not in scope:** the CLI reindex command (belongs with the CLI tool in Milestone 4); Pinecone live sparse-write verification (needs a live account — documented as a coverage gap by decision on 2026-07-26).
 
-## Milestone 3: Quality Hardening & Evaluation [status: pending]
+## Milestone 3: Quality Hardening & Evaluation [status: active]
 **Goal:** Close the evaluation-tooling gap and harden quality: RAGAS metrics, dataset tooling, A/B testing, pipeline debugging, and CI coverage for the Docker-dependent suites.
+**Started:** 2026-07-27
 **Definition of Done:**
 - [ ] All planned phases complete
+- [ ] No feature marked done in features.md lacks tests and docs — detail sections, summary matrix, and code agree
 - [ ] Integration/vector-store suites run in CI (Dockerized)
 - [ ] All tests passing
 
-### Phase 3.1: RAGAS-Style Metrics [status: pending]
-**Backlog items:** RAGAS-Style Metrics
+> **Correction (2026-07-27).** This milestone was scoped from the unchecked rows in
+> features.md, but that file contradicted itself: RAGAS-Style Metrics and Evaluation Dataset
+> Builder are marked `✅ Done` in their detail sections while their matrix rows read `[ ]`. Both
+> shipped on 2026-04-11 — three months before this ROADMAP was written — with **no tests and no
+> documentation**. The matrix row was the honest one. 3.1 and 3.2 are therefore completion
+> phases, not greenfield ones.
 
-### Phase 3.2: Evaluation Dataset Builder [status: pending]
+### Phase 3.1: RAGAS Metrics — verify, test, document [status: pending]
+**Backlog items:** RAGAS-Style Metrics
+**Scope:** audit the four existing evaluators in `src/Rag.NET.Evaluation.Ragas` against the metric definitions, fix what is wrong, add deterministic test coverage, document them in `docs/guide/evaluation.md`, and reconcile features.md. An untested evaluator returns plausible numbers rather than failing loudly, so treat every score produced so far as unverified.
+
+### Phase 3.2: Evaluation Dataset Builder — verify, test, document [status: pending]
 **Backlog items:** Evaluation Dataset Builder
+**Scope:** same treatment for `src/Rag.NET.Evaluation/EvaluationDatasetBuilder.cs`.
 
 ### Phase 3.3: A/B Testing Framework [status: pending]
 **Backlog items:** A/B Testing Framework
