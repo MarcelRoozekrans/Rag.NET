@@ -63,10 +63,10 @@ public class FaithfulnessEvaluatorTests
     [Fact]
     public async Task ScoreAsync_MalformedClaimsJson_IsNotScoreable()
     {
-        // LLM wraps JSON in a markdown fence — common real-world response
+        // LLM answers in prose instead of the JSON array it was asked for
         var client = Substitute.For<IChatClient>();
         client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "```json\n[\"a claim\"]\n```")));
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "I'm sorry, I can't do that.")));
 
         var evaluator = new FaithfulnessEvaluator(client);
         var sample = new EvaluationSample("Q?", "Answer.", "Ref.", ["Context."]);
@@ -78,5 +78,26 @@ public class FaithfulnessEvaluatorTests
         Assert.Null(score);
         // Only 1 LLM call (claims extraction) — no verification calls because nothing parsed
         await client.Received(1).GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ScoreAsync_MarkdownFencedClaimsJson_IsScored()
+    {
+        // LLM wraps JSON in a markdown fence — common real-world response, and a wrapping rather
+        // than a malformation. Excluding every fenced sample would make the metric report null
+        // against a fence-happy model, so the fence is stripped and the reply underneath scored.
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, "```json\n[\"a claim\"]\n```")),
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, "yes")));
+
+        var evaluator = new FaithfulnessEvaluator(client);
+        var sample = new EvaluationSample("Q?", "Answer.", "Ref.", ["Context."]);
+
+        var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1.0, score!.Value, precision: 2);
+        await client.Received(2).GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 }

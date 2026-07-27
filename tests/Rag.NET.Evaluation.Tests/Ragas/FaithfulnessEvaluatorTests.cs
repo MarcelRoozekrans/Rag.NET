@@ -25,15 +25,16 @@ public sealed class FaithfulnessEvaluatorTests
     }
 
     [Fact]
-    public async Task ScoreAsync_WhenTheModelFencesItsJson_IsNotScoreable()
+    public async Task ScoreAsync_WhenTheModelFencesItsJson_IsStillScored()
     {
-        // A markdown fence is the most common real-world malformation, and the one the pre-3.1
-        // tests recorded as "returns one gracefully".
+        // A markdown fence is the most common real-world wrapping, not a malformation. Excluding
+        // every fenced sample would be honest but would make the metric report null against a
+        // fence-happy model, so the judge strips the fence and scores the reply underneath.
         var client = new RoutingChatClient([("Extract", "```json\n[\"a claim\"]\n```")], fallback: "yes");
 
         var score = await Evaluator(client).ScoreAsync(Sample(), TestContext.Current.CancellationToken);
 
-        Assert.Null(score);
+        Assert.Equal(1.0, score!.Value, precision: 10);
     }
 
     [Fact]

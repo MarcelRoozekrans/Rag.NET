@@ -63,13 +63,21 @@ internal sealed class RagasJudge(
         string systemPrompt, string userPrompt, CancellationToken cancellationToken)
     {
         var reply = await CompleteAsync(systemPrompt, userPrompt, cancellationToken).ConfigureAwait(false);
-        if (string.IsNullOrWhiteSpace(reply))
+        var payload = StripCodeFence(reply);
+        if (string.IsNullOrWhiteSpace(payload))
             return ExtractionResult.Failed();
 
         try
         {
-            var items = JsonSerializer.Deserialize(reply, RagJsonSerializerContext.Default.ListString);
-            return items is null ? ExtractionResult.Failed() : ExtractionResult.Success(items);
+            var items = JsonSerializer.Deserialize(payload, RagJsonSerializerContext.Default.ListString);
+
+            // A null element is a half-produced reply, not a datum. Filtering it silently would
+            // hand the caller an empty claim the model then answers arbitrarily, and that verdict
+            // would land in the denominator — the fabricated score this phase exists to remove,
+            // re-entering through a different door.
+            return items is null || items.Exists(static item => item is null)
+                ? ExtractionResult.Failed()
+                : ExtractionResult.Success(items);
         }
         catch (JsonException)
         {
@@ -78,12 +86,48 @@ internal sealed class RagasJudge(
     }
 
     /// <summary>
-    /// Exact match after trimming whitespace and trailing punctuation. Anything else is
-    /// <see cref="Verdict.Unparseable"/> rather than a guess.
+    /// Removes a markdown fence wrapping the whole reply, if there is one.
     /// </summary>
+    /// <remarks>
+    /// Models emit fenced JSON constantly outside structured-output mode. Rejecting it is honest —
+    /// the sample is excluded rather than wrongly scored — but against a fence-happy model it makes
+    /// most samples unscoreable and the metric report <c>null</c>, which reads as a broken library.
+    /// <para>
+    /// Deliberately narrow. No attempt is made to salvage JSON from the middle of a reply by
+    /// scanning for the first <c>[</c> and the last <c>]</c>: that would start scoring replies the
+    /// model never intended as JSON, which is guessing.
+    /// </para>
+    /// </remarks>
+    private static string StripCodeFence(string reply)
+    {
+        const string Fence = "```";
+
+        var trimmed = reply.Trim();
+        if (trimmed.Length <= (Fence.Length * 2) ||
+            !trimmed.StartsWith(Fence, StringComparison.Ordinal) ||
+            !trimmed.EndsWith(Fence, StringComparison.Ordinal))
+            return trimmed;
+
+        // Whatever sits between the opening fence and the first line break is the language tag,
+        // if any. Without a line break this is not the fenced shape we accept.
+        var inner = trimmed[Fence.Length..^Fence.Length];
+        var lineBreak = inner.IndexOf('\n');
+        return lineBreak < 0 ? trimmed : inner[(lineBreak + 1)..].Trim();
+    }
+
+    /// <summary>
+    /// Exact match after trimming whitespace and the punctuation models decorate a one-word answer
+    /// with. Anything else is <see cref="Verdict.Unparseable"/> rather than a guess.
+    /// </summary>
+    /// <remarks>
+    /// The trim set covers <c>**Yes**</c> and <c>"yes"</c> — markdown emphasis and the quotes a
+    /// model leaves behind when it half-honours a JSON instruction. Every verdict wrongly rejected
+    /// shrinks the denominator, which is its own way of producing a quietly wrong number. It stops
+    /// well short of prose: <c>Yes, but only partially.</c> stays unparseable, because it is.
+    /// </remarks>
     private static Verdict ParseVerdict(string reply)
     {
-        var trimmed = reply.Trim().TrimEnd('.', '!', ' ');
+        var trimmed = reply.Trim().Trim('.', '!', '*', '"', ',', ':', ' ');
         if (string.Equals(trimmed, "yes", StringComparison.OrdinalIgnoreCase))
             return Verdict.Yes;
 
