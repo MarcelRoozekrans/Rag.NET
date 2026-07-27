@@ -9,10 +9,24 @@ namespace Rag.NET.Api.Webhooks;
 /// Default payload parser: accepts a single <c>{ "documentId": "...", "content": "...",
 /// "metadata": { ... } }</c> object or an array of them. <c>content</c> is required and
 /// non-empty; <c>metadata</c> (optional) must be a flat string dictionary and maps to
-/// <see cref="DocumentMetadata.Tags"/>; the file name defaults to <c>{documentId}.txt</c>.
+/// <see cref="DocumentMetadata.Tags"/>; the file name defaults to <c>{documentId}.txt</c> with
+/// the stem passed through <see cref="FileNameSanitizer"/>.
 /// </summary>
 public sealed class GenericWebhookPayloadParser : IWebhookPayloadParser
 {
+    /// <summary>
+    /// Stem used when <c>documentId</c> sanitizes away to nothing (<c>"..."</c>, <c>"///"</c>).
+    /// </summary>
+    /// <remarks>
+    /// Such an id is not rejected. <c>documentId</c> is already validated as present and
+    /// non-whitespace, and it is carried through verbatim as the <see cref="DocumentId"/> — the
+    /// document's identity. <see cref="DocumentMetadata.FileName"/> is display and
+    /// parser-selection metadata, never a path, so collapsing an unrenderable id to a shared
+    /// stem loses nothing that identity does not already carry, and turning a currently-accepted
+    /// payload into a 400 would be a behaviour change unrelated to the traversal fix.
+    /// </remarks>
+    private const string FallbackStem = "document";
+
     /// <inheritdoc/>
     public bool TryParse(JsonElement payload, [NotNullWhen(true)] out IReadOnlyList<IngestionJob>? jobs)
     {
@@ -74,7 +88,9 @@ public sealed class GenericWebhookPayloadParser : IWebhookPayloadParser
             Metadata = new DocumentMetadata
             {
                 DocumentId = new DocumentId(documentId),
-                FileName = $"{documentId}.txt",
+                // Untrusted: a documentId of "../../etc/passwd" must not become a file name
+                // carrying path separators or traversal segments.
+                FileName = $"{FileNameSanitizer.Sanitize(documentId, FallbackStem)}.txt",
                 Tags = tags,
             },
         };

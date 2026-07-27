@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace Rag.NET.DataProviders.Tests;
+namespace Rag.NET.Tests.Naming;
 
 public sealed class FileNameSanitizerTests
 {
