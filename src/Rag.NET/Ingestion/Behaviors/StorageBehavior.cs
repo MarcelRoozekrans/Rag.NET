@@ -88,6 +88,18 @@ public sealed class StorageBehavior : IIngestionBehavior
     /// has accepted the new chunks.
     /// </para>
     /// <para>
+    /// KNOWN LIMITATION — the remove/re-add sequence is not atomic. Each
+    /// <see cref="IBm25Index.Remove"/> and <see cref="IBm25Index.Add"/> takes the index's write
+    /// lock individually, but nothing holds a lock across the pair and there is no per-document
+    /// ingestion lock anywhere in the pipeline. Two concurrent ingests of the same document can
+    /// therefore interleave as <c>A.Remove → B.Remove → A.Add(…) → B.Add(…)</c> and reproduce the
+    /// very duplication this method exists to prevent. The race pre-dates this method — it
+    /// applied to <see cref="OverwriteBehavior"/>'s removals already — but it now sits on every
+    /// ingestion path rather than only on opt-in overwrites. Competing consumers on a
+    /// non-session Service Bus queue are the realistic trigger; per-document FIFO (sessions)
+    /// avoids it. See <c>docs/plans/2026-07-27-service-bus-ingestion-design.md</c> §1 and §2.
+    /// </para>
+    /// <para>
     /// The vector store is deliberately <em>not</em> deleted here. It upserts on
     /// <c>(documentId, chunkIndex)</c>, so a shorter replacement leaves the previous version's
     /// tail chunks stranded — a recorded limitation, because making delete-before-insert

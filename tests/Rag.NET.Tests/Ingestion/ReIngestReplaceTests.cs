@@ -1,12 +1,15 @@
+using System.Globalization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Ingestion;
+using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Storage;
 using Xunit;
+using ZeroAlloc.Results;
 
 namespace Rag.NET.Tests.Ingestion;
 
@@ -41,6 +44,7 @@ public class ReIngestReplaceTests
 
         public object? GetService(Type serviceType, object? serviceKey = null) => null;
 
+        /// <summary>Nothing to release — the fake holds no unmanaged or disposable state.</summary>
         public void Dispose()
         {
         }
@@ -86,19 +90,26 @@ public class ReIngestReplaceTests
         return services.BuildServiceProvider();
     }
 
-    private static async Task<int> IngestAsync(IIngestor ingestor, string documentId, string text, CancellationToken ct)
+    private static async Task<Result<IngestionResult, RagError>> TryIngestAsync(
+        IIngestor ingestor, string documentId, string text, CancellationToken ct,
+        IngestionOptions? options = null, string fileName = "{0}.txt", string contentType = "text/plain")
     {
         using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(text));
-        var result = await ingestor.IngestAsync(
+        return await ingestor.IngestAsync(
             stream,
             new DocumentMetadata
             {
                 DocumentId = new DocumentId(documentId),
-                FileName = $"{documentId}.txt",
-                ContentType = "text/plain",
+                FileName = string.Format(CultureInfo.InvariantCulture, fileName, documentId),
+                ContentType = contentType,
             },
+            options,
             cancellationToken: ct);
+    }
 
+    private static async Task<int> IngestAsync(IIngestor ingestor, string documentId, string text, CancellationToken ct)
+    {
+        var result = await TryIngestAsync(ingestor, documentId, text, ct);
         Assert.True(result.IsSuccess, "ingestion should succeed");
         return result.Value.ChunksStored;
     }
@@ -221,5 +232,57 @@ public class ReIngestReplaceTests
         Assert.True(
             subjectVectorChunks > controlVectorChunks,
             $"orphan tail chunks are expected to survive ({subjectVectorChunks} vs {controlVectorChunks})");
+    }
+
+    /// <summary>
+    /// Pins why <see cref="OverwriteBehavior"/> keeps its own BM25/data-manager removals even
+    /// though <see cref="StorageBehavior"/> now removes unconditionally: <c>Overwrite</c> promises
+    /// the document is gone up front <em>whatever happens next</em>, and <c>StorageBehavior</c>
+    /// never runs when the replacement fails to parse. Delete these removals and this test fails.
+    /// </summary>
+    [Fact]
+    public async Task Ingest_OverwriteThenUnparseableContent_LeavesNothingInBm25()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var vectorStore = new InMemoryVectorStore();
+        await using var sp = BuildHost(vectorStore);
+        var ingestor = sp.GetRequiredService<IIngestor>();
+        var bm25 = sp.GetRequiredService<IBm25Index>();
+
+        await IngestAsync(ingestor, "doc-1", "quokka telemetry arrives on the ingestion path", ct);
+        Assert.Single(bm25.Search("quokka", topK: 10));
+
+        var replacement = await TryIngestAsync(
+            ingestor, "doc-1", "irrelevant", ct,
+            options: new IngestionOptions { Overwrite = true },
+            fileName: "{0}.bin", contentType: "application/x-no-such-parser");
+
+        Assert.False(replacement.IsSuccess, "no parser should be found for this content type");
+        Assert.Empty(bm25.Search("quokka", topK: 10));
+    }
+
+    /// <summary>
+    /// The same guarantee on the other path <see cref="StorageBehavior"/> never reaches:
+    /// whitespace-only content chunks to nothing, so <c>ChunkingBehavior</c> short-circuits
+    /// before storage.
+    /// </summary>
+    [Fact]
+    public async Task Ingest_OverwriteThenEmptyContent_LeavesNothingInBm25()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var vectorStore = new InMemoryVectorStore();
+        await using var sp = BuildHost(vectorStore);
+        var ingestor = sp.GetRequiredService<IIngestor>();
+        var bm25 = sp.GetRequiredService<IBm25Index>();
+
+        await IngestAsync(ingestor, "doc-1", "quokka telemetry arrives on the ingestion path", ct);
+        Assert.Single(bm25.Search("quokka", topK: 10));
+
+        var replacement = await TryIngestAsync(
+            ingestor, "doc-1", "   \n  ", ct, options: new IngestionOptions { Overwrite = true });
+
+        Assert.True(replacement.IsSuccess);
+        Assert.Equal(0, replacement.Value.ChunksStored);
+        Assert.Empty(bm25.Search("quokka", topK: 10));
     }
 }
