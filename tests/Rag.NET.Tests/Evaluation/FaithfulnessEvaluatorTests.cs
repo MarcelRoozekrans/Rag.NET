@@ -46,7 +46,7 @@ public class FaithfulnessEvaluatorTests
     }
 
     [Fact]
-    public async Task ScoreAsync_EmptySourceChunks_ReturnsZero()
+    public async Task ScoreAsync_EmptySourceChunks_IsNotScoreable()
     {
         var client = Substitute.For<IChatClient>();
         var evaluator = new FaithfulnessEvaluator(client);
@@ -54,12 +54,14 @@ public class FaithfulnessEvaluatorTests
 
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(0.0, score);
+        // Nothing retrieved is an absence of evidence, not evidence of an ungrounded answer.
+        // This returned 0.0 before Phase 3.1, conflating the two.
+        Assert.Null(score);
         await client.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully()
+    public async Task ScoreAsync_MalformedClaimsJson_IsNotScoreable()
     {
         // LLM wraps JSON in a markdown fence — common real-world response
         var client = Substitute.For<IChatClient>();
@@ -69,11 +71,12 @@ public class FaithfulnessEvaluatorTests
         var evaluator = new FaithfulnessEvaluator(client);
         var sample = new EvaluationSample("Q?", "Answer.", "Ref.", ["Context."]);
 
-        // Malformed JSON (markdown fence) → JsonException → claims = [] → score = 1.0
+        // Before Phase 3.1 the JsonException became an empty claim list and scored 1.0 — the
+        // worst reply produced the best score. It is now reported as unscoreable.
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(1.0, score!.Value, precision: 2);
-        // Only 1 LLM call (claims extraction) — no verification calls because claims = []
+        Assert.Null(score);
+        // Only 1 LLM call (claims extraction) — no verification calls because nothing parsed
         await client.Received(1).GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 }

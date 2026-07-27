@@ -1,3 +1,5 @@
+using Rag.NET.Evaluation.Ragas.Judging;
+
 namespace Rag.NET.Evaluation.Ragas;
 
 /// <summary>
@@ -47,6 +49,37 @@ internal static class RagasMath
     {
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(total, 0, nameof(total));
         return supported / (double)total;
+    }
+
+    /// <summary>
+    /// Fraction of <see cref="Verdict.Yes"/> among the verdicts that could be read at all, or
+    /// <c>null</c> when none could.
+    /// </summary>
+    /// <remarks>
+    /// Shared by Faithfulness and Context Recall, which are the same arithmetic over different
+    /// material. They each carried their own copy before Phase 3.1, which is how the same
+    /// parse-failure defect came to exist twice.
+    /// <para>
+    /// An unparseable verdict is excluded from the denominator rather than counted as a "no":
+    /// counting it would state that the model denied something it never answered.
+    /// </para>
+    /// </remarks>
+    /// <param name="verdicts">The judgements obtained, in any order.</param>
+    public static double? ScoreFromVerdicts(IReadOnlyList<Verdict> verdicts)
+    {
+        var supported = 0;
+        var readable = 0;
+        for (var i = 0; i < verdicts.Count; i++)
+        {
+            if (verdicts[i] == Verdict.Unparseable)
+                continue;
+
+            readable++;
+            if (verdicts[i] == Verdict.Yes)
+                supported++;
+        }
+
+        return readable == 0 ? null : SupportedFraction(supported, readable);
     }
 
     /// <summary>Clamps a raw similarity to the documented [0, 1] score range.</summary>

@@ -1,4 +1,5 @@
 using Rag.NET.Evaluation.Ragas;
+using Rag.NET.Evaluation.Ragas.Judging;
 using Xunit;
 
 namespace Rag.NET.Evaluation.Tests.Ragas;
@@ -62,4 +63,36 @@ public sealed class RagasMathTests
     [InlineData(1.0000001, 1.0)]
     public void ClampScore_ConstrainsToTheDocumentedRange(double raw, double expected)
         => Assert.Equal(expected, RagasMath.ClampScore(raw), precision: 10);
+
+    // Verdict is internal, so these cannot be [InlineData] parameters without making the public
+    // test method expose an internal type (CS0051). Facts it is.
+    [Fact]
+    public void ScoreFromVerdicts_AllSupported_IsOne()
+        => Assert.Equal(1.0, RagasMath.ScoreFromVerdicts([Verdict.Yes, Verdict.Yes])!.Value, precision: 10);
+
+    [Fact]
+    public void ScoreFromVerdicts_NoneSupported_IsZero()
+        => Assert.Equal(0.0, RagasMath.ScoreFromVerdicts([Verdict.No, Verdict.No])!.Value, precision: 10);
+
+    [Fact]
+    public void ScoreFromVerdicts_HalfSupported_IsAHalf()
+        => Assert.Equal(0.5, RagasMath.ScoreFromVerdicts([Verdict.Yes, Verdict.No])!.Value, precision: 10);
+
+    [Fact]
+    public void ScoreFromVerdicts_UnparseableIsExcludedFromTheDenominator()
+    {
+        // Counted as "no" this would be 0.5; the model never denied anything, so it is 1.0
+        // over the one judgement actually obtained.
+        var score = RagasMath.ScoreFromVerdicts([Verdict.Yes, Verdict.Unparseable]);
+
+        Assert.Equal(1.0, score!.Value, precision: 10);
+    }
+
+    [Fact]
+    public void ScoreFromVerdicts_NothingReadable_IsNotScoreable()
+        => Assert.Null(RagasMath.ScoreFromVerdicts([Verdict.Unparseable, Verdict.Unparseable]));
+
+    [Fact]
+    public void ScoreFromVerdicts_NoVerdictsAtAll_IsNotScoreable()
+        => Assert.Null(RagasMath.ScoreFromVerdicts([]));
 }
