@@ -52,14 +52,28 @@ public class RagasEndToEndTests
     {
         var dataManager = MakeTwoChunkDataManager();
 
-        // First two calls = question generation; remaining = faithfulness claim extraction ([] = no claims)
+        // Dataset generation is sequential, so canned replies in order are safe here.
         var chatClient = Substitute.For<IChatClient>();
         chatClient.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(
                 new ChatResponse(new ChatMessage(ChatRole.Assistant, "What color is the sky?")),
-                new ChatResponse(new ChatMessage(ChatRole.Assistant, "At what temperature does water boil?")),
-                new ChatResponse(new ChatMessage(ChatRole.Assistant, "[]")),
-                new ChatResponse(new ChatMessage(ChatRole.Assistant, "[]")));
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, "At what temperature does water boil?")));
+
+        // Scoring runs its metrics concurrently, so the judge gets a client that routes on
+        // content instead: not evasive, three synthetic questions, and no claims to verify.
+        var judgeClient = Substitute.For<IChatClient>();
+        judgeClient.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var prompt = string.Join('\n', callInfo.ArgAt<IEnumerable<ChatMessage>>(0).Select(m => m.Text));
+                var reply = prompt switch
+                {
+                    _ when prompt.Contains("evasive", StringComparison.Ordinal) => "no",
+                    _ when prompt.Contains("different questions", StringComparison.Ordinal) => "[\"Q1?\",\"Q2?\",\"Q3?\"]",
+                    _ => "[]",
+                };
+                return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, reply)));
+            });
 
         var embedder = MakeIdentityEmbedder();
 
@@ -77,7 +91,7 @@ public class RagasEndToEndTests
             .ToList();
 
         // Step 3: Score with RAGAS (Faithfulness + AnswerRelevance)
-        var suite = new RagasEvaluationSuiteBuilder(chatClient, embedder)
+        var suite = new RagasEvaluationSuiteBuilder(judgeClient, embedder)
             .AddFaithfulness()
             .AddAnswerRelevance()
             .Build();

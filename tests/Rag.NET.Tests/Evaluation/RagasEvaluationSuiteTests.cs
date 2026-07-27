@@ -19,6 +19,28 @@ public class RagasEvaluationSuiteTests
         return client;
     }
 
+    /// <summary>
+    /// Replies by prompt content, because the registered metrics run concurrently per sample and
+    /// a sequence of canned replies would not reliably land on the call it was written for.
+    /// </summary>
+    private static IChatClient RoutedClient()
+    {
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var prompt = string.Join('\n', callInfo.ArgAt<IEnumerable<ChatMessage>>(0).Select(m => m.Text));
+                var reply = prompt switch
+                {
+                    _ when prompt.Contains("evasive", StringComparison.Ordinal) => "no",
+                    _ when prompt.Contains("different questions", StringComparison.Ordinal) => "[\"Q1?\",\"Q2?\",\"Q3?\"]",
+                    _ => "[]", // faithfulness: no claims
+                };
+                return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, reply)));
+            });
+        return client;
+    }
+
     private static IEmbeddingGenerator<string, Embedding<float>> IdentityEmbedder()
     {
         var gen = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
@@ -114,11 +136,9 @@ public class RagasEvaluationSuiteTests
     public async Task EvaluateAsync_OverallScoreIsMeanOfRegisteredMetrics()
     {
         // Faithfulness: LLM returns "[]" → no claims → score = 1.0
-        // AnswerRelevance: identical embeddings → cosine = 1.0
+        // AnswerRelevance: not evasive, three synthetic questions, identical embeddings → 1.0
         // Both registered → OverallScore = (1.0 + 1.0) / 2 = 1.0
-        var client = Substitute.For<IChatClient>();
-        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "[]"))); // faithfulness: no claims
+        var client = RoutedClient();
 
         var suite = new RagasEvaluationSuiteBuilder(client, IdentityEmbedder())
             .AddFaithfulness()
