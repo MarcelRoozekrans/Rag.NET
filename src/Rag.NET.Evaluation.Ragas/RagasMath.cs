@@ -87,9 +87,18 @@ internal static class RagasMath
     /// order, or <c>null</c> when none could.
     /// </summary>
     /// <remarks>
-    /// An unparseable verdict is dropped from the ranking rather than treated as irrelevant:
-    /// treating it as irrelevant both lowers the score and shifts every later chunk's rank,
-    /// which corrupts the ranks that are the entire point of this metric.
+    /// An unparseable verdict is dropped from the ranking rather than treated as irrelevant: the
+    /// model returned no judgement for that chunk, so the chunk is excluded from the ranking
+    /// entirely — scored as though it was never retrieved — rather than counted as a miss.
+    /// <para>
+    /// Dropping it does promote every later chunk: for <c>[unparseable, yes]</c> the gold chunk
+    /// becomes rank 1 and the sample scores <c>1.0</c>, where counting the unparseable one as
+    /// irrelevant would leave the gold chunk at rank 2 and score <c>0.5</c>. That promotion is
+    /// the intended reading. The alternative charges the retriever for the model's failure to
+    /// answer, which is the same fabrication the tri-state verdicts exist to prevent — see
+    /// <see cref="ScoreFromVerdicts"/>, which excludes such a verdict from its denominator for
+    /// exactly the same reason.
+    /// </para>
     /// </remarks>
     /// <param name="verdicts">The relevance judgements, in the order the chunks were retrieved.</param>
     public static double? PrecisionFromVerdicts(IReadOnlyList<Verdict> verdicts)

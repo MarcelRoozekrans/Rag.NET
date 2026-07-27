@@ -391,6 +391,8 @@ Checks: were the relevant chunks ranked highly, not merely present?
 
 Worked example: three chunks where only the gold one is relevant scores `1.00` if it came back first and `0.33` if it came back last. Under the old `relevant / total` both scored `0.33`, which is the discrimination the metric exists to provide.
 
+A chunk whose verdict could not be read leaves the ranking entirely instead of being marked irrelevant, so the chunks behind it move up: `[unreadable, gold]` scores `1.00`, not the `0.50` gold-at-rank-2 would give. That is deliberate — the chunk is scored as though it was never retrieved, because keeping it would charge the retriever for a judgement the model never gave.
+
 #### Context Recall
 
 Checks: do the retrieved chunks contain the facts stated in the reference answer?

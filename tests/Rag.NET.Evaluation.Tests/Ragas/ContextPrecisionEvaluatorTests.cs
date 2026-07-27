@@ -54,8 +54,9 @@ public sealed class ContextPrecisionEvaluatorTests
     {
         var client = new RoutingChatClient([("GOLD", "yes"), ("noise", "who can say")], fallback: "no");
 
-        // Verdicts are yes, unparseable. Dropping the unreadable one leaves [relevant] -> 1.0;
-        // counting it as irrelevant would say 1.0 too here, but would also shift ranks.
+        // Verdicts are yes, unparseable. Dropping the unreadable one leaves [relevant] -> 1.0.
+        // Counting it as irrelevant would also say 1.0, because nothing is ranked behind it;
+        // the case below is the one where the two readings disagree.
         var score = await Evaluator(client).ScoreAsync(
             new EvaluationSample("q", "a", "reference", ["GOLD", "noise"]),
             TestContext.Current.CancellationToken);
@@ -64,13 +65,13 @@ public sealed class ContextPrecisionEvaluatorTests
     }
 
     [Fact]
-    public async Task ScoreAsync_UnparseableVerdictDoesNotShiftLaterRanks()
+    public async Task ScoreAsync_UnparseableVerdictLeavesTheRankingAndPromotesWhatFollows()
     {
         var client = new RoutingChatClient([("noise", "who can say"), ("GOLD", "yes")], fallback: "no");
 
-        // Verdicts are unparseable, yes. Dropping the unreadable chunk promotes GOLD to rank 1
-        // -> 1.0. Treating it as an irrelevant chunk would leave GOLD at rank 2 -> 0.5, a
-        // penalty for a judgement the model never gave.
+        // Verdicts are unparseable, yes. The unjudged chunk leaves the ranking entirely, which
+        // promotes GOLD to rank 1 -> 1.0. Keeping it as an irrelevant chunk would preserve GOLD's
+        // original rank 2 -> 0.5, penalising the retriever for a judgement the model never gave.
         var score = await Evaluator(client).ScoreAsync(
             new EvaluationSample("q", "a", "reference", ["noise", "GOLD"]),
             TestContext.Current.CancellationToken);
