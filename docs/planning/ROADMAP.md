@@ -116,8 +116,10 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Plan:** `docs/plans/2026-07-27-pgvector-sparse-design.md` + `-implementation.md`
 **Completed:** 2026-07-27 (pgvector 0.8.2's `sparsevec` made it native, so the planned client-side RRF fallback was not needed; also fixed a pre-existing duplicate-row defect and built the dense ANN index the docs had long claimed)
 
-### Phase 2.4: Azure Document Intelligence OCR [status: pending]
-**Items:** second `IPdfOcrEngine` implementation alongside Tesseract (deferred in Phase 1.5)
+### Phase 2.4: Azure Document Intelligence OCR [status: complete]
+**Items:** whole-document OCR engine alongside Tesseract (deferred in Phase 1.5)
+**Plan:** `docs/plans/2026-07-27-azure-document-intelligence-design.md` + `-implementation.md`
+**Completed:** 2026-07-27 (not a second `IPdfOcrEngine` as the item assumed — that seam is per-image, so a new document-level seam was added instead, which dissolves three limitations Phase 1.5 recorded as permanent; also extended `ICostLedger` to represent per-page spend)
 
 ### Phase 2.5: Service Bus Ingestion Trigger [status: pending]
 **Items:** Service Bus trigger alongside the existing webhook/polling paths (deferred in Phase 1.3)
