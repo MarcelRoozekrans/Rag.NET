@@ -295,7 +295,9 @@ The service is called **at most once per document**, the moment the first sub-th
 appears — never once per page, and never at all for a PDF PdfPig reads in full. It receives the
 PDF itself, rasterizes server-side, and returns every page from a single long-running
 operation. `PollingInterval` governs how often that operation is polled when the service sends
-no `Retry-After`; a `Retry-After` always wins.
+no `Retry-After`. When it does send one, the longer of the two applies — so raising
+`PollingInterval` throttles polling, while lowering it below what the service asks for does not
+speed anything up.
 
 Configuration is validated at **registration** (`ModelId` non-empty, `PricePerPage` and
 `PollingInterval` non-negative), so a bad value throws from the `UseAzureDocumentIntelligenceOcr`
@@ -307,8 +309,10 @@ extraction. Cancellation is not a failure and propagates.
 #### What Azure OCR costs
 
 - **Every page of the submitted document is billed, not just the pages that needed OCR.** A
-  500-page PDF containing one scanned page costs 500 pages. Extracting only the pages that need
-  it would mean *writing* PDFs, a dependency this repo does not have.
+  500-page PDF containing one scanned page costs 500 pages — that document is above the default
+  cap, so out of the box it would be skipped and billed nothing; raise `MaxOcrPages` past 500 and
+  this is what you buy. Extracting only the pages that need it would mean *writing* PDFs, a
+  dependency this repo does not have.
 - **`MaxOcrPages` (default 200) is what bounds that exposure.** A document with more pages than
   the cap skips OCR entirely: the parser logs a warning naming both numbers and emits PdfPig's
   text exactly as it would with no engine configured — lossless, not silent. The default is a

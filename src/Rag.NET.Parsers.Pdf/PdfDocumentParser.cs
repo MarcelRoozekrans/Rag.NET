@@ -30,9 +30,12 @@ public sealed class PdfDocumentParser : IDocumentParser, IDisposable
     /// <param name="logger">Optional logger for the degraded-path warnings.</param>
     /// <param name="documentOcrEngine">
     /// Optional whole-PDF OCR engine. Supplying one selects the document-level OCR path;
-    /// the per-image Tesseract fallback is then never constructed. Registering both is a
-    /// registration-time error (see <see cref="PdfParserBuilderExtensions"/>), so this
-    /// constructor cannot express the combination.
+    /// the per-image Tesseract fallback is then never constructed. Combining it with
+    /// <see cref="PdfParserOptions.UseOcrFallback"/> is rejected at registration time by the
+    /// builder extensions (see <see cref="PdfParserBuilderExtensions"/>); that guard is
+    /// DI-only, so a direct-construction caller can still express the combination — in which
+    /// case the document engine wins and the <c>EnableOcr</c> gate check that
+    /// <c>UseOcrFallback</c> would otherwise trigger is bypassed.
     /// </param>
     public PdfDocumentParser(
         PdfParserOptions? options = null,
@@ -61,7 +64,9 @@ public sealed class PdfDocumentParser : IDocumentParser, IDisposable
         // Fail fast: in a gate-off compilation the stub engine's constructor throws the
         // instructive misconfiguration error here, at parser construction — not at the
         // first OCR-needed page. A document-level engine skips that factory entirely: it is
-        // ungated, and the two engines are mutually exclusive by construction.
+        // ungated, and it takes precedence. The builder extensions reject the combination at
+        // registration time, so under DI only one engine is ever supplied; a direct-
+        // construction caller that passes both gets the document engine and no gate check.
         _ocrEngine = documentOcrEngine is not null
             ? null
             : ocrEngine ?? (_options.UseOcrFallback ? PdfOcrEngineFactory.Create(_options) : null);

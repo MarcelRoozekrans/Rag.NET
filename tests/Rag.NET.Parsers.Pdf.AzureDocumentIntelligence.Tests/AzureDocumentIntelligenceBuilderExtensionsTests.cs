@@ -37,7 +37,7 @@ public sealed class AzureDocumentIntelligenceBuilderExtensionsTests
     }
 
     [Fact]
-    public void UseAzureDocumentIntelligenceOcr_ConfiguredEngine_ReachesTheParser()
+    public void UseAzureDocumentIntelligenceOcr_ConfiguredEngine_ResolvesFromTheContainerWithItsDependencies()
     {
         // Registration goes through UseDocumentOcrEngine's factory overload, so the engine is
         // constructed from the container — which is how it picks up ICostLedger and ILogger
@@ -51,9 +51,7 @@ public sealed class AzureDocumentIntelligenceBuilderExtensionsTests
             Endpoint, new AzureKeyCredential("key"), o => o.PricePerPage = 0.01m);
 
         using var provider = services.BuildServiceProvider();
-        var parser = Assert.IsType<PdfDocumentParser>(
-            Assert.Single(provider.GetServices<IDocumentParser>()));
-        Assert.NotNull(parser);
+        Assert.IsType<PdfDocumentParser>(Assert.Single(provider.GetServices<IDocumentParser>()));
         Assert.IsType<AzureDocumentIntelligenceOcrEngine>(provider.GetRequiredService<IDocumentOcrEngine>());
     }
 
