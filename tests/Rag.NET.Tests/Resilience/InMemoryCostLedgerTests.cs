@@ -67,6 +67,22 @@ public sealed class InMemoryCostLedgerTests
     }
 
     [Fact]
+    public async Task GetSpendAsync_OcrSpend_CountsTowardTheSameWindowAsTokenKinds()
+    {
+        // Parity with SqliteCostLedger: Ocr is its own (day, kind) bucket, but the window
+        // aggregation filters on day alone, so OCR spend is part of the one budget.
+        var sut = new InMemoryCostLedger(new FakeUtcTimeProvider(s_midJuly));
+
+        await sut.RecordAsync(Entry(0.30m), TestContext.Current.CancellationToken);
+        await sut.RecordAsync(
+            new CostEntry { Kind = CostKind.Ocr, Pages = 8, Cost = 0.20m },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0.50m, await sut.GetSpendAsync(CostWindow.Day, TestContext.Current.CancellationToken));
+        Assert.Equal(0.50m, await sut.GetSpendAsync(CostWindow.Month, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task InitializeAsync_IsANoOp()
     {
         var sut = new InMemoryCostLedger(new FakeUtcTimeProvider(s_midJuly));

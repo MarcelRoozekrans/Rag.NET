@@ -1,0 +1,23 @@
+{
+  "Guid": "6f1c2d40-0000-4000-8000-00000000000a",
+  "Title": "Terminal poll with an empty lines array and populated words — the words-only fallback",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/words-only/analyzeResults/words-only",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"succeeded\",\"createdDateTime\":\"2026-07-27T10:00:00Z\",\"lastUpdatedDateTime\":\"2026-07-27T10:00:02Z\",\"analyzeResult\":{\"apiVersion\":\"2024-11-30\",\"modelId\":\"words-only\",\"stringIndexType\":\"utf16CodeUnit\",\"content\":\"WORD ONE TWO\",\"pages\":[{\"pageNumber\":1,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"lines\":[],\"words\":[{\"content\":\"WORD\",\"span\":{\"offset\":0,\"length\":4},\"confidence\":0.98},{\"content\":\"ONE\",\"span\":{\"offset\":5,\"length\":3},\"confidence\":0.97},{\"content\":\"TWO\",\"span\":{\"offset\":9,\"length\":3},\"confidence\":0.96}],\"spans\":[{\"offset\":0,\"length\":12}]}]}}"
+  }
+}

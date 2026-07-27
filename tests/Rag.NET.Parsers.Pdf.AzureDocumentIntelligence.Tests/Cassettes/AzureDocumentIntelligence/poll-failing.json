@@ -1,0 +1,23 @@
+{
+  "Guid": "6f1c2d40-0000-4000-8000-000000000006",
+  "Title": "Terminal poll reporting failure — the engine must throw so the parser can degrade",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/failing/analyzeResults/failing",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"failed\",\"createdDateTime\":\"2026-07-27T10:00:00Z\",\"lastUpdatedDateTime\":\"2026-07-27T10:00:01Z\",\"error\":{\"code\":\"InvalidRequest\",\"message\":\"Invalid request.\",\"innererror\":{\"code\":\"InvalidContent\",\"message\":\"The file is corrupted or format is unsupported.\"}}}"
+  }
+}

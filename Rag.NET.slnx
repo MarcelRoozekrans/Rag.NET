@@ -64,6 +64,7 @@
     <Project Path="src/Rag.NET.QueryTechniques/Rag.NET.QueryTechniques.csproj" />
     <Project Path="src/Rag.NET.Memory/Rag.NET.Memory.csproj" />
     <Project Path="src/Rag.NET.Parsers.Vision/Rag.NET.Parsers.Vision.csproj" />
+    <Project Path="src/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Security.IntegrationTests/Rag.NET.Security.IntegrationTests.csproj" />
@@ -126,6 +127,7 @@
     <Project Path="tests/Rag.NET.Graph.Tests/Rag.NET.Graph.Tests.csproj" />
     <Project Path="tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Vision.Tests/Rag.NET.Parsers.Vision.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />

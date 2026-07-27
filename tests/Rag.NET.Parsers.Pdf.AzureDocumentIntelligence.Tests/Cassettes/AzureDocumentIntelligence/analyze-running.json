@@ -1,0 +1,25 @@
+{
+  "Guid": "6f1c2d40-0000-4000-8000-000000000007",
+  "Title": "AnalyzeDocument accepted for an operation that never reaches a terminal state",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/running:analyze",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "POST" ]
+  },
+  "Response": {
+    "StatusCode": 202,
+    "UseTransformer": true,
+    "Headers": {
+      "Operation-Location": "http://{{request.headers.Host}}/documentintelligence/documentModels/running/analyzeResults/running?api-version=2024-11-30",
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{}"
+  }
+}

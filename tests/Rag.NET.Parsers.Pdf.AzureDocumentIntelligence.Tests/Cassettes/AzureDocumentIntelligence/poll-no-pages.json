@@ -1,0 +1,23 @@
+{
+  "Guid": "6f1c2d40-0000-4000-8000-00000000000c",
+  "Title": "Terminal poll whose analyzeResult omits the pages property entirely",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/no-pages/analyzeResults/no-pages",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"succeeded\",\"createdDateTime\":\"2026-07-27T10:00:00Z\",\"lastUpdatedDateTime\":\"2026-07-27T10:00:01Z\",\"analyzeResult\":{\"apiVersion\":\"2024-11-30\",\"modelId\":\"no-pages\",\"stringIndexType\":\"utf16CodeUnit\",\"content\":\"\"}}"
+  }
+}

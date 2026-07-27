@@ -131,6 +131,7 @@ flowchart TD
 | `Rag.NET.VectorStores.Qdrant` | Qdrant vector store |
 | `Rag.NET.VectorStores.AzureAISearch` | Azure AI Search vector store with native hybrid search |
 | `Rag.NET.Parsers.Pdf` | PDF parser |
+| `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` | Whole-document OCR for the PDF parser via Azure Document Intelligence (paid, per page) |
 | `Rag.NET.Parsers.Html` | HTML parser (AngleSharp) |
 | `Rag.NET.Parsers.Word` | Word `.docx` parser (OpenXml) |
 | `Rag.NET.Parsers.Excel` | Excel `.xlsx` parser (OpenXml) |

@@ -24,10 +24,14 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 | Package | Description |
 |---------|-------------|
 | `Rag.NET` | Core pipeline, abstractions, text/markdown/CSV/JSON parsers, recursive chunking |
-| `Rag.NET.PgVector` | PostgreSQL + pgvector vector store |
-| `Rag.NET.Qdrant` | Qdrant vector store |
-| `Rag.NET.AzureAISearch` | Azure AI Search vector store (with hybrid search) |
+| `Rag.NET.VectorStores.PgVector` | PostgreSQL + pgvector vector store |
+| `Rag.NET.VectorStores.Qdrant` | Qdrant vector store |
+| `Rag.NET.VectorStores.AzureAISearch` | Azure AI Search vector store (with hybrid search) |
+| `Rag.NET.VectorStores.Pinecone` | Pinecone vector store (dense and sparse) |
+| `Rag.NET.VectorStores.Chroma` | Chroma vector store |
+| `Rag.NET.VectorStores.Weaviate` | Weaviate vector store |
 | `Rag.NET.Parsers.Pdf` | PDF document parser |
+| `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` | Whole-document OCR for the PDF parser via Azure Document Intelligence (paid, per page) |
 | `Rag.NET.Parsers.Html` | HTML document parser (AngleSharp) |
 | `Rag.NET.Parsers.Word` | Word (.docx) document parser (OpenXml) |
 | `Rag.NET.Parsers.Excel` | Excel (.xlsx) document parser (OpenXml) |

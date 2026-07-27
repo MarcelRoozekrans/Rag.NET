@@ -1,0 +1,23 @@
+{
+  "Guid": "6f1c2d40-0000-4000-8000-000000000004",
+  "Title": "Terminal poll: three analyzed pages, only page 2 recognized any text. Bills three.",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/sparse-pages/analyzeResults/sparse",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"succeeded\",\"createdDateTime\":\"2026-07-27T10:00:00Z\",\"lastUpdatedDateTime\":\"2026-07-27T10:00:03Z\",\"analyzeResult\":{\"apiVersion\":\"2024-11-30\",\"modelId\":\"sparse-pages\",\"stringIndexType\":\"utf16CodeUnit\",\"content\":\"ONLY THIS PAGE HAS TEXT\",\"pages\":[{\"pageNumber\":1,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"words\":[],\"lines\":[],\"spans\":[]},{\"pageNumber\":2,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"words\":[],\"lines\":[{\"content\":\"ONLY THIS PAGE HAS TEXT\",\"spans\":[{\"offset\":0,\"length\":23}]}],\"spans\":[{\"offset\":0,\"length\":23}]},{\"pageNumber\":3,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"words\":[],\"lines\":[],\"spans\":[]}]}}"
+  }
+}

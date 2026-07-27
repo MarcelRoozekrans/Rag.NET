@@ -529,8 +529,8 @@ Detect and extract tables from PDFs as structured text rather than flowing prose
 ---
 
 ### OCR for Scanned PDFs
-**Package:** `Rag.NET.Parsers.Pdf`
-**Status:** ✅ Done — Tesseract behind the `<EnableOcr>` compile gate (mirrors `Rag.NET.Parsers.Vision`); per-page fallback when extracted text is below `OcrMinCharacters`, OCR-ing embedded images largest-first into `Heading = "ocr"` sections; OCR failure falls back losslessly to the plain-text path. Vector-only scanned pages (no embedded images) degrade to plain text — no rasterizer dependency. Azure Document Intelligence deferred.
+**Package:** `Rag.NET.Parsers.Pdf`, `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence`
+**Status:** ✅ Done — two engines, both triggered when a page's extracted text falls below `OcrMinCharacters` and both losslessly degrading to the plain-text path on failure. **Tesseract**: per-image, local, behind the `<EnableOcr>` compile gate (mirrors `Rag.NET.Parsers.Vision`), OCR-ing embedded images largest-first into `Heading = "ocr"` sections; vector-only scanned pages degrade to plain text — no rasterizer dependency. **Azure Document Intelligence**: whole-document, ungated, registered with `UseAzureDocumentIntelligenceOcr(endpoint, credential)` (`AzureKeyCredential` or `TokenCredential`); one call per document, server-side rasterization, `prebuilt-read` by default. Configuring both is a registration-time error. Azure bills every page of the submitted document, so spend is capped by `MaxOcrPages` (default 200) and recorded to `ICostLedger` as a `CostKind.Ocr` entry with `Pages` and zero tokens — which counts toward `UseCostBudgeting`'s window but emits no `ragnet.llm.*` telemetry (`CostAccounting` is internal to `Rag.NET`).
 
 Add an OCR pass for PDFs where `PdfPig` extracts no text (scanned documents). Integrate `Tesseract` (via `Tesseract.Net`) or delegate to `Azure Document Intelligence` for higher accuracy. Falls back automatically when text extraction yields fewer than a configurable minimum character count per page.
 
@@ -895,7 +895,7 @@ A `FallbackChatClient` (implements `IChatClient`) that tries a primary client, c
 ### Rate Limiting & Cost Budgeting
 **Package:** `Rag.NET` (core)
 
-An `IRateLimiter` abstraction with a token-bucket implementation (`System.Threading.RateLimiting`) that throttles chat and embedding calls to stay within API rate limits — callers over the per-minute budget wait rather than fail. Registered via `UseRateLimiting`, which decorates whatever `IChatClient`/`IEmbeddingGenerator` is registered. An `ICostLedger` abstraction (SQLite-persisted `SqliteCostLedger`, in-memory alternative) tracks spend (tokens × user-supplied price) across restarts, and the `UseCostBudgeting` decorators throw `BudgetExceededException` when a configured daily/monthly limit is reached; token counts use provider-reported usage when available, tiktoken estimation otherwise.
+An `IRateLimiter` abstraction with a token-bucket implementation (`System.Threading.RateLimiting`) that throttles chat and embedding calls to stay within API rate limits — callers over the per-minute budget wait rather than fail. Registered via `UseRateLimiting`, which decorates whatever `IChatClient`/`IEmbeddingGenerator` is registered. An `ICostLedger` abstraction (SQLite-persisted `SqliteCostLedger`, in-memory alternative) tracks spend (tokens × user-supplied price) across restarts, and the `UseCostBudgeting` decorators throw `BudgetExceededException` when a configured daily/monthly limit is reached; token counts use provider-reported usage when available, tiktoken estimation otherwise. The ledger also carries per-page kinds: a `CostKind.Ocr` entry records `Pages` and zero tokens, counts toward the same budget window, and `SqliteCostLedger` adds its `pages` column to a pre-existing table with an automatic additive `ALTER TABLE` on first open.
 
 **Why:** Uncontrolled LLM API usage in production can produce surprise invoices. Rate limiting prevents 429 cascades; budgeting provides a hard guardrail for cost-sensitive deployments.
 
@@ -1059,7 +1059,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Pinecone Vector Store | Medium | Official `Pinecone.Client` SDK (3.1.0) |
 | [x] | Multi-Index Federation | Medium | `IVectorStore` composition (dense-only) |
 | [x] | PDF Table Extraction | Medium | PdfPig geometry |
-| [x] | OCR for Scanned PDFs | Medium | Tesseract via `EnableOcr` gate (Azure Doc Intelligence deferred) |
+| [x] | OCR for Scanned PDFs | Medium | Tesseract via `EnableOcr` gate; Azure Document Intelligence (ungated, per-page billed) |
 | [x] | Contextual Compression | Medium | `IChatClient` or embeddings |
 | [x] | Corrective RAG (CRAG) | Medium | `IChatClient` + web search |
 | [x] | Proposition Extraction Chunking | Medium | `IChatClient` |

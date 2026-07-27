@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Parsers.Pdf.AzureDocumentIntelligence</RootNamespace>
+    <PackageId>Rag.NET.Parsers.Pdf.AzureDocumentIntelligence</PackageId>
+    <Description>Azure Document Intelligence document-level OCR engine for Rag.NET's PDF parser</Description>
+  </PropertyGroup>
+
+  <!-- No <EnableOcr> gate on purpose. That gate exists for Tesseract's native binaries and
+       out-of-band traineddata; a managed REST client has neither, and reusing the gate would
+       force an Azure-only consumer to pull Tesseract's native payload as well. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
+    <PackageReference Include="Azure.AI.DocumentIntelligence" Version="1.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+  </ItemGroup>
+
+</Project>
