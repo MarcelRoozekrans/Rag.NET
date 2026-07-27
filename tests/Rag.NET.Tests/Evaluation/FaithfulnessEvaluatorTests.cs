@@ -27,7 +27,7 @@ public class FaithfulnessEvaluatorTests
         var evaluator = new FaithfulnessEvaluator(client);
         var score = await evaluator.ScoreAsync(MakeSample(["X is Y. X is Z."]), TestContext.Current.CancellationToken);
 
-        Assert.Equal(1.0, score, precision: 2);
+        Assert.Equal(1.0, score!.Value, precision: 2);
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class FaithfulnessEvaluatorTests
         var evaluator = new FaithfulnessEvaluator(client);
         var score = await evaluator.ScoreAsync(MakeSample(["Unrelated context."]), TestContext.Current.CancellationToken);
 
-        Assert.Equal(0.0, score, precision: 2);
+        Assert.Equal(0.0, score!.Value, precision: 2);
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class FaithfulnessEvaluatorTests
         // Malformed JSON (markdown fence) → JsonException → claims = [] → score = 1.0
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(1.0, score, precision: 2);
+        Assert.Equal(1.0, score!.Value, precision: 2);
         // Only 1 LLM call (claims extraction) — no verification calls because claims = []
         await client.Received(1).GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }

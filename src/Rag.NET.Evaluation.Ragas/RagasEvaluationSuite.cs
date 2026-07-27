@@ -28,6 +28,57 @@ public sealed class RagasEvaluationSuite
         IReadOnlyList<EvaluationSample> samples,
         CancellationToken cancellationToken = default)
     {
+        Validate(samples);
+
+        // Accumulate scores per metric across samples. Samples a metric could not score are
+        // excluded from both sums, never averaged in as a zero — see the design's
+        // "never fabricate a score".
+        var totals = new Dictionary<string, double>(StringComparer.Ordinal);
+        var scored = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var (name, _) in _metrics)
+        {
+            totals[name] = 0.0;
+            scored[name] = 0;
+        }
+
+        foreach (var sample in samples)
+        {
+            // All metrics run concurrently per sample
+            var scoreTasks = new Task<(string Name, double? Score)>[_metrics.Count];
+            for (var i = 0; i < _metrics.Count; i++)
+            {
+                var m = _metrics[i];
+                scoreTasks[i] = ScoreMetricAsync(m, sample, cancellationToken);
+            }
+            var results = await Task.WhenAll(scoreTasks).ConfigureAwait(false);
+            foreach (var (name, score) in results)
+            {
+                if (score is not { } value)
+                    continue;
+
+                totals[name] += value;
+                scored[name]++;
+            }
+        }
+
+        var faithfulness     = Mean(totals, scored, "Faithfulness");
+        var answerRelevance  = Mean(totals, scored, "AnswerRelevance");
+        var contextPrecision = Mean(totals, scored, "ContextPrecision");
+        var contextRecall    = Mean(totals, scored, "ContextRecall");
+
+        return new RagasReport
+        {
+            Faithfulness     = faithfulness,
+            AnswerRelevance  = answerRelevance,
+            ContextPrecision = contextPrecision,
+            ContextRecall    = contextRecall,
+            OverallScore     = Overall(faithfulness, answerRelevance, contextPrecision, contextRecall),
+        };
+    }
+
+    /// <summary>Rejects a run that cannot produce meaningful scores, before any LLM call.</summary>
+    private void Validate(IReadOnlyList<EvaluationSample> samples)
+    {
         if (_metrics.Count == 0)
             throw new InvalidOperationException("No metrics are registered.");
 
@@ -40,55 +91,39 @@ public sealed class RagasEvaluationSuite
             .Where(m => m.Metric.RequiresGroundTruth)
             .Select(m => m.Name)
             .ToList();
-        if (groundTruthMetricNames.Count > 0)
-        {
-            var badSample = samples.FirstOrDefault(s => string.IsNullOrEmpty(s.ReferenceAnswer));
-            if (badSample is not null)
-                throw new InvalidOperationException(
-                    $"Metric(s) [{string.Join(", ", groundTruthMetricNames)}] require a non-empty " +
-                    $"{nameof(EvaluationSample.ReferenceAnswer)} on every sample. " +
-                    "Use DatasetGenerationMode.QuestionAndAnswer when building your evaluation dataset.");
-        }
+        if (groundTruthMetricNames.Count == 0)
+            return;
 
-        // Accumulate scores per metric across samples
-        var totals = new Dictionary<string, double>(StringComparer.Ordinal);
-        foreach (var (name, _) in _metrics)
-            totals[name] = 0.0;
-
-        foreach (var sample in samples)
-        {
-            // All metrics run concurrently per sample
-            var scoreTasks = new Task<(string Name, double Score)>[_metrics.Count];
-            for (var i = 0; i < _metrics.Count; i++)
-            {
-                var m = _metrics[i];
-                scoreTasks[i] = ScoreMetricAsync(m, sample, cancellationToken);
-            }
-            var results = await Task.WhenAll(scoreTasks).ConfigureAwait(false);
-            foreach (var (name, score) in results)
-                totals[name] += score;
-        }
-
-        double? faithfulness     = totals.TryGetValue("Faithfulness",     out var f) ? f / samples.Count : null;
-        double? answerRelevance  = totals.TryGetValue("AnswerRelevance",  out var a) ? a / samples.Count : null;
-        double? contextPrecision = totals.TryGetValue("ContextPrecision", out var p) ? p / samples.Count : null;
-        double? contextRecall    = totals.TryGetValue("ContextRecall",    out var r) ? r / samples.Count : null;
-
-        var registered = new[] { faithfulness, answerRelevance, contextPrecision, contextRecall }
-            .Where(v => v.HasValue).Select(v => v!.Value).ToList();
-        var overallScore = registered.Count > 0 ? registered.Average() : 0.0;
-
-        return new RagasReport
-        {
-            Faithfulness     = faithfulness,
-            AnswerRelevance  = answerRelevance,
-            ContextPrecision = contextPrecision,
-            ContextRecall    = contextRecall,
-            OverallScore     = overallScore,
-        };
+        var badSample = samples.FirstOrDefault(s => string.IsNullOrEmpty(s.ReferenceAnswer));
+        if (badSample is not null)
+            throw new InvalidOperationException(
+                $"Metric(s) [{string.Join(", ", groundTruthMetricNames)}] require a non-empty " +
+                $"{nameof(EvaluationSample.ReferenceAnswer)} on every sample. " +
+                "Use DatasetGenerationMode.QuestionAndAnswer when building your evaluation dataset.");
     }
 
-    private static async Task<(string Name, double Score)> ScoreMetricAsync(
+    /// <summary>Mean over the samples the metric could actually score; null when there were none.</summary>
+    private static double? Mean(
+        Dictionary<string, double> totals, Dictionary<string, int> scored, string name)
+        => scored.TryGetValue(name, out var count) && count > 0 ? totals[name] / count : null;
+
+    private static double Overall(params double?[] metrics)
+    {
+        var sum = 0.0;
+        var count = 0;
+        foreach (var metric in metrics)
+        {
+            if (metric is not { } value)
+                continue;
+
+            sum += value;
+            count++;
+        }
+
+        return count > 0 ? sum / count : 0.0;
+    }
+
+    private static async Task<(string Name, double? Score)> ScoreMetricAsync(
         (string Name, IRagasMetric Metric) m,
         EvaluationSample sample,
         CancellationToken cancellationToken)

@@ -20,7 +20,7 @@ public sealed class AnswerRelevanceEvaluator(
 
     public bool RequiresGroundTruth => false;
 
-    public async Task<double> ScoreAsync(EvaluationSample sample, CancellationToken cancellationToken)
+    public async Task<double?> ScoreAsync(EvaluationSample sample, CancellationToken cancellationToken)
     {
         // Generate n synthetic questions from the predicted answer (concurrently)
         var questionTasks = Enumerable.Range(0, _syntheticQuestionCount)

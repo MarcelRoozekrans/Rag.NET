@@ -15,7 +15,7 @@ public sealed class FaithfulnessEvaluator(IChatClient chatClient) : IRagasMetric
 {
     public bool RequiresGroundTruth => false;
 
-    public async Task<double> ScoreAsync(EvaluationSample sample, CancellationToken cancellationToken)
+    public async Task<double?> ScoreAsync(EvaluationSample sample, CancellationToken cancellationToken)
     {
         if (sample.SourceChunks is not { Count: > 0 })
             return 0.0;

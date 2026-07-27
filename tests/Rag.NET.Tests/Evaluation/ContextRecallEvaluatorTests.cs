@@ -26,7 +26,7 @@ public class ContextRecallEvaluatorTests
 
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(1.0, score, precision: 2);
+        Assert.Equal(1.0, score!.Value, precision: 2);
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public class ContextRecallEvaluatorTests
 
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(1.0, score, precision: 2);
+        Assert.Equal(1.0, score!.Value, precision: 2);
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class ContextRecallEvaluatorTests
 
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(0.0, score, precision: 2);
+        Assert.Equal(0.0, score!.Value, precision: 2);
         await client.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
@@ -83,7 +83,7 @@ public class ContextRecallEvaluatorTests
         // Malformed JSON → JsonException → statements = [] → trivially recalled → 1.0
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(1.0, score, precision: 2);
+        Assert.Equal(1.0, score!.Value, precision: 2);
         await client.Received(1).GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 }

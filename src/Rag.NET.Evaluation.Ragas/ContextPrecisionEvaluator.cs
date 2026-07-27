@@ -14,7 +14,7 @@ public sealed class ContextPrecisionEvaluator(IChatClient chatClient) : IRagasMe
 {
     public bool RequiresGroundTruth => true;
 
-    public async Task<double> ScoreAsync(EvaluationSample sample, CancellationToken cancellationToken)
+    public async Task<double?> ScoreAsync(EvaluationSample sample, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(sample.ReferenceAnswer))
             throw new InvalidOperationException(

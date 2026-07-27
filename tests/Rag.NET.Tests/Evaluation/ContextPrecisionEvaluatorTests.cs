@@ -22,7 +22,7 @@ public class ContextPrecisionEvaluatorTests
 
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(1.0, score, precision: 2);
+        Assert.Equal(1.0, score!.Value, precision: 2);
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class ContextPrecisionEvaluatorTests
 
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(0.5, score, precision: 2);
+        Assert.Equal(0.5, score!.Value, precision: 2);
     }
 
     [Fact]
