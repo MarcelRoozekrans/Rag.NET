@@ -56,6 +56,57 @@ public class PgVectorStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SearchAsync_ReturnsResultsInDescendingScoreOrder()
+    {
+        // Not a restatement of the ORDER BY: the store runs searches under
+        // hnsw.iterative_scan = relaxed_order, the mode that trades exact distance ordering for
+        // recall, so the rows may arrive slightly out of order. RrfMerger ranks by list position,
+        // which makes descending score order a contract of this method rather than a side effect.
+        // Its own database, so rows written by the other tests in this class cannot join the
+        // unfiltered TopK and make the expected order depend on execution order.
+        var connectionString = await CreateDatabaseAsync("search_ordering");
+        using var store = new PgVectorStore(connectionString, vectorDimensions: 3);
+        await store.InitializeAsync(TestContext.Current.CancellationToken);
+
+        await store.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk { Text = "far", DocumentId = new DocumentId("order-doc"), ChunkIndex = 0 },
+                    Embedding = new float[] { 0.0f, 1.0f, 0.0f },
+                },
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk { Text = "near", DocumentId = new DocumentId("order-doc"), ChunkIndex = 1 },
+                    Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+                },
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = "middling",
+                        DocumentId = new DocumentId("order-doc"),
+                        ChunkIndex = 2,
+                    },
+                    Embedding = new float[] { 0.7071f, 0.7071f, 0.0f },
+                },
+            ],
+            TestContext.Current.CancellationToken);
+
+        var results = await store.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 3 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, results.Count);
+        Assert.Equal("near", results[0].Chunk.Text);
+        Assert.Equal("middling", results[1].Chunk.Text);
+        Assert.Equal("far", results[2].Chunk.Text);
+        for (var i = 1; i < results.Count; i++)
+            Assert.True(results[i - 1].Score >= results[i].Score);
+    }
+
+    [Fact]
     public async Task DeleteByDocumentId_RemovesAllChunksForDocument()
     {
         var chunks = new List<EmbeddedChunk>
@@ -359,6 +410,75 @@ public class PgVectorStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task InitializeAsync_ExistingEmbeddingColumnOfADifferentDimension_FailsFast()
+    {
+        // CREATE TABLE IF NOT EXISTS matches on the table NAME: without the typmod probe this
+        // store initializes "successfully" against the vector(768) column below, keeps the old
+        // typmod, and then fails every write and search on a dimension mismatch far from the
+        // setting that caused it. Same hazard the sparse column's ADD COLUMN probe closes.
+        var connectionString = await CreateDatabaseAsync("dense_dimension_drift");
+        await CreateLegacySchemaAsync(connectionString, vectorDimensions: 768);
+
+        using var mismatched = new PgVectorStore(connectionString, vectorDimensions: 1536);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => mismatched.InitializeAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("rag_chunks", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("vector(768)", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("vector(1536)", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("vectorDimensions: 768", ex.Message, StringComparison.Ordinal);
+
+        // Nothing was altered: the existing column is untouched.
+        Assert.Equal("vector(768)", await ScalarAsync<string>(
+            connectionString,
+            """
+            SELECT format_type(a.atttypid, a.atttypmod)
+            FROM pg_attribute a
+            WHERE a.attrelid = to_regclass('rag_chunks') AND a.attname = 'embedding'
+              AND NOT a.attisdropped
+            """));
+
+        // And the probe only fires on a genuine mismatch — a store that agrees with the table
+        // still initializes, which is what makes this a gate rather than a blanket refusal.
+        using var matching = new PgVectorStore(connectionString, vectorDimensions: 768);
+        await matching.InitializeAsync(TestContext.Current.CancellationToken);
+
+        Assert.NotNull(await ScalarAsync<string>(
+            connectionString,
+            "SELECT indexname FROM pg_indexes WHERE indexname = 'idx_rag_chunks_doc_chunk'"));
+    }
+
+    [Fact]
+    public async Task CreateCollectionAsync_ExistingTableOfADifferentDimension_FailsFast()
+    {
+        // The collection path issues the same CREATE TABLE IF NOT EXISTS, so it needs the same
+        // gate — against its vectorDimensions argument rather than the store's.
+        var connectionString = await CreateDatabaseAsync("collection_dimension_drift");
+        await ExecuteAsync(connectionString, "CREATE EXTENSION IF NOT EXISTS vector");
+        await ExecuteAsync(
+            connectionString,
+            """
+            CREATE TABLE drifted_collection (
+                id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                metadata JSONB NOT NULL DEFAULT '{}',
+                embedding vector(768) NOT NULL
+            )
+            """);
+
+        using var store = new PgVectorStore(connectionString, vectorDimensions: 3);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.CreateCollectionAsync("drifted_collection", 1536, TestContext.Current.CancellationToken));
+
+        Assert.Contains("vector(768)", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("vector(1536)", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task SearchAsync_MetadataFilterOverTheHnswIndex_StillReturnsItsMatches()
     {
         // pgvector applies the metadata filter AFTER the index has chosen its candidates, and
@@ -473,19 +593,19 @@ public class PgVectorStoreTests : IAsyncLifetime
     }
 
     /// <summary>The pre-fix schema: no unique key on (document_id, chunk_index).</summary>
-    private static async Task CreateLegacySchemaAsync(string connectionString)
+    private static async Task CreateLegacySchemaAsync(string connectionString, int vectorDimensions = 3)
     {
         await ExecuteAsync(connectionString, "CREATE EXTENSION IF NOT EXISTS vector");
         await ExecuteAsync(
             connectionString,
-            """
+            $$"""
             CREATE TABLE rag_chunks (
                 id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 document_id TEXT NOT NULL,
                 chunk_index INTEGER NOT NULL,
                 text TEXT NOT NULL,
                 metadata JSONB NOT NULL DEFAULT '{}',
-                embedding vector(3) NOT NULL
+                embedding vector({{vectorDimensions}}) NOT NULL
             )
             """);
     }

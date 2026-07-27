@@ -201,6 +201,16 @@ await store!.InitializeAsync();
 > transaction, and a failed run leaves an `INVALID` index that `IF NOT EXISTS` would then skip
 > forever.) Budget for it on the first run after upgrading.
 
+> **`vectorDimensions` is baked into the table at first initialize.** `CREATE TABLE IF NOT EXISTS`
+> matches on the table *name* only, so pointing a store configured for 1536 at a `rag_chunks` whose
+> `embedding` is `vector(768)` would skip the statement, report success, and keep the old typmod —
+> after which every write and search fails on the mismatch, far from the setting that caused it.
+> `InitializeAsync` therefore **fails fast**, naming both dimensions: either construct the store
+> with `vectorDimensions:` matching the table, or drop the table and re-ingest with the embedding
+> model you are actually using. (Dropping discards every chunk stored; re-ingestion is what
+> recomputes them.) The same check guards `CreateCollectionAsync` against its `vectorDimensions`
+> argument.
+
 ### Chunk key and upsert semantics
 
 A chunk is keyed by `(document_id, chunk_index)`, enforced by a unique index. `StoreAsync` **upserts** on that key, so re-storing a chunk replaces it rather than appending a duplicate row — the behaviour re-ingestion and `ReindexStaleAsync` have always assumed. Earlier versions had no such key and appended a second row instead.
@@ -212,7 +222,11 @@ Two consequences when pointing the store at a table created by one of those vers
 
 ### Collection names
 
-`CreateCollectionAsync` caps collection names at **47 characters**, shorter than PostgreSQL's own 63-byte identifier limit. Three index names are derived from a collection name — `idx_{name}_document_id`, `idx_{name}_doc_chunk`, `idx_{name}_embedding` — and PostgreSQL *silently truncates* over-long identifiers rather than failing. A single 60-character name truncates all three of its own derived names onto the same 63 bytes: the btree is created first and takes the name, then both `CREATE ... IF NOT EXISTS` statements see a relation already holding it and do nothing. The collection ends up with no unique key and no ANN index, while the existence probe (which resolves by name) reports the key as present. Names longer than 47 characters are therefore rejected at creation time.
+`CreateCollectionAsync` caps collection names at **47 characters**, shorter than PostgreSQL's own 63-byte identifier limit. Three index names are derived from a collection name — `idx_{name}_document_id`, `idx_{name}_doc_chunk`, `idx_{name}_embedding` — and PostgreSQL *silently truncates* over-long identifiers rather than failing. 47 is the longest name that leaves all three intact.
+
+The damage does not arrive all at once. Just past the cap only the longest decoration is truncated, so that index merely exists under a name you never asked for. From about 58 characters all three collapse onto the *same* 63 bytes, and creation then fails partway through: the btree is created first and takes the truncated name, and the unique key is attempted next under what is now the same identifier. That failure is **loud** — the key's existence check resolves by *shape* against `pg_index`, not by name, so it correctly reports no key, then finds the btree squatting on the name and throws `a relation named 'X' already exists but is not a unique index`. Creation aborts there, before the ANN index is attempted. Rejecting up front is still worth it: that runtime exception names a truncated identifier you never typed and tells you to drop it, when the real fix is a shorter name.
+
+> The cap covers only the names the store *derives*. The plain `CREATE INDEX IF NOT EXISTS` statements — `idx_rag_chunks_document_id`, `idx_rag_chunks_embedding`, `idx_rag_chunks_sparse` — still match on name alone. A hand-made relation already holding one of those names makes the corresponding statement do nothing and the store quietly runs without that index. Unlike the unique key, that costs performance, not correctness, which is why it is documented rather than probed.
 
 ### Dense index and search behaviour
 
@@ -221,8 +235,9 @@ Two consequences when pointing the store at a table created by one of those vers
 - **The index is skipped above 2000 dimensions.** pgvector refuses to build HNSW on a wider column (measured against pgvector 0.8.2: 2000 builds, 2001 fails), and `text-embedding-3-large` at 3072 is over the line. Rather than failing initialization for those models, the store leaves the index out and dense search stays an **exact sequential scan** — slower on large tables, but exact, and the behaviour such deployments already had. To get an index at those widths, store `halfvec` or reduce the embedding dimension at the provider.
 - **Where the index exists, dense search is approximate,** and results may differ from the exact scan.
 
-**A filtered search may return fewer results than `TopK`, including none.** `MinScore` and `MetadataFilter` are applied *after* the HNSW index has picked its candidates, so a selective filter can discard all of them (measured: 20,000 rows, 5 matching the filter, 0 returned). The store mitigates this by setting `hnsw.iterative_scan = relaxed_order` per query, which makes pgvector keep scanning until it has enough surviving rows (all 5 in that same measurement).
+**A filtered search may return fewer results than `TopK`, including none.** `MinScore` and `MetadataFilter` are applied *after* the HNSW index has picked its candidates, so a selective filter can discard all of them (measured: 2,000 rows, 5 matching the filter, 0 returned). The store mitigates this by setting `hnsw.iterative_scan = relaxed_order` per query, which makes pgvector keep scanning until it has enough surviving rows (all 5 in that same measurement).
 
+- **`relaxed_order` relaxes the ordering, not just the scan** — that is what it trades for the recall, so pgvector may hand back the surviving rows slightly out of distance order. You never see it: both `SearchAsync` and `SearchSparseAsync` read through one method that sorts by score descending before returning, so **results are in descending score order under every iterative-scan mode**. That matters beyond tidiness — the RRF merge behind ensemble retrieval ranks hits by their position in the list.
 - Raising `hnsw.ef_search` does **not** compensate — at `ef_search = 1000` the same query still returned 0. Do not reach for it.
 - Even with iterative scanning, pgvector stops at `hnsw.max_scan_tuples` (20,000 by default) rather than degrading into a full scan, so a very selective filter over a very large table can still come back short. Raise that setting if you need it to dig deeper.
 - `hnsw.iterative_scan` arrived in **pgvector 0.8**. The store reads `pg_extension.extversion` once, caches the answer, and simply does not issue the setting against an older extension — so on 0.7 and below a filtered search over an HNSW index keeps the truncating behaviour above. Upgrading pgvector is the only fix.
@@ -260,6 +275,10 @@ CREATE INDEX IF NOT EXISTS idx_rag_chunks_sparse ON rag_chunks USING hnsw (spars
 Search is server-side: `SearchSparseAsync` orders by the `<#>` inner-product operator over that index and returns the negated result as the score. Chunks sharing no term with the query are **absent** from the results rather than present with score 0.
 
 **Requires pgvector 0.7.0 or later** — the release that introduced the `sparsevec` type. `InitializeAsync` verifies the installed version and throws naming both versions and the upgrade path (`ALTER EXTENSION vector UPDATE`) rather than letting PostgreSQL's context-free "type sparsevec does not exist" surface later. Note that the [iterative-scan mitigation](#dense-index-and-search-behaviour) applies to sparse search too and needs **0.8**; the sparse HNSW index otherwise truncates filtered queries exactly as the dense one does.
+
+#### `CreateCollectionAsync` is sparse-blind
+
+The sparse store inherits `CreateCollectionAsync` unchanged, and the table it creates has **no `sparse_embedding` column** and no sparse index — nothing sparse can be written to or read from a collection. This is a documented sharp edge, not an oversight: collections on this store are already disconnected from the read/write path, because `StoreSparseAsync` and `SearchSparseAsync` hardcode `rag_chunks` exactly as the inherited dense `StoreAsync` and `SearchAsync` do. `ICollectionManageable` here manages tables the store itself never queries. If you need a second sparse-capable table, point a second store at a separate database or schema rather than at a collection.
 
 #### No ordering contract
 

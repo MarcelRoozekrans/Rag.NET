@@ -28,6 +28,17 @@ namespace Rag.NET.PgVector;
 /// <see cref="StoreSparseAsync"/> for the same chunk does <i>not</i> drop its sparse vector.
 /// Either order works.
 /// </para>
+/// <para>
+/// <b><see cref="PgVectorStore.CreateCollectionAsync"/> is inherited unchanged, and is
+/// sparse-blind.</b> The table it creates has no <c>sparse_embedding</c> column and no sparse
+/// index, so nothing sparse can be written to or read from a collection. That is a documented
+/// sharp edge rather than a bug, because collections on this store are already disconnected from
+/// the read/write path: <see cref="StoreSparseAsync"/> and <see cref="SearchSparseAsync"/>
+/// hardcode <c>rag_chunks</c>, exactly as the inherited dense <see cref="PgVectorStore.StoreAsync"/>
+/// and <see cref="PgVectorStore.SearchAsync"/> do. <see cref="ICollectionManageable"/> here is a
+/// schema-management facility for tables the store itself never queries; wiring sparse columns into
+/// it would imply a routing that does not exist.
+/// </para>
 /// </summary>
 public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
 {
@@ -172,8 +183,10 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
     /// exists to prevent, which is why this probe is not optional.
     /// </para>
     /// <para>
-    /// This is the third instance in this store of "IF NOT EXISTS matches on name, not shape" —
-    /// see <c>EnsureChunkKeyIndexAsync</c> and <c>ValidateCollectionNameLength</c>. The probe runs
+    /// This is one of four instances in this store of "IF NOT EXISTS matches on name, not shape" —
+    /// see <c>EnsureChunkKeyIndexAsync</c>, <c>ValidateCollectionNameLength</c> and
+    /// <c>EnsureEmbeddingColumnDimensionAsync</c>, which gates the dense <c>CREATE TABLE</c> with
+    /// a copy of the <c>atttypmod</c> lookup below. The probe runs
     /// <b>before</b> the <c>ADD COLUMN</c>, and an absent column (no row) is the ordinary
     /// first-run path, not a failure. <c>to_regclass</c> rather than <c>::regclass</c> so a
     /// missing table yields NULL instead of throwing, matching
@@ -275,7 +288,9 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
     /// picked its candidates, so a selective filter could discard all of them and return nothing.
     /// This method therefore sets <c>hnsw.iterative_scan = relaxed_order</c> for the query, the
     /// same treatment (and the same pgvector 0.8 requirement)
-    /// <see cref="PgVectorStore.SearchAsync"/> documents in full.
+    /// <see cref="PgVectorStore.SearchAsync"/> documents in full — including the ordering that
+    /// mode relaxes in exchange, which the shared read path re-imposes: results come back in
+    /// descending score order regardless of the iterative-scan mode in force.
     /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<SearchResult>> SearchSparseAsync(

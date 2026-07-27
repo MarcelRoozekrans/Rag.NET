@@ -64,7 +64,7 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     /// no ANN index. The control that matters is <c>hnsw.iterative_scan</c>, which
     /// <see cref="SearchAsync"/> sets — see its documentation; raising <c>hnsw.ef_search</c> does
     /// <i>not</i> compensate for a filtered query truncating (measured: at
-    /// <c>ef_search = 1000</c> a filtered search over 20,000 rows still returned 0 of its 5
+    /// <c>ef_search = 1000</c> a filtered search over 2,000 rows still returned 0 of its 5
     /// matches).
     /// </para>
     /// <para>
@@ -88,8 +88,10 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     /// </remarks>
     /// <exception cref="InvalidOperationException">
     /// The table already contains rows sharing a <c>(document_id, chunk_index)</c> pair, so the
-    /// unique key cannot be created. The message carries the duplicate-key count and the query
-    /// to inspect them.
+    /// unique key cannot be created — the message carries the duplicate-key count and the query
+    /// to inspect them — or it already exists with an <c>embedding</c> column declared at a
+    /// different dimension than this store is configured for (see
+    /// <see cref="EnsureEmbeddingColumnDimensionAsync"/>).
     /// </exception>
     public virtual async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -97,6 +99,8 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         await using (conn.ConfigureAwait(false))
         {
             await EnableVectorExtensionAsync(conn, cancellationToken).ConfigureAwait(false);
+            await EnsureEmbeddingColumnDimensionAsync(conn, "rag_chunks", _vectorDimensions, cancellationToken)
+                .ConfigureAwait(false);
 
             await ExecuteNonQueryAsync(conn, CreateTableSql("rag_chunks", _vectorDimensions), cancellationToken)
                 .ConfigureAwait(false);
@@ -190,11 +194,19 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     /// <see cref="SearchOptions.MinScore"/> and <see cref="SearchOptions.MetadataFilter"/> are
     /// applied <i>after</i> the index has picked its candidates. With pgvector's default
     /// <c>hnsw.iterative_scan = off</c> a selective filter can therefore discard every candidate
-    /// and the search returns <b>nothing</b> even though matching rows exist — measured: 20,000
+    /// and the search returns <b>nothing</b> even though matching rows exist — measured: 2,000
     /// rows, 5 matching the filter, index scan, 0 returned. This method sets
     /// <c>hnsw.iterative_scan = relaxed_order</c> for the query, which makes pgvector keep
     /// scanning until it has enough surviving rows (all 5 in that same measurement). Raising
     /// <c>hnsw.ef_search</c> does not fix it — at 1000 the same query still returned 0.
+    /// </para>
+    /// <para>
+    /// <b><c>relaxed_order</c> relaxes the ordering</b>, not only the scan: that recall is bought
+    /// by letting pgvector return the surviving rows slightly out of distance order. Callers never
+    /// see it — <see cref="ReadSearchResultsAsync"/> sorts by <see cref="SearchResult.Score"/>
+    /// descending before returning, so results come back in descending score order under every
+    /// iterative-scan mode. That is load-bearing rather than tidy: <c>RrfMerger</c> ranks the
+    /// hits it fuses by <i>list position</i>.
     /// </para>
     /// <para>
     /// Even with iterative scanning a filtered search may return <b>fewer than</b>
@@ -264,6 +276,20 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         }
     }
 
+    /// <summary>
+    /// Materialises the rows and returns them in <b>descending score order</b> — the single
+    /// funnel both <see cref="SearchAsync"/> and
+    /// <see cref="PgVectorSparseVectorStore.SearchSparseAsync"/> read through.
+    /// </summary>
+    /// <remarks>
+    /// The sort is not redundant with the <c>ORDER BY</c>. Both searches set
+    /// <c>hnsw.iterative_scan = relaxed_order</c>, which is by definition the mode that trades
+    /// exact distance ordering for recall: pgvector may return the surviving rows slightly out of
+    /// order. Downstream that is not cosmetic — <c>RrfMerger</c> ranks by <i>list position</i>, so
+    /// an out-of-order row would feed a wrong rank into ensemble fusion. Sorting here makes
+    /// "descending by score" a guarantee of both methods rather than a caveat, and the list is at
+    /// most <see cref="SearchOptions.TopK"/> long so it costs nothing.
+    /// </remarks>
     private protected static async Task<IReadOnlyList<SearchResult>> ReadSearchResultsAsync(
         NpgsqlCommand cmd,
         CancellationToken cancellationToken)
@@ -283,6 +309,7 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
             }
         }
 
+        results.Sort(static (a, b) => b.Score.CompareTo(a.Score));
         return results;
     }
 
@@ -407,7 +434,8 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     /// </exception>
     /// <exception cref="InvalidOperationException">
     /// An existing table of that name already contains duplicate
-    /// <c>(document_id, chunk_index)</c> pairs.
+    /// <c>(document_id, chunk_index)</c> pairs, or its <c>embedding</c> column is declared at a
+    /// different dimension than <paramref name="vectorDimensions"/>.
     /// </exception>
     public async Task CreateCollectionAsync(string name, int vectorDimensions, CancellationToken cancellationToken = default)
     {
@@ -418,6 +446,8 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         await using (conn.ConfigureAwait(false))
         {
             await EnableVectorExtensionAsync(conn, cancellationToken).ConfigureAwait(false);
+            await EnsureEmbeddingColumnDimensionAsync(conn, quotedName, vectorDimensions, cancellationToken)
+                .ConfigureAwait(false);
 
             await ExecuteNonQueryAsync(conn, CreateTableSql(quotedName, vectorDimensions), cancellationToken)
                 .ConfigureAwait(false);
@@ -464,14 +494,34 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
     /// </para>
     /// <para>
     /// The dangerous case is a <b>single</b> collection, not two colliding ones. Two names
-    /// differing at, say, character 55 still produce distinct truncations and are fine. But one
-    /// name of 60 characters truncates all three of its own derived names to the same 63 bytes:
-    /// the btree is created first and takes the name, then
-    /// <c>CREATE UNIQUE INDEX IF NOT EXISTS</c> sees a relation already holding it and does
-    /// nothing, and so does the HNSW <c>CREATE INDEX IF NOT EXISTS</c>. That one collection ends
-    /// up with no unique key (silently back in the duplicate-row bug this store exists to
-    /// prevent) and no ANN index — and because the existence probe resolves by name, it reports
-    /// the key as present. A loud rejection at creation time is the only safe reading.
+    /// differing at, say, character 55 still produce distinct truncations and are fine. Nor does
+    /// the damage arrive all at once: just past this cap only the longest decoration,
+    /// <c>_document_id</c>, is truncated, so the index simply exists under a name the caller never
+    /// asked for. It is from roughly 58 characters that all three derived names truncate onto the
+    /// <i>same</i> 63 bytes, and that is the case worth rejecting.
+    /// </para>
+    /// <para>
+    /// What such a name actually does — verified against pgvector 0.8.2 with a 60-character
+    /// collection — is fail <b>loudly, in the wrong place</b>. The btree is created first and
+    /// takes the truncated name. <see cref="EnsureChunkKeyIndexAsync"/> then runs, and because it
+    /// resolves the key by <i>shape</i> against <c>pg_index</c> rather than by name it correctly
+    /// reports no key present, finds no duplicate rows, reaches
+    /// <see cref="RelationExistsAsync"/>, sees the btree squatting on the name it was about to
+    /// use, and throws "a relation named 'X' already exists but is not a unique index".
+    /// Creation aborts there — the HNSW index is never attempted, and had the key somehow been in
+    /// place that <c>CREATE INDEX IF NOT EXISTS</c> would have seen the same taken name and
+    /// silently skipped, leaving the collection with no ANN index. Rejecting up front still earns
+    /// its keep: that runtime exception names a truncated identifier the caller never typed and
+    /// advises dropping it, when the real fix is a shorter collection name.
+    /// </para>
+    /// <para>
+    /// This cap covers only the names <i>this store derives</i>. The plain
+    /// <c>CREATE INDEX IF NOT EXISTS</c> statements — <c>idx_rag_chunks_document_id</c>,
+    /// <c>idx_rag_chunks_embedding</c> and the sparse subtype's <c>idx_rag_chunks_sparse</c> —
+    /// still match on name alone, so a hand-made relation already holding one of those names
+    /// makes the corresponding statement do nothing and the store quietly runs without that
+    /// index. Unlike the unique key, that costs performance rather than correctness, which is why
+    /// it is documented here rather than probed.
     /// </para>
     /// </remarks>
     private static void ValidateCollectionNameLength(string name)
@@ -481,9 +531,10 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
                 $"Collection name '{name}' is {name.Length} characters; the maximum is {MaxCollectionNameLength}. " +
                 "Three index names are derived from it — " +
                 $"'idx_{name}_document_id', 'idx_{name}_doc_chunk' and 'idx_{name}_embedding' — and PostgreSQL " +
-                $"silently truncates identifiers at {MaxIdentifierLength} bytes. At this length they collapse onto " +
-                "the same name, so only the first index would be created and the collection would silently end up " +
-                "with no unique (document_id, chunk_index) key.",
+                $"silently truncates identifiers at {MaxIdentifierLength} bytes rather than failing. The cap is the " +
+                "longest name that leaves all three intact: past it they are truncated, and from about 58 " +
+                "characters all three collapse onto the same identifier, so creating the collection fails partway " +
+                "through on an index name you never wrote. Use a shorter name.",
                 nameof(name));
     }
 
@@ -497,6 +548,67 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
             embedding vector({{vectorDimensions}}) NOT NULL
         )
         """;
+
+    /// <summary>
+    /// Fails fast when the table already exists with an <c>embedding</c> column declared at a
+    /// different dimension than the store is configured for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>CREATE TABLE IF NOT EXISTS</c> matches on the table <i>name</i> only: pointed at a
+    /// <c>rag_chunks</c> whose <c>embedding</c> is <c>vector(768)</c>, a store configured for 1536
+    /// skips the statement, reports initialization successful, and keeps the old typmod. Every
+    /// later write then fails with pgvector's "expected 768 dimensions, not 1536" and every search
+    /// with "different vector dimensions" — loudly, since the dense <see cref="StoreAsync"/> is
+    /// not behind <c>StorageBehavior</c>'s catch, but at a distance from the cause that names
+    /// neither the table nor the option that set it.
+    /// </para>
+    /// <para>
+    /// This is the fourth instance in this store of "IF NOT EXISTS matches on name, not shape",
+    /// after <see cref="EnsureChunkKeyIndexAsync"/>, <see cref="ValidateCollectionNameLength"/>
+    /// and the sparse subtype's <c>sparse_embedding</c> probe, and reuses the last one's
+    /// <c>atttypmod</c> lookup. An absent table or column (no row) is the ordinary first-run path.
+    /// A dimensionless <c>vector</c> column reads back as <c>atttypmod = -1</c> and is left alone:
+    /// it predates this probe, the store already tolerates it, and inventing a failure for it is
+    /// not this gate's job.
+    /// </para>
+    /// </remarks>
+    private static async Task EnsureEmbeddingColumnDimensionAsync(
+        NpgsqlConnection conn,
+        string tableSql,
+        int vectorDimensions,
+        CancellationToken cancellationToken)
+    {
+        var cmd = new NpgsqlCommand(
+            """
+            SELECT a.atttypmod
+            FROM pg_attribute a
+            WHERE a.attrelid = to_regclass($1) AND a.attname = 'embedding'
+              AND NOT a.attisdropped
+            """, conn);
+
+        await using (cmd.ConfigureAwait(false))
+        {
+            cmd.Parameters.AddWithValue(tableSql);
+            var result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            if (result is not int existingDimension
+                || existingDimension <= 0
+                || existingDimension == vectorDimensions)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"Table {tableSql} already has an 'embedding' column of vector({existingDimension}), but this " +
+                $"store is configured for vector({vectorDimensions}). CREATE TABLE IF NOT EXISTS matches on the " +
+                "table name alone, so it would leave the existing dimension in place and report initialization " +
+                "successful — after which every store and search against it fails on the dimension mismatch, far " +
+                "from the setting that caused it. Either construct the store with " +
+                $"vectorDimensions: {existingDimension} to match the table, or drop {tableSql} and re-ingest the " +
+                "affected documents with the embedding model this store is configured for. Dropping the table " +
+                "discards every chunk already stored, and re-ingestion is what recomputes them.");
+        }
+    }
 
     /// <summary>
     /// Builds the dense ANN index, or skips it when the column is too wide for HNSW.
