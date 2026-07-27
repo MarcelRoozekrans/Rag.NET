@@ -14,6 +14,7 @@ internal sealed class FakeIngestor : IIngestor
 {
     private readonly Func<DocumentMetadata, CancellationToken, Task<Result<IngestionResult, RagError>>> _behaviour;
     private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _reentered = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly List<DocumentMetadata> _ingested = [];
     private int _calls;
 
@@ -22,6 +23,12 @@ internal sealed class FakeIngestor : IIngestor
 
     /// <summary>Completes as soon as <see cref="IngestAsync"/> is entered.</summary>
     public Task Entered => _entered.Task;
+
+    /// <summary>
+    /// Completes on the second entry to <see cref="IngestAsync"/> — the signal that a
+    /// redelivery actually happened, rather than a sleep that hopes it did.
+    /// </summary>
+    public Task Reentered => _reentered.Task;
 
     public int Calls => Volatile.Read(ref _calls);
 
@@ -56,6 +63,22 @@ internal sealed class FakeIngestor : IIngestor
         throw new InvalidOperationException("A blocking ingestor must never complete normally.");
     });
 
+    /// <summary>
+    /// Throws on the first attempt and succeeds afterwards — the redelivery path, end to end.
+    /// </summary>
+    public static FakeIngestor ThrowingOnceThenSucceeding()
+    {
+        FakeIngestor? instance = null;
+        instance = new FakeIngestor((metadata, _) => instance!.Calls == 1
+            ? Task.FromException<Result<IngestionResult, RagError>>(new IOException("first attempt fails"))
+            : Task.FromResult(Result<IngestionResult, RagError>.Success(new IngestionResult
+            {
+                DocumentId = metadata.DocumentId,
+                ChunksStored = 1,
+            })));
+        return instance;
+    }
+
     public Task<Result<IngestionResult, RagError>> IngestAsync(
         Stream document,
         DocumentMetadata metadata,
@@ -63,13 +86,16 @@ internal sealed class FakeIngestor : IIngestor
         IProgress<IngestionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        Interlocked.Increment(ref _calls);
+        var call = Interlocked.Increment(ref _calls);
         lock (_ingested)
         {
             _ingested.Add(metadata);
         }
 
         _entered.TrySetResult();
+        if (call >= 2)
+            _reentered.TrySetResult();
+
         return _behaviour(metadata, cancellationToken);
     }
 
