@@ -82,6 +82,31 @@ internal static class RagasMath
         return readable == 0 ? null : SupportedFraction(supported, readable);
     }
 
+    /// <summary>
+    /// <see cref="AveragePrecision"/> over the verdicts that could be read at all, in retrieved
+    /// order, or <c>null</c> when none could.
+    /// </summary>
+    /// <remarks>
+    /// An unparseable verdict is dropped from the ranking rather than treated as irrelevant:
+    /// treating it as irrelevant both lowers the score and shifts every later chunk's rank,
+    /// which corrupts the ranks that are the entire point of this metric.
+    /// </remarks>
+    /// <param name="verdicts">The relevance judgements, in the order the chunks were retrieved.</param>
+    public static double? PrecisionFromVerdicts(IReadOnlyList<Verdict> verdicts)
+    {
+        var relevanceByRank = new bool[verdicts.Count];
+        var readable = 0;
+        for (var i = 0; i < verdicts.Count; i++)
+        {
+            if (verdicts[i] == Verdict.Unparseable)
+                continue;
+
+            relevanceByRank[readable++] = verdicts[i] == Verdict.Yes;
+        }
+
+        return readable == 0 ? null : AveragePrecision(relevanceByRank.AsSpan(0, readable));
+    }
+
     /// <summary>Clamps a raw similarity to the documented [0, 1] score range.</summary>
     /// <param name="raw">The unconstrained value, such as a cosine similarity over [-1, 1].</param>
     public static double ClampScore(double raw) => Math.Clamp(raw, 0.0, 1.0);
