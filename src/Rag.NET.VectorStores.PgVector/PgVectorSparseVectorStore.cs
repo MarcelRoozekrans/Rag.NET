@@ -204,6 +204,14 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
     /// least one term. Every SPLADE weight is &gt; 0, so "score &gt; 0" is exactly "shares at
     /// least one term".
     /// </para>
+    /// <para>
+    /// Like the dense path, <see cref="SearchOptions.MinScore"/> and
+    /// <see cref="SearchOptions.MetadataFilter"/> are applied <i>after</i> the HNSW index has
+    /// picked its candidates, so a selective filter could discard all of them and return nothing.
+    /// This method therefore sets <c>hnsw.iterative_scan = relaxed_order</c> for the query, the
+    /// same treatment (and the same pgvector 0.8 requirement)
+    /// <see cref="PgVectorStore.SearchAsync"/> documents in full.
+    /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<SearchResult>> SearchSparseAsync(
         SparseVector query,
@@ -218,6 +226,10 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
         {
+            // Core, not the dense wrapper: the sparse index exists regardless of how wide the
+            // dense column is, so the dense HNSW dimension guard must not gate it.
+            await ApplyIterativeScanCoreAsync(conn, cancellationToken).ConfigureAwait(false);
+
             var hasFilter = options.MetadataFilter is { Count: > 0 };
             var cmd = new NpgsqlCommand(SearchSparseSql(hasFilter), conn);
             await using (cmd.ConfigureAwait(false))
