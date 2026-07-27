@@ -3,6 +3,7 @@ using System.Numerics.Tensors;
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Evaluation.Ragas.Judging;
+using Rag.NET.Models;
 
 namespace Rag.NET.Evaluation.Ragas;
 
@@ -27,7 +28,9 @@ public sealed class AnswerRelevanceEvaluator : IRagasMetric
 
     private readonly RagasJudge _judge;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
+    private readonly ICostLedger? _costLedger;
     private readonly int _syntheticQuestionCount;
+    private readonly decimal _pricePerEmbeddingToken;
 
     /// <summary>Creates an evaluator that judges with its own <see cref="IChatClient"/>.</summary>
     /// <param name="chatClient">The model asked to detect evasion and generate questions.</param>
@@ -44,8 +47,8 @@ public sealed class AnswerRelevanceEvaluator : IRagasMetric
     }
 
     // Options first, so this overload differs from the public one by more than nullability
-    // (CS0111). It exists only to read two things off the resolved options without building them
-    // twice.
+    // (CS0111). It exists only so the resolved options reach both the judge and this evaluator
+    // without being built twice.
     private AnswerRelevanceEvaluator(
         RagasOptions options,
         IChatClient chatClient,
@@ -54,24 +57,34 @@ public sealed class AnswerRelevanceEvaluator : IRagasMetric
         : this(
             new RagasJudge(chatClient, options, costLedger),
             embeddingGenerator,
-            options.SyntheticQuestionCount)
+            options,
+            costLedger)
     {
     }
 
     /// <summary>Creates an evaluator sharing a judge — and so a concurrency ceiling — with others.</summary>
     /// <param name="judge">The shared judge.</param>
     /// <param name="embeddingGenerator">Embeds the original and synthetic questions.</param>
-    /// <param name="syntheticQuestionCount">How many questions to ask the model to invent.</param>
+    /// <param name="options">Run tuning: the question count and the embedding token price.</param>
+    /// <param name="costLedger">
+    /// Optional ledger for the embedding spend. The judge bills its own chat calls; this one is
+    /// the only spend the metric incurs outside it, so the evaluator has to record it itself.
+    /// </param>
     internal AnswerRelevanceEvaluator(
         RagasJudge judge,
         IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator,
-        int syntheticQuestionCount)
+        RagasOptions options,
+        ICostLedger? costLedger = null)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(syntheticQuestionCount, 1, nameof(syntheticQuestionCount));
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.SyntheticQuestionCount < 1)
+            throw new ArgumentOutOfRangeException(nameof(options), "SyntheticQuestionCount must be at least 1.");
 
         _judge = judge;
         _embeddingGenerator = embeddingGenerator;
-        _syntheticQuestionCount = syntheticQuestionCount;
+        _costLedger = costLedger;
+        _syntheticQuestionCount = options.SyntheticQuestionCount;
+        _pricePerEmbeddingToken = options.PricePerEmbeddingToken;
     }
 
     /// <inheritdoc />
@@ -121,11 +134,52 @@ public sealed class AnswerRelevanceEvaluator : IRagasMetric
             .GenerateAsync(texts, cancellationToken: cancellationToken)
             .ConfigureAwait(false);
 
+        // Before the ragged-response guard below: the batch was billed whether or not its result
+        // turns out to be usable, and a run's spend has to include the calls that went nowhere.
+        await RecordEmbeddingCostAsync(embeddings, cancellationToken).ConfigureAwait(false);
+
         // A generator that returned fewer vectors than texts leaves nothing honest to average.
         if (embeddings.Count != texts.Count)
             return null;
 
         return RagasMath.ClampScore(MeanCosineSimilarity(embeddings));
+    }
+
+    /// <summary>
+    /// Bills the embedding batch, the one call this metric makes that the judge does not.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately the same posture as the judge's chat path. A generator that reports no token
+    /// count gets no entry, because recording zero tokens would state as fact that the batch was
+    /// free; and a ledger that is down never fails an evaluation, because the batch has already
+    /// been paid for and losing the score over a bookkeeping error is the worse outcome.
+    /// <para>
+    /// Only <see cref="CostEntry.InputTokens"/> is populated, and so only its absence suppresses
+    /// the entry: an embedding API bills the text it was given, and its output is vectors rather
+    /// than tokens.
+    /// </para>
+    /// </remarks>
+    private async Task RecordEmbeddingCostAsync(
+        GeneratedEmbeddings<Embedding<float>> embeddings, CancellationToken cancellationToken)
+    {
+        if (_costLedger is null || embeddings.Usage is not { InputTokenCount: { } inputTokens })
+            return;
+
+        var entry = new CostEntry
+        {
+            Kind = CostKind.Embedding,
+            InputTokens = inputTokens,
+            Cost = inputTokens * _pricePerEmbeddingToken,
+        };
+
+        try
+        {
+            await _costLedger.RecordAsync(entry, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Billing visibility must never break an evaluation run.
+        }
     }
 
     private static double MeanCosineSimilarity(GeneratedEmbeddings<Embedding<float>> embeddings)

@@ -1,6 +1,8 @@
 using Microsoft.Extensions.AI;
+using Rag.NET.Abstractions;
 using Rag.NET.Evaluation.Ragas;
 using Rag.NET.Evaluation.Ragas.Judging;
+using Rag.NET.Models;
 using Xunit;
 
 namespace Rag.NET.Evaluation.Tests.Ragas;
@@ -12,8 +14,18 @@ public sealed class AnswerRelevanceEvaluatorTests
     private static AnswerRelevanceEvaluator Evaluator(
         IChatClient client,
         IEmbeddingGenerator<string, Embedding<float>> embeddings,
-        int questionCount = 3)
-        => new(new RagasJudge(client, new RagasOptions()), embeddings, questionCount);
+        int questionCount = 3,
+        decimal pricePerEmbeddingToken = 0m,
+        ICostLedger? ledger = null)
+    {
+        var options = new RagasOptions
+        {
+            SyntheticQuestionCount = questionCount,
+            PricePerEmbeddingToken = pricePerEmbeddingToken,
+        };
+
+        return new AnswerRelevanceEvaluator(new RagasJudge(client, options), embeddings, options, ledger);
+    }
 
     private static EvaluationSample Sample()
         => new("What is X?", "X is Y.", "X is Y.", ["context"]);
@@ -155,7 +167,58 @@ public sealed class AnswerRelevanceEvaluatorTests
         var exception = Assert.Throws<ArgumentOutOfRangeException>(
             () => Evaluator(Cooperative(), new StubEmbeddingGenerator([1f, 0f]), questionCount: 0));
 
-        Assert.Equal("syntheticQuestionCount", exception.ParamName);
+        // Named for the parameter a caller can actually see: the count arrives on RagasOptions.
+        Assert.Equal("options", exception.ParamName);
+    }
+
+    [Fact]
+    public async Task ScoreAsync_WithEmbeddingUsageAndAPrice_RecordsTheEmbeddingSpend()
+    {
+        var ledger = new RecordingCostLedger();
+        var embeddings = new StubEmbeddingGenerator([1f, 0f])
+        {
+            Usage = new UsageDetails { InputTokenCount = 40 },
+        };
+
+        await Evaluator(Cooperative(), embeddings, pricePerEmbeddingToken: 0.002m, ledger: ledger)
+            .ScoreAsync(Sample(), TestContext.Current.CancellationToken);
+
+        // The judge bills its own chat calls; this evaluator owns the one embedding batch. The
+        // judge here has no ledger of its own, so the single entry is unambiguously the batch.
+        var entry = Assert.Single(ledger.Entries);
+        Assert.Equal(CostKind.Embedding, entry.Kind);
+        Assert.Equal(40, entry.InputTokens);
+        Assert.Equal(0, entry.OutputTokens);
+        Assert.Equal(40 * 0.002m, entry.Cost);
+    }
+
+    [Fact]
+    public async Task ScoreAsync_WhenTheGeneratorReportsNoUsage_RecordsNothing()
+    {
+        var ledger = new RecordingCostLedger();
+        var embeddings = new StubEmbeddingGenerator([1f, 0f]) { Usage = null };
+
+        await Evaluator(Cooperative(), embeddings, pricePerEmbeddingToken: 1m, ledger: ledger)
+            .ScoreAsync(Sample(), TestContext.Current.CancellationToken);
+
+        // Recording a zero-token entry would state as fact that the batch was free.
+        Assert.Empty(ledger.Entries);
+        Assert.Equal(1, embeddings.CallCount);
+    }
+
+    [Fact]
+    public async Task ScoreAsync_WhenTheLedgerThrows_StillScores()
+    {
+        var embeddings = new StubEmbeddingGenerator([1f, 0f])
+        {
+            Usage = new UsageDetails { InputTokenCount = 40 },
+        };
+
+        var score = await Evaluator(Cooperative(), embeddings, ledger: new ThrowingCostLedger())
+            .ScoreAsync(Sample(), TestContext.Current.CancellationToken);
+
+        // The batch has already been paid for; losing the score over bookkeeping is worse.
+        Assert.Equal(1.0, score!.Value, precision: 10);
     }
 
     [Fact]

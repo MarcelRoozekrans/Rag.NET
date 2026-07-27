@@ -473,13 +473,14 @@ Raise it if your provider tolerates it; the default of 4 is conservative because
 
 ### Cost recording
 
-Pass an `ICostLedger` to the builder and every chat call the run makes is recorded to it as a `CostKind.Chat` entry carrying the model's reported input and output token counts:
+Pass an `ICostLedger` to the builder and every billable call the run makes is recorded to it: each chat call as a `CostKind.Chat` entry carrying the model's reported input and output token counts, and Answer Relevance's embedding batch as a `CostKind.Embedding` entry carrying its reported input token count:
 
 ```csharp
 var options = new RagasOptions
 {
-    PricePerInputToken  = 3m / 1_000_000m,   // your provider's price per input token
-    PricePerOutputToken = 15m / 1_000_000m,  // ... per output token
+    PricePerInputToken     = 3m / 1_000_000m,   // your provider's price per input token
+    PricePerOutputToken    = 15m / 1_000_000m,  // ... per output token
+    PricePerEmbeddingToken = 0.02m / 1_000_000m,  // ... per embedding token
 };
 
 var suite = new RagasEvaluationSuiteBuilder(chatClient, embeddingGenerator, options, costLedger)
@@ -490,10 +491,10 @@ var suite = new RagasEvaluationSuiteBuilder(chatClient, embeddingGenerator, opti
 
 Things to know:
 
-- **Prices default to zero.** `PricePerInputToken` and `PricePerOutputToken` are `0` unless you set them, so entries record real token counts at a cost of zero. The ledger never prices anything itself — as everywhere else in the library, the caller supplies the price sheet. Note these are per *token*, not per million tokens like `CostBudgetOptions`.
+- **Prices default to zero.** `PricePerInputToken`, `PricePerOutputToken` and `PricePerEmbeddingToken` are `0` unless you set them, so entries record real token counts at a cost of zero. The ledger never prices anything itself — as everywhere else in the library, the caller supplies the price sheet. Note these are per *token*, not per million tokens like `CostBudgetOptions`.
 - **Evaluation spend now counts toward the same budget window `UseCostBudgeting` enforces.** That is correct — it is one budget — but it is a change you will notice: a large evaluation run can trip the daily or monthly gate for your *production* chat and embedding calls. See [cost budgeting](resilience.md#cost-budgeting). Pass a separate ledger, or no ledger, if you want evaluation spend kept out of that window.
-- **Only chat spend is recorded — embedding spend is not.** Answer Relevance's embedding batch goes straight to the `IEmbeddingGenerator` you supplied; the suite writes no entry for it. If you passed the generator that `UseCostBudgeting` decorated, that decorator records it; otherwise that portion of the run's spend is invisible to the ledger. This is a stated limitation, not an oversight in your configuration.
-- **A call the model reported no usage for records nothing.** Writing a zero-token entry would state as fact that the call was free.
+- **Embedding spend is recorded once per batch, not once per text.** Answer Relevance embeds the question and all `n` synthetic questions in a single call, and that call is one `CostKind.Embedding` entry. Only `InputTokens` is set on it — an embedding API bills the text you sent it, and its output is vectors rather than tokens. If you also passed that generator through `UseCostBudgeting`, the decorator records the same batch, so it lands in the ledger twice; pick one.
+- **A call the provider reported no usage for records nothing.** Writing a zero-token entry would state as fact that the call was free. For an embedding batch that means a reported input token count specifically, since that is the only counter such an entry carries.
 - **A ledger write failure never fails the run.** The judgement has already been paid for; losing it over a bookkeeping error would be the worse outcome.
 
 ### Per-sample output

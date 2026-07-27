@@ -169,7 +169,9 @@ A `SemaphoreSlim` inside the judge, **shared across the whole suite run** — no
 four registered metrics multiply the fan-out fourfold again. The ceiling is configurable and
 defaults conservatively.
 
-`ICostLedger?` is optional and resolved by the judge, so the evaluators stay unaware of billing.
+`ICostLedger?` is optional and resolved by the judge, so the evaluators stay unaware of billing —
+with one exception: Answer Relevance's embedding batch is the only billable call that does not go
+through the judge, so that evaluator records that one entry itself.
 Chat and embedding calls are both recorded. As in Phase 2.4, this means evaluation spend now
 counts toward the same budget window `UseCostBudgeting` enforces — correct, but a change users
 will notice.

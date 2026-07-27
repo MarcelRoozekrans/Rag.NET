@@ -183,6 +183,30 @@ public sealed class RagasEvaluationSuiteTests
     }
 
     [Fact]
+    public async Task EvaluateAsync_WithACostLedger_RecordsAnswerRelevancesEmbeddingBatchToo()
+    {
+        var ledger = new RecordingCostLedger();
+        var client = new RoutingChatClient([("different questions", """["a?"]""")], fallback: "no");
+        var embedder = new StubEmbeddingGenerator([1f, 0f])
+        {
+            Usage = new UsageDetails { InputTokenCount = 8 },
+        };
+        var options = new RagasOptions { PricePerEmbeddingToken = 0.5m };
+
+        var suite = new RagasEvaluationSuiteBuilder(client, embedder, options, ledger)
+            .AddAnswerRelevance()
+            .Build();
+
+        await suite.EvaluateAsync([Sample()], TestContext.Current.CancellationToken);
+
+        // The builder has to hand the ledger to the evaluator as well as to the judge: the
+        // embedding batch is the one call in a run that does not go through the judge.
+        var embedding = Assert.Single(ledger.Entries, entry => entry.Kind == CostKind.Embedding);
+        Assert.Equal(8, embedding.InputTokens);
+        Assert.Equal(8 * 0.5m, embedding.Cost);
+    }
+
+    [Fact]
     public async Task EvaluateAsync_SyntheticQuestionCountFromOptions_ReachesAnswerRelevance()
     {
         var client = new RoutingChatClient([("different questions", """["a?","b?"]""")], fallback: "no");

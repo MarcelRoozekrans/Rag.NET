@@ -19,7 +19,8 @@ public sealed class RagasEvaluationSuiteBuilder
 {
     private readonly RagasJudge _judge;
     private readonly IEmbeddingGenerator<string, Embedding<float>> _embeddingGenerator;
-    private readonly int _syntheticQuestionCount;
+    private readonly RagasOptions _options;
+    private readonly ICostLedger? _costLedger;
 
     private bool _faithfulness;
     private bool _answerRelevance;
@@ -31,9 +32,10 @@ public sealed class RagasEvaluationSuiteBuilder
     /// <param name="embeddingGenerator">Embeds questions for Answer Relevance.</param>
     /// <param name="options">Run tuning; defaults are used when omitted.</param>
     /// <param name="costLedger">
-    /// Optional ledger for the run's LLM spend. Recorded entries cost zero unless
-    /// <see cref="RagasOptions.PricePerInputToken"/> and
-    /// <see cref="RagasOptions.PricePerOutputToken"/> are set.
+    /// Optional ledger for the run's LLM spend, chat and embedding alike. Recorded entries cost
+    /// zero unless <see cref="RagasOptions.PricePerInputToken"/>,
+    /// <see cref="RagasOptions.PricePerOutputToken"/> and
+    /// <see cref="RagasOptions.PricePerEmbeddingToken"/> are set.
     /// </param>
     public RagasEvaluationSuiteBuilder(
         IChatClient chatClient,
@@ -45,7 +47,8 @@ public sealed class RagasEvaluationSuiteBuilder
 
         _judge = new RagasJudge(chatClient, resolved, costLedger);
         _embeddingGenerator = embeddingGenerator;
-        _syntheticQuestionCount = resolved.SyntheticQuestionCount;
+        _options = resolved;
+        _costLedger = costLedger;
     }
 
     /// <summary>Registers Faithfulness. No <c>ReferenceAnswer</c> required.</summary>
@@ -75,7 +78,7 @@ public sealed class RagasEvaluationSuiteBuilder
         if (_answerRelevance)
             metrics.Add((
                 RagasMetricNames.AnswerRelevance,
-                new AnswerRelevanceEvaluator(_judge, _embeddingGenerator, _syntheticQuestionCount)));
+                new AnswerRelevanceEvaluator(_judge, _embeddingGenerator, _options, _costLedger)));
 
         if (_contextPrecision)
             metrics.Add((RagasMetricNames.ContextPrecision, new ContextPrecisionEvaluator(_judge)));

@@ -47,6 +47,9 @@ internal sealed class StubEmbeddingGenerator : IEmbeddingGenerator<string, Embed
     /// <summary>When set, returns this many vectors regardless of how many texts were given.</summary>
     public int? TruncateTo { get; set; }
 
+    /// <summary>Usage to report for every batch. <c>null</c> is a generator that reports none.</summary>
+    public UsageDetails? Usage { get; set; }
+
     public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
         IEnumerable<string> values,
         EmbeddingGenerationOptions? options = null,
@@ -54,7 +57,7 @@ internal sealed class StubEmbeddingGenerator : IEmbeddingGenerator<string, Embed
     {
         Interlocked.Increment(ref _callCount);
 
-        var generated = new GeneratedEmbeddings<Embedding<float>>();
+        var generated = new GeneratedEmbeddings<Embedding<float>> { Usage = Usage };
         foreach (var value in values)
         {
             lock (_gate)
