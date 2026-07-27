@@ -40,6 +40,17 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
     private const string SparseColumn = "sparse_embedding";
     private const string SparseIndexName = "idx_rag_chunks_sparse";
 
+    /// <summary>First pgvector release that defines the <c>sparsevec</c> type.</summary>
+    private const int MinimumSparseMajor = 0;
+    private const int MinimumSparseMinor = 7;
+
+    /// <summary>
+    /// pgvector refuses to index a <c>sparsevec</c> with more non-zero elements than this
+    /// ("sparsevec cannot have more than 1000 non-zero elements for hnsw index"). Measured
+    /// against pgvector 0.8.2; the unindexed column itself allows up to 16,000.
+    /// </summary>
+    private const int SparseHnswNonZeroLimit = 1000;
+
     private const string StoreSparseSql = """
         UPDATE rag_chunks SET sparse_embedding = $1
         WHERE document_id = $2 AND chunk_index = $3
@@ -75,6 +86,9 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
     /// by. All the HNSW caveats documented on <see cref="PgVectorStore.InitializeAsync"/> apply
     /// here too.
     /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The server's pgvector predates 0.7.0 and has no <c>sparsevec</c> type.
+    /// </exception>
     public override async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await base.InitializeAsync(cancellationToken).ConfigureAwait(false);
@@ -82,6 +96,8 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
         {
+            await EnsureSparseVectorsSupportedAsync(conn, cancellationToken).ConfigureAwait(false);
+
             await ExecuteNonQueryAsync(
                 conn,
                 $"ALTER TABLE rag_chunks ADD COLUMN IF NOT EXISTS {SparseColumn} sparsevec({_sparseVocabularySize})",
@@ -95,12 +111,54 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
         }
     }
 
+    /// <summary>
+    /// Fails fast when the extension cannot host a <c>sparsevec</c> column, naming the installed
+    /// version and the upgrade path — rather than letting the <c>ALTER TABLE</c> below surface
+    /// PostgreSQL's context-free "type sparsevec does not exist".
+    /// </summary>
+    /// <remarks>
+    /// An unreadable version fails the gate too, unlike
+    /// <see cref="PgVectorStore.SupportsIterativeScan"/>, which treats it as "feature absent" and
+    /// carries on. The asymmetry is deliberate: losing iterative scanning still leaves a working
+    /// search, whereas proceeding here just moves the same failure one statement later with less
+    /// information attached.
+    /// </remarks>
+    private static async Task EnsureSparseVectorsSupportedAsync(
+        NpgsqlConnection conn,
+        CancellationToken cancellationToken)
+    {
+        var version = await ReadExtensionVersionAsync(conn, cancellationToken).ConfigureAwait(false);
+        if (SupportsSparseVectors(version))
+            return;
+
+        throw new InvalidOperationException(
+            $"pgvector '{version ?? "(not installed)"}' cannot host sparse vectors: the sparsevec type " +
+            $"arrived in {MinimumSparseMajor}.{MinimumSparseMinor}.0, and PgVectorSparseVectorStore " +
+            "stores SPLADE weights in a sparsevec column. Install pgvector " +
+            $"{MinimumSparseMajor}.{MinimumSparseMinor}.0 or later on the server and run " +
+            "'ALTER EXTENSION vector UPDATE' against this database, or register the dense-only " +
+            "store with UsePgVector(..., enableSparseVectors: false).");
+    }
+
+    /// <summary>
+    /// True when <paramref name="extensionVersion"/> is a pgvector version that defines the
+    /// <c>sparsevec</c> type (0.7.0 and above). An absent or unreadable version reads as
+    /// unsupported.
+    /// </summary>
+    internal static bool SupportsSparseVectors(string? extensionVersion) =>
+        AtLeastVersion(extensionVersion, MinimumSparseMajor, MinimumSparseMinor);
+
     /// <inheritdoc />
     /// <remarks>
     /// Updates the existing row for each <c>(document_id, chunk_index)</c> — the unique key makes
     /// that at most one row — so the chunk's dense vector, text and metadata are untouched.
     /// Chunks whose sparse vector has no terms are skipped, per the interface contract.
     /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// A sparse vector carries more than <see cref="SparseHnswNonZeroLimit"/> non-zero terms, so
+    /// the HNSW index would reject it. Nothing is written: the whole batch is validated before
+    /// the connection is opened.
+    /// </exception>
     public async Task StoreSparseAsync(
         IReadOnlyList<(EmbeddedChunk Chunk, SparseVector Sparse)> items,
         CancellationToken cancellationToken = default)
@@ -216,8 +274,9 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
 
     /// <summary>
     /// Converts the items into the values the <c>UPDATE</c> binds, dropping the chunks with no
-    /// terms. Synchronous on purpose: the conversion loop belongs outside the async state
-    /// machine.
+    /// terms and rejecting any vector the HNSW index could not hold. Synchronous on purpose: the
+    /// conversion loop belongs outside the async state machine, and validating the whole batch
+    /// up front means an oversized vector is refused before anything is written.
     /// </summary>
     private (string DocumentId, int ChunkIndex, PgSparseVector Vector)[] BuildSparseUpdates(
         IReadOnlyList<(EmbeddedChunk Chunk, SparseVector Sparse)> items)
@@ -229,14 +288,33 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
             if (sparse.Count == 0)
                 continue; // no terms — nothing to store
 
-            updates.Add((
-                (string)chunk.Chunk.DocumentId,
-                chunk.Chunk.ChunkIndex,
-                ToPgSparseVector(sparse)));
+            var documentId = (string)chunk.Chunk.DocumentId;
+            if (sparse.Count > SparseHnswNonZeroLimit)
+                throw new ArgumentException(
+                    OversizedSparseVectorMessage(sparse.Count, documentId, chunk.Chunk.ChunkIndex),
+                    nameof(items));
+
+            updates.Add((documentId, chunk.Chunk.ChunkIndex, ToPgSparseVector(sparse)));
         }
 
         return [.. updates];
     }
+
+    /// <summary>
+    /// Explains a sparse vector too wide for the HNSW index, naming the option that produced it —
+    /// rather than letting pgvector's context-free error surface at insert time.
+    /// </summary>
+    /// <remarks>
+    /// <c>OnnxSpladeOptions.TopTerms</c> defaults to 256, comfortably inside the cap, but nothing
+    /// stops a caller raising it.
+    /// </remarks>
+    private static string OversizedSparseVectorMessage(int nonZeroTerms, string documentId, int chunkIndex) =>
+        $"The sparse vector for chunk ('{documentId}', {chunkIndex}) has {nonZeroTerms} non-zero " +
+        $"terms, but pgvector's HNSW index rejects more than {SparseHnswNonZeroLimit}. Lower the " +
+        "encoder's term budget (OnnxSpladeOptions.TopTerms, which defaults to 256) to " +
+        $"{SparseHnswNonZeroLimit} or fewer, or drop the '{SparseIndexName}' index and accept a " +
+        "sequential scan — an unindexed sparsevec column holds up to 16000 non-zero terms. " +
+        "Nothing was written.";
 
     /// <summary>
     /// Wraps the contract's sparse vector in pgvector's wire type. <b>The index bases differ:</b>
