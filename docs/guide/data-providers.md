@@ -831,7 +831,9 @@ The vector store upserts per chunk index rather than deleting the document first
 
 **This changed BM25 scores.** Any corpus that had ever been re-ingested carried inflated term statistics from the duplicate postings; those are gone, so keyword and hybrid scores move. It is a correction, but it is not score-neutral — re-baseline any score thresholds tuned against the old behaviour.
 
-The guarantee is **single-writer only** — see [the caveat above](#sessions-ordering-and-the-single-writer-caveat). Full details, including the on-disk index that came with the fix, are in [Breaking changes](../planning/BREAKING-CHANGES.md).
+The guarantee is **single-writer only** — see [the caveat above](#sessions-ordering-and-the-single-writer-caveat).
+
+One on-disk change came with the fix: `SqliteBm25Index` now creates `ix_bm25_docs_document_id` on `bm25_docs(document_id)`, because removal runs on every ingest rather than only under `Overwrite` and would otherwise full-table-scan each time. It is additive and idempotent, and applies on the next open of an existing database — no migration step.
 
 ---
 

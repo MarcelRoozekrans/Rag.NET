@@ -113,7 +113,7 @@ So the old advice — *"without `Overwrite`, re-ingesting the same `DocumentId` 
 
 A 9-chunk document re-ingested as 5 chunks therefore leaves chunks 5–8 in the vector store and retrievable unless `Overwrite` is set. **Set `Overwrite` on refresh operations where the document may have shrunk.** You no longer need it to avoid duplicate BM25 postings.
 
-> BM25 scores changed with this correction. A corpus that had been re-ingested carried inflated term statistics from the duplicated postings; they are gone, so keyword and hybrid scores move. Re-baseline any score thresholds tuned against the old behaviour. See [Breaking changes](../planning/BREAKING-CHANGES.md) and [Re-ingest semantics](data-providers.md#re-ingest-semantics).
+> BM25 scores changed with this correction. A corpus that had been re-ingested carried inflated term statistics from the duplicated postings; they are gone, so keyword and hybrid scores move. Re-baseline any score thresholds tuned against the old behaviour. See [Re-ingest semantics](data-providers.md#re-ingest-semantics).
 
 `MaxDegreeOfParallelism` controls how many documents `IngestFromProviderAsync` processes concurrently. The default `1` preserves the previous sequential behaviour. Increase it when your vector store and embedding service can handle concurrent requests:
 
