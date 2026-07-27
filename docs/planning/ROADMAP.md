@@ -11,27 +11,29 @@ phase or re-justify it. Closed items move to the list below rather than vanishin
 future reader can tell the difference between "never existed" and "dealt with".
 
 - **Fourth filename sanitizer** (Phase 2.1, Part C): `EmbeddedMessageMetadata.Sanitize` in
-  `Rag.NET.Parsers.Email` duplicates `FileNameSanitizer` because that type lives in
-  `Rag.NET.DataProviders`, which parsers do not reference. Behaviourally consistent bar three
-  divergences: the all-replacement fallback (`"///"` → `"___"` vs `"embedded-message"`), the
-  length cap (`FileNameSanitizer` defaults to 128, `EmbeddedMessageMetadata.MaxNameLength` is
-  64), and post-truncation trimming (`FileNameSanitizer.TrimEdges` re-trims to a fixed point
-  over all `char.IsWhiteSpace`; `EmbeddedMessageMetadata`'s `TrimEnd('.', ' ')` leaves a
-  re-exposed non-breaking space). Fix is to relocate
-  `FileNameSanitizer` to `Rag.NET.Abstractions` and delete both copies — a package-layout
-  change, so deliberately not done inside 2.1. → unscheduled
+  `Rag.NET.Parsers.Email` duplicates `FileNameSanitizer`. **The original blocker is gone** —
+  Phase 2.5 moved `FileNameSanitizer` to `Rag.NET.Abstractions`, which this parser does
+  reference — so what remains is deleting the copy. That is not mechanical: three behavioural
+  divergences mean adopting the shared sanitizer changes emitted names. The all-replacement
+  fallback (`"///"` → `"___"` vs `"embedded-message"`), the length cap (`FileNameSanitizer`
+  defaults to 128, `EmbeddedMessageMetadata.MaxNameLength` is 64), and post-truncation trimming
+  (`FileNameSanitizer.TrimEdges` re-trims to a fixed point over all `char.IsWhiteSpace`;
+  `EmbeddedMessageMetadata`'s `TrimEnd('.', ' ')` leaves a re-exposed non-breaking space).
+  → **Phase 3.6**
 - **Stack-recursive email traversal** (Phase 2.1, Part C): `MaxEmbeddedDepth` is capped at 64
   because the embedded-message traversal recurses on the stack — ~500 levels (~40 KB of
   crafted MIME at ~81 bytes/level) terminates the process with an uncatchable
   `STATUS_STACK_OVERFLOW`. The ceiling is measured headroom, not a proof. Converting the
   traversal to an explicit work queue would remove the class entirely and is the real fix if
-  a large `MaxEmbeddedDepth` is ever wanted. → unscheduled
-- **Unsanitized webhook filename** (found in the Phase 2.1 Part A review):
-  `src/Rag.NET.Api/Webhooks/GenericWebhookPayloadParser.cs:77` builds `$"{documentId}.txt"`
-  straight from an untrusted webhook payload. Different assembly (`Rag.NET.Api` does not
-  reference `Rag.NET.DataProviders`), so outside the connector scope of 2.1. → unscheduled
+  a large `MaxEmbeddedDepth` is ever wanted. → **Phase 3.6**
 
 ### Closed
+
+- ~~**Unsanitized webhook filename**~~ (found in the Phase 2.1 Part A review) → closed in 2.5:
+  `GenericWebhookPayloadParser` now routes the untrusted `documentId` through
+  `FileNameSanitizer` with a `"document"` fallback stem, pinned by 25 adversarial cases
+  covering traversal, absolute paths, UNC, drive letters, control characters, and names that
+  collapse to nothing.
 
 - ~~**Connector metadata consistency**~~ (Phase 1.6) → closed in 2.2: all 21 connectors emit
   metadata to an enforced convention, with reserved keys guarded and `provider_id` written
@@ -147,6 +149,11 @@ future reader can tell the difference between "never existed" and "dealt with".
 
 ### Phase 3.5: CI Integration Coverage [status: pending]
 **Goal:** Run the Testcontainers-based vector-store and integration suites in CI. (Not a features.md row — quality-hardening scope.)
+
+### Phase 3.6: Email Parser Debt [status: pending]
+**Goal:** Close the two recorded email-parser debts above, both of which are behaviour changes rather than refactors. (Not a features.md row — debt carried out of Milestone 2.)
+- Retire `EmbeddedMessageMetadata.Sanitize` in favour of `Rag.NET.FileNameSanitizer`, accepting and documenting the three naming divergences.
+- Convert the embedded-message traversal from stack recursion to an explicit work queue, removing the `STATUS_STACK_OVERFLOW` class and the measured-headroom `MaxEmbeddedDepth = 64` ceiling with it.
 
 ## Milestone 4: Release Readiness (v1.0) [status: pending]
 **Goal:** Make Rag.NET shippable — CI, NuGet publishing, first-class configuration, logging, telemetry, and runnable samples.
