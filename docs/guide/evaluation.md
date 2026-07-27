@@ -426,7 +426,7 @@ Every metric returns `double?`. `null` means *this sample could not be scored*, 
 
 A sample is unscoreable when:
 
-- nothing was retrieved (`SourceChunks` is null or empty) — an absence of evidence, not evidence of bad retrieval;
+- nothing was retrieved (`SourceChunks` is null or empty) — an absence of evidence, not evidence of bad retrieval. This applies to the three metrics that read the chunks; Answer Relevance never inspects them and scores normally with none;
 - the model's list reply could not be parsed as a JSON array of strings;
 - no yes/no verdict in the sample could be read at all.
 
@@ -495,8 +495,21 @@ Things to know:
 
 - **Prices default to zero.** `PricePerInputToken`, `PricePerOutputToken` and `PricePerEmbeddingToken` are `0` unless you set them, so entries record real token counts at a cost of zero. The ledger never prices anything itself — as everywhere else in the library, the caller supplies the price sheet. Note these are per *token*, not per million tokens like `CostBudgetOptions`.
 - **Evaluation spend now counts toward the same budget window `UseCostBudgeting` enforces.** That is correct — it is one budget — but it is a change you will notice: a large evaluation run can trip the daily or monthly gate for your *production* chat and embedding calls. See [cost budgeting](resilience.md#cost-budgeting). Pass a separate ledger, or no ledger, if you want evaluation spend kept out of that window.
-- **Embedding spend is recorded once per batch, not once per text.** Answer Relevance embeds the question and all `n` synthetic questions in a single call, and that call is one `CostKind.Embedding` entry. Only `InputTokens` is set on it — an embedding API bills the text you sent it, and its output is vectors rather than tokens. If you also passed that generator through `UseCostBudgeting`, the decorator records the same batch, so it lands in the ledger twice; pick one.
-- **A call the provider reported no usage for records nothing.** Writing a zero-token entry would state as fact that the call was free. For an embedding batch that means a reported input token count specifically, since that is the only counter such an entry carries.
+- **Embedding spend is recorded once per batch, not once per text.** Answer Relevance embeds the question and all `n` synthetic questions in a single call, and that call is one `CostKind.Embedding` entry. Only `InputTokens` is set on it — an embedding API bills the text you sent it, and its output is vectors rather than tokens.
+- **A call the provider reported no usage for records nothing.** Writing a zero-token entry would state as fact that the call was free. Both token counters must be provider-reported: an empty `UsageDetails`, or one that fills only a total or only one side, is not a report of zero, and filling the missing side with `0` would understate spend while looking authoritative. For an embedding batch that means the input token count specifically, since that is the only counter such an entry carries.
+> **Do not hand a `UseCostBudgeting`-decorated client to the suite and the same ledger.**
+> `UseCostBudgeting` decorates the registered `IChatClient` **and** the registered
+> `IEmbeddingGenerator`. Both decorators record to the ledger themselves, so anything you resolve
+> from DI and pass to `RagasEvaluationSuiteBuilder` is counted twice.
+>
+> The chat side is by far the larger exposure: by the table above, a 100-sample run with all four
+> metrics is roughly **1,400 chat calls against 100 embedding batches**. Every one of those chat
+> calls is recorded by `CostTrackingChatClient` as well as by the suite.
+>
+> This is not merely a reporting error. `CostTrackingChatClient` checks the budget **before** each
+> call, so a doubled ledger trips `BudgetExceededException` at about half your real spend — and it
+> aborts *production* traffic, not just the evaluation. Either pass an undecorated client and
+> generator to the suite, or give the suite its own ledger (or none).
 - **A ledger write failure never fails the run.** The judgement has already been paid for; losing it over a bookkeeping error would be the worse outcome.
 
 ### Per-sample output

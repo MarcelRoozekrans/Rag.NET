@@ -165,11 +165,18 @@ internal sealed class RagasJudge(
     {
         // No usage reported means no honest entry to write. Recording zero tokens would state as
         // fact that the call was free.
-        if (costLedger is null || response.Usage is not { } usage)
+        //
+        // Both counters must be provider-reported, not just the Usage object. A provider that
+        // returns an empty UsageDetails, or fills only one side, would otherwise get an entry
+        // claiming zero tokens and zero cost — and a partially-reported call is worse than an
+        // empty one, because it understates spend rather than merely stating none. Mixing a
+        // reported side with an assumed one skews the ledger silently. Same reasoning as
+        // CostTrackingChatClient, and as the embedding path in AnswerRelevanceEvaluator.
+        if (costLedger is null ||
+            response.Usage is not { InputTokenCount: { } input, OutputTokenCount: { } output })
+        {
             return;
-
-        var input = usage.InputTokenCount ?? 0;
-        var output = usage.OutputTokenCount ?? 0;
+        }
 
         var entry = new CostEntry
         {

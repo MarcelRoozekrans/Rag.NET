@@ -251,6 +251,30 @@ public sealed class RagasJudgeTests
         Assert.Empty(ledger.Entries);
     }
 
+    public static TheoryData<UsageDetails> PartiallyReportedUsage => new()
+    {
+        new UsageDetails(),                                 // present, but nothing filled in
+        new UsageDetails { InputTokenCount = 100 },         // input only
+        new UsageDetails { OutputTokenCount = 10 },         // output only
+        new UsageDetails { TotalTokenCount = 110 },         // a total, but neither side
+    };
+
+    [Theory]
+    [MemberData(nameof(PartiallyReportedUsage))]
+    public async Task ClassifyAsync_WhenUsageIsPartiallyReported_RecordsNothing(UsageDetails usage)
+    {
+        var ledger = new RecordingCostLedger();
+        var client = new RoutingChatClient([], fallback: "yes") { Usage = usage };
+
+        await Judge(client, new RagasOptions { PricePerInputToken = 1m, PricePerOutputToken = 1m }, ledger)
+            .ClassifyAsync("sys", "user", TestContext.Current.CancellationToken);
+
+        // A present-but-empty UsageDetails is not a report of zero. Filling the missing side with
+        // 0 would understate spend, which is worse than recording nothing: the entry looks
+        // authoritative. Both counters must come from the provider or neither is trusted.
+        Assert.Empty(ledger.Entries);
+    }
+
     [Fact]
     public async Task ClassifyAsync_WithoutALedger_StillJudges()
     {

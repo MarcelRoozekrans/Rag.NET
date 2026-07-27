@@ -16,7 +16,7 @@
 
 - **Warnings are errors.** MA0051 (methods ≤ 60 lines), MA0015 (`paramName` on argument exceptions), ZA0601/ZA0501 (no LINQ or boxing in hot loops), EPS05/EPS06 (ValueTask hidden copies).
 - **EPS06 forbids NSubstitute on `ValueTask` members.** `IChatClient.GetResponseAsync` returns `Task`, so NSubstitute is legal for it — the existing `LlmJudgeEvaluatorTests` uses it. `IEmbeddingGenerator.GenerateAsync` also returns `Task`. Hand-written fakes are still required wherever a fake must *route on prompt content*, which NSubstitute does poorly.
-- **No new `#pragma` or `SuppressMessage`.** The repo has exactly two justified pragmas and the standing rule is not to add a third.
+- **No new `#pragma` or `SuppressMessage`.** `Rag.NET.Evaluation.Ragas` has none; keep it that way. (An earlier draft of this line claimed the whole repo had "exactly two justified pragmas". That is false — tracked sources under `src/` carry 17 across 13 files. The rule stands; the count was wrong.)
 - **xUnit v3:** always `TestContext.Current.CancellationToken`, never `CancellationToken.None`, in tests.
 - **No sleeps in tests.** Use `TaskCompletionSource` and bounded `WaitAsync`.
 - **Commits:** conventional, ending with the trailer `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`.
