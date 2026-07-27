@@ -65,7 +65,7 @@ Assume nothing works until a test says so *and the test is right*.
 
 ## Phases
 
-1. Phase 3.1 — RAGAS Metrics: verify, test, document [pending]
+1. Phase 3.1 — RAGAS Metrics: verify, test, document [complete — 2026-07-28]
 2. Phase 3.2 — Evaluation Dataset Builder: verify, test, document [pending]
 3. Phase 3.3 — A/B Testing Framework [pending]
 4. Phase 3.4 — Pipeline Debugger / Trace Viewer [pending]

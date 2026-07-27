@@ -156,9 +156,10 @@ future reader can tell the difference between "never existed" and "dealt with".
 > project) and the docs in `docs/guide/evaluation.md`; both were missed by searches that were
 > scoped too narrowly or truncated, and read as exhaustive.
 
-### Phase 3.1: RAGAS Metrics — verify, test, document [status: pending]
+### Phase 3.1: RAGAS Metrics — verify, test, document [status: complete]
 **Backlog items:** RAGAS-Style Metrics
-**Scope:** audit the four existing evaluators in `src/Rag.NET.Evaluation.Ragas` against the metric definitions, fix what is wrong, add deterministic test coverage, document them in `docs/guide/evaluation.md`, and reconcile features.md. An untested evaluator returns plausible numbers rather than failing loudly, so treat every score produced so far as unverified.
+**Plan:** `docs/plans/2026-07-27-ragas-verification-design.md` + `-implementation.md`
+**Completed:** 2026-07-28 (Context Precision was not the RAGAS metric — it ignored rank, scoring a retriever that returns the gold chunk first identically to one that returns it last; it is now rank-aware average precision. A malformed model reply scored 1.0, the best possible value, in two duplicated copies — the plumbing is now shared and an unreadable reply makes a sample unscoreable rather than perfect. Answer Relevance gained the noncommittal penalty and genuinely distinct synthetic questions, and its score is clamped. Also: a shared per-run concurrency ceiling replacing unbounded fan-out, per-sample results, chat and embedding cost recording, and a rewritten guide section. Scores changed; the guide says so.)
 
 ### Phase 3.2: Evaluation Dataset Builder — verify, test, document [status: pending]
 **Backlog items:** Evaluation Dataset Builder
