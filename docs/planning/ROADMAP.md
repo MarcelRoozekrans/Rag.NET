@@ -94,14 +94,15 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Plan:** `docs/plans/2026-07-25-vector-stores-design.md` + `-implementation.md`
 **Completed:** 2026-07-26 (Pinecone pinned to the official SDK 3.1.0 — the 4.x control-plane models cannot deserialize Pinecone Local's responses; its sparse write path is unverified against live Pinecone)
 
-## Milestone 2: Deferred Items & Technical Debt [status: active]
+## Milestone 2: Deferred Items & Technical Debt [status: complete]
 **Goal:** Follow through on what Milestone 1 delivered around rather than through — the features scoped out during brainstorming, and the debt review cycles surfaced. No delivered feature row should keep an unstated caveat.
 **Started:** 2026-07-26
+**Completed:** 2026-07-27
 **Definition of Done:**
-- [ ] All planned phases complete
-- [ ] Every Milestone 1 deferral delivered or re-recorded with a current reason
-- [ ] The follow-up debt list above empty or explicitly re-justified
-- [ ] All tests passing
+- [x] All planned phases complete
+- [x] Every Milestone 1 deferral delivered or re-recorded with a current reason
+- [x] The follow-up debt list above empty or explicitly re-justified
+- [x] All tests passing
 
 ### Phase 2.1: Engineering Debt Sweep [status: complete]
 **Items:** shared filename sanitizer; Graph transport-exception mapping; embedded-message recursion (EML/MSG); PDF table dominance-guard refinement; persistent-memory score normalization; `ConfigureResilience` wiring
@@ -123,8 +124,10 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Plan:** `docs/plans/2026-07-27-azure-document-intelligence-design.md` + `-implementation.md`
 **Completed:** 2026-07-27 (not a second `IPdfOcrEngine` as the item assumed — that seam is per-image, so a new document-level seam was added instead, which dissolves three limitations Phase 1.5 recorded as permanent; also extended `ICostLedger` to represent per-page spend)
 
-### Phase 2.5: Service Bus Ingestion Trigger [status: pending]
+### Phase 2.5: Service Bus Ingestion Trigger [status: complete]
 **Items:** Service Bus trigger alongside the existing webhook/polling paths (deferred in Phase 1.3)
+**Plan:** `docs/plans/2026-07-27-service-bus-ingestion-design.md` + `-implementation.md`
+**Completed:** 2026-07-27 (not the published "thin producer over `IIngestionJobQueue`" design — that would have settled a durable broker message into an in-memory channel and converted at-least-once into at-most-once on crash, so the trigger owns ingestion end to end instead; also fixed the latent defect that made re-ingest append rather than replace BM25 postings, which this transport would have manifested, and relocated `FileNameSanitizer` to `Rag.NET.Abstractions`)
 
 **Not in scope:** the CLI reindex command (belongs with the CLI tool in Milestone 4); Pinecone live sparse-write verification (needs a live account — documented as a coverage gap by decision on 2026-07-26).
 
