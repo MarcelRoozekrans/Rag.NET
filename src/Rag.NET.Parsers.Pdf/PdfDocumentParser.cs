@@ -155,16 +155,23 @@ public sealed class PdfDocumentParser : IDocumentParser, IDisposable
 
     /// <summary>
     /// Copies the PDF into memory so PdfPig and the document-level engine each get their own
-    /// view of it. PdfPig reads its stream lazily while pages are enumerated, so seeking that
-    /// same stream mid-parse to feed the engine would corrupt the parse; one buffer up front
-    /// is the only interleaving-safe arrangement.
+    /// view of it. PdfPig reads its stream lazily throughout <c>GetPages()</c>, so seeking
+    /// that same stream mid-parse to feed the engine would reposition it underneath an active
+    /// parse; buffering once up front is the only interleaving-safe arrangement.
     /// <para>
-    /// This settles the non-seekable case by <b>buffering rather than refusing</b>. The
-    /// repo's <c>RagError.NonSeekableStream</c> precedent lives in the ingestor's pre-flight
-    /// check, which can return a <c>RagError</c>; <c>IDocumentParser.ParseAsync</c> yields
-    /// sections and has no such channel, so refusing here would mean throwing — and the
-    /// parser's posture is degraded-never-broken. Seekable streams are rewound to 0 first,
-    /// which is where PdfPig reads from regardless of the incoming position.
+    /// Non-seekable streams are <b>buffered, not refused</b>. Two reasons. PdfPig accepts a
+    /// non-seekable stream on the default path, so buffering keeps both paths behaviourally
+    /// identical instead of making the document-level path reject input the parser otherwise
+    /// handles. And the repo's <c>RagError.NonSeekableStream</c> precedent lives in the
+    /// ingestor's pre-flight check, which can return a <c>RagError</c>;
+    /// <c>IDocumentParser.ParseAsync</c> yields sections and has no such channel, so refusing
+    /// here would mean throwing — against the parser's degraded-never-broken posture.
+    /// </para>
+    /// <para>
+    /// Seekable streams are rewound to 0 (where PdfPig reads from regardless of the incoming
+    /// position) and read in one allocation of the exact length, so the peak is one copy
+    /// rather than a growing <see cref="MemoryStream"/> plus its <c>ToArray</c>. That matters:
+    /// this is the one path that can legitimately be handed a very large PDF.
     /// </para>
     /// </summary>
     private static async ValueTask<byte[]> BufferAsync(Stream stream, CancellationToken cancellationToken)
@@ -172,6 +179,13 @@ public sealed class PdfDocumentParser : IDocumentParser, IDisposable
         if (stream.CanSeek)
         {
             stream.Position = 0;
+            long length = stream.Length;
+            if (length > 0 && length <= Array.MaxLength)
+            {
+                var exact = new byte[(int)length];
+                await stream.ReadExactlyAsync(exact, cancellationToken).ConfigureAwait(false);
+                return exact;
+            }
         }
 
         using var buffer = new MemoryStream();

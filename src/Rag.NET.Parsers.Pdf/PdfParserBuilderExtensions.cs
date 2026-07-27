@@ -54,6 +54,19 @@ public static class PdfParserBuilderExtensions
     /// Configuring both engines throws here (or from <c>AddPdfParser</c>, whichever call comes
     /// second) rather than silently preferring one.
     /// </para>
+    /// <para>
+    /// <b>Memory profile.</b> Registering an engine changes how the parser reads: it buffers
+    /// each PDF into memory in full before parsing, because PdfPig and the engine both need
+    /// to read the document and PdfPig consumes its stream lazily. This happens for every PDF
+    /// on this path, not only the ones that turn out to need OCR, so a parser that used to
+    /// stream now holds whole files resident — large ones on the large object heap —
+    /// multiplied by however many documents ingest in parallel. Size the host accordingly, or
+    /// keep the engine off the parser that handles your largest inputs.
+    /// </para>
+    /// <para>
+    /// Spend is bounded by <see cref="PdfParserOptions.MaxOcrPages"/>: providers bill every
+    /// page of the submitted document, not just the pages that needed OCR.
+    /// </para>
     /// </summary>
     public static TBuilder UseDocumentOcrEngine<TBuilder>(this TBuilder builder, IDocumentOcrEngine engine)
         where TBuilder : IRagBuilder

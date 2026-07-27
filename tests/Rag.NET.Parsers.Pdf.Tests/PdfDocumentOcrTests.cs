@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
+using Rag.NET.Parsers.Pdf.Ocr;
 using UglyToad.PdfPig.Content;
 using UglyToad.PdfPig.Core;
 using UglyToad.PdfPig.Fonts.Standard14Fonts;
@@ -67,7 +68,7 @@ public class PdfDocumentOcrTests
             [1] = "AZURE PAGE ONE",
             [2] = "AZURE PAGE TWO",
             [3] = "AZURE PAGE THREE",
-        });
+        }, billedPages: 3);
         var sut = new PdfDocumentParser(new PdfParserOptions(), logger: null, engine);
         using var stream = CreatePdf(LongText, string.Empty, LongText);
 
@@ -107,7 +108,7 @@ public class PdfDocumentOcrTests
         {
             [1] = "AZURE MUST NOT APPEAR",
             [2] = "AZURE MUST NOT APPEAR",
-        });
+        }, billedPages: 2);
         var sut = new PdfDocumentParser(new PdfParserOptions(), logger: null, engine);
         using var stream = CreatePdf(LongText, LongText);
 
@@ -134,7 +135,7 @@ public class PdfDocumentOcrTests
             [2] = "OCR 2",
             [3] = "OCR 3",
             [4] = "OCR 4",
-        });
+        }, billedPages: 4);
         var sut = new PdfDocumentParser(new PdfParserOptions(), logger: null, engine);
         using var stream = CreatePdf(string.Empty, string.Empty, string.Empty, string.Empty);
 
@@ -154,10 +155,11 @@ public class PdfDocumentOcrTests
     [Fact]
     public async Task DocumentOcr_DocumentAboveMaxOcrPages_SkipsWithWarning()
     {
+        // One recognised page, three billed: the gap the cap exists to bound.
         var engine = FakeDocumentOcrEngine.Returning(new Dictionary<int, string>
         {
             [2] = "AZURE MUST NOT APPEAR",
-        });
+        }, billedPages: 3);
         var logger = new CapturingLogger<PdfDocumentParser>();
         var sut = new PdfDocumentParser(new PdfParserOptions { MaxOcrPages = 2 }, logger, engine);
         using var stream = CreatePdf(LongText, string.Empty, LongText);
@@ -259,7 +261,8 @@ public class PdfDocumentOcrTests
         // Both AddPdfParser overloads must reach the engine: the configuring one wires it
         // explicitly, the parameterless one relies on constructor injection into the
         // optional documentOcrEngine parameter.
-        var engine = FakeDocumentOcrEngine.Returning(new Dictionary<int, string> { [1] = "OCR ONE" });
+        var engine = FakeDocumentOcrEngine.Returning(
+            new Dictionary<int, string> { [1] = "OCR ONE" }, billedPages: 2);
         var services = new ServiceCollection();
         var builder = new RagBuilder(services);
         if (configureOptions)
@@ -294,7 +297,8 @@ public class PdfDocumentOcrTests
         // posture.
         using var seekable = CreatePdf(string.Empty, LongText);
         var bytes = seekable.ToArray();
-        var engine = FakeDocumentOcrEngine.Returning(new Dictionary<int, string> { [1] = "OCR ONE" });
+        var engine = FakeDocumentOcrEngine.Returning(
+            new Dictionary<int, string> { [1] = "OCR ONE" }, billedPages: 2);
         var sut = new PdfDocumentParser(new PdfParserOptions(), logger: null, engine);
         using var nonSeekable = new ForwardOnlyStream(bytes);
 
@@ -308,6 +312,56 @@ public class PdfDocumentOcrTests
         Assert.Equal("ocr", sections[0].Heading);
         Assert.Equal("OCR ONE", sections[0].Text);
         Assert.Null(sections[1].Heading);
+    }
+
+    [Fact]
+    public async Task NonSeekableStream_DefaultPath_AcceptsItToo()
+    {
+        // Pins the symmetry the buffering decision rests on: PdfPig takes a non-seekable
+        // stream on the default path, so buffering on the document-level path keeps the two
+        // behaviourally identical rather than making one reject input the other handles. If
+        // this ever fails, BufferAsync's justification needs rewriting, not just this test.
+        using var seekable = CreatePdf(ShortText, LongText);
+        var bytes = seekable.ToArray();
+        var sut = new PdfDocumentParser();
+        using var nonSeekable = new ForwardOnlyStream(bytes);
+
+        var sections = await ParseAsync(sut, nonSeekable);
+
+        Assert.Equal(2, sections.Count);
+        Assert.Contains("Short", sections[0].Text, StringComparison.Ordinal);
+        Assert.Contains("threshold", sections[1].Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DocumentOcrResult_GuardsItsArguments()
+    {
+        // Public API: an engine in another assembly is the caller, so the guards are the
+        // contract rather than an internal courtesy.
+        _ = Assert.Throws<ArgumentNullException>(() => new DocumentOcrResult(null!, 1));
+        _ = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new DocumentOcrResult(new Dictionary<int, string>(), -1));
+
+        var result = new DocumentOcrResult(new Dictionary<int, string> { [1] = "text" }, BilledPages: 500);
+        Assert.Equal(500, result.BilledPages);
+
+        // BilledPages counts submitted pages, not recognized ones — they are not the same
+        // number, and the expensive case is exactly where they diverge.
+        _ = Assert.Single(result.PageText);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void AddPdfParser_MaxOcrPagesBelowOne_Throws(int maxOcrPages)
+    {
+        // A cap of zero or less would either disable OCR by accident or mean nothing at all;
+        // either way it is a configuration mistake, and configuration mistakes stay loud.
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+
+        _ = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            builder.AddPdfParser(o => o.MaxOcrPages = maxOcrPages));
     }
 
     /// <summary>A read-only, forward-only stream: <c>CanSeek</c> is false and seeking throws.</summary>
