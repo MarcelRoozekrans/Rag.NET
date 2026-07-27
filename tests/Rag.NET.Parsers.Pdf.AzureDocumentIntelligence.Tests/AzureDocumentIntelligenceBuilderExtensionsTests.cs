@@ -87,13 +87,46 @@ public sealed class AzureDocumentIntelligenceBuilderExtensionsTests
         var builder = new RagBuilder(services);
 
         Assert.Throws<ArgumentNullException>(() =>
+            ((RagBuilder)null!).UseAzureDocumentIntelligenceOcr(Endpoint, new AzureKeyCredential("key")));
+        Assert.Throws<ArgumentNullException>(() =>
+            ((RagBuilder)null!).UseAzureDocumentIntelligenceOcr(Endpoint, new StubTokenCredential()));
+        Assert.Throws<ArgumentNullException>(() =>
             builder.UseAzureDocumentIntelligenceOcr(null!, new AzureKeyCredential("key")));
+        Assert.Throws<ArgumentNullException>(() =>
+            builder.UseAzureDocumentIntelligenceOcr(null!, new StubTokenCredential()));
         Assert.Throws<ArgumentNullException>(() =>
             builder.UseAzureDocumentIntelligenceOcr(Endpoint, (AzureKeyCredential)null!));
         Assert.Throws<ArgumentNullException>(() =>
             builder.UseAzureDocumentIntelligenceOcr(Endpoint, (TokenCredential)null!));
-        Assert.Throws<ArgumentException>(() =>
-            builder.UseAzureDocumentIntelligenceOcr(Endpoint, new AzureKeyCredential("key"), o => o.ModelId = " "));
+    }
+
+    [Fact]
+    public void UseAzureDocumentIntelligenceOcr_InvalidOptions_ThrowAtRegistrationNotAtParseTime()
+    {
+        // Registration goes through UseDocumentOcrEngine's factory overload, and the container
+        // does not invoke that lambda until the parser is first resolved. If validation lived
+        // only in the engine's constructor, a bad price would register silently here and
+        // surface much later out of a DI factory mid-parse. Design §6 wants configuration
+        // errors loud, so every option is checked before this call returns — and the services
+        // collection is left untouched when one is wrong.
+        var services = new ServiceCollection();
+        var builder = new RagBuilder(services);
+        var credential = new AzureKeyCredential("key");
+        var registrationsBefore = services.Count;
+
+        var blankModel = Assert.Throws<ArgumentException>(() =>
+            builder.UseAzureDocumentIntelligenceOcr(Endpoint, credential, o => o.ModelId = " "));
+        var negativePrice = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            builder.UseAzureDocumentIntelligenceOcr(Endpoint, credential, o => o.PricePerPage = -1m));
+        var negativeInterval = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            builder.UseAzureDocumentIntelligenceOcr(
+                Endpoint, credential, o => o.PollingInterval = TimeSpan.FromSeconds(-1)));
+
+        // Each message names the property at fault, not just the lambda parameter.
+        Assert.Contains(nameof(AzureDocumentIntelligenceOcrOptions.ModelId), blankModel.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(AzureDocumentIntelligenceOcrOptions.PricePerPage), negativePrice.Message, StringComparison.Ordinal);
+        Assert.Contains(nameof(AzureDocumentIntelligenceOcrOptions.PollingInterval), negativeInterval.Message, StringComparison.Ordinal);
+        Assert.Equal(registrationsBefore, services.Count);
     }
 
     /// <summary>Hand-written credential: the DI tests resolve the engine, they never call out.</summary>

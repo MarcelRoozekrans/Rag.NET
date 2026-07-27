@@ -6,12 +6,6 @@
     <Description>Azure Document Intelligence document-level OCR engine for Rag.NET's PDF parser</Description>
   </PropertyGroup>
 
-  <ItemGroup>
-    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests</_Parameter1>
-    </AssemblyAttribute>
-  </ItemGroup>
-
   <!-- No <EnableOcr> gate on purpose. That gate exists for Tesseract's native binaries and
        out-of-band traineddata; a managed REST client has neither, and reusing the gate would
        force an Azure-only consumer to pull Tesseract's native payload as well. -->

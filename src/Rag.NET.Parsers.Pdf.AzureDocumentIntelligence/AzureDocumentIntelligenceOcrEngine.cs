@@ -29,6 +29,16 @@ namespace Rag.NET.Parsers.Pdf.AzureDocumentIntelligence;
 /// own extraction losslessly; swallowing here would hide throttling and auth problems from the
 /// one component able to report them. Cancellation propagates.
 /// </para>
+/// <para>
+/// <b>Memory: budget for roughly twice the document.</b> The SDK's
+/// <see cref="AnalyzeDocumentOptions"/> accepts <see cref="BinaryData"/> rather than a
+/// <see cref="Stream"/>, so the PDF is copied into a second in-memory buffer for the duration
+/// of the call — on top of the full-document buffer the parser already holds to feed both
+/// PdfPig and this engine. Peak resident bytes are therefore about 2× the document size per
+/// concurrent OCR call, large ones on the large object heap. That is forced by the SDK's
+/// surface, not a choice made here, but it compounds the parser's own memory profile and is
+/// worth sizing the host against.
+/// </para>
 /// </remarks>
 public sealed class AzureDocumentIntelligenceOcrEngine : IDocumentOcrEngine
 {
@@ -73,7 +83,7 @@ public sealed class AzureDocumentIntelligenceOcrEngine : IDocumentOcrEngine
         _client = clientOptions is null
             ? new DocumentIntelligenceClient(endpoint, credential)
             : new DocumentIntelligenceClient(endpoint, credential, clientOptions);
-        _options = Validate(options ?? new AzureDocumentIntelligenceOcrOptions());
+        _options = Validate(options ?? new AzureDocumentIntelligenceOcrOptions(), nameof(options));
         _costLedger = costLedger;
         _logger = logger;
     }
@@ -114,7 +124,7 @@ public sealed class AzureDocumentIntelligenceOcrEngine : IDocumentOcrEngine
         _client = clientOptions is null
             ? new DocumentIntelligenceClient(endpoint, credential)
             : new DocumentIntelligenceClient(endpoint, credential, clientOptions);
-        _options = Validate(options ?? new AzureDocumentIntelligenceOcrOptions());
+        _options = Validate(options ?? new AzureDocumentIntelligenceOcrOptions(), nameof(options));
         _costLedger = costLedger;
         _logger = logger;
     }
@@ -257,25 +267,45 @@ public sealed class AzureDocumentIntelligenceOcrEngine : IDocumentOcrEngine
         }
     }
 
-    private static AzureDocumentIntelligenceOcrOptions Validate(AzureDocumentIntelligenceOcrOptions options)
+    /// <summary>
+    /// Validates every configurable value and returns <paramref name="options"/> unchanged.
+    /// </summary>
+    /// <param name="options">The options to check.</param>
+    /// <param name="paramName">
+    /// The name to blame in the thrown exception — <c>options</c> when a caller constructed the
+    /// engine directly, <c>configure</c> when the builder extensions did.
+    /// </param>
+    /// <remarks>
+    /// Internal rather than private so
+    /// <see cref="AzureDocumentIntelligenceBuilderExtensions"/> can run it at <i>registration</i>
+    /// time. Leaving it to the constructor would defer every check but <c>ModelId</c> into the
+    /// <c>UseDocumentOcrEngine</c> factory lambda, which the container does not invoke until the
+    /// parser is first resolved — so a negative price would register silently and surface much
+    /// later, out of a DI factory. Configuration errors stay loud and immediate.
+    /// </remarks>
+    internal static AzureDocumentIntelligenceOcrOptions Validate(
+        AzureDocumentIntelligenceOcrOptions options, string paramName)
     {
         if (string.IsNullOrWhiteSpace(options.ModelId))
         {
             throw new ArgumentException(
-                $"{nameof(AzureDocumentIntelligenceOcrOptions)}.{nameof(options.ModelId)} must be a non-empty string.",
-                nameof(options));
+                $"{nameof(AzureDocumentIntelligenceOcrOptions)}.{nameof(AzureDocumentIntelligenceOcrOptions.ModelId)} " +
+                "must be a non-empty string.",
+                paramName);
         }
 
         if (options.PricePerPage < 0m)
         {
-            throw new ArgumentOutOfRangeException(nameof(options), options.PricePerPage,
-                $"{nameof(AzureDocumentIntelligenceOcrOptions)}.{nameof(options.PricePerPage)} must not be negative.");
+            throw new ArgumentOutOfRangeException(paramName, options.PricePerPage,
+                $"{nameof(AzureDocumentIntelligenceOcrOptions)}.{nameof(AzureDocumentIntelligenceOcrOptions.PricePerPage)} " +
+                "must not be negative.");
         }
 
         if (options.PollingInterval < TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(nameof(options), options.PollingInterval,
-                $"{nameof(AzureDocumentIntelligenceOcrOptions)}.{nameof(options.PollingInterval)} must not be negative.");
+            throw new ArgumentOutOfRangeException(paramName, options.PollingInterval,
+                $"{nameof(AzureDocumentIntelligenceOcrOptions)}.{nameof(AzureDocumentIntelligenceOcrOptions.PollingInterval)} " +
+                "must not be negative.");
         }
 
         return options;

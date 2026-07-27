@@ -88,12 +88,19 @@ public static class AzureDocumentIntelligenceBuilderExtensions
             sp.GetService<ILogger<AzureDocumentIntelligenceOcrEngine>>()));
     }
 
+    /// <summary>
+    /// Applies <paramref name="configure"/> and validates the result <i>here</i>, at
+    /// registration. Validation cannot be left to the engine's constructor: registration goes
+    /// through <c>UseDocumentOcrEngine</c>'s factory overload, and the container does not invoke
+    /// that lambda until the parser is first resolved — so a bad price or polling interval would
+    /// register silently and only fail later, out of a DI factory during a parse. Design §6 puts
+    /// configuration errors in the fail-fast category; this is where fast is.
+    /// </summary>
     private static AzureDocumentIntelligenceOcrOptions BuildOptions(
         Action<AzureDocumentIntelligenceOcrOptions>? configure)
     {
         var options = new AzureDocumentIntelligenceOcrOptions();
         configure?.Invoke(options);
-        ArgumentException.ThrowIfNullOrWhiteSpace(options.ModelId, nameof(configure));
-        return options;
+        return AzureDocumentIntelligenceOcrEngine.Validate(options, nameof(configure));
     }
 }

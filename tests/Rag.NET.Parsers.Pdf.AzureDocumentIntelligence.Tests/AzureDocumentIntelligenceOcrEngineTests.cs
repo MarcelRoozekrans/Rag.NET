@@ -17,14 +17,18 @@ namespace Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests;
 /// </summary>
 /// <remarks>
 /// Each scenario gets its own <c>modelId</c> rather than its own cassette directory. The model
-/// id is part of the analyze path, so one cassette set can serve every test without the
-/// mappings colliding — and without reloading cassettes between tests.
+/// id is part of the analyze path, so one cassette set serves every test without the mappings
+/// colliding. Cassettes are still reloaded per test — xUnit constructs the class once per test
+/// method and <c>LoadCassettes</c> resets and re-reads the mappings each time — which is
+/// harmless here and is what keeps the request log scoped to a single test.
 /// </remarks>
 [Collection("WireMock")]
 public sealed class AzureDocumentIntelligenceOcrEngineTests
 {
     private const string TwoPagesModel = "prebuilt-read";
     private const string SparsePagesModel = "sparse-pages";
+    private const string WordsOnlyModel = "words-only";
+    private const string NoPagesModel = "no-pages";
     private const string FailingModel = "failing";
     private const string RunningModel = "running";
 
@@ -34,6 +38,7 @@ public sealed class AzureDocumentIntelligenceOcrEngineTests
     {
         _fixture = fixture;
         _fixture.LoadCassettes("AzureDocumentIntelligence");
+        _fixture.Server.ResetLogEntries();
     }
 
     [Fact]
@@ -65,6 +70,59 @@ public sealed class AzureDocumentIntelligenceOcrEngineTests
         var only = Assert.Single(result.PageText);
         Assert.Equal(2, only.Key);
         Assert.Equal("ONLY THIS PAGE HAS TEXT", only.Value);
+    }
+
+    [Fact]
+    public async Task RecognizeAsync_PageWithWordsButNoLines_FallsBackToWords()
+    {
+        // Lines are preferred because the service already put them in reading order, but a
+        // model that returns only word segmentation must still produce text rather than
+        // silently dropping the page.
+        var sut = CreateEngine(WordsOnlyModel);
+        using var pdf = CreatePdfStream();
+
+        var result = await sut.RecognizeAsync(pdf, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.BilledPages);
+        Assert.Equal("WORD ONE TWO", result.PageText[1]);
+    }
+
+    [Fact]
+    public async Task RecognizeAsync_ResultWithoutPages_BillsNothingAndReturnsNoText()
+    {
+        // A terminal result whose analyzeResult omits "pages" entirely. The SDK's generated
+        // deserializer leaves AnalyzeResult.Pages genuinely null in that case rather than
+        // substituting an empty list, so the engine's null guard is a live path and not
+        // defensive decoration. Nothing was analyzed, so nothing is billed and nothing is
+        // claimed — the parser keeps its own extraction for every page.
+        var ledger = new FakeCostLedger();
+        var sut = CreateEngine(NoPagesModel, ledger);
+        using var pdf = CreatePdfStream();
+
+        var result = await sut.RecognizeAsync(pdf, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, result.BilledPages);
+        Assert.Empty(result.PageText);
+        // Zero pages is not a zero-cost entry, it is no entry: there is nothing to record.
+        Assert.Empty(ledger.Entries);
+    }
+
+    [Fact]
+    public async Task RecognizeAsync_Locale_IsSentWhenSetAndOmittedWhenBlank()
+    {
+        // Locale is a hint the service can use to pick a recognizer. Sending a blank one would
+        // be worse than sending none, so whitespace must be dropped rather than forwarded.
+        var withLocale = CreateEngine(TwoPagesModel, configure: o => o.Locale = "en-US");
+        using var firstPdf = CreatePdfStream();
+        await withLocale.RecognizeAsync(firstPdf, TestContext.Current.CancellationToken);
+        Assert.Contains("locale=en-US", LastAnalyzeRequestUrl(), StringComparison.Ordinal);
+
+        _fixture.Server.ResetLogEntries();
+
+        var blankLocale = CreateEngine(TwoPagesModel, configure: o => o.Locale = "   ");
+        using var secondPdf = CreatePdfStream();
+        await blankLocale.RecognizeAsync(secondPdf, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain("locale=", LastAnalyzeRequestUrl(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -123,10 +181,15 @@ public sealed class AzureDocumentIntelligenceOcrEngineTests
         // rather than by a timer, so the test proves polling was under way and stays
         // deterministic without sleeping.
         var firstPoll = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var polls = new PollCounter();
         var sut = CreateEngine(
             RunningModel,
             configure: o => o.PollingInterval = TimeSpan.FromMilliseconds(20),
-            policy: new PollSignallingPolicy(() => firstPoll.TrySetResult()));
+            policy: new PollSignallingPolicy(() =>
+            {
+                polls.Increment();
+                firstPoll.TrySetResult();
+            }));
         using var pdf = CreatePdfStream();
         using var cts = new CancellationTokenSource();
 
@@ -140,10 +203,16 @@ public sealed class AzureDocumentIntelligenceOcrEngineTests
             await recognize;
         }
 
+        var pollsAtCancellation = polls.Value;
         await cts.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => recognize.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
+
+        // Not merely "the await unwound": the poll loop stopped. One extra poll is allowed
+        // because a request may already have been in flight when the token was cancelled;
+        // anything beyond that would mean polling outlived the caller's cancellation.
+        Assert.InRange(polls.Value, pollsAtCancellation, pollsAtCancellation + 1);
     }
 
     [Fact]
@@ -199,18 +268,23 @@ public sealed class AzureDocumentIntelligenceOcrEngineTests
     }
 
     /// <summary>
-    /// The transport half of "no waiting". Azure.Core's defaults retry a failed request three
-    /// times with exponential back-off and allow a 100-second network timeout, which would put
-    /// tens of seconds of dead air into a suite whose whole point is that nothing leaves the
-    /// machine. Polling delay is neutered separately, through
-    /// <see cref="AzureDocumentIntelligenceOcrOptions.PollingInterval"/> — the client options
+    /// The transport half of "no waiting". What costs wall-clock time is Azure.Core's retry
+    /// <i>delay</i> — exponential by default, growing from a second — and its 100-second
+    /// network timeout, so both are removed. The retries themselves are kept: dropping them
+    /// made the suite flaky, because a single transient loopback connection reset on a cold
+    /// run became unrecoverable. With <see cref="RetryMode.Fixed"/> and a zero delay the
+    /// retries cost nothing when they are not needed and save the run when they are.
+    /// <para>
+    /// Polling delay is neutered separately, through
+    /// <see cref="AzureDocumentIntelligenceOcrOptions.PollingInterval"/>: the client options
     /// have no say over long-running-operation polling.
+    /// </para>
     /// </summary>
     private static DocumentIntelligenceClientOptions NoWaitingClientOptions(HttpPipelinePolicy? policy)
     {
         var clientOptions = new DocumentIntelligenceClientOptions();
         clientOptions.Retry.Mode = RetryMode.Fixed;
-        clientOptions.Retry.MaxRetries = 0;
+        clientOptions.Retry.MaxRetries = 3;
         clientOptions.Retry.Delay = TimeSpan.Zero;
         clientOptions.Retry.NetworkTimeout = TimeSpan.FromSeconds(15);
         if (policy is not null)
@@ -219,6 +293,31 @@ public sealed class AzureDocumentIntelligenceOcrEngineTests
         }
 
         return clientOptions;
+    }
+
+    /// <summary>The URL of the most recent analyze request WireMock saw.</summary>
+    private string LastAnalyzeRequestUrl()
+    {
+        string? url = null;
+        foreach (var entry in _fixture.Server.LogEntries)
+        {
+            if (entry.RequestMessage.Url.Contains(":analyze", StringComparison.Ordinal))
+            {
+                url = entry.RequestMessage.Url;
+            }
+        }
+
+        return url ?? throw new InvalidOperationException("No analyze request was recorded.");
+    }
+
+    /// <summary>Thread-safe counter: polls are observed on pipeline threads, read on the test's.</summary>
+    private sealed class PollCounter
+    {
+        private int _value;
+
+        public int Value => Volatile.Read(ref _value);
+
+        public void Increment() => Interlocked.Increment(ref _value);
     }
 
     private static MemoryStream CreatePdfStream() =>
