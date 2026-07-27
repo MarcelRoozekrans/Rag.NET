@@ -5,6 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Ingestion.AzureServiceBus\Rag.NET.Ingestion.AzureServiceBus.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="Testcontainers" Version="4.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />
