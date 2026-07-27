@@ -38,6 +38,15 @@ public sealed class ServiceBusIngestionOptions
     /// the SDK, because ingestion is parse-chunk-embed-store and the useful parallelism knob
     /// is usually further down the pipeline.
     /// </summary>
+    /// <remarks>
+    /// Raising this above <c>1</c> on a non-session entity is enough, on its own and inside a
+    /// single host, to let two ingests of the same document interleave: nothing in the pipeline
+    /// holds a per-<c>DocumentId</c> lock, so a <c>Remove</c>/<c>Add</c> pair from one message
+    /// can be split by another's and leave duplicate BM25 postings behind. The hazard usually
+    /// gets described as "competing consumers", which understates it — this knob turns it on
+    /// without a second host being involved. Enable <see cref="SessionsEnabled"/> to serialise
+    /// per document, or leave this at <c>1</c>.
+    /// </remarks>
     public int MaxConcurrentCalls { get; set; } = 1;
 
     /// <summary>

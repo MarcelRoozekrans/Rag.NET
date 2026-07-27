@@ -8,7 +8,11 @@ namespace Rag.NET.Ingestion.AzureServiceBus.Settlement;
 /// </summary>
 public static class DeadLetterReasons
 {
-    /// <summary>The body is not JSON, is empty, or is not a JSON object.</summary>
+    /// <summary>
+    /// The body is not JSON, is empty, or is not a JSON object — including a JSON
+    /// <i>array</i>, which the webhook accepts but this transport does not: settlement is per
+    /// message, so a batch that half succeeds has no way to report itself.
+    /// </summary>
     public const string MalformedPayload = "MalformedPayload";
 
     /// <summary>

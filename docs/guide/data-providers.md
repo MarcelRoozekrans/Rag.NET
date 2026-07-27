@@ -757,7 +757,7 @@ Both registrations above are live simultaneously. Each call registers **its own*
 |---|---|---|
 | `SubscriptionName` | `null` | `null` means the entity is a queue. Set it and the entity name is read as a **topic**, consumed through this subscription. |
 | `SessionsEnabled` | `false` | Opt-in per-document FIFO. Must match the entity: a session processor against a non-session queue fails at start, and vice versa. |
-| `MaxConcurrentCalls` | `1` | Messages in flight on a non-session entity. |
+| `MaxConcurrentCalls` | `1` | Messages in flight on a non-session entity. Raising it above `1` re-opens the [single-writer caveat](#sessions-ordering-and-the-single-writer-caveat) **inside one host** — sessions are the fix. |
 | `MaxConcurrentSessions` | `8` | Distinct documents in flight on a session-enabled entity. Ordering *within* each session is preserved regardless. |
 | `PrefetchCount` | `0` | No prefetch by default: a prefetched message holds its lock while it waits, and ingestion is slow enough that a large prefetch mostly buys lock expiries. |
 | `MaxAutoLockRenewalDuration` | `5 min` | How long the SDK keeps renewing the message (and session) lock while ingestion runs. |
@@ -806,7 +806,9 @@ Sessions are **opt-in** (`SessionsEnabled = true`, on a session-enabled entity).
 
 `SessionId` **must equal** the body's `documentId`, or the message is dead-lettered as `SessionDocumentMismatch`. This is not pedantry: a session that names something other than the document it orders still gets a FIFO guarantee from the broker — just a guarantee about the wrong thing. Silently accepting it would leave an operator believing their documents are ordered when they are not, so it is a producer bug the trigger refuses to guess its way through.
 
-> **Why this matters, and where it stops.** The replace described below is a **single-writer guarantee**. There is no per-`DocumentId` lock anywhere in the ingestion pipeline: the remove-then-re-add sequence takes the index's write lock once per call, but nothing holds a lock across the pair. Two concurrent ingests of the same document can therefore interleave as `A.Remove → B.Remove → A.Add → B.Add` and reproduce exactly the doubled postings the replace exists to prevent. Competing consumers on a **non-session** queue are the realistic trigger for this, and enabling sessions closes it — but sessions are opt-in, so a non-session queue with more than one consumer re-manifests it. The same warning is carried in source on `StorageBehavior.RemovePreviousAppendOnlyEntries`.
+> **Why this matters, and where it stops.** The replace described below is a **single-writer guarantee**. There is no per-`DocumentId` lock anywhere in the ingestion pipeline: the remove-then-re-add sequence takes the index's write lock once per call, but nothing holds a lock across the pair. Two concurrent ingests of the same document can therefore interleave as `A.Remove → B.Remove → A.Add → B.Add` and reproduce exactly the doubled postings the replace exists to prevent. Competing consumers on a **non-session** queue are the realistic trigger for this, and enabling sessions closes it — but sessions are opt-in, so a non-session queue re-manifests it.
+>
+> **"Competing consumers" understates it.** You do not need a second host. `MaxConcurrentCalls = 5` on a non-session entity is one process processing five messages at once, and if two of them carry the same `documentId` they interleave exactly as above. That option is the single knob this trigger ships that turns the hazard on, which is why it defaults to `1`. Either leave it there or enable sessions. The same warning is carried in source on `StorageBehavior.RemovePreviousAppendOnlyEntries` and on `ServiceBusIngestionOptions.MaxConcurrentCalls`.
 
 #### Topics
 
