@@ -1,11 +1,18 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
+using Rag.NET.Parsers.Pdf.Ocr;
 
 namespace Rag.NET.Parsers.Pdf;
 
 public static class PdfParserBuilderExtensions
 {
+    private const string BothEnginesMessage =
+        "Two OCR engines are configured for the PDF parser: the per-image Tesseract fallback " +
+        "(PdfParserOptions.UseOcrFallback) and a document-level engine (IDocumentOcrEngine). " +
+        "The parser uses one engine, and which one it would be is not something to leave to a " +
+        "silent precedence rule — choose either UseOcrFallback = true or UseDocumentOcrEngine(...).";
+
     /// <summary>Registers the PDF parser with default <see cref="PdfParserOptions"/>.</summary>
     public static TBuilder AddPdfParser<TBuilder>(this TBuilder builder)
         where TBuilder : IRagBuilder
@@ -25,30 +32,104 @@ public static class PdfParserBuilderExtensions
     public static TBuilder AddPdfParser<TBuilder>(this TBuilder builder, Action<PdfParserOptions>? configure)
         where TBuilder : IRagBuilder
     {
+        ArgumentNullException.ThrowIfNull(builder);
         var options = new PdfParserOptions();
         configure?.Invoke(options);
-        ValidateOptions(options, nameof(configure));
+        ValidateOptions(options, nameof(configure), builder.Services);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<IDocumentParser>(sp =>
-            new PdfDocumentParser(options, sp.GetService<ILogger<PdfDocumentParser>>()));
+            new PdfDocumentParser(
+                options,
+                sp.GetService<ILogger<PdfDocumentParser>>(),
+                sp.GetService<IDocumentOcrEngine>()));
         return builder;
     }
 
-    private static void ValidateOptions(PdfParserOptions options, string paramName)
+    /// <summary>
+    /// Registers a document-level OCR engine — one that takes the whole PDF and returns every
+    /// page from a single call. Registering an engine <b>is</b> the opt-in: the parser routes
+    /// sub-threshold pages through it without <see cref="PdfParserOptions.UseOcrFallback"/>,
+    /// which stays the switch for the per-image Tesseract fallback.
+    /// <para>
+    /// Configuring both engines throws here (or from <c>AddPdfParser</c>, whichever call comes
+    /// second) rather than silently preferring one.
+    /// </para>
+    /// </summary>
+    public static TBuilder UseDocumentOcrEngine<TBuilder>(this TBuilder builder, IDocumentOcrEngine engine)
+        where TBuilder : IRagBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(engine);
+        ThrowIfTesseractFallbackConfigured(builder.Services);
+        builder.Services.AddSingleton(engine);
+        return builder;
+    }
+
+    /// <inheritdoc cref="UseDocumentOcrEngine{TBuilder}(TBuilder, IDocumentOcrEngine)"/>
+    public static TBuilder UseDocumentOcrEngine<TBuilder>(
+        this TBuilder builder, Func<IServiceProvider, IDocumentOcrEngine> engineFactory)
+        where TBuilder : IRagBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(engineFactory);
+        ThrowIfTesseractFallbackConfigured(builder.Services);
+        builder.Services.AddSingleton(engineFactory);
+        return builder;
+    }
+
+    private static void ValidateOptions(PdfParserOptions options, string paramName, IServiceCollection services)
     {
         ThrowIfLessThanOne(options.MinTableRows, nameof(PdfParserOptions.MinTableRows), paramName);
         ThrowIfLessThanOne(options.MinTableColumns, nameof(PdfParserOptions.MinTableColumns), paramName);
+        ThrowIfLessThanOne(options.MaxOcrPages, nameof(PdfParserOptions.MaxOcrPages), paramName);
         if (options.OcrMinCharacters < 0)
         {
             throw new ArgumentOutOfRangeException(paramName, options.OcrMinCharacters,
                 $"{nameof(PdfParserOptions)}.{nameof(PdfParserOptions.OcrMinCharacters)} must not be negative.");
         }
 
-        if (options.UseOcrFallback)
+        if (!options.UseOcrFallback)
         {
-            ThrowIfNullOrWhiteSpace(options.TessDataPath, nameof(PdfParserOptions.TessDataPath), paramName);
-            ThrowIfNullOrWhiteSpace(options.OcrLanguage, nameof(PdfParserOptions.OcrLanguage), paramName);
+            return;
         }
+
+        // Engine-conditional: TessDataPath and OcrLanguage configure Tesseract, so they are
+        // only required when Tesseract is the engine that will actually run. With a
+        // document-level engine registered they are meaningless — and that combination is an
+        // error in its own right, reported before the spurious Tesseract complaint.
+        if (HasDocumentOcrEngine(services))
+        {
+            throw new InvalidOperationException(BothEnginesMessage);
+        }
+
+        ThrowIfNullOrWhiteSpace(options.TessDataPath, nameof(PdfParserOptions.TessDataPath), paramName);
+        ThrowIfNullOrWhiteSpace(options.OcrLanguage, nameof(PdfParserOptions.OcrLanguage), paramName);
+    }
+
+    private static void ThrowIfTesseractFallbackConfigured(IServiceCollection services)
+    {
+        for (int i = 0; i < services.Count; i++)
+        {
+            if (services[i].ServiceType == typeof(PdfParserOptions)
+                && services[i].ImplementationInstance is PdfParserOptions options
+                && options.UseOcrFallback)
+            {
+                throw new InvalidOperationException(BothEnginesMessage);
+            }
+        }
+    }
+
+    private static bool HasDocumentOcrEngine(IServiceCollection services)
+    {
+        for (int i = 0; i < services.Count; i++)
+        {
+            if (services[i].ServiceType == typeof(IDocumentOcrEngine))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ThrowIfLessThanOne(int value, string propertyName, string paramName)
