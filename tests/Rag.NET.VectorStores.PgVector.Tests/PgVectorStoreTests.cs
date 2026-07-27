@@ -307,15 +307,174 @@ public class PgVectorStoreTests : IAsyncLifetime
                 "SELECT string_agg(text, ',' ORDER BY id) FROM rag_chunks"));
     }
 
-    private async Task<string> CreateLegacyDuplicateDatabaseAsync(string database)
+    [Theory]
+    [InlineData("0.8.0", true)]
+    [InlineData("0.8.2", true)]
+    [InlineData("0.9.1", true)]
+    [InlineData("1.0.0", true)]
+    [InlineData("0.7.4", false)]
+    [InlineData("0.5.0", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    [InlineData("not-a-version", false)]
+    [InlineData("0", false)]
+    public void SupportsIterativeScan_GatesOnPgvector08(string? extensionVersion, bool expected)
+    {
+        // hnsw.iterative_scan arrived in pgvector 0.8; issuing the SET against an older
+        // extension errors, so an unreadable version must read as unsupported.
+        Assert.Equal(expected, PgVectorStore.SupportsIterativeScan(extensionVersion));
+    }
+
+    [Fact]
+    public async Task InitializeAsync_DimensionsAboveHnswLimit_SkipsTheIndexInsteadOfFailing()
+    {
+        // pgvector refuses HNSW above 2000 dimensions; text-embedding-3-large is 3072.
+        // Initialization must still succeed — those deployments worked before the index existed.
+        var connectionString = await CreateDatabaseAsync("wide_dimensions");
+
+        using var store = new PgVectorStore(connectionString, vectorDimensions: 3072);
+        await store.InitializeAsync(TestContext.Current.CancellationToken);
+
+        Assert.Null(await ScalarAsync<string>(
+            connectionString,
+            "SELECT indexname FROM pg_indexes WHERE indexname = 'idx_rag_chunks_embedding'"));
+
+        // The unique key is not optional, and is unaffected by the width.
+        Assert.NotNull(await ScalarAsync<string>(
+            connectionString,
+            "SELECT indexname FROM pg_indexes WHERE indexname = 'idx_rag_chunks_doc_chunk'"));
+
+        // And the store is still usable at that width.
+        await store.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk { Text = "wide", DocumentId = new DocumentId("wide-1"), ChunkIndex = 0 },
+                    Embedding = new float[3072],
+                },
+            ],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1L, await ScalarAsync<long>(connectionString, "SELECT count(*) FROM rag_chunks"));
+    }
+
+    [Fact]
+    public async Task SearchAsync_MetadataFilterOverTheHnswIndex_StillReturnsItsMatches()
+    {
+        // pgvector applies the metadata filter AFTER the index has chosen its candidates, and
+        // hnsw.iterative_scan defaults to off — so a selective filter can discard every candidate
+        // and return nothing. The planner only picks the index for this shape at much larger
+        // scales, so the database forces it: the point under test is what happens WHEN the index
+        // is used, not when the planner decides to use it.
+        var connectionString = await CreateDatabaseAsync("hnsw_filter");
+        await ExecuteAsync(_postgres.GetConnectionString(), "ALTER DATABASE hnsw_filter SET enable_seqscan = off");
+
+        using var store = new PgVectorStore(connectionString, vectorDimensions: 3);
+        await store.InitializeAsync(TestContext.Current.CancellationToken);
+
+        // 2,000 rows clustered near the query vector, plus 5 tagged rows deliberately far from
+        // it — far enough that they fall outside the default ef_search = 40 candidate set. The
+        // control assertion below fails loudly if this stops reproducing.
+        await ExecuteAsync(
+            connectionString,
+            """
+            INSERT INTO rag_chunks (document_id, chunk_index, text, metadata, embedding)
+            SELECT 'hay-' || i, 0, 'hay', '{}'::jsonb,
+                   ('[1,' || ((i % 97)::numeric / 4000) || ',' || ((i % 89)::numeric / 4000) || ']')::vector(3)
+            FROM generate_series(1, 2000) i
+            """);
+        await ExecuteAsync(
+            connectionString,
+            """
+            INSERT INTO rag_chunks (document_id, chunk_index, text, metadata, embedding)
+            SELECT 'needle-' || i, 0, 'needle', '{"tag":"needle"}'::jsonb,
+                   ('[1,' || (0.9 + i::numeric / 100) || ',' || (0.9 + i::numeric / 100) || ']')::vector(3)
+            FROM generate_series(1, 5) i
+            """);
+        await ExecuteAsync(connectionString, "ANALYZE rag_chunks");
+
+        // The test is worthless unless the index is genuinely in the plan.
+        var plan = await ExplainAsync(connectionString, FilteredSearchSql);
+        Assert.Contains("Index Scan using idx_rag_chunks_embedding", plan, StringComparison.Ordinal);
+
+        // Control: the same query on a connection without the store's setting truncates to zero.
+        Assert.Equal(0L, await ScalarAsync<long>(connectionString, $"SELECT count(*) FROM ({FilteredSearchSql}) q"));
+
+        var results = await store.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions
+            {
+                TopK = 10,
+                MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["tag"] = "needle" },
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(5, results.Count);
+        Assert.All(results, r => Assert.Equal("needle", r.Chunk.Text));
+    }
+
+    private const string FilteredSearchSql = """
+        SELECT document_id FROM rag_chunks
+        WHERE 1 - (embedding <=> '[1,0,0]') >= 0 AND metadata @> '{"tag":"needle"}'
+        ORDER BY embedding <=> '[1,0,0]' LIMIT 10
+        """;
+
+    [Fact]
+    public async Task InitializeAsync_NonUniqueIndexHoldingTheKeyName_StillRunsTheDuplicateProbe()
+    {
+        // A name-based existence check would see idx_rag_chunks_doc_chunk, skip the probe, and
+        // let CREATE UNIQUE INDEX IF NOT EXISTS quietly do nothing — leaving the store back in
+        // the duplicate-row bug with every StoreAsync failing on 42P10.
+        var connectionString = await CreateLegacyDuplicateDatabaseAsync("impostor_index");
+        await ExecuteAsync(
+            connectionString,
+            "CREATE INDEX idx_rag_chunks_doc_chunk ON rag_chunks (document_id, chunk_index)");
+
+        using var store = new PgVectorStore(connectionString, vectorDimensions: 3);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.InitializeAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("1 duplicate key", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(2L, await ScalarAsync<long>(connectionString, "SELECT count(*) FROM rag_chunks"));
+    }
+
+    [Fact]
+    public async Task StoreAsync_OnATableThatWasNeverInitialized_ThrowsNamingInitializeAsync()
+    {
+        var connectionString = await CreateDatabaseAsync("uninitialized");
+        await CreateLegacySchemaAsync(connectionString);
+
+        using var store = new PgVectorStore(connectionString, vectorDimensions: 3);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.StoreAsync(
+                [
+                    new EmbeddedChunk
+                    {
+                        Chunk = new TextChunk { Text = "t", DocumentId = new DocumentId("d"), ChunkIndex = 0 },
+                        Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+                    },
+                ],
+                TestContext.Current.CancellationToken));
+
+        Assert.Contains("InitializeAsync", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("42P10", ex.Message, StringComparison.Ordinal);
+        Assert.IsType<PostgresException>(ex.InnerException);
+    }
+
+    private async Task<string> CreateDatabaseAsync(string database)
     {
         await ExecuteAsync(_postgres.GetConnectionString(), $"CREATE DATABASE {database}");
-
-        var connectionString = new NpgsqlConnectionStringBuilder(_postgres.GetConnectionString())
+        return new NpgsqlConnectionStringBuilder(_postgres.GetConnectionString())
         {
             Database = database,
         }.ConnectionString;
+    }
 
+    /// <summary>The pre-fix schema: no unique key on (document_id, chunk_index).</summary>
+    private static async Task CreateLegacySchemaAsync(string connectionString)
+    {
         await ExecuteAsync(connectionString, "CREATE EXTENSION IF NOT EXISTS vector");
         await ExecuteAsync(
             connectionString,
@@ -329,6 +488,12 @@ public class PgVectorStoreTests : IAsyncLifetime
                 embedding vector(3) NOT NULL
             )
             """);
+    }
+
+    private async Task<string> CreateLegacyDuplicateDatabaseAsync(string database)
+    {
+        var connectionString = await CreateDatabaseAsync(database);
+        await CreateLegacySchemaAsync(connectionString);
         await ExecuteAsync(
             connectionString,
             """
@@ -338,6 +503,22 @@ public class PgVectorStoreTests : IAsyncLifetime
             """);
 
         return connectionString;
+    }
+
+    private static async Task<string> ExplainAsync(string connectionString, string sql)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
+        await using var cmd = new NpgsqlCommand("EXPLAIN " + sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+
+        var plan = new System.Text.StringBuilder();
+        while (await reader.ReadAsync(TestContext.Current.CancellationToken))
+        {
+            plan.AppendLine(reader.GetString(0));
+        }
+
+        return plan.ToString();
     }
 
     private static async Task ExecuteAsync(string connectionString, string sql)

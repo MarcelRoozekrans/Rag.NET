@@ -9,8 +9,25 @@ namespace Rag.NET.PgVector;
 
 public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable, IDisposable
 {
+    /// <summary>
+    /// pgvector refuses to build an HNSW index on a column wider than this
+    /// ("column cannot have more than 2000 dimensions for hnsw index"). Measured against
+    /// pgvector 0.8.2: 2000 builds, 2001 fails.
+    /// </summary>
+    private const int HnswDimensionLimit = 2000;
+
+    private const int IterativeScanUnknown = -1;
+    private const int IterativeScanUnsupported = 0;
+    private const int IterativeScanSupported = 1;
+
     private readonly NpgsqlDataSource _dataSource;
     private readonly int _vectorDimensions;
+
+    /// <summary>
+    /// Cached answer to "does this server's pgvector understand <c>hnsw.iterative_scan</c>?"
+    /// Resolved on the first search and reused; a race just re-reads the same answer.
+    /// </summary>
+    private int _iterativeScanSupport = IterativeScanUnknown;
 
     public PgVectorStore(string connectionString, int vectorDimensions = 1536)
     {
@@ -36,14 +53,29 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
     /// <c>embedding</c> (<c>vector_cosine_ops</c>, matching the <c>&lt;=&gt;</c> operator
     /// <see cref="SearchAsync"/> orders by). HNSW is an <i>approximate</i> nearest-neighbour
     /// index: results may differ from the exact sequential scan returned by versions that built
-    /// no ANN index. Recall is tunable through the <c>hnsw.ef_search</c> setting and is not 100%
-    /// by default.
+    /// no ANN index. The control that matters is <c>hnsw.iterative_scan</c>, which
+    /// <see cref="SearchAsync"/> sets — see its documentation; raising <c>hnsw.ef_search</c> does
+    /// <i>not</i> compensate for a filtered query truncating (measured: at
+    /// <c>ef_search = 1000</c> a filtered search over 20,000 rows still returned 0 of its 5
+    /// matches).
     /// </para>
     /// <para>
-    /// <b>This method can be long-running.</b> Building the HNSW index over a large existing
-    /// table is slow and memory-hungry, and it happens inline here — callers that treat
-    /// initialization as a quick startup step should budget for it on the first run after
-    /// upgrading.
+    /// <b>The index is skipped above <see cref="HnswDimensionLimit"/> dimensions.</b> pgvector
+    /// cannot build HNSW on a wider column, and <c>text-embedding-3-large</c> (3072) is over the
+    /// line. Rather than failing initialization for those models, this method leaves the index
+    /// out and dense search stays an exact sequential scan — the behaviour such deployments
+    /// already had. To get an index at those widths, store <c>halfvec</c> or reduce the embedding
+    /// dimension at the provider.
+    /// </para>
+    /// <para>
+    /// <b>This method can be long-running, and it blocks writers.</b> Building the HNSW index
+    /// over a large existing table is slow and memory-hungry, and it happens inline here —
+    /// callers that treat initialization as a quick startup step should budget for it on the
+    /// first run after upgrading. <c>CREATE INDEX</c> takes a <c>ShareLock</c> on the table:
+    /// concurrent <i>writes</i> block until it finishes, reads are unaffected.
+    /// <c>CREATE INDEX CONCURRENTLY</c> is deliberately not used — it cannot run inside a
+    /// transaction, and a failed run leaves an <c>INVALID</c> index that
+    /// <c>IF NOT EXISTS</c> would then skip forever.
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">
@@ -69,10 +101,9 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
             await EnsureChunkKeyIndexAsync(conn, "rag_chunks", "idx_rag_chunks_doc_chunk", cancellationToken)
                 .ConfigureAwait(false);
 
-            await ExecuteNonQueryAsync(
-                conn,
-                HnswIndexSql("rag_chunks", "idx_rag_chunks_embedding"),
-                cancellationToken).ConfigureAwait(false);
+            await EnsureHnswIndexAsync(
+                conn, "rag_chunks", "idx_rag_chunks_embedding", _vectorDimensions, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -98,6 +129,11 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
     /// Inserts the chunks, replacing any chunk already stored under the same
     /// <c>(document_id, chunk_index)</c> rather than duplicating it.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The table has no unique index on <c>(document_id, chunk_index)</c>, so the upsert has
+    /// nothing to conflict on — almost always because <see cref="InitializeAsync"/> was never
+    /// called against it.
+    /// </exception>
     public async Task StoreAsync(
         IReadOnlyList<EmbeddedChunk> chunks,
         CancellationToken cancellationToken = default)
@@ -105,24 +141,65 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
         {
-            foreach (var chunk in chunks)
+            try
             {
-                var cmd = new NpgsqlCommand(StoreChunkSql, conn);
-                await using (cmd.ConfigureAwait(false))
+                foreach (var chunk in chunks)
                 {
-                    cmd.Parameters.AddWithValue((string)chunk.Chunk.DocumentId);
-                    cmd.Parameters.Add(new NpgsqlParameter<int> { TypedValue = chunk.Chunk.ChunkIndex });
-                    cmd.Parameters.AddWithValue(chunk.Chunk.Text);
-                    cmd.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Jsonb,
-                        MetadataSerializer.SerializeMetadata(chunk.Chunk.Metadata));
-                    cmd.Parameters.AddWithValue(new Vector(chunk.Embedding.ToArray()));
+                    var cmd = new NpgsqlCommand(StoreChunkSql, conn);
+                    await using (cmd.ConfigureAwait(false))
+                    {
+                        cmd.Parameters.AddWithValue((string)chunk.Chunk.DocumentId);
+                        cmd.Parameters.Add(new NpgsqlParameter<int> { TypedValue = chunk.Chunk.ChunkIndex });
+                        cmd.Parameters.AddWithValue(chunk.Chunk.Text);
+                        cmd.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Jsonb,
+                            MetadataSerializer.SerializeMetadata(chunk.Chunk.Metadata));
+                        cmd.Parameters.AddWithValue(new Vector(chunk.Embedding.ToArray()));
 
-                    await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                    }
                 }
+            }
+            catch (PostgresException ex)
+                when (string.Equals(ex.SqlState, PostgresErrorCodes.InvalidColumnReference, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "PgVectorStore.StoreAsync upserts on (document_id, chunk_index), but table rag_chunks has no " +
+                    "unique index on exactly those columns, so PostgreSQL rejected the ON CONFLICT clause " +
+                    $"(SQLSTATE {PostgresErrorCodes.InvalidColumnReference}). Call InitializeAsync() on this store " +
+                    "before storing — it creates the key — or create it by hand:\n\n" +
+                    "CREATE UNIQUE INDEX idx_rag_chunks_doc_chunk ON rag_chunks (document_id, chunk_index)",
+                    ex);
             }
         }
     }
 
+    /// <summary>
+    /// Returns the chunks nearest <paramref name="queryEmbedding"/> by cosine similarity.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// When the HNSW index exists the scan is <b>approximate</b>, and both
+    /// <see cref="SearchOptions.MinScore"/> and <see cref="SearchOptions.MetadataFilter"/> are
+    /// applied <i>after</i> the index has picked its candidates. With pgvector's default
+    /// <c>hnsw.iterative_scan = off</c> a selective filter can therefore discard every candidate
+    /// and the search returns <b>nothing</b> even though matching rows exist — measured: 20,000
+    /// rows, 5 matching the filter, index scan, 0 returned. This method sets
+    /// <c>hnsw.iterative_scan = relaxed_order</c> for the query, which makes pgvector keep
+    /// scanning until it has enough surviving rows (all 5 in that same measurement). Raising
+    /// <c>hnsw.ef_search</c> does not fix it — at 1000 the same query still returned 0.
+    /// </para>
+    /// <para>
+    /// Even with iterative scanning a filtered search may return <b>fewer than</b>
+    /// <see cref="SearchOptions.TopK"/> results: pgvector stops at <c>hnsw.max_scan_tuples</c>
+    /// (20,000 by default) rather than degrading into a full scan.
+    /// </para>
+    /// <para>
+    /// <c>hnsw.iterative_scan</c> arrived in pgvector 0.8. Against an older extension the setting
+    /// is not issued at all (the store reads <c>pg_extension.extversion</c> once and caches the
+    /// answer), so on 0.7 and below a filtered search over an HNSW index keeps the truncating
+    /// behaviour described above — upgrading pgvector is the only fix.
+    /// </para>
+    /// </remarks>
     public async Task<IReadOnlyList<SearchResult>> SearchAsync(
         ReadOnlyMemory<float> queryEmbedding,
         SearchOptions options,
@@ -131,53 +208,131 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
         {
+            await ApplyIterativeScanAsync(conn, cancellationToken).ConfigureAwait(false);
+
             var hasFilter = options.MetadataFilter is { Count: > 0 };
-
-            var sql = """
-                SELECT document_id, chunk_index, text, metadata,
-                       1 - (embedding <=> $1) AS score
-                FROM rag_chunks
-                WHERE 1 - (embedding <=> $1) >= $2
-                """;
-
-            if (hasFilter)
-            {
-                sql += "\n  AND metadata @> $4::jsonb";
-            }
-
-            sql += "\nORDER BY embedding <=> $1\nLIMIT $3";
-
-            var cmd = new NpgsqlCommand(sql, conn);
+            var cmd = new NpgsqlCommand(SearchSql(hasFilter), conn);
             await using (cmd.ConfigureAwait(false))
             {
-                cmd.Parameters.AddWithValue(new Vector(queryEmbedding.ToArray()));
-                cmd.Parameters.AddWithValue(options.MinScore);
-                cmd.Parameters.AddWithValue(options.TopK);
-
-                if (hasFilter)
-                {
-                    cmd.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Jsonb,
-                        MetadataSerializer.SerializeMetadata(options.MetadataFilter!));
-                }
-
-                var results = new List<SearchResult>();
-
-                var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-                await using (reader.ConfigureAwait(false))
-                {
-                    while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    {
-                        results.Add(new SearchResult
-                        {
-                            Chunk = ReadChunk(reader),
-                            Score = reader.GetDouble(4),
-                        });
-                    }
-                }
-
-                return results;
+                AddSearchParameters(cmd, queryEmbedding, options, hasFilter);
+                return await ReadSearchResultsAsync(cmd, cancellationToken).ConfigureAwait(false);
             }
         }
+    }
+
+    private static string SearchSql(bool hasFilter)
+    {
+        var sql = """
+            SELECT document_id, chunk_index, text, metadata,
+                   1 - (embedding <=> $1) AS score
+            FROM rag_chunks
+            WHERE 1 - (embedding <=> $1) >= $2
+            """;
+
+        if (hasFilter)
+        {
+            sql += "\n  AND metadata @> $4::jsonb";
+        }
+
+        return sql + "\nORDER BY embedding <=> $1\nLIMIT $3";
+    }
+
+    // Positional parameters are bound in Add order ($1 embedding, $2 MinScore, $3 TopK,
+    // $4 filter). A mismatch here is silent, so this stays in one place.
+    private static void AddSearchParameters(
+        NpgsqlCommand cmd,
+        ReadOnlyMemory<float> queryEmbedding,
+        SearchOptions options,
+        bool hasFilter)
+    {
+        cmd.Parameters.AddWithValue(new Vector(queryEmbedding.ToArray()));
+        cmd.Parameters.AddWithValue(options.MinScore);
+        cmd.Parameters.AddWithValue(options.TopK);
+
+        if (hasFilter)
+        {
+            cmd.Parameters.AddWithValue(NpgsqlTypes.NpgsqlDbType.Jsonb,
+                MetadataSerializer.SerializeMetadata(options.MetadataFilter!));
+        }
+    }
+
+    private static async Task<IReadOnlyList<SearchResult>> ReadSearchResultsAsync(
+        NpgsqlCommand cmd,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<SearchResult>();
+
+        var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        await using (reader.ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                results.Add(new SearchResult
+                {
+                    Chunk = ReadChunk(reader),
+                    Score = reader.GetDouble(4),
+                });
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Turns on iterative index scanning for this connection, so a post-index filter cannot
+    /// truncate the result set to nothing. No-op when there is no HNSW index to iterate (the
+    /// dimension is over <see cref="HnswDimensionLimit"/>) or when pgvector predates 0.8.
+    /// </summary>
+    private async Task ApplyIterativeScanAsync(NpgsqlConnection conn, CancellationToken cancellationToken)
+    {
+        if (_vectorDimensions > HnswDimensionLimit)
+            return;
+
+        if (!await SupportsIterativeScanAsync(conn, cancellationToken).ConfigureAwait(false))
+            return;
+
+        await ExecuteNonQueryAsync(conn, "SET hnsw.iterative_scan = relaxed_order", cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<bool> SupportsIterativeScanAsync(NpgsqlConnection conn, CancellationToken cancellationToken)
+    {
+        var cached = Volatile.Read(ref _iterativeScanSupport);
+        if (cached != IterativeScanUnknown)
+            return cached == IterativeScanSupported;
+
+        var cmd = new NpgsqlCommand("SELECT extversion FROM pg_extension WHERE extname = 'vector'", conn);
+        await using (cmd.ConfigureAwait(false))
+        {
+            var result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            var supported = SupportsIterativeScan(result as string);
+            Volatile.Write(
+                ref _iterativeScanSupport,
+                supported ? IterativeScanSupported : IterativeScanUnsupported);
+            return supported;
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="extensionVersion"/> is a pgvector version that defines
+    /// <c>hnsw.iterative_scan</c> (0.8.0 and above). An unreadable or absent version is treated
+    /// as unsupported: issuing the <c>SET</c> against an older extension errors, and losing
+    /// iterative scanning is far cheaper than failing every search.
+    /// </summary>
+    internal static bool SupportsIterativeScan(string? extensionVersion)
+    {
+        if (string.IsNullOrWhiteSpace(extensionVersion))
+            return false;
+
+        var parts = extensionVersion.Split('.');
+        if (parts.Length < 2
+            || !int.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out var major)
+            || !int.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var minor))
+        {
+            return false;
+        }
+
+        return major > 0 || minor >= 8;
     }
 
     public async Task DeleteByDocumentIdAsync(
@@ -233,10 +388,9 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
             await EnsureChunkKeyIndexAsync(conn, quotedName, $"idx_{name}_doc_chunk", cancellationToken)
                 .ConfigureAwait(false);
 
-            await ExecuteNonQueryAsync(
-                conn,
-                HnswIndexSql(quotedName, $"idx_{name}_embedding"),
-                cancellationToken).ConfigureAwait(false);
+            await EnsureHnswIndexAsync(
+                conn, quotedName, $"idx_{name}_embedding", vectorDimensions, cancellationToken)
+                .ConfigureAwait(false);
         }
     }
 
@@ -259,23 +413,35 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
     /// Rejects collection names too long to derive index names from.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <see cref="ValidateAndQuoteIdentifier"/> allows the full 63 characters PostgreSQL permits
-    /// for a table name, but this store derives index names by decorating it
-    /// (<c>idx_{name}_doc_chunk</c> and friends), and PostgreSQL <i>silently truncates</i> an
-    /// over-long identifier instead of failing. Two collections whose names differ only past the
-    /// truncation point would therefore share one index name, and the second
-    /// <c>CREATE UNIQUE INDEX IF NOT EXISTS</c> would be a no-op — leaving that collection with
-    /// no <c>(document_id, chunk_index)</c> key and silently back in the duplicate-row bug. A
-    /// loud rejection at creation time is the safe reading of that.
+    /// for a table name, but this store derives <b>three</b> index names from it by decorating
+    /// it — <c>idx_{name}_document_id</c>, <c>idx_{name}_doc_chunk</c> and
+    /// <c>idx_{name}_embedding</c> — and PostgreSQL <i>silently truncates</i> an over-long
+    /// identifier rather than failing.
+    /// </para>
+    /// <para>
+    /// The dangerous case is a <b>single</b> collection, not two colliding ones. Two names
+    /// differing at, say, character 55 still produce distinct truncations and are fine. But one
+    /// name of 60 characters truncates all three of its own derived names to the same 63 bytes:
+    /// the btree is created first and takes the name, then
+    /// <c>CREATE UNIQUE INDEX IF NOT EXISTS</c> sees a relation already holding it and does
+    /// nothing, and so does the HNSW <c>CREATE INDEX IF NOT EXISTS</c>. That one collection ends
+    /// up with no unique key (silently back in the duplicate-row bug this store exists to
+    /// prevent) and no ANN index — and because the existence probe resolves by name, it reports
+    /// the key as present. A loud rejection at creation time is the only safe reading.
+    /// </para>
     /// </remarks>
     private static void ValidateCollectionNameLength(string name)
     {
         if (name.Length > MaxCollectionNameLength)
             throw new ArgumentException(
                 $"Collection name '{name}' is {name.Length} characters; the maximum is {MaxCollectionNameLength}. " +
-                $"Index names are derived from it (for example 'idx_{name}_document_id'), and PostgreSQL silently " +
-                $"truncates identifiers at {MaxIdentifierLength} bytes, which would let two collections collide on " +
-                "one index name and leave one of them without its unique (document_id, chunk_index) key.",
+                "Three index names are derived from it — " +
+                $"'idx_{name}_document_id', 'idx_{name}_doc_chunk' and 'idx_{name}_embedding' — and PostgreSQL " +
+                $"silently truncates identifiers at {MaxIdentifierLength} bytes. At this length they collapse onto " +
+                "the same name, so only the first index would be created and the collection would silently end up " +
+                "with no unique (document_id, chunk_index) key.",
                 nameof(name));
     }
 
@@ -290,10 +456,32 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
         )
         """;
 
-    // vector_cosine_ops matches the <=> operator SearchAsync orders by. m / ef_construction are
-    // left at pgvector's defaults; tuning them is out of scope.
-    private static string HnswIndexSql(string tableSql, string indexName) =>
-        $"CREATE INDEX IF NOT EXISTS \"{indexName}\" ON {tableSql} USING hnsw (embedding vector_cosine_ops)";
+    /// <summary>
+    /// Builds the dense ANN index, or skips it when the column is too wide for HNSW.
+    /// </summary>
+    /// <remarks>
+    /// Skipping rather than throwing is deliberate: <c>text-embedding-3-large</c> is 3072
+    /// dimensions, such deployments worked before this index existed (as an exact sequential
+    /// scan), and failing their startup to announce a missing optimisation would be a
+    /// regression. <c>vector_cosine_ops</c> matches the <c>&lt;=&gt;</c> operator
+    /// <see cref="SearchAsync"/> orders by; <c>m</c> / <c>ef_construction</c> are left at
+    /// pgvector's defaults, since tuning them is out of scope.
+    /// </remarks>
+    private static async Task EnsureHnswIndexAsync(
+        NpgsqlConnection conn,
+        string tableSql,
+        string indexName,
+        int vectorDimensions,
+        CancellationToken cancellationToken)
+    {
+        if (vectorDimensions > HnswDimensionLimit)
+            return;
+
+        await ExecuteNonQueryAsync(
+            conn,
+            $"CREATE INDEX IF NOT EXISTS \"{indexName}\" ON {tableSql} USING hnsw (embedding vector_cosine_ops)",
+            cancellationToken).ConfigureAwait(false);
+    }
 
     private static string DuplicateChunkKeyQuery(string tableSql) => $"""
         SELECT count(*) FROM (
@@ -323,9 +511,20 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
     /// touching a single row — when the table already holds duplicate keys.
     /// </summary>
     /// <remarks>
-    /// The probe is skipped once the index exists, so the aggregate scan is paid only on the
-    /// migrating run rather than on every startup. Rows are never deleted to force the migration
-    /// through: that would be silent data loss on a path the caller did not ask to migrate.
+    /// <para>
+    /// The duplicate probe runs whenever a <i>correct</i> key is absent, and is skipped once one
+    /// exists — so the aggregate scan is paid on the migrating run rather than on every startup.
+    /// Rows are never deleted to force the migration through: that would be silent data loss on
+    /// a path the caller did not ask to migrate.
+    /// </para>
+    /// <para>
+    /// "Correct" is checked against <c>pg_index</c> — unique, valid, non-partial, and keyed on
+    /// exactly <c>(document_id, chunk_index)</c> — not by looking up the index <i>name</i>. A
+    /// name lookup would accept any relation that happened to hold the name (an ordinary btree,
+    /// say), skip the duplicate probe, and then let <c>CREATE UNIQUE INDEX IF NOT EXISTS</c> do
+    /// nothing at all, leaving the store back in the duplicate-row bug with
+    /// <see cref="StoreAsync"/> failing on every call.
+    /// </para>
     /// </remarks>
     private static async Task EnsureChunkKeyIndexAsync(
         NpgsqlConnection conn,
@@ -333,19 +532,26 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
         string indexName,
         CancellationToken cancellationToken)
     {
-        if (!await IndexExistsAsync(conn, indexName, cancellationToken).ConfigureAwait(false))
-        {
-            var duplicateKeys = await CountDuplicateChunkKeysAsync(conn, tableSql, cancellationToken)
-                .ConfigureAwait(false);
+        if (await UniqueChunkKeyIndexExistsAsync(conn, tableSql, cancellationToken).ConfigureAwait(false))
+            return;
 
-            if (duplicateKeys > 0)
-                throw new InvalidOperationException(
-                    $"Cannot key {tableSql} by (document_id, chunk_index): the table already contains " +
-                    $"{duplicateKeys} duplicate key(s) — rows written before this store enforced the key. " +
-                    "No rows were deleted; the database is unchanged. Inspect them with:\n\n" +
-                    DuplicateChunkKeyQuery(tableSql) + "\n\n" +
-                    "Decide which row of each pair to keep, remove the rest, then initialize again.");
-        }
+        var duplicateKeys = await CountDuplicateChunkKeysAsync(conn, tableSql, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (duplicateKeys > 0)
+            throw new InvalidOperationException(
+                $"Cannot key {tableSql} by (document_id, chunk_index): the table already contains " +
+                $"{duplicateKeys} duplicate key(s) — rows written before this store enforced the key. " +
+                "No rows were deleted; the database is unchanged. Inspect them with:\n\n" +
+                DuplicateChunkKeyQuery(tableSql) + "\n\n" +
+                "Decide which row of each pair to keep, remove the rest, then initialize again.");
+
+        if (await RelationExistsAsync(conn, indexName, cancellationToken).ConfigureAwait(false))
+            throw new InvalidOperationException(
+                $"Cannot key {tableSql} by (document_id, chunk_index): a relation named '{indexName}' already " +
+                "exists but is not a unique index on exactly those columns. CREATE UNIQUE INDEX IF NOT EXISTS " +
+                "would silently do nothing and every StoreAsync call would then fail with SQLSTATE " +
+                $"{PostgresErrorCodes.InvalidColumnReference}. Drop or rename it, then initialize again.");
 
         await ExecuteNonQueryAsync(
             conn,
@@ -353,15 +559,50 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task<bool> IndexExistsAsync(
+    /// <summary>
+    /// True when the table carries a unique, valid, non-partial index keyed on exactly
+    /// <c>(document_id, chunk_index)</c> — that is, one <c>ON CONFLICT</c> can infer.
+    /// </summary>
+    private static async Task<bool> UniqueChunkKeyIndexExistsAsync(
         NpgsqlConnection conn,
-        string indexName,
+        string tableSql,
+        CancellationToken cancellationToken)
+    {
+        var cmd = new NpgsqlCommand(
+            """
+            SELECT EXISTS (
+                SELECT 1 FROM pg_index i
+                WHERE i.indrelid = to_regclass($1)
+                  AND i.indisunique
+                  AND i.indisvalid
+                  AND i.indpred IS NULL
+                  AND i.indexprs IS NULL
+                  AND i.indnkeyatts = 2
+                  AND i.indkey[0] = (SELECT a.attnum FROM pg_attribute a
+                                     WHERE a.attrelid = i.indrelid AND a.attname = 'document_id'
+                                       AND NOT a.attisdropped)
+                  AND i.indkey[1] = (SELECT a.attnum FROM pg_attribute a
+                                     WHERE a.attrelid = i.indrelid AND a.attname = 'chunk_index'
+                                       AND NOT a.attisdropped)
+            )
+            """, conn);
+        await using (cmd.ConfigureAwait(false))
+        {
+            cmd.Parameters.AddWithValue(tableSql);
+            var result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            return result is true;
+        }
+    }
+
+    private static async Task<bool> RelationExistsAsync(
+        NpgsqlConnection conn,
+        string relationName,
         CancellationToken cancellationToken)
     {
         var cmd = new NpgsqlCommand("SELECT to_regclass($1) IS NOT NULL", conn);
         await using (cmd.ConfigureAwait(false))
         {
-            cmd.Parameters.AddWithValue(indexName);
+            cmd.Parameters.AddWithValue(relationName);
             var result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             return result is true;
         }
