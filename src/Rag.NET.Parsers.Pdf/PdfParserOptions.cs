@@ -13,13 +13,28 @@ public sealed class PdfParserOptions
     public int MinTableColumns { get; set; } = 2;
 
     /// <summary>
-    /// Run OCR over a page's embedded images when its extracted text is shorter than
-    /// <see cref="OcrMinCharacters"/>. Requires the package to be compiled with
-    /// <c>&lt;EnableOcr&gt;true&lt;/EnableOcr&gt;</c>. Default false.
+    /// Run the per-image <b>Tesseract</b> fallback over a page's embedded images when its
+    /// extracted text is shorter than <see cref="OcrMinCharacters"/>. Default false.
+    /// <para>
+    /// This is the Tesseract switch specifically, and it still requires the package to be
+    /// compiled with <c>&lt;EnableOcr&gt;true&lt;/EnableOcr&gt;</c> — the gate exists for
+    /// Tesseract's native binaries and out-of-band traineddata.
+    /// </para>
+    /// <para>
+    /// The document-level path ignores this flag entirely: registering an
+    /// <see cref="Ocr.IDocumentOcrEngine"/> is its own opt-in, needs no compile gate, and
+    /// setting both is a registration-time error rather than a silent precedence rule. The
+    /// Tesseract-only settings below (<see cref="TessDataPath"/>, <see cref="OcrLanguage"/>)
+    /// are likewise only validated when this flag is set.
+    /// </para>
     /// </summary>
     public bool UseOcrFallback { get; set; } = false;
 
-    /// <summary>Per-page extracted-text length below which the OCR fallback triggers.</summary>
+    /// <summary>
+    /// Per-page extracted-text length below which OCR triggers. Shared by both engines: it
+    /// selects the pages Tesseract recognizes, and it decides whether a document-level engine
+    /// is called at all.
+    /// </summary>
     public int OcrMinCharacters { get; set; } = 50;
 
     /// <summary>

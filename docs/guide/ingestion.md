@@ -133,7 +133,7 @@ Parsers implement `IDocumentParser`. The pipeline selects the first registered p
 
 | Content type | Package | Notes |
 |-------------|---------|-------|
-| `application/pdf` | `Rag.NET.Parsers.Pdf` | Table extraction (default on) + compile-gated OCR fallback — see [below](#pdf-table-extraction-and-ocr) |
+| `application/pdf` | `Rag.NET.Parsers.Pdf` | Table extraction (default on) + OCR for scanned pages via Tesseract or Azure Document Intelligence — see [below](#pdf-table-extraction-and-ocr) |
 | `text/html` | `Rag.NET.Parsers.Html` | Heading-aware (AngleSharp) |
 | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | `Rag.NET.Parsers.Word` | OpenXml |
 | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | `Rag.NET.Parsers.Excel` | OpenXml |
@@ -170,10 +170,11 @@ services.AddRagNet(rag => rag
         options.ExtractTables = true;    // default
         options.MinTableRows = 3;        // default
         options.MinTableColumns = 2;     // default
-        options.UseOcrFallback = false;  // default; requires <EnableOcr>true</EnableOcr>
-        options.OcrMinCharacters = 50;   // default
-        options.TessDataPath = "./tessdata"; // default
-        options.OcrLanguage = "eng";     // default
+        options.OcrMinCharacters = 50;   // default; the OCR trigger, shared by both engines
+        options.MaxOcrPages = 200;       // default; document-level (paid) OCR engines only
+        options.UseOcrFallback = false;  // default; the Tesseract switch, requires <EnableOcr>true</EnableOcr>
+        options.TessDataPath = "./tessdata"; // default; Tesseract only
+        options.OcrLanguage = "eng";     // default; Tesseract only
     }));
 ```
 
@@ -210,18 +211,41 @@ parses as prose, exactly the old behavior — over a false-positive table):
 - Any extractor failure logs a warning and the page parses as plain text (degraded, never
   broken).
 
-#### OCR fallback for scanned PDFs
+#### OCR for scanned PDFs
 
-Scanned pages are full-page images with no text layer. When `UseOcrFallback` is enabled and a
-page's extracted text is shorter than `OcrMinCharacters`, the parser extracts the page's
-embedded images (largest display area first) and runs Tesseract OCR over each until one
-yields text, emitted as a `DocumentSection` with `Heading = "ocr"` and `PageNumber` set.
-When OCR succeeds, its output replaces any sub-threshold extracted text for that page. If
-the page has no embedded images, OCR finds no text, or the engine fails, the parser logs a
-warning and falls back to the plain-text path — short-but-real extracted text is preserved,
-and genuinely empty pages emit nothing (today's empty-page behavior).
+Scanned pages are full-page images with no text layer, so PdfPig extracts little or nothing
+from them. The parser can route those pages through an OCR engine, and there are **two**, with
+different shapes, costs and limitations:
 
-OCR is **off by default** and compile-gated (the same pattern as `Rag.NET.Parsers.Vision`):
+| | Tesseract | Azure Document Intelligence |
+|---|---|---|
+| Package | `Rag.NET.Parsers.Pdf` | `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` |
+| Unit of work | One embedded image at a time | The whole PDF — one call per document |
+| Runs | In process, local native library | Azure cloud service |
+| Compile gate | `<EnableOcr>true</EnableOcr>` required | **None** |
+| Opt-in | `UseOcrFallback = true` | Registering the engine |
+| Cost | Free | Paid, **per page of the submitted document** |
+| Concurrency | Serialized (Tesseract is not thread-safe) | Unserialized — it is a network client |
+
+Configuring **both** is a registration-time error rather than a silent precedence rule:
+`UseOcrFallback = true` combined with a document-level engine throws an
+`InvalidOperationException` from whichever registration call comes second.
+
+The trigger and the output shape are the same either way. When a page's extracted text is
+shorter than `OcrMinCharacters` (default 50), recognized text replaces it and is emitted as a
+`DocumentSection` with `Heading = "ocr"` and `PageNumber` set; pages PdfPig read successfully
+keep PdfPig's text, which is exact. Every degraded case is **lossless**: no recognized text, an
+engine failure, or a skipped call logs a warning and leaves the page exactly as it would be
+with no engine configured — short-but-real extracted text is never lost by enabling OCR, and
+genuinely empty pages still emit nothing.
+
+#### Tesseract: the per-image fallback
+
+When `UseOcrFallback` is enabled and a page falls below `OcrMinCharacters`, the parser extracts
+that page's embedded images (largest display area first) and runs Tesseract over each until one
+yields text.
+
+Tesseract is **off by default** and compile-gated (the same pattern as `Rag.NET.Parsers.Vision`):
 
 1. Add `<EnableOcr>true</EnableOcr>` to your project file — this defines `ENABLE_OCR` and
    pulls in the `Tesseract` package for `Rag.NET.Parsers.Pdf`.
@@ -234,16 +258,140 @@ Enabling `UseOcrFallback` without compiling the gate throws an instructive
 `InvalidOperationException` at parser construction — misconfiguration fails fast, not at the
 first scanned page.
 
-Limitations:
+#### Azure Document Intelligence: the whole-document engine
 
-- Only **embedded images** are OCR-ed. Vector-only scanned pages (no embedded images) cannot
-  be OCR-ed without a PDF rasterizer and degrade to the plain-text path with a warning.
+```bash
+dotnet add package Rag.NET.Parsers.Pdf.AzureDocumentIntelligence
+```
+
+```csharp
+using Azure;
+using Rag.NET.Parsers.Pdf.AzureDocumentIntelligence;
+
+services.AddRagNet(rag => rag
+    .AddPdfParser()
+    .UseAzureDocumentIntelligenceOcr(
+        new Uri("https://my-resource.cognitiveservices.azure.com/"),
+        new AzureKeyCredential(key),
+        o =>
+        {
+            o.ModelId = "prebuilt-read";                 // default
+            o.PricePerPage = 0.0015m;                    // default — indicative only, see below
+            o.PollingInterval = TimeSpan.FromSeconds(1); // default
+            o.Locale = null;                             // default: let the service detect
+        }));
+```
+
+The endpoint is a `Uri`; the credential is either an `AzureKeyCredential` or a
+`TokenCredential` (managed identity / OAuth) — there is an overload for each.
+
+**No `<EnableOcr>` compile gate applies**, and `UseOcrFallback` stays `false`. That gate exists
+for Tesseract's native binaries and out-of-band traineddata; a managed REST client has neither,
+and reusing it would force an Azure-only consumer to pull Tesseract's native payload.
+Registering the engine *is* the opt-in — the parser routes sub-threshold pages through it
+without any options change.
+
+The service is called **at most once per document**, the moment the first sub-threshold page
+appears — never once per page, and never at all for a PDF PdfPig reads in full. It receives the
+PDF itself, rasterizes server-side, and returns every page from a single long-running
+operation. `PollingInterval` governs how often that operation is polled when the service sends
+no `Retry-After`; a `Retry-After` always wins.
+
+Configuration is validated at **registration** (`ModelId` non-empty, `PricePerPage` and
+`PollingInterval` non-negative), so a bad value throws from the `UseAzureDocumentIntelligenceOcr`
+call rather than out of a DI factory during the first parse.
+
+Service failures are not fatal: the parser logs a warning and falls back to PdfPig's own
+extraction. Cancellation is not a failure and propagates.
+
+#### What Azure OCR costs
+
+- **Every page of the submitted document is billed, not just the pages that needed OCR.** A
+  500-page PDF containing one scanned page costs 500 pages. Extracting only the pages that need
+  it would mean *writing* PDFs, a dependency this repo does not have.
+- **`MaxOcrPages` (default 200) is what bounds that exposure.** A document with more pages than
+  the cap skips OCR entirely: the parser logs a warning naming both numbers and emits PdfPig's
+  text exactly as it would with no engine configured — lossless, not silent. The default is a
+  tenth of Azure Document Intelligence's verified 2,000-page per-document service limit, and
+  generous enough that the documents people actually ingest (reports, papers, contracts, slide
+  exports) are never quietly downgraded. Raise it deliberately, with the per-page price in
+  view. It has no effect on the Tesseract path, which runs locally and free.
+- **`PricePerPage` defaults to `0.0015`** — the widely published pay-as-you-go rate for the
+  `prebuilt-read` model (USD 1.50 per 1,000 pages) at the time of writing. **That default is
+  indicative, not authoritative.** Azure pricing varies by tier, region, model and commitment,
+  and changes without this library changing; set it from your own price sheet. It is used only
+  to compute what is written to the cost ledger — the service bills whatever it bills.
+- `prebuilt-read` is the default model because the parser wants page text; the richer prebuilt
+  models cost more per page for structure this package deliberately discards.
+
+#### Memory: budget for roughly twice the document
+
+Two costs that compound, both specific to the document-level path:
+
+- **Registering a document engine turns the parser from streaming into whole-file-resident.**
+  PdfPig consumes its stream lazily throughout `GetPages()`, so the PDF is buffered in full up
+  front to give PdfPig and the engine each their own view of it. This happens for **every** PDF
+  on that path, not only the ones that turn out to need OCR — you cannot know which those are
+  before parsing. Large files land on the large object heap, multiplied by however many
+  documents ingest in parallel.
+- **During an OCR call the PDF is buffered a second time**, because the SDK's
+  `AnalyzeDocumentOptions` accepts `BinaryData` rather than a `Stream`. Peak resident bytes are
+  therefore roughly **2× the document size** per concurrent OCR call. That is forced by the
+  SDK's surface, not a defect here.
+
+Size the host accordingly, or keep the engine off the parser that handles your largest inputs.
+
+#### OCR spend, the cost ledger and your budget
+
+When an `ICostLedger` is registered, the Azure engine records each OCR call to it as a
+`CostKind.Ocr` entry carrying `Pages` and **zero tokens** — no token count is fabricated for an
+API that never reports one. `Cost` is billed pages × `PricePerPage`, computed by the engine
+because the ledger prices nothing itself. With no ledger registered, recording is a silent
+no-op rather than an error, and a ledger *write* failure is logged and swallowed: the OCR result
+was already paid for.
+
+Two consequences to know before enabling it:
+
+- **OCR spend counts toward the same budget window `UseCostBudgeting` enforces for chat and
+  embedding calls**, so enabling OCR can cause *those* gates to trip. See
+  [cost budgeting](resilience.md#cost-budgeting).
+- **OCR emits no `ragnet.llm.cost` / `ragnet.llm.tokens` telemetry.** The type that publishes
+  those meters (`CostAccounting`) is internal to `Rag.NET` and unreachable from the Azure
+  package. Dashboards built on those meters therefore **under-report total spend by exactly the
+  OCR portion** — query the ledger for the complete picture. This is a known limitation, not an
+  oversight.
+
+#### OCR limitations, by engine
+
+**Tesseract only** — none of these applies to the Azure path:
+
+- Only **embedded images** are OCR-ed. Vector-only scanned pages (no embedded images) cannot be
+  OCR-ed without a PDF rasterizer and degrade to the plain-text path with a warning. Azure
+  rasterizes server-side, so vector-only pages are recognized normally.
 - CCITT G4 / JBIG2-compressed scans (common in real scanned PDFs) may not decode via PdfPig's
   PNG re-encoding, and their raw streams are not loadable by Leptonica — such pages also
-  degrade to the plain-text path.
+  degrade to the plain-text path. Azure receives the PDF itself, so its own decoders apply.
 - Tesseract engines are not thread-safe: the parser serializes OCR calls, so scanned-page
-  throughput does not scale with parallel document ingestion.
-- Azure Document Intelligence as an alternative higher-accuracy engine is deferred.
+  throughput does not scale with parallel document ingestion. The document path takes no such
+  lock.
+
+**Azure Document Intelligence only:**
+
+- It is a **paid** API reached from an automatic fallback, billed per submitted page — see
+  [what Azure OCR costs](#what-azure-ocr-costs) and `MaxOcrPages`.
+- Whole-file buffering, twice over during a call — see
+  [memory](#memory-budget-for-roughly-twice-the-document).
+- Recorded spend reaches the budget window but not the `ragnet.llm.*` meters — see
+  [OCR spend](#ocr-spend-the-cost-ledger-and-your-budget).
+- Only **text** is used. Tables, key/value pairs and selection marks the service returns are
+  discarded; the PDF parser has its own table extractor, and merging two table sources is a
+  separate question.
+
+**Both engines:**
+
+- OCR replaces only pages below `OcrMinCharacters`; a page whose extracted text clears the
+  threshold keeps PdfPig's text, which is exact. On the Azure path that page is still submitted
+  and still billed — the whole document goes in one call — but its recognized text is discarded.
 
 ## `DocumentSection`
 
