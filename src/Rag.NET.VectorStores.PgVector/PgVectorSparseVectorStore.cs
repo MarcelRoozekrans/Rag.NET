@@ -206,8 +206,10 @@ public sealed class PgVectorSparseVectorStore : PgVectorStore, ISparseSearchable
                 "read would fail on the dimension mismatch, and the pipeline would swallow both and " +
                 "degrade silently to dense-only. Either construct the store with " +
                 $"sparseVocabularySize: {existingDimension} to match the column, or run " +
-                $"'ALTER TABLE rag_chunks DROP COLUMN {SparseColumn}' and initialize again — which " +
-                "discards every sparse vector already stored (RegenerateSparseAsync can rebuild them).");
+                $"'ALTER TABLE rag_chunks DROP COLUMN {SparseColumn}', initialize again, and re-ingest the " +
+                "affected documents. Dropping the column discards every sparse vector already stored, and " +
+                "re-ingestion is what recomputes them — ReindexStaleAsync will not, because it only visits " +
+                "documents whose embedding model or dimension changed and dropping the column changes neither.");
         }
     }
 

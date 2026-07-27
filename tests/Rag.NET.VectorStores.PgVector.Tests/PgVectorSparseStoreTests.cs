@@ -184,6 +184,13 @@ public class PgVectorSparseStoreTests : IAsyncLifetime
         Assert.Contains($"sparseVocabularySize: {VocabularySize}", ex.Message, StringComparison.Ordinal);
         Assert.Contains("DROP COLUMN sparse_embedding", ex.Message, StringComparison.Ordinal);
 
+        // Re-ingestion, NOT ReindexStaleAsync: that walks the embedding version store and skips
+        // every document whose model and dimension still match, so dropping the sparse column
+        // makes nothing stale and it would regenerate nothing. Directing the user at a call that
+        // silently does nothing is the exact failure mode this store keeps designing out.
+        Assert.Contains("re-ingest", ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("RegenerateSparseAsync", ex.Message, StringComparison.Ordinal);
+
         // Nothing was altered: the column the fixture created is untouched.
         Assert.Equal($"sparsevec({VocabularySize})", await ScalarAsync<string>(
             """
