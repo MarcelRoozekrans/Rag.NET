@@ -97,7 +97,28 @@ public sealed class NotionDataProvider : FileContentProviderBase
             FileName:         $"{FileNameSanitizer.Sanitize(title, $"page-{page.Id}")}.md",
             ETag:             page.LastEditedTime,
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown)))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata:         BuildMetadata(page)));
+    }
+
+    /// <summary>
+    /// The page's filterable fields, both read off the page itself.
+    /// <para>
+    /// There is deliberately no <c>database_id</c>. <see cref="NotionOptions.DatabaseId"/> is
+    /// documented as reserved for a future implementation and appears nowhere in the
+    /// <c>POST /v1/search</c> request built above, which returns every accessible page and no
+    /// parent object. Tagging pages with it would write a database id onto documents provably
+    /// not in that database, so <c>HasTagSpec("database_id", …)</c> would return wrong documents
+    /// with no signal that anything was off. The key becomes available honestly once the
+    /// connector queries <c>/v1/databases/{id}/query</c>.
+    /// </para>
+    /// </summary>
+    private static Dictionary<string, string>? BuildMetadata(NotionPage page)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(page.Id))             metadata["page_id"]    = page.Id;
+        if (!string.IsNullOrEmpty(page.LastEditedTime)) metadata["updated_at"] = page.LastEditedTime;
+        return metadata.Count == 0 ? null : metadata;
     }
 
     private async Task<Result<IReadOnlyList<NotionBlock>, RagError>> FetchBlocksAsync(

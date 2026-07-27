@@ -25,7 +25,7 @@ public sealed partial class RbacRetrievalGuard(
         for (var i = 0; i < results.Count; i++)
         {
             var result = results[i];
-            if (!result.Chunk.Metadata.TryGetValue("allowed_roles", out var allowedRolesRaw))
+            if (!result.Chunk.Metadata.TryGetValue(ReservedMetadataKeys.AllowedRoles, out var allowedRolesRaw))
             {
                 filtered?.Add(result);
                 continue;

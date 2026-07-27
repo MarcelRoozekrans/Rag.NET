@@ -93,7 +93,9 @@ public sealed class AirtableDataProvider : FileContentProviderBase
         return $"LAST_MODIFIED_TIME()>'{_options.DeltaToken}'";
     }
 
-    private static FileHandle ToMarkdownHandle(AirtableRecord record)
+    // Instance rather than static so the base and table the record came from — the container
+    // context callers filter on — is reachable from _options.
+    private FileHandle ToMarkdownHandle(AirtableRecord record)
     {
         var markdown = ToMarkdown(record);
         var etag = ComputeETag(record);
@@ -104,7 +106,21 @@ public sealed class AirtableDataProvider : FileContentProviderBase
                 GetRecordTitle(record), $"record-{record.Id}")}.md",
             ETag:             etag,
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata:         BuildRecordMetadata(record.Id));
+    }
+
+    /// <summary>
+    /// The record's container context. Built synchronously (never inside the async iterator)
+    /// and returned as <see langword="null"/> when there is nothing to say.
+    /// </summary>
+    private Dictionary<string, string>? BuildRecordMetadata(string? recordId)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(_options.BaseId))    metadata["base_id"]   = _options.BaseId;
+        if (!string.IsNullOrEmpty(_options.TableName)) metadata["table"]     = _options.TableName;
+        if (!string.IsNullOrEmpty(recordId))           metadata["record_id"] = recordId;
+        return metadata.Count == 0 ? null : metadata;
     }
 
     private IEnumerable<FileHandle> GetAttachmentHandles(AirtableRecord record)
@@ -129,9 +145,24 @@ public sealed class AirtableDataProvider : FileContentProviderBase
                     Id:               id,
                     FileName:         filename,
                     ETag:             att.Id ?? string.Empty,
-                    OpenContentAsync: ct => DownloadAttachmentAsync(url, ct));
+                    OpenContentAsync: ct => DownloadAttachmentAsync(url, ct),
+                    Metadata:         BuildAttachmentMetadata(recordId, fieldName, att.Id));
             }
         }
+    }
+
+    /// <summary>
+    /// An attachment carries its parent record's container context plus the field it hangs off
+    /// and the Airtable attachment id, so a chunk can be traced back to the exact cell.
+    /// </summary>
+    private Dictionary<string, string>? BuildAttachmentMetadata(
+        string? recordId, string fieldName, string? attachmentId)
+    {
+        var metadata = BuildRecordMetadata(recordId)
+            ?? new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(fieldName))     metadata["field"]         = fieldName;
+        if (!string.IsNullOrEmpty(attachmentId))  metadata["attachment_id"] = attachmentId;
+        return metadata.Count == 0 ? null : metadata;
     }
 
     private async Task<Stream> DownloadAttachmentAsync(string url, CancellationToken cancellationToken)

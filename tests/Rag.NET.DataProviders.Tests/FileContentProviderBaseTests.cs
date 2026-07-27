@@ -21,8 +21,12 @@ public sealed class FileContentProviderBaseTests
         }
     }
 
-    private static FileHandle Handle(string id, string fileName, string? etag = null)
-        => new(id, fileName, etag, _ => Task.FromResult<Stream>(new MemoryStream()));
+    private static FileHandle Handle(
+        string id,
+        string fileName,
+        string? etag = null,
+        IReadOnlyDictionary<string, string>? metadata = null)
+        => new(id, fileName, etag, _ => Task.FromResult<Stream>(new MemoryStream()), metadata);
 
     private sealed class TestOptions : CloudStorageOptions { }
 
@@ -99,6 +103,43 @@ public sealed class FileContentProviderBaseTests
         var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
 
         Assert.Equal("etag-abc", entries[0].ETag);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_MetadataIsForwardedFromHandle()
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["repo"] = "acme/widgets",
+            ["change_status"] = "modified",
+        };
+        var sut = new StubProvider(new TestOptions(),
+            Handle("file.md", "file.md", metadata: metadata));
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
+
+        var forwarded = Assert.Single(entries).Metadata;
+        Assert.NotNull(forwarded);
+        Assert.Equal("acme/widgets", forwarded["repo"]);
+        Assert.Equal("modified", forwarded["change_status"]);
+    }
+
+    /// <summary>
+    /// Pins the convention: a connector with nothing to add leaves <c>Metadata</c> null, and the
+    /// base class must not substitute an empty dictionary. One representation, not two.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_NullMetadataStaysNull()
+    {
+        var sut = new StubProvider(new TestOptions(), Handle("file.md", "file.md"));
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
+
+        Assert.Null(Assert.Single(entries).Metadata);
     }
 
     [Fact]

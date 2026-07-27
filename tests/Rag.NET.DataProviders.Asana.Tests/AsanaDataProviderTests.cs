@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Asana;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Rest;
@@ -581,6 +582,132 @@ public sealed class AsanaDataProviderTests
         var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
 
         Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsTaskKeys()
+    {
+        const string tasksJson = """
+            {
+              "data": [
+                {
+                  "gid": "task-md",
+                  "name": "Fix bug",
+                  "notes": null,
+                  "due_on": "2026-04-01",
+                  "completed": true,
+                  "assignee": { "name": "Bob" },
+                  "modified_at": "2026-03-01T10:00:00Z"
+                }
+              ]
+            }
+            """;
+        const string subtasksJson = """{ "data": [] }""";
+
+        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/1.0/tasks"]     = tasksJson,
+            ["task-md/subtasks"]   = subtasksJson
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("Bob",                  metadata["assignee"]);
+        Assert.Equal("2026-04-01",           metadata["due_on"]);
+        Assert.Equal("2026-03-01T10:00:00Z", metadata["updated_at"]);
+        // Lowercase literal, deliberately unlike the Markdown line's bool.ToString() ("True"):
+        // HasTagSpec matches ordinally.
+        Assert.Equal("true", metadata["completed"]);
+        // WorkspaceGid is required and scopes every request, so workspace is unconditional.
+        Assert.Equal("ws-1", metadata["workspace"]);
+        Assert.False(metadata.ContainsKey("project"));
+        Assert.Equal(5, metadata.Count);
+
+        var content = await ReadContentAsync(results[0].Value);
+        Assert.Contains("**Completed:** True", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ProjectGidSet_MetadataCarriesProject()
+    {
+        const string tasksJson = """
+            {
+              "data": [
+                {
+                  "gid": "task-pj",
+                  "name": "Scoped task",
+                  "notes": null,
+                  "due_on": null,
+                  "completed": false,
+                  "assignee": null,
+                  "modified_at": "2026-03-01T10:00:00Z"
+                }
+              ]
+            }
+            """;
+        const string subtasksJson = """{ "data": [] }""";
+
+        // ProjectGid routes to /projects/{gid}/tasks, so match on the shared "/tasks" suffix;
+        // the longer subtasks key still wins for the subtask fetch.
+        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/tasks"]           = tasksJson,
+            ["task-pj/subtasks"] = subtasksJson
+        }, new AsanaOptions { WorkspaceGid = "ws-1", ProjectGid = "proj-42" });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("ws-1",    metadata["workspace"]);
+        Assert.Equal("proj-42", metadata["project"]);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_NullOptionalFields_MetadataOmitsThem()
+    {
+        const string tasksJson = """
+            {
+              "data": [
+                {
+                  "gid": "task-mo",
+                  "name": "Minimal task",
+                  "notes": null,
+                  "due_on": null,
+                  "completed": false,
+                  "assignee": null,
+                  "modified_at": null
+                }
+              ]
+            }
+            """;
+        const string subtasksJson = """{ "data": [] }""";
+
+        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/1.0/tasks"]     = tasksJson,
+            ["task-mo/subtasks"]   = subtasksJson
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("false", metadata["completed"]);
+        Assert.Equal("ws-1",  metadata["workspace"]);
+        Assert.False(metadata.ContainsKey("assignee"));
+        Assert.False(metadata.ContainsKey("due_on"));
+        Assert.False(metadata.ContainsKey("updated_at"));
+        Assert.False(metadata.ContainsKey("project"));
+        Assert.Equal(2, metadata.Count);
     }
 }
 

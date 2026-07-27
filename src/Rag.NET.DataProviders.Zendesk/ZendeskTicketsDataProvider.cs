@@ -93,7 +93,9 @@ public sealed class ZendeskTicketsDataProvider : FileContentProviderBase
     public string? GetDeltaToken() =>
         _lastEndTime > 0 ? _lastEndTime.ToString(CultureInfo.InvariantCulture) : null;
 
-    private static FileHandle ToHandle(ZendeskTicket ticket, IReadOnlyList<ZendeskComment> comments)
+    // Instance rather than static so the Zendesk subdomain — the container context callers
+    // filter on — is reachable from _options.
+    private FileHandle ToHandle(ZendeskTicket ticket, IReadOnlyList<ZendeskComment> comments)
     {
         var markdown = ToMarkdown(ticket, comments);
         return new FileHandle(
@@ -101,7 +103,26 @@ public sealed class ZendeskTicketsDataProvider : FileContentProviderBase
             FileName: $"ticket-{ticket.Id}.md",
             ETag: ticket.UpdatedAt,
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata: BuildMetadata(ticket));
+    }
+
+    /// <summary>
+    /// The ticket's filterable fields. Status and priority are <i>also</i> rendered into the
+    /// Markdown body by <see cref="ToMarkdown"/>: the body drives semantic recall, the tags
+    /// drive filtering, and neither substitutes for the other.
+    /// </summary>
+    private Dictionary<string, string> BuildMetadata(ZendeskTicket ticket)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["ticket_id"] = ticket.Id.ToString(CultureInfo.InvariantCulture),
+        };
+        if (!string.IsNullOrEmpty(ticket.Status))    metadata["status"]     = ticket.Status;
+        if (!string.IsNullOrEmpty(ticket.Priority))  metadata["priority"]   = ticket.Priority;
+        if (!string.IsNullOrEmpty(ticket.UpdatedAt)) metadata["updated_at"] = ticket.UpdatedAt;
+        if (!string.IsNullOrEmpty(_options.Subdomain)) metadata["subdomain"] = _options.Subdomain;
+        return metadata;
     }
 
     private static string ToMarkdown(ZendeskTicket ticket, IReadOnlyList<ZendeskComment> comments)

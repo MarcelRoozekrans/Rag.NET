@@ -1,8 +1,11 @@
+using Rag.NET.Models;
+
 namespace Rag.NET.Ingestion;
 
 internal static class ParentChunkKeyHelper
 {
-    internal const string ParentKeyMetadata = "_parentKey";
+    /// <summary>Alias of the canonical constant — see <see cref="ReservedMetadataKeys.ParentKey"/>.</summary>
+    internal const string ParentKeyMetadata = ReservedMetadataKeys.ParentKey;
 
     internal static string GetParentKey(string documentId, int parentChunkIndex)
         => $"{documentId}:{parentChunkIndex}";

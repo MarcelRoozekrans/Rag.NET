@@ -7,6 +7,7 @@ using Google.Apis.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.GoogleDrive;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Results;
@@ -139,6 +140,107 @@ public sealed class GoogleDriveDataProviderTests
         Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "file-2", StringComparison.Ordinal));
         Assert.DoesNotContain(entries, e => string.Equals(e.Value.Id, "file-3", StringComparison.Ordinal));
     }
+
+    // -----------------------------------------------------------------------
+    // Metadata — the exact keys and values this connector emits
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_WholeDrive_EmitsMimeTypeAndOmitsFolderId()
+    {
+        // A whole-drive listing does not know which folder a file sits in, so folder_id is
+        // omitted rather than written empty.
+        var json = BuildFilesListJson([("file-1", "readme.md", "text/markdown", "md5-1")]);
+        var sut = new GoogleDriveDataProvider(MakeDriveServiceWithFakeHttp(json));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal("text/markdown", metadata["mime_type"]);
+        Assert.False(metadata.ContainsKey("folder_id"));
+        _ = Assert.Single(metadata);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_FolderTraversal_EmitsMimeTypeAndFolderId()
+    {
+        var json = BuildFilesListJson([("file-1", "readme.md", "text/markdown", "md5-1")]);
+        var opts = new GoogleDriveOptions { FolderId = "folder-abc" };
+        var sut = new GoogleDriveDataProvider(MakeDriveServiceWithFakeHttp(json), opts);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal("text/markdown", metadata["mime_type"]);
+        Assert.Equal("folder-abc",    metadata["folder_id"]);
+        Assert.Equal(2, metadata.Count);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ChangesFeed_EmitsMimeTypeAndOmitsFolderId()
+    {
+        // The Changes feed reports the file, not the folder it lives in, so folder_id is omitted
+        // there too — but mime_type is on the change payload and must still be emitted.
+        var changeList = new ChangeList
+        {
+            Changes =
+            [
+                new Change
+                {
+                    Removed = false,
+                    File = new Google.Apis.Drive.v3.Data.File
+                    {
+                        Id          = "file-changed",
+                        Name        = "updated.md",
+                        MimeType    = "text/markdown",
+                        Md5Checksum = "md5-new",
+                    },
+                },
+            ],
+        };
+        var handler = new FakeChangesListHandler(
+            NewtonsoftJsonSerializer.Instance.Serialize(changeList));
+        var drive = new DriveService(new BaseClientService.Initializer
+        {
+            ApplicationName   = "test",
+            HttpClientFactory = new FakeHttpClientFactory(handler),
+        });
+        var sut = new GoogleDriveDataProvider(drive, new GoogleDriveOptions { DeltaToken = "tok1" });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries).Value;
+        Assert.Equal("file-changed", entry.Id.Value);
+        Assert.NotNull(entry.Metadata);
+        Assert.Equal("text/markdown", entry.Metadata["mime_type"]);
+        Assert.False(entry.Metadata.ContainsKey("folder_id"));
+        _ = Assert.Single(entry.Metadata);
+        MetadataContract.AssertValid(entry);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_AllEntriesSatisfyMetadataContract()
+    {
+        var json = BuildFilesListJson(
+        [
+            ("file-1", "readme.md", "text/markdown", "md5-1"),
+            ("file-2", "notes.txt", "text/plain",    "md5-2"),
+        ]);
+        var sut = new GoogleDriveDataProvider(MakeDriveServiceWithFakeHttp(json));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, entries.Count);
+        MetadataContract.AssertAll(entries.Select(e => e.Value));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +263,27 @@ file sealed class FakeFilesListHandler(string filesListJson) : HttpMessageHandle
                 Content = new StringContent(filesListJson, System.Text.Encoding.UTF8, "application/json"),
             };
             return Task.FromResult(response);
+        }
+
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+    }
+}
+
+/// <summary>
+/// Intercepts HTTP calls to <c>/drive/v3/changes</c> and returns a canned JSON body, so the
+/// delta path can be exercised without hitting the network.
+/// </summary>
+file sealed class FakeChangesListHandler(string changesListJson) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.RequestUri!.AbsolutePath.StartsWith("/drive/v3/changes", StringComparison.Ordinal))
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(changesListJson, System.Text.Encoding.UTF8, "application/json"),
+            });
         }
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));

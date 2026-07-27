@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using AngleSharp.Html.Parser;
@@ -66,7 +67,8 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
                 {
                     var bytes = Encoding.UTF8.GetBytes(capturedHtml);
                     return Task.FromResult<Stream>(new MemoryStream(bytes));
-                }));
+                },
+                Metadata: BuildMetadata(url, depth)));
 
             if (depth < _options.MaxDepth)
             {
@@ -77,6 +79,24 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Tags for a crawled page. <c>depth</c> is the BFS distance from the seed (the seed itself
+    /// is <c>"0"</c>), which lets a caller keep only shallow pages at query time. Built
+    /// synchronously — assembling the dictionary inside the async iterator would trip HLQ012.
+    /// </summary>
+    private static Dictionary<string, string> BuildMetadata(string url, int depth)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["url"]   = url,
+            ["depth"] = depth.ToString(CultureInfo.InvariantCulture),
+        };
+
+        var host = new Uri(url).Host;
+        if (!string.IsNullOrEmpty(host)) metadata["host"] = host;
+        return metadata;
     }
 
     private async Task<HashSet<string>> LoadRobotsAsync(Uri seedUri, CancellationToken ct)

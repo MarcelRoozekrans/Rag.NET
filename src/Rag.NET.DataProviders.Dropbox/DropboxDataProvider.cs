@@ -52,21 +52,7 @@ public sealed class DropboxDataProvider : FileContentProviderBase
                 cancellationToken.ThrowIfCancellationRequested();
                 if (entry is not FileMetadata file) continue;
 
-                var capturedPath = file.PathLower!;
-                yield return Result<FileHandle, RagError>.Success(new FileHandle(
-                    Id:               file.PathDisplay ?? capturedPath,
-                    FileName:         file.Name,
-                    ETag:             file.ContentHash,
-                    OpenContentAsync: async ct =>
-                    {
-                        using var c = await CreateClientAsync(ct).ConfigureAwait(false);
-                        var dl = await c.Files.DownloadAsync(capturedPath).ConfigureAwait(false);
-                        var ms = new MemoryStream();
-                        using var content = await dl.GetContentAsStreamAsync().ConfigureAwait(false);
-                        await content.CopyToAsync(ms, ct).ConfigureAwait(false);
-                        ms.Seek(0, SeekOrigin.Begin);
-                        return (Stream)ms;
-                    }));
+                yield return Result<FileHandle, RagError>.Success(ToHandle(file));
             }
 
             if (!result.HasMore) break;
@@ -88,25 +74,56 @@ public sealed class DropboxDataProvider : FileContentProviderBase
                 cancellationToken.ThrowIfCancellationRequested();
                 if (entry is not FileMetadata file) continue;
 
-                var capturedPath = file.PathLower!;
-                yield return Result<FileHandle, RagError>.Success(new FileHandle(
-                    Id:               file.PathDisplay ?? capturedPath,
-                    FileName:         file.Name,
-                    ETag:             file.ContentHash,
-                    OpenContentAsync: async ct =>
-                    {
-                        using var c = await CreateClientAsync(ct).ConfigureAwait(false);
-                        var dl = await c.Files.DownloadAsync(capturedPath).ConfigureAwait(false);
-                        var ms = new MemoryStream();
-                        using var content = await dl.GetContentAsStreamAsync().ConfigureAwait(false);
-                        await content.CopyToAsync(ms, ct).ConfigureAwait(false);
-                        ms.Seek(0, SeekOrigin.Begin);
-                        return (Stream)ms;
-                    }));
+                yield return Result<FileHandle, RagError>.Success(ToHandle(file));
             }
 
             if (!result.HasMore) break;
             result = await client.Files.ListFolderContinueAsync(result.Cursor).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Builds the handle for one file. Synchronous by design: the metadata dictionary is never
+    /// built inside the async iterator (design §1). Shared by the full and delta paths — Dropbox's
+    /// delta feed reports the same <see cref="FileMetadata"/> shape, so both emit the same keys.
+    /// </summary>
+    /// <remarks>
+    /// Metadata emitted: <c>path</c> (the display path, falling back to the lowercased path when
+    /// Dropbox omits it) and <c>folder</c> — the configured root. <see cref="DropboxOptions.FolderPath"/>
+    /// defaults to the empty string, which means "the whole Dropbox"; that is not a folder name,
+    /// so the key is omitted rather than written empty.
+    /// <para><b>Internal for testing.</b> <c>DropboxClient</c> is constructed from a token inside
+    /// this provider and exposes no injectable transport, so the enumeration paths cannot be
+    /// driven from a unit test; this is the seam that pins the emitted keys.</para>
+    /// </remarks>
+    internal FileHandle ToHandle(FileMetadata file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        var capturedPath = file.PathLower!;
+        var path = file.PathDisplay ?? capturedPath;
+
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["path"] = path,
+        };
+        if (!string.IsNullOrEmpty(_options.FolderPath))
+            metadata["folder"] = _options.FolderPath;
+
+        return new FileHandle(
+            Id:               path,
+            FileName:         file.Name,
+            ETag:             file.ContentHash,
+            OpenContentAsync: async ct =>
+            {
+                using var c = await CreateClientAsync(ct).ConfigureAwait(false);
+                var dl = await c.Files.DownloadAsync(capturedPath).ConfigureAwait(false);
+                var ms = new MemoryStream();
+                using var content = await dl.GetContentAsStreamAsync().ConfigureAwait(false);
+                await content.CopyToAsync(ms, ct).ConfigureAwait(false);
+                ms.Seek(0, SeekOrigin.Begin);
+                return (Stream)ms;
+            },
+            Metadata:         metadata);
     }
 }

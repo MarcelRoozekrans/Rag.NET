@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -99,7 +100,30 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
             FileName:         $"{stem}.md",
             ETag:             uid.ToString(),
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata:         BuildMetadata(message));
+    }
+
+    /// <summary>
+    /// The message's filterable fields. Sender and date are <i>also</i> rendered into the
+    /// Markdown header by <see cref="ToMarkdown"/>: the body drives semantic recall, the tags
+    /// drive filtering, and neither substitutes for the other.
+    /// <para>
+    /// <c>date</c> is round-trip ISO-8601 rather than the header's RFC 822 rendering, so tag
+    /// values sort and compare consistently across connectors.
+    /// </para>
+    /// </summary>
+    private static Dictionary<string, string> BuildMetadata(MimeMessage message)
+    {
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["date"]            = message.Date.ToString("o", CultureInfo.InvariantCulture),
+            ["has_attachments"] = message.Attachments.Any() ? "true" : "false",
+        };
+
+        var from = message.From.ToString();
+        if (!string.IsNullOrEmpty(from)) metadata["from"] = from;
+        return metadata;
     }
 
     private static string ToMarkdown(MimeMessage message)

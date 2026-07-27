@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Linear;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Rest;
@@ -402,6 +403,42 @@ public sealed class LinearDataProviderTests
         Assert.False(entry.Metadata!.ContainsKey("team"));
         Assert.False(entry.Metadata.ContainsKey("project"));
         Assert.True(entry.Metadata.ContainsKey("url"));
+    }
+
+    // 10. Shared connector-metadata contract.
+    [Fact]
+    public async Task GetFilesAsync_AllEntriesSatisfyMetadataContract()
+    {
+        // A fully-populated issue (every optional key present, including comments_truncated)
+        // alongside a bare one (url only), so the check sees both ends of the key set.
+        var api = new FakeLinearApi(Page(
+            hasNext: false, endCursor: null,
+            Issue(
+                state:    new LinearWorkflowState { Name = "In Progress", Type = "started" },
+                project:  new LinearProject { Name = "Auth" },
+                assignee: new LinearUser { Name = "Alice" },
+                team:     new LinearTeam { Key = "ENG" },
+                comments: new LinearCommentConnection
+                {
+                    Nodes =
+                    [
+                        new LinearComment
+                        {
+                            Body      = "Looks good",
+                            CreatedAt = new DateTimeOffset(2026, 7, 1, 10, 30, 0, TimeSpan.Zero),
+                            User      = new LinearUser { Name = "Bob" },
+                        },
+                    ],
+                    PageInfo = new LinearPageInfo { HasNextPage = true },
+                }),
+            Issue(identifier: "ENG-9", title: "Bare issue", description: null)));
+        var sut = MakeProvider(api);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        MetadataContract.AssertAll(results.Select(r => r.Value));
     }
 
     [Fact]

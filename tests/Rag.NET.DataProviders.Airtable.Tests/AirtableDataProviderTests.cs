@@ -5,6 +5,7 @@ using AirtableApiClient;
 using NSubstitute;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Airtable;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Results;
@@ -520,6 +521,77 @@ public sealed class AirtableDataProviderTests
             Encoding.UTF8.GetBytes(expectedJson));
         var expectedEtag = Convert.ToHexStringLower(expectedHash);
         Assert.Equal(expectedEtag, etag);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsRecordAndAttachmentKeys()
+    {
+        var attachmentJson = Json("""
+            [ { "id": "att001", "url": "https://dl.airtable.test/photo.png", "filename": "photo.png" } ]
+            """);
+        var record = MakeRecord("rec200", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"]        = Json("\"Design doc\""),
+            ["Attachments"] = attachmentJson
+        });
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        using var http = new HttpClient(new FakeDownloadHandler("bytes"));
+        var sut = MakeProvider(client, http: http);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var recordMetadata = results[0].Value.Metadata!;
+        Assert.Equal("appTEST", recordMetadata["base_id"]);
+        Assert.Equal("Tasks",   recordMetadata["table"]);
+        Assert.Equal("rec200",  recordMetadata["record_id"]);
+        Assert.Equal(3, recordMetadata.Count);
+
+        // An attachment carries its record's context plus the cell it came out of.
+        var attachmentMetadata = results[1].Value.Metadata!;
+        Assert.Equal("appTEST",     attachmentMetadata["base_id"]);
+        Assert.Equal("Tasks",       attachmentMetadata["table"]);
+        Assert.Equal("rec200",      attachmentMetadata["record_id"]);
+        Assert.Equal("Attachments", attachmentMetadata["field"]);
+        Assert.Equal("att001",      attachmentMetadata["attachment_id"]);
+        Assert.Equal(5, attachmentMetadata.Count);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_AttachmentWithoutId_OmitsAttachmentIdKey()
+    {
+        // Airtable's attachment objects are only guaranteed to carry "url"; an absent id must be
+        // omitted rather than written empty.
+        var attachmentJson = Json("""
+            [ { "url": "https://dl.airtable.test/note.txt", "filename": "note.txt" } ]
+            """);
+        var record = MakeRecord("rec201", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"]  = Json("\"No att id\""),
+            ["Files"] = attachmentJson
+        });
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        using var http = new HttpClient(new FakeDownloadHandler("bytes"));
+        var sut = MakeProvider(client, http: http);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var attachmentMetadata = results[1].Value.Metadata!;
+        Assert.Equal("Files", attachmentMetadata["field"]);
+        Assert.False(attachmentMetadata.ContainsKey("attachment_id"));
     }
 }
 

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Rag.NET.DataProviders.Bitbucket;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Rest;
@@ -500,6 +501,126 @@ public sealed class BitbucketDataProviderTests
         var error = Assert.IsType<RagError.HttpFailed>(results[0].Error);
         Assert.Equal(HttpStatusCode.Forbidden, error.StatusCode);
     }
+
+    // -----------------------------------------------------------------------
+    // Metadata — the exact keys and values this connector emits
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_FullTraversal_EmitsPathRepoAndRef()
+    {
+        const string json = """
+            {
+              "values": [
+                { "path": "docs/readme.md", "type": "commit_file", "size": 42, "commit": { "hash": "abc123" } }
+              ],
+              "next": null
+            }
+            """;
+        var opts = new BitbucketOptions
+        {
+            Workspace = "myteam",
+            RepoSlug  = "myrepo",
+            Ref       = "develop",
+        };
+        var sut = MakeProvider(json, opts, urlKey: "/develop/");
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(results).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal("docs/readme.md", metadata["path"]);
+        Assert.Equal("myteam/myrepo",  metadata["repo"]);
+        Assert.Equal("develop",        metadata["ref"]);
+        // A source listing has no notion of change — the key must be absent, not empty.
+        Assert.False(metadata.ContainsKey("change_status"));
+        Assert.Equal(3, metadata.Count);
+        MetadataContract.AssertValid(results[0].Value);
+    }
+
+    [Theory]
+    [InlineData("added",    "added")]
+    [InlineData("modified", "modified")]
+    [InlineData("renamed",  "renamed")]
+    public async Task GetFilesAsync_DeltaTraversal_NormalisesChangeStatus(
+        string bitbucketStatus, string expected)
+    {
+        var json = $$"""
+            {
+              "values": [
+                { "status": "{{bitbucketStatus}}", "new": { "path": "file.md" } }
+              ],
+              "next": null
+            }
+            """;
+        var sut = MakeProvider(json, MakeDeltaOptions(), urlKey: "/diffstat/");
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(results).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal(expected,        metadata["change_status"]);
+        Assert.Equal("file.md",       metadata["path"]);
+        Assert.Equal("myteam/myrepo", metadata["repo"]);
+        Assert.Equal("main",          metadata["ref"]);
+        Assert.Equal(4, metadata.Count);
+        MetadataContract.AssertValid(results[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_DeltaTraversal_UnmappedStatus_OmitsChangeStatus()
+    {
+        // A status outside the vocabulary is omitted rather than forwarded as a vendor string
+        // the other connectors cannot produce.
+        const string json = """
+            {
+              "values": [
+                { "status": "merge conflict", "new": { "path": "file.md" } }
+              ],
+              "next": null
+            }
+            """;
+        var sut = MakeProvider(json, MakeDeltaOptions(), urlKey: "/diffstat/");
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(results).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.False(metadata.ContainsKey("change_status"));
+        Assert.Equal(3, metadata.Count);
+        MetadataContract.AssertValid(results[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_AllEntriesSatisfyMetadataContract()
+    {
+        const string json = """
+            {
+              "values": [
+                { "path": "docs/readme.md", "type": "commit_file", "size": 42, "commit": { "hash": "abc123" } },
+                { "path": "src/app.cs",     "type": "commit_file", "size": 99, "commit": { "hash": "def456" } }
+              ],
+              "next": null
+            }
+            """;
+        var sut = MakeProvider(json);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+    }
+
+    private static BitbucketOptions MakeDeltaOptions() => new()
+    {
+        Workspace              = "myteam",
+        RepoSlug               = "myrepo",
+        LastIngestedCommitHash = "aaa111",
+    };
 }
 
 // ---------------------------------------------------------------------------

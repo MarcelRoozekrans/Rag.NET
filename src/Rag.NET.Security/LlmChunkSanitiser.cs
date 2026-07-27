@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
+using Rag.NET.Models;
 
 namespace Rag.NET.Security;
 
@@ -25,7 +26,7 @@ public sealed partial class LlmChunkSanitiser(
     public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata)
     {
         if (text is null) return string.Empty;
-        var fileName = metadata.TryGetValue("file_name", out var fn) ? fn : "<unknown>";
+        var fileName = metadata.TryGetValue(ReservedMetadataKeys.FileName, out var fn) ? fn : "<unknown>";
         try
         {
             var prompt = ClassifyPrompt.Replace("{text}", text, StringComparison.Ordinal);

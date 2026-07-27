@@ -9,4 +9,12 @@
     <PackageReference Include="Dropbox.Api" Version="7.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- DropboxClient is constructed from a token inside the provider and exposes no injectable
+         transport, so the enumeration paths cannot be driven from a unit test. ToHandle is the
+         seam that pins the metadata this connector emits. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.DataProviders.Dropbox.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

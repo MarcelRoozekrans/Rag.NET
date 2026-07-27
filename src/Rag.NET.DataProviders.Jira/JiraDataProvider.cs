@@ -173,7 +173,50 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
             FileName:         $"{issue.Key}.md",
             ETag:             issue.Fields.Updated,
             OpenContentAsync: _ => Task.FromResult<Stream>(
-                new MemoryStream(Encoding.UTF8.GetBytes(markdown))));
+                new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
+            Metadata:         BuildMetadata(issue));
+    }
+
+    /// <summary>
+    /// The issue's filterable fields. Status, priority and assignee are <i>also</i> rendered
+    /// into the Markdown body by <see cref="ToMarkdown"/>: the body drives semantic recall, the
+    /// tags drive filtering, and neither substitutes for the other.
+    /// </summary>
+    private static Dictionary<string, string>? BuildMetadata(JiraIssue issue)
+    {
+        var fields = issue.Fields;
+        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!string.IsNullOrEmpty(issue.Key))          metadata["issue_key"]  = issue.Key;
+        if (!string.IsNullOrEmpty(fields.Status.Name)) metadata["status"]     = fields.Status.Name;
+        if (!string.IsNullOrEmpty(fields.Priority?.Name))
+            metadata["priority"] = fields.Priority.Name;
+        if (!string.IsNullOrEmpty(fields.Assignee?.DisplayName))
+            metadata["assignee"] = fields.Assignee.DisplayName;
+        if (!string.IsNullOrEmpty(fields.Updated))     metadata["updated_at"] = fields.Updated;
+
+        var project = ProjectFromKey(issue.Key);
+        if (project is not null) metadata["project"] = project;
+
+        return metadata.Count == 0 ? null : metadata;
+    }
+
+    /// <summary>
+    /// Extracts the project key from an issue key. Jira issue keys are
+    /// <c>{PROJECTKEY}-{number}</c> and project keys contain no hyphen, so the text before the
+    /// last hyphen is exact.
+    /// <para>
+    /// This is deliberately preferred over <see cref="JiraOptions.ProjectKey"/>, which the
+    /// implementation plan originally specified. Deriving from the issue makes <c>project</c>
+    /// unconditional rather than present only on scoped runs, keeps it correct when an issue is
+    /// moved between projects, and — the case that decided it — stays correct when a caller
+    /// supplies a custom <see cref="JiraOptions.Jql"/> spanning several projects, where
+    /// <c>ProjectKey</c> is typically unset and would otherwise be wrong for most results.
+    /// </para>
+    /// </summary>
+    private static string? ProjectFromKey(string issueKey)
+    {
+        var separator = issueKey.LastIndexOf('-');
+        return separator > 0 ? issueKey[..separator] : null;
     }
 
     private static string ToMarkdown(JiraIssue issue)

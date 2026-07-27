@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Threading;
 using NSubstitute;
@@ -392,6 +393,270 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Equal("entry-value",     tags["source"]);     // entry overrides base
         Assert.Equal("base-only-value", tags["base-only"]);  // base tag forwarded
         Assert.Equal("entry-extra",     tags["extra"]);      // entry-only tag included
+    }
+
+    /// <summary>
+    /// One entry carrying <paramref name="metadata"/> — enough to prove a per-entry metadata
+    /// rule, and single-entry so an escaping exception is unambiguous.
+    /// </summary>
+    private static IFileContentProvider MakeProviderWithMetadata(IReadOnlyDictionary<string, string> metadata)
+    {
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-1"),
+                    FileName: "doc.txt",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
+                    Metadata: metadata)),
+            }.ToAsyncEnumerable());
+        return provider;
+    }
+
+    private List<DocumentMetadata> CaptureIngestedMetadata()
+    {
+        var captured = new List<DocumentMetadata>();
+        _pipeline.IngestAsync(
+                Arg.Any<Stream>(),
+                Arg.Do<DocumentMetadata>(m => captured.Add(m)),
+                Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("id-1"), ChunksStored = 1 })));
+        return captured;
+    }
+
+    [Theory]
+    [InlineData(ReservedMetadataKeys.DocumentId)]
+    [InlineData(ReservedMetadataKeys.FileName)]
+    [InlineData(ReservedMetadataKeys.CreatedAt)]
+    [InlineData(ReservedMetadataKeys.ProviderId)]
+    [InlineData(ReservedMetadataKeys.ParentKey)]
+    [InlineData(ReservedMetadataKeys.AllowedRoles)]
+    [InlineData(ReservedMetadataKeys.TrustLevel)]
+    public async Task BuildMetadata_EntryTagCollidingWithReservedKey_Throws(string reservedKey)
+    {
+        var provider = MakeProviderWithMetadata(
+            new Dictionary<string, string>(StringComparer.Ordinal) { [reservedKey] = "connector-value" });
+
+        var ex = await Assert.ThrowsAsync<ReservedMetadataKeyException>(() =>
+            _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(reservedKey, ex.Key);
+        Assert.Contains(reservedKey, ex.Message, StringComparison.Ordinal);
+        Assert.Contains("prov", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The guard must not be swallowed by <c>ProcessEntryAsync</c>'s per-entry catch: a
+    /// collision is a programming error and has to reach the caller, not become one
+    /// <see cref="RagError.StorageFailed"/> per document.
+    /// </summary>
+    [Fact]
+    public async Task BuildMetadata_ReservedKeyCollision_IsNotDowngradedToAnEntryError()
+    {
+        var provider = MakeProviderWithMetadata(
+            new Dictionary<string, string>(StringComparer.Ordinal) { [ReservedMetadataKeys.CreatedAt] = "1999" });
+
+        await Assert.ThrowsAsync<ReservedMetadataKeyException>(() =>
+            _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        _ = await _pipeline.DidNotReceive().IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(),
+            Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The documented contract is that the caller catches <see cref="ReservedMetadataKeyException"/>
+    /// directly. <see cref="Parallel.ForEachAsync{TSource}(IEnumerable{TSource}, ParallelOptions, Func{TSource, CancellationToken, ValueTask})"/>
+    /// faults its task with an <see cref="AggregateException"/> envelope, and awaiting unwraps
+    /// exactly one level — so a future change that added a second envelope would silently break
+    /// every documented <c>catch (ReservedMetadataKeyException)</c> in user code. This pins it
+    /// on the multi-exception path, where several workers throw and the aggregate really holds
+    /// more than one inner exception.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_ReservedKeyCollisionUnderParallelism_EscapesUnwrapped()
+    {
+        // 32 entries, every fourth colliding, 8 workers: enough concurrency that several
+        // workers genuinely throw. Which entry loses the race is not deterministic; the
+        // exception's type and Key are, because every collision uses the same reserved key.
+        const int total = 32;
+        var entries = new List<Result<FileEntry, RagError>>(total);
+        for (var i = 0; i < total; i++)
+        {
+            var tags = i % 4 == 0
+                ? new Dictionary<string, string>(StringComparer.Ordinal) { [ReservedMetadataKeys.CreatedAt] = "1999" }
+                : new Dictionary<string, string>(StringComparer.Ordinal) { ["repo"] = "acme/widgets" };
+
+            entries.Add(Result<FileEntry, RagError>.Success(new FileEntry(
+                Id: new EntryId($"id-{i}"),
+                FileName: $"doc-{i}.txt",
+                OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
+                Metadata: tags)));
+        }
+
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>()).Returns(entries.ToAsyncEnumerable());
+
+        // Assert.ThrowsAsync matches the EXACT type — an AggregateException (or any other
+        // envelope) fails here rather than sneaking through as a derived match.
+        var ex = await Assert.ThrowsAsync<ReservedMetadataKeyException>(() =>
+            _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+                options: new IngestionOptions { MaxDegreeOfParallelism = 8 },
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(ReservedMetadataKeys.CreatedAt, ex.Key);
+        Assert.Null(ex.InnerException); // not a re-wrapped inner either
+    }
+
+    /// <summary>
+    /// Pins the partial-completion behaviour the public XML doc describes: entries already
+    /// processed when the collision surfaces stay ingested, because the method throws instead
+    /// of unwinding the work it has done.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_ReservedKeyCollision_LeavesAlreadyProcessedEntriesIngested()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // Deterministic ordering without sleeping: the colliding entry's content is not opened
+        // — and so BuildMetadata is not reached — until the clean entry has finished ingesting.
+        var cleanIngested = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ingestedIds = new ConcurrentBag<string>();
+
+        _pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Any<DocumentMetadata>(), Arg.Any<IngestionOptions?>(),
+                Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var id = ci.ArgAt<DocumentMetadata>(1).DocumentId.Value;
+                ingestedIds.Add(id);
+                cleanIngested.TrySetResult();
+                return Task.FromResult(Result<IngestionResult, RagError>.Success(
+                    new IngestionResult { DocumentId = new DocumentId(id), ChunksStored = 1 }));
+            });
+
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>()).Returns(new[]
+        {
+            Result<FileEntry, RagError>.Success(new FileEntry(
+                Id: new EntryId("id-clean"),
+                FileName: "clean.txt",
+                OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
+                Metadata: new Dictionary<string, string>(StringComparer.Ordinal) { ["repo"] = "acme/widgets" })),
+            Result<FileEntry, RagError>.Success(new FileEntry(
+                Id: new EntryId("id-collide"),
+                FileName: "collide.txt",
+                // The timeout is a failure bound only, never part of the success path.
+                OpenContentAsync: async _ =>
+                {
+                    await cleanIngested.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+                    return new MemoryStream("hi"u8.ToArray());
+                },
+                Metadata: new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [ReservedMetadataKeys.CreatedAt] = "1999",
+                })),
+        }.ToAsyncEnumerable());
+
+        await Assert.ThrowsAsync<ReservedMetadataKeyException>(() =>
+            _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+                options: new IngestionOptions { MaxDegreeOfParallelism = 2 },
+                cancellationToken: ct));
+
+        // The clean entry was ingested and stays ingested — the throw unwinds nothing.
+        Assert.Equal("id-clean", Assert.Single(ingestedIds));
+    }
+
+    [Fact]
+    public async Task BuildMetadata_NonReservedEntryTag_IsForwarded()
+    {
+        var captured = CaptureIngestedMetadata();
+        var provider = MakeProviderWithMetadata(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["repo"] = "acme/widgets",
+            ["change_status"] = "modified",
+        });
+
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var tags = Assert.Single(captured).Tags;
+        Assert.Equal("acme/widgets", tags["repo"]);
+        Assert.Equal("modified", tags["change_status"]);
+    }
+
+    // provider_id is written centrally so all 21 connectors carry it without per-connector work.
+    // The two ingest paths are separate branches of ProcessEntryAsync, so both are covered.
+
+    [Fact]
+    public async Task IngestFromProviderAsync_WritesProviderIdTag_NoHashStore()
+    {
+        var captured = CaptureIngestedMetadata();
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov-42"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Ingested);
+        Assert.Equal("prov-42", Assert.Single(captured).Tags[ReservedMetadataKeys.ProviderId]);
+    }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_WritesProviderIdTag_HashStorePath()
+    {
+        var captured = CaptureIngestedMetadata();
+        var hashStore = new SqliteContentHashStore(_dbPath);
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        var result = await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov-42"),
+            hashStore: hashStore, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Ingested);
+        Assert.Equal("prov-42", Assert.Single(captured).Tags[ReservedMetadataKeys.ProviderId]);
+    }
+
+    [Fact]
+    public async Task IngestFromProviderAsync_ConnectorCannotShadowProviderIdTag()
+    {
+        var provider = MakeProviderWithMetadata(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [ReservedMetadataKeys.ProviderId] = "impostor",
+        });
+
+        var ex = await Assert.ThrowsAsync<ReservedMetadataKeyException>(() =>
+            _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov-42"),
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(ReservedMetadataKeys.ProviderId, ex.Key);
+    }
+
+    /// <summary>
+    /// Caller-supplied base metadata is not reserved-key guarded (it is not connector code), so
+    /// the central write happens last and stays authoritative.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_ProviderIdTagWinsOverBaseMetadata()
+    {
+        var captured = CaptureIngestedMetadata();
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+        var baseMetadata = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("id-1"),
+            FileName = "base.pdf",
+            Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [ReservedMetadataKeys.ProviderId] = "stale",
+            },
+        };
+
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov-42"),
+            baseMetadata: baseMetadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("prov-42", Assert.Single(captured).Tags[ReservedMetadataKeys.ProviderId]);
     }
 
     [Fact]

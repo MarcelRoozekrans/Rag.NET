@@ -18,6 +18,52 @@ public static class RagPipelineExtensions
     /// <paramref name="hashStore"/> is supplied. Optionally deletes disappeared documents
     /// when <paramref name="cleanupMode"/> is <see cref="CleanupMode.Full"/>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Every ingested document is tagged with <see cref="ReservedMetadataKeys.ProviderId"/></b>
+    /// carrying <paramref name="providerId"/>, so documents can be filtered or re-ingested by
+    /// source without per-connector work. It is written last and therefore overrides any
+    /// <c>provider_id</c> in <paramref name="baseMetadata"/>'s tags.
+    /// </para>
+    /// <para>
+    /// <b>Precedence:</b> <paramref name="baseMetadata"/> tags first, then the entry's own
+    /// metadata (entry wins on collision), then <c>provider_id</c> (wins over both).
+    /// </para>
+    /// <para>
+    /// <b>Why only entry metadata is reserved-key guarded.</b> Entry metadata comes from
+    /// connector code, where a reserved key is always a bug. <paramref name="baseMetadata"/>
+    /// comes from the caller and is deliberately left unguarded, because it is the sanctioned —
+    /// and only — channel for setting <see cref="ReservedMetadataKeys.AllowedRoles"/> and
+    /// <see cref="ReservedMetadataKeys.TrustLevel"/>: those two keys are reserved but written by
+    /// nobody in the framework, which only ever reads them (in the RBAC and trust-level
+    /// retrieval guards). Guarding base metadata would break RBAC and trust-level tagging
+    /// outright. The asymmetry is intentional, not an oversight.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ReservedMetadataKeyException">
+    /// A connector emitted an entry-metadata key the framework reserves for itself. Unlike every
+    /// other failure here — which is collected into <see cref="ProviderIngestionResult.Errors"/>
+    /// — this <b>escapes the method</b>: it is a deterministic authoring bug that would otherwise
+    /// repeat once per document while shipping a corrupted ranking.
+    /// <para>
+    /// It arrives <b>unwrapped</b>, including under parallel ingestion: although
+    /// <see cref="Parallel.ForEachAsync{TSource}(IEnumerable{TSource}, ParallelOptions, Func{TSource, CancellationToken, ValueTask})"/>
+    /// faults its task through an <see cref="AggregateException"/>, awaiting unwraps it — so
+    /// <c>catch (ReservedMetadataKeyException)</c> is safe and needs no
+    /// <see cref="AggregateException"/> handling.
+    /// </para>
+    /// <para>
+    /// <b>Ingestion is left partially complete.</b> When a connector emits the reserved key on
+    /// only some entries, the clean ones already processed are ingested and — with a
+    /// <paramref name="hashStore"/> — hash-recorded; the throw unwinds none of that. Because the
+    /// method throws rather than returns, the accumulated error bag is discarded and cleanup for
+    /// <see cref="CleanupMode.Full"/> is skipped, so no document is deleted.
+    /// </para>
+    /// <para>
+    /// <b>Re-running after the fix is safe.</b> Whatever was ingested was collision-free by
+    /// definition, and the hash store makes the re-run skip it as unchanged.
+    /// </para>
+    /// </exception>
     public static async Task<ProviderIngestionResult> IngestFromProviderAsync(
         this IRagPipeline pipeline,
         IFileContentProvider provider,
@@ -136,7 +182,7 @@ public static class RagPipelineExtensions
             {
                 if (hashStore is null)
                 {
-                    var metadata = BuildMetadata(entry, baseMetadata);
+                    var metadata = BuildMetadata(entry, baseMetadata, providerId);
                     var ingestResult = await pipeline.IngestAsync(rawStream, metadata, options, progress, cancellationToken).ConfigureAwait(false);
                     if (!ingestResult.IsSuccess)
                         throw new InvalidOperationException($"Ingestion failed: {ingestResult.Error}");
@@ -147,7 +193,12 @@ public static class RagPipelineExtensions
                     options, progress, rawStream, cancellationToken).ConfigureAwait(false);
             }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // ReservedMetadataKeyException is deliberately excluded alongside cancellation: it is a
+        // connector authoring bug that repeats identically for every entry, so downgrading it to
+        // a per-entry RagError would emit N copies of one bug and still ship a corrupted ranking.
+        // Removing that exclusion silently reverts the escape — see the tests named at the throw
+        // site in BuildMetadata.
+        catch (Exception ex) when (ex is not OperationCanceledException and not ReservedMetadataKeyException)
         {
             errors.Add(new RagError.StorageFailed(ex));
             return EntryOutcome.Skipped;
@@ -179,7 +230,7 @@ public static class RagPipelineExtensions
         }
 
         buffer.Position = 0;
-        var metadata = BuildMetadata(entry, baseMetadata);
+        var metadata = BuildMetadata(entry, baseMetadata, providerId);
         var ingestResult = await pipeline.IngestAsync(buffer, metadata, options, progress, cancellationToken).ConfigureAwait(false);
         if (!ingestResult.IsSuccess)
             throw new InvalidOperationException($"Ingestion failed: {ingestResult.Error}");
@@ -222,7 +273,19 @@ public static class RagPipelineExtensions
         return Convert.ToHexString(hashBytes);
     }
 
-    private static DocumentMetadata BuildMetadata(FileEntry entry, DocumentMetadata? baseMetadata)
+    /// <summary>
+    /// Merges base and entry metadata into <see cref="DocumentMetadata.Tags"/>, then writes
+    /// <see cref="ReservedMetadataKeys.ProviderId"/>. Entry tags win over base tags on
+    /// collision; <c>provider_id</c> wins over both.
+    /// </summary>
+    /// <exception cref="ReservedMetadataKeyException">
+    /// An entry tag uses a key the framework writes itself (<see cref="ReservedMetadataKeys"/>).
+    /// A connector tag does not lose to the framework value — <c>MetadataBehavior</c> applies
+    /// connector tags first with <c>TryAdd</c>, so it <i>shadows</i> it. See the type's remarks
+    /// for why this throws instead of yielding a per-entry failure.
+    /// </exception>
+    private static DocumentMetadata BuildMetadata(
+        FileEntry entry, DocumentMetadata? baseMetadata, ProviderId providerId)
     {
         var tags = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -235,8 +298,26 @@ public static class RagPipelineExtensions
         if (entry.Metadata is not null)
         {
             foreach (var (k, v) in entry.Metadata)
+            {
+                // Before changing this throw — or the catch filter in ProcessEntryAsync that lets
+                // it past, or the escape path through Parallel.ForEachAsync — note that two tests
+                // pin the contract documented on IngestFromProviderAsync, and neither is obvious
+                // from this line alone:
+                //   IngestFromProviderAsync_ReservedKeyCollisionUnderParallelism_EscapesUnwrapped
+                //     — callers receive this bare, not inside an AggregateException, even when
+                //       several parallel workers throw at once.
+                //   IngestFromProviderAsync_ReservedKeyCollision_LeavesAlreadyProcessedEntriesIngested
+                //     — entries ingested before the collision surfaces stay ingested.
+                // Both live in tests/Rag.NET.Tests/DataProviders/IngestFromProviderTests.cs.
+                if (ReservedMetadataKeys.IsReserved(k))
+                    throw new ReservedMetadataKeyException(k, providerId.Value, entry.Id.Value);
                 tags[k] = v;
+            }
         }
+
+        // Written last, and reserved: every connector gains it without per-connector work, and
+        // neither an entry tag (guarded above) nor a caller-supplied base tag can shadow it.
+        tags[ReservedMetadataKeys.ProviderId] = providerId.Value;
 
         return new DocumentMetadata
         {

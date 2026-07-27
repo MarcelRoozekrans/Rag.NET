@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.Graph;
 using Rag.NET.DataProviders.SharePoint;
+using Rag.NET.DataProviders.Testing;
 using Xunit;
 
 namespace Rag.NET.DataProviders.SharePoint.Tests;
@@ -245,6 +246,106 @@ public sealed class SharePointDataProviderTests
         var failure = Assert.IsType<Rag.NET.Models.RagError.HttpFailed>(result.Error);
         Assert.Equal(HttpStatusCode.Forbidden, failure.StatusCode);
         Assert.Contains("insufficient privileges", failure.Content, StringComparison.Ordinal);
+    }
+
+    // -------------------------------------------------------------------------
+    // Metadata — the exact keys and values this connector emits
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_FullTraversal_EmitsDriveIdAndParentPath()
+    {
+        const string driveId = "drive-1";
+        var childrenJson = """
+            {
+              "value": [
+                {
+                  "id": "file-1", "name": "readme.md", "file": {}, "eTag": "etag-1",
+                  "parentReference": { "path": "/drive/root:/docs" }
+                }
+              ]
+            }
+            """;
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [$"/drives/{driveId}/items/root/children"] = childrenJson,
+        };
+        var sut = new SharePointDataProvider(MakeGraphClient(responses),
+            new SharePointOptions { SiteId = "site-1", DriveId = driveId });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal(driveId,             metadata["drive_id"]);
+        // parent_path, not path: Graph gives the containing folder (with its /drive/root:
+        // namespace prefix), not the file's own path, so it must not shadow the cross-connector
+        // "path" key that every other file/blob connector fills with the file's full path.
+        Assert.Equal("/drive/root:/docs", metadata["parent_path"]);
+        Assert.False(metadata.ContainsKey("path"));
+        Assert.Equal(2, metadata.Count);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_NoParentReference_OmitsParentPath()
+    {
+        // Graph leaves parentReference off some delta payloads. An optional field is omitted,
+        // never written empty — an empty value is indistinguishable from a real path at query time.
+        const string driveId  = "drive-1";
+        const string deltaUrl = "https://graph.microsoft.com/v1.0/drives/drive-1/items/root/delta?token=tok1";
+        var deltaJson = """
+            {
+              "value": [
+                { "id": "file-changed", "name": "updated.md", "file": {}, "eTag": "etag-new" }
+              ],
+              "@odata.deltaLink": "https://graph.microsoft.com/v1.0/drives/drive-1/items/root/delta?token=tok2"
+            }
+            """;
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [deltaUrl] = deltaJson,
+        };
+        var sut = new SharePointDataProvider(MakeGraphClient(responses),
+            new SharePointOptions { SiteId = "site-1", DriveId = driveId, DeltaToken = deltaUrl });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(entries).Value.Metadata;
+        Assert.NotNull(metadata);
+        Assert.Equal(driveId, metadata["drive_id"]);
+        Assert.False(metadata.ContainsKey("parent_path"));
+        _ = Assert.Single(metadata);
+        MetadataContract.AssertValid(entries[0].Value);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_AllEntriesSatisfyMetadataContract()
+    {
+        const string driveId = "drive-1";
+        var childrenJson = """
+            {
+              "value": [
+                { "id": "file-1", "name": "readme.md", "file": {}, "eTag": "etag-1",
+                  "parentReference": { "path": "/drive/root:/docs" } },
+                { "id": "file-2", "name": "notes.txt", "file": {}, "eTag": "etag-2" }
+              ]
+            }
+            """;
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [$"/drives/{driveId}/items/root/children"] = childrenJson,
+        };
+        var sut = new SharePointDataProvider(MakeGraphClient(responses),
+            new SharePointOptions { SiteId = "site-1", DriveId = driveId });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, entries.Count);
+        MetadataContract.AssertAll(entries.Select(e => e.Value));
     }
 
     // -------------------------------------------------------------------------

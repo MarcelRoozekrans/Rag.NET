@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Slack;
+using Rag.NET.DataProviders.Testing;
 using Rag.NET.Models;
 using Xunit;
 using ZeroAlloc.Rest;
@@ -387,6 +388,66 @@ public sealed class SlackDataProviderTests
         var provider = services.BuildServiceProvider().GetRequiredService<IFileContentProvider>();
 
         Assert.NotNull(provider);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_Metadata_PinsChannelDateAndMessageCount()
+    {
+        var api = new FakeSlackApi(
+            channels: [new SlackChannel("C001", "general")],
+            messages: [
+                new SlackMessage { Ts = "1711929600.000000", User = "U001", Text = "Hello" },
+                new SlackMessage { Ts = "1711929700.000000", User = "U001", Text = "World" }
+            ],
+            realName: "Alice");
+
+        var sut = MakeProvider(api);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("general",    metadata["channel"]);
+        Assert.Equal("C001",       metadata["channel_id"]);
+        Assert.Equal("2024-04-01", metadata["date"]);
+        Assert.Equal("2",          metadata["message_count"]);
+        Assert.Equal(4, metadata.Count);
+
+        // The channel and date stay in the Markdown heading — that is what gets embedded.
+        var content = await ReadContentAsync(results[0].Value);
+        Assert.Contains("# #general — 2024-04-01", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_PerDayMessageCount_IsPerDocumentNotPerChannel()
+    {
+        // Two messages on 2024-04-01 and one on 2024-04-02: each day document counts its own.
+        var api = new FakeSlackApi(
+            channels: [new SlackChannel("C002", "random")],
+            messages: [
+                new SlackMessage { Ts = "1711929600.000000", User = "U001", Text = "Day one a" },
+                new SlackMessage { Ts = "1711929700.000000", User = "U001", Text = "Day one b" },
+                new SlackMessage { Ts = "1712016000.000000", User = "U001", Text = "Day two" }
+            ],
+            realName: "Alice");
+
+        var sut = MakeProvider(api);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results.Select(r => r.Value));
+
+        Assert.Equal(2, results.Count);
+        // Day grouping order is not contractual — look the days up by their date tag.
+        var byDate = results.ToDictionary(
+            r => r.Value.Metadata!["date"], r => r.Value.Metadata!, StringComparer.Ordinal);
+        Assert.Equal("2", byDate["2024-04-01"]["message_count"]);
+        Assert.Equal("1", byDate["2024-04-02"]["message_count"]);
+        Assert.Equal("random", byDate["2024-04-01"]["channel"]);
+        Assert.Equal("C002",   byDate["2024-04-02"]["channel_id"]);
     }
 }
 

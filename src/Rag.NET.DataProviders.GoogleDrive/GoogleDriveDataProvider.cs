@@ -61,7 +61,9 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (string.Equals(file.MimeType, "application/vnd.google-apps.folder", StringComparison.Ordinal)) continue;
-                yield return Result<FileHandle, RagError>.Success(BuildHandle(file.Id, file.Name, file.Md5Checksum));
+                // No folder_id: a whole-drive listing does not know which folder a file sits in.
+                yield return Result<FileHandle, RagError>.Success(
+                    BuildHandle(file.Id, file.Name, file.Md5Checksum, file.MimeType, folderId: null));
             }
             pageToken = page.NextPageToken;
         }
@@ -96,7 +98,9 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
                         folderQueue.Enqueue(file.Id);
                         continue;
                     }
-                    yield return Result<FileHandle, RagError>.Success(BuildHandle(file.Id, file.Name, file.Md5Checksum));
+                    // The traversal knows the containing folder here, so folder_id is emitted.
+                    yield return Result<FileHandle, RagError>.Success(
+                        BuildHandle(file.Id, file.Name, file.Md5Checksum, file.MimeType, folderId));
                 }
                 pageToken = page.NextPageToken;
             }
@@ -124,7 +128,10 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
                 cancellationToken.ThrowIfCancellationRequested();
                 if (change.Removed == true || change.File is null) continue;
                 if (string.Equals(change.File.MimeType, "application/vnd.google-apps.folder", StringComparison.Ordinal)) continue;
-                yield return Result<FileHandle, RagError>.Success(BuildHandle(change.File.Id, change.File.Name, change.File.Md5Checksum));
+                // No folder_id: the Changes feed reports the file, not the folder it lives in.
+                yield return Result<FileHandle, RagError>.Success(BuildHandle(
+                    change.File.Id, change.File.Name, change.File.Md5Checksum,
+                    change.File.MimeType, folderId: null));
             }
 
             if (page.NextPageToken is null) break;
@@ -158,9 +165,29 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
         return await request.ExecuteAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private FileHandle BuildHandle(string id, string name, string? etag)
+    /// <summary>
+    /// Builds the handle for one file. Synchronous by design: the metadata dictionary is never
+    /// built inside the async iterator (design §1).
+    /// </summary>
+    /// <remarks>
+    /// Metadata emitted: <c>mime_type</c>, which the field selection already fetches at every
+    /// call site (to skip folders) and then discarded, and <c>folder_id</c> — only the folder
+    /// traversal knows the containing folder, so the whole-drive and Changes paths pass
+    /// <see langword="null"/> and the key is omitted rather than written empty.
+    /// </remarks>
+    private FileHandle BuildHandle(
+        string id, string name, string? etag, string? mimeType, string? folderId)
     {
         var capturedId = id;
+
+        Dictionary<string, string>? metadata = null;
+        if (!string.IsNullOrEmpty(mimeType) || !string.IsNullOrEmpty(folderId))
+        {
+            metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (!string.IsNullOrEmpty(mimeType)) metadata["mime_type"] = mimeType;
+            if (!string.IsNullOrEmpty(folderId)) metadata["folder_id"] = folderId;
+        }
+
         return new FileHandle(
             Id:       id,
             FileName: name,
@@ -179,6 +206,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
                     await ms.DisposeAsync().ConfigureAwait(false);
                     throw;
                 }
-            });
+            },
+            Metadata: metadata);
     }
 }

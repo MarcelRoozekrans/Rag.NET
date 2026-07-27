@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
+using Rag.NET.Models;
 
 namespace Rag.NET.Security;
 
@@ -25,7 +26,7 @@ public sealed partial class PiiChunkSanitiser : IChunkSanitiser
         if (text is null) return string.Empty;
         try
         {
-            var fileName = metadata.TryGetValue("file_name", out var fn) ? fn : "<unknown>";
+            var fileName = metadata.TryGetValue(ReservedMetadataKeys.FileName, out var fn) ? fn : "<unknown>";
             var result = text;
             foreach (var (regex, placeholder) in _compiled)
             {

@@ -17,7 +17,8 @@ namespace Rag.NET.Retrieval;
 /// </summary>
 public sealed class TimeWeightedRetriever : IRetriever
 {
-    internal const string CreatedAtKey = "created_at";
+    /// <summary>Alias of the canonical constant — see <see cref="ReservedMetadataKeys.CreatedAt"/>.</summary>
+    internal const string CreatedAtKey = ReservedMetadataKeys.CreatedAt;
 
     private readonly IRetriever _inner;
     private readonly TimeWeightedOptions _options;
