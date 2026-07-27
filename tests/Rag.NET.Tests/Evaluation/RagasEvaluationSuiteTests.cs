@@ -74,7 +74,7 @@ public class RagasEvaluationSuiteTests
         Assert.Null(report.AnswerRelevance);
         Assert.Null(report.ContextPrecision);
         Assert.Null(report.ContextRecall);
-        Assert.Equal(report.Faithfulness!.Value, report.OverallScore, precision: 2);
+        Assert.Equal(report.Faithfulness!.Value, report.OverallScore!.Value, precision: 2);
     }
 
     [Fact]
@@ -150,6 +150,6 @@ public class RagasEvaluationSuiteTests
         Assert.NotNull(report.Faithfulness);
         Assert.NotNull(report.AnswerRelevance);
         var expected = (report.Faithfulness!.Value + report.AnswerRelevance!.Value) / 2.0;
-        Assert.Equal(expected, report.OverallScore, precision: 2);
+        Assert.Equal(expected, report.OverallScore!.Value, precision: 2);
     }
 }

@@ -104,6 +104,6 @@ public class RagasEndToEndTests
         Assert.Null(report.ContextRecall);
         Assert.Equal(1.0, report.Faithfulness!.Value, precision: 2);
         Assert.Equal(1.0, report.AnswerRelevance!.Value, precision: 2);
-        Assert.Equal(1.0, report.OverallScore, precision: 2);
+        Assert.Equal(1.0, report.OverallScore!.Value, precision: 2);
     }
 }
