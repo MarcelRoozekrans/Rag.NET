@@ -1,3 +1,4 @@
+using Npgsql;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -146,6 +147,53 @@ public class PgVectorStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task StoreAsync_SameChunkTwice_ReplacesInsteadOfDuplicating()
+    {
+        // Isolated from the other facts on this shared table by a unique metadata marker.
+        var marker = new Dictionary<string, string>(StringComparer.Ordinal) { ["upsert_probe"] = "a" };
+
+        await _sut.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = "original text",
+                        DocumentId = new DocumentId("doc-upsert"),
+                        ChunkIndex = 0,
+                        Metadata = marker,
+                    },
+                    Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+                },
+            ],
+            TestContext.Current.CancellationToken);
+
+        await _sut.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = "replacement text",
+                        DocumentId = new DocumentId("doc-upsert"),
+                        ChunkIndex = 0,
+                        Metadata = marker,
+                    },
+                    Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+                },
+            ],
+            TestContext.Current.CancellationToken);
+
+        var results = await _sut.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 10, MetadataFilter = marker },
+            TestContext.Current.CancellationToken);
+
+        Assert.Single(results);
+        Assert.Equal("replacement text", results[0].Chunk.Text);
+    }
+
+    [Fact]
     public async Task CollectionManageable_CreateAndDeleteCollection()
     {
         ICollectionManageable manageable = _sut;
@@ -176,5 +224,112 @@ public class PgVectorStoreTests : IAsyncLifetime
     {
         await Assert.ThrowsAsync<ArgumentException>(
             () => _sut.DeleteCollectionAsync(name, TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task CreateCollectionAsync_NameTooLongToDeriveIndexNames_ThrowsArgumentException()
+    {
+        // A legal 48-char identifier, but "idx_{name}_document_id" would be 64 bytes and
+        // PostgreSQL would silently truncate it.
+        var name = new string('a', 48);
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(
+            () => _sut.CreateCollectionAsync(name, 3, TestContext.Current.CancellationToken));
+
+        Assert.Contains("the maximum is 47", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateCollectionAsync_CreatesUniqueChunkKeyIndex()
+    {
+        await _sut.CreateCollectionAsync("indexed_collection", 3, TestContext.Current.CancellationToken);
+
+        var uniqueDef = await ScalarAsync<string>(
+            _postgres.GetConnectionString(),
+            """
+            SELECT indexdef FROM pg_indexes
+            WHERE tablename = 'indexed_collection' AND indexname = 'idx_indexed_collection_doc_chunk'
+            """);
+
+        Assert.NotNull(uniqueDef);
+        Assert.Contains("CREATE UNIQUE INDEX", uniqueDef, StringComparison.Ordinal);
+        Assert.Contains("document_id, chunk_index", uniqueDef, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task InitializeAsync_TableWithPreExistingDuplicates_FailsFast()
+    {
+        // The pre-fix schema (no unique key) cannot be recreated in the fixture's database,
+        // which this class already migrated — so build it in a database of its own.
+        var legacyConnectionString = await CreateLegacyDuplicateDatabaseAsync("legacy_duplicates");
+
+        using var store = new PgVectorStore(legacyConnectionString, vectorDimensions: 3);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => store.InitializeAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("1 duplicate key", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            "GROUP BY document_id, chunk_index HAVING count(*) > 1",
+            ex.Message,
+            StringComparison.Ordinal);
+
+        // Both rows survive: the migration refuses, it does not repair by deleting data.
+        Assert.Equal(2L, await ScalarAsync<long>(legacyConnectionString, "SELECT count(*) FROM rag_chunks"));
+        Assert.Equal(
+            "first write,second write",
+            await ScalarAsync<string>(
+                legacyConnectionString,
+                "SELECT string_agg(text, ',' ORDER BY id) FROM rag_chunks"));
+    }
+
+    private async Task<string> CreateLegacyDuplicateDatabaseAsync(string database)
+    {
+        await ExecuteAsync(_postgres.GetConnectionString(), $"CREATE DATABASE {database}");
+
+        var connectionString = new NpgsqlConnectionStringBuilder(_postgres.GetConnectionString())
+        {
+            Database = database,
+        }.ConnectionString;
+
+        await ExecuteAsync(connectionString, "CREATE EXTENSION IF NOT EXISTS vector");
+        await ExecuteAsync(
+            connectionString,
+            """
+            CREATE TABLE rag_chunks (
+                id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                chunk_index INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                metadata JSONB NOT NULL DEFAULT '{}',
+                embedding vector(3) NOT NULL
+            )
+            """);
+        await ExecuteAsync(
+            connectionString,
+            """
+            INSERT INTO rag_chunks (document_id, chunk_index, text, embedding) VALUES
+                ('legacy-doc', 0, 'first write', '[1,0,0]'),
+                ('legacy-doc', 0, 'second write', '[0,1,0]')
+            """);
+
+        return connectionString;
+    }
+
+    private static async Task ExecuteAsync(string connectionString, string sql)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await cmd.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+    }
+
+    private static async Task<T?> ScalarAsync<T>(string connectionString, string sql)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync(TestContext.Current.CancellationToken);
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        var result = await cmd.ExecuteScalarAsync(TestContext.Current.CancellationToken);
+        return result is T typed ? typed : default;
     }
 }
