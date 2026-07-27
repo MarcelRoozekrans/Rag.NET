@@ -93,14 +93,27 @@ public sealed class IngestionOptions
 }
 ```
 
-When `Overwrite = true`, the pipeline calls `IVectorStore.DeleteByDocumentIdAsync` and removes the document from the BM25 index before storing new chunks. This is the idempotent update pattern:
+When `Overwrite = true`, the pipeline calls `IVectorStore.DeleteByDocumentIdAsync` before the document is parsed, purging the previous version's vectors outright. That vector-store delete is now **the only thing `Overwrite` exclusively buys**:
 
 ```csharp
 await pipeline.IngestAsync(stream, metadata,
     options: new IngestionOptions { Overwrite = true });
 ```
 
-Without `Overwrite`, re-ingesting the same `DocumentId` accumulates duplicate chunks. Set it on every refresh operation.
+Removal from the **BM25 index and the data manager is unconditional** — it happens on every ingest, whether or not `Overwrite` is set, immediately before the new postings are written. (`Overwrite` still removes from those two as well, but up front, before parsing, so its extra guarantee is narrow: a re-ingest whose new content fails to parse or yields no chunks leaves nothing of the old one behind.)
+
+So the old advice — *"without `Overwrite`, re-ingesting the same `DocumentId` accumulates duplicate chunks"* — needs correcting in both directions:
+
+| Store | Re-ingest **without** `Overwrite` | Re-ingest **with** `Overwrite` |
+|---|---|---|
+| BM25 index | Clean replace | Clean replace (purged earlier, before parsing) |
+| `IRagDataManager` | Clean replace | Clean replace (purged earlier, before parsing) |
+| Vector store | **Partial** — upserted on `(documentId, chunkIndex)`, so a *shorter* replacement strands the tail | Clean replace |
+| Parent chunk store | **Partial** — upserted on `(documentId, parentChunkIndex)` | **Partial** — `Overwrite` does not purge parent chunks either; only `IIngestor.DeleteAsync` does |
+
+A 9-chunk document re-ingested as 5 chunks therefore leaves chunks 5–8 in the vector store and retrievable unless `Overwrite` is set. **Set `Overwrite` on refresh operations where the document may have shrunk.** You no longer need it to avoid duplicate BM25 postings.
+
+> BM25 scores changed with this correction. A corpus that had been re-ingested carried inflated term statistics from the duplicated postings; they are gone, so keyword and hybrid scores move. Re-baseline any score thresholds tuned against the old behaviour. See [Breaking changes](../planning/BREAKING-CHANGES.md) and [Re-ingest semantics](data-providers.md#re-ingest-semantics).
 
 `MaxDegreeOfParallelism` controls how many documents `IngestFromProviderAsync` processes concurrently. The default `1` preserves the previous sequential behaviour. Increase it when your vector store and embedding service can handle concurrent requests:
 
@@ -116,7 +129,7 @@ A value of `4` is a reasonable starting point for most cloud embedding APIs. The
 
 Within a single document, chunks that need embedding are sliced into batches of `EmbedBatchSize` (default 100) and the batches are embedded concurrently, bounded by `MaxConcurrentEmbeddingBatches` (default 2). A document with at most `EmbedBatchSize` pending chunks is embedded in one generator call, exactly as before — batching only kicks in for larger documents. Chunk order and precomputed embeddings are always preserved; results are reassembled by original chunk index. Tune `EmbedBatchSize` to your embedding API's maximum inputs per request, and raise `MaxConcurrentEmbeddingBatches` when the service tolerates more parallel requests. Both values must be greater than zero. Note that `MaxDegreeOfParallelism` (documents) and `MaxConcurrentEmbeddingBatches` (batches per document) multiply: with `4 × 2` you can have up to eight embedding requests in flight. This changed the default behaviour for documents with more than 100 pending chunks: previously they were embedded in a single request, now in up to 2 concurrent requests of at most 100 chunks each — operators with strict embedding-API rate limits can set `MaxConcurrentEmbeddingBatches = 1` to keep requests sequential.
 
-> Concurrent ingestion of the same `DocumentId` is not supported. The BM25 index update and vector store write are not transactional. Serialise ingestion per document at the application layer.
+> Concurrent ingestion of the same `DocumentId` is not supported. The BM25 index update and vector store write are not transactional, and **there is no per-`DocumentId` lock anywhere in the pipeline** — the unconditional remove-then-re-add above takes the index's write lock once per call, but nothing holds it across the pair, so two concurrent ingests of one document can interleave as `A.Remove → B.Remove → A.Add → B.Add` and reproduce the duplicate postings the replace exists to prevent. Serialise ingestion per document at the application layer. The Service Bus trigger can do this for you: [sessions](data-providers.md#sessions-ordering-and-the-single-writer-caveat) give per-document FIFO.
 
 ## Parsers
 
@@ -555,7 +568,13 @@ services.AddRagNet(b => b
 
 ## Event-driven ingestion
 
-Ingestion can also be push-based: a bounded job queue plus a `BackgroundService` processor (`UseEventDrivenIngestion`), fed by an HMAC-verified webhook endpoint (`Rag.NET.Api`) or a background polling trigger (`UsePollingIngestion`). See [Event-driven ingestion in the data providers guide](data-providers.md#event-driven-ingestion) for setup, the webhook payload contract, and signature examples.
+Ingestion can also be push-based. Three triggers ship:
+
+- an HMAC-verified **webhook** endpoint (`Rag.NET.Api`), which enqueues onto the bounded in-memory job queue drained by the `UseEventDrivenIngestion` `BackgroundService` processor;
+- a background **polling** trigger (`UsePollingIngestion`), which re-runs `IngestFromProviderAsync` on an interval;
+- an **Azure Service Bus** trigger (`UseServiceBusIngestion`, `Rag.NET.Ingestion.AzureServiceBus`), which ingests each message end to end and settles it on the outcome — complete, abandon for redelivery, or dead-letter with a reason. It does **not** use the job queue; that is what makes it durable, and it is the only ingestion path with a dead-letter queue.
+
+See [Event-driven ingestion in the data providers guide](data-providers.md#event-driven-ingestion) for setup, the shared payload contract, signature examples, and the [settlement table](data-providers.md#settlement).
 
 ## Embedding versioning & re-indexing
 
