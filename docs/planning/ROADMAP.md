@@ -111,8 +111,10 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Plan:** `docs/plans/2026-07-26-connector-metadata-design.md` + `-implementation.md`
 **Completed:** 2026-07-27 (also codified the tag convention, enforced reserved keys, and added `provider_id`; five connectors' narrowed API field selections remain recorded as debt)
 
-### Phase 2.3: PgVector Sparse Storage [status: pending]
-**Items:** SPLADE for PgVector (deferred in Phase 1.2 for lack of a native sparse type — pgvector 0.7's `sparsevec` may have changed that; verify before designing)
+### Phase 2.3: PgVector Sparse Storage [status: complete]
+**Items:** SPLADE for PgVector (deferred in Phase 1.2 for lack of a native sparse type)
+**Plan:** `docs/plans/2026-07-27-pgvector-sparse-design.md` + `-implementation.md`
+**Completed:** 2026-07-27 (pgvector 0.8.2's `sparsevec` made it native, so the planned client-side RRF fallback was not needed; also fixed a pre-existing duplicate-row defect and built the dense ANN index the docs had long claimed)
 
 ### Phase 2.4: Azure Document Intelligence OCR [status: pending]
 **Items:** second `IPdfOcrEngine` implementation alongside Tesseract (deferred in Phase 1.5)
