@@ -6,9 +6,9 @@ namespace Rag.NET.Resilience;
 /// <summary>
 /// In-memory <see cref="ICostLedger"/> for tests and development: same per-(UTC day, kind)
 /// accumulation and day/month window semantics as <c>SqliteCostLedger</c>, without
-/// persistence. Only cost is accumulated — token counts are accepted but not retained
-/// (<see cref="GetSpendAsync"/> is the sole read surface here; the SQLite ledger keeps the
-/// token columns as the queryable record). Thread-safe via a lock.
+/// persistence. Only cost is accumulated — token and page counts are accepted but not
+/// retained (<see cref="GetSpendAsync"/> is the sole read surface here; the SQLite ledger
+/// keeps the token and page columns as the queryable record). Thread-safe via a lock.
 /// </summary>
 public sealed class InMemoryCostLedger(TimeProvider? timeProvider = null) : ICostLedger
 {
