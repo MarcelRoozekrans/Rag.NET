@@ -58,7 +58,7 @@ public class ContextRecallEvaluatorTests
     }
 
     [Fact]
-    public async Task ScoreAsync_NullSourceChunks_ReturnsZero()
+    public async Task ScoreAsync_NullSourceChunks_IsNotScoreable()
     {
         var client = Substitute.For<IChatClient>();
         var evaluator = new ContextRecallEvaluator(client);
@@ -66,12 +66,13 @@ public class ContextRecallEvaluatorTests
 
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(0.0, score!.Value, precision: 2);
+        // Returned 0.0 before Phase 3.1, which claimed the retrieval missed everything.
+        Assert.Null(score);
         await client.DidNotReceive().GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task ScoreAsync_MalformedStatementsJson_ReturnsOneGracefully()
+    public async Task ScoreAsync_MalformedStatementsJson_IsNotScoreable()
     {
         var client = Substitute.For<IChatClient>();
         client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
@@ -80,10 +81,11 @@ public class ContextRecallEvaluatorTests
         var evaluator = new ContextRecallEvaluator(client);
         var sample = new EvaluationSample("Q?", "A.", "Ref.", ["Chunk."]);
 
-        // Malformed JSON → JsonException → statements = [] → trivially recalled → 1.0
+        // Before Phase 3.1 the JsonException became an empty statement list and scored a perfect
+        // 1.0. An unreadable reply is now reported as unscoreable.
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(1.0, score!.Value, precision: 2);
+        Assert.Null(score);
         await client.Received(1).GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 }
