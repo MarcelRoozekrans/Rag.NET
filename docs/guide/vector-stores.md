@@ -15,11 +15,11 @@ The vector store is the persistence layer for embedded chunks. Rag.NET ships six
 | Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` | `Rag.NET.VectorStores.Weaviate` | `Rag.NET.VectorStores.Chroma` | `Rag.NET.VectorStores.Pinecone` |
 | Dense (semantic) search | Yes | Yes | Yes | Yes | Yes | Yes |
 | Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) | No — BM25 fallback | No — BM25 fallback |
-| Sparse search (SPLADE, `ISparseSearchable`) | No (deferred) | Yes (`enableSparseVectors: true`) | No | No | No | Yes (`EnableSparseVectors = true`) |
+| Sparse search (SPLADE, `ISparseSearchable`) | Yes (`enableSparseVectors: true`) | Yes (`enableSparseVectors: true`) | No | No | No | Yes (`EnableSparseVectors = true`) |
 | Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) | Yes (`where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) | Yes (filter `$eq`/`$and`) |
 | `ICollectionManageable` | Yes | Yes | Yes | Yes | Yes | Yes |
-| Similarity function | Cosine (via `<=>`) | Cosine | Cosine | Cosine | Cosine | Cosine (dotproduct when sparse) |
-| Index algorithm | IVFFlat / HNSW (pgvector) | HNSW | HNSW | HNSW | HNSW | Serverless (managed) |
+| Similarity function | Cosine (via `<=>`); dot product when sparse (`<#>`) | Cosine | Cosine | Cosine | Cosine | Cosine (dotproduct when sparse) |
+| Index algorithm | HNSW at ≤ 2000 dims, **exact scan above** (see [below](#dense-index-and-search-behaviour)) | HNSW | HNSW | HNSW | HNSW | Serverless (managed) |
 | Persistence | PostgreSQL | Qdrant server | Azure managed | Weaviate server | Chroma server | Pinecone managed |
 
 ## Interface hierarchy
@@ -39,9 +39,17 @@ classDiagram
         +DeleteCollectionAsync(name)
         +CollectionExistsAsync(name)
     }
+    class ISparseSearchable {
+        +StoreSparseAsync(items)
+        +SearchSparseAsync(query, options)
+    }
     class PgVectorStore {
     }
+    class PgVectorSparseVectorStore {
+    }
     class QdrantVectorStore {
+    }
+    class QdrantSparseVectorStore {
     }
     class AzureAISearchVectorStore {
     }
@@ -51,10 +59,16 @@ classDiagram
     }
     class PineconeVectorStore {
     }
+    class PineconeSparseVectorStore {
+    }
     IVectorStore <|.. PgVectorStore
     ICollectionManageable <|.. PgVectorStore
+    PgVectorStore <|-- PgVectorSparseVectorStore
+    ISparseSearchable <|.. PgVectorSparseVectorStore
     IVectorStore <|.. QdrantVectorStore
     ICollectionManageable <|.. QdrantVectorStore
+    QdrantVectorStore <|-- QdrantSparseVectorStore
+    ISparseSearchable <|.. QdrantSparseVectorStore
     IVectorStore <|.. AzureAISearchVectorStore
     IHybridSearchable <|.. AzureAISearchVectorStore
     ICollectionManageable <|.. AzureAISearchVectorStore
@@ -65,7 +79,13 @@ classDiagram
     ICollectionManageable <|.. ChromaVectorStore
     IVectorStore <|.. PineconeVectorStore
     ICollectionManageable <|.. PineconeVectorStore
+    PineconeVectorStore <|-- PineconeSparseVectorStore
+    ISparseSearchable <|.. PineconeSparseVectorStore
 ```
+
+The sparse subtypes are opt-in registrations, not separate packages — the dense base type
+deliberately does **not** implement `ISparseSearchable`, so a `store is ISparseSearchable`
+capability probe is honest.
 
 ## Shared interface
 
@@ -120,7 +140,7 @@ store absorbs its own flavour.
 
 **Package:** `Rag.NET.VectorStores.PgVector`
 
-Stores chunks in a `rag_chunks` table. Uses the `pgvector` extension for ANN search via the `<=>` cosine distance operator. Metadata is stored as `JSONB` and filtered using PostgreSQL's containment operator.
+Stores chunks in a `rag_chunks` table. Uses the `pgvector` extension for dense search via the `<=>` cosine distance operator and, when sparse vectors are enabled, for SPLADE search via the `<#>` inner-product operator over a `sparsevec` column. Metadata is stored as `JSONB` and filtered using PostgreSQL's containment operator.
 
 ### Setup
 
@@ -132,6 +152,8 @@ services.AddRagNet(rag => rag
 ```
 
 The `vectorDimensions` must match the output dimension of your embedding model (`text-embedding-3-small` → 1536, `mxbai-embed-large` → 1024, etc.).
+
+Add `enableSparseVectors: true` to register the sparse-capable subtype instead — see [Sparse vectors (SPLADE)](#sparse-vectors-splade) below.
 
 ### Schema
 
@@ -150,6 +172,12 @@ CREATE TABLE IF NOT EXISTS rag_chunks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_document_id ON rag_chunks (document_id);
+
+-- The chunk key. StoreAsync upserts on it.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rag_chunks_doc_chunk ON rag_chunks (document_id, chunk_index);
+
+-- Dense ANN index — created only when <dimensions> <= 2000. See below.
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_embedding ON rag_chunks USING hnsw (embedding vector_cosine_ops);
 ```
 
 Call `InitializeAsync` once at application startup (e.g., in a hosted service or `Program.cs`) before any ingestion:
@@ -166,13 +194,93 @@ var store = provider.GetRequiredService<IVectorStore>() as PgVectorStore;
 await store!.InitializeAsync();
 ```
 
+> **`InitializeAsync` is not always a quick startup step.** Building the HNSW index over a large
+> existing table is slow and memory-hungry, and it happens inline. `CREATE INDEX` takes a
+> `ShareLock` on `rag_chunks`: concurrent **writes block** until it finishes, reads are
+> unaffected. (`CREATE INDEX CONCURRENTLY` is deliberately not used — it cannot run inside a
+> transaction, and a failed run leaves an `INVALID` index that `IF NOT EXISTS` would then skip
+> forever.) Budget for it on the first run after upgrading.
+
+### Chunk key and upsert semantics
+
+A chunk is keyed by `(document_id, chunk_index)`, enforced by a unique index. `StoreAsync` **upserts** on that key, so re-storing a chunk replaces it rather than appending a duplicate row — the behaviour re-ingestion and `ReindexStaleAsync` have always assumed. Earlier versions had no such key and appended a second row instead.
+
+Two consequences when pointing the store at a table created by one of those versions:
+
+- **`InitializeAsync` fails fast** if `rag_chunks` already contains duplicate `(document_id, chunk_index)` pairs, because the unique key cannot be created over them. It **deletes nothing** — the exception carries the duplicate count and the query to inspect them. Decide which row of each pair to keep, remove the rest, then initialize again.
+- **`StoreAsync` throws** an `InvalidOperationException` if the table has no unique index on exactly those two columns (the `ON CONFLICT` clause has nothing to infer). Almost always this means `InitializeAsync` was never called against the table.
+
+### Collection names
+
+`CreateCollectionAsync` caps collection names at **47 characters**, shorter than PostgreSQL's own 63-byte identifier limit. Three index names are derived from a collection name — `idx_{name}_document_id`, `idx_{name}_doc_chunk`, `idx_{name}_embedding` — and PostgreSQL *silently truncates* over-long identifiers rather than failing. A single 60-character name truncates all three of its own derived names onto the same 63 bytes: the btree is created first and takes the name, then both `CREATE ... IF NOT EXISTS` statements see a relation already holding it and do nothing. The collection ends up with no unique key and no ANN index, while the existence probe (which resolves by name) reports the key as present. Names longer than 47 characters are therefore rejected at creation time.
+
+### Dense index and search behaviour
+
+`InitializeAsync` builds an HNSW index on `embedding` with `vector_cosine_ops`, matching the `<=>` operator `SearchAsync` orders by. Two things follow that are worth knowing before tuning anything:
+
+- **The index is skipped above 2000 dimensions.** pgvector refuses to build HNSW on a wider column (measured against pgvector 0.8.2: 2000 builds, 2001 fails), and `text-embedding-3-large` at 3072 is over the line. Rather than failing initialization for those models, the store leaves the index out and dense search stays an **exact sequential scan** — slower on large tables, but exact, and the behaviour such deployments already had. To get an index at those widths, store `halfvec` or reduce the embedding dimension at the provider.
+- **Where the index exists, dense search is approximate,** and results may differ from the exact scan.
+
+**A filtered search may return fewer results than `TopK`, including none.** `MinScore` and `MetadataFilter` are applied *after* the HNSW index has picked its candidates, so a selective filter can discard all of them (measured: 20,000 rows, 5 matching the filter, 0 returned). The store mitigates this by setting `hnsw.iterative_scan = relaxed_order` per query, which makes pgvector keep scanning until it has enough surviving rows (all 5 in that same measurement).
+
+- Raising `hnsw.ef_search` does **not** compensate — at `ef_search = 1000` the same query still returned 0. Do not reach for it.
+- Even with iterative scanning, pgvector stops at `hnsw.max_scan_tuples` (20,000 by default) rather than degrading into a full scan, so a very selective filter over a very large table can still come back short. Raise that setting if you need it to dig deeper.
+- `hnsw.iterative_scan` arrived in **pgvector 0.8**. The store reads `pg_extension.extversion` once, caches the answer, and simply does not issue the setting against an older extension — so on 0.7 and below a filtered search over an HNSW index keeps the truncating behaviour above. Upgrading pgvector is the only fix.
+
 ### Similarity score
 
-pgvector returns `1 - (embedding <=> query)` as the score, which is cosine similarity in `[0, 1]`. `MinScore` is applied as a `WHERE` clause filter before `ORDER BY` and `LIMIT`.
+Dense search returns `1 - (embedding <=> query)`, which is cosine similarity in `[0, 1]`. `MinScore` is applied as a `WHERE` clause filter before `ORDER BY` and `LIMIT` — but where the HNSW index exists that filtering happens *after* the index picked its candidates, with the consequences described [above](#dense-index-and-search-behaviour).
+
+**`MinScore` means something different on the sparse path.** `SearchSparseAsync` scores by raw dot product of matching term weights — unbounded above and not comparable to a cosine similarity. The same option name carries two scales; tune it per path rather than reusing one threshold.
 
 ### Hybrid search
 
 `PgVectorStore` does not implement `IHybridSearchable`. When `UseHybridSearch = true`, the pipeline falls back to the in-memory BM25 index + RRF merge. See [Retrieval — Hybrid search](retrieval.md#hybrid-search-bm25--vector).
+
+### Sparse vectors (SPLADE)
+
+Pass `enableSparseVectors: true` to `UsePgVector` to register `PgVectorSparseVectorStore` — a subtype that adds a nullable `sparse_embedding sparsevec(N)` column to the same `rag_chunks` rows that hold the dense vectors and serves `ISparseSearchable`. The dense-only `PgVectorStore` deliberately does **not** implement `ISparseSearchable`, so the pipelines' capability probe is honest and no SPLADE encoding work happens against a store that cannot persist it (the same type-split as [Qdrant](#sparse-vectors-splade-1) and [Pinecone](#sparse-vectors-splade-2)). Pair it with `UseSpladeEncoder` — see [Sparse retrieval (SPLADE)](retrieval.md#sparse-retrieval-splade) for the full setup.
+
+```csharp
+services.AddRagNet(rag => rag
+    .UsePgVector(
+        connectionString:     "Host=localhost;Database=ragdb;Username=postgres;Password=secret",
+        vectorDimensions:     1536,
+        enableSparseVectors:  true,
+        sparseVocabularySize: PgVectorSparseVectorStore.DefaultSparseVocabularySize));  // 30522
+```
+
+`InitializeAsync` then does everything the dense one does, plus:
+
+```sql
+ALTER TABLE rag_chunks ADD COLUMN IF NOT EXISTS sparse_embedding sparsevec(<vocabularySize>);
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_sparse ON rag_chunks USING hnsw (sparse_embedding sparsevec_ip_ops);
+```
+
+Search is server-side: `SearchSparseAsync` orders by the `<#>` inner-product operator over that index and returns the negated result as the score. Chunks sharing no term with the query are **absent** from the results rather than present with score 0.
+
+**Requires pgvector 0.7.0 or later** — the release that introduced the `sparsevec` type. `InitializeAsync` verifies the installed version and throws naming both versions and the upgrade path (`ALTER EXTENSION vector UPDATE`) rather than letting PostgreSQL's context-free "type sparsevec does not exist" surface later. Note that the [iterative-scan mitigation](#dense-index-and-search-behaviour) applies to sparse search too and needs **0.8**; the sparse HNSW index otherwise truncates filtered queries exactly as the dense one does.
+
+#### No ordering contract
+
+Dense and sparse writes for the same chunk can happen in **either order**. `sparse_embedding` lives in its own column and is deliberately excluded from the dense upsert's `DO UPDATE SET` list, so calling `StoreAsync` after `StoreSparseAsync` does *not* drop the chunk's sparse vector. This is the opposite of [Pinecone](#sparse-vectors-splade-2), where an upsert replaces the whole record and the write order is a documented hazard — do not assume that hazard generalises across stores.
+
+#### Term budget: `TopTerms` must be ≤ 1000
+
+pgvector's HNSW index rejects a `sparsevec` with more than **1000** non-zero elements (an unindexed `sparsevec` column allows up to 16,000). `OnnxSpladeOptions.TopTerms` defaults to 256, comfortably inside the cap, but raising it past 1000 makes every write fail. `StoreSparseAsync` validates the whole batch before opening a connection and throws an `ArgumentException` naming the chunk, the term count and `OnnxSpladeOptions.TopTerms` — **nothing is written**. Either lower the term budget, or drop the `idx_rag_chunks_sparse` index and accept a sequential scan up to 16,000 terms.
+
+#### `sparseVocabularySize` is baked in at first initialize
+
+The `sparsevec` column's dimension is the sparse encoder's vocabulary size, which must be strictly greater than every term id the encoder emits. It defaults to `PgVectorSparseVectorStore.DefaultSparseVocabularySize` (30522 — BERT's WordPiece vocabulary, which every SPLADE checkpoint in common use inherits).
+
+**It cannot be changed in place.** `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` matches on the column *name* only, so against an existing `sparsevec(100)` it would leave the dimension alone and report success — after which every sparse write and read fails on the mismatch, and the pipeline swallows both (ingestion survives a sparse-side fault; the ensemble degrades to dense results). The visible outcome would be successful ingestion, successful retrieval, and permanently dense-only quality behind one log line. `InitializeAsync` therefore **fails fast** on a dimension mismatch, naming both dimensions and the two ways out:
+
+- construct the store with `sparseVocabularySize:` matching the existing column, or
+- `ALTER TABLE rag_chunks DROP COLUMN sparse_embedding` and initialize again — which discards every sparse vector already stored. Re-ingest the affected documents to rebuild them; `SparseEmbeddingBehavior` recomputes a sparse vector per chunk on every ingest. (`ReindexStaleAsync` also regenerates sparse vectors from the stored chunk text, but only for documents whose *embedding version stamp* is stale — dropping the column does not make anything stale, so it will not pick them up on its own.)
+
+So switching to an encoder with a different vocabulary is a drop-and-re-ingest operation, not a config change.
+
+> **One failure mode has no gate:** a term id at or above the declared dimension is rejected by PostgreSQL with a raw `ERROR: sparsevec index out of bounds`, naming neither the column nor the option. Nothing guards it because a SPLADE encoder emits ids below its own vocabulary size by construction — if you see this error, `sparseVocabularySize` is smaller than your encoder's vocabulary.
 
 ---
 
@@ -423,7 +531,7 @@ The store **requires the cosine space**. If the configured collection already ex
 
 ### Hybrid search
 
-`ChromaVectorStore` does not implement `IHybridSearchable` (or `ISparseSearchable`) — Chroma has no native BM25+vector fusion for externally supplied embeddings. When `UseHybridSearch = true`, the pipeline falls back to the in-memory BM25 index + RRF merge; if you want *native* hybrid or sparse search, use [Qdrant](#qdrant) or [Pinecone](#pinecone) (sparse/SPLADE), [Weaviate](#weaviate), or [Azure AI Search](#azure-ai-search) instead. See [Retrieval — Hybrid search](retrieval.md#hybrid-search-bm25--vector).
+`ChromaVectorStore` does not implement `IHybridSearchable` (or `ISparseSearchable`) — Chroma has no native BM25+vector fusion for externally supplied embeddings. When `UseHybridSearch = true`, the pipeline falls back to the in-memory BM25 index + RRF merge; if you want *native* hybrid or sparse search, use [Qdrant](#qdrant), [Pinecone](#pinecone), or [PgVector](#postgresql--pgvector) (sparse/SPLADE), [Weaviate](#weaviate), or [Azure AI Search](#azure-ai-search) instead. See [Retrieval — Hybrid search](retrieval.md#hybrid-search-bm25--vector).
 
 ### Metadata filtering
 
@@ -529,7 +637,7 @@ Serverless indexes do not support delete-by-metadata-filter (the service answers
 
 ### Sparse vectors (SPLADE)
 
-Set `EnableSparseVectors = true` in the `configure` callback to register `PineconeSparseVectorStore` — a subtype that serves `ISparseSearchable` next to the dense interfaces. The dense-only `PineconeVectorStore` deliberately does **not** implement `ISparseSearchable`, so the pipelines' capability probe is honest and no SPLADE encoding work happens against a store that cannot persist it (the same type-split as [Qdrant](#sparse-vectors-splade)). Pair it with `UseSpladeEncoder` — see [Sparse retrieval (SPLADE)](retrieval.md#sparse-retrieval-splade) for the full setup.
+Set `EnableSparseVectors = true` in the `configure` callback to register `PineconeSparseVectorStore` — a subtype that serves `ISparseSearchable` next to the dense interfaces. The dense-only `PineconeVectorStore` deliberately does **not** implement `ISparseSearchable`, so the pipelines' capability probe is honest and no SPLADE encoding work happens against a store that cannot persist it (the same type-split as [Qdrant](#sparse-vectors-splade-1) and [PgVector](#sparse-vectors-splade)). Pair it with `UseSpladeEncoder` — see [Sparse retrieval (SPLADE)](retrieval.md#sparse-retrieval-splade) for the full setup.
 
 Sparse values ride on the same records as the dense embeddings: `StoreSparseAsync` upserts the full record (dense + sparse + metadata), so it needs no prior `StoreAsync` call for that chunk. **Order matters in the other direction, though:** a Pinecone upsert replaces the *entire* record and `StoreAsync` writes records without sparse values, so calling `StoreAsync` after `StoreSparseAsync` for the same chunk silently drops its sparse vector. Always store dense first, sparse second — Rag.NET's own ingestion (`StorageBehavior`) and `RegenerateSparseAsync` both do, so this only bites hand-rolled write paths; re-ingesting a chunk means re-running both steps. `SearchSparseAsync` issues a sparse query with an all-zero dense vector sized from the live index (Pinecone requires a dense vector on every query; zeroing it nulls the dense contribution — the documented `alpha = 0` weighting).
 

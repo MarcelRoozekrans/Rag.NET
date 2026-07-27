@@ -182,6 +182,10 @@ services.AddRagNet(rag =>
     // Qdrant: named sparse vector "splade" next to the dense vector on the same points.
     rag.UseQdrant("localhost", 6334, "docs", vectorDimensions: 1536, enableSparseVectors: true);
 
+    // Or PgVector: a sparsevec column on the same rag_chunks rows (pgvector 0.7.0+):
+    // rag.UsePgVector("Host=localhost;Database=ragdb;Username=postgres;Password=secret",
+    //                 vectorDimensions: 1536, enableSparseVectors: true);
+
     // Or Pinecone: sparse values on the same records (dotproduct serverless index):
     // rag.UsePinecone("api-key", "docs", 1536, o => o.EnableSparseVectors = true);
 
@@ -208,10 +212,11 @@ var results = await pipeline.RetrieveAsync("ISO 27001 compliance checklist", new
 ### Behaviour and degradation
 
 - `RetrievalOptions.UseSparseSearch` — `null` (default) follows `UseHybridSearch`; `false` disables the sparse arm per call. `true` without `UseHybridSearch` has no effect: sparse search only participates in the ensemble.
-- The sparse arm runs only when an `ISparseEmbeddingGenerator` is registered **and** the store implements `ISparseSearchable` (Qdrant with `enableSparseVectors: true`, Pinecone with `EnableSparseVectors = true`, or `InMemoryVectorStore`). Otherwise hybrid search behaves exactly as the two-arm dense+BM25 fusion above.
+- The sparse arm runs only when an `ISparseEmbeddingGenerator` is registered **and** the store implements `ISparseSearchable` (Qdrant with `enableSparseVectors: true`, PgVector with `enableSparseVectors: true`, Pinecone with `EnableSparseVectors = true`, or `InMemoryVectorStore`). Otherwise hybrid search behaves exactly as the two-arm dense+BM25 fusion above.
 - Degraded, never broken: sparse encoding or search failures are logged and the remaining arms serve the request; sparse ingestion failures fall back to dense-only storage.
 - Qdrant sparse mode uses deterministic point ids derived from `(DocumentId, ChunkIndex)`, making chunk upserts idempotent. Collections created without sparse support must be recreated to enable it.
-- PgVector sparse storage is deferred — use Qdrant, Pinecone, or the in-memory store for SPLADE today. Qdrant is the most exercised path; Pinecone's sparse *write* path is covered by construction only (Pinecone Local rejects sparse writes, so it is untested against a live serverless index — see [Vector stores — Pinecone](vector-stores.md#sparse-vectors-splade-1)).
+- PgVector sparse mode stores SPLADE weights in a `sparsevec` column on the same `rag_chunks` rows and searches them server-side; it needs **pgvector 0.7.0+**, caps `OnnxSpladeOptions.TopTerms` at 1000 while its sparse HNSW index exists, and — unlike Pinecone — has no dense/sparse write-ordering contract. The `sparsevec` column's dimension is fixed at first initialize, so changing to an encoder with a different vocabulary means dropping the column and re-ingesting. See [Vector stores — PgVector](vector-stores.md#sparse-vectors-splade).
+- Qdrant is the most exercised path; Pinecone's sparse *write* path is covered by construction only (Pinecone Local rejects sparse writes, so it is untested against a live serverless index — see [Vector stores — Pinecone](vector-stores.md#sparse-vectors-splade-2)).
 
 ## Hypothetical Document Embeddings (HyDE)
 
