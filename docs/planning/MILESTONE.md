@@ -30,19 +30,32 @@ greenfield Phase 3.1 and 3.2 work. They are not greenfield: `src/Rag.NET.Evaluat
 (four metrics, suite, report) and `src/Rag.NET.Evaluation/EvaluationDatasetBuilder.cs` landed on
 2026-04-11, three months before the ROADMAP was written, with a design doc and a plan.
 
-What they do not have is **any test coverage or documentation**.
-`tests/Rag.NET.Evaluation.Tests` covers `EmbeddingDistanceEvaluator`, `JudgeCriterion`,
-`LlmJudgeEvaluator` and `LlmJudgeResult` — nothing else. `docs/guide/evaluation.md` has no
-section for either. So the matrix row was the honest one: the code shipped, the feature did not.
+Neither is documented: `docs/guide/evaluation.md` has no section for either. So the matrix row
+was the honest one — the code shipped, the feature did not.
 
-This matters more than an ordinary coverage gap. An evaluator that is wrong does not fail
-loudly — it returns a plausible number, and a plausible number is indistinguishable from a
-correct one without a test that pins the definition. Anything scored by this code until now
-should be treated as unverified.
+**Correction (2026-07-27, found during Phase 3.1 Part C).** This section originally said both
+features had **no test coverage**. That was wrong. `tests/Rag.NET.Tests/Evaluation/` holds seven
+files and roughly 620 lines covering all four metrics, the suite and the dataset builder; the
+original search was scoped to test *projects* matching `*Evaluation*` and missed a subfolder of
+the main test project.
+
+The reality is worse than the claim it replaces. Those tests **certify the defects**:
+`ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully` asserts that a malformed model reply scores
+`1.0` — the best possible value — and calls it *"gracefully"*. `ScoreAsync_EmptySourceChunks_ReturnsZero`
+asserts that "nothing was retrieved" means "retrieval was maximally bad".
+
+That changes the shape of the work but not its necessity. A green suite agreeing with wrong
+behaviour is a stronger illusion of correctness than no suite at all, and it means these phases
+must **rewrite existing assertions**, not merely add missing ones — which is exactly the kind of
+change nobody makes by accident.
+
+An evaluator that is wrong does not fail loudly. It returns a plausible number, and a plausible
+number is indistinguishable from a correct one whether nothing tests it or a test agrees with it.
+Anything scored by this code until now should be treated as unverified.
 
 **Consequence:** 3.1 and 3.2 are completion phases — audit against the metric definitions, fix
-what is wrong, test, document, reconcile `features.md`. Assume nothing works until a test says
-so.
+what is wrong, re-point the tests that pin the old behaviour, document, reconcile `features.md`.
+Assume nothing works until a test says so *and the test is right*.
 
 ## Phases
 

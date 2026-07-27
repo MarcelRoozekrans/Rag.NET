@@ -7,13 +7,36 @@
 ## The feature shipped; the work did not
 
 `src/Rag.NET.Evaluation.Ragas` landed on 2026-04-11 with four metrics, a suite, a report and a
-builder — and with **no tests and no documentation**. `features.md` recorded this contradiction
-faithfully without anyone noticing: the detail section reads `**Status:** ✅ Done` while the
-summary-matrix row at `:1054` reads `[ ]`. The matrix row was the honest one.
+builder — and with **no documentation**. `features.md` recorded the contradiction faithfully
+without anyone noticing: the detail section reads `**Status:** ✅ Done` while the summary-matrix
+row at `:1054` reads `[ ]`. The matrix row was the honest one.
 
-That matters more than an ordinary coverage gap. An evaluator that is wrong does not throw. It
-returns a plausible number, and a plausible number is indistinguishable from a correct one
-without a test that pins the definition. Every score this package has produced is unverified.
+> **Correction (found during Part C).** An earlier draft of this design said the package had
+> **no tests**. That was wrong, and the error was mine: the search was scoped to test *projects*
+> matching `*Evaluation*` and missed `tests/Rag.NET.Tests/Evaluation/`, which holds seven files
+> and roughly 620 lines covering all four metrics, the suite and the dataset builder.
+>
+> The truth is worse than the claim it replaces. Those tests **pin the defects below as correct
+> behaviour**:
+>
+> ```csharp
+> public async Task ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully()
+>     Assert.Equal(1.0, score, precision: 2);
+> ```
+>
+> A malformed model reply scoring the best possible value was not an oversight that testing would
+> have caught — it was written down, asserted, and called *"gracefully"*. `ContextRecall` has the
+> twin, and `ScoreAsync_EmptySourceChunks_ReturnsZero` certifies that "nothing was retrieved"
+> means "retrieval was maximally bad".
+>
+> This strengthens the case for the phase rather than weakening it. A green suite that certifies
+> wrong behaviour is a stronger illusion of correctness than no suite at all, and it means the
+> fixes below must **rewrite existing assertions**, not merely add new ones. Each of those tests
+> is re-pointed at the correct behaviour with a comment recording what it used to claim.
+
+An evaluator that is wrong does not throw. It returns a plausible number, and a plausible number
+is indistinguishable from a correct one — whether nothing tests it, or a test agrees with it.
+Every score this package has produced is unverified.
 
 The audit below is what a read of the code found. It is not a list of hypotheticals.
 
