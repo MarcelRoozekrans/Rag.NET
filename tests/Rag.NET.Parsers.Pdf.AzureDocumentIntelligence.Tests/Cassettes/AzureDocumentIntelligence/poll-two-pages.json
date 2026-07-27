@@ -1,0 +1,23 @@
+{
+  "Guid": "6f1c2d40-0000-4000-8000-000000000002",
+  "Title": "Terminal poll of the two-page analyze operation",
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/documentintelligence/documentModels/prebuilt-read/analyzeResults/two-pages",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [ "GET" ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Headers": {
+      "Content-Type": "application/json; charset=utf-8"
+    },
+    "Body": "{\"status\":\"succeeded\",\"createdDateTime\":\"2026-07-27T10:00:00Z\",\"lastUpdatedDateTime\":\"2026-07-27T10:00:02Z\",\"analyzeResult\":{\"apiVersion\":\"2024-11-30\",\"modelId\":\"prebuilt-read\",\"stringIndexType\":\"utf16CodeUnit\",\"content\":\"PAGE ONE TEXT\\nPAGE TWO TEXT\",\"pages\":[{\"pageNumber\":1,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"words\":[{\"content\":\"PAGE\",\"span\":{\"offset\":0,\"length\":4},\"confidence\":0.99},{\"content\":\"ONE\",\"span\":{\"offset\":5,\"length\":3},\"confidence\":0.99}],\"lines\":[{\"content\":\"PAGE ONE TEXT\",\"spans\":[{\"offset\":0,\"length\":13}]}],\"spans\":[{\"offset\":0,\"length\":13}]},{\"pageNumber\":2,\"angle\":0,\"width\":8.5,\"height\":11,\"unit\":\"inch\",\"words\":[],\"lines\":[{\"content\":\"PAGE TWO TEXT\",\"spans\":[{\"offset\":14,\"length\":13}]},{\"content\":\"SECOND LINE\",\"spans\":[{\"offset\":28,\"length\":11}]}],\"spans\":[{\"offset\":14,\"length\":25}]}]}}"
+  }
+}

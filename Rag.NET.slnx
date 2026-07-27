@@ -127,6 +127,7 @@
     <Project Path="tests/Rag.NET.Graph.Tests/Rag.NET.Graph.Tests.csproj" />
     <Project Path="tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Vision.Tests/Rag.NET.Parsers.Vision.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />

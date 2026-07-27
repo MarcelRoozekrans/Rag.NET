@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf.AzureDocumentIntelligence\Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <ProjectReference Include="..\Rag.NET.Testing\Rag.NET.Testing.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="xunit.v3" Version="2.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
+    <PackageReference Include="WireMock.Net" Version="1.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared with the parser suites: the same scanned fixture the Tesseract path uses, so
+         the env-gated live test submits a document that genuinely needs OCR. -->
+    <EmbeddedResource Include="..\Rag.NET.Parsers.IntegrationTests\Resources\sample-scanned.pdf"
+                      Link="Resources\sample-scanned.pdf"
+                      LogicalName="Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests.Resources.sample-scanned.pdf" />
+  </ItemGroup>
+
+</Project>
