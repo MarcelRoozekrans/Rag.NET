@@ -1,3 +1,4 @@
+using System.Text;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
@@ -32,8 +33,13 @@ internal sealed class ServiceBusMessageIngestionHandler(
     string entityPath,
     ILogger logger)
 {
-    /// <summary>Service Bus caps <c>DeadLetterErrorDescription</c>; stay well inside it.</summary>
-    private const int MaxDescriptionLength = 4000;
+    /// <summary>
+    /// Service Bus caps <c>DeadLetterErrorDescription</c> at 4096 <b>bytes</b>, not characters;
+    /// stay well inside it. Truncating by character count would let non-ASCII detail — a file
+    /// name in Japanese, an error message with a smart quote — encode past the cap and fail the
+    /// dead-letter call, leaving the message unsettled to loop until <c>MaxDeliveryCount</c>.
+    /// </summary>
+    private const int MaxDescriptionBytes = 4000;
 
     /// <summary>
     /// Ingests the message and returns the settlement it earned. Never throws for an ingestion
@@ -59,7 +65,15 @@ internal sealed class ServiceBusMessageIngestionHandler(
                 .ConfigureAwait(false);
 
             if (!result.IsSuccess)
-                return FromFailedResult(message, result.Error);
+            {
+                // Shutdown outranks the error. An IIngestor that observes cancellation and
+                // reports it as a failed Result rather than throwing is well behaved, and
+                // settling that as a failure would burn a delivery attempt — or dead-letter a
+                // healthy document — once per host restart.
+                return cancellationToken.IsCancellationRequested
+                    ? LeaveForShutdown(message)
+                    : FromFailedResult(message, result.Error);
+            }
 
             ServiceBusIngestionLog.MessageCompleted(
                 logger, entityPath, job.Metadata.DocumentId.Value, message.MessageId);
@@ -67,11 +81,7 @@ internal sealed class ServiceBusMessageIngestionHandler(
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Shutdown, not failure. Leaving the message unsettled lets its lock expire and
-            // the broker redeliver it; settling it as a failure would charge a delivery
-            // attempt to a message that never got a real one.
-            ServiceBusIngestionLog.MessageLeftForShutdown(logger, entityPath, message.MessageId);
-            return MessageDisposition.Leave;
+            return LeaveForShutdown(message);
         }
         catch (Exception ex)
         {
@@ -109,7 +119,7 @@ internal sealed class ServiceBusMessageIngestionHandler(
                     break; // Leave — the lock expires and the broker redelivers.
             }
         }
-        catch (ServiceBusException ex)
+        catch (Exception ex)
         {
             LogSettlementFailure(args.Message, disposition, ex);
         }
@@ -146,7 +156,7 @@ internal sealed class ServiceBusMessageIngestionHandler(
                     break; // Leave — the lock expires and the broker redelivers.
             }
         }
-        catch (ServiceBusException ex)
+        catch (Exception ex)
         {
             LogSettlementFailure(args.Message, disposition, ex);
         }
@@ -164,6 +174,29 @@ internal sealed class ServiceBusMessageIngestionHandler(
     /// </remarks>
     private static CancellationToken SettleToken => CancellationToken.None;
 
+    /// <summary>
+    /// Shutdown, not failure. Leaving the message unsettled lets its lock expire and the broker
+    /// redeliver it; settling it as a failure would charge a delivery attempt to a message that
+    /// never got a real one.
+    /// </summary>
+    private MessageDisposition LeaveForShutdown(ServiceBusReceivedMessage message)
+    {
+        ServiceBusIngestionLog.MessageLeftForShutdown(logger, entityPath, message.MessageId);
+        return MessageDisposition.Leave;
+    }
+
+    /// <summary>
+    /// The deliberate "log it and let the lock expire" path, reached from a catch that is broad
+    /// on purpose.
+    /// </summary>
+    /// <remarks>
+    /// A settle against a link the processor is tearing down surfaces as anything from
+    /// <see cref="ServiceBusException"/> to <see cref="ObjectDisposedException"/> to
+    /// <see cref="TaskCanceledException"/>, and the next SDK version is free to add another.
+    /// Narrowing this to a list would let the unlisted one escape the callback, which buys
+    /// nothing: the fallback here — leave it unsettled, the lock expires, the broker
+    /// redelivers — is the safe outcome for every one of them.
+    /// </remarks>
     private void LogSettlementFailure(
         ServiceBusReceivedMessage message, MessageDisposition disposition, Exception exception) =>
         ServiceBusIngestionLog.SettlementFailed(
@@ -185,6 +218,28 @@ internal sealed class ServiceBusMessageIngestionHandler(
         return MessageDisposition.Abandon;
     }
 
-    private static string Truncate(string value) =>
-        value.Length <= MaxDescriptionLength ? value : value[..MaxDescriptionLength];
+    /// <summary>
+    /// Trims <paramref name="value"/> to at most <see cref="MaxDescriptionBytes"/> UTF-8 bytes,
+    /// cutting only on a rune boundary so neither a surrogate pair nor a multi-byte sequence is
+    /// split. <c>EnumerateRunes</c> yields U+FFFD for an ill-formed subsequence, which is what
+    /// the UTF-8 encoder substitutes for it too, so the running count stays honest.
+    /// </summary>
+    private static string Truncate(string value)
+    {
+        if (Encoding.UTF8.GetByteCount(value) <= MaxDescriptionBytes)
+            return value;
+
+        var bytes = 0;
+        var chars = 0;
+        foreach (var rune in value.EnumerateRunes())
+        {
+            if (bytes + rune.Utf8SequenceLength > MaxDescriptionBytes)
+                break;
+
+            bytes += rune.Utf8SequenceLength;
+            chars += rune.Utf16SequenceLength;
+        }
+
+        return value[..chars];
+    }
 }

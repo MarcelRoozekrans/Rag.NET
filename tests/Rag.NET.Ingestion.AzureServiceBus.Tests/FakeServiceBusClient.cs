@@ -26,12 +26,28 @@ internal sealed class FakeServiceBusClient(
 
     public int MaxConcurrentCallsPerSessionRequested { get; private set; } = -1;
 
+    /// <summary>
+    /// The four knobs <see cref="ServiceBusIngestionOptions"/> exposes and validates. They are
+    /// recorded here because validating a value at registration proves nothing about it
+    /// reaching the processor — only this does.
+    /// </summary>
+    public int MaxConcurrentCallsRequested { get; private set; } = -1;
+
+    /// <inheritdoc cref="MaxConcurrentCallsRequested"/>
+    public int MaxConcurrentSessionsRequested { get; private set; } = -1;
+
+    /// <inheritdoc cref="MaxConcurrentCallsRequested"/>
+    public int PrefetchCountRequested { get; private set; } = -1;
+
+    /// <inheritdoc cref="MaxConcurrentCallsRequested"/>
+    public TimeSpan? MaxAutoLockRenewalDurationRequested { get; private set; }
+
     public int Disposes => Volatile.Read(ref _disposes);
 
     public override ServiceBusProcessor CreateProcessor(string queueName, ServiceBusProcessorOptions options)
     {
         RequestedEntity = queueName;
-        AutoCompleteRequested = options.AutoCompleteMessages;
+        RecordProcessorOptions(options);
         return Processor;
     }
 
@@ -40,7 +56,7 @@ internal sealed class FakeServiceBusClient(
     {
         RequestedEntity = topicName;
         RequestedSubscription = subscriptionName;
-        AutoCompleteRequested = options.AutoCompleteMessages;
+        RecordProcessorOptions(options);
         return Processor;
     }
 
@@ -48,8 +64,7 @@ internal sealed class FakeServiceBusClient(
         string queueName, ServiceBusSessionProcessorOptions options = default!)
     {
         RequestedEntity = queueName;
-        AutoCompleteRequested = options.AutoCompleteMessages;
-        MaxConcurrentCallsPerSessionRequested = options.MaxConcurrentCallsPerSession;
+        RecordSessionProcessorOptions(options);
         return SessionProcessor;
     }
 
@@ -58,8 +73,7 @@ internal sealed class FakeServiceBusClient(
     {
         RequestedEntity = topicName;
         RequestedSubscription = subscriptionName;
-        AutoCompleteRequested = options.AutoCompleteMessages;
-        MaxConcurrentCallsPerSessionRequested = options.MaxConcurrentCallsPerSession;
+        RecordSessionProcessorOptions(options);
         return SessionProcessor;
     }
 
@@ -67,5 +81,22 @@ internal sealed class FakeServiceBusClient(
     {
         Interlocked.Increment(ref _disposes);
         return ValueTask.CompletedTask;
+    }
+
+    private void RecordProcessorOptions(ServiceBusProcessorOptions options)
+    {
+        AutoCompleteRequested = options.AutoCompleteMessages;
+        MaxConcurrentCallsRequested = options.MaxConcurrentCalls;
+        PrefetchCountRequested = options.PrefetchCount;
+        MaxAutoLockRenewalDurationRequested = options.MaxAutoLockRenewalDuration;
+    }
+
+    private void RecordSessionProcessorOptions(ServiceBusSessionProcessorOptions options)
+    {
+        AutoCompleteRequested = options.AutoCompleteMessages;
+        MaxConcurrentCallsPerSessionRequested = options.MaxConcurrentCallsPerSession;
+        MaxConcurrentSessionsRequested = options.MaxConcurrentSessions;
+        PrefetchCountRequested = options.PrefetchCount;
+        MaxAutoLockRenewalDurationRequested = options.MaxAutoLockRenewalDuration;
     }
 }

@@ -88,12 +88,19 @@ public sealed class AzureServiceBusIngestionTrigger : IHostedService, IAsyncDisp
     }
 
     /// <inheritdoc/>
-    public Task StartAsync(CancellationToken cancellationToken)
+    /// <remarks>
+    /// The log line comes after the await, not before it. Starting is where a sessions/entity
+    /// mismatch or a missing queue throws, and a "processing started" record emitted ahead of
+    /// the call would claim something that never happened.
+    /// </remarks>
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
+        if (_sessionProcessor is not null)
+            await _sessionProcessor.StartProcessingAsync(cancellationToken).ConfigureAwait(false);
+        else
+            await _processor!.StartProcessingAsync(cancellationToken).ConfigureAwait(false);
+
         ServiceBusIngestionLog.ProcessingStarted(_logger, _entityPath, _sessionsEnabled);
-        return _sessionProcessor is not null
-            ? _sessionProcessor.StartProcessingAsync(cancellationToken)
-            : _processor!.StartProcessingAsync(cancellationToken);
     }
 
     /// <summary>

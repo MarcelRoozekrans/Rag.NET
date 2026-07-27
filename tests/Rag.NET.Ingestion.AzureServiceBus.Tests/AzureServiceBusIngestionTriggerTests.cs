@@ -1,3 +1,4 @@
+using System.Text;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Ingestion.AzureServiceBus.Settlement;
@@ -59,7 +60,13 @@ public sealed class AzureServiceBusIngestionTriggerTests
         var client = new FakeServiceBusClient();
         var sut = new AzureServiceBusIngestionTrigger(
             client, FakeIngestor.Succeeding(), "queue-a",
-            new ServiceBusIngestionOptions { SessionsEnabled = true, MaxConcurrentSessions = 4 });
+            new ServiceBusIngestionOptions
+            {
+                SessionsEnabled = true,
+                MaxConcurrentSessions = 4,
+                PrefetchCount = 7,
+                MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(3),
+            });
 
         await sut.StartAsync(ct);
         try
@@ -69,6 +76,11 @@ public sealed class AzureServiceBusIngestionTriggerTests
             // Per-document FIFO is the only thing sessions buy; more than one concurrent call
             // per session would throw it away.
             Assert.Equal(1, client.MaxConcurrentCallsPerSessionRequested);
+            // The knobs the options expose have to arrive at the processor. Setting one and
+            // never asserting it landed is how a dropped assignment ships unnoticed.
+            Assert.Equal(4, client.MaxConcurrentSessionsRequested);
+            Assert.Equal(7, client.PrefetchCountRequested);
+            Assert.Equal(TimeSpan.FromMinutes(3), client.MaxAutoLockRenewalDurationRequested);
         }
         finally
         {
@@ -78,6 +90,29 @@ public sealed class AzureServiceBusIngestionTriggerTests
 
         Assert.Equal(1, client.SessionProcessor.Stops);
         Assert.Equal(1, client.SessionProcessor.Disposes);
+    }
+
+    [Fact]
+    public async Task NonSessionOptions_ReachTheProcessor()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var client = new FakeServiceBusClient();
+        await using var sut = new AzureServiceBusIngestionTrigger(
+            client, FakeIngestor.Succeeding(), "queue-a",
+            new ServiceBusIngestionOptions
+            {
+                MaxConcurrentCalls = 5,
+                PrefetchCount = 12,
+                MaxAutoLockRenewalDuration = TimeSpan.FromMinutes(9),
+            });
+
+        await sut.StartAsync(ct);
+        await sut.StopAsync(ct);
+
+        Assert.Equal(5, client.MaxConcurrentCallsRequested);
+        Assert.Equal(12, client.PrefetchCountRequested);
+        Assert.Equal(TimeSpan.FromMinutes(9), client.MaxAutoLockRenewalDurationRequested);
+        Assert.False(client.AutoCompleteRequested);
     }
 
     [Fact]
@@ -185,6 +220,52 @@ public sealed class AzureServiceBusIngestionTriggerTests
         // Not abandoned, not dead-lettered: left unsettled so the lock expires and the broker
         // redelivers without charging the message a delivery attempt it never really had.
         Assert.Null(args.Applied);
+    }
+
+    [Fact]
+    public async Task HostShutdown_DoesNotSettleWhenTheIngestorReportsCancellationAsAFailedResult()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        // A permanent error, so anything that treats this as a real failure dead-letters it —
+        // the worst outcome, because the document is healthy and the host merely restarted.
+        var ingestor = FakeIngestor.ReportingCancellationAsFailure(
+            new RagError.NoParserFound("application/x-nonsense"));
+        var args = new RecordingMessageEventArgs(Message(), shutdown.Token);
+
+        var handling = Handler(ingestor).HandleAsync(args);
+
+        await ingestor.Entered.WaitAsync(Bound, ct);
+        await shutdown.CancelAsync();
+        await handling.WaitAsync(Bound, ct);
+
+        // Observing cancellation and returning a failed Result is a legitimate IIngestor shape;
+        // only PipelineIngestor happens to rethrow. Shutdown must outrank the error either way,
+        // or every host restart burns a delivery attempt on whatever was in flight.
+        Assert.Null(args.Applied);
+    }
+
+    [Fact]
+    public async Task DeadLetterDescription_IsTruncatedByUtf8BytesNotCharacters()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // Four-byte runes: 3000 characters, but 6000 bytes — past the 4096-byte cap Service Bus
+        // enforces on DeadLetterErrorDescription, while a character count would call it fine.
+        var oversized = string.Concat(Enumerable.Repeat("\U0001F600", 1500));
+        var args = new RecordingMessageEventArgs(Message(), ct);
+
+        await Handler(FakeIngestor.Failing(new RagError.NoParserFound(oversized)))
+            .HandleAsync(args).WaitAsync(Bound, ct);
+
+        Assert.Equal(SettleAction.DeadLetter, args.Applied);
+        var description = args.DeadLetterDescription!;
+        var bytes = Encoding.UTF8.GetByteCount(description);
+        Assert.True(bytes <= 4000, $"Description encodes to {bytes} UTF-8 bytes.");
+        // Truncated, not gutted: a per-character cut would have kept 4000 chars / 16000 bytes.
+        Assert.True(bytes > 3900, $"Description encodes to only {bytes} UTF-8 bytes.");
+        // Cut on a rune boundary. A split surrogate pair — or any ill-formed tail — decodes as
+        // U+FFFD, and the input carries none of its own.
+        Assert.All(description.EnumerateRunes(), rune => Assert.NotEqual(Rune.ReplacementChar, rune));
     }
 
     [Fact]
