@@ -10,9 +10,6 @@ Anything added here follows one rule: record it with its origin, then schedule i
 phase or re-justify it. Closed items move to the list below rather than vanishing, so a
 future reader can tell the difference between "never existed" and "dealt with".
 
-- **Connector metadata consistency** (Phase 1.6): only Exchange/Linear populate the new
-  `FileHandle.Metadata`; the other 19 connectors have obvious candidates (Gmail from/date,
-  Teams team/channel, Zendesk status, …) currently inlined into rendered Markdown. → 2.2
 - **Fourth filename sanitizer** (Phase 2.1, Part C): `EmbeddedMessageMetadata.Sanitize` in
   `Rag.NET.Parsers.Email` duplicates `FileNameSanitizer` because that type lives in
   `Rag.NET.DataProviders`, which parsers do not reference. Behaviourally consistent bar three
@@ -35,6 +32,10 @@ future reader can tell the difference between "never existed" and "dealt with".
   reference `Rag.NET.DataProviders`), so outside the connector scope of 2.1. → unscheduled
 
 ### Closed
+
+- ~~**Connector metadata consistency**~~ (Phase 1.6) → closed in 2.2: all 21 connectors emit
+  metadata to an enforced convention, with reserved keys guarded and `provider_id` written
+  centrally.
 
 - ~~**Graph transport-exception mapping**~~ (Phase 1.6) → closed in 2.1: `RagError.TransportFailed`
   plus a shared `src/Shared/GraphErrorMapping.cs` linked into all four Graph connectors.
@@ -105,8 +106,10 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Plan:** `docs/plans/2026-07-26-engineering-debt-sweep-design.md` + `-implementation.md`
 **Completed:** 2026-07-26 (three new debts recorded above: a fourth filename sanitizer, the stack-recursive email traversal behind the depth ceiling, and an unsanitized webhook filename)
 
-### Phase 2.2: Connector Metadata Consistency [status: pending]
+### Phase 2.2: Connector Metadata Consistency [status: complete]
 **Items:** populate `FileHandle.Metadata` across the remaining 19 of 21 connectors
+**Plan:** `docs/plans/2026-07-26-connector-metadata-design.md` + `-implementation.md`
+**Completed:** 2026-07-27 (also codified the tag convention, enforced reserved keys, and added `provider_id`; five connectors' narrowed API field selections remain recorded as debt)
 
 ### Phase 2.3: PgVector Sparse Storage [status: pending]
 **Items:** SPLADE for PgVector (deferred in Phase 1.2 for lack of a native sparse type — pgvector 0.7's `sparsevec` may have changed that; verify before designing)
