@@ -51,6 +51,10 @@ public sealed class SqliteCostLedger : ICostLedger
 
     private static void EnsureTable(SqliteConnection conn)
     {
+        // Column ORDER differs between a table created here (pages before cost) and one
+        // migrated by EnsurePagesColumn (ALTER appends, so pages lands last). Harmless only
+        // because every statement in this class names its columns explicitly — never
+        // introduce SELECT * or an ordinal-indexed read against cost_ledger.
         using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = """
@@ -75,9 +79,20 @@ public sealed class SqliteCostLedger : ICostLedger
     /// See the class remarks: this ALTERs the caller's table, deliberately and non-destructively.
     /// </summary>
     /// <remarks>
-    /// SQLite has no <c>ADD COLUMN IF NOT EXISTS</c>, so the column list is probed first —
-    /// <c>PRAGMA table_info</c> rather than catching the "duplicate column name" error, so an
-    /// unrelated failure is not mistaken for "already migrated".
+    /// <para>
+    /// SQLite has no <c>ADD COLUMN IF NOT EXISTS</c>, so the column list is probed first — and
+    /// the ALTER is <i>also</i> guarded, because the probe alone is not enough. Both halves are
+    /// needed: SQLite serialises the two ALTER statements but nothing guards the gap between
+    /// this process reading "column absent" and issuing its own ALTER, so two processes opening
+    /// the same ledger file concurrently (scaled-out workers on a shared volume during a rolling
+    /// restart) both probe absent, both ALTER, and the loser gets "duplicate column name" — out
+    /// of the constructor, i.e. as a host startup crash, on the first start after upgrade.
+    /// </para>
+    /// <para>
+    /// The exception filter re-probes rather than matching on the message: an unrelated DDL
+    /// failure still propagates, because in that case the column genuinely will not be there.
+    /// That is the property the probe-first approach was defending, and it survives intact.
+    /// </para>
     /// </remarks>
     private static void EnsurePagesColumn(SqliteConnection conn)
     {
@@ -86,13 +101,24 @@ public sealed class SqliteCostLedger : ICostLedger
 
         using var alter = conn.CreateCommand();
         alter.CommandText = "ALTER TABLE cost_ledger ADD COLUMN pages INTEGER NOT NULL DEFAULT 0";
-        alter.ExecuteNonQuery();
+        try
+        {
+            alter.ExecuteNonQuery();
+        }
+        catch (SqliteException) when (HasPagesColumn(conn))
+        {
+            // Lost a race with another process that migrated between our probe and this ALTER.
+            // The re-probe in the filter is what keeps unrelated failures fatal.
+        }
     }
 
     private static bool HasPagesColumn(SqliteConnection conn)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('cost_ledger') WHERE name = 'pages'";
+        // COLLATE NOCASE: SQLite column names are case-insensitive, so a table carrying PAGES
+        // must not probe as absent and send the ALTER into a guaranteed failure.
+        cmd.CommandText =
+            "SELECT COUNT(*) FROM pragma_table_info('cost_ledger') WHERE name = 'pages' COLLATE NOCASE";
         return Convert.ToInt64(cmd.ExecuteScalar(), CultureInfo.InvariantCulture) > 0;
     }
 

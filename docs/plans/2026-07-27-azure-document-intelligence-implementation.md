@@ -30,11 +30,23 @@ An OCR entry carries `Pages` and zero tokens. Do **not** fabricate a token count
 ```csharp
 // 1. CostEntry_OcrEntry_CarriesPagesAndZeroTokens
 // 2. CostEntry_ExistingTokenEntries_StillCompileAndRoundTrip — guards the `required` removal
-// 3. SqliteCostLedger round-trips an OCR entry (Pages survives persistence — check the schema;
-//    if the table has no Pages column this task also needs a migration, so look first)
+// 3. SqliteCostLedger round-trips an OCR entry (Pages survives persistence)
+// 4. Legacy table without the pages column migrates, preserving existing spend
+// 5. Concurrent construction against a legacy table does not throw (the TOCTOU guard)
 ```
 
-**Look before you write:** `SqliteCostLedger` persists entries. If its schema is column-per-field, `Pages` needs adding and existing databases need handling — the same class of migration problem Phase 2.3 hit. Report what you find; if a migration is needed, fail fast on an old schema rather than silently dropping the column.
+**Schema migration — resolved, decision recorded.** `SqliteCostLedger` persists entries and its schema *is* column-per-field (`day, kind, tokens_in, tokens_out, cost`, PK `(day, kind)`), so `pages` needs a column and a table created by an earlier version will not have one — `CREATE TABLE IF NOT EXISTS` leaves it alone, after which every insert naming `pages` fails.
+
+This instruction originally read "fail fast on an old schema rather than silently dropping the column". **Fail-fast is superseded**; the implementation probes `pragma_table_info` and runs an additive `ALTER TABLE cost_ledger ADD COLUMN pages INTEGER NOT NULL DEFAULT 0`, documented in the class remarks. Reasoning:
+
+- SQLite's `ADD COLUMN` with a **constant** default is a metadata-only, O(1) operation — no table rewrite, even on a large ledger.
+- `DEFAULT 0` is not a guess but the **true value** for pre-existing `Chat`/`Embedding` rows: they were never billed pages.
+- There is **no irreconcilable shape conflict**, unlike Phase 2.3's `sparsevec(100)`-vs-`sparsevec(30522)` case that fail-fast exists to catch. `pages` cannot pre-exist at a wrong shape, so the failure mode fail-fast protects against does not exist here.
+- Failing fast on a budget-accounting side table would turn a routine library upgrade into a hard startup failure requiring manual DDL, for a change that provably cannot lose data.
+
+Silently dropping the column remains rejected — it defeats the column's purpose. Silently ALTERing without saying so also remains rejected: the class remarks state in bold that the statement runs automatically against the caller's database.
+
+**The migration must be concurrency-safe.** Probing alone is TOCTOU: SQLite serialises the two ALTER *statements*, but nothing guards the gap between the probe reading "absent" and this process issuing its ALTER, so concurrent openers of one ledger file all probe absent, all ALTER, and the losers get `duplicate column name` — out of the **constructor**, which `RagBuilderExtensions.cs:354-355` calls from a `TryAddSingleton` factory, i.e. a host startup crash on the first start after upgrade. Guard the ALTER with `catch (SqliteException) when (HasPagesColumn(conn))`: the re-probe (rather than message-matching) keeps unrelated DDL failures fatal. Probe with `COLLATE NOCASE` — SQLite column names are case-insensitive.
 
 **Commit:** `feat(abstractions): let CostEntry represent per-page costs`
 

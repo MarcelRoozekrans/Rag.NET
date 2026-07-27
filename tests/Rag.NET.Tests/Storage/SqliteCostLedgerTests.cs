@@ -277,6 +277,49 @@ public sealed class SqliteCostLedgerTests : IDisposable
         await sut.InitializeAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(1.50m, await sut.GetSpendAsync(CostWindow.Day, TestContext.Current.CancellationToken));
+
+        // Pin that the column is actually THERE: the spend assertion above is satisfied by an
+        // un-migrated table too, so without this the test survives disabling migration entirely.
+        Assert.Equal(0, ReadCounters("Chat").Pages);
+    }
+
+    [Fact]
+    public async Task Ctor_ConcurrentConstructionAgainstLegacyTable_MigratesWithoutThrowing()
+    {
+        // TOCTOU: SQLite serialises the two ALTER statements, but nothing guards the gap
+        // between the probe reading "column absent" and this process issuing its own ALTER.
+        // Every opener probes absent, every opener ALTERs, and all but one lose with
+        // "duplicate column name" — out of the CONSTRUCTOR, which RagBuilderExtensions calls
+        // from a TryAddSingleton factory, so it surfaces as a host startup crash on the first
+        // start after upgrade. DI serialises that factory within one process, so the real
+        // shape is multi-process sharing one ledger file (scaled-out workers on a shared
+        // volume, rolling restart); independent connections reproduce it, and each ctor opens
+        // its own. Same concurrent-writer standard this class already applies at RecordAsync.
+        CreateLegacyTableWithRow(_dbPath, day: "2026-07-15", kind: "Chat", cost: "1.50");
+        var time = new FakeUtcTimeProvider(s_midJuly);
+
+        const int Openers = 8;
+        using var gate = new Barrier(Openers);
+
+        // LongRunning gives each opener a dedicated thread and the barrier releases them
+        // together, so the race window is forced rather than waited for — no sleeps.
+        var openers = Enumerable.Range(0, Openers).Select(_ => Task.Factory.StartNew(
+            () =>
+            {
+                gate.SignalAndWait(TestContext.Current.CancellationToken);
+                return CreateLedger(time);
+            },
+            TestContext.Current.CancellationToken,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default));
+
+        var ledgers = await Task.WhenAll(openers); // no constructor may throw
+
+        // Migrated exactly once, and the column is genuinely present and usable.
+        Assert.Equal(0, ReadCounters("Chat").Pages);
+        await ledgers[0].RecordAsync(OcrEntry(2, 0.25m), TestContext.Current.CancellationToken);
+        Assert.Equal(2, ReadCounters("Ocr").Pages);
+        Assert.Equal(1.75m, await ledgers[^1].GetSpendAsync(CostWindow.Day, TestContext.Current.CancellationToken));
     }
 
     /// <summary>Writes the pre-<c>pages</c> schema verbatim, with one row already in it.</summary>

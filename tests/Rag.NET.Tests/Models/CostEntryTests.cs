@@ -61,10 +61,11 @@ public class CostEntryTests
     }
 
     [Fact]
-    public void CostEntry_KindAndCostRemainRequired()
+    public void CostEntry_UnitCountersDefaultToZero()
     {
-        // The two fields every kind of call genuinely has stay required; only the
-        // unit counters became optional.
+        // Kind and Cost are still required — that is enforced by the compiler, not assertable
+        // here. What this pins is the consequence of the counters no longer being: omitting
+        // them is legal and yields zero, rather than some sentinel.
         var sut = new CostEntry { Kind = CostKind.Chat, Cost = 1m };
 
         Assert.Equal(0L, sut.InputTokens);
