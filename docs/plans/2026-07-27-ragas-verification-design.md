@@ -7,17 +7,27 @@
 ## The feature shipped; the work did not
 
 `src/Rag.NET.Evaluation.Ragas` landed on 2026-04-11 with four metrics, a suite, a report and a
-builder — and with **no documentation**. `features.md` recorded the contradiction faithfully
-without anyone noticing: the detail section reads `**Status:** ✅ Done` while the summary-matrix
-row at `:1054` reads `[ ]`. The matrix row was the honest one.
+builder. `features.md` recorded a contradiction faithfully without anyone noticing: the detail
+section reads `**Status:** ✅ Done` while the summary-matrix row at `:1054` reads `[ ]`. The matrix
+row was the honest one — but not for the reason this design first gave.
 
-> **Correction (found during Part C).** An earlier draft of this design said the package had
-> **no tests**. That was wrong, and the error was mine: the search was scoped to test *projects*
-> matching `*Evaluation*` and missed `tests/Rag.NET.Tests/Evaluation/`, which holds seven files
-> and roughly 620 lines covering all four metrics, the suite and the dataset builder.
+> **Corrections (found during Parts C and D).** An earlier draft of this design said the package
+> had **no tests and no documentation**. Both claims were wrong, and both errors were mine —
+> and they share a cause: a truncated or narrowly-scoped search read as an exhaustive one.
 >
-> The truth is worse than the claim it replaces. Those tests **pin the defects below as correct
-> behaviour**:
+> - **Tests exist.** The search was scoped to test *projects* matching `*Evaluation*` and missed
+>   `tests/Rag.NET.Tests/Evaluation/` — seven files, roughly 620 lines, covering all four
+>   metrics, the suite and the dataset builder.
+> - **Documentation exists.** `docs/guide/evaluation.md` already carried a RAGAS section of about
+>   160 lines: *The four metrics*, *Which metrics to register*, *Ground-truth validation*,
+>   *Cost estimation*, *Complete example*. The heading survey that missed it was piped through
+>   `Select-Object -First 20` and stopped before reaching them.
+>
+> **This makes the phase's case stronger, not weaker.** The feature did not look half-finished
+> from any angle. It had a suite, a guide section, and a `Done` marker — and all three agreed
+> with each other and were wrong together. The documentation stated
+> `precision = relevant / total` as the definition of Context Precision, which is not the RAGAS
+> metric; the tests asserted the defects below as intended behaviour:
 >
 > ```csharp
 > public async Task ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully()
@@ -29,10 +39,13 @@ row at `:1054` reads `[ ]`. The matrix row was the honest one.
 > twin, and `ScoreAsync_EmptySourceChunks_ReturnsZero` certifies that "nothing was retrieved"
 > means "retrieval was maximally bad".
 >
-> This strengthens the case for the phase rather than weakening it. A green suite that certifies
-> wrong behaviour is a stronger illusion of correctness than no suite at all, and it means the
-> fixes below must **rewrite existing assertions**, not merely add new ones. Each of those tests
-> is re-pointed at the correct behaviour with a comment recording what it used to claim.
+> A green suite that certifies wrong behaviour is a stronger illusion of correctness than no
+> suite at all, and a guide that documents the wrong formula is stronger still. The consequence
+> for this phase is concrete: the work must **rewrite existing assertions and rewrite an existing
+> guide section**, not merely add missing ones. Each affected test is re-pointed at the correct
+> behaviour with a comment recording what it used to claim.
+>
+> The only signal that anything was wrong was an unchecked checkbox.
 
 An evaluator that is wrong does not throw. It returns a plausible number, and a plausible number
 is indistinguishable from a correct one — whether nothing tests it, or a test agrees with it.

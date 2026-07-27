@@ -143,16 +143,18 @@ future reader can tell the difference between "never existed" and "dealt with".
 > **Correction (2026-07-27).** This milestone was scoped from the unchecked rows in
 > features.md, but that file contradicted itself: RAGAS-Style Metrics and Evaluation Dataset
 > Builder are marked `✅ Done` in their detail sections while their matrix rows read `[ ]`. Both
-> shipped on 2026-04-11 — three months before this ROADMAP was written — **undocumented**, and
-> with tests that **certify their defects rather than catch them**
-> (`ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully` asserts that an unreadable model reply
-> scores the best possible value). The matrix row was the honest one. 3.1 and 3.2 are therefore
-> completion phases, not greenfield ones, and they must re-point existing assertions rather than
-> only add new ones.
+> shipped on 2026-04-11 — three months before this ROADMAP was written — with tests **and** a
+> guide section that both describe the defective behaviour as correct. The guide gave
+> `precision = relevant / total` as the definition of Context Precision, which is not the RAGAS
+> metric, and `ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully` asserts that an unreadable
+> model reply scores the best possible value. The matrix row was the honest one, and the only
+> signal. 3.1 and 3.2 are therefore completion phases, not greenfield ones, and they must rewrite
+> existing assertions and documentation rather than only add missing ones.
 >
-> A second correction, 2026-07-27: this note first said "no tests". That was wrong — the tests
-> live in `tests/Rag.NET.Tests/Evaluation/`, a subfolder of the main test project, and were missed
-> by a search scoped to test projects named `*Evaluation*`.
+> Corrected twice, 2026-07-27: this note first said "no tests", then "undocumented". Both were
+> wrong. The tests live in `tests/Rag.NET.Tests/Evaluation/` (a subfolder of the main test
+> project) and the docs in `docs/guide/evaluation.md`; both were missed by searches that were
+> scoped too narrowly or truncated, and read as exhaustive.
 
 ### Phase 3.1: RAGAS Metrics — verify, test, document [status: pending]
 **Backlog items:** RAGAS-Style Metrics

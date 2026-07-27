@@ -30,23 +30,29 @@ greenfield Phase 3.1 and 3.2 work. They are not greenfield: `src/Rag.NET.Evaluat
 (four metrics, suite, report) and `src/Rag.NET.Evaluation/EvaluationDatasetBuilder.cs` landed on
 2026-04-11, three months before the ROADMAP was written, with a design doc and a plan.
 
-Neither is documented: `docs/guide/evaluation.md` has no section for either. So the matrix row
-was the honest one — the code shipped, the feature did not.
+**Correction (2026-07-27, found during Phase 3.1 Parts C and D).** This section originally said
+both features had **no test coverage and no documentation**. Both claims were wrong, and they
+share a cause: a truncated or narrowly-scoped search read as an exhaustive one.
 
-**Correction (2026-07-27, found during Phase 3.1 Part C).** This section originally said both
-features had **no test coverage**. That was wrong. `tests/Rag.NET.Tests/Evaluation/` holds seven
-files and roughly 620 lines covering all four metrics, the suite and the dataset builder; the
-original search was scoped to test *projects* matching `*Evaluation*` and missed a subfolder of
-the main test project.
+- `tests/Rag.NET.Tests/Evaluation/` holds seven files and roughly 620 lines covering all four
+  metrics, the suite and the dataset builder. The search was scoped to test *projects* matching
+  `*Evaluation*` and missed a subfolder of the main test project.
+- `docs/guide/evaluation.md` already carried a RAGAS section of about 160 lines. The heading
+  survey that missed it was truncated at 20 results and stopped short of them.
 
-The reality is worse than the claim it replaces. Those tests **certify the defects**:
-`ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully` asserts that a malformed model reply scores
-`1.0` — the best possible value — and calls it *"gracefully"*. `ScoreAsync_EmptySourceChunks_ReturnsZero`
-asserts that "nothing was retrieved" means "retrieval was maximally bad".
+The reality is worse than the claim it replaces, and it sharpens why this milestone exists. The
+feature did not look half-finished from any angle: it had a suite, a guide section and a `Done`
+marker, and **all three agreed with each other and were wrong together**. The guide stated
+`precision = relevant / total` as the definition of Context Precision, which is not the RAGAS
+metric. The tests certified the defects — `ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully`
+asserts that an unreadable model reply scores `1.0`, the best possible value, and calls it
+*"gracefully"*; `ScoreAsync_EmptySourceChunks_ReturnsZero` asserts that "nothing was retrieved"
+means "retrieval was maximally bad".
 
-That changes the shape of the work but not its necessity. A green suite agreeing with wrong
-behaviour is a stronger illusion of correctness than no suite at all, and it means these phases
-must **rewrite existing assertions**, not merely add missing ones — which is exactly the kind of
+The only signal that anything was wrong was an unchecked checkbox.
+
+That changes the shape of the work but not its necessity: these phases must **rewrite existing
+assertions and an existing guide section**, not merely add missing ones — exactly the kind of
 change nobody makes by accident.
 
 An evaluator that is wrong does not fail loudly. It returns a plausible number, and a plausible
