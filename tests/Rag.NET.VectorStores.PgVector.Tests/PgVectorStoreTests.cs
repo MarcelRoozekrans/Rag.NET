@@ -240,7 +240,22 @@ public class PgVectorStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task CreateCollectionAsync_CreatesUniqueChunkKeyIndex()
+    public async Task InitializeAsync_CreatesHnswIndexOnEmbedding()
+    {
+        var indexDef = await ScalarAsync<string>(
+            _postgres.GetConnectionString(),
+            """
+            SELECT indexdef FROM pg_indexes
+            WHERE tablename = 'rag_chunks' AND indexname = 'idx_rag_chunks_embedding'
+            """);
+
+        Assert.NotNull(indexDef);
+        Assert.Contains("USING hnsw", indexDef, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("vector_cosine_ops", indexDef, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CreateCollectionAsync_CreatesUniqueChunkKeyAndHnswIndex()
     {
         await _sut.CreateCollectionAsync("indexed_collection", 3, TestContext.Current.CancellationToken);
 
@@ -250,10 +265,19 @@ public class PgVectorStoreTests : IAsyncLifetime
             SELECT indexdef FROM pg_indexes
             WHERE tablename = 'indexed_collection' AND indexname = 'idx_indexed_collection_doc_chunk'
             """);
+        var hnswDef = await ScalarAsync<string>(
+            _postgres.GetConnectionString(),
+            """
+            SELECT indexdef FROM pg_indexes
+            WHERE tablename = 'indexed_collection' AND indexname = 'idx_indexed_collection_embedding'
+            """);
 
         Assert.NotNull(uniqueDef);
         Assert.Contains("CREATE UNIQUE INDEX", uniqueDef, StringComparison.Ordinal);
         Assert.Contains("document_id, chunk_index", uniqueDef, StringComparison.Ordinal);
+
+        Assert.NotNull(hnswDef);
+        Assert.Contains("USING hnsw", hnswDef, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

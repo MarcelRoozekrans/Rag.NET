@@ -31,6 +31,20 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
     /// contains duplicate keys (rows written before that index existed), this method
     /// <b>throws and changes nothing</b> — it never deletes rows to force the migration through.
     /// </para>
+    /// <para>
+    /// <b>Dense search becomes approximate.</b> This method builds an HNSW index on
+    /// <c>embedding</c> (<c>vector_cosine_ops</c>, matching the <c>&lt;=&gt;</c> operator
+    /// <see cref="SearchAsync"/> orders by). HNSW is an <i>approximate</i> nearest-neighbour
+    /// index: results may differ from the exact sequential scan returned by versions that built
+    /// no ANN index. Recall is tunable through the <c>hnsw.ef_search</c> setting and is not 100%
+    /// by default.
+    /// </para>
+    /// <para>
+    /// <b>This method can be long-running.</b> Building the HNSW index over a large existing
+    /// table is slow and memory-hungry, and it happens inline here — callers that treat
+    /// initialization as a quick startup step should budget for it on the first run after
+    /// upgrading.
+    /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">
     /// The table already contains rows sharing a <c>(document_id, chunk_index)</c> pair, so the
@@ -54,6 +68,11 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
 
             await EnsureChunkKeyIndexAsync(conn, "rag_chunks", "idx_rag_chunks_doc_chunk", cancellationToken)
                 .ConfigureAwait(false);
+
+            await ExecuteNonQueryAsync(
+                conn,
+                HnswIndexSql("rag_chunks", "idx_rag_chunks_embedding"),
+                cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -180,7 +199,9 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
 
     /// <summary>
     /// Creates a collection table with the same shape and indexes as <c>rag_chunks</c>:
-    /// a unique key on <c>(document_id, chunk_index)</c> and a btree on <c>document_id</c>.
+    /// a unique key on <c>(document_id, chunk_index)</c>, a btree on <c>document_id</c>, and an
+    /// HNSW index on <c>embedding</c>. The HNSW caveats documented on
+    /// <see cref="InitializeAsync"/> apply here too.
     /// </summary>
     /// <exception cref="ArgumentException">
     /// <paramref name="name"/> is not a safe identifier, or is longer than
@@ -211,6 +232,11 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
 
             await EnsureChunkKeyIndexAsync(conn, quotedName, $"idx_{name}_doc_chunk", cancellationToken)
                 .ConfigureAwait(false);
+
+            await ExecuteNonQueryAsync(
+                conn,
+                HnswIndexSql(quotedName, $"idx_{name}_embedding"),
+                cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -263,6 +289,11 @@ public sealed partial class PgVectorStore : IVectorStore, ICollectionManageable,
             embedding vector({{vectorDimensions}}) NOT NULL
         )
         """;
+
+    // vector_cosine_ops matches the <=> operator SearchAsync orders by. m / ef_construction are
+    // left at pgvector's defaults; tuning them is out of scope.
+    private static string HnswIndexSql(string tableSql, string indexName) =>
+        $"CREATE INDEX IF NOT EXISTS \"{indexName}\" ON {tableSql} USING hnsw (embedding vector_cosine_ops)";
 
     private static string DuplicateChunkKeyQuery(string tableSql) => $"""
         SELECT count(*) FROM (
