@@ -33,10 +33,16 @@ internal static class EmbeddedMessageMetadata
     /// vary with the host OS.
     /// </summary>
     /// <remarks>
-    /// <c>Rag.NET.DataProviders.FileNameSanitizer</c> does the same job with more rules, but
-    /// this assembly does not reference <c>Rag.NET.DataProviders</c> and adding a package
-    /// dependency from a parser to the connector assembly for one call is not worth it. Kept
-    /// deliberately minimal: this name is metadata for display and provenance, never a path.
+    /// <c>Rag.NET.FileNameSanitizer</c> does the same job with more rules, and since Phase 2.5
+    /// it lives in <c>Rag.NET.Abstractions</c>, which this assembly does reference — so the
+    /// original reason for duplicating it (an unreachable type in <c>Rag.NET.DataProviders</c>)
+    /// no longer applies. What keeps the copy is that adopting the shared sanitizer would change
+    /// emitted names: it falls back to a caller-supplied stem rather than
+    /// <c>embedded-message</c>, caps at 128 characters rather than 64, and trims to a fixed
+    /// point over all whitespace where <c>TrimEnd('.', ' ')</c> here can re-expose a
+    /// non-breaking space. Retiring this copy is therefore a behaviour change, tracked in
+    /// <c>docs/planning/ROADMAP.md</c> and scheduled, not an unscheduled note. Kept deliberately
+    /// minimal meanwhile: this name is metadata for display and provenance, never a path.
     /// </remarks>
     private static readonly SearchValues<char> InvalidChars = BuildInvalidChars();
 

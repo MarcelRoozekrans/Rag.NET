@@ -614,7 +614,17 @@ services.AddSharePointDataProvider(tenantId, clientId, clientSecret, siteId, dri
 
 ## Event-driven ingestion
 
-`IngestFromProviderAsync` is pull-based — something must call it. Event-driven ingestion inverts that: producers push `IngestionJob`s onto a bounded in-memory queue and a background processor ingests them as they arrive. Two triggers ship today — an HMAC-verified webhook endpoint (`Rag.NET.Api`) and a background polling trigger. An Azure Service Bus trigger is deferred; the `IIngestionJobQueue` abstraction is the seam it will later plug into.
+`IngestFromProviderAsync` is pull-based — something must call it. Event-driven ingestion inverts that: work arrives instead of being asked for. **Three triggers ship today:**
+
+| Trigger | Package | How it reaches the pipeline |
+|---|---|---|
+| HMAC-verified webhook endpoint | `Rag.NET.Api` | Pushes `IngestionJob`s onto `IIngestionJobQueue`; `IngestionJobProcessor` drains it |
+| Background polling trigger | `Rag.NET.DataProviders` | Calls `IngestFromProviderAsync` directly |
+| Azure Service Bus trigger | `Rag.NET.Ingestion.AzureServiceBus` | Calls `IIngestor.IngestAsync` directly, then settles the broker message on the outcome |
+
+Only the webhook uses the queue. The other two own their ingestion end to end.
+
+> **A correction to a previously published plan.** These docs used to state that the Service Bus trigger would be *"a thin producer over the same `IIngestionJobQueue`"*. That design was wrong and was not built. `ChannelIngestionJobQueue` is an in-memory bounded channel with no persistence, so a producer that handed it a durable broker message and then settled that message would convert at-least-once delivery into **at-most-once on crash** — precisely the loss window Service Bus exists to close. Settling *after* the queue drains is not expressible through `IIngestionJobQueue` either: `EnqueueAsync` returns no completion signal and `IngestionJob` carries no correlation handle. The trigger therefore bypasses the queue and calls `IIngestor.IngestAsync` itself, exactly as `BackgroundPollingTrigger` already does. See [Azure Service Bus trigger](#azure-service-bus-trigger).
 
 ### Job queue + background processor
 
@@ -627,7 +637,7 @@ services.AddRagNet(rag => rag
 
 - `IIngestionJobQueue` → `ChannelIngestionJobQueue`, a bounded channel with `BoundedChannelFullMode.Wait`: a full queue applies backpressure (`EnqueueAsync` waits for space); jobs are never dropped.
 - `IngestionJobProcessor`, a `BackgroundService` that drains the queue into `IIngestor.IngestAsync`. A job that fails — failure result or thrown exception — is logged as a warning with its document id and skipped; the processor never crashes. Host shutdown exits the loop cleanly.
-- **Durability:** the queue is in-memory only — jobs still queued (and the one in flight) are lost on host stop or crash. Producers that need durable delivery should retry on missing acknowledgement (safe: ingestion upserts by `DocumentId`) or wait for the planned Service Bus trigger.
+- **Durability:** the queue is in-memory only — jobs still queued (and the one in flight) are lost on host stop or crash. Producers that need durable delivery should either retry on missing acknowledgement (see [Re-ingest semantics](#re-ingest-semantics) for what a repeat ingest actually guarantees) or use the [Azure Service Bus trigger](#azure-service-bus-trigger). Note *what* makes that trigger durable: it **does not feed this queue**. It ingests each message itself and settles the broker message only once the outcome is known, so a crash mid-ingest leaves the message unsettled and the broker redelivers it. A trigger that enqueued here and settled would have had the same loss window as the webhook, plus a broker bill.
 
 `IngestionJob` carries `byte[] Content` rather than a `Stream` because jobs outlive the enqueue call — e.g. an HTTP request body is long disposed by the time the processor runs. The host must support hosted services (`IHost` / ASP.NET Core; `AddHostedService` is used under the covers).
 
@@ -659,7 +669,7 @@ The built-in `GenericWebhookPayloadParser` accepts a single object or an array o
 { "documentId": "doc-1", "content": "full document text", "metadata": { "source": "github" } }
 ```
 
-`documentId` and `content` are required and non-empty; `metadata` (optional) must be a flat string map and becomes `DocumentMetadata.Tags`; the file name defaults to `{documentId}.txt`. To handle provider-specific payload shapes (GitHub push events, Notion page updates, …) register a custom `IWebhookPayloadParser` **before** `AddRagNetWebhooks` — the default parser is registered with `TryAdd`, so an earlier registration wins.
+`documentId` and `content` are required and non-empty; `metadata` (optional) must be a flat string map and becomes `DocumentMetadata.Tags`; the file name defaults to `{documentId}.txt`, with the stem passed through `FileNameSanitizer` (`documentId` is attacker-controlled, so `../../etc/passwd` must not become a file name carrying separators or traversal segments). To handle provider-specific payload shapes (GitHub push events, Notion page updates, …) register a custom `IWebhookPayloadParser` **before** `AddRagNetWebhooks` — the default parser is registered with `TryAdd`, so an earlier registration wins.
 
 Computing the signature — sender side in C#:
 
@@ -685,8 +695,10 @@ Responses: `202 Accepted` with `{ "enqueued": n }`; `401` for a missing/invalid 
 
 #### Security and delivery semantics
 
-- **Replay protection**: the HMAC scheme authenticates the sender but carries no timestamp or nonce, so a captured request can be replayed verbatim — the same posture as GitHub's `X-Hub-Signature-256`. HTTPS transport is assumed. Because ingestion is an id-keyed upsert, a replay re-ingests the same content under the same `documentId` rather than duplicating it. Senders that need genuine replay resistance should include a timestamp (or nonce) in the payload and enforce a freshness window in a custom `IWebhookPayloadParser`.
-- **At-least-once delivery**: a caller that times out mid-enqueue and retries can enqueue the same document twice. This is safe for the same reason — ingestion upserts by `DocumentId`, so the second job overwrites rather than duplicates.
+- **Replay protection**: the HMAC scheme authenticates the sender but carries no timestamp or nonce, so a captured request can be replayed verbatim — the same posture as GitHub's `X-Hub-Signature-256`. HTTPS transport is assumed. A replay re-ingests the same content under the same `documentId`; read [Re-ingest semantics](#re-ingest-semantics) for how much of that is a replace and which part is not. Senders that need genuine replay resistance should include a timestamp (or nonce) in the payload and enforce a freshness window in a custom `IWebhookPayloadParser`.
+- **At-least-once delivery**: a caller that times out mid-enqueue and retries can enqueue the same document twice. The second ingest replaces the first in the BM25 index and the data manager and upserts over it in the vector store — see [Re-ingest semantics](#re-ingest-semantics), including the one case (a shorter replacement) it does not cover.
+
+> Earlier revisions of this page claimed a replay "re-ingests the same content under the same `documentId` rather than duplicating it" and that "the second job overwrites rather than duplicates". **That was false when written**: nothing removed the previous ingest's BM25 postings unless the caller passed `IngestionOptions.Overwrite`, and the webhook path never sets options at all, so every replay appended a second complete set of postings. Removal is now unconditional. The corrected guarantee — and its remaining gap — is stated in full below.
 
 ### Background polling trigger
 
@@ -705,9 +717,121 @@ services.AddRagNet(rag => rag
 
 Each `UsePollingIngestion` call registers an **independent** `BackgroundPollingTrigger` hosted service with its own provider and options — register it multiple times to poll multiple sources concurrently. Every cycle runs `IngestFromProviderAsync` (hash-skip applies automatically when an `IContentHashStore` is registered) and logs an ingested/skipped/deleted/errors summary; a failed cycle logs a warning and the next cycle proceeds. Set `CleanupMode = CleanupMode.Full` (requires the hash store) to also delete documents that disappeared from the source each cycle. Interval-based only — cron scheduling is out of scope.
 
-### Azure Service Bus (deferred)
+### Azure Service Bus trigger
 
-A Service Bus trigger (consume messages from a queue/topic and enqueue the referenced documents) is planned but not part of this phase. It will be a thin producer over the same `IIngestionJobQueue`.
+`Rag.NET.Ingestion.AzureServiceBus` consumes a Service Bus queue or topic subscription, ingests each message **end to end** through `IIngestor`, and then settles the broker message on the outcome: complete on success, abandon on a transient failure so the broker redelivers, dead-letter with a reason on a permanent one.
+
+It needs no `UseEventDrivenIngestion` — it does not use the job queue at all. `AzureServiceBusIngestionTrigger` is an `IHostedService` (plus `IAsyncDisposable`, because it owns the `ServiceBusClient` and the processor), so the host must support hosted services.
+
+#### Registration
+
+Two overloads, matching `ServiceBusClient`'s own credential pair. Both take the entity name and an optional `Action<ServiceBusIngestionOptions>`:
+
+```csharp
+using Azure.Identity;
+using Rag.NET.Ingestion.AzureServiceBus;
+
+services.AddRagNet(rag => rag
+    // 1. Connection string — the shared-access key travels in the string.
+    .UseServiceBusIngestion(
+        configuration["ServiceBus:ConnectionString"]!,
+        "ragnet-ingestion")
+
+    // 2. TokenCredential — managed identity, workload identity, any Azure.Core credential.
+    .UseServiceBusIngestion(
+        "contoso.servicebus.windows.net",
+        new DefaultAzureCredential(),
+        "ragnet-ingestion-ordered",
+        o =>
+        {
+            o.SessionsEnabled       = true;
+            o.MaxConcurrentSessions = 16;
+        }));
+```
+
+Both registrations above are live simultaneously. Each call registers **its own** `IHostedService` closing over its own client and options instance — the same shape `UsePollingIngestion` uses — so two queues, or one queue with sessions and another without, coexist without sharing or overwriting a singleton. Arguments are validated eagerly and the connection string is parsed at registration, so a malformed one fails at startup rather than at first receive.
+
+#### Options
+
+| Option | Default | Meaning |
+|---|---|---|
+| `SubscriptionName` | `null` | `null` means the entity is a queue. Set it and the entity name is read as a **topic**, consumed through this subscription. |
+| `SessionsEnabled` | `false` | Opt-in per-document FIFO. Must match the entity: a session processor against a non-session queue fails at start, and vice versa. |
+| `MaxConcurrentCalls` | `1` | Messages in flight on a non-session entity. Raising it above `1` re-opens the [single-writer caveat](#sessions-ordering-and-the-single-writer-caveat) **inside one host** — sessions are the fix. |
+| `MaxConcurrentSessions` | `8` | Distinct documents in flight on a session-enabled entity. Ordering *within* each session is preserved regardless. |
+| `PrefetchCount` | `0` | No prefetch by default: a prefetched message holds its lock while it waits, and ingestion is slow enough that a large prefetch mostly buys lock expiries. |
+| `MaxAutoLockRenewalDuration` | `5 min` | How long the SDK keeps renewing the message (and session) lock while ingestion runs. |
+
+Two SDK settings are deliberately **not** exposed. `AutoCompleteMessages` is pinned **off** — the whole point of the trigger is that the outcome decides the settlement, and auto-complete would settle every message as a success before the outcome existed. And on a session-enabled entity, concurrency *within* a session is pinned to **1** and is not configurable: per-document FIFO is the only thing sessions buy here, and a second concurrent call per session destroys it.
+
+#### Message contract
+
+The body is **the same JSON the webhook accepts** — one payload contract across both transports:
+
+```json
+{ "documentId": "doc-1", "content": "full document text", "metadata": { "source": "crm" } }
+```
+
+`documentId` and `content` are required and non-empty; `metadata` (optional) must be a flat string map and becomes `DocumentMetadata.Tags`. The file name is `{documentId}.txt` with the stem passed through `FileNameSanitizer`, exactly as the webhook parser does.
+
+**One deliberate narrowing.** The webhook also accepts a JSON **array** of documents. This transport does not — an array is dead-lettered as `MalformedPayload`. Settlement is per message, so a batch that half-succeeds has no way to report itself: complete would lose the failures, abandon would redeliver the successes, and dead-letter would discard documents that ingested fine. One message, one document. Producers that batch for the webhook must fan out for Service Bus.
+
+Messages are not pointers. There is no "here is an id, go fetch it" shape — inline content only.
+
+#### Settlement
+
+| Outcome | Settlement | Effect |
+|---|---|---|
+| Ingestion succeeded | `CompleteMessageAsync` | Message is removed from the entity. |
+| **Transient** failure — storage or transport fault, timeout, throttling, HTTP 408/429/5xx, or any exception escaping the pipeline | `AbandonMessageAsync` | The broker redelivers and counts the attempt. `MaxDeliveryCount` on the entity is the backstop that eventually dead-letters a message that keeps failing this way. |
+| **Permanent** failure — unparseable body, missing required field, session/document mismatch, no parser for the content, validation failure, non-retryable HTTP status | `DeadLetterMessageAsync(reason, description)` | Message moves to the entity's dead-letter queue. |
+| Host shutting down mid-ingest | *left unsettled* | The lock expires and the broker redelivers. Deliberately not settled as a failure — that would charge a delivery attempt to a message that never got a real one. |
+
+Unclassified errors default to **transient**, on purpose: getting it wrong in the transient direction costs redeliveries that `MaxDeliveryCount` converts into a dead-letter anyway, while getting it wrong in the permanent direction discards a document that would have ingested fine on the next attempt.
+
+**This is the first dead-letter surface anywhere in the ingestion path**, and that contrast is the reason to reach for this trigger. A job that throws in `IngestionJobProcessor` is logged at Warning and **silently dropped** — no retry, no dead-letter queue, no operator surface, nothing to alert on and nothing to replay from. Here, a failure that redelivery cannot fix ends up in a queue an operator can inspect, filter and re-drive.
+
+`DeadLetterReasons` is a **fixed, filterable set** written to the message's `DeadLetterReason` — fixed rather than free-form because the reason is what an operator filters and alerts on. The variable detail goes in the dead-letter *description* instead (truncated to 4000 UTF-8 bytes, on a rune boundary):
+
+| `DeadLetterReasons` | Written when |
+|---|---|
+| `MalformedPayload` | The body is not JSON, is empty, is not a JSON object — or is a JSON array (see the narrowing above). |
+| `MissingRequiredField` | Missing or empty `documentId` or `content`, or a `metadata` value that is not a flat string map. |
+| `SessionDocumentMismatch` | The message's `SessionId` disagrees with the body's `documentId`. |
+| `IngestionRejected` | Ingestion itself rejected the document in a way redelivery cannot fix. |
+
+#### Sessions, ordering, and the single-writer caveat
+
+Sessions are **opt-in** (`SessionsEnabled = true`, on a session-enabled entity). The producer sets `SessionId` to the document id; the broker then serialises that document's messages through one consumer, giving **per-document FIFO**.
+
+`SessionId` **must equal** the body's `documentId`, or the message is dead-lettered as `SessionDocumentMismatch`. This is not pedantry: a session that names something other than the document it orders still gets a FIFO guarantee from the broker — just a guarantee about the wrong thing. Silently accepting it would leave an operator believing their documents are ordered when they are not, so it is a producer bug the trigger refuses to guess its way through.
+
+> **Why this matters, and where it stops.** The replace described below is a **single-writer guarantee**. There is no per-`DocumentId` lock anywhere in the ingestion pipeline: the remove-then-re-add sequence takes the index's write lock once per call, but nothing holds a lock across the pair. Two concurrent ingests of the same document can therefore interleave as `A.Remove → B.Remove → A.Add → B.Add` and reproduce exactly the doubled postings the replace exists to prevent. Competing consumers on a **non-session** queue are the realistic trigger for this, and enabling sessions closes it — but sessions are opt-in, so a non-session queue re-manifests it.
+>
+> **"Competing consumers" understates it.** You do not need a second host. `MaxConcurrentCalls = 5` on a non-session entity is one process processing five messages at once, and if two of them carry the same `documentId` they interleave exactly as above. That option is the single knob this trigger ships that turns the hazard on, which is why it defaults to `1`. Either leave it there or enable sessions. The same warning is carried in source on `StorageBehavior.RemovePreviousAppendOnlyEntries` and on `ServiceBusIngestionOptions.MaxConcurrentCalls`.
+
+#### Topics
+
+Set `SubscriptionName` and the entity name is read as a topic name; the trigger consumes `topic/Subscriptions/subscription`. Everything else — settlement, sessions, the payload contract — is identical. Filters and rules are configured on the subscription in Azure, not here.
+
+### Re-ingest semantics
+
+Ingesting the same `DocumentId` twice is now a **replace** for the BM25 index and the data manager, on **every** ingestion path — not only when the caller passes `IngestionOptions.Overwrite`. That is what makes an at-least-once transport safe to point at the pipeline, and it is why the BM25 fix shipped before the trigger did.
+
+It is **not** a complete replace, and the gap is worth knowing precisely:
+
+| Store | What happens on re-ingest | Result |
+|---|---|---|
+| BM25 index | Previous postings removed, then re-added | **Clean replace** |
+| `IRagDataManager` | Previous entries removed, then re-added | **Clean replace** |
+| Vector store | Upserted on `(documentId, chunkIndex)` | **Partial replace** |
+| Parent chunk store | Upserted on `(documentId, parentChunkIndex)` | **Partial replace** |
+
+The vector store upserts per chunk index rather than deleting the document first, so a re-ingested document that is **shorter** than its predecessor strands the tail: a 9-chunk document replaced by a 5-chunk one leaves chunks 5–8 in the store and retrievable. Making delete-before-insert unconditional would change what `Overwrite` means for every existing caller, so it is deliberately out of scope rather than quietly done. `IngestionOptions.Overwrite` remains the way to get the vector-store delete — see [`IngestionOptions` in the ingestion guide](ingestion.md#ingestionoptions). `IIngestor.DeleteAsync` is the way to purge a document outright.
+
+**This changed BM25 scores.** Any corpus that had ever been re-ingested carried inflated term statistics from the duplicate postings; those are gone, so keyword and hybrid scores move. It is a correction, but it is not score-neutral — re-baseline any score thresholds tuned against the old behaviour.
+
+The guarantee is **single-writer only** — see [the caveat above](#sessions-ordering-and-the-single-writer-caveat). Full details, including the on-disk index that came with the fix, are in [Breaking changes](../planning/BREAKING-CHANGES.md).
 
 ---
 

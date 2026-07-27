@@ -146,6 +146,47 @@ public class StorageAndEmbeddingBehaviorTests
         Assert.Equal(1, result.ChunksStored);
     }
 
+    /// <summary>
+    /// Storing is a replace, not an append: the previous ingest's BM25 postings and
+    /// data-manager rows are dropped <em>before</em> the new ones go in, with no dependence on
+    /// <c>IngestionOptions.Overwrite</c>. Ordering is the whole point — removing after adding
+    /// would delete the document outright.
+    /// </summary>
+    [Fact]
+    public async Task StorageBehavior_RemovesPreviousEntriesBeforeAdding_WithoutOverwriteOption()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var bm25 = Substitute.For<IBm25Index>();
+        var dataManager = Substitute.For<IRagDataManager>();
+
+        var sut = new StorageBehavior
+        {
+            VectorStore = Substitute.For<IVectorStore>(),
+            Bm25Index = bm25,
+            DataManager = dataManager,
+        };
+
+        var chunk = new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 };
+        var ctx = MakeContext();
+        ctx.Chunks.Add(chunk);
+        ctx.EmbeddedChunks.Add(new EmbeddedChunk { Chunk = chunk, Embedding = new float[] { 0.5f } });
+
+        Assert.Null(ctx.Options); // the webhook path never sets options — the case the fix targets
+
+        await sut.HandleAsync(ctx, ct, NeverCalledNext);
+
+        Received.InOrder(() =>
+        {
+            bm25.Remove("doc-1");
+            bm25.Add(42, chunk);
+        });
+        Received.InOrder(() =>
+        {
+            dataManager.Remove("doc-1");
+            dataManager.Add(ctx.Metadata, ctx.Chunks);
+        });
+    }
+
     [Fact]
     public async Task StorageBehavior_IsTerminal_NextIsNeverCalled()
     {

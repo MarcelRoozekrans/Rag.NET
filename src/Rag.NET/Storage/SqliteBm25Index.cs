@@ -167,6 +167,11 @@ public sealed class SqliteBm25Index : IBm25Index
                 chunk_text     TEXT NOT NULL,
                 metadata_json  TEXT NOT NULL DEFAULT '{}'
             );
+
+            -- Remove() deletes by document_id, and StorageBehavior calls it before every ingest
+            -- (including first-time ingests, which match nothing). Without this index that is a
+            -- full table scan per ingested document.
+            CREATE INDEX IF NOT EXISTS ix_bm25_docs_document_id ON bm25_docs(document_id);
             """;
         cmd.ExecuteNonQuery();
     }

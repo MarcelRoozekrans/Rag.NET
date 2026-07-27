@@ -15,6 +15,16 @@ public sealed class InMemoryBm25Index : IBm25Index
 
     private readonly Dictionary<string, List<(int docId, int tf)>> _postings = new(StringComparer.Ordinal);
     private readonly Dictionary<int, (TextChunk chunk, int length)> _docs = [];
+
+    /// <summary>
+    /// Document id → the internal doc ids indexed under it. Exists so <see cref="Remove"/> can
+    /// answer "is this document present at all?" in O(1) instead of scanning <see cref="_docs"/>
+    /// and every postings list. That matters because <c>StorageBehavior</c> calls
+    /// <see cref="Remove"/> before every ingest, including first-time ingests that have nothing
+    /// to remove: without the early exit, bulk-ingesting N documents costs O(N²).
+    /// </summary>
+    private readonly Dictionary<string, List<int>> _docIdsByDocument = new(StringComparer.Ordinal);
+
     private readonly ReaderWriterLockSlim _lock = new();
     private readonly SynonymMap? _synonymMap;
 
@@ -36,6 +46,15 @@ public sealed class InMemoryBm25Index : IBm25Index
             if (_docs.ContainsKey(docId))
                 return; // caller must remove before re-adding
             _docs[docId] = (chunk, tokens.Count);
+
+            var documentId = chunk.DocumentId.Value;
+            if (!_docIdsByDocument.TryGetValue(documentId, out var docIds))
+            {
+                docIds = [];
+                _docIdsByDocument[documentId] = docIds;
+            }
+            docIds.Add(docId);
+
             foreach (var (term, freq) in tf)
             {
                 if (!_postings.TryGetValue(term, out var list))
@@ -52,17 +71,20 @@ public sealed class InMemoryBm25Index : IBm25Index
         }
     }
 
+    /// <summary>
+    /// Removes every chunk indexed under <paramref name="documentId"/>. Absent documents cost
+    /// a single dictionary lookup — see <see cref="_docIdsByDocument"/> for why that early exit
+    /// is load-bearing rather than a micro-optimisation.
+    /// </summary>
     public void Remove(string documentId)
     {
         _lock.EnterWriteLock();
         try
         {
-            var toRemove = new List<int>();
-            foreach (var kv in _docs)
-            {
-                if (string.Equals(kv.Value.chunk.DocumentId, documentId, StringComparison.Ordinal))
-                    toRemove.Add(kv.Key);
-            }
+            if (!_docIdsByDocument.TryGetValue(documentId, out var toRemove))
+                return;
+
+            _docIdsByDocument.Remove(documentId);
 
             foreach (ref readonly var docId in CollectionsMarshal.AsSpan(toRemove))
                 _docs.Remove(docId);
@@ -147,6 +169,7 @@ public sealed class InMemoryBm25Index : IBm25Index
         {
             _docs.Clear();
             _postings.Clear();
+            _docIdsByDocument.Clear();
         }
         finally
         {

@@ -129,6 +129,34 @@ public sealed class WebhookEndpointTests
         Assert.Equal("github", job.Metadata.Tags["source"]);
     }
 
+    [Theory]
+    // jsonDocumentId is the JSON-escaped literal; expectedDocumentId is what it decodes to.
+    // Traversal with forward slashes, both separators mixed, and an id that sanitizes to nothing.
+    [InlineData("../../etc/passwd", "../../etc/passwd", ".._.._etc_passwd.txt")]
+    [InlineData("a/b\\\\c", "a/b\\c", "a_b_c.txt")]
+    [InlineData("...", "...", "document.txt")]
+    public async Task HostileDocumentId_IsSanitizedIntoFileNameButKeptAsIdentity(
+        string jsonDocumentId, string expectedDocumentId, string expectedFileName)
+    {
+        var queue = new FakeQueue();
+        using var server = CreateServer(queue);
+        var body = $$"""{"documentId":"{{jsonDocumentId}}","content":"hello"}""";
+
+        var response = await PostAsync(server, body, Sign(body));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var job = Assert.Single(queue.Enqueued);
+        Assert.Equal(expectedFileName, job.Metadata.FileName);
+
+        // The traversal risk is the separators, not the dots: ".." with no separator either side
+        // is an ordinary name fragment.
+        Assert.DoesNotContain("/", job.Metadata.FileName, StringComparison.Ordinal);
+        Assert.DoesNotContain("\\", job.Metadata.FileName, StringComparison.Ordinal);
+
+        // Identity is untouched — only the file name is a rendering concern.
+        Assert.Equal(expectedDocumentId, job.Metadata.DocumentId.Value);
+    }
+
     [Fact]
     public async Task ValidSignature_ArrayPayload_EnqueuesAllJobs()
     {

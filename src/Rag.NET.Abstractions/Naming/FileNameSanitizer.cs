@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace Rag.NET.DataProviders;
+namespace Rag.NET;
 
 /// <summary>
 /// Turns user-controlled text (a mail subject, an issue title, a channel name) into a
@@ -25,9 +25,12 @@ namespace Rag.NET.DataProviders;
 /// names to disk must handle device names themselves.
 /// </para>
 /// <para>
-/// This type is <c>public</c> — unlike the sibling <c>FileExtensionMatcher</c> — because each
-/// connector ships as its own assembly and NuGet package, and this assembly grants
-/// <c>InternalsVisibleTo</c> to the test project only.
+/// It lives in <c>Rag.NET.Abstractions</c>, and is <c>public</c>, because every layer that
+/// derives a file name from untrusted input needs it: the nine connectors (each its own
+/// assembly and NuGet package), the webhook payload parser in <c>Rag.NET.Api</c>, and any
+/// future message-driven ingestion trigger. It previously lived in
+/// <c>Rag.NET.DataProviders</c>, which <c>Rag.NET.Api</c> cannot reach — that is exactly why
+/// the webhook parser shipped without sanitization.
 /// </para>
 /// </remarks>
 public static class FileNameSanitizer

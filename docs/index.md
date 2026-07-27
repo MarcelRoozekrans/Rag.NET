@@ -51,6 +51,7 @@ flowchart TD
     ABSTRACTIONS --> QT["Rag.NET.QueryTechniques<br>HyDE · MultiQuery"]
     ABSTRACTIONS --> MEM["Rag.NET.Memory<br>Persistent cross-session memory"]
     ABSTRACTIONS --> CHUNKING_CS["Rag.NET.Chunking.CSharp<br>Roslyn-based C# chunking"]
+    ABSTRACTIONS --> SBUS["Rag.NET.Ingestion.AzureServiceBus<br>Service Bus ingestion trigger"]
 
     CORE["Rag.NET<br>Core pipeline · Text/Markdown/CSV/JSON parsers · Recursive chunking"]
 
@@ -103,6 +104,7 @@ flowchart TD
     style QT fill:#e8f4fd,stroke:#4a90d9
     style MEM fill:#e8f4fd,stroke:#4a90d9
     style CHUNKING_CS fill:#e8f4fd,stroke:#4a90d9
+    style SBUS fill:#e8f4fd,stroke:#4a90d9
     style GRAPHRAG fill:#e8f4fd,stroke:#4a90d9
     style RERANK_CO fill:#e8f4fd,stroke:#4a90d9
     style RERANK_ON fill:#e8f4fd,stroke:#4a90d9
@@ -142,6 +144,7 @@ flowchart TD
 | `Rag.NET.GraphRag` | GraphRAG entity extraction, community detection, local/global search, Mind-Map Extractor |
 | `Rag.NET.Reranking.Cohere` | `CohereReranker` — hosted cross-encoder reranking via Cohere API |
 | `Rag.NET.Reranking.Onnx` | `OnnxReranker` — local ONNX cross-encoder reranking (no API key) |
+| `Rag.NET.Ingestion.AzureServiceBus` | `AzureServiceBusIngestionTrigger` — ingests each queue/subscription message end to end and settles it (complete / abandon / dead-letter); opt-in sessions for per-document FIFO |
 | `Rag.NET.DataProviders.Confluence` | Confluence pages via REST API |
 | `Rag.NET.DataProviders.Jira` | Jira issues via REST API |
 | `Rag.NET.DataProviders.Notion` | Notion pages and blocks via REST API |
