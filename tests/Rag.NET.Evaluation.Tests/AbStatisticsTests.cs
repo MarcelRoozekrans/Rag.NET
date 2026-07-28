@@ -104,4 +104,101 @@ public sealed class AbStatisticsTests
     [Fact]
     public void Tally_NegativeEpsilon_Throws()
         => Assert.Throws<ArgumentOutOfRangeException>(() => AbStatistics.Tally([0.1], epsilon: -1e-9));
+
+    [Fact]
+    public void BootstrapCi_DistinguishesARealShiftFromNoise()
+    {
+        // Noise: deltas centred on zero. The interval must span zero.
+        var noise = new double[40];
+        for (var i = 0; i < noise.Length; i++)
+            noise[i] = (i % 2 == 0) ? 0.05 : -0.05;
+
+        // A real shift: every sample moved the same way.
+        var shift = new double[40];
+        for (var i = 0; i < shift.Length; i++)
+            shift[i] = (i % 2 == 0) ? 0.10 : 0.04;
+
+        var noiseCi = AbStatistics.BootstrapMeanDeltaCi(noise, resamples: 2000, new Random(7))!.Value;
+        var shiftCi = AbStatistics.BootstrapMeanDeltaCi(shift, resamples: 2000, new Random(7))!.Value;
+
+        // This is the whole point of the interval: without it, both of these report a winner.
+        Assert.True(noiseCi.Lower < 0 && noiseCi.Upper > 0, $"noise CI [{noiseCi.Lower}, {noiseCi.Upper}] should span zero");
+        Assert.True(shiftCi.Lower > 0, $"shift CI [{shiftCi.Lower}, {shiftCi.Upper}] should exclude zero");
+    }
+
+    [Fact]
+    public void BootstrapCi_SameSeed_IsReproducible()
+    {
+        double[] deltas = [0.1, -0.05, 0.2, 0.0, 0.15];
+
+        var first = AbStatistics.BootstrapMeanDeltaCi(deltas, 500, new Random(99));
+        var second = AbStatistics.BootstrapMeanDeltaCi(deltas, 500, new Random(99));
+
+        // An unreproducible confidence interval is not evidence. Same rule as the dataset seed.
+        Assert.Equal(first!.Value.Lower, second!.Value.Lower, precision: 12);
+        Assert.Equal(first.Value.Upper, second.Value.Upper, precision: 12);
+    }
+
+    [Fact]
+    public void BootstrapCi_MoreSamplesNarrowTheInterval()
+    {
+        var few = new double[10];
+        var many = new double[200];
+        for (var i = 0; i < few.Length; i++)
+            few[i] = (i % 2 == 0) ? 0.10 : 0.02;
+        for (var i = 0; i < many.Length; i++)
+            many[i] = (i % 2 == 0) ? 0.10 : 0.02;
+
+        var fewCi = AbStatistics.BootstrapMeanDeltaCi(few, 2000, new Random(3))!.Value;
+        var manyCi = AbStatistics.BootstrapMeanDeltaCi(many, 2000, new Random(3))!.Value;
+
+        Assert.True(manyCi.Upper - manyCi.Lower < fewCi.Upper - fewCi.Lower);
+    }
+
+    [Fact]
+    public void BootstrapCi_ContainsTheObservedMean()
+    {
+        double[] deltas = [0.10, 0.02, 0.08, 0.04, 0.06, 0.12, 0.01, 0.09];
+
+        var mean = AbStatistics.MeanDelta(deltas)!.Value;
+        var ci = AbStatistics.BootstrapMeanDeltaCi(deltas, 2000, new Random(11))!.Value;
+
+        // A percentile bootstrap brackets the statistic it resamples. An interval that did not
+        // would mean the resampling loop is not computing the mean it claims to.
+        Assert.InRange(mean, ci.Lower, ci.Upper);
+    }
+
+    [Fact]
+    public void BootstrapCi_NoPairs_IsNull()
+        => Assert.Null(AbStatistics.BootstrapMeanDeltaCi([], 100, new Random(1)));
+
+    [Fact]
+    public void BootstrapCi_OnePair_IsDegenerateNotAnError()
+    {
+        // Every resample of a single value is that value. The interval collapses to a point, which
+        // is honest — one sample supports no interval — rather than an exception or a fabricated
+        // width.
+        var ci = AbStatistics.BootstrapMeanDeltaCi([0.3], 100, new Random(1))!.Value;
+
+        Assert.Equal(0.3, ci.Lower, precision: 10);
+        Assert.Equal(0.3, ci.Upper, precision: 10);
+    }
+
+    [Fact]
+    public void BootstrapCi_IdenticalDeltas_CollapseToAPoint()
+    {
+        double[] deltas = [0.25, 0.25, 0.25, 0.25, 0.25];
+
+        var ci = AbStatistics.BootstrapMeanDeltaCi(deltas, 500, new Random(5))!.Value;
+
+        Assert.Equal(0.25, ci.Lower, precision: 10);
+        Assert.Equal(0.25, ci.Upper, precision: 10);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void BootstrapCi_NonPositiveResamples_Throws(int resamples)
+        => Assert.Throws<ArgumentOutOfRangeException>(
+            () => { _ = AbStatistics.BootstrapMeanDeltaCi([0.1, 0.2], resamples, new Random(1)); });
 }

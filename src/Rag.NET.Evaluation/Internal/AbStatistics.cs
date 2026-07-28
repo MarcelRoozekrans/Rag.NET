@@ -17,6 +17,11 @@ namespace Rag.NET.Evaluation.Internal;
 internal static class AbStatistics
 {
     /// <summary>
+    /// The share of the bootstrap distribution trimmed from each tail, giving a 95% interval.
+    /// </summary>
+    private const double TailProbability = 0.025;
+
+    /// <summary>
     /// Per-sample <c>b - a</c> for every index where <b>both</b> sides scored.
     /// </summary>
     /// <param name="a">Variant A's per-sample scores, <c>null</c> where the sample was unscoreable.</param>
@@ -103,5 +108,65 @@ internal static class AbStatistics
         }
 
         return new AbTally(bWins, aWins, ties);
+    }
+
+    /// <summary>
+    /// A 95% percentile-bootstrap confidence interval on the mean delta; <c>null</c> when there are
+    /// no pairs.
+    /// </summary>
+    /// <param name="deltas">The paired deltas, as returned by <see cref="PairedDeltas"/>.</param>
+    /// <param name="resamples">
+    /// How many resamples to draw. More resamples reduce the Monte-Carlo jitter of the interval
+    /// itself; they do not narrow it, because the width is set by the data.
+    /// </param>
+    /// <param name="random">
+    /// The randomness. Seed it (<c>new Random(seed)</c>) and the same deltas yield the same
+    /// interval; that reproducibility is the whole point of taking it as a parameter, exactly as
+    /// for <c>ReservoirSampler</c> and the dataset seed.
+    /// </param>
+    /// <returns>The interval, or <c>null</c> when <paramref name="deltas"/> is empty.</returns>
+    /// <remarks>
+    /// <para>
+    /// Bootstrap rather than a t-interval because RAGAS scores are bounded on <c>[0, 1]</c> and
+    /// frequently skewed — a metric where most samples score 0.9+ is nowhere near normal, and a
+    /// t-interval would overstate its own precision. The bootstrap assumes only exchangeability.
+    /// </para>
+    /// <para>
+    /// <b>Percentile convention.</b> The resample means are sorted and the same number of values is
+    /// trimmed from each tail: <c>trim = floor(0.025 * resamples)</c>, giving
+    /// <c>[means[trim], means[resamples - 1 - trim]]</c>. Several conventions are defensible — this
+    /// one is chosen because it is symmetric by construction, so neither variant is favoured by the
+    /// rounding, and because it degrades sensibly: a single pair makes every resample mean identical
+    /// and the interval collapses to that point rather than throwing or inventing a width.
+    /// </para>
+    /// </remarks>
+    public static AbConfidenceInterval? BootstrapMeanDeltaCi(
+        ReadOnlySpan<double> deltas,
+        int resamples,
+        Random random)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(resamples);
+        ArgumentNullException.ThrowIfNull(random);
+
+        if (deltas.IsEmpty)
+            return null;
+
+        // One buffer for the whole run, filled in place through a `ref` enumerator so the outer
+        // loop writes without indexing (HLQ013). The inner draw stays indexed: it is random access,
+        // which no enumerator expresses, and ZA0601 rules out a LINQ mean.
+        var means = new double[resamples];
+        foreach (ref var mean in means.AsSpan())
+        {
+            var sum = 0.0;
+            for (var i = 0; i < deltas.Length; i++)
+                sum += deltas[random.Next(deltas.Length)];
+
+            mean = sum / deltas.Length;
+        }
+
+        Array.Sort(means);
+
+        var trim = (int)Math.Floor(TailProbability * resamples);
+        return new AbConfidenceInterval(means[trim], means[resamples - 1 - trim]);
     }
 }
