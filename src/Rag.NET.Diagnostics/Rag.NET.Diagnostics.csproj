@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Diagnostics</RootNamespace>
+    <PackageId>Rag.NET.Diagnostics</PackageId>
+    <Description>Disposable in-memory pipeline traces for Rag.NET: the last N query executions, with chunk scores, stage latencies and guard actions</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Diagnostics.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- For AuditChunkRef, which a trace reuses rather than redefining, and for the
+         AuditLogOptions flags the Capture* options are documented against. Rag.NET.Security
+         references only Rag.NET and Rag.NET.Abstractions, so this direction is acyclic. -->
+    <ProjectReference Include="..\Rag.NET.Security\Rag.NET.Security.csproj" />
+  </ItemGroup>
+
+</Project>
