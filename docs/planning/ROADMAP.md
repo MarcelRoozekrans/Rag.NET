@@ -210,6 +210,19 @@ Distinct from `EvaluationDatasetBuilder` (Phase 3.2), which synthesises QA pairs
 **Goal:** GitHub Actions CI (build + test) and NuGet packaging/publishing with MinVer versioning.
 **Backlog items:** NuGet Publishing Pipeline
 
+> **Known blocker, found in Phase 3.2 (2026-07-28): turning on XML documentation will fail the build.**
+> `GenerateDocumentationFile` is set **nowhere** in this repo, so `CS1574` (unresolvable `<see cref>`)
+> has never been emitted and broken crefs accumulate invisibly. Packaging normally enables doc
+> generation, and with `TreatWarningsAsErrors` every one becomes a build failure.
+>
+> Known at time of writing: **9 pre-existing CS1574s in `Rag.NET.Abstractions`**, plus four found and
+> fixed in `Rag.NET.Evaluation.Ragas` — those four were introduced by moving properties to a base
+> class, because **C# does not bind a qualified `cref` to an inherited member**, and nothing in the
+> build could catch it. Expect more elsewhere; nobody has ever compiled the XML.
+>
+> Enable `GenerateDocumentationFile` across `src/` early in this phase and clear the backlog, rather
+> than discovering it while trying to pack.
+
 ### Phase 4.2: Options Alignment & Validation [status: pending]
 **Goal:** Align pipeline options on IOptions and validate them with ZeroAlloc.Validation.
 **Backlog items:** IOptions Alignment + ZeroAlloc Validation for pipeline options
