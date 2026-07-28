@@ -941,11 +941,27 @@ A lightweight `RagDebugMiddleware` for ASP.NET Core that exposes a `/ragnet/trac
 ---
 
 ### A/B Testing Framework
-**Package:** `Rag.NET.Evaluation`
+**Package:** `Rag.NET.Evaluation.Ragas` (`RagAbTester`) + `Rag.NET.Evaluation` (the report model)
 
-A `RagAbTester` that runs the same query through two pipeline configurations simultaneously and records results for offline comparison. Supports shadow mode (primary answer returned to caller, secondary run async for evaluation only) and side-by-side mode (both results returned for human review). Integrates with `IRagEvaluator` to score both results automatically.
+`RagAbTester.CompareAsync` runs one evaluation dataset through **two** variants — a variant being a whole `IRagPipeline` plus optional `RagOptions` and its own `ICostLedger`, so a comparison can span chunking, vector store, embedding model and reranker rather than only per-call settings — and reports a paired comparison of the two.
+
+Execution is sequential with **the lead alternating by sample**: whichever variant runs second benefits from provider prompt caching and a warm store, so a fixed order hands one side a systematic advantage and reports it as a result. Concurrent execution was rejected because the two variants would then contend for one provider and one connection pool, and the latency numbers would measure the contention.
+
+Both sides answer the same questions, so the comparison is paired (`delta = B − A` per sample), which removes between-sample variance — some questions are simply harder — and is what makes a fifty-sample comparison worth running. Per metric the `AbReport` carries each variant's mean **over the compared pairs**, the mean delta, a win/loss/tie tally, and a **seeded 95% percentile-bootstrap confidence interval** on the mean delta. Bootstrap rather than a t-interval because RAGAS scores are bounded on `[0, 1]` and frequently skewed. Plus per-variant latency p50/p95 with the same paired interval, and per-variant cost where a ledger was supplied.
+
+Dropped pairs are counted under two separate headings, because they have different causes and different fixes: a sample either variant failed to answer leaves **every** metric (`DroppedForRunFailure`), while a metric returning `null` on either side drops that pair **for that metric only** (`DroppedAsUnscoreable`). Nothing is fabricated to fill a gap — a metric with no comparable pair reports `null` means and a `null` interval rather than `0.0`, and a variant with no ledger is absent from the cost map rather than recorded as free.
+
+The composition root sits in `Rag.NET.Evaluation.Ragas` rather than `Rag.NET.Evaluation`: pairing needs a per-sample score *per metric*, `RagasReport.Samples` is the only thing in the stack that produces one (`IRagEvaluator` returns an aggregate with no metric breakdown and no way to express unscoreable), and `Rag.NET.Evaluation.Ragas` already references `Rag.NET.Evaluation` — so a tester taking a `RagasEvaluationSuite` on the other side of that edge would be a reference cycle. `AbReport`, `AbMetricComparison`, `AbLatencyComparison`, `AbVariant`, `AbOptions`, `AbTally` and `AbConfidenceInterval` stay in `Rag.NET.Evaluation`, owing nothing to RAGAS.
 
 **Why:** Changing retrieval strategy, chunking size, or reranking has unpredictable quality effects. A/B testing with automatic evaluation scores makes it safe to iterate on pipeline configuration in production.
+
+**Status:** ✅ Done — the **offline harness with paired statistics**, shipped in Phase 3.3 and documented in [the evaluation guide](../guide/evaluation.md#ab-testing). Read against the original specification above, three things differ and all three are deliberate:
+
+- **Not "simultaneously".** Sequential with alternating order, for the fairness reason above.
+- **Exactly two variants, not N.** `PairedDeltas` and the tally are strictly pairwise, and N-way needs a multiple-comparisons correction; a third variant is rejected before anything runs rather than executed at full LLM cost and dropped.
+- **Scored through `RagasEvaluationSuite`, not `IRagEvaluator`.** Per-metric pairing is impossible through an interface that returns one unnamed non-nullable score per sample.
+
+**Shadow mode and side-by-side mode are the deferred half of this row**, scheduled as **Phase 3.8**. Both are production-path concerns with their own failure modes — doubled spend on every request, fire-and-forget work lost on host shutdown, a secondary that must never break a primary the caller already received, and only the two reference-free metrics of the four, since live traffic carries no ground-truth answer. They deserve their own design rather than a flag on the offline harness. Also out of scope by decision: power analysis, which would tell a caller how many samples they need before running; the interval reports what the run achieved, which is the honest half of that question.
 
 ---
 
@@ -1055,7 +1071,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Linear Issue Tracker | Low | Linear GraphQL API |
 | [x] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
 | [x] | Evaluation Dataset Builder | Medium | `IChatClient` |
-| [ ] | A/B Testing Framework | Medium | `IRagEvaluator` |
+| [x] | A/B Testing Framework | Medium | `RagasEvaluationSuite` (offline harness; shadow mode deferred to Phase 3.8) |
 | [x] | Weaviate Vector Store | Medium | REST + GraphQL via `ZeroAlloc.Rest` |
 | [x] | Chroma Vector Store | Medium | Chroma REST API |
 | [x] | Pinecone Vector Store | Medium | Official `Pinecone.Client` SDK (3.1.0) |

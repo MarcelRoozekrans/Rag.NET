@@ -792,3 +792,226 @@ foreach (var (metric, unscoreable) in report.UnscoreableSamples)
 - **Samples are processed sequentially**, with the registered metrics running concurrently within each sample. A large dataset therefore takes proportionally longer, and `MaxConcurrentCalls` is the only lever on throughput — two samples are never in flight at once, so raising the ceiling above one sample's fan-out buys nothing.
 - **Answer Relevance depends on the embedding model** the same way `EmbeddingDistanceEvaluator` does, with the same calibration caveats.
 - **Custom metric registration is not supported** — see [Using a single metric standalone](#using-a-single-metric-standalone) for what is available instead.
+
+## A/B Testing
+
+`RagAbTester` runs one evaluation dataset through **two** pipeline configurations and reports which is better — together with an interval that says whether "better" means anything at all.
+
+```bash
+dotnet add package Rag.NET.Evaluation.Ragas
+```
+
+> **It spans two packages, and not the way you would guess.** `RagAbTester` is in `Rag.NET.Evaluation.Ragas`. Everything it produces — `AbReport`, `AbMetricComparison`, `AbLatencyComparison`, `AbVariant`, `AbOptions`, `AbTally`, `AbConfidenceInterval` — is in `Rag.NET.Evaluation`.
+>
+> Pairing needs a per-sample score *for each metric*, and `RagasReport.Samples` is the only thing in the evaluation stack that produces one: `IRagEvaluator.EvaluateAsync` returns an aggregate with no metric breakdown and no way to express "unscoreable". Since `Rag.NET.Evaluation.Ragas` references `Rag.NET.Evaluation` and not the other way round, a tester that takes a `RagasEvaluationSuite` can only live on the RAGAS side of that edge — putting it in `Rag.NET.Evaluation` would be a reference cycle. The report model stays behind so it owes nothing to RAGAS.
+
+### What a variant is
+
+```csharp
+public sealed record AbVariant(
+    string Name,
+    IRagPipeline Pipeline,
+    RagOptions? Options = null,
+    ICostLedger? CostLedger = null);
+```
+
+A variant is **a whole `IRagPipeline`**, not a bag of options. That is deliberate: the changes worth A/B testing are mostly not per-call settings. Swapping the embedding model, the chunker, the vector store, or adding a reranker all happen at composition time, and none of them can be expressed as a `RagOptions` on an existing pipeline. Taking the pipeline itself means one harness covers "same pipeline, `TopK` 5 vs 10" and "an entirely different retrieval stack" without needing two designs. `Options` is there for the former as a convenience; it is not the mechanism.
+
+The `Name` is not decoration — it keys the responses, the timings and the cost, so the two must be distinct and non-blank.
+
+**Exactly two.** Not "at least two". The statistics are strictly pairwise — `delta_i = B_i − A_i`, and the tally has a B column and an A column with nowhere to put a third — and an N-way comparison needs a multiple-comparisons correction that is out of scope for this release. Three variants are rejected before anything runs, rather than executed at full LLM cost and then quietly dropped. Compare the pairs you care about separately.
+
+### Basic usage
+
+```csharp
+using Rag.NET.Evaluation;
+using Rag.NET.Evaluation.Ragas;
+
+// Both variants are judged by the same suite. One suite rather than one per variant: a
+// comparison in which the metrics differ measures the metrics.
+var suite = new RagasEvaluationSuiteBuilder(chatClient, embeddingGenerator)
+    .AddFaithfulness()
+    .AddAnswerRelevance()
+    .AddContextPrecision()
+    .AddContextRecall()
+    .Build();
+
+var tester = new RagAbTester(suite, new AbOptions { Seed = 1234 });
+
+AbReport report = await tester.CompareAsync(
+    new AbVariant("baseline", baselinePipeline),
+    new AbVariant("reranked", rerankedPipeline),
+    dataset.Samples);
+```
+
+Only `Question` and `ReferenceAnswer` are read from each sample. The predicted answer and the source chunks come from the variant that produced them — which is the entire point, and is why a dataset built by [`EvaluationDatasetBuilder`](#evaluationdatasetbuilder) can be fed straight in without running a pipeline over it first.
+
+### Why execution alternates
+
+Both variants answer every question, sequentially, with **the lead alternating by sample**: A,B then B,A then A,B.
+
+Whichever variant runs second benefits from provider-side prompt caching and a warm vector store. A fixed order therefore hands one side a systematic advantage on *every* sample and then reports that advantage as a result. Alternating cancels it out to first order.
+
+This matters least for quality scores and most for latency — and latency is half the reason to run a comparison at all, so the ordering is chosen for the measurement that is sensitive to it.
+
+The two variants are **not** run concurrently. That would roughly halve wall-clock, but the two would then contend for the same provider and the same connection pool, so the latency numbers would measure contention as much as they measure the variants.
+
+### Reading the result
+
+```csharp
+foreach (var (metric, comparison) in report.Metrics)
+{
+    if (comparison.ConfidenceInterval is not { } ci)
+    {
+        Console.WriteLine($"{metric}: nothing comparable ({comparison.DroppedAsUnscoreable} unscoreable)");
+        continue;
+    }
+
+    var verdict = ci.Lower > 0 ? $"{report.VariantB} is better"
+        : ci.Upper < 0 ? $"{report.VariantA} is better"
+        : "no difference this run can support";
+
+    Console.WriteLine(
+        $"{metric}: {comparison.MeanA:F3} -> {comparison.MeanB:F3} " +
+        $"(delta {comparison.MeanDelta:F3}, 95% CI [{ci.Lower:F3}, {ci.Upper:F3}]) — {verdict}");
+
+    Console.WriteLine(
+        $"  {comparison.Tally.BWins} B wins / {comparison.Tally.AWins} A wins / " +
+        $"{comparison.Tally.Ties} ties over {comparison.ComparedPairs} pairs");
+}
+```
+
+#### A confidence interval spanning zero is not a win
+
+This is the sentence this section exists for.
+
+An A/B run **always** produces a higher number on one side. Two identical pipelines compared over fifty samples will still show a mean delta of `+0.004` or `−0.011`, because an LLM judge is noisy and fifty samples is not many. The mean delta on its own therefore rubber-stamps whatever you tried last, every single time.
+
+The interval is the only thing separating a result from noise:
+
+| Mean delta | 95% CI | What it means |
+|---|---|---|
+| `+0.07` | `[+0.02, +0.12]` | A finding. B is better; the run supports it. |
+| `+0.07` | `[−0.04, +0.18]` | **Not a finding.** The same `+0.07`, and this run cannot tell it from zero. |
+| `−0.01` | `[−0.03, +0.01]` | Not a finding, and the interval is tight — good evidence the change did nothing. |
+
+If the interval contains zero, the honest report is *"no difference this run can support"* — not "B was slightly ahead". A tighter interval comes from more samples, or from a less noisy metric. It does not come from raising `BootstrapResamples`; see below.
+
+The **tally** is a different question from the interval, and both are worth reading. `AbTally(BWins, AWins, Ties)` counts how many individual samples each side won, ignoring by how much. A metric can show 30 B-wins to 20 A-wins and still have an interval spanning zero — B wins more often but by small amounts, and loses by large ones. `TieEpsilon` (default `1e-9`) is the half-width of the tie band, and at its default it exists only to keep floating-point noise on two identically scored samples out of a win column.
+
+#### `MeanA` and `MeanB` are over the compared pairs
+
+Not over each variant's full run. If a metric scored A on all fifty samples but B on only forty-eight, `MeanA` is taken over the same forty-eight — otherwise the two means would describe different sample sets, and `MeanB − MeanA` would contradict `MeanDelta` in the same report. That identity holds by construction:
+
+```text
+MeanB - MeanA == MeanDelta
+```
+
+### The two drop rules
+
+Pairs leave the comparison for two different reasons, they are counted separately, and they have different fixes.
+
+| Field | Cause | Scope | What to do |
+|---|---|---|---|
+| `DroppedForRunFailure` | One variant threw, or returned no response, while answering the question | The sample leaves **every** metric | Fix the pipeline. Read `report.Failures` — it names the question, the variant and the exception type. |
+| `DroppedAsUnscoreable` | Both variants answered, but a metric returned `null` on one side or the other | The sample leaves **that metric only** | See [Reading a `null` score](#reading-a-null-score). Usually a judge parse failure or a missing `ReferenceAnswer`. |
+
+A pair is all-or-nothing in both cases. Keeping the readable half of a pair would compute the two means over different sample sets while still calling the result paired — which is precisely the kind of number that looks comparable and is not.
+
+```csharp
+Console.WriteLine($"{report.ComparableSamples} of {report.SamplesRun} samples were comparable");
+
+foreach (var failure in report.Failures)
+    Console.WriteLine(failure);   // 'question': variant did not answer — InvalidOperationException: ...
+```
+
+Watch the counts. A clean, tight interval over the eleven pairs that survived out of fifty is not a result about your dataset, and the drop counts are the only place that is visible.
+
+If **no** sample was comparable at all, `report.Metrics` is empty rather than full of nulls — the metric names come from the suite's own report, and the suite was never run, so inventing rows would claim it ran and found nothing. `RunFailures` says what happened instead.
+
+### Latency
+
+```csharp
+var latency = report.Latency;
+
+Console.WriteLine($"p50  A {latency.MedianA?.TotalMilliseconds:F0} ms   B {latency.MedianB?.TotalMilliseconds:F0} ms");
+Console.WriteLine($"p95  A {latency.Percentile95A?.TotalMilliseconds:F0} ms   B {latency.Percentile95B?.TotalMilliseconds:F0} ms");
+
+if (latency.ConfidenceIntervalMilliseconds is { } ci)
+{
+    Console.WriteLine(
+        $"delta {latency.MeanDeltaMilliseconds:F1} ms, 95% CI [{ci.Lower:F1}, {ci.Upper:F1}]");
+}
+```
+
+Wall-clock per variant per sample, measured by the harness rather than reported by the pipeline, over the comparable pairs only — both variants' percentiles have to come from the same set of questions or they describe two different workloads. The mean delta gets the same bootstrap interval as the quality metrics, and reads the same way: spanning zero means this run cannot tell the two apart.
+
+### Cost needs one ledger per variant
+
+`ICostLedger` aggregates into a time-window bucket with no per-caller attribution, so a *shared* ledger cannot say which variant spent what. Each variant gets its own instance, and they are reported separately:
+
+```csharp
+using Rag.NET.Resilience;
+
+var report = await tester.CompareAsync(
+    new AbVariant("baseline", baselinePipeline, CostLedger: new InMemoryCostLedger()),
+    new AbVariant("reranked", rerankedPipeline, CostLedger: new InMemoryCostLedger()),
+    dataset.Samples);
+
+foreach (var name in new[] { report.VariantA, report.VariantB })
+{
+    Console.WriteLine(report.Cost.TryGetValue(name, out var spend)
+        ? $"{name} spent {spend}"
+        : $"{name}: not measured — no ledger was supplied");
+}
+```
+
+**A variant with no ledger is absent from `report.Cost`, never zero.** A zero would state as fact that the variant was free. `TryGetValue` returning `false` means *not measured*; treat it that way.
+
+The pipeline must actually record to the ledger you hand over — pass it through `UseCostBudgeting` or `CostTrackingChatClient` when composing the variant — and Rag.NET does not price tokens itself, so the price sheet is yours to supply, as everywhere else. See [cost budgeting](resilience.md#cost-budgeting).
+
+### `AbOptions`
+
+```csharp
+var tester = new RagAbTester(suite, new AbOptions
+{
+    Seed               = 1234,   // null (default) draws fresh randomness each run
+    BootstrapResamples = 2000,   // default; minimum 1000
+    TieEpsilon         = 1e-9,   // default; the half-width of the tally's tie band
+});
+```
+
+#### `Seed` fixes the interval, not the run
+
+The guarantee is exactly this: **the same seed over the same deltas gives the same interval.** An unreproducible confidence interval is not evidence — the same rule [`EvaluationDatasetBuilderOptions.Seed`](#reproducibility-seed) establishes for sampling.
+
+It does **not** make the comparison deterministic:
+
+- **The pipelines are not seeded.** Both variants are asked real questions by a real model, and above temperature 0 the same question yields a different answer every time.
+- **The judge is not seeded.** RAGAS scores come from an LLM. A sample that scored `0.8` once can score `0.7` next time, or become unscoreable altogether.
+
+So two runs over the same dataset with the same seed can produce **different deltas, and therefore different intervals**. The seed fixes the resampling of whatever deltas the run produced; it does not fix the production of them. What it is genuinely for is rerunning the statistics over a stored set of deltas, and pinning an interval in a test.
+
+#### `BootstrapResamples` has a floor of 1000, and lowering it is not a speed-up
+
+More resamples reduce the Monte-Carlo jitter of the interval itself. They do **not** narrow it — the width is set by your data, so raising this buys precision about the interval, never a more confident answer.
+
+Lowering it buys nothing either. The resampling is `pairs × resamples` multiply-adds over an array already in memory: a fifty-sample comparison at the default is 100k operations, which is invisible beside the two LLM runs that produced the scores. If a comparison feels slow, the time is in the pipelines and the judge.
+
+**Below 1000 it throws**, and the reason is worth knowing. A 95% percentile interval trims `floor(0.025 × resamples)` values from each tail — and that expression is **zero for every value at or below 39**. With nothing trimmed the "interval" is simply the smallest and largest resample mean, whose expected coverage is `(B−1)/(B+1)`: 0.818 at ten resamples, not 0.95. It *under*-covers while still being labelled 95%, so it excludes zero more often than it should, which is the one failure this whole comparison exists to prevent. The floor sits at 1000 rather than 40 because each endpoint is an order statistic whose own jitter shrinks with how many draws land in the tail; at 1000 the lower endpoint is the 25th of 1000, which no handful of draws decides.
+
+### Shadow mode is not in this release
+
+`RagAbTester` is an **offline** harness. It runs a dataset you supply, out of band, at your own cost. It does not wrap production traffic.
+
+Shadow mode — a live pipeline returning the primary answer to the caller while a secondary runs out-of-band for scoring — is **scheduled as Phase 3.8** and deliberately not bolted on here. It is a production-path concern with its own failure modes: doubled LLM spend on every request, fire-and-forget work that is lost on host shutdown, a secondary that must never break a primary the caller has already received, and — because live traffic has no ground-truth answer — only the two reference-free metrics of the four. It deserves its own design rather than a flag on this one.
+
+Side-by-side review of two live answers is likewise out of scope for the same reason.
+
+### Limitations
+
+- **Two variants, not N.** N-way comparison needs a multiple-comparisons correction; running fifteen pairwise tests and reporting the winner is how you find an effect in pure noise.
+- **The judge is an LLM, and both sides inherit its judgement.** Using one suite for both variants makes the *comparison* fair, but a metric that judges badly judges both variants badly.
+- **No power analysis.** The harness reports what the run achieved; it will not tell you in advance how many samples you need to detect a difference of a given size.
+- **Sequential by design**, so a comparison costs roughly twice a single evaluation run in both wall-clock and tokens.
+- **Latency is measured on your machine against your provider**, including network and any warm-up the alternation did not cancel. Treat it as a comparison between the two variants under identical conditions, not as an absolute benchmark.
