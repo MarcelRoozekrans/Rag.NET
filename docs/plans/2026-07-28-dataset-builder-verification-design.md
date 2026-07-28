@@ -77,7 +77,8 @@ spend, one or two calls per sample — records nothing.
 
 1. **A failed generation is not a sample.** Exclude it and report the exclusion.
 2. **Seeded, reproducible sampling.**
-3. **Reservoir sampling**, so memory is proportional to the sample rather than the corpus.
+3. **Reservoir sampling**, so a build stops holding every document's chunks at once. (This line
+   originally claimed memory proportional to the sample; **see §4**, which retracts that.)
 4. **Bounded concurrency and cost recording**, matching what 3.1 gave the metrics.
 5. **The shared plumbing moves down rather than being copied** (§3).
 

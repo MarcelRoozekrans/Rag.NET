@@ -14,7 +14,8 @@ namespace Rag.NET.Evaluation;
 /// <para>
 /// Set <see cref="EvaluationDatasetBuilderOptions.Seed"/> to make the sampling repeatable — read
 /// its documentation for what that does and does not guarantee. Chunks are offered to a reservoir a
-/// document at a time rather than accumulated, so no build holds every chunk's text at once. The
+/// document at a time rather than accumulated, so a build no longer holds every document's chunks
+/// at once. The
 /// peak is the document list plus the largest single document's chunks plus the sample — not the
 /// sample alone; <c>SampleChunksAsync</c> records why.
 /// </para>

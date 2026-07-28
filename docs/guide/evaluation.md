@@ -349,7 +349,7 @@ Three things it does **not** give you:
 
 ### Concurrency: `MaxConcurrentCalls`
 
-`MaxConcurrentCalls` bounds how many LLM calls are in flight across the **whole build**, and defaults to `4`. It is the same ceiling, and the same shared caller, a RAGAS run uses.
+`MaxConcurrentCalls` bounds how many LLM calls are in flight across the **whole build**, and defaults to `4`. It is the same mechanism a RAGAS run uses — the same shared-caller *type*, not the same instance. A dataset build and a concurrent RAGAS evaluation each hold their own ceiling, so their limits add rather than combine.
 
 Before this existed, the builder started every chunk's generation at once: a 500-chunk sample in `QuestionAndAnswer` mode was up to 500 concurrent two-call chains, which is a 429 from any real provider. It bounds how many calls are *in flight*, not how many are *made* — a 50-chunk sample in `QuestionAndAnswer` mode is 100 calls at any ceiling. For production-scale runs also use a rate-limit-aware `IChatClient` such as `FallbackChatClient`.
 
@@ -417,7 +417,7 @@ var evaluation = await evaluator.EvaluateAsync(evaluated);
 - Synthetic questions reflect the content of individual chunks, not complex multi-hop queries.
 - `QuestionOnly` mode produces empty `ReferenceAnswer` — you must either fill it in manually or avoid metrics that require it (Context Precision, Context Recall).
 - **A seed reproduces the sampling, not the dataset.** The questions are model output and vary between builds; persist the dataset if you need the text itself to be stable.
-- **The build is not O(sample) in memory.** `IRagDataManager` exposes no streaming overload, so a build holds the document list and one document's chunks at a time, on top of the sample. It no longer holds every chunk's text in the corpus at once, which was the previous behaviour and is by far the larger cost — but a corpus whose *document list* does not fit in memory will not build.
+- **The build is not O(sample) in memory.** `IRagDataManager` exposes no streaming overload, so a build holds the document list and one document's chunks at a time, on top of the sample. It no longer holds every *document's* chunks at once, which was the previous behaviour and is by far the larger cost — but a corpus whose *document list* does not fit in memory will not build, and a single document whose own chunks do not fit will not either.
 
 ---
 
