@@ -1,12 +1,17 @@
 using Microsoft.Extensions.AI;
 using NSubstitute;
 using Rag.NET.Abstractions;
-using Rag.NET.Evaluation;
 using Rag.NET.Models;
 using Xunit;
 
-namespace Rag.NET.Tests.Evaluation;
+namespace Rag.NET.Evaluation.Tests;
 
+/// <summary>
+/// Moved here from <c>Rag.NET.Tests/Evaluation/</c> in Phase 3.2. The builder is a
+/// <c>Rag.NET.Evaluation</c> type, and its two Phase 3.2 collaborators —
+/// <see cref="ReservoirSamplerTests"/> and <see cref="EvaluationChatCallerTests"/> — already test
+/// it from here, as does the <see cref="RoutingChatClient"/> the ceiling test needs.
+/// </summary>
 public class EvaluationDatasetBuilderTests
 {
     private static IRagDataManager MakeDataManager(params string[] chunkTexts)
@@ -339,5 +344,134 @@ public class EvaluationDatasetBuilderTests
             .BuildAsync(options, TestContext.Current.CancellationToken);
 
         Assert.NotEqual(SourceTexts(beforeIngestion), SourceTexts(afterIngestion));
+    }
+
+    [Fact]
+    public async Task BuildAsync_RespectsTheConcurrencyCeiling()
+    {
+        // Peak observed concurrency, not a total call count: a total proves only that the work got
+        // done, never that a bound held while it did. Four chunks in QuestionAndAnswer mode is
+        // eight LLM calls, and the pre-3.2 builder started one chain per sampled chunk through
+        // Task.WhenAll with nothing bounding them at all.
+        //
+        // The fan-out is deliberately observed while gated. Every generation blocks on its own
+        // latch inside the fake, so an unbounded builder reaches a peak of four before anything
+        // completes, while a bounded one cannot get a third call past the semaphore.
+        var fetches = new Dictionary<string, int>(StringComparer.Ordinal);
+        var client = new RoutingChatClient([], fallback: "A question?");
+        client.GateCalls();
+        var builder = new EvaluationDatasetBuilder(MakeCorpus(1, 4, fetches), client);
+
+        var pending = builder.BuildAsync(
+            new EvaluationDatasetBuilderOptions
+            {
+                SampleCount = 4,
+                Seed = 3,
+                Mode = DatasetGenerationMode.QuestionAndAnswer,
+                MaxConcurrentCalls = 2,
+            },
+            TestContext.Current.CancellationToken);
+
+        await WaitForAsync(() => client.CallCount >= 2, TestContext.Current.CancellationToken);
+        var peakWhileGated = client.PeakInFlight;
+        client.ReleaseAll();
+        var dataset = await pending;
+
+        Assert.Equal(4, dataset.Samples.Count);
+
+        // Two calls per sample, and never more than two of them in flight.
+        Assert.Equal(8, client.CallCount);
+        Assert.True(
+            client.PeakInFlight <= 2,
+            $"peak was {client.PeakInFlight} ({peakWhileGated} while gated), ceiling was 2");
+    }
+
+    [Fact]
+    public async Task BuildAsync_WhenTheCeilingIsNotPositive_Throws()
+    {
+        var fetches = new Dictionary<string, int>(StringComparer.Ordinal);
+        var builder = new EvaluationDatasetBuilder(MakeCorpus(1, 2, fetches), EchoingChatClient());
+
+        var exception = await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => builder.BuildAsync(
+                new EvaluationDatasetBuilderOptions { SampleCount = 2, MaxConcurrentCalls = 0 },
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("options", exception.ParamName);
+
+        // Rejected before the corpus is read: a nonsensical ceiling should not cost an enumeration
+        // of every document first.
+        Assert.Empty(fetches);
+    }
+
+    [Fact]
+    public async Task BuildAsync_WithUsageAndPrices_BillsEveryCall()
+    {
+        // The builder is pure LLM spend — one or two calls per sample — and recorded none of it
+        // before this phase, while the RAGAS metrics had been billing since 3.1.
+        var fetches = new Dictionary<string, int>(StringComparer.Ordinal);
+        var ledger = new RecordingCostLedger();
+        var client = new RoutingChatClient([], fallback: "A question?")
+        {
+            Usage = new UsageDetails { InputTokenCount = 100, OutputTokenCount = 10 },
+        };
+        var builder = new EvaluationDatasetBuilder(MakeCorpus(1, 3, fetches), client, ledger);
+
+        await builder.BuildAsync(
+            new EvaluationDatasetBuilderOptions
+            {
+                SampleCount = 3,
+                Seed = 5,
+                PricePerInputToken = 0.001m,
+                PricePerOutputToken = 0.002m,
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, ledger.Entries.Count);
+        Assert.All(ledger.Entries, entry =>
+        {
+            Assert.Equal(CostKind.Chat, entry.Kind);
+            Assert.Equal((100 * 0.001m) + (10 * 0.002m), entry.Cost);
+        });
+    }
+
+    [Fact]
+    public async Task BuildAsync_WhenTheModelReportsNoUsage_BillsNothing()
+    {
+        // Recording a zero-token entry would state as fact that the build was free. The guard lives
+        // in the shared caller; this pins that the builder goes through it rather than around it.
+        var fetches = new Dictionary<string, int>(StringComparer.Ordinal);
+        var ledger = new RecordingCostLedger();
+        var client = new RoutingChatClient([], fallback: "A question?") { Usage = null };
+        var builder = new EvaluationDatasetBuilder(MakeCorpus(1, 3, fetches), client, ledger);
+
+        await builder.BuildAsync(
+            new EvaluationDatasetBuilderOptions
+            {
+                SampleCount = 3, Seed = 5, PricePerInputToken = 1m, PricePerOutputToken = 1m,
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Empty(ledger.Entries);
+    }
+
+    /// <summary>
+    /// Spins until <paramref name="condition"/> holds, or five seconds pass.
+    /// </summary>
+    /// <remarks>
+    /// Bounded on purpose. The condition is satisfied on the first check today — the fan-out runs
+    /// synchronously up to each call's latch — but an unbounded spin would turn any future
+    /// regression that stops the builder starting its calls into a hung run rather than a red one.
+    /// </remarks>
+    private static async Task WaitForAsync(Func<bool> condition, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+
+        while (!condition())
+        {
+            timeout.Token.ThrowIfCancellationRequested();
+            await Task.Yield();
+        }
     }
 }

@@ -11,18 +11,35 @@ namespace Rag.NET.Evaluation;
 /// to generate a question (and optionally a reference answer) per chunk.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Set <see cref="EvaluationDatasetBuilderOptions.Seed"/> to make the sampling repeatable — read
 /// its documentation for what that does and does not guarantee. The corpus is streamed through a
 /// reservoir rather than materialised, so a build holds the sample, not the corpus.
+/// </para>
+/// <para>
+/// Generation runs under <see cref="EvaluationCallOptions.MaxConcurrentCalls"/> and bills the
+/// ledger, through the same shared caller a RAGAS run uses. Without a ceiling, a 500-chunk sample
+/// in <see cref="DatasetGenerationMode.QuestionAndAnswer"/> mode was up to 500 concurrent
+/// two-call chains — the identical defect Phase 3.1 removed from the RAGAS metrics.
+/// </para>
 /// </remarks>
+/// <param name="dataManager">The corpus to sample chunks from.</param>
+/// <param name="chatClient">The model that generates the questions and answers.</param>
+/// <param name="costLedger">
+/// Optional ledger for the build's LLM spend. Entries cost zero unless
+/// <see cref="EvaluationCallOptions.PricePerInputToken"/> and
+/// <see cref="EvaluationCallOptions.PricePerOutputToken"/> are set on the build's options.
+/// </param>
 public sealed class EvaluationDatasetBuilder(
     IRagDataManager dataManager,
-    IChatClient chatClient)
+    IChatClient chatClient,
+    ICostLedger? costLedger = null)
 {
     private readonly IRagDataManager _dataManager = dataManager
         ?? throw new ArgumentNullException(nameof(dataManager));
     private readonly IChatClient _chatClient = chatClient
         ?? throw new ArgumentNullException(nameof(chatClient));
+    private readonly ICostLedger? _costLedger = costLedger;
 
     /// <summary>
     /// Builds a synthetic evaluation dataset by sampling chunks from the document corpus
@@ -42,15 +59,23 @@ public sealed class EvaluationDatasetBuilder(
         if (options.SampleCount <= 0)
             return new EvaluationDataset();
 
+        // One caller per build, so the ceiling counts calls across the whole run rather than per
+        // chunk. Constructed before the corpus is read so an invalid ceiling fails immediately
+        // rather than after enumerating every document.
+        var caller = new EvaluationChatCaller(_chatClient, options, _costLedger);
+
         var sampled = await SampleChunksAsync(options.SampleCount, options.Seed, cancellationToken)
             .ConfigureAwait(false);
 
-        // Generate samples concurrently
+        // Every generation is started at once and the ceiling — not this loop — decides how many
+        // are in flight. Starting only MaxConcurrentCalls of them here would leave the semaphore
+        // with nothing to do and put the bound in two places.
+        //
         // Indexed rather than foreach: HLQ012 objects to enumerating a List<T> directly, and the
         // sampling loop below is written the same way.
         var tasks = new List<Task<GenerationResult>>(sampled.Count);
         for (var i = 0; i < sampled.Count; i++)
-            tasks.Add(GenerateSampleAsync(sampled[i], options.Mode, cancellationToken));
+            tasks.Add(GenerateSampleAsync(caller, sampled[i], options.Mode, cancellationToken));
 
         var results = await Task.WhenAll(tasks).ConfigureAwait(false);
 
@@ -134,19 +159,20 @@ public sealed class EvaluationDatasetBuilder(
     /// model, and nobody has asked for it.
     /// </para>
     /// </remarks>
-    private async Task<GenerationResult> GenerateSampleAsync(
+    private static async Task<GenerationResult> GenerateSampleAsync(
+        EvaluationChatCaller caller,
         TextChunk chunk,
         DatasetGenerationMode mode,
         CancellationToken ct)
     {
-        var question = await GenerateQuestionAsync(chunk.Text, ct).ConfigureAwait(false);
+        var question = await GenerateQuestionAsync(caller, chunk.Text, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(question))
             return new GenerationResult(null, EvaluationDataset.SkipReasons.EmptyQuestion);
 
         var referenceAnswer = string.Empty;
         if (mode == DatasetGenerationMode.QuestionAndAnswer)
         {
-            referenceAnswer = await GenerateAnswerAsync(chunk.Text, question, ct).ConfigureAwait(false);
+            referenceAnswer = await GenerateAnswerAsync(caller, chunk.Text, question, ct).ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(referenceAnswer))
                 return new GenerationResult(null, EvaluationDataset.SkipReasons.EmptyReferenceAnswer);
         }
@@ -160,31 +186,21 @@ public sealed class EvaluationDatasetBuilder(
             SkipReason: null);
     }
 
-    private async Task<string> GenerateQuestionAsync(string chunkText, CancellationToken ct)
-    {
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.System,
-                "Generate a single question whose answer is found in the provided text. " +
-                "Output only the question, no explanation."),
-            new(ChatRole.User, chunkText),
-        };
-        var response = await _chatClient.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
-        return response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
-    }
+    private static Task<string> GenerateQuestionAsync(
+        EvaluationChatCaller caller, string chunkText, CancellationToken ct)
+        => caller.CompleteAsync(
+            "Generate a single question whose answer is found in the provided text. " +
+            "Output only the question, no explanation.",
+            chunkText,
+            ct);
 
-    private async Task<string> GenerateAnswerAsync(string chunkText, string question, CancellationToken ct)
-    {
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.System,
-                "Answer the question using only the provided text. " +
-                "Output only the answer, no explanation."),
-            new(ChatRole.User, $"Text: {chunkText}\n\nQuestion: {question}"),
-        };
-        var response = await _chatClient.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
-        return response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
-    }
+    private static Task<string> GenerateAnswerAsync(
+        EvaluationChatCaller caller, string chunkText, string question, CancellationToken ct)
+        => caller.CompleteAsync(
+            "Answer the question using only the provided text. " +
+            "Output only the answer, no explanation.",
+            $"Text: {chunkText}\n\nQuestion: {question}",
+            ct);
 
     /// <summary>One chunk's outcome: a sample, or the reason it did not become one.</summary>
     /// <remarks>

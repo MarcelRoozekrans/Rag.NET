@@ -1,7 +1,6 @@
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Evaluation.Internal;
-using Rag.NET.Evaluation.Tests.Ragas;
 using Rag.NET.Models;
 using Xunit;
 

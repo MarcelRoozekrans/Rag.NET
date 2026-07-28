@@ -1,7 +1,7 @@
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 
-namespace Rag.NET.Evaluation.Tests.Ragas;
+namespace Rag.NET.Evaluation.Tests;
 
 /// <summary>An <see cref="ICostLedger"/> that keeps every entry written to it.</summary>
 internal sealed class RecordingCostLedger : ICostLedger
