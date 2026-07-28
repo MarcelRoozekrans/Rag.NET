@@ -2,6 +2,10 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Starts a Testcontainers container, via Rag.NET.Testing's PgVectorFixture rather than
+         a Testcontainers reference of its own. CI runs these in the Docker tier, which is
+         Linux-only: the Windows runners have no Linux Docker daemon. -->
+    <RequiresDocker>true</RequiresDocker>
   </PropertyGroup>
 
   <ItemGroup>
