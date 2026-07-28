@@ -60,7 +60,7 @@ public sealed class RagAbTesterTests
     public async Task CompareAsync_WhenBIsUniformlyBetter_ReportsAPositiveDeltaAndAnIntervalExcludingZero()
     {
         var tester = new RagAbTester(
-            Suite((Quality, s => IsB(s) ? BaseScore(s) + Lift(s) : BaseScore(s))),
+            Suite((Quality, Lifted)),
             new AbOptions { Seed = 7 });
 
         var report = await tester.CompareAsync(
@@ -293,12 +293,78 @@ public sealed class RagAbTesterTests
         Assert.Equal(first.Upper, second.Upper, precision: 12);
 
         static Task<AbReport> Compare(AbOptions options) => new RagAbTester(
-            Suite((Quality, s => IsB(s) ? BaseScore(s) + Lift(s) : BaseScore(s))),
+            Suite((Quality, Lifted)),
             options).CompareAsync(
                 new AbVariant("A", new ScriptedPipeline("A")),
                 new AbVariant("B", new ScriptedPipeline("B")),
                 Samples("q1", "q2", "q3", "q4", "q5", "q6"),
                 TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CompareAsync_TheIntervalDependsOnItsOwnDeltasOnly_NotOnTheRestOfTheSuite()
+    {
+        // Quality's deltas are identical in all three suites; only the company it keeps differs.
+        // One Random shared across the intervals would make Quality's interval a function of how
+        // many metrics were drawn before it — reproducible, but only for an identical suite, which
+        // is a weaker promise than Seed makes and one nobody would think to check before comparing
+        // two reports. A fresh generator per interval is what makes the seed mean what it says.
+        //
+        // Note which suites are needed to see this. Registration order alone cannot: the metric
+        // names are sorted before the intervals are drawn, so `alphaFirst` and `qualityFirst` draw
+        // in the same order either way and a shared generator survives them. `alone` is the one
+        // that discriminates, because there Quality is drawn first rather than second.
+        var alone = await Compare(Suite((Quality, GradedLift)));
+        var alphaFirst = await Compare(Suite((Alpha, BaseScore), (Quality, GradedLift)));
+        var qualityFirst = await Compare(Suite((Quality, GradedLift), (Alpha, BaseScore)));
+
+        var expected = alone.Metrics[Quality].ConfidenceInterval!.Value;
+        foreach (var report in new[] { alphaFirst, qualityFirst })
+        {
+            var actual = report.Metrics[Quality].ConfidenceInterval!.Value;
+            Assert.Equal(expected.Lower, actual.Lower, precision: 12);
+            Assert.Equal(expected.Upper, actual.Upper, precision: 12);
+        }
+
+        static Task<AbReport> Compare(RagasEvaluationSuite suite) => new RagAbTester(
+            suite,
+            new AbOptions { Seed = 11, BootstrapResamples = 1000 }).CompareAsync(
+                new AbVariant("A", new ScriptedPipeline("A")),
+                new AbVariant("B", new ScriptedPipeline("B")),
+                Samples("q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9"),
+                TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task CompareAsync_WhenTheTokenIsCancelledMidRun_StopsRatherThanReportingFailures()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var asked = new List<string>();
+        var scored = new List<EvaluationSample>();
+
+        // Cancels while the first sample is being answered. That is what makes this discriminating:
+        // a token merely checked on the way in would let all three samples run.
+        void Ask(string question)
+        {
+            asked.Add(question);
+            cancellation.Cancel();
+        }
+
+        var tester = new RagAbTester(
+            Suite((Quality, s => { scored.Add(s); return BaseScore(s); })),
+            new AbOptions { Seed = 7 });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => tester.CompareAsync(
+            new AbVariant("A", new ScriptedPipeline("A", onAsk: Ask)),
+            new AbVariant("B", new ScriptedPipeline("B", onAsk: Ask)),
+            Samples("q1", "q2", "q3"),
+            cancellation.Token));
+
+        // Only the first sample's two calls happened, and the judge never ran. Cancellation is the
+        // caller asking to stop, so it propagates — swallowing it would report a stopped run as a
+        // comparison in which every remaining sample failed, and would keep paying for the judge.
+        Assert.Equal(["q1", "q1"], asked);
+        Assert.Empty(scored);
     }
 
     [Fact]
@@ -332,6 +398,32 @@ public sealed class RagAbTesterTests
     private static double? BaseScore(EvaluationSample sample) => 0.30 + ((sample.Question[^1] - '0') * 0.05);
 
     private static double Lift(EvaluationSample sample) => (sample.Question[^1] - '0') % 2 == 0 ? 0.15 : 0.25;
+
+    /// <summary>The base score, plus B's parity lift of +0.15 or +0.25.</summary>
+    private static double? Lifted(EvaluationSample sample)
+        => IsB(sample) ? BaseScore(sample) + Lift(sample) : BaseScore(sample);
+
+    /// <summary>The base score, plus a lift for B that is <b>different on every question</b>.</summary>
+    /// <remarks>
+    /// <para>
+    /// For the tests that are about the resampling itself rather than about the delta. Any test that
+    /// compares two intervals needs endpoints that can actually move: a bootstrap endpoint is an
+    /// order statistic over the reachable resample means, so if the deltas are coarse it lands on
+    /// the same reachable value whatever was drawn, and the test passes against a generator it was
+    /// written to catch.
+    /// </para>
+    /// <para>
+    /// <see cref="Lift"/> is exactly that coarse — two values, hence seven reachable means over six
+    /// pairs. These lifts are the fractional parts of multiples of the golden ratio, so no two
+    /// multisets of nine draws share a sum and the endpoints track the draws continuously.
+    /// </para>
+    /// </remarks>
+    private static double? GradedLift(EvaluationSample sample)
+    {
+        var lift = 0.2 * ((sample.Question[^1] - '0') * 0.6180339887498949 % 1.0);
+
+        return IsB(sample) ? BaseScore(sample) + lift : BaseScore(sample);
+    }
 
     private static bool Asks(EvaluationSample sample, string question)
         => string.Equals(sample.Question, question, StringComparison.Ordinal);
@@ -374,13 +466,25 @@ public sealed class RagAbTesterTests
     /// Hand-written rather than substituted because the projection assertions need the answer and
     /// the sources to identify which variant produced them.
     /// </remarks>
-    private sealed class ScriptedPipeline(string label, string? throwOn = null) : IRagPipeline
+    /// <param name="label">Prefix for the answer and the retrieved chunk, so the variant is identifiable.</param>
+    /// <param name="throwOn">The question to fail on, or <c>"*"</c> for every question.</param>
+    /// <param name="onAsk">
+    /// Called with every question before it is answered. The hook the cancellation test uses to
+    /// cancel from inside the run, which is the only way to observe that the token reaches the loop
+    /// rather than only the entry point.
+    /// </param>
+    private sealed class ScriptedPipeline(
+        string label,
+        string? throwOn = null,
+        Action<string>? onAsk = null) : IRagPipeline
     {
         public Task<RagResponse> AskAsync(
             string query,
             RagOptions? options = null,
             CancellationToken cancellationToken = default)
         {
+            onAsk?.Invoke(query);
+
             if (throwOn is not null && (string.Equals(throwOn, "*", StringComparison.Ordinal) || string.Equals(throwOn, query, StringComparison.Ordinal)))
                 return Task.FromException<RagResponse>(new InvalidOperationException("the vector store went away"));
 

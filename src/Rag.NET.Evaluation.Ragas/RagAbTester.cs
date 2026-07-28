@@ -134,6 +134,13 @@ public sealed class RagAbTester
     }
 
     /// <summary>Pairs one metric's per-sample scores and runs the statistics over the survivors.</summary>
+    /// <exception cref="InvalidOperationException">
+    /// The two reports do not pair index-for-index. Unreachable while the suite returns one entry
+    /// per input sample in input order, and checked anyway: without it a shorter B-side report
+    /// surfaces as an <see cref="ArgumentOutOfRangeException"/> about an array index, and a merely
+    /// reordered one produces deltas between two different questions that look exactly like
+    /// measured ones.
+    /// </exception>
     private AbMetricComparison CompareMetric(
         string metric,
         RagasReport reportA,
@@ -142,15 +149,28 @@ public sealed class RagAbTester
     {
         // Index i of one report pairs with index i of the other: both were evaluated over the same
         // projection of the same comparable runs, and RagasEvaluationSuite appends one entry per
-        // sample as it walks the input sequentially.
+        // sample as it walks the input sequentially. RagasSampleScore carries the question precisely
+        // so a row can be recognised, so that assumption is checked rather than trusted — one
+        // ordinal compare per pair, against two LLM calls per pair to produce them.
         var count = reportA.Samples.Count;
+        if (reportB.Samples.Count != count)
+        {
+            throw new InvalidOperationException(
+                $"The two variants' score reports must pair index-for-index; scoring '{metric}' " +
+                $"found {count} samples on the A side and {reportB.Samples.Count} on the B side.");
+        }
+
         var scoresA = new double?[count];
         var scoresB = new double?[count];
 
         for (var i = 0; i < count; i++)
         {
-            scoresA[i] = Score(reportA.Samples[i], metric);
-            scoresB[i] = Score(reportB.Samples[i], metric);
+            var sampleA = reportA.Samples[i];
+            var sampleB = reportB.Samples[i];
+            EnsureSamePair(sampleA, sampleB, i, metric);
+
+            scoresA[i] = Score(sampleA, metric);
+            scoresB[i] = Score(sampleB, metric);
         }
 
         var deltas = AbStatistics.PairedDeltas(scoresA, scoresB);
@@ -212,10 +232,22 @@ public sealed class RagAbTester
 
     /// <summary>Turns one variant's responses into samples the suite can score.</summary>
     /// <remarks>
+    /// <para>
     /// The question and the reference answer come from the dataset; the predicted answer and the
     /// sources come from the variant. <c>Chunk.Text</c> rather than <c>CompressedText</c>: the
     /// metrics judge the retrieved context, and a variant that compresses harder would otherwise be
     /// scored against a shorter context than it retrieved.
+    /// </para>
+    /// <para>
+    /// <b>The cost of that choice is worth stating.</b> Compression is non-destructive — it fills in
+    /// <c>CompressedText</c> and leaves the chunk alone — so a compressing variant and a
+    /// non-compressing one are scored against byte-identical context, and Context Precision and
+    /// Context Recall cannot tell them apart at all. A/B-testing a compressor therefore measures
+    /// what compression did to the <i>answer</i> (Faithfulness, Answer Relevance) and to latency and
+    /// cost, never what it did to the context. Documented as a limitation in the evaluation guide,
+    /// because a mean delta of zero with an honest interval reads like "no effect" rather than like
+    /// "not measured".
+    /// </para>
     /// </remarks>
     private static EvaluationSample[] Project(VariantRun[] runs, string variantName)
     {
@@ -296,6 +328,23 @@ public sealed class RagAbTester
 
     private static double? Score(RagasSampleScore sample, string metric)
         => sample.Scores.TryGetValue(metric, out var score) ? score : null;
+
+    /// <summary>Refuses a pair whose two sides answered different questions.</summary>
+    /// <remarks>
+    /// The delta is only paired if the pair is real. A misalignment left to the indexer names an
+    /// array index; named here it says which questions were about to be subtracted from each other,
+    /// which is the fact anyone diagnosing it needs.
+    /// </remarks>
+    private static void EnsureSamePair(RagasSampleScore a, RagasSampleScore b, int index, string metric)
+    {
+        if (!string.Equals(a.Question, b.Question, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"The two variants' score reports are misaligned at index {index} while scoring " +
+                $"'{metric}': A answered '{a.Question}' and B answered '{b.Question}'. A delta " +
+                "between two different questions is not a paired comparison.");
+        }
+    }
 
     /// <summary>Mean of <paramref name="side"/> over the indices where both sides scored.</summary>
     /// <remarks>
