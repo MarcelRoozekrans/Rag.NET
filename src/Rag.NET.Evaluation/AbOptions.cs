@@ -1,3 +1,5 @@
+using Rag.NET.Evaluation.Internal;
+
 namespace Rag.NET.Evaluation;
 
 /// <summary>Tuning for one A/B comparison.</summary>
@@ -58,7 +60,32 @@ public sealed class AbOptions
     /// silently allowed.
     /// </para>
     /// </remarks>
-    public int BootstrapResamples { get; init; } = 2000;
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The value is below the minimum. Validated here rather than only where the resampling
+    /// happens, so the exception names the property that was set instead of surfacing later from
+    /// deep inside a comparison against a parameter the caller never wrote.
+    /// </exception>
+    public int BootstrapResamples
+    {
+        get => _bootstrapResamples;
+        init
+        {
+            if (value < AbStatistics.MinimumResamples)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value),
+                    value,
+                    $"{nameof(BootstrapResamples)} must be at least {AbStatistics.MinimumResamples}. " +
+                    "Below about 40 the 2.5% trim floors to zero and the interval becomes the " +
+                    "smallest and largest resample mean while still being labelled 95%, which " +
+                    "under-covers and so names winners that are not there.");
+            }
+
+            _bootstrapResamples = value;
+        }
+    }
+
+    private readonly int _bootstrapResamples = 2000;
 
     /// <summary>
     /// Half-width of the tie band used by the win/loss/tie tally. Default <c>1e-9</c>.
@@ -69,5 +96,27 @@ public sealed class AbOptions
     /// because of the last bit. Widen it deliberately if a difference below some size is not
     /// interesting to you; that is a judgement about the metric, not about arithmetic.
     /// </remarks>
-    public double TieEpsilon { get; init; } = 1e-9;
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// The value is negative. A negative band is not a narrower tie rule — it inverts one, putting
+    /// exactly-equal samples into a win column, so it is refused rather than obeyed.
+    /// </exception>
+    public double TieEpsilon
+    {
+        get => _tieEpsilon;
+        init
+        {
+            if (value < 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value),
+                    value,
+                    $"{nameof(TieEpsilon)} must not be negative. A negative band does not narrow " +
+                    "the tie rule, it inverts one — exactly-equal samples would land in a win column.");
+            }
+
+            _tieEpsilon = value;
+        }
+    }
+
+    private readonly double _tieEpsilon = 1e-9;
 }
