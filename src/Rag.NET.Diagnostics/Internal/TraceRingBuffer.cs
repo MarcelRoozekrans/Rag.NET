@@ -38,9 +38,6 @@ internal sealed class TraceRingBuffer
         _slots = new RagTrace?[capacity];
     }
 
-    /// <summary>The most traces this buffer will hold.</summary>
-    public int Capacity => _slots.Length;
-
     /// <summary>Records a trace, evicting the oldest if the buffer is already full.</summary>
     /// <param name="trace">The trace to keep.</param>
     public void Add(RagTrace trace)

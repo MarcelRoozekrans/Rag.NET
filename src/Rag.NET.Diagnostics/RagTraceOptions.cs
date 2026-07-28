@@ -20,7 +20,38 @@ namespace Rag.NET.Diagnostics;
 /// <para>
 /// Memory is bounded by <see cref="Capacity"/> <i>and</i> <see cref="MaxCapturedCharacters"/>
 /// together. Without the second, a large capacity quietly means tens of megabytes of document text.
-/// The worst case is <c>Capacity × (TopK + 1) × MaxCapturedCharacters</c> characters.
+/// The worst case, with every <c>Capture*</c> flag on, is
+/// </para>
+/// <code>
+/// Capacity × (TopK + 3 + 2 × Components) × MaxCapturedCharacters characters
+/// </code>
+/// <para>
+/// counting each capped field once: <c>TopK</c> chunk texts, plus three single fields
+/// (<see cref="RagTrace.Query"/>, <see cref="RagTrace.Prompt"/>, <see cref="RagTrace.Answer"/>), plus
+/// <b>two per guard or sanitiser</b> — every <see cref="TraceGuardAction"/> holds an
+/// <see cref="TraceGuardAction.InputText"/> <i>and</i> an <see cref="TraceGuardAction.OutputText"/>,
+/// each capped separately, and a retrieval guard's pair holds all <c>TopK</c> chunk texts joined
+/// together. <c>Components</c> is how many <c>IRetrievalGuard</c>, <c>IQuerySanitiser</c> and
+/// <c>IChunkSanitiser</c> implementations are registered — a guard-and-sanitiser chain of four
+/// therefore adds eight capped fields per trace, which for the default <c>TopK</c> is more text than
+/// the chunks themselves. An earlier version of this note said <c>Capacity × (TopK + 1) ×
+/// MaxCapturedCharacters</c>, which omitted the query, the answer and every guard action, and would
+/// have led anyone sizing <see cref="Capacity"/> from it to under-budget several times over.
+/// </para>
+/// <para>
+/// Two adjustments to make the figure real. Characters are UTF-16, so <b>bytes are twice the
+/// number above</b>. And a truncated field carries <see cref="TruncationMarker"/> on top of the cap,
+/// so the true per-field maximum is <c>MaxCapturedCharacters + TruncationMarker.Length</c>.
+/// Structural fields are not in the arithmetic because they do not scale with content: ids, scores
+/// and stage latencies are tens of bytes each, and <see cref="RagTrace.QueryHash"/> is 64 characters
+/// per trace whatever the flags say.
+/// </para>
+/// <para>
+/// Worked example — <c>Capacity = 50</c>, <c>TopK = 5</c>, <c>MaxCapturedCharacters = 4000</c> (all
+/// defaults), every flag on and four guards or sanitisers registered:
+/// <c>50 × (5 + 3 + 8) × 4000 = 3,200,000</c> characters, about <b>6.4 MB</b>. With no guards
+/// registered the same settings come to <c>50 × 8 × 4000</c> ≈ 3.2 MB. With every flag off — the
+/// default — none of this is retained at all.
 /// </para>
 /// <para>
 /// Every property is settable rather than <c>init</c>-only, because registration configures these

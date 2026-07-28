@@ -54,7 +54,7 @@ public sealed class TraceRingBufferTests
     }
 
     [Fact]
-    public async Task Add_UnderConcurrentWriters_NeverExceedsCapacityAndLosesNothingButTheEvicted()
+    public async Task Add_UnderConcurrentWriters_NeverExceedsCapacity()
     {
         var buffer = new TraceRingBuffer(capacity: 100);
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -69,11 +69,69 @@ public sealed class TraceRingBufferTests
 
         var snapshot = buffer.Snapshot();
 
+        // The bound holds under load: 2000 adds into 100 slots still yield 100 retained traces, all
+        // distinct, so eviction is the only thing that ever removes one.
+        //
+        // This test cannot detect a missing lock and is not the one that tries to. Two writers taking
+        // the same slot produce a LOST id or a null hole, never a duplicate — and neither survives
+        // here, because 2000 adds over 100 slots overwrite any hole long before the assert.
+        // Add_UnderConcurrentWriters_WithinCapacity_LosesNoWrite is the synchronisation test; this one
+        // pins the bound.
         Assert.Equal(100, snapshot.Count);
-
-        // Every writer's ids are distinct, so a duplicate would mean two writers took the same slot
-        // and one retained trace was silently overwritten by another rather than by eviction.
         Assert.Equal(100, snapshot.Select(t => t.TraceId).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public async Task Add_UnderConcurrentWriters_WithinCapacity_LosesNoWrite()
+    {
+        const int writers = 8;
+        const int addsPerWriter = 32;
+
+        // Sized so the whole workload fits: nothing is ever evicted, so a correct buffer must end
+        // holding every id. That is what makes a lost write visible — under capacity, an id that is
+        // absent was overwritten by a racing writer, and there is no other explanation available.
+        const int capacity = writers * addsPerWriter;
+
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        // Repeated, because a lost write is a race and a single round can interleave benignly.
+        for (var round = 0; round < 50; round++)
+        {
+            var buffer = new TraceRingBuffer(capacity);
+            var writeTasks = new Task[writers];
+
+            for (var w = 0; w < writers; w++)
+            {
+                var writer = w;
+                writeTasks[w] = Task.Run(
+                    () =>
+                    {
+                        for (var i = 0; i < addsPerWriter; i++)
+                            buffer.Add(TraceWithId($"w{writer}-{i}"));
+                    },
+                    cancellationToken);
+            }
+
+            await Task.WhenAll(writeTasks);
+
+            var snapshot = buffer.Snapshot();
+            var retained = new HashSet<string>(StringComparer.Ordinal);
+
+            for (var i = 0; i < snapshot.Count; i++)
+            {
+                // A slot a racing writer never filled stays null, and Snapshot copies it out as one.
+                Assert.NotNull(snapshot[i]);
+                retained.Add(snapshot[i].TraceId);
+            }
+
+            Assert.Equal(capacity, snapshot.Count);
+
+            for (var w = 0; w < writers; w++)
+            {
+                for (var i = 0; i < addsPerWriter; i++)
+                    Assert.Contains($"w{w}-{i}", retained, StringComparer.Ordinal);
+            }
+        }
     }
 
     [Fact]
@@ -97,6 +155,21 @@ public sealed class TraceRingBufferTests
 
         Assert.False(buffer.TryGet("evicted", out var trace));
         Assert.Null(trace);
+    }
+
+    [Fact]
+    public void TryGet_WhenAnIdWasAddedTwice_ReturnsTheNewerTrace()
+    {
+        var buffer = new TraceRingBuffer(capacity: 3);
+        buffer.Add(TraceWithId("repeated") with { QueryHash = "older" });
+        buffer.Add(TraceWithId("repeated") with { QueryHash = "newer" });
+
+        // The pipeline should not reuse a trace id, and nothing in the buffer enforces that it does
+        // not — an ambient activity spanning two queries is enough to produce one. Newest-wins is the
+        // documented rule because a debugger opened after a request wants that request, not a stale
+        // execution that happened to share the id.
+        Assert.True(buffer.TryGet("repeated", out var trace));
+        Assert.Equal("newer", trace.QueryHash);
     }
 
     [Fact]
