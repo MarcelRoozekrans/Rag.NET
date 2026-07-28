@@ -63,11 +63,20 @@ The pipeline creates `Activity` spans for the three pipeline operations using an
 
 ### Activity names
 
-| Operation | Activity name constant | Value |
-|-----------|----------------------|-------|
-| `IngestAsync` | `RagActivitySource.IngestActivity` | `"ingest"` |
-| `RetrieveAsync` | `RagActivitySource.RetrieveActivity` | `"retrieve"` |
-| `AskAsync` / `AskStreamingAsync` | `RagActivitySource.AskActivity` | `"ask"` |
+Every span name is prefixed `ragnet.`. The names are string literals in the pipeline rather than public constants — the source name and the span names are the public identity, and the `ActivitySource` itself is internal.
+
+| Span | Opened by |
+|------|-----------|
+| `ragnet.query` | `AskAsync` / `AskStreamingAsync`, enclosing the retrieval and the answer |
+| `ragnet.retrieve` | `PipelineRetriever`, around the retrieval behavior pipeline |
+| `ragnet.ask` | `ChatAnswerEngine`, on both the streamed and non-streamed paths |
+| `ragnet.ingest` | `PipelineIngestor`, enclosing the four ingestion stages |
+| `ragnet.parse` | `ParseBehavior` |
+| `ragnet.chunk` | `ChunkingBehavior` |
+| `ragnet.embed` | `EmbeddingBehavior` |
+| `ragnet.store` | `StorageBehavior` |
+
+`RetrieveAsync` called on its own has no enclosing span: the retrieval *is* the whole operation and `ragnet.retrieve` already marks it.
 
 ### Setup with OpenTelemetry SDK
 
@@ -87,6 +96,8 @@ services.AddOpenTelemetry()
 ```
 
 With this configuration every `IngestAsync`, `RetrieveAsync`, and `AskAsync` call produces a span that appears in your trace backend. Nest these calls inside your own application spans to get full request traces.
+
+These are the same spans the [pipeline debugger](diagnostics.md) reads for its latency breakdown. Note that registering it subscribes its own `ActivityListener` with `AllData` sampling, so the `ragnet.*` spans start being created even in a process with no exporter configured — see [what it costs to have on](diagnostics.md#enabling-diagnostics-changes-the-pipelines-cost-profile).
 
 ### Setup with Application Insights
 
