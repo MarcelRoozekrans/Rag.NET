@@ -257,6 +257,12 @@ Building a hand-labelled evaluation dataset is expensive. `EvaluationDatasetBuil
 dotnet add package Rag.NET.Evaluation
 ```
 
+### Rebuild any dataset generated before this version
+
+> **Warning:** datasets built before Phase 3.2 are **not reproducible and may contain empty-question samples.** Sampling was unseeded, so there is no seed that regenerates one; and a generation the model returned nothing for was emitted as a sample with `Question = ""` rather than dropped. Such a sample is scored by every evaluator downstream — Answer Relevance embeds `""` and returns a similarity like any other — so it is invisible in the results it corrupts.
+>
+> If you are holding an older dataset, **rebuild it** rather than trusting it. There is no way to tell from the file whether it contains empty questions, and no seed on it to reproduce it with.
+
 ### Usage
 
 ```csharp
@@ -264,14 +270,75 @@ using Rag.NET.Evaluation;
 
 var builder = new EvaluationDatasetBuilder(dataManager, chatClient);
 
-var samples = await builder.BuildAsync(new EvaluationDatasetBuilderOptions
+EvaluationDataset dataset = await builder.BuildAsync(new EvaluationDatasetBuilderOptions
 {
-    SampleCount = 50,                                // chunks to sample (clamped to corpus size)
-    Mode        = DatasetGenerationMode.QuestionOnly, // or QuestionAndAnswer
+    SampleCount        = 50,                                // chunks to sample (clamped to corpus size)
+    Mode               = DatasetGenerationMode.QuestionOnly, // or QuestionAndAnswer
+    Seed               = 1234,                               // omit for a different draw every build
+    MaxConcurrentCalls = 4,                                  // default
 });
+
+Console.WriteLine($"{dataset.Samples.Count} of {dataset.Requested} sampled chunks became samples");
 ```
 
 `dataManager` is `IRagDataManager` — the same instance registered in your DI container. `chatClient` is any `IChatClient`.
+
+### Reading the result
+
+`BuildAsync` returns an `EvaluationDataset`, not a bare list. A short list on its own is silent about *why* it is short, and the two reasons it can be short are different events:
+
+| Member | Meaning |
+|---|---|
+| `Samples` | The `IReadOnlyList<EvaluationSample>` that generated successfully. |
+| `Requested` | How many chunks were **actually sampled** and sent for generation. |
+| `Skipped` | `IReadOnlyDictionary<string, int>` — how many sampled chunks produced no usable sample, by reason. |
+
+**`Requested` is not the `SampleCount` you asked for.** It is the number of chunks the sampler could draw, clamped to the corpus: ask for 50 against a corpus of 12 chunks and `Requested` is 12. That distinction is the point of the property — 12 samples out of 50 requested and 12 out of 12 sampled are not the same outcome, and only the second one means "the corpus is small".
+
+The invariant that ties them together:
+
+```
+Samples.Count + sum(Skipped.Values) == Requested
+```
+
+Every sampled chunk is accounted for exactly once. `Skipped` is keyed by the `EvaluationDataset.SkipReasons` constants, and a reason that never occurred is **absent** rather than present with a zero — so an empty `Skipped` means nothing was lost:
+
+| Constant | Value | When |
+|---|---|---|
+| `EvaluationDataset.SkipReasons.EmptyQuestion` | `"EmptyQuestion"` | The model returned nothing, or only whitespace, for the question. |
+| `EvaluationDataset.SkipReasons.EmptyReferenceAnswer` | `"EmptyReferenceAnswer"` | The model returned nothing for the reference answer, in `QuestionAndAnswer` mode. |
+
+They are string constants rather than an enum because a dataset is something you serialise and compare across runs, and a name survives that where an ordinal does not.
+
+```csharp
+if (dataset.Skipped.Count > 0)
+{
+    foreach (var (reason, count) in dataset.Skipped)
+        Console.WriteLine($"{count} chunk(s) dropped: {reason}");
+}
+```
+
+### Empty generations are dropped, not emitted
+
+A sample with an empty question is not a sample. The builder excludes it and counts it in `Skipped` rather than putting it in `Samples`.
+
+This matters more than it looks. An empty-question sample is not rejected downstream — it is *scored*. Every evaluator accepts it: RAGAS Answer Relevance embeds `""` and returns a cosine similarity like any other number, the judge grades an answer against nothing, and the result lands in the aggregate looking exactly like a real measurement. The corruption is invisible from the moment it enters the dataset, which is why the failure has to be surfaced at the point it happens.
+
+An empty reference answer in `QuestionAndAnswer` mode drops the sample too, for the opposite reason: Context Precision and Context Recall both **throw** on one. Emitting it would move the failure from here, where the cause is known, to an evaluation run that cannot explain it.
+
+A failed generation is **not retried**. Retrying is speculative and doubles the cost model; the drop is recorded instead so you can decide.
+
+### Reproducibility: `Seed`
+
+Set `Seed` and the sampling becomes repeatable. Leave it null — the default — and every build draws different chunks, so the dataset cannot be regenerated.
+
+**The guarantee is exactly this: the same seed over the same corpus samples the same chunks.** That is enough to make a before/after comparison mean something — rebuild after a chunking or retrieval change and the delta measures the change rather than a fresh draw of questions.
+
+Three things it does **not** give you:
+
+- **It does not survive ingestion.** The seed fixes which chunks are drawn from what is there; ingesting or deleting documents changes what is there, and the same seed then draws a different set. Reproducibility holds for a *fixed* corpus, not across changes to it.
+- **It does not fix the generated text.** Question generation is an LLM call and the model is not seeded by this. Above temperature 0 the same chunk yields a different question on every build. Seeding selects the same chunks, not the same questions. If you need the same questions, persist the dataset — do not re-derive it.
+- **It depends on your store enumerating stably.** Reservoir sampling's decision at each item depends on every item before it, so an `IRagDataManager` that returns documents or chunks in a different order selects differently even with the same seed. This is a condition on the store, stated rather than assumed — it is not something the builder can enforce.
 
 ### Generation modes
 
@@ -280,39 +347,77 @@ var samples = await builder.BuildAsync(new EvaluationDatasetBuilderOptions
 | `QuestionOnly` (default) | 1 | `""` (empty) | `EmbeddingDistanceEvaluator`, `LlmJudgeEvaluator` |
 | `QuestionAndAnswer` | 2 | Ground-truth answer grounded in the chunk | `RagasEvaluationSuite` (Context Precision / Recall require it) |
 
-All per-chunk LLM calls run concurrently. With a large corpus and high `SampleCount`, use a rate-limit-aware `IChatClient` (e.g., `FallbackChatClient`) to avoid 429 errors.
+### Concurrency: `MaxConcurrentCalls`
+
+`MaxConcurrentCalls` bounds how many LLM calls are in flight across the **whole build**, and defaults to `4`. It is the same ceiling, and the same shared caller, a RAGAS run uses.
+
+Before this existed, the builder started every chunk's generation at once: a 500-chunk sample in `QuestionAndAnswer` mode was up to 500 concurrent two-call chains, which is a 429 from any real provider. It bounds how many calls are *in flight*, not how many are *made* — a 50-chunk sample in `QuestionAndAnswer` mode is 100 calls at any ceiling. For production-scale runs also use a rate-limit-aware `IChatClient` such as `FallbackChatClient`.
+
+### Cost recording
+
+Pass an `ICostLedger` and every chat call the build makes is recorded as a `CostKind.Chat` entry carrying the model's reported input and output token counts:
+
+```csharp
+var builder = new EvaluationDatasetBuilder(dataManager, chatClient, costLedger);
+
+await builder.BuildAsync(new EvaluationDatasetBuilderOptions
+{
+    SampleCount         = 50,
+    Seed                = 1234,
+    PricePerInputToken  = 3m / 1_000_000m,   // your provider's price per input token
+    PricePerOutputToken = 15m / 1_000_000m,  // ... per output token
+});
+```
+
+Things to know:
+
+- **Prices default to zero.** `PricePerInputToken` and `PricePerOutputToken` are `0` unless you set them, so entries record real token counts at a cost of zero. The ledger never prices anything itself — the caller supplies the price sheet. Note these are per *token*, not per million tokens like `CostBudgetOptions`.
+- **There is no embedding price here.** A dataset build generates text and never embeds, so `PricePerEmbeddingToken` lives on `RagasOptions` rather than on the shared `EvaluationCallOptions` base — it would be a knob on a build that nothing could ever read.
+- **A call the provider reported no usage for records nothing.** Both token counters must be provider-reported. Writing a zero-token entry would state as fact that the call was free, and filling a missing side with `0` would understate spend while looking authoritative.
+
+> **Do not hand a `UseCostBudgeting`-decorated client to the builder and the same ledger.**
+> `UseCostBudgeting` decorates the registered `IChatClient`, and that decorator records to the
+> ledger itself — so anything you resolve from DI and pass to `EvaluationDatasetBuilder` is counted
+> twice. This is the same exposure the RAGAS suite has, for the same reason.
+>
+> It is not merely a reporting error. `CostTrackingChatClient` checks the budget **before** each
+> call, so a doubled ledger trips `BudgetExceededException` at about half your real spend — and it
+> aborts *production* traffic, not just the dataset build. Either pass an undecorated client to the
+> builder, or give the builder its own ledger (or none).
 
 ### Workflow
 
 ```csharp
 // 1. Generate synthetic questions (and optionally reference answers)
-var samples = await builder.BuildAsync(new EvaluationDatasetBuilderOptions
+EvaluationDataset dataset = await builder.BuildAsync(new EvaluationDatasetBuilderOptions
 {
     SampleCount = 50,
-    Mode = DatasetGenerationMode.QuestionAndAnswer,
+    Seed        = 1234,
+    Mode        = DatasetGenerationMode.QuestionAndAnswer,
 });
 
 // 2. Run your RAG pipeline to get predicted answers
 var evaluated = new List<EvaluationSample>();
-foreach (var sample in samples)
+foreach (var sample in dataset.Samples)
 {
     var result = await pipeline.AskAsync(sample.Question);
     evaluated.Add(sample with
     {
         PredictedAnswer = result.Answer,
-        SourceChunks    = result.SourceChunks,
+        SourceChunks    = result.Sources.Select(s => s.Chunk.Text).ToList(),
     });
 }
 
 // 3. Score with any evaluator
-var result = await evaluator.EvaluateAsync(evaluated);
+var evaluation = await evaluator.EvaluateAsync(evaluated);
 ```
 
 ### Limitations
 
 - Synthetic questions reflect the content of individual chunks, not complex multi-hop queries.
 - `QuestionOnly` mode produces empty `ReferenceAnswer` — you must either fill it in manually or avoid metrics that require it (Context Precision, Context Recall).
-- All LLM calls run concurrently — use a rate-limit-aware client for large sample counts.
+- **A seed reproduces the sampling, not the dataset.** The questions are model output and vary between builds; persist the dataset if you need the text itself to be stable.
+- **The build is not O(sample) in memory.** `IRagDataManager` exposes no streaming overload, so a build holds the document list and one document's chunks at a time, on top of the sample. It no longer holds every chunk's text in the corpus at once, which was the previous behaviour and is by far the larger cost — but a corpus whose *document list* does not fit in memory will not build.
 
 ---
 
@@ -637,21 +742,26 @@ using Rag.NET.Evaluation.Ragas;
 
 // 1. Build a synthetic evaluation dataset
 var builder = new EvaluationDatasetBuilder(dataManager, chatClient);
-var samples = await builder.BuildAsync(new EvaluationDatasetBuilderOptions
+EvaluationDataset dataset = await builder.BuildAsync(new EvaluationDatasetBuilderOptions
 {
     SampleCount = 50,
+    Seed        = 1234,                                    // so this run can be regenerated
     Mode        = DatasetGenerationMode.QuestionAndAnswer, // required for Context metrics
 });
 
+// Sampled chunks that generated nothing are excluded and counted, never emitted as blanks.
+foreach (var (reason, count) in dataset.Skipped)
+    Console.WriteLine($"{count} of {dataset.Requested} sampled chunks dropped: {reason}");
+
 // 2. Run your RAG pipeline
 var evaluated = new List<EvaluationSample>();
-foreach (var sample in samples)
+foreach (var sample in dataset.Samples)
 {
     var result = await pipeline.AskAsync(sample.Question);
     evaluated.Add(sample with
     {
         PredictedAnswer = result.Answer,
-        SourceChunks    = result.SourceChunks,
+        SourceChunks    = result.Sources.Select(s => s.Chunk.Text).ToList(),
     });
 }
 
