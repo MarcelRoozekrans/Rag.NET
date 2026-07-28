@@ -962,11 +962,18 @@ foreach (var name in new[] { report.VariantA, report.VariantB })
 {
     Console.WriteLine(report.Cost.TryGetValue(name, out var spend)
         ? $"{name} spent {spend}"
-        : $"{name}: not measured — no ledger was supplied");
+        : $"{name}: not measured");
 }
 ```
 
 **A variant with no ledger is absent from `report.Cost`, never zero.** A zero would state as fact that the variant was free. `TryGetValue` returning `false` means *not measured*; treat it that way.
+
+There are **two** reasons a variant can be absent, and the code above cannot tell them apart:
+
+- No ledger was supplied for it.
+- **The ledger's window rolled over mid-run.** Spend is read before and after, and `CostWindow.Day` is the current UTC calendar day — so a comparison that crosses midnight would subtract yesterday's total from today's and produce a negative figure. A negative spend is not imprecise, it is impossible, so the variant is dropped instead of reported. A long run finishing shortly after 00:00 UTC is the case to watch for.
+
+Both mean the same thing to a reader — *this number was not measured* — which is why they share a signal. If you need the distinction, note whether you passed a ledger.
 
 The pipeline must actually record to the ledger you hand over — pass it through `UseCostBudgeting` or `CostTrackingChatClient` when composing the variant — and Rag.NET does not price tokens itself, so the price sheet is yours to supply, as everywhere else. See [cost budgeting](resilience.md#cost-budgeting).
 
