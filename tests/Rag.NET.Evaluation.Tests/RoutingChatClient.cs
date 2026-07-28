@@ -1,17 +1,27 @@
 using System.Text;
 using Microsoft.Extensions.AI;
 
-namespace Rag.NET.Evaluation.Tests.Ragas;
+namespace Rag.NET.Evaluation.Tests;
 
 /// <summary>
 /// An <see cref="IChatClient"/> that answers based on what the prompt contains, and records how
 /// the calls actually interleaved.
 /// </summary>
 /// <remarks>
-/// Hand-written rather than NSubstitute because RAGAS evaluators make sequenced,
-/// prompt-dependent calls — extract a list, then judge each item — and a single canned reply
-/// cannot express that. Peak concurrency is tracked because asserting a total call count proves
-/// nothing about whether a ceiling held.
+/// <para>
+/// Hand-written rather than NSubstitute because the callers under test make sequenced,
+/// prompt-dependent calls — a RAGAS evaluator extracts a list then judges each item; the dataset
+/// builder generates a question then an answer from it — and a single canned reply cannot express
+/// that. Peak concurrency is tracked because asserting a total call count proves nothing about
+/// whether a ceiling held.
+/// </para>
+/// <para>
+/// It sits at the project root rather than in <c>Ragas/</c> because three different suites now
+/// depend on it — the RAGAS evaluators, <see cref="EvaluationChatCallerTests"/> and
+/// <see cref="EvaluationDatasetBuilderTests"/>. Linking one file into a second test project instead
+/// would compile it twice into two unrelated types with the same name, which is a trap for whoever
+/// next adds state to it.
+/// </para>
 /// </remarks>
 internal sealed class RoutingChatClient : IChatClient
 {
@@ -204,7 +214,7 @@ internal sealed class RoutingChatClient : IChatClient
         IEnumerable<ChatMessage> messages,
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("RAGAS does not stream.");
+        => throw new NotSupportedException("Nothing under evaluation streams.");
 
     public object? GetService(Type serviceType, object? serviceKey = null) => null;
 

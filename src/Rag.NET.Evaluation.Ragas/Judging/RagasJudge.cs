@@ -1,17 +1,24 @@
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
-using Rag.NET.Models;
+using Rag.NET.Evaluation.Internal;
 
 namespace Rag.NET.Evaluation.Ragas.Judging;
 
 /// <summary>
-/// Owns every LLM interaction the RAGAS metrics need: prompting, parsing, throttling and cost.
+/// Owns every LLM interaction the RAGAS metrics need: prompting and parsing, over the shared
+/// throttled-and-billed caller.
 /// </summary>
 /// <remarks>
 /// Exists so the metrics themselves are arithmetic over judgement arrays. Before Phase 3.1 each
 /// evaluator carried its own copy of this plumbing, which is how the same JSON-parse defect came
 /// to exist twice and the same brittle verdict parsing three times.
+/// <para>
+/// The throttling and cost recording moved down into <see cref="EvaluationChatCaller"/> so the
+/// dataset builder could share them instead of growing a second copy. What is left here is what is
+/// genuinely RAGAS-specific: verdict parsing, JSON extraction and fence stripping. The caller is
+/// constructed once per judge, and a suite builds one judge, so the ceiling stays per run.
+/// </para>
 /// </remarks>
 /// <param name="chatClient">The model asked for judgements.</param>
 /// <param name="options">Run tuning: the shared concurrency ceiling and the token prices.</param>
@@ -21,10 +28,7 @@ internal sealed class RagasJudge(
     RagasOptions options,
     ICostLedger? costLedger = null)
 {
-    private readonly SemaphoreSlim _gate = new(
-        options.MaxConcurrentCalls > 0
-            ? options.MaxConcurrentCalls
-            : throw new ArgumentOutOfRangeException(nameof(options), "MaxConcurrentCalls must be at least 1."));
+    private readonly EvaluationChatCaller _caller = new(chatClient, options, costLedger);
 
     /// <summary>Asks for a yes/no judgement.</summary>
     /// <param name="systemPrompt">The instruction that frames the judgement.</param>
@@ -33,7 +37,7 @@ internal sealed class RagasJudge(
     public async Task<Verdict> ClassifyAsync(
         string systemPrompt, string userPrompt, CancellationToken cancellationToken)
     {
-        var reply = await CompleteAsync(systemPrompt, userPrompt, cancellationToken).ConfigureAwait(false);
+        var reply = await _caller.CompleteAsync(systemPrompt, userPrompt, cancellationToken).ConfigureAwait(false);
         return ParseVerdict(reply);
     }
 
@@ -62,7 +66,7 @@ internal sealed class RagasJudge(
     public async Task<ExtractionResult> ExtractListAsync(
         string systemPrompt, string userPrompt, CancellationToken cancellationToken)
     {
-        var reply = await CompleteAsync(systemPrompt, userPrompt, cancellationToken).ConfigureAwait(false);
+        var reply = await _caller.CompleteAsync(systemPrompt, userPrompt, cancellationToken).ConfigureAwait(false);
         var payload = StripCodeFence(reply);
         if (string.IsNullOrWhiteSpace(payload))
             return ExtractionResult.Failed();
@@ -134,66 +138,5 @@ internal sealed class RagasJudge(
         return string.Equals(trimmed, "no", StringComparison.OrdinalIgnoreCase)
             ? Verdict.No
             : Verdict.Unparseable;
-    }
-
-    private async Task<string> CompleteAsync(
-        string systemPrompt, string userPrompt, CancellationToken cancellationToken)
-    {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            var messages = new List<ChatMessage>
-            {
-                new(ChatRole.System, systemPrompt),
-                new(ChatRole.User, userPrompt),
-            };
-
-            var response = await chatClient
-                .GetResponseAsync(messages, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
-
-            await RecordCostAsync(response, cancellationToken).ConfigureAwait(false);
-            return response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    private async Task RecordCostAsync(ChatResponse response, CancellationToken cancellationToken)
-    {
-        // No usage reported means no honest entry to write. Recording zero tokens would state as
-        // fact that the call was free.
-        //
-        // Both counters must be provider-reported, not just the Usage object. A provider that
-        // returns an empty UsageDetails, or fills only one side, would otherwise get an entry
-        // claiming zero tokens and zero cost — and a partially-reported call is worse than an
-        // empty one, because it understates spend rather than merely stating none. Mixing a
-        // reported side with an assumed one skews the ledger silently. Same reasoning as
-        // CostTrackingChatClient, and as the embedding path in AnswerRelevanceEvaluator.
-        if (costLedger is null ||
-            response.Usage is not { InputTokenCount: { } input, OutputTokenCount: { } output })
-        {
-            return;
-        }
-
-        var entry = new CostEntry
-        {
-            Kind = CostKind.Chat,
-            InputTokens = input,
-            OutputTokens = output,
-            Cost = (input * options.PricePerInputToken) + (output * options.PricePerOutputToken),
-        };
-
-        try
-        {
-            await costLedger.RecordAsync(entry, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            // Billing visibility must never break an evaluation run: the judgement has already
-            // been paid for, and failing it here would lose the result over a bookkeeping error.
-        }
     }
 }

@@ -2,7 +2,6 @@ using Microsoft.Extensions.AI;
 using Rag.NET.Abstractions;
 using Rag.NET.Evaluation.Ragas;
 using Rag.NET.Evaluation.Ragas.Judging;
-using Rag.NET.Models;
 using Xunit;
 
 namespace Rag.NET.Evaluation.Tests.Ragas;
@@ -217,89 +216,6 @@ public sealed class RagasJudgeTests
             () => Judge(new RoutingChatClient([]), new RagasOptions { MaxConcurrentCalls = 0 }));
 
         Assert.Equal("options", exception.ParamName);
-    }
-
-    [Fact]
-    public async Task ClassifyAsync_WithUsageAndPrices_RecordsCost()
-    {
-        var ledger = new RecordingCostLedger();
-        var client = new RoutingChatClient([], fallback: "yes")
-        {
-            Usage = new UsageDetails { InputTokenCount = 100, OutputTokenCount = 10 },
-        };
-        var options = new RagasOptions { PricePerInputToken = 0.001m, PricePerOutputToken = 0.002m };
-
-        await Judge(client, options, ledger).ClassifyAsync("sys", "user", TestContext.Current.CancellationToken);
-
-        var entry = Assert.Single(ledger.Entries);
-        Assert.Equal(CostKind.Chat, entry.Kind);
-        Assert.Equal(100, entry.InputTokens);
-        Assert.Equal(10, entry.OutputTokens);
-        Assert.Equal((100 * 0.001m) + (10 * 0.002m), entry.Cost);
-    }
-
-    [Fact]
-    public async Task ClassifyAsync_WhenTheModelReportsNoUsage_RecordsNothing()
-    {
-        var ledger = new RecordingCostLedger();
-        var client = new RoutingChatClient([], fallback: "yes") { Usage = null };
-
-        await Judge(client, new RagasOptions { PricePerInputToken = 1m }, ledger)
-            .ClassifyAsync("sys", "user", TestContext.Current.CancellationToken);
-
-        // Recording a zero-token entry would state as fact that the call was free.
-        Assert.Empty(ledger.Entries);
-    }
-
-    public static TheoryData<UsageDetails> PartiallyReportedUsage => new()
-    {
-        new UsageDetails(),                                 // present, but nothing filled in
-        new UsageDetails { InputTokenCount = 100 },         // input only
-        new UsageDetails { OutputTokenCount = 10 },         // output only
-        new UsageDetails { TotalTokenCount = 110 },         // a total, but neither side
-    };
-
-    [Theory]
-    [MemberData(nameof(PartiallyReportedUsage))]
-    public async Task ClassifyAsync_WhenUsageIsPartiallyReported_RecordsNothing(UsageDetails usage)
-    {
-        var ledger = new RecordingCostLedger();
-        var client = new RoutingChatClient([], fallback: "yes") { Usage = usage };
-
-        await Judge(client, new RagasOptions { PricePerInputToken = 1m, PricePerOutputToken = 1m }, ledger)
-            .ClassifyAsync("sys", "user", TestContext.Current.CancellationToken);
-
-        // A present-but-empty UsageDetails is not a report of zero. Filling the missing side with
-        // 0 would understate spend, which is worse than recording nothing: the entry looks
-        // authoritative. Both counters must come from the provider or neither is trusted.
-        Assert.Empty(ledger.Entries);
-    }
-
-    [Fact]
-    public async Task ClassifyAsync_WithoutALedger_StillJudges()
-    {
-        var client = new RoutingChatClient([], fallback: "yes")
-        {
-            Usage = new UsageDetails { InputTokenCount = 1, OutputTokenCount = 1 },
-        };
-
-        var verdict = await Judge(client).ClassifyAsync("sys", "user", TestContext.Current.CancellationToken);
-
-        Assert.Equal(Verdict.Yes, verdict);
-    }
-
-    [Fact]
-    public async Task ClassifyAsync_WhenTheLedgerThrows_DoesNotFailTheEvaluation()
-    {
-        var client = new RoutingChatClient([], fallback: "yes")
-        {
-            Usage = new UsageDetails { InputTokenCount = 1, OutputTokenCount = 1 },
-        };
-
-        var verdict = await Judge(client, new RagasOptions(), new ThrowingCostLedger())
-            .ClassifyAsync("sys", "user", TestContext.Current.CancellationToken);
-
-        Assert.Equal(Verdict.Yes, verdict);
     }
 
     [Fact]

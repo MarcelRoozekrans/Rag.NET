@@ -711,11 +711,11 @@ The suite runs the registered metrics concurrently per sample and returns a `Rag
 ### Evaluation Dataset Builder
 **Package:** `Rag.NET.Evaluation`
 
-Generate synthetic question-answer pairs from an existing document corpus for offline evaluation. Samples `k` chunks, uses an LLM to generate a question whose answer is grounded in the chunk, optionally generates a ground-truth answer. Output: `IReadOnlyList<EvaluationSample>` ready to feed into any `IRagEvaluator`.
+Generate synthetic question-answer pairs from an existing document corpus for offline evaluation. Samples `k` chunks by seeded reservoir sampling, uses an LLM to generate a question whose answer is grounded in the chunk, optionally generates a ground-truth answer. Output: an `EvaluationDataset` carrying the `EvaluationSample`s, how many chunks were actually sampled, and how many produced no usable sample and why — ready to feed into any `IRagEvaluator`.
 
 **Why:** Bootstrapping an evaluation dataset from scratch requires manual annotation. Synthetic generation is imperfect but enables rapid iteration — run a bulk eval before/after a retrieval change to detect regressions.
 
-**Status:** ✅ Done
+**Status:** ✅ Done — verified, pinned by tests and documented in [the evaluation guide](../guide/evaluation.md#evaluationdatasetbuilder) in Phase 3.2. Four behaviours changed in that phase: sampling is seeded and reproducible (`Seed`, whose limits the guide states — the same seed and the *same corpus* draw the same chunks, and neither the model's text nor a changed corpus is fixed by it); the corpus is streamed through a reservoir instead of being materialised to sort it; a generation the model returned nothing for is dropped and counted in `EvaluationDataset.Skipped` instead of being emitted as an empty-question sample; and the build runs under `MaxConcurrentCalls` and records its chat spend to an optional `ICostLedger`. `BuildAsync` returns `EvaluationDataset` rather than `IReadOnlyList<EvaluationSample>` — a source-breaking change, taken cleanly because nothing is published yet. **Datasets built before this phase are not reproducible and may contain empty-question samples; rebuild rather than trust them.**
 
 ---
 
@@ -1054,7 +1054,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
 | [x] | Linear Issue Tracker | Low | Linear GraphQL API |
 | [x] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
-| [ ] | Evaluation Dataset Builder | Medium | `IChatClient` |
+| [x] | Evaluation Dataset Builder | Medium | `IChatClient` |
 | [ ] | A/B Testing Framework | Medium | `IRagEvaluator` |
 | [x] | Weaviate Vector Store | Medium | REST + GraphQL via `ZeroAlloc.Rest` |
 | [x] | Chroma Vector Store | Medium | Chroma REST API |

@@ -161,9 +161,10 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Plan:** `docs/plans/2026-07-27-ragas-verification-design.md` + `-implementation.md`
 **Completed:** 2026-07-28 (Context Precision was not the RAGAS metric — it ignored rank, scoring a retriever that returns the gold chunk first identically to one that returns it last; it is now rank-aware average precision. A malformed model reply scored 1.0, the best possible value, in two duplicated copies — the plumbing is now shared and an unreadable reply makes a sample unscoreable rather than perfect. Answer Relevance gained the noncommittal penalty and genuinely distinct synthetic questions, and its score is clamped. Also: a shared per-run concurrency ceiling replacing unbounded fan-out, per-sample results, chat and embedding cost recording, and a rewritten guide section. Scores changed; the guide says so.)
 
-### Phase 3.2: Evaluation Dataset Builder — verify, test, document [status: pending]
+### Phase 3.2: Evaluation Dataset Builder — verify, test, document [status: complete]
 **Backlog items:** Evaluation Dataset Builder
-**Scope:** same treatment for `src/Rag.NET.Evaluation/EvaluationDatasetBuilder.cs`.
+**Plan:** `docs/plans/2026-07-28-dataset-builder-verification-design.md` + `-implementation.md`
+**Completed:** 2026-07-28 (sampling was unseeded, so a dataset could not be regenerated and any before/after comparison silently compared two different question sets — now seeded reservoir sampling. A generation the model returned nothing for became a sample with an empty question, certified by a test called `HandlesGracefully`; such generations are now dropped and counted in `EvaluationDataset.Skipped`. Also: the corpus is no longer materialised to sample from it, concurrency is bounded, and chat spend is recorded — via a shared caller moved down from `RagasJudge` rather than copied, since copying that plumbing is what put the same defect in two evaluators in 3.1.)
 
 ### Phase 3.3: A/B Testing Framework [status: pending]
 **Backlog items:** A/B Testing Framework
@@ -209,6 +210,24 @@ Distinct from `EvaluationDatasetBuilder` (Phase 3.2), which synthesises QA pairs
 ### Phase 4.1: NuGet Publishing Pipeline [status: pending]
 **Goal:** GitHub Actions CI (build + test) and NuGet packaging/publishing with MinVer versioning.
 **Backlog items:** NuGet Publishing Pipeline
+
+> **Known blocker, found in Phase 3.2 (2026-07-28): turning on XML documentation will fail the build.**
+> `GenerateDocumentationFile` is set **nowhere** in this repo, so `CS1574` (unresolvable `<see cref>`)
+> has never been emitted and broken crefs accumulate invisibly. Packaging normally enables doc
+> generation, and with `TreatWarningsAsErrors` every one becomes a build failure.
+>
+> Measured 2026-07-28 by enabling doc generation on one project at a time: **9 distinct CS1574
+> sites in `Rag.NET.Abstractions`** — `IRagDataManager`, `ITagIndex`, `IRagBuilder`,
+> `DocumentMetadata` (×2), `CodeChunkingOptions`, `RetrievalOptions` (×2), `TagRetrievalOptions`.
+> (Raw build output shows 18; MSBuild reports each twice.) Plus four found and fixed in
+> `Rag.NET.Evaluation.Ragas`, introduced by moving properties to a base class — **C# does not bind
+> a qualified `cref` to an inherited member**, and nothing in the build could catch it.
+>
+> **Only those two projects have been measured.** Roughly 35 others have never had their XML
+> compiled at all, so treat 9 as a floor rather than an estimate.
+>
+> Enable `GenerateDocumentationFile` across `src/` early in this phase and clear the backlog, rather
+> than discovering it while trying to pack.
 
 ### Phase 4.2: Options Alignment & Validation [status: pending]
 **Goal:** Align pipeline options on IOptions and validate them with ZeroAlloc.Validation.
