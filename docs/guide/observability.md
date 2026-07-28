@@ -67,7 +67,7 @@ Every span name is prefixed `ragnet.`. The names are string literals in the pipe
 
 | Span | Opened by |
 |------|-----------|
-| `ragnet.query` | `AskAsync` / `AskStreamingAsync`, enclosing the retrieval and the answer |
+| `ragnet.query` | `AskAsync` / `AskStreamingAsync` / `RetrieveAsync`, enclosing everything the call does |
 | `ragnet.retrieve` | `PipelineRetriever`, around the retrieval behavior pipeline |
 | `ragnet.ask` | `ChatAnswerEngine`, on both the streamed and non-streamed paths |
 | `ragnet.ingest` | `PipelineIngestor`, enclosing the four ingestion stages |
@@ -76,7 +76,7 @@ Every span name is prefixed `ragnet.`. The names are string literals in the pipe
 | `ragnet.embed` | `EmbeddingBehavior` |
 | `ragnet.store` | `StorageBehavior` |
 
-`RetrieveAsync` called on its own has no enclosing span: the retrieval *is* the whole operation and `ragnet.retrieve` already marks it.
+`RetrieveAsync` opens `ragnet.query` too, even though it usually encloses a single `ragnet.retrieve`. It reads like redundancy and is not: a fan-out retriever such as `DeepResearchRetriever` calls the inner retriever once per sub-question, so one `RetrieveAsync` can open several sibling `ragnet.retrieve` spans with nothing above them. The enclosing span is what keeps those one operation rather than several.
 
 ### Setup with OpenTelemetry SDK
 

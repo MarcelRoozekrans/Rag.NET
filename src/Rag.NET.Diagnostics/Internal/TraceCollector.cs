@@ -68,6 +68,18 @@ internal sealed partial class TraceCollector : ITraceCollector
         traceId,
         builder =>
         {
+            // First write wins, unlike RecordChunks below. A fan-out retriever such as
+            // DeepResearchRetriever, or FlareAnswerEngine's lookahead, records once per generated
+            // sub-query — and every one of those arrives after the user's. Last-wins would put a
+            // sub-query the user never typed in the trace's headline field, and make two identical
+            // questions hash differently, which breaks the one field the list route identifies a
+            // trace by. "Which chunks came back" is genuinely every retrieval; "what was asked" is
+            // genuinely the first.
+            // Empty rather than null is "not yet recorded" — TraceBuilder.QueryHash is a
+            // non-nullable string defaulting to string.Empty.
+            if (!string.IsNullOrEmpty(builder.QueryHash))
+                return;
+
             // The hash is written whether or not the text is: it tells repeated questions apart
             // without retaining what anybody asked, which is the point of the default.
             builder.QueryHash = HashOf(query ?? string.Empty);

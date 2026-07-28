@@ -92,7 +92,7 @@ Setting `MaxCapturedCharacters = 0` leaves the flags on and captures no characte
 
 ## Reading traces in-process
 
-`ITraceStore` is the read side. A trace appears in it when the **outermost `ragnet.*` span of the execution stops** — `ragnet.query` for an ask, `ragnet.retrieve` for a retrieve-only call — which is the point at which every part of it has been recorded.
+`ITraceStore` is the read side. A trace appears in it when the **outermost `ragnet.*` span of the execution stops** — `ragnet.query`, which every public pipeline entry point opens, including `RetrieveAsync` — which is the point at which every part of it has been recorded.
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;

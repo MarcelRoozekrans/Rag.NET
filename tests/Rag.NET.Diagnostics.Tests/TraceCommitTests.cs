@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.AI;
 using NSubstitute;
 using Rag.NET.Abstractions;
@@ -80,10 +82,9 @@ public sealed class TraceCommitTests
 
         Assert.True(result.IsSuccess);
 
-        // A retrieval with no ask around it is a whole execution, and ragnet.retrieve is its outermost
-        // pipeline span — so it commits on its own rather than waiting for an answer that is not
-        // coming. Expiring against the in-flight ceiling instead would have meant a retrieve-only
-        // deployment never produced a readable trace at all.
+        // A retrieval with no ask around it is a whole execution, so it commits on its own rather
+        // than waiting for an answer that is not coming. Expiring against the in-flight ceiling
+        // instead would have meant a retrieve-only deployment never produced a readable trace.
         var trace = Assert.Single(buffer.Snapshot());
 
         Assert.Single(trace.Chunks);
@@ -126,6 +127,16 @@ public sealed class TraceCommitTests
         // Every retrieval's chunks are in the one trace rather than scattered across three.
         string[] expectedChunks = [Query, "sub-question 1", "sub-question 2"];
         Assert.Equal(expectedChunks, trace.Chunks.Select(c => c.DocumentId));
+
+        // The headline question is the one the user asked, not the last sub-query the fan-out
+        // generated. Chunks accumulate across retrievals; the query does not. Getting this wrong
+        // shows a developer a question nobody typed, in the one artefact they opened because they
+        // no longer trust the pipeline — and makes two identical questions hash differently, which
+        // is the only field the list route tells traces apart by.
+        Assert.Equal(Query, trace.Query);
+        Assert.Equal(
+            Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Query))),
+            trace.QueryHash);
 
         Assert.Null(collector.Current(trace.TraceId));
     }

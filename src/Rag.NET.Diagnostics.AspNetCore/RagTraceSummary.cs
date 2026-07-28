@@ -39,9 +39,9 @@ public sealed record RagTraceSummary
 
     /// <summary>How long the execution took, in milliseconds.</summary>
     /// <remarks>
-    /// The longest single stage, which is the outermost span — <c>ragnet.query</c> for an ask,
-    /// <c>ragnet.retrieve</c> for a retrieve-only call — because every other stage ran inside it.
-    /// Summing the stages instead would double-count the nesting.
+    /// The longest single stage, which is the outermost span — <c>ragnet.query</c>, opened by every
+    /// public pipeline entry point including <c>RetrieveAsync</c> — because every other stage ran
+    /// inside it. Summing the stages instead would double-count the nesting.
     /// </remarks>
     public required double DurationMilliseconds { get; init; }
 
