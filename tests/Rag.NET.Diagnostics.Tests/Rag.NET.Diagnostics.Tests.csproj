@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\src\Rag.NET.Diagnostics\Rag.NET.Diagnostics.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Diagnostics.AspNetCore\Rag.NET.Diagnostics.AspNetCore.csproj" />
+    <!-- For UseRagNetApiAuthentication and ApiKeyOptions only. The endpoint package deliberately does
+         not reference Rag.NET.Api, but "the route refuses without the API key" is a claim about the two
+         together, and a test that stood up its own middleware would prove nothing about the real one. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Api\Rag.NET.Api.csproj" />
+    <!-- Microsoft.Extensions.DependencyInjection and .Hosting are not referenced: the AspNetCore
+         framework reference above already ships both, and NU1510 is an error here. -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.*" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="xunit.v3" Version="2.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NSubstitute" Version="5.*" />
+  </ItemGroup>
+
+</Project>

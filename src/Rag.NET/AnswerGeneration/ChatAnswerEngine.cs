@@ -16,7 +16,8 @@ namespace Rag.NET.AnswerGeneration;
 public sealed class ChatAnswerEngine(
     IChatClient chatClient,
     IConversationMemory? memory = null,
-    IContextualCompressor? compressor = null) : IAnswerEngine
+    IContextualCompressor? compressor = null,
+    IPromptObserver? promptObserver = null) : IAnswerEngine
 {
     private const string DefaultSystemPrompt =
         "Answer the user's question based only on the provided context. " +
@@ -38,7 +39,8 @@ public sealed class ChatAnswerEngine(
         new(
             serviceProvider.GetRequiredService<IChatClient>(),
             serviceProvider.GetService<IConversationMemory>(),
-            serviceProvider.GetService<IContextualCompressor>());
+            serviceProvider.GetService<IContextualCompressor>(),
+            serviceProvider.GetService<IPromptObserver>());
 
     public async Task<RagResponse> AskAsync(
         string query,
@@ -205,6 +207,12 @@ public sealed class ChatAnswerEngine(
         {
             chatOptions.Temperature = opts.Temperature.Value;
         }
+
+        // The prompt seam. Null unless something registered an observer, so generation is unchanged
+        // when nothing is watching. Placed here rather than at either caller because both AskAsync
+        // and AskStreamingAsync funnel through this method inside their own ragnet.ask span, so one
+        // call site covers both paths and cannot drift apart from itself.
+        promptObserver?.OnPromptAssembled(messages);
 
         return (messages, chatOptions);
     }

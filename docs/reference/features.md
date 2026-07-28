@@ -932,11 +932,27 @@ A `dotnet tool` (`ragnet`) providing:
 ---
 
 ### Pipeline Debugger / Trace Viewer
-**Package:** `Rag.NET.Diagnostics`
+**Package:** `Rag.NET.Diagnostics` (capture, no ASP.NET dependency) + `Rag.NET.Diagnostics.AspNetCore` (the opt-in endpoint)
 
 A lightweight `RagDebugMiddleware` for ASP.NET Core that exposes a `/ragnet/trace` endpoint returning a structured JSON trace of the last N pipeline executions: which chunks were retrieved, their scores, what the answer engine received, sanitiser/guard actions, and latency breakdown per stage.
 
 **Why:** Diagnosing why a RAG pipeline gave a bad answer currently requires adding debug logging and re-running. A persistent in-memory trace ring buffer with a JSON viewer endpoint lets developers inspect production traces without code changes.
+
+**Status:** ✅ Done — shipped in Phase 3.4 and documented in [the pipeline debugger guide](../guide/diagnostics.md). `AddRagDiagnostics()` keeps a bounded ring buffer of the last `Capacity` (default 50) query executions, readable in-process through `ITraceStore` or over `MapRagNetTrace()`. A `RagTrace` carries the retrieved chunks with their `DocumentId`, `ChunkIndex` and `Score`, the latency of each `ragnet.*` stage, and a `TraceGuardAction` per guard and sanitiser that ran — component name, counts in and out, and whether it changed anything. That last part is the diagnostic hole this row existed to close: nothing anywhere recorded that `RbacRetrievalGuard` had dropped a chunk or `PiiChunkSanitiser` had rewritten one, so *"why is that chunk missing from the answer"* was unanswerable.
+
+It is assembled from what already existed rather than from new instrumentation: an `ActivityListener` over the `ragnet.*` spans supplies the timings **and** decides when a trace is complete, a retrieval behavior and an answer decorator mirror `AuditRetrievalBehavior` and `AuditAnswerEngineDecorator`, and every part joins on `Activity.Current.TraceId`. Only two seams are new — `IPromptObserver`, which `ChatAnswerEngine` calls on both the streamed and non-streamed paths, and the three tracing decorators over `IRetrievalGuard`, `IQuerySanitiser` and `IChunkSanitiser`.
+
+Read against the original specification above, five things differ:
+
+- **Two packages, not one.** Capture has no ASP.NET dependency, so it works in a console app, a worker or a test; `Rag.NET.Diagnostics.AspNetCore` adds the endpoint for applications that want one. `Rag.NET.Diagnostics` references `Rag.NET` and deliberately **not** `Rag.NET.Security` — reusing `AuditChunkRef` would have dragged SQLite and its native binaries, the ML tokenizers and their data file, Polly and protobuf onto a team that wanted a debugger and never enabled auditing. `TraceChunk` mirrors its field names instead.
+- **No middleware, and no automatic route.** `MapRagNetTrace()` is an explicit endpoint mapping: `GET /ragnet/traces` returns summaries carrying no captured text at all, `GET /ragnet/traces/{traceId}` returns one whole trace. Authentication is `ApiKeyMiddleware`'s — the routes are behind the key by being mapped into an authenticated application and by not being added to `ApiKeyOptions.ExemptPathPrefixes`. Mapping without `AddRagDiagnostics` answers an empty list and a 404 rather than throwing.
+- **Not "persistent".** The buffer is in memory and dropped on restart, and an evicted trace is gone. `IAuditLog` remains the durable, compliance-grade record; the two are deliberately separate systems that share a vocabulary.
+- **Content is behind four further flags.** Registering captures structure only. `CaptureQueryText`, `CaptureChunkText`, `CapturePromptText` and `CaptureAnswerText` each default to `false`, cap per field at `MaxCapturedCharacters` (default 4000) with a visible truncation marker, and pass through a single gate in the collector — a query sanitiser's text is governed by `CaptureQueryText` and a retrieval guard's by `CaptureChunkText`, because they are not the same kind of content.
+- **Capture is not re-sanitised**, so a trace may hold text the pipeline itself went on to strip. That is the point — the commonest reason to open a trace is to see what a sanitiser did — and it is a reason to leave content capture off in production, which is the default.
+
+Two limitations, both pinned by tests: a **streamed** prompt only correlates when the host supplies an ambient activity, because `ChatAnswerEngine` assembles it after the first `yield return` and the observer then runs on the consumer's execution context (true under ASP.NET, not in a console app; chunks, stages and the commit are unaffected). And `IChunkSanitiser` runs at **ingestion**, so its actions land in an ingestion trace rather than in the query that later surfaces the chunk.
+
+One edit to existing production code beyond the seam: `RagPipeline` gained an enclosing `ragnet.query` span, because `ragnet.retrieve` and `ragnet.ask` are siblings — without a parent they would be separate roots with different trace ids in any host that starts no activity of its own, and nothing could tell a finished ask from a finished retrieval.
 
 ---
 
@@ -1092,7 +1108,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Batch Ingestion Optimiser | Medium | `Parallel.ForEachAsync` |
 | [ ] | Sample Applications | Medium | All packages |
 | [ ] | Rag.NET CLI Tool | Medium | `dotnet tool` |
-| [ ] | Pipeline Debugger / Trace Viewer | Medium | ASP.NET Core middleware |
+| [x] | Pipeline Debugger / Trace Viewer | Medium | `ActivityListener` + ring buffer; endpoint in `Rag.NET.Diagnostics.AspNetCore` |
 | [x] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
 | [x] | FLARE | High | `IChatClient` (self-assessment scorer; logprob scorer = extension point) |
 | [x] | Sparse Embedding Retrieval (SPLADE) | High | ONNX + vector store (Qdrant, PgVector `sparsevec`, Pinecone, in-memory) |

@@ -29,6 +29,7 @@ That is all. No opt-in call inside `AddRagNet(...)` is needed — instrumentatio
 | `ragnet.chunk` | Chunking behavior | `document.id`, `chunk.count` |
 | `ragnet.embed` | Embedding behavior | `document.id`, `chunk.count` |
 | `ragnet.store` | Vector store write behavior | `document.id`, `chunk.count`, `vector_store` |
+| `ragnet.query` | `IRagPipeline.RetrieveAsync`, `AskAsync`, `AskStreamingAsync` | *(none)* |
 | `ragnet.retrieve` | Top-level retrieval call | `query.hash`, `top_k`, `result.count` |
 | `ragnet.ask` | Answer generation engine | `source.count`, `synthesis.strategy` |
 
@@ -42,15 +43,44 @@ ragnet.ingest
   ragnet.store
 ```
 
-`ragnet.retrieve` and `ragnet.ask` are **not** nested inside each other. `PipelineRetriever.RetrieveAsync` and `ChatAnswerEngine.AskAsync` each start their own top-level span from the ambient `Activity` context. When the caller holds an ambient span, both appear as siblings beneath it:
+Query spans are nested too. Every public `IRagPipeline` query method opens `ragnet.query` around its whole execution, and `ragnet.retrieve` and `ragnet.ask` are children of it:
 
 ```
-[caller span]
+ragnet.query
   ragnet.retrieve
   ragnet.ask
 ```
 
-If no ambient span exists they are emitted as two independent root spans. The parent-child relationship is determined entirely by the caller's `Activity` context at the time each method is invoked.
+A retrieve-only call produces the same tree without the `ragnet.ask` child:
+
+```
+ragnet.query
+  ragnet.retrieve
+```
+
+`ragnet.query` carries no attributes. It exists so that the spans of one query share a trace id in **every** host — without it, `PipelineRetriever.RetrieveAsync` and `ChatAnswerEngine.AskAsync` each start a top-level span from the ambient `Activity` context, which makes them two unrelated roots in a console app or a worker and correlated siblings only under ASP.NET, where a request activity happens to parent both. It also gives a query one unambiguous end: `ragnet.query` stopping.
+
+When the caller holds an ambient span, the whole tree hangs beneath it:
+
+```
+[caller span]
+  ragnet.query
+    ragnet.retrieve
+    ragnet.ask
+```
+
+A retriever that fans a query out — `DeepResearchRetriever`, registered whenever `DeepResearchOptions` is configured — opens `ragnet.retrieve` once per sub-question, and all of them are children of the same `ragnet.query`:
+
+```
+ragnet.query
+  ragnet.retrieve   (primary)
+  ragnet.retrieve   (sub-question 1)
+  ragnet.retrieve   (sub-question 2)
+```
+
+Multi-query (`RetrievalOptions.UseMultiQuery`) fans out too, but it does so as a *behavior* inside the retrieval chain, below the one span `PipelineRetriever` opens. It produces a single `ragnet.retrieve` however many variants it searches with.
+
+> **Changed in the pipeline debugger release.** This page previously stated that `ragnet.retrieve` and `ragnet.ask` are *not* nested inside each other and appear as siblings. That is no longer true: `ragnet.query` was added as their parent, and it is emitted on the `Rag.NET` source like every other span here, so an exporter already attached to that source will start seeing it with no configuration change. Anything filtering or asserting on the span tree — a sampler keyed on a root span name, a test asserting a span's parent — needs to account for it.
 
 ### PII note
 

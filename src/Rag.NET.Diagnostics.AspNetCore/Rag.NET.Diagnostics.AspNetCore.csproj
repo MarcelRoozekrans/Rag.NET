@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Diagnostics.AspNetCore</RootNamespace>
+    <PackageId>Rag.NET.Diagnostics.AspNetCore</PackageId>
+    <Description>Opt-in HTTP endpoint for Rag.NET pipeline traces — an explicit MapRagNetTrace(), never automatic.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Diagnostics.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Rag.NET.Diagnostics only. Not Rag.NET.Api, even though the route is meant to sit behind that
+         package's ApiKeyMiddleware: the middleware guards the whole application pipeline, so a route
+         is behind it by being mapped into an app that called UseRagNetApiAuthentication and by not
+         being added to ApiKeyOptions.ExemptPathPrefixes. Referencing the API package to obtain
+         protection it does not hand out would buy the mediator and its closure for nothing. -->
+    <ProjectReference Include="..\Rag.NET.Diagnostics\Rag.NET.Diagnostics.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

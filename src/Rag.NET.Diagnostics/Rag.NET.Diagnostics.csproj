@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Diagnostics</RootNamespace>
+    <PackageId>Rag.NET.Diagnostics</PackageId>
+    <Description>Disposable in-memory pipeline traces for Rag.NET: the last N query executions, with chunk scores, stage latencies and guard actions</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Diagnostics.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Rag.NET, and deliberately NOT Rag.NET.Security.
+
+         The trace model itself needs nothing: five records, a ring buffer and a collector describe
+         what the pipeline did without naming any part of it. The capture seams do — IRetrievalBehavior
+         and RetrievalContext live here, and IAnswerEngine, IRetrievalGuard, IQuerySanitiser,
+         IChunkSanitiser and IPromptObserver come with them from Rag.NET.Abstractions.
+
+         Rag.NET.Security stays out, and that is the reference that was measured and rejected: taking
+         it to reuse AuditChunkRef would drag SQLite and its native binaries, the ML tokenizers and
+         their data file, Polly and protobuf onto anyone who wanted a debugger but never enabled
+         auditing. TraceChunk mirrors AuditChunkRef's field names instead, so the vocabulary is shared
+         without the assembly being. Rag.NET is a different proposition: it is the thing being
+         diagnosed, so every consumer of this package already has it and its closure costs them
+         nothing. Referencing only Rag.NET.Abstractions was considered and does not work — see
+         DiagnosticsRetrievalBehavior for why the seam has to be inside the ragnet.retrieve span. -->
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+  </ItemGroup>
+
+</Project>

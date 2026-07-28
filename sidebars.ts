@@ -17,6 +17,7 @@ const sidebars: SidebarsConfig = {
         'guide/vector-stores',
         'guide/evaluation',
         'guide/observability',
+        'guide/diagnostics',
         'guide/extending',
         'guide/mcp',
       ],
