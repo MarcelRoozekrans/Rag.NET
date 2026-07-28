@@ -215,10 +215,15 @@ Distinct from `EvaluationDatasetBuilder` (Phase 3.2), which synthesises QA pairs
 > has never been emitted and broken crefs accumulate invisibly. Packaging normally enables doc
 > generation, and with `TreatWarningsAsErrors` every one becomes a build failure.
 >
-> Known at time of writing: **9 pre-existing CS1574s in `Rag.NET.Abstractions`**, plus four found and
-> fixed in `Rag.NET.Evaluation.Ragas` — those four were introduced by moving properties to a base
-> class, because **C# does not bind a qualified `cref` to an inherited member**, and nothing in the
-> build could catch it. Expect more elsewhere; nobody has ever compiled the XML.
+> Measured 2026-07-28 by enabling doc generation on one project at a time: **9 distinct CS1574
+> sites in `Rag.NET.Abstractions`** — `IRagDataManager`, `ITagIndex`, `IRagBuilder`,
+> `DocumentMetadata` (×2), `CodeChunkingOptions`, `RetrievalOptions` (×2), `TagRetrievalOptions`.
+> (Raw build output shows 18; MSBuild reports each twice.) Plus four found and fixed in
+> `Rag.NET.Evaluation.Ragas`, introduced by moving properties to a base class — **C# does not bind
+> a qualified `cref` to an inherited member**, and nothing in the build could catch it.
+>
+> **Only those two projects have been measured.** Roughly 35 others have never had their XML
+> compiled at all, so treat 9 as a floor rather than an estimate.
 >
 > Enable `GenerateDocumentationFile` across `src/` early in this phase and clear the backlog, rather
 > than discovering it while trying to pack.
