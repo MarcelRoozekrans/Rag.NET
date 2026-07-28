@@ -83,13 +83,15 @@ public sealed class RagAbTester
 
         var spendBefore = await SpendAsync(a, b, cancellationToken).ConfigureAwait(false);
         var runs = await AbRunner.RunAsync([a, b], samples, cancellationToken).ConfigureAwait(false);
+
+        // Closed here rather than after the scoring pass: the reported figure is what each variant's
+        // pipeline spent, and the judge is one shared suite whose spend belongs to neither side.
+        var spendAfter = await SpendAsync(a, b, cancellationToken).ConfigureAwait(false);
         var comparable = Comparable(runs);
 
         var metrics = comparable.Length == 0
             ? new Dictionary<string, AbMetricComparison>(StringComparer.Ordinal)
             : await CompareMetricsAsync(a, b, comparable, runs.Count, cancellationToken).ConfigureAwait(false);
-
-        var spendAfter = await SpendAsync(a, b, cancellationToken).ConfigureAwait(false);
 
         return new AbReport
         {
@@ -187,10 +189,10 @@ public sealed class RagAbTester
 
         return new AbLatencyComparison
         {
-            MedianA = Percentile(latenciesA, 0.50),
-            Percentile95A = Percentile(latenciesA, 0.95),
-            MedianB = Percentile(latenciesB, 0.50),
-            Percentile95B = Percentile(latenciesB, 0.95),
+            MedianA = AbStatistics.Percentile(latenciesA, 0.50),
+            Percentile95A = AbStatistics.Percentile(latenciesA, 0.95),
+            MedianB = AbStatistics.Percentile(latenciesB, 0.50),
+            Percentile95B = AbStatistics.Percentile(latenciesB, 0.95),
             MeanDeltaMilliseconds = AbStatistics.MeanDelta(deltas),
             ConfidenceIntervalMilliseconds =
                 AbStatistics.BootstrapMeanDeltaCi(deltas, _options.BootstrapResamples, NewRandom()),
@@ -318,16 +320,6 @@ public sealed class RagAbTester
         return count > 0 ? sum / count : null;
     }
 
-    /// <summary>Nearest-rank percentile of an already-sorted array; null when it is empty.</summary>
-    private static TimeSpan? Percentile(TimeSpan[] sorted, double percentile)
-    {
-        if (sorted.Length == 0)
-            return null;
-
-        var rank = (int)Math.Ceiling(percentile * sorted.Length) - 1;
-        return sorted[Math.Clamp(rank, 0, sorted.Length - 1)];
-    }
-
     /// <summary>Reads each variant's dedicated ledger, or null where none was supplied.</summary>
     private static async Task<(decimal? A, decimal? B)> SpendAsync(
         AbVariant a,
@@ -348,6 +340,12 @@ public sealed class RagAbTester
     /// <summary>
     /// What each variant spent during the run. A variant with no ledger is absent, never zero.
     /// </summary>
+    /// <remarks>
+    /// A variant whose ledger read <b>lower</b> at the end than at the start is absent too. The
+    /// window is the current UTC calendar day, and a run that crosses midnight empties the bucket
+    /// underneath the pair of readings, so the difference stops being a spend at all — see
+    /// <see cref="AbVariant.CostLedger"/>.
+    /// </remarks>
     private static Dictionary<string, decimal> CostDelta(
         AbVariant a,
         AbVariant b,
@@ -356,12 +354,18 @@ public sealed class RagAbTester
     {
         var cost = new Dictionary<string, decimal>(2, StringComparer.Ordinal);
 
-        if (before.A is { } beforeA && after.A is { } afterA)
-            cost[a.Name] = afterA - beforeA;
-
-        if (before.B is { } beforeB && after.B is { } afterB)
-            cost[b.Name] = afterB - beforeB;
+        Record(cost, a.Name, before.A, after.A);
+        Record(cost, b.Name, before.B, after.B);
 
         return cost;
+
+        static void Record(Dictionary<string, decimal> cost, string name, decimal? before, decimal? after)
+        {
+            // Absent rather than negative. A negative spend is not an imprecise number, it is an
+            // impossible one, and absence already carries exactly the right meaning here: the same
+            // "not measured" a missing ledger reports.
+            if (before is { } start && after is { } end && end >= start)
+                cost[name] = end - start;
+        }
     }
 }

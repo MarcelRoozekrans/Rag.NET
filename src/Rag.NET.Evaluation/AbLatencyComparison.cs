@@ -11,9 +11,9 @@ namespace Rag.NET.Evaluation;
 /// <para>
 /// The percentiles are over the comparable samples only, so both variants' figures come from the
 /// same set of questions. Nearest-rank convention: the p-th percentile of <c>n</c> sorted values is
-/// the value at rank <c>ceil(p x n)</c>, so p50 of an even-length set is the upper of the two middle
-/// values rather than their average. No interpolation, so every reported figure is a wall-clock that
-/// really happened.
+/// the value at rank <c>ceil(p x n)</c>, one-based, so p50 of an even-length set is the <b>lower</b>
+/// of the two middle values rather than their average — <c>ceil(0.5 x 4)</c> is rank 2 of 4. No
+/// interpolation, so every reported figure is a wall-clock that really happened.
 /// </para>
 /// </remarks>
 public sealed record AbLatencyComparison

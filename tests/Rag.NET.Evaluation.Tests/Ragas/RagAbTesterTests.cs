@@ -258,6 +258,29 @@ public sealed class RagAbTesterTests
     }
 
     [Fact]
+    public async Task CompareAsync_WhenTheLedgerReadsLowerAfterTheRun_ReportsThatVariantAsAbsent()
+    {
+        // The spend window is the current UTC calendar day. A comparison is two pipelines over the
+        // whole dataset plus a judge pass, so a run that starts in the evening and finishes after
+        // midnight reads a bucket that emptied underneath it: 5 before, 2 after.
+        var tester = new RagAbTester(Suite((Quality, BaseScore)), new AbOptions { Seed = 7 });
+
+        var report = await tester.CompareAsync(
+            new AbVariant("A", new ScriptedPipeline("A"), CostLedger: new ScriptedLedger(5m, 2m)),
+            new AbVariant("B", new ScriptedPipeline("B"), CostLedger: new ScriptedLedger(2m, 5m)),
+            Samples("q1", "q2"),
+            TestContext.Current.CancellationToken);
+
+        // -3 is not an imprecise cost, it is an impossible one. Absent says "not measured", which is
+        // exactly what a rolled-over window leaves behind — and is the same signal a missing ledger
+        // gives, so a reader needs no new rule to interpret it.
+        Assert.False(report.Cost.ContainsKey("A"));
+
+        // The other variant's ledger did not roll over and is still reported.
+        Assert.Equal(3m, report.Cost["B"]);
+    }
+
+    [Fact]
     public async Task CompareAsync_SameSeedOverTheSameDeltas_GivesTheSameInterval()
     {
         var report1 = await Compare(new AbOptions { Seed = 11, BootstrapResamples = 1000 });

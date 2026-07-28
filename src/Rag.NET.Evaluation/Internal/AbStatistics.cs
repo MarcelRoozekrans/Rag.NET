@@ -204,4 +204,44 @@ internal static class AbStatistics
         var trim = (int)Math.Floor(TailProbability * resamples);
         return new AbConfidenceInterval(means[trim], means[resamples - 1 - trim]);
     }
+
+    /// <summary>
+    /// The nearest-rank percentile of an already-sorted array; <c>null</c> when it is empty.
+    /// </summary>
+    /// <param name="sorted">
+    /// The values in ascending order. Sorting is the caller's job: the latency deltas have to stay
+    /// in sample order for the bootstrap, so the sorted copies are made once and reused for both
+    /// percentiles rather than re-sorted here.
+    /// </param>
+    /// <param name="percentile">The percentile as a fraction, so <c>0.95</c> for p95.</param>
+    /// <returns>
+    /// The value at rank <c>ceil(percentile * n)</c>, one-based; <c>null</c> when
+    /// <paramref name="sorted"/> is empty.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Nearest-rank, no interpolation.</b> Every figure reported is a measurement that really
+    /// happened. Interpolating between two neighbouring samples would print a wall-clock no call
+    /// ever took, which reads as precision the run does not have — and the whole point of this phase
+    /// is to stop the report carrying numbers that were never measured.
+    /// </para>
+    /// <para>
+    /// <b>What that means for an even-length set.</b> <c>ceil(0.5 * n)</c> for <c>n = 4</c> is rank
+    /// 2, so p50 is the <b>lower</b> of the two middle values rather than their average. That falls
+    /// out of the definition rather than being a preference, and it is the case worth stating,
+    /// because it is the one where a reader expecting a textbook median gets a different number.
+    /// </para>
+    /// <para>
+    /// The rank is clamped, so <c>percentile</c> at or below zero gives the smallest value and at or
+    /// above one gives the largest, instead of indexing outside the array.
+    /// </para>
+    /// </remarks>
+    public static TimeSpan? Percentile(ReadOnlySpan<TimeSpan> sorted, double percentile)
+    {
+        if (sorted.IsEmpty)
+            return null;
+
+        var rank = (int)Math.Ceiling(percentile * sorted.Length) - 1;
+        return sorted[Math.Clamp(rank, 0, sorted.Length - 1)];
+    }
 }

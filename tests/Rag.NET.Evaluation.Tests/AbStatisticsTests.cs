@@ -268,4 +268,74 @@ public sealed class AbStatisticsTests
             [0.1, 0.2],
             AbStatistics.MinimumResamples,
             new Random(1)));
+
+    [Theory]
+    // sorted values (ms)                            p     expected (ms)
+    [InlineData(new long[] { 10, 20, 30, 40 }, 0.50, 20)]  // even length: rank ceil(0.5*4) = 2
+    [InlineData(new long[] { 10, 20 }, 0.50, 10)]          // ... so the lower middle, not 15
+    [InlineData(new long[] { 10, 20, 30 }, 0.50, 20)]      // odd length: the true middle
+    [InlineData(new long[] { 10, 20, 30, 40 }, 0.95, 40)]  // rank ceil(0.95*4) = 4
+    [InlineData(new long[] { 10, 20, 30 }, 0.95, 30)]
+    [InlineData(new long[] { 7 }, 0.50, 7)]                // one sample is its own every percentile
+    [InlineData(new long[] { 7 }, 0.95, 7)]
+    [InlineData(new long[] { 5, 5, 5, 900 }, 0.50, 5)]     // an outlier does not move p50
+    [InlineData(new long[] { 5, 5, 5, 900 }, 0.95, 900)]
+    public void Percentile_TakesTheValueAtTheNearestRank(
+        long[] sortedMilliseconds,
+        double percentile,
+        long expectedMilliseconds)
+    {
+        // The convention is load-bearing and invisible: p50 and p95 of two variants both look
+        // plausible whatever rank they came from, so nothing but a table pins which one it is.
+        var actual = AbStatistics.Percentile(Latencies(sortedMilliseconds), percentile);
+
+        Assert.Equal(TimeSpan.FromMilliseconds(expectedMilliseconds), actual!.Value);
+    }
+
+    [Fact]
+    public void Percentile_OnTwentySamples_P95IsTheNineteenthNotTheLargest()
+    {
+        // ceil(0.95 * 20) = 19, so p95 is the 19th of 20 and the slowest call is *not* it. On the
+        // small arrays above p95 and the maximum coincide, which would let a rank that is merely
+        // "near the top" pass; here they are two different values.
+        var sorted = new TimeSpan[20];
+        for (var i = 0; i < sorted.Length; i++)
+            sorted[i] = TimeSpan.FromMilliseconds(i + 1);
+
+        Assert.Equal(TimeSpan.FromMilliseconds(19), AbStatistics.Percentile(sorted, 0.95)!.Value);
+        Assert.Equal(TimeSpan.FromMilliseconds(10), AbStatistics.Percentile(sorted, 0.50)!.Value);
+    }
+
+    [Fact]
+    public void Percentile_NeverInterpolatesBetweenTwoSamples()
+    {
+        // Every latency in the report has to be a wall-clock some call really took. The midpoint of
+        // 20 ms and 40 ms is 30 ms, and no call took 30 ms — an averaging or interpolating
+        // implementation would print it anyway, and it would look entirely reasonable.
+        TimeSpan[] sorted = [TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(40)];
+
+        for (var p = 0; p <= 100; p++)
+        {
+            var value = AbStatistics.Percentile(sorted, p / 100.0)!.Value;
+
+            Assert.Contains(value, sorted);
+        }
+    }
+
+    [Fact]
+    public void Percentile_NoSamples_IsNull()
+    {
+        // Not TimeSpan.Zero: an instantaneous variant and a variant nothing was measured on are
+        // very different reports.
+        Assert.Null(AbStatistics.Percentile([], 0.50));
+    }
+
+    private static TimeSpan[] Latencies(long[] milliseconds)
+    {
+        var latencies = new TimeSpan[milliseconds.Length];
+        for (var i = 0; i < milliseconds.Length; i++)
+            latencies[i] = TimeSpan.FromMilliseconds(milliseconds[i]);
+
+        return latencies;
+    }
 }
