@@ -75,6 +75,10 @@ Assume nothing works until a test says so *and the test is right*.
    reference numbers, so retrieval correctness is demonstrable rather than asserted. SciFact
    first, to prove parity before adding breadth. Distinct from Phase 3.2's synthetic builder,
    and from the existing speed benchmarks.
+8. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
+   of 3.3. Production traffic has no ground truth, so only the reference-free metrics apply; it
+   also doubles spend per request and must never let a secondary failure reach a caller the
+   primary already served.
 
 ## Explicitly not in scope
 
