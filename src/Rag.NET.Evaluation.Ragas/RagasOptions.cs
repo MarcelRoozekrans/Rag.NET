@@ -11,6 +11,11 @@ namespace Rag.NET.Evaluation.Ragas;
 /// metrics each fanning out over a 50-chunk sample at a ceiling of 2 would be 8 requests in
 /// flight, not 2, and the number a caller sets would then not be the number they get.
 /// </para>
+/// <para>
+/// Answer Relevance is the only RAGAS metric that embeds anything, so
+/// <c>PricePerEmbeddingToken</c> prices that metric's calls alone; the rest of a suite is chat
+/// spend priced by the input and output token rates.
+/// </para>
 /// </remarks>
 public sealed class RagasOptions : EvaluationCallOptions
 {

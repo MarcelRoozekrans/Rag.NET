@@ -35,10 +35,10 @@ public abstract class EvaluationCallOptions
     /// </summary>
     /// <remarks>
     /// Separate from <see cref="PricePerInputToken"/> because embeddings are billed at their own
-    /// rate, usually an order of magnitude below chat. Answer Relevance is the only metric that
-    /// embeds anything, and embedding APIs bill on input tokens alone, so this is the only
-    /// embedding price there is. The ledger never prices anything itself; the caller computes
-    /// the cost.
+    /// rate, usually an order of magnitude below chat. Embedding APIs bill on input tokens alone,
+    /// so this is the only embedding price there is. Only the parts of a run that embed anything
+    /// consume it — a run that never embeds leaves it unused rather than defaulting to the chat
+    /// price. The ledger never prices anything itself; the caller computes the cost.
     /// </remarks>
     public decimal PricePerEmbeddingToken { get; set; }
 }
