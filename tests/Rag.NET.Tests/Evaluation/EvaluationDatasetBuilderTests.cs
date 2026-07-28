@@ -148,21 +148,100 @@ public class EvaluationDatasetBuilderTests
         Assert.Empty(dataset.Skipped);
     }
 
-    [Fact]
-    public async Task BuildAsync_WhenLlmReturnsEmptyText_HandlesGracefully()
+    [Theory]
+    [InlineData("")]
+    [InlineData("   \n ")]
+    public async Task BuildAsync_WhenTheModelReturnsNothing_DropsTheSampleAndCountsIt(string reply)
     {
+        // This test was called BuildAsync_WhenLlmReturnsEmptyText_HandlesGracefully and asserted
+        //
+        //     Assert.Single(samples);
+        //     Assert.Equal(string.Empty, samples[0].Question);
+        //
+        // which certified the defect rather than the behaviour: a sample with an empty question
+        // entered the dataset as valid, and every evaluator downstream then scored it — Answer
+        // Relevance embeds "" and returns a cosine similarity like any other — so the corruption
+        // was invisible from that point on. It is the third test written on 2026-04-11 whose name
+        // promised grace and whose body swallowed a failure, after the two malformed-JSON siblings
+        // fixed in Phase 3.1. Kept and re-pointed rather than deleted, so the record of what was
+        // once asserted survives.
         var manager = MakeDataManager("Chunk A");
         var client = Substitute.For<IChatClient>();
         client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, string.Empty)));
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, reply)));
 
         var builder = new EvaluationDatasetBuilder(manager, client);
         var dataset = await builder.BuildAsync(
             new EvaluationDatasetBuilderOptions { SampleCount = 1, Mode = DatasetGenerationMode.QuestionOnly },
             TestContext.Current.CancellationToken);
 
-        Assert.Single(dataset.Samples);
-        Assert.Equal(string.Empty, dataset.Samples[0].Question);
+        Assert.Empty(dataset.Samples);
+
+        // Dropped, and said so: one chunk was sent, one came back unusable.
+        Assert.Equal(1, dataset.Requested);
+        var skip = Assert.Single(dataset.Skipped);
+        Assert.Equal(EvaluationDataset.SkipReasons.EmptyQuestion, skip.Key);
+        Assert.Equal(1, skip.Value);
+    }
+
+    [Fact]
+    public async Task BuildAsync_WhenTheAnswerIsEmptyInQuestionAndAnswerMode_DropsTheSample()
+    {
+        // A question without a reference answer is not merely thin: Context Precision and Context
+        // Recall both throw on an empty ReferenceAnswer, so emitting this sample would move the
+        // failure to an evaluation run that cannot explain where it came from.
+        var manager = MakeDataManager("Chunk A");
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, "What is chunk A?")),
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, "   ")));
+
+        var builder = new EvaluationDatasetBuilder(manager, client);
+        var dataset = await builder.BuildAsync(
+            new EvaluationDatasetBuilderOptions { SampleCount = 1, Mode = DatasetGenerationMode.QuestionAndAnswer },
+            TestContext.Current.CancellationToken);
+
+        Assert.Empty(dataset.Samples);
+        var skip = Assert.Single(dataset.Skipped);
+        Assert.Equal(EvaluationDataset.SkipReasons.EmptyReferenceAnswer, skip.Key);
+        Assert.Equal(1, skip.Value);
+    }
+
+    [Fact]
+    public async Task BuildAsync_WhenOneChunkGeneratesAndOneDoesNot_ReturnsOneSampleAndOneSkip()
+    {
+        // The partial failure is the case that matters in practice — a whole run coming back empty
+        // is noticed, a run that quietly returns four samples out of five is not.
+        var manager = MakeDataManager("Chunk A", "Chunk B");
+        var client = Substitute.For<IChatClient>();
+        var replies = new Queue<string>(["A question?", string.Empty]);
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ChatResponse(new ChatMessage(ChatRole.Assistant, Dequeue(replies))));
+
+        var builder = new EvaluationDatasetBuilder(manager, client);
+        var dataset = await builder.BuildAsync(
+            new EvaluationDatasetBuilderOptions { SampleCount = 2, Mode = DatasetGenerationMode.QuestionOnly },
+            TestContext.Current.CancellationToken);
+
+        var sample = Assert.Single(dataset.Samples);
+        Assert.Equal("A question?", sample.Question);
+
+        // Requested accounts for both: the samples plus the skips add up to what was sent.
+        Assert.Equal(2, dataset.Requested);
+        Assert.Equal(1, dataset.Skipped[EvaluationDataset.SkipReasons.EmptyQuestion]);
+    }
+
+    /// <summary>
+    /// Takes the next scripted reply, thread-safely: the generations run concurrently, so the two
+    /// calls can dequeue from different threads.
+    /// </summary>
+    private static string Dequeue(Queue<string> replies)
+    {
+        lock (replies)
+        {
+            return replies.Count > 0 ? replies.Dequeue() : string.Empty;
+        }
     }
 
     [Fact]
