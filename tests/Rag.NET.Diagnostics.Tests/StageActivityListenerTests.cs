@@ -79,6 +79,47 @@ public sealed class StageActivityListenerTests
     }
 
     [Fact]
+    public void AForeignSpanBetweenTwoPipelineSpans_DoesNotSplitTheTrace()
+    {
+        var buffer = new TraceRingBuffer(capacity: 10);
+        var collector = new TraceCollector(new RagTraceOptions(), buffer);
+        using var listener = new StageActivityListener(collector);
+        using var source = new ActivitySource(RagNetSourceName);
+
+        using var foreignSource = new ActivitySource(UnrelatedSourceName);
+        using var keepAlive = AllDataListenerFor(UnrelatedSourceName);
+
+        // What a third-party instrumented IRetriever or IChatClient decorator does: it opens a span of
+        // its own between the pipeline's, so ragnet.retrieve's immediate parent is not a pipeline span
+        // even though ragnet.query is still above it and still owns the commit.
+        var outer = source.StartActivity("ragnet.query");
+        Assert.NotNull(outer);
+
+        var foreign = foreignSource.StartActivity("SomeLibrary.Decorate");
+        Assert.NotNull(foreign);
+
+        var inner = source.StartActivity("ragnet.retrieve");
+        Assert.NotNull(inner);
+        Assert.Equal(outer.TraceId, inner.TraceId);
+
+        inner.Stop();
+
+        // Reading only the immediate parent, this committed here: a trace holding ragnet.retrieve and
+        // nothing else, with the query it belongs to still in flight.
+        Assert.Empty(buffer.Snapshot());
+
+        foreign.Stop();
+        outer.Stop();
+
+        // One trace rather than two, and both stages in it. Two would have shared the outer span's
+        // trace id, so a newest-wins fetch by that id could only ever have returned the second.
+        var trace = Assert.Single(buffer.Snapshot());
+
+        string[] expected = ["ragnet.retrieve", "ragnet.query"];
+        Assert.Equal(expected, trace.Stages.Select(s => s.Name));
+    }
+
+    [Fact]
     public void SpansFromAnotherSource_AreNotRecorded()
     {
         var buffer = new TraceRingBuffer(capacity: 10);

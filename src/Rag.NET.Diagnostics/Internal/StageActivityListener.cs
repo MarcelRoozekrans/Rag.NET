@@ -19,19 +19,32 @@ namespace Rag.NET.Diagnostics.Internal;
 /// <para>
 /// <b>This is also what calls <see cref="ITraceCollector.Commit"/></b>, and therefore the only reason
 /// a trace ever reaches the ring buffer. The rule is <i>commit when the outermost pipeline span
-/// stops</i>: a <c>ragnet.*</c> span whose parent is not itself a <c>ragnet.*</c> span from this
-/// source is the last one of its execution, so the trace it belongs to is complete. Nothing else in
-/// the capture path can make that call — the retrieval behavior does not know whether an answer is
+/// stops</i>: a <c>ragnet.*</c> span with no <c>ragnet.*</c> span from this source anywhere above it
+/// is the last one of its execution, so the trace it belongs to is complete. Nothing else in the
+/// capture path can make that call — the retrieval behavior does not know whether an answer is
 /// coming, and the answer decorator never runs at all for a retrieve-only query.
 /// </para>
 /// <para>
-/// The rule reads the same in every host, which is why it is expressed against the parent rather than
-/// against a span name. Under ASP.NET the outermost <c>ragnet.query</c> hangs off the request
-/// activity — not a pipeline span, so it commits. In a console app it is a root — no parent at all, so
-/// it commits. A <c>RetrieveAsync</c> with no ask around it makes <c>ragnet.retrieve</c> the outermost
-/// span, so it commits and leaves nothing in flight. And a <c>ragnet.retrieve</c> nested inside a
-/// <c>ragnet.query</c>, or the recursive retrievals multi-query and deep-research issue, have a
-/// pipeline span for a parent and so commit nothing early.
+/// The rule is expressed against the <b>ancestor chain</b> rather than against a span name, so it
+/// reads the same in every host. Under ASP.NET the outermost <c>ragnet.query</c> hangs off the request
+/// activity — no pipeline span above it, so it commits. In a console app it is a root — no parent at
+/// all, so it commits. And a <c>ragnet.retrieve</c> nested inside a <c>ragnet.query</c>, including each
+/// of the several that <c>DeepResearchRetriever</c> fans a query out into, has a pipeline span above it
+/// and so commits nothing early. (Multi-query fans out below the span rather than into several of
+/// them — <c>MultiQueryBehavior</c> is a behavior inside the chain — so it never reached this rule.)
+/// </para>
+/// <para>
+/// The chain is walked rather than the immediate parent read, because a third-party instrumented layer
+/// between two pipeline spans — an <c>IRetriever</c> or <c>IChatClient</c> decorator that opens a span
+/// of its own — would otherwise make the inner span look outermost. It would commit a half-built
+/// trace, and the real outermost span would then land in a second trace under the same id, where a
+/// newest-wins fetch can only return one of them. Nothing in this repository interleaves a foreign
+/// span that way; the walk is what stops a host that does from silently splitting its traces. What
+/// this does <i>not</i> tolerate is a pipeline span whose parent chain is broken — a stage resumed
+/// under a restored remote context, where <see cref="Activity.Parent"/> is <see langword="null"/>
+/// because the parent is an id rather than an in-process object. Such a span reads as outermost and
+/// commits. The pipeline never crosses a process boundary mid-query, so that shape does not arise
+/// here.
 /// </para>
 /// <para>
 /// <b>This subscription changes sampling.</b> A listener returning <c>AllData</c> makes the pipeline's
@@ -125,7 +138,7 @@ internal sealed partial class StageActivityListener : IDisposable
             // Committed after the stage is recorded, never before: this span's own latency belongs
             // in the trace it is closing, and one callback keeps that order guaranteed rather than
             // dependent on the order two listeners happened to subscribe in.
-            if (!IsPipelineSpan(activity.Parent))
+            if (!HasPipelineAncestor(activity))
                 _collector.Commit(traceId);
         }
         catch (Exception ex)
@@ -134,14 +147,38 @@ internal sealed partial class StageActivityListener : IDisposable
         }
     }
 
+    /// <summary>Whether any activity above <paramref name="activity"/> is a pipeline span.</summary>
+    /// <param name="activity">The stopped span, already known to be a pipeline span itself.</param>
+    /// <returns>
+    /// <see langword="true"/> when a <c>ragnet.*</c> span from this source is anywhere in the parent
+    /// chain, meaning something outside this span is still going to close the trace.
+    /// </returns>
+    /// <remarks>
+    /// A loop rather than a single parent read: the chain may contain spans that belong to neither
+    /// this source nor the host's request, and stopping at the first of them would make an inner
+    /// pipeline span look outermost. The walk terminates at the first activity with no
+    /// <see cref="Activity.Parent"/>, which every chain reaches — a root has none, and a span whose
+    /// parent is a restored remote context has none either.
+    /// </remarks>
+    private static bool HasPipelineAncestor(Activity activity)
+    {
+        for (var ancestor = activity.Parent; ancestor is not null; ancestor = ancestor.Parent)
+        {
+            if (IsPipelineSpan(ancestor))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>Whether an activity is one of the pipeline's own stage spans.</summary>
     /// <param name="activity">The activity to classify. <see langword="null"/> is not one.</param>
     /// <returns><see langword="true"/> for a <c>ragnet.*</c> span from the <c>Rag.NET</c> source.</returns>
     /// <remarks>
-    /// Applied to the stopped span and to its parent, which is what makes the commit rule work.
-    /// <see cref="ActivityListener.ShouldListenTo"/> has already filtered the stopped span by source,
-    /// but a parent can come from anywhere — under ASP.NET it is the request activity — so the source
-    /// is checked here rather than assumed.
+    /// Applied to the stopped span and to every one of its ancestors, which is what makes the commit
+    /// rule work. <see cref="ActivityListener.ShouldListenTo"/> has already filtered the stopped span
+    /// by source, but an ancestor can come from anywhere — under ASP.NET the outermost one is the
+    /// request activity — so the source is checked here rather than assumed.
     /// </remarks>
     private static bool IsPipelineSpan([NotNullWhen(true)] Activity? activity) =>
         activity is not null

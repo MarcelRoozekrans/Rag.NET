@@ -5,6 +5,7 @@ using Rag.NET.Abstractions;
 using Rag.NET.AnswerGeneration;
 using Rag.NET.Diagnostics.Internal;
 using Rag.NET.Models;
+using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
 using Rag.NET.Retrieval;
 using Xunit;
@@ -87,10 +88,70 @@ public sealed class TraceCommitTests
 
         Assert.Single(trace.Chunks);
         Assert.Null(trace.Answer);
-        Assert.Equal("ragnet.retrieve", Assert.Single(trace.Stages).Name);
+
+        // ragnet.query wraps a retrieve-only call too, so every public entry point closes its own
+        // trace at one identifiable moment — see AFanOutRetrieveOnlyCall_* for the case that made
+        // leaving it out wrong rather than merely redundant.
+        string[] expectedStages = ["ragnet.retrieve", "ragnet.query"];
+        Assert.Equal(expectedStages, trace.Stages.Select(s => s.Name));
 
         // And nothing is left half-assembled: the ceiling bounds a leak, it does not excuse one.
         Assert.Null(collector.Current(trace.TraceId));
+    }
+
+    [Fact]
+    public async Task AFanOutRetrieveOnlyCall_CommitsOneTraceHoldingEveryRetrieval()
+    {
+        var buffer = new TraceRingBuffer(capacity: 10);
+        var collector = new TraceCollector(EverythingCaptured(), buffer);
+        using var listener = new StageActivityListener(collector);
+        var pipeline = BuildFanOutPipeline(collector);
+
+        Assert.Null(Activity.Current);
+
+        var result = await pipeline.RetrieveAsync(Query, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsSuccess);
+
+        // DeepResearchRetriever decorates IRetriever globally and calls the inner retriever once per
+        // sub-question, so one IRagPipeline.RetrieveAsync opens ragnet.retrieve three times: the
+        // primary retrieval plus two sub-queries. Without a span around the call each of those was
+        // the outermost pipeline span of its own execution — three separate roots here, and so three
+        // committed traces holding one stage each.
+        var trace = Assert.Single(buffer.Snapshot());
+
+        string[] expectedStages = ["ragnet.retrieve", "ragnet.retrieve", "ragnet.retrieve", "ragnet.query"];
+        Assert.Equal(expectedStages, trace.Stages.Select(s => s.Name));
+
+        // Every retrieval's chunks are in the one trace rather than scattered across three.
+        string[] expectedChunks = [Query, "sub-question 1", "sub-question 2"];
+        Assert.Equal(expectedChunks, trace.Chunks.Select(c => c.DocumentId));
+
+        Assert.Null(collector.Current(trace.TraceId));
+    }
+
+    [Fact]
+    public async Task AFanOutRetrieveOnlyCall_UnderAnAmbientActivity_CommitsOneAddressableTrace()
+    {
+        var buffer = new TraceRingBuffer(capacity: 10);
+        var collector = new TraceCollector(EverythingCaptured(), buffer);
+        using var listener = new StageActivityListener(collector);
+        var pipeline = BuildFanOutPipeline(collector);
+
+        // The worse half of the same defect. Under a request activity the fragments do not even get
+        // distinct trace ids — all three carried the request's — so TryGet's newest-wins rule made
+        // GET /ragnet/traces/{id} return the last sub-query's trace and left the primary retrieval's
+        // silently unreachable.
+        using var ambient = new Activity("Microsoft.AspNetCore.Hosting.HttpRequestIn").Start();
+
+        var result = await pipeline.RetrieveAsync(Query, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsSuccess);
+
+        var trace = Assert.Single(buffer.Snapshot());
+
+        Assert.Equal(ambient.TraceId.ToHexString(), trace.TraceId);
+        Assert.Equal(3, trace.Chunks.Count);
     }
 
     [Fact]
@@ -231,6 +292,54 @@ public sealed class TraceCommitTests
             retriever,
             Substitute.For<IIngestor>(),
             new DiagnosticsAnswerEngineDecorator(engine, collector));
+    }
+
+    /// <summary>Builds a retrieve-only pipeline whose retriever fans one query out into three.</summary>
+    /// <param name="collector">The collector every capture seam records into.</param>
+    /// <returns>
+    /// A pipeline wrapped in <see cref="DeepResearchRetriever"/>, the shape <c>AddRagNet</c> produces
+    /// whenever <c>DeepResearchOptions</c> is configured. No answer engine: the point is the
+    /// retrieve-only path, which is where the fan-out had nothing above it to close the trace.
+    /// </returns>
+    private static RagPipeline BuildFanOutPipeline(ITraceCollector collector)
+    {
+        var behavior = new DiagnosticsRetrievalBehavior(collector);
+
+        // Keyed on the query, so the three retrievals are distinguishable in the trace and
+        // DeepResearchRetriever's deduplication does not collapse them into one.
+        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> store =
+            static (ctx, _) => ValueTask.FromResult<IReadOnlyList<SearchResult>>([ResultFor(ctx.Query)]);
+
+        var inner = new PipelineRetriever
+        {
+            Pipeline = new Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>(
+                (ctx, ct) => behavior.HandleAsync(ctx, ct, store)),
+        };
+
+        return new RagPipeline(
+            new DeepResearchRetriever(inner, SufficiencyClient(), new DeepResearchOptions
+            {
+                // One pass, two sub-queries: three retrievals, which is enough to tell one trace from
+                // N without making the expected stage list an exercise in counting.
+                MaxDepth = 1,
+                SubQueryCount = 2,
+            }),
+            Substitute.For<IIngestor>());
+    }
+
+    /// <summary>A chat client whose sufficiency verdict always asks for the same two sub-queries.</summary>
+    /// <returns>The substitute.</returns>
+    private static IChatClient SufficiencyClient()
+    {
+        var chatClient = Substitute.For<IChatClient>();
+
+        chatClient
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(
+                ChatRole.Assistant,
+                """{"sufficient":false,"subQueries":["sub-question 1","sub-question 2"]}""")));
+
+        return chatClient;
     }
 
     /// <summary>A chat client that answers the same thing on both the buffered and streamed paths.</summary>

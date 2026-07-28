@@ -217,6 +217,38 @@ public sealed class TraceCollectorTests
     }
 
     [Fact]
+    public void AnUnrecognisedContentKind_CapturesNothingEvenWithEveryFlagOn()
+    {
+        var buffer = new TraceRingBuffer(capacity: 10);
+        var options = new RagTraceOptions
+        {
+            CaptureQueryText = true,
+            CaptureChunkText = true,
+            CapturePromptText = true,
+            CaptureAnswerText = true,
+        };
+        var collector = new TraceCollector(options, buffer);
+
+        // A kind no flag governs, which is what a future TraceContentKind added without a matching
+        // option looks like from inside the content gate. Every flag is on, so the only thing that
+        // can withhold the text is the gate's default arm failing closed — and the whole point of
+        // that arm is the case where retaining text nobody asked to retain is the failure mode.
+        collector.RecordGuardAction(TraceId, GuardAction(), (TraceContentKind)999);
+        collector.Commit(TraceId);
+
+        var action = Assert.Single(Assert.Single(buffer.Snapshot()).GuardActions);
+
+        Assert.Null(action.InputText);
+        Assert.Null(action.OutputText);
+
+        // The action itself is still recorded: failing closed withholds the content, not the fact
+        // that a guard fired. Without this the assertions above would also pass if nothing at all
+        // had been recorded.
+        Assert.Equal(5, action.InputCount);
+        Assert.Equal(3, action.OutputCount);
+    }
+
+    [Fact]
     public void QueryHash_IsStableForTheSameQueryAndDiffersForAnother()
     {
         var buffer = new TraceRingBuffer(capacity: 10);

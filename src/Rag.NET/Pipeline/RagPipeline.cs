@@ -17,7 +17,7 @@ public sealed class RagPipeline(
     IAnswerEngine? answerEngine = null) : IRagPipeline
 {
     /// <summary>
-    /// The span opened around a whole ask — retrieval and answer generation together.
+    /// The span opened around one whole query, whichever public entry point started it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -39,9 +39,21 @@ public sealed class RagPipeline(
     /// observing does exactly what it did before.
     /// </para>
     /// <para>
-    /// <c>RetrieveAsync</c> deliberately has no span of its own. A retrieval on its own <i>is</i> the
-    /// whole operation, and <c>ragnet.retrieve</c> already marks it; wrapping it would add a span that
-    /// never has more than one child.
+    /// <b><c>RetrieveAsync</c> opens it too</b>, which it originally did not. The reasoning for leaving
+    /// it out was that a retrieval on its own <i>is</i> the whole operation, so <c>ragnet.retrieve</c>
+    /// already marks it and an enclosing span would never have more than one child. That premise is
+    /// false whenever a fan-out retriever is registered: <c>DeepResearchRetriever</c> decorates
+    /// <see cref="IRetriever"/> globally whenever <c>DeepResearchOptions</c> is configured, and calls
+    /// the inner retriever once per sub-question, so a single <c>RetrieveAsync</c> opens
+    /// <c>ragnet.retrieve</c> <i>N</i> times. (Multi-query fans out too, but through
+    /// <c>MultiQueryBehavior</c> <i>inside</i> the behavior chain, below the one span
+    /// <c>PipelineRetriever</c> opens — so it does not multiply spans and was never affected.)
+    /// Each of those N was then the outermost pipeline span of its own execution — N root
+    /// spans in a console app, N unrelatable siblings under a request — and anything committing on
+    /// "the outermost pipeline span stopped" committed N times for one call. Under an ambient request
+    /// activity the N fragments even share the request's trace id, so a fetch-by-id keyed on it can
+    /// only ever return one of them. One span per public entry point makes "one trace per query" true
+    /// rather than true-unless-decorated.
     /// </para>
     /// </remarks>
     private const string QuerySpanName = "ragnet.query";
@@ -54,11 +66,15 @@ public sealed class RagPipeline(
         CancellationToken cancellationToken = default)
         => ingestor.IngestAsync(document, metadata, options, progress, cancellationToken);
 
-    public Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
+    public async Task<Result<IReadOnlyList<SearchResult>, RagError>> RetrieveAsync(
         string query,
         RetrievalOptions? options = null,
         CancellationToken cancellationToken = default)
-        => retriever.RetrieveAsync(query, options, cancellationToken);
+    {
+        using var activity = RagTelemetry.ActivitySource.StartActivity(QuerySpanName);
+
+        return await retriever.RetrieveAsync(query, options, cancellationToken).ConfigureAwait(false);
+    }
 
     public async Task<RagResponse> AskAsync(
         string query,

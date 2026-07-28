@@ -25,12 +25,26 @@ public static class RagBuilderExtensions
     /// <returns>The builder.</returns>
     /// <remarks>
     /// <para>
-    /// <b>Call this last.</b> It decorates the <c>IRetrievalGuard</c>, <c>IChunkSanitiser</c>,
-    /// <c>IQuerySanitiser</c> and <c>IAnswerEngine</c> registrations that exist <i>at the time of the
-    /// call</i> — the same ordering rule <c>ConfigureResilience</c> and <c>UseRateLimiting</c> carry.
-    /// A guard registered afterwards still runs; it is simply not traced, and its absence from a trace
-    /// then means "not registered when diagnostics was" rather than "never fired", which is a
-    /// misleading answer to the question traces exist to answer.
+    /// <b>Call this last.</b> It reads the service collection <i>at the time of the call</i> — the same
+    /// ordering rule <c>ConfigureResilience</c> and <c>UseRateLimiting</c> carry. It decorates the
+    /// <c>IRetrievalGuard</c>, <c>IChunkSanitiser</c>, <c>IQuerySanitiser</c> and <c>IAnswerEngine</c>
+    /// registrations that exist by then, and it also <b>looks for an <c>IChatClient</c></b>. A guard
+    /// registered afterwards still runs; it is simply not traced, and its absence from a trace then
+    /// means "not registered when diagnostics was" rather than "never fired", which is a misleading
+    /// answer to the question traces exist to answer.
+    /// </para>
+    /// <para>
+    /// <b>The <c>IChatClient</c> case reads as a bug rather than a misconfiguration</b>, so it is worth
+    /// recognising. With no <c>IAnswerEngine</c> registered, this method supplies a traced one only if
+    /// an <c>IChatClient</c> is already in the collection — see
+    /// <see cref="AddAnswerEngineIfAChatClientIsRegistered"/>. Register the chat client afterwards, as
+    /// in <c>AddRagNet(rag => rag.AddRagDiagnostics())</c> followed by
+    /// <c>services.AddSingleton&lt;IChatClient&gt;(…)</c>, and there is nothing to find: no
+    /// <c>IAnswerEngine</c> is registered, <c>RagPipeline</c> builds its own untraced one, and answers
+    /// are never recorded. <b>The symptom</b> is a trace that has a query, chunks, stages and a prompt
+    /// but whose <c>Answer</c> is always <see langword="null"/> even with
+    /// <see cref="RagTraceOptions.CaptureAnswerText"/> on — while asking still returns an answer
+    /// perfectly well. Register the <c>IChatClient</c> first and it is captured.
     /// </para>
     /// <para>
     /// Finding nothing to decorate is a <b>no-op, not a failure</b>. A pipeline with no guards and no
