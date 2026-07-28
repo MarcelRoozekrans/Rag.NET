@@ -22,6 +22,31 @@ internal static class AbStatistics
     private const double TailProbability = 0.025;
 
     /// <summary>
+    /// The fewest resamples that can express a 95% interval honestly.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why there is a floor at all.</b> <c>trim = floor(0.025 * resamples)</c> is <b>zero</b> for
+    /// every <c>resamples &lt;= 39</c>, at which point the interval degenerates into the min and max
+    /// of the draws. That is not a wide interval, it is a wrong one: the expected coverage of the
+    /// extremes of <c>B</c> resample means is <c>(B - 1) / (B + 1)</c> — 0.818 at <c>B = 10</c>, and
+    /// measured at 0.631 for <c>B = 5</c> — so a run that says 95% is quietly delivering rather less.
+    /// Under-covering is the dangerous direction: it names winners that are not there.
+    /// </para>
+    /// <para>
+    /// <b>Why 1000 rather than 40.</b> Clearing the trim-floors-to-zero cliff is the minimum, not the
+    /// goal. Each endpoint is an order statistic, and its own Monte-Carlo jitter shrinks with how many
+    /// draws sit out in the tail: at <c>B = 1000</c> the lower endpoint is the 25th of 1000, which is
+    /// enough that no handful of draws decides it. At <c>B = 200</c> it is the 5th of 200, and the
+    /// interval visibly moves between seeds — reproducible, but only per-seed, which is a weaker
+    /// promise than <see cref="AbOptions.Seed"/> is meant to make. The bootstrap costs
+    /// <c>pairs * resamples</c> multiply-adds, so a 50-sample comparison at the default 2000 is 100k
+    /// operations: there is nothing to buy by going lower.
+    /// </para>
+    /// </remarks>
+    public const int MinimumResamples = 1000;
+
+    /// <summary>
     /// Per-sample <c>b - a</c> for every index where <b>both</b> sides scored.
     /// </summary>
     /// <param name="a">Variant A's per-sample scores, <c>null</c> where the sample was unscoreable.</param>
@@ -117,7 +142,9 @@ internal static class AbStatistics
     /// <param name="deltas">The paired deltas, as returned by <see cref="PairedDeltas"/>.</param>
     /// <param name="resamples">
     /// How many resamples to draw. More resamples reduce the Monte-Carlo jitter of the interval
-    /// itself; they do not narrow it, because the width is set by the data.
+    /// itself; they do not narrow it, because the width is set by the data. Must be at least
+    /// <see cref="MinimumResamples"/> — see that constant for why a smaller number cannot express a
+    /// 95% interval at all.
     /// </param>
     /// <param name="random">
     /// The randomness. Seed it (<c>new Random(seed)</c>) and the same deltas yield the same
@@ -125,6 +152,9 @@ internal static class AbStatistics
     /// for <c>ReservoirSampler</c> and the dataset seed.
     /// </param>
     /// <returns>The interval, or <c>null</c> when <paramref name="deltas"/> is empty.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="resamples"/> is below <see cref="MinimumResamples"/>.
+    /// </exception>
     /// <remarks>
     /// <para>
     /// Bootstrap rather than a t-interval because RAGAS scores are bounded on <c>[0, 1]</c> and
@@ -139,13 +169,18 @@ internal static class AbStatistics
     /// rounding, and because it degrades sensibly: a single pair makes every resample mean identical
     /// and the interval collapses to that point rather than throwing or inventing a width.
     /// </para>
+    /// <para>
+    /// That same rounding is why <see cref="MinimumResamples"/> exists: the <c>floor</c> that keeps
+    /// the trim symmetric takes it to zero for small <paramref name="resamples"/>, and a zero trim
+    /// is a min–max interval wearing a 95% label.
+    /// </para>
     /// </remarks>
     public static AbConfidenceInterval? BootstrapMeanDeltaCi(
         ReadOnlySpan<double> deltas,
         int resamples,
         Random random)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(resamples);
+        ArgumentOutOfRangeException.ThrowIfLessThan(resamples, MinimumResamples);
         ArgumentNullException.ThrowIfNull(random);
 
         if (deltas.IsEmpty)

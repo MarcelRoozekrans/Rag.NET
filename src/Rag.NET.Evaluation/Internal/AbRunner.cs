@@ -4,17 +4,23 @@ using System.Diagnostics;
 namespace Rag.NET.Evaluation.Internal;
 
 /// <summary>
-/// Executes an evaluation dataset through every variant, alternating which one leads, and times
+/// Executes an evaluation dataset through both variants, alternating which one leads, and times
 /// each call. Performs no scoring.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why the order rotates.</b> Whichever variant runs second benefits from provider-side prompt
+/// <b>Why the order alternates.</b> Whichever variant runs second benefits from provider-side prompt
 /// caching and a warm vector store. A fixed order therefore hands one variant a systematic
-/// advantage on every sample and reports it as a result. The lead rotates by sample index, which
-/// for the two-variant comparison the statistics describe is plain alternation: A,B then B,A then
-/// A,B. This matters least for quality scores and most for latency, and latency is half the reason
-/// to run this at all.
+/// advantage on every sample and reports it as a result. The lead rotates by sample index: A,B then
+/// B,A then A,B. This matters least for quality scores and most for latency, and latency is half the
+/// reason to run this at all.
+/// </para>
+/// <para>
+/// <b>Exactly two variants.</b> Not "at least two". Everything downstream is strictly pairwise —
+/// <c>AbStatistics.PairedDeltas</c> takes two score arrays, <c>AbTally</c> has a <c>BWins</c> and an
+/// <c>AWins</c> and nowhere to put a third — and the Phase 3.3 design rules N-way out until someone
+/// works through the multiple-comparisons correction it needs. A third variant could only be
+/// executed and then dropped on the floor, so it is refused here, where the caller can still see why.
 /// </para>
 /// <para>
 /// <b>Why not concurrently.</b> Running both variants at once roughly halves wall-clock, but the
@@ -29,12 +35,14 @@ namespace Rag.NET.Evaluation.Internal;
 /// </remarks>
 internal static class AbRunner
 {
-    /// <summary>Runs every sample through every variant.</summary>
-    /// <param name="variants">The variants to compare. At least two, with unique names.</param>
+    /// <summary>Runs every sample through both variants.</summary>
+    /// <param name="variants">The two variants to compare, with distinct non-blank names.</param>
     /// <param name="samples">The dataset. Each variant is asked <c>Sample.Question</c>.</param>
     /// <param name="cancellationToken">Token to cancel the run.</param>
     /// <returns>One <see cref="VariantRun"/> per sample, in input order.</returns>
-    /// <exception cref="ArgumentException">Fewer than two variants, or a blank or duplicated name.</exception>
+    /// <exception cref="ArgumentException">
+    /// Not exactly two variants, or a blank or duplicated name.
+    /// </exception>
     /// <remarks>
     /// A variant that throws is recorded rather than propagated: one bad sample must not lose the
     /// other ninety-nine. Cancellation is the exception to that — it is the caller asking to stop,
@@ -95,7 +103,8 @@ internal static class AbRunner
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 // The caller asked to stop. Recording this as a variant failure would report a
-                // cancelled run as a comparison in which every sample went wrong.
+                // cancelled run as a comparison in which every sample went wrong — and would keep
+                // asking the other variant questions after the stop was requested.
                 throw;
             }
             catch (Exception ex)
@@ -118,10 +127,12 @@ internal static class AbRunner
     {
         ArgumentNullException.ThrowIfNull(variants);
 
-        if (variants.Count < 2)
+        if (variants.Count != 2)
         {
             throw new ArgumentException(
-                $"An A/B comparison needs at least two variants; got {variants.Count}.",
+                $"An A/B comparison is exactly two variants; got {variants.Count}. N-way comparison " +
+                "needs a multiple-comparisons correction and is out of scope for this phase — see " +
+                "the Phase 3.3 design, 'Out of scope'. Compare the pairs you care about separately.",
                 nameof(variants));
         }
 

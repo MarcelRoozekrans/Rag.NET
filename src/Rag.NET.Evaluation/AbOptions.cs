@@ -36,10 +36,27 @@ public sealed class AbOptions
     /// </remarks>
     public int? Seed { get; init; }
 
-    /// <summary>How many bootstrap resamples to draw per interval. Default 2000.</summary>
+    /// <summary>How many bootstrap resamples to draw per interval. Default 2000, minimum 1000.</summary>
     /// <remarks>
+    /// <para>
     /// More resamples reduce the Monte-Carlo jitter of the interval itself; they do not narrow it,
     /// because the width is set by the data. Raising this does not buy a more confident answer.
+    /// </para>
+    /// <para>
+    /// <b>Lowering it is not the way to make a slow run faster, and below 1000 it throws.</b> The
+    /// resampling is <c>pairs * resamples</c> multiply-adds over an array already in memory — a
+    /// 50-sample comparison at the default is 100k operations, which is nothing beside the two LLM
+    /// runs that produced the scores. Wall-clock is spent in the pipelines and the judge, not here.
+    /// </para>
+    /// <para>
+    /// The floor exists because a 95% interval trims <c>floor(0.025 * resamples)</c> values from each
+    /// tail, and that expression is <b>zero for every value at or below 39</b>. With nothing trimmed,
+    /// the interval becomes the smallest and largest resample mean — whose expected coverage is
+    /// <c>(B - 1) / (B + 1)</c>, so 0.818 at 10 resamples — while still being reported as 95%. It
+    /// under-covers, which means it excludes zero, which means it names winners that are not there.
+    /// That is the one failure this whole comparison exists to prevent, so it is refused rather than
+    /// silently allowed.
+    /// </para>
     /// </remarks>
     public int BootstrapResamples { get; init; } = 2000;
 

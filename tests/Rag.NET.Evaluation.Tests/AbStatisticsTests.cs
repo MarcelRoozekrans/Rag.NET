@@ -131,12 +131,63 @@ public sealed class AbStatisticsTests
     {
         double[] deltas = [0.1, -0.05, 0.2, 0.0, 0.15];
 
-        var first = AbStatistics.BootstrapMeanDeltaCi(deltas, 500, new Random(99));
-        var second = AbStatistics.BootstrapMeanDeltaCi(deltas, 500, new Random(99));
+        var first = AbStatistics.BootstrapMeanDeltaCi(deltas, 1000, new Random(99));
+        var second = AbStatistics.BootstrapMeanDeltaCi(deltas, 1000, new Random(99));
 
         // An unreproducible confidence interval is not evidence. Same rule as the dataset seed.
+        //
+        // Note what this does *not* say: it compares the function to itself, which holds for any
+        // deterministic function of the seed — including one trimmed to the wrong percentile. The
+        // confidence level is pinned by BootstrapCi_HalfWidthMatchesTheAnalytic95PercentInterval
+        // below, not here.
         Assert.Equal(first!.Value.Lower, second!.Value.Lower, precision: 12);
         Assert.Equal(first.Value.Upper, second.Value.Upper, precision: 12);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(17)]
+    [InlineData(2024)]
+    public void BootstrapCi_HalfWidthMatchesTheAnalytic95PercentInterval(int seed)
+    {
+        // Evenly spaced over [-0.5, +0.5]: a known, non-degenerate spread, and enough pairs that the
+        // bootstrap distribution of the mean is near-normal by the central limit theorem — which is
+        // what makes the analytic half-width below the right thing to compare against.
+        var deltas = new double[400];
+        for (var i = 0; i < deltas.Length; i++)
+            deltas[i] = -0.5 + (i / (double)(deltas.Length - 1));
+
+        var ci = AbStatistics.BootstrapMeanDeltaCi(deltas, resamples: 4000, new Random(seed))!.Value;
+
+        // This is the test that pins the *confidence level*, and the only one that does. Every other
+        // assertion in this file — reproducibility, spanning zero on noise, narrowing with n,
+        // bracketing the mean — passes just as happily against an interval trimmed to 70%, which
+        // yields z = 1.04 instead of 1.96 and declares a finding on pure noise about five times too
+        // often. A CI that is wrong only in its width is invisible to every property except its
+        // width, so the width is asserted against the textbook value rather than against itself.
+        var expected = 1.96 * PopulationStandardDeviation(deltas) / Math.Sqrt(deltas.Length);
+        var actual = (ci.Upper - ci.Lower) / 2;
+
+        // ±25% is loose enough to absorb the Monte-Carlo jitter of two order statistics and any
+        // harmless change to how the resamples are drawn, and far tighter than the 47% shortfall a
+        // 70% interval produces.
+        Assert.InRange(actual, expected * 0.75, expected * 1.25);
+    }
+
+    private static double PopulationStandardDeviation(double[] values)
+    {
+        var mean = AbStatistics.MeanDelta(values)!.Value;
+        var sumOfSquares = 0.0;
+
+        foreach (var value in values)
+        {
+            var deviation = value - mean;
+            sumOfSquares += deviation * deviation;
+        }
+
+        // Divisor n, not n - 1: the bootstrap resamples the observed deltas as if they were the
+        // population, so the spread it reproduces is the population spread of that array.
+        return Math.Sqrt(sumOfSquares / values.Length);
     }
 
     [Fact]
@@ -170,7 +221,7 @@ public sealed class AbStatisticsTests
 
     [Fact]
     public void BootstrapCi_NoPairs_IsNull()
-        => Assert.Null(AbStatistics.BootstrapMeanDeltaCi([], 100, new Random(1)));
+        => Assert.Null(AbStatistics.BootstrapMeanDeltaCi([], 1000, new Random(1)));
 
     [Fact]
     public void BootstrapCi_OnePair_IsDegenerateNotAnError()
@@ -178,7 +229,7 @@ public sealed class AbStatisticsTests
         // Every resample of a single value is that value. The interval collapses to a point, which
         // is honest — one sample supports no interval — rather than an exception or a fabricated
         // width.
-        var ci = AbStatistics.BootstrapMeanDeltaCi([0.3], 100, new Random(1))!.Value;
+        var ci = AbStatistics.BootstrapMeanDeltaCi([0.3], 1000, new Random(1))!.Value;
 
         Assert.Equal(0.3, ci.Lower, precision: 10);
         Assert.Equal(0.3, ci.Upper, precision: 10);
@@ -189,16 +240,32 @@ public sealed class AbStatisticsTests
     {
         double[] deltas = [0.25, 0.25, 0.25, 0.25, 0.25];
 
-        var ci = AbStatistics.BootstrapMeanDeltaCi(deltas, 500, new Random(5))!.Value;
+        var ci = AbStatistics.BootstrapMeanDeltaCi(deltas, 1000, new Random(5))!.Value;
 
         Assert.Equal(0.25, ci.Lower, precision: 10);
         Assert.Equal(0.25, ci.Upper, precision: 10);
     }
 
     [Theory]
-    [InlineData(0)]
     [InlineData(-1)]
-    public void BootstrapCi_NonPositiveResamples_Throws(int resamples)
-        => Assert.Throws<ArgumentOutOfRangeException>(
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(39)]   // the cliff: floor(0.025 * 39) is 0, so nothing would be trimmed at all
+    [InlineData(40)]
+    [InlineData(999)]
+    public void BootstrapCi_ResamplesBelowTheFloor_Throws(int resamples)
+    {
+        // Below 40, trim floors to zero and the "95%" interval is really the min and max of the
+        // draws — expected coverage (B-1)/(B+1), so 0.818 at B=10. It under-covers, which excludes
+        // zero more often than it should, which manufactures winners. Refused rather than allowed.
+        Assert.Throws<ArgumentOutOfRangeException>(
             () => { _ = AbStatistics.BootstrapMeanDeltaCi([0.1, 0.2], resamples, new Random(1)); });
+    }
+
+    [Fact]
+    public void BootstrapCi_ResamplesAtTheFloor_IsAccepted()
+        => Assert.NotNull(AbStatistics.BootstrapMeanDeltaCi(
+            [0.1, 0.2],
+            AbStatistics.MinimumResamples,
+            new Random(1)));
 }

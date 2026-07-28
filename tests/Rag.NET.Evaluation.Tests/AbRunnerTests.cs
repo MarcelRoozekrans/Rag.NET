@@ -146,7 +146,7 @@ public sealed class AbRunnerTests
     }
 
     [Fact]
-    public async Task RunAsync_CancellationIsNotRecordedAsAVariantFailure()
+    public async Task RunAsync_CancellationLeavesTheSampleImmediatelyRatherThanBeingRecordedAsAFailure()
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var cancelling = Substitute.For<IRagPipeline>();
@@ -157,11 +157,23 @@ public sealed class AbRunnerTests
                 return Task.FromException<RagResponse>(new OperationCanceledException(cts.Token));
             });
 
+        var second = SucceedingPipeline();
+
         // A cancelled run is the caller stopping, not every variant going wrong on every sample.
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => AbRunner.RunAsync(
-            [Variant("A", cancelling), Variant("B", SucceedingPipeline())],
+            [Variant("A", cancelling), Variant("B", second)],
             Samples("q1", "q2"),
             cts.Token));
+
+        // The observable difference the OperationCanceledException guard makes. Throwing is not it:
+        // without the guard the cancellation is swallowed as a variant failure, B is still asked the
+        // question against an already-cancelled token, and the loop's ThrowIfCancellationRequested
+        // raises it one sample later — so an assertion on the exception alone passes either way.
+        // What only the guard achieves is that nothing further is asked once the caller has stopped.
+        await second.DidNotReceive().AskAsync(
+            Arg.Any<string>(),
+            Arg.Any<RagOptions?>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -181,6 +193,42 @@ public sealed class AbRunnerTests
             [Variant("A", SucceedingPipeline())],
             Samples("q1"),
             TestContext.Current.CancellationToken));
+
+    [Fact]
+    public async Task RunAsync_MoreThanTwoVariants_Throws()
+    {
+        // Not "at least two". PairedDeltas takes two arrays and AbTally has a BWins and an AWins
+        // with nowhere to put a third, so a third variant could only be run — at full LLM cost — and
+        // then dropped. The design defers N-way until someone works through the
+        // multiple-comparisons correction; refusing here is what keeps that decision visible.
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => AbRunner.RunAsync(
+            [
+                Variant("A", SucceedingPipeline()),
+                Variant("B", SucceedingPipeline()),
+                Variant("C", SucceedingPipeline()),
+            ],
+            Samples("q1"),
+            TestContext.Current.CancellationToken));
+
+        Assert.Contains("exactly two", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RunAsync_MoreThanTwoVariants_DoesNotRunAnyOfThem()
+    {
+        var third = SucceedingPipeline();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => AbRunner.RunAsync(
+            [Variant("A", SucceedingPipeline()), Variant("B", SucceedingPipeline()), Variant("C", third)],
+            Samples("q1"),
+            TestContext.Current.CancellationToken));
+
+        // Validation happens before the first call, so the rejection costs nothing.
+        await third.DidNotReceive().AskAsync(
+            Arg.Any<string>(),
+            Arg.Any<RagOptions?>(),
+            Arg.Any<CancellationToken>());
+    }
 
     [Fact]
     public async Task RunAsync_DuplicateVariantNames_Throws()

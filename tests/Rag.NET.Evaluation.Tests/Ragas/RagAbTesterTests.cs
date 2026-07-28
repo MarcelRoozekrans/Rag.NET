@@ -260,8 +260,8 @@ public sealed class RagAbTesterTests
     [Fact]
     public async Task CompareAsync_SameSeedOverTheSameDeltas_GivesTheSameInterval()
     {
-        var report1 = await Compare(new AbOptions { Seed = 11, BootstrapResamples = 500 });
-        var report2 = await Compare(new AbOptions { Seed = 11, BootstrapResamples = 500 });
+        var report1 = await Compare(new AbOptions { Seed = 11, BootstrapResamples = 1000 });
+        var report2 = await Compare(new AbOptions { Seed = 11, BootstrapResamples = 1000 });
 
         // An unreproducible confidence interval is not evidence.
         var first = report1.Metrics[Quality].ConfidenceInterval!.Value;
