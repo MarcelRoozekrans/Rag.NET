@@ -166,14 +166,21 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Plan:** `docs/plans/2026-07-28-dataset-builder-verification-design.md` + `-implementation.md`
 **Completed:** 2026-07-28 (sampling was unseeded, so a dataset could not be regenerated and any before/after comparison silently compared two different question sets — now seeded reservoir sampling. A generation the model returned nothing for became a sample with an empty question, certified by a test called `HandlesGracefully`; such generations are now dropped and counted in `EvaluationDataset.Skipped`. Also: the corpus is no longer materialised to sample from it, concurrency is bounded, and chat spend is recorded — via a shared caller moved down from `RagasJudge` rather than copied, since copying that plumbing is what put the same defect in two evaluators in 3.1.)
 
-### Phase 3.3: A/B Testing Framework [status: pending]
+### Phase 3.3: A/B Testing Framework [status: complete]
 **Backlog items:** A/B Testing Framework
+**Plan:** `docs/plans/2026-07-28-ab-testing-design.md` + `-implementation.md`
+**Completed:** 2026-07-28 (offline harness only; shadow mode deferred to Phase 3.8 because production traffic has no ground truth, so two of the four RAGAS metrics cannot run against it at all. Two decisions carry it. Execution alternates which variant leads, because whichever runs second benefits from provider prompt caching and a warm store — a fixed order hands one side an advantage and reports it as a result. And the comparison is paired with a bootstrap confidence interval, because an A/B run always produces a higher number on one side: +0.07 over 50 samples is a finding at [+0.02, +0.12] and nothing at [-0.04, +0.18]. Mutation testing was what made this phase work — a bootstrap trimmed to a 70% interval passed 23 tests, a percentile function replaced by "always return the minimum" passed 238, and a shared `Random` passed 262. All three now have tests that bite.)
 
 ### Phase 3.4: Pipeline Debugger / Trace Viewer [status: pending]
 **Backlog items:** Pipeline Debugger / Trace Viewer
 
 ### Phase 3.5: CI Integration Coverage [status: pending]
 **Goal:** Run the Testcontainers-based vector-store and integration suites in CI. (Not a features.md row — quality-hardening scope.)
+
+### Phase 3.6: Email Parser Debt [status: pending]
+**Goal:** Close the two recorded email-parser debts above, both of which are behaviour changes rather than refactors. (Not a features.md row — debt carried out of Milestone 2.)
+- Retire `EmbeddedMessageMetadata.Sanitize` in favour of `Rag.NET.FileNameSanitizer`, accepting and documenting the three naming divergences.
+- Convert the embedded-message traversal from stack recursion to an explicit work queue, removing the `STATUS_STACK_OVERFLOW` class and the measured-headroom `MaxEmbeddedDepth = 64` ceiling with it.
 
 ### Phase 3.7: Retrieval Quality Benchmark Harness [status: pending]
 **Goal:** Measure retrieval quality against public benchmarks with published reference numbers, so correctness is *demonstrable* rather than asserted. (Not a features.md row — quality-hardening scope.)
@@ -193,10 +200,15 @@ Distinct from `EvaluationDatasetBuilder` (Phase 3.2), which synthesises QA pairs
 
 **Not in scope here:** comparative tables against other libraries. Legitimate and worth doing, but only credible with genuinely equivalent configuration (same embedding model, chunk size, top-k), which is a separate piece of work and the part such tables are usually attacked on.
 
-### Phase 3.6: Email Parser Debt [status: pending]
-**Goal:** Close the two recorded email-parser debts above, both of which are behaviour changes rather than refactors. (Not a features.md row — debt carried out of Milestone 2.)
-- Retire `EmbeddedMessageMetadata.Sanitize` in favour of `Rag.NET.FileNameSanitizer`, accepting and documenting the three naming divergences.
-- Convert the embedded-message traversal from stack recursion to an explicit work queue, removing the `STATUS_STACK_OVERFLOW` class and the measured-headroom `MaxEmbeddedDepth = 64` ceiling with it.
+### Phase 3.8: A/B Shadow Mode [status: pending]
+**Goal:** The production half of the A/B framework — wrap a live pipeline, return the primary answer to the caller, run the secondary out-of-band and score it. (Not a features.md row of its own; it is the deferred half of the `A/B Testing Framework` row delivered in 3.3.)
+
+Scoped out of Phase 3.3 deliberately, because it is a production-path concern with failure modes the offline harness does not have, and bolting it on would have given it none of the design attention they need:
+
+- **No ground truth.** Production traffic has no reference answer, so Context Precision and Context Recall — which *throw* on an empty `ReferenceAnswer` — cannot run at all. Only the reference-free metrics apply, and the docs must say so rather than implying all four.
+- **Doubled spend on every request**, invisible unless each variant gets its own ledger.
+- **Fire-and-forget loss.** Secondary work running out-of-band is lost on host shutdown, and a naive implementation drops it silently.
+- **The secondary must never break the primary.** `IRagPipeline.AskAsync` throws rather than returning a `Result`, so an unhandled secondary failure would surface on a request the caller had already been served.
 
 ## Milestone 4: Release Readiness (v1.0) [status: pending]
 **Goal:** Make Rag.NET shippable — CI, NuGet publishing, first-class configuration, logging, telemetry, and runnable samples.
