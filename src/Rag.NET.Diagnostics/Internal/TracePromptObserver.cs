@@ -16,8 +16,19 @@ namespace Rag.NET.Diagnostics.Internal;
 /// </para>
 /// <para>
 /// The engine calls this on both the streamed and the non-streamed path — they share
-/// <c>BuildMessagesAsync</c> — so a streamed execution traces what the model was asked even though
+/// <c>BuildMessagesAsync</c> — so a streamed execution can trace what the model was asked even though
 /// <see cref="DiagnosticsAnswerEngineDecorator"/> deliberately does not trace what it replied.
+/// </para>
+/// <para>
+/// <b>On the streamed path that depends on the host supplying an ambient activity.</b>
+/// <c>ChatAnswerEngine.AskStreamingAsync</c> assembles the prompt <i>after</i> its first
+/// <c>yield return</c>, so this runs on the consumer's execution context when the consumer calls
+/// <c>MoveNextAsync</c> — and the spans the pipeline started inside its own iterators are not ambient
+/// there, whatever they are for the rest of the pipeline. Under ASP.NET the request activity is the
+/// consumer's own and carries the trace id everything else joins on, so the prompt joins with it; in a
+/// console app or a test with no ambient activity, a streamed prompt is not captured. The chunks, the
+/// stage latencies and the commit are unaffected — they are recorded on the pipeline's own context.
+/// The non-streamed path has no suspension between the span and the prompt and always captures.
 /// </para>
 /// <para>
 /// The prompt contains the question and the retrieved chunks together, so it is gated on

@@ -14,6 +14,7 @@ namespace Rag.NET.Diagnostics.Tests;
 /// test that then checks "nothing was recorded" passes while proving nothing at all — including the
 /// tests whose whole point is that nothing was recorded.
 /// </remarks>
+[Collection(ActivityCollection.Name)]
 public sealed class StageActivityListenerTests
 {
     /// <summary>The name the pipeline's spans are emitted under; see <c>RagTelemetry.SourceName</c>.</summary>
@@ -32,11 +33,12 @@ public sealed class StageActivityListenerTests
         var activity = source.StartActivity("ragnet.retrieve");
         Assert.NotNull(activity);
 
-        var traceId = activity.TraceId.ToHexString();
         activity.Stop();
 
-        var trace = collector.Current(traceId);
-        Assert.NotNull(trace);
+        // Read from the buffer rather than from Current: a root pipeline span is the outermost one,
+        // so stopping it commits the trace and takes it out of flight. That is the retrieve-only
+        // path — nothing else would ever have committed it.
+        var trace = Assert.Single(buffer.Snapshot());
 
         var stage = Assert.Single(trace.Stages);
         Assert.Equal("ragnet.retrieve", stage.Name);
@@ -62,12 +64,15 @@ public sealed class StageActivityListenerTests
         // its parent's trace id, so the stages of one query assemble themselves.
         Assert.Equal(outer.TraceId, inner.TraceId);
 
-        var traceId = outer.TraceId.ToHexString();
         inner.Stop();
+
+        // The inner span has a pipeline span for a parent, so it is not the end of anything and must
+        // not commit. Were it to, the outer stage would land in a second trace.
+        Assert.Empty(buffer.Snapshot());
+
         outer.Stop();
 
-        var trace = collector.Current(traceId);
-        Assert.NotNull(trace);
+        var trace = Assert.Single(buffer.Snapshot());
 
         string[] expected = ["ragnet.embed", "ragnet.retrieve"];
         Assert.Equal(expected, trace.Stages.Select(s => s.Name));
@@ -91,7 +96,12 @@ public sealed class StageActivityListenerTests
         var traceId = activity.TraceId.ToHexString();
         activity.Stop();
 
+        // Both halves, and the second is not redundant. Now that stopping an outermost pipeline span
+        // commits, "Current is null" no longer means "nothing was recorded" on its own — a span that
+        // was wrongly recorded would have been committed straight out of flight and left Current null
+        // too. The buffer is where a wrongly-recorded span would show up.
         Assert.Null(collector.Current(traceId));
+        Assert.Empty(buffer.Snapshot());
     }
 
     [Fact]
@@ -109,8 +119,9 @@ public sealed class StageActivityListenerTests
         activity.Stop();
 
         // The source is shared. A span that is not a pipeline stage must not appear in a trace as
-        // though it were one.
+        // though it were one. Checked in the buffer as well — see SpansFromAnotherSource_AreNotRecorded.
         Assert.Null(collector.Current(traceId));
+        Assert.Empty(buffer.Snapshot());
     }
 
     [Fact]
@@ -133,7 +144,9 @@ public sealed class StageActivityListenerTests
         var traceId = activity.TraceId.ToHexString();
         activity.Stop();
 
+        // See SpansFromAnotherSource_AreNotRecorded for why the buffer is checked too.
         Assert.Null(collector.Current(traceId));
+        Assert.Empty(buffer.Snapshot());
     }
 
     /// <summary>A listener that samples everything from one source, so its spans are really created.</summary>

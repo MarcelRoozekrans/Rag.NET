@@ -1,11 +1,13 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Rag.NET.Diagnostics.Internal;
 
 /// <summary>
-/// Turns the stage spans the pipeline already emits into the latency breakdown of a trace.
+/// Turns the stage spans the pipeline already emits into the latency breakdown of a trace, and
+/// decides when a trace is finished.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -13,6 +15,23 @@ namespace Rag.NET.Diagnostics.Internal;
 /// <c>retrieve</c>, <c>ask</c> — are already instrumented, so the timings cost nothing beyond
 /// subscribing. Nothing is re-measured and no new instrumentation is added: a second stopwatch beside
 /// an existing span is two numbers that can disagree.
+/// </para>
+/// <para>
+/// <b>This is also what calls <see cref="ITraceCollector.Commit"/></b>, and therefore the only reason
+/// a trace ever reaches the ring buffer. The rule is <i>commit when the outermost pipeline span
+/// stops</i>: a <c>ragnet.*</c> span whose parent is not itself a <c>ragnet.*</c> span from this
+/// source is the last one of its execution, so the trace it belongs to is complete. Nothing else in
+/// the capture path can make that call — the retrieval behavior does not know whether an answer is
+/// coming, and the answer decorator never runs at all for a retrieve-only query.
+/// </para>
+/// <para>
+/// The rule reads the same in every host, which is why it is expressed against the parent rather than
+/// against a span name. Under ASP.NET the outermost <c>ragnet.query</c> hangs off the request
+/// activity — not a pipeline span, so it commits. In a console app it is a root — no parent at all, so
+/// it commits. A <c>RetrieveAsync</c> with no ask around it makes <c>ragnet.retrieve</c> the outermost
+/// span, so it commits and leaves nothing in flight. And a <c>ragnet.retrieve</c> nested inside a
+/// <c>ragnet.query</c>, or the recursive retrievals multi-query and deep-research issue, have a
+/// pipeline span for a parent and so commit nothing early.
 /// </para>
 /// <para>
 /// <b>This subscription changes sampling.</b> A listener returning <c>AllData</c> makes the pipeline's
@@ -72,7 +91,7 @@ internal sealed partial class StageActivityListener : IDisposable
     /// <summary>Unsubscribes. Spans stopped afterwards are not recorded.</summary>
     public void Dispose() => _listener.Dispose();
 
-    /// <summary>Records one finished stage span.</summary>
+    /// <summary>Records one finished stage span, and commits the trace when it was the last one.</summary>
     /// <param name="activity">The span, already stopped, so its duration is final.</param>
     /// <remarks>
     /// This runs inside the pipeline's <c>Activity.Stop()</c>, on the thread that ran the stage, so
@@ -83,17 +102,16 @@ internal sealed partial class StageActivityListener : IDisposable
     {
         try
         {
-            if (activity is null ||
-                !activity.OperationName.StartsWith(StageNamePrefix, StringComparison.Ordinal))
-            {
+            if (!IsPipelineSpan(activity))
                 return;
-            }
 
             // The same key the retrieval behavior and answer decorator correlate on:
             // Activity.TraceId as 32 lowercase hex characters. Every part of a trace joins on it,
             // which is what the audit log gets from its own generated RequestId.
+            var traceId = activity.TraceId.ToHexString();
+
             _collector.RecordStage(
-                activity.TraceId.ToHexString(),
+                traceId,
                 new TraceStage
                 {
                     Name = activity.OperationName,
@@ -103,12 +121,32 @@ internal sealed partial class StageActivityListener : IDisposable
                     StartedAt = new DateTimeOffset(activity.StartTimeUtc, TimeSpan.Zero),
                     Duration = activity.Duration,
                 });
+
+            // Committed after the stage is recorded, never before: this span's own latency belongs
+            // in the trace it is closing, and one callback keeps that order guaranteed rather than
+            // dependent on the order two listeners happened to subscribe in.
+            if (!IsPipelineSpan(activity.Parent))
+                _collector.Commit(traceId);
         }
         catch (Exception ex)
         {
             LogStageCaptureFailed(_logger, ex);
         }
     }
+
+    /// <summary>Whether an activity is one of the pipeline's own stage spans.</summary>
+    /// <param name="activity">The activity to classify. <see langword="null"/> is not one.</param>
+    /// <returns><see langword="true"/> for a <c>ragnet.*</c> span from the <c>Rag.NET</c> source.</returns>
+    /// <remarks>
+    /// Applied to the stopped span and to its parent, which is what makes the commit rule work.
+    /// <see cref="ActivityListener.ShouldListenTo"/> has already filtered the stopped span by source,
+    /// but a parent can come from anywhere — under ASP.NET it is the request activity — so the source
+    /// is checked here rather than assumed.
+    /// </remarks>
+    private static bool IsPipelineSpan([NotNullWhen(true)] Activity? activity) =>
+        activity is not null
+        && string.Equals(activity.Source.Name, SourceName, StringComparison.Ordinal)
+        && activity.OperationName.StartsWith(StageNamePrefix, StringComparison.Ordinal);
 
     [LoggerMessage(
         Level = LogLevel.Warning,

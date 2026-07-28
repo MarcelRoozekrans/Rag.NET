@@ -23,7 +23,9 @@ namespace Rag.NET.Diagnostics;
 /// has finished reading it, so an observer would change the memory profile of the stream it is
 /// observing. The prompt seam covers streaming instead — see <c>IPromptObserver</c>, which
 /// <c>ChatAnswerEngine</c> calls on both paths — so a streamed execution still traces what the model
-/// was asked, just not what it replied.
+/// was asked, just not what it replied. That cover is conditional: see
+/// <see cref="Internal.TracePromptObserver"/> for why a streamed prompt only joins when the host
+/// supplies an ambient activity. A streamed trace always holds its chunks and stage latencies.
 /// </para>
 /// <para>
 /// The answer text is passed through unredacted and untruncated; the collector owns the content gate.
