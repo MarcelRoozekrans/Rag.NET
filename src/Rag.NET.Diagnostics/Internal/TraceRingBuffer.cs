@@ -17,7 +17,7 @@ namespace Rag.NET.Diagnostics.Internal;
 /// nothing measurable, on a path that only runs when someone has turned diagnostics on.
 /// </para>
 /// </remarks>
-internal sealed class TraceRingBuffer
+internal sealed class TraceRingBuffer : ITraceStore
 {
     private readonly Lock _gate = new();
     private readonly RagTrace?[] _slots;
@@ -54,11 +54,7 @@ internal sealed class TraceRingBuffer
         }
     }
 
-    /// <summary>Copies out the retained traces, newest first.</summary>
-    /// <returns>
-    /// A point-in-time copy. A reader iterating it will not see writes that happened afterwards,
-    /// which is what makes it safe to walk a trace list while the pipeline keeps serving.
-    /// </returns>
+    /// <inheritdoc/>
     public IReadOnlyList<RagTrace> Snapshot()
     {
         lock (_gate)
@@ -72,13 +68,7 @@ internal sealed class TraceRingBuffer
         }
     }
 
-    /// <summary>Finds a retained trace by its id.</summary>
-    /// <param name="traceId">The id to look for.</param>
-    /// <param name="trace">The trace, when one is still retained.</param>
-    /// <returns>
-    /// <see langword="false"/> when no such trace is held — including when it was held and has since
-    /// been evicted, which the caller cannot distinguish and does not need to.
-    /// </returns>
+    /// <inheritdoc/>
     public bool TryGet(string traceId, [NotNullWhen(true)] out RagTrace? trace)
     {
         ArgumentNullException.ThrowIfNull(traceId);
