@@ -14,7 +14,7 @@
 
 ## Conventions that will fail the build if ignored
 
-- **Warnings are errors.** MA0051 (methods ≤ 60 lines), MA0015 (`paramName`), MA0048 (file name matches type name), ZA0601/ZA0501 (no LINQ/boxing in hot loops), EPS05/EPS06, **HLQ012 (no `foreach` over `List<T>`)**, HLQ013 (`foreach` not `for` over arrays).
+- **Warnings are errors.** MA0051 (methods ≤ 60 lines), MA0015 (`paramName`), MA0048 (file name matches type name), **MA0006 (`string.Equals` not `==`)**, ZA0601/ZA0501 (no LINQ/boxing in hot loops), EPS05/EPS06, **HLQ012 (no `foreach` over `List<T>`)**, HLQ013 (`foreach` not `for` over arrays).
 - **No new `#pragma` or `SuppressMessage`.** Neither evaluation project has any; keep it that way.
 - xUnit v3: always `TestContext.Current.CancellationToken`.
 - **No sleeps in tests.** Signal with `TaskCompletionSource` and bounded `WaitAsync`.
@@ -330,22 +330,24 @@ Use NSubstitute for `IRagPipeline` where a canned response suffices; hand-write 
 
 ### Task C1: `RagAbTester` and `AbReport`
 
-**Files:**
-- Create: `src/Rag.NET.Evaluation/RagAbTester.cs`
+**Files** (corrected during implementation — see *What this task got wrong* below):
+- Create: `src/Rag.NET.Evaluation.Ragas/RagAbTester.cs`
 - Create: `src/Rag.NET.Evaluation/AbReport.cs`
+- Create: `src/Rag.NET.Evaluation/AbMetricComparison.cs`
+- Create: `src/Rag.NET.Evaluation/AbLatencyComparison.cs`
 - Create: `src/Rag.NET.Evaluation/AbOptions.cs`
-- Test: `tests/Rag.NET.Evaluation.Tests/RagAbTesterTests.cs`
+- Test: `tests/Rag.NET.Evaluation.Tests/Ragas/RagAbTesterTests.cs`
 
 Flow:
 1. `AbRunner` executes the dataset, alternating, timing each variant.
-2. For each variant, project the runs into `EvaluationSample`s:
-   `new EvaluationSample(sample.Question, response.Answer, sample.ReferenceAnswer, response.Sources.Select(s => s.Chunk.Text).ToList())`.
-   Note `RagResponse` exposes **`Sources`** (`IReadOnlyList<SearchResult>`), not `SourceChunks` — a stale guide snippet used the wrong name for months, so check the member rather than trusting prose.
-3. Score each variant with the caller-supplied `RagasEvaluationSuite` (or `IRagEvaluator`). `RagasReport.Samples` is documented as being in input order, so index *i* in one variant's report pairs with index *i* in the other.
+2. For each variant, project the **comparable** runs into `EvaluationSample`s:
+   `new EvaluationSample(sample.Question, response.Answer, sample.ReferenceAnswer, <texts of response.Sources>)`.
+   Note `RagResponse` exposes **`Sources`** (`IReadOnlyList<SearchResult>`), not `SourceChunks` — a stale guide snippet used the wrong name for months, so check the member rather than trusting prose. `EvaluationSample`'s fourth *parameter* is the one called `SourceChunks`, which is where that confusion came from. Read `Chunk.Text`, not `CompressedText`: the metrics judge the context that was retrieved, and a variant that compresses harder would otherwise be scored against a shorter context than it fetched.
+3. Score each variant with the caller-supplied `RagasEvaluationSuite`. `RagasReport.Samples` is in input order — verified in `RagasEvaluationSuite.Aggregate.Add`, which appends one entry per sample as `EvaluateAsync` walks the input sequentially, and pinned by `RagasEvaluationSuiteTests.EvaluateAsync_ReportsEverySampleInInputOrder`. So index *i* in one variant's report pairs with index *i* in the other.
 4. For each metric, pair the per-sample scores, drop pairs where either side is `null` **or** the run was not comparable, and feed the deltas to `AbStatistics`.
 5. Build `AbReport`.
 
-`AbOptions` carries `Seed` (for the bootstrap), `BootstrapResamples` (default 2000), and `TieEpsilon` (default 1e-9). Document `Seed` the way `EvaluationDatasetBuilderOptions.Seed` is documented: what it fixes and what it does not — it makes the *interval* reproducible given the same deltas; it does not make the pipelines or the judge deterministic.
+`AbOptions` carries `Seed` (for the bootstrap, `int?` — null draws fresh), `BootstrapResamples` (default 2000), and `TieEpsilon` (default 1e-9). Document `Seed` the way `EvaluationDatasetBuilderOptions.Seed` is documented: what it fixes and what it does not — it makes the *interval* reproducible given the same deltas; it does not make the pipelines or the judge deterministic.
 
 `AbReport` per metric: each variant's mean, the mean delta, the tally, the CI, and **how many pairs were dropped and why** (run failure vs unscoreable). Plus per-variant latency p50/p95 and the latency delta with its own CI, and cost when ledgers were supplied.
 
@@ -354,7 +356,20 @@ Flow:
 - Identical variants → mean delta ~0, CI spans zero. **This is the test that stops the framework manufacturing winners.**
 - A metric returning `null` for one variant on one sample → that pair dropped, counted, and the others unaffected.
 - A variant throwing on one sample → that sample dropped from *every* metric, counted separately from unscoreable.
-- No comparable pairs at all → means and CI are `null`, not `0.0`, and the report says how many were dropped.
+- No pair scoreable for a metric → its means and CI are `null`, not `0.0`, and the drop count says why.
+- No sample comparable at all → no metric rows, and `RunFailures` says why (see error 4).
+
+#### What this task got wrong
+
+Seven corrections, found by checking the plan against real source:
+
+1. **`RagAbTester` cannot live in `Rag.NET.Evaluation`.** `Rag.NET.Evaluation.Ragas` has a `ProjectReference` to `Rag.NET.Evaluation`, so a tester in `Rag.NET.Evaluation` that takes a `RagasEvaluationSuite` is a reference cycle. The composition root moves to `Rag.NET.Evaluation.Ragas`; the report model (`AbReport`, `AbMetricComparison`, `AbLatencyComparison`, `AbOptions`) stays in `Rag.NET.Evaluation` beside `AbVariant`, so it owes nothing to RAGAS and Phase 3.8 can reuse it. `features.md` names one package for this row and now needs two — Part D must say so.
+2. **"(or `IRagEvaluator`)" is not an option.** `IRagEvaluator.EvaluateAsync` returns `EvaluationResult(double MeanScore, IReadOnlyList<double> Scores)`: one unnamed, non-nullable score per sample, no metric breakdown, no way to express unscoreable. Per-metric pairing is impossible through it. `RagasReport.Samples` is the only per-sample-per-metric source in the stack.
+3. **Which mean.** "each variant's mean" is ambiguous and one reading is wrong: `RagasReport.Faithfulness` and friends are each taken over the samples *that variant* could score, so whenever a pair is dropped they are means over different sample sets and `MeanB - MeanA` disagrees with `MeanDelta` in the same report. `MeanA`/`MeanB` are taken over exactly the compared pairs.
+4. **"No comparable pairs at all → means and CI are `null`" cannot hold when *no run* is comparable.** `RagasEvaluationSuite.EvaluateAsync` throws `ArgumentException("At least one sample is required.")` on an empty list, and the metric names come from the suite's own report — so with nothing to score there is no metric to report a null for. Two distinct cases: no *pair* scoreable for a metric (null means and CI, `DroppedAsUnscoreable` says why), and no *sample* comparable at all (empty `Metrics`, `RunFailures` says why).
+5. **`Seed` is `int?`, not `int`.** The `EvaluationDatasetBuilderOptions.Seed` precedent the plan points at uses nullable, with null meaning "fresh every run".
+6. **MA0006 is missing from the conventions list.** `==` on strings is an error in this repo; it fired three times in the test file. Add it to the list at the top alongside MA0051/MA0015/MA0048.
+7. **`.Select(...).ToList()` in the projection.** Written out as an index loop over `IReadOnlyList<SearchResult>` instead, consistent with how Parts A and B avoided LINQ in the same layer.
 
 **Commit:** `feat(evaluation): RagAbTester with paired reporting`
 
