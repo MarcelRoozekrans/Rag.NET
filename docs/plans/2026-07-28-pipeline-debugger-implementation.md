@@ -290,6 +290,14 @@ The invasive part. `ChatAnswerEngine` assembles the prompt and nothing observes 
 
 Keep the change to `ChatAnswerEngine` under ten lines and behaviour-identical when no sink is registered. **`Rag.NET.Tests` must stay at 1308 with no test edited**; if a test needs changing, the seam is too invasive — stop and reconsider.
 
+> **Done, at three lines of code plus a four-line comment.** `IPromptObserver` in `src/Rag.NET.Abstractions/Abstractions/`, an optional trailing constructor parameter on `ChatAnswerEngine`, one more `GetService` in `CreateFromServices`, and one `promptObserver?.OnPromptAssembled(messages)`. `Rag.NET.Tests` stayed at **1308** with nothing edited: an optional trailing parameter is source-compatible with every existing construction.
+>
+> **Both `ragnet.ask` call sites capture, from one call site in code.** `AskAsync` and `AskStreamingAsync` each open their own `ragnet.ask` span and then both call `BuildMessagesAsync` inside it, so putting the seam at the end of that method covers both paths, cannot drift apart from itself, and needs no duplicated line at either caller. It also gives the streamed path the only capture it gets — `DiagnosticsAnswerEngineDecorator` deliberately does not record streamed answers, because buffering one to record it would change the memory profile of the stream being observed.
+>
+> **The seam passes `IReadOnlyList<ChatMessage>`, not a string.** Flattening a prompt is a decision about how it should be read, it cannot be undone by the observer afterwards, and the engine has no business making it for a package it knows nothing about — so `TracePromptObserver` in the diagnostics package renders it, keeping the roles. This commits nothing new to the public surface: `RagOptions.ConversationHistory` already exposes `ChatMessage`, and `Rag.NET.Abstractions` already references `Microsoft.Extensions.AI.Abstractions`.
+>
+> Note that the prompt is therefore filed under **`ragnet.ask`**'s trace id while the chunks are filed under **`ragnet.retrieve`**'s. Those are the same id only when the host supplies an ambient activity for both spans to descend from — see the B3 note.
+
 **Commit:** `feat(diagnostics): observe the assembled prompt`
 
 ---
