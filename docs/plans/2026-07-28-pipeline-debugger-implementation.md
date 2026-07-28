@@ -355,7 +355,7 @@ Every code sample must compile against the real API. Verify by pasting into a th
 ## Final verification
 
 1. `dotnet build Rag.NET.slnx` → 0 Warning(s), 0 Error(s).
-2. All suites at or above baseline; report every count. `Rag.NET.Tests` must be **exactly 1308** with no test edited — B5 is the only task touching existing production code.
+2. All suites at or above baseline; report every count. `Rag.NET.Tests` must be **exactly 1308** with no test edited. B5 is *not* the only task touching existing production code, as the note under C1 already records: `RagPipeline` also gains the `ragnet.query` span that encloses retrieval and answer generation, without which nothing can tell when a query is over.
 3. The four content-default mutations from B1, and the eviction mutation from A2.
 4. No `#pragma`/`SuppressMessage` anywhere in the diff.
 5. `docs/planning/ROADMAP.md` and `MILESTONE.md` flip to complete **after** the whole-phase review — both files, per the `73472b4` precedent.
