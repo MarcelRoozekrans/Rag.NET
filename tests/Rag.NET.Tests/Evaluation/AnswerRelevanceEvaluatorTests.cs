@@ -8,6 +8,17 @@ namespace Rag.NET.Tests.Evaluation;
 
 public class AnswerRelevanceEvaluatorTests
 {
+    /// <summary>Answers "no" to the evasion check, then returns three questions as one array.</summary>
+    private static IChatClient CooperativeClient()
+    {
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, "no")),
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, "[\"Q1?\",\"Q2?\",\"Q3?\"]")));
+        return client;
+    }
+
     private static IEmbeddingGenerator<string, Embedding<float>> MakeEmbedder(float[] vector)
     {
         var gen = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
@@ -26,13 +37,8 @@ public class AnswerRelevanceEvaluatorTests
     [Fact]
     public async Task ScoreAsync_IdenticalEmbeddings_ReturnsOne()
     {
-        var client = Substitute.For<IChatClient>();
-        // Returns 3 synthetic questions (one per call)
-        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(
-                new ChatResponse(new ChatMessage(ChatRole.Assistant, "Q1?")),
-                new ChatResponse(new ChatMessage(ChatRole.Assistant, "Q2?")),
-                new ChatResponse(new ChatMessage(ChatRole.Assistant, "Q3?")));
+        // Call 1: not evasive. Call 2: all 3 synthetic questions, as one JSON array.
+        var client = CooperativeClient();
 
         // All embeddings identical → cosine = 1.0
         var embedder = MakeEmbedder([1f, 0f, 0f]);
@@ -41,18 +47,13 @@ public class AnswerRelevanceEvaluatorTests
 
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(1.0, score, precision: 2);
+        Assert.Equal(1.0, score!.Value, precision: 2);
     }
 
     [Fact]
     public async Task ScoreAsync_OrthogonalEmbeddings_ReturnsZero()
     {
-        var client = Substitute.For<IChatClient>();
-        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(
-                new ChatResponse(new ChatMessage(ChatRole.Assistant, "Q1?")),
-                new ChatResponse(new ChatMessage(ChatRole.Assistant, "Q2?")),
-                new ChatResponse(new ChatMessage(ChatRole.Assistant, "Q3?")));
+        var client = CooperativeClient();
 
         var totalEmbeddings = 0;
         var gen = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
@@ -76,6 +77,6 @@ public class AnswerRelevanceEvaluatorTests
 
         var score = await evaluator.ScoreAsync(sample, TestContext.Current.CancellationToken);
 
-        Assert.Equal(0.0, score, precision: 2);
+        Assert.Equal(0.0, score!.Value, precision: 2);
     }
 }

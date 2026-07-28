@@ -30,23 +30,42 @@ greenfield Phase 3.1 and 3.2 work. They are not greenfield: `src/Rag.NET.Evaluat
 (four metrics, suite, report) and `src/Rag.NET.Evaluation/EvaluationDatasetBuilder.cs` landed on
 2026-04-11, three months before the ROADMAP was written, with a design doc and a plan.
 
-What they do not have is **any test coverage or documentation**.
-`tests/Rag.NET.Evaluation.Tests` covers `EmbeddingDistanceEvaluator`, `JudgeCriterion`,
-`LlmJudgeEvaluator` and `LlmJudgeResult` — nothing else. `docs/guide/evaluation.md` has no
-section for either. So the matrix row was the honest one: the code shipped, the feature did not.
+**Correction (2026-07-27, found during Phase 3.1 Parts C and D).** This section originally said
+both features had **no test coverage and no documentation**. Both claims were wrong, and they
+share a cause: a truncated or narrowly-scoped search read as an exhaustive one.
 
-This matters more than an ordinary coverage gap. An evaluator that is wrong does not fail
-loudly — it returns a plausible number, and a plausible number is indistinguishable from a
-correct one without a test that pins the definition. Anything scored by this code until now
-should be treated as unverified.
+- `tests/Rag.NET.Tests/Evaluation/` holds seven files and roughly 620 lines covering all four
+  metrics, the suite and the dataset builder. The search was scoped to test *projects* matching
+  `*Evaluation*` and missed a subfolder of the main test project.
+- `docs/guide/evaluation.md` already carried a RAGAS section of about 160 lines. The heading
+  survey that missed it was truncated at 20 results and stopped short of them.
+
+The reality is worse than the claim it replaces, and it sharpens why this milestone exists. The
+feature did not look half-finished from any angle: it had a suite, a guide section and a `Done`
+marker, and **all three agreed with each other and were wrong together**. The guide stated
+`precision = relevant / total` as the definition of Context Precision, which is not the RAGAS
+metric. The tests certified the defects — `ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully`
+asserts that an unreadable model reply scores `1.0`, the best possible value, and calls it
+*"gracefully"*; `ScoreAsync_EmptySourceChunks_ReturnsZero` asserts that "nothing was retrieved"
+means "retrieval was maximally bad".
+
+The only signal that anything was wrong was an unchecked checkbox.
+
+That changes the shape of the work but not its necessity: these phases must **rewrite existing
+assertions and an existing guide section**, not merely add missing ones — exactly the kind of
+change nobody makes by accident.
+
+An evaluator that is wrong does not fail loudly. It returns a plausible number, and a plausible
+number is indistinguishable from a correct one whether nothing tests it or a test agrees with it.
+Anything scored by this code until now should be treated as unverified.
 
 **Consequence:** 3.1 and 3.2 are completion phases — audit against the metric definitions, fix
-what is wrong, test, document, reconcile `features.md`. Assume nothing works until a test says
-so.
+what is wrong, re-point the tests that pin the old behaviour, document, reconcile `features.md`.
+Assume nothing works until a test says so *and the test is right*.
 
 ## Phases
 
-1. Phase 3.1 — RAGAS Metrics: verify, test, document [pending]
+1. Phase 3.1 — RAGAS Metrics: verify, test, document [complete — 2026-07-28]
 2. Phase 3.2 — Evaluation Dataset Builder: verify, test, document [pending]
 3. Phase 3.3 — A/B Testing Framework [pending]
 4. Phase 3.4 — Pipeline Debugger / Trace Viewer [pending]

@@ -143,13 +143,23 @@ future reader can tell the difference between "never existed" and "dealt with".
 > **Correction (2026-07-27).** This milestone was scoped from the unchecked rows in
 > features.md, but that file contradicted itself: RAGAS-Style Metrics and Evaluation Dataset
 > Builder are marked `✅ Done` in their detail sections while their matrix rows read `[ ]`. Both
-> shipped on 2026-04-11 — three months before this ROADMAP was written — with **no tests and no
-> documentation**. The matrix row was the honest one. 3.1 and 3.2 are therefore completion
-> phases, not greenfield ones.
+> shipped on 2026-04-11 — three months before this ROADMAP was written — with tests **and** a
+> guide section that both describe the defective behaviour as correct. The guide gave
+> `precision = relevant / total` as the definition of Context Precision, which is not the RAGAS
+> metric, and `ScoreAsync_MalformedClaimsJson_ReturnsOneGracefully` asserts that an unreadable
+> model reply scores the best possible value. The matrix row was the honest one, and the only
+> signal. 3.1 and 3.2 are therefore completion phases, not greenfield ones, and they must rewrite
+> existing assertions and documentation rather than only add missing ones.
+>
+> Corrected twice, 2026-07-27: this note first said "no tests", then "undocumented". Both were
+> wrong. The tests live in `tests/Rag.NET.Tests/Evaluation/` (a subfolder of the main test
+> project) and the docs in `docs/guide/evaluation.md`; both were missed by searches that were
+> scoped too narrowly or truncated, and read as exhaustive.
 
-### Phase 3.1: RAGAS Metrics — verify, test, document [status: pending]
+### Phase 3.1: RAGAS Metrics — verify, test, document [status: complete]
 **Backlog items:** RAGAS-Style Metrics
-**Scope:** audit the four existing evaluators in `src/Rag.NET.Evaluation.Ragas` against the metric definitions, fix what is wrong, add deterministic test coverage, document them in `docs/guide/evaluation.md`, and reconcile features.md. An untested evaluator returns plausible numbers rather than failing loudly, so treat every score produced so far as unverified.
+**Plan:** `docs/plans/2026-07-27-ragas-verification-design.md` + `-implementation.md`
+**Completed:** 2026-07-28 (Context Precision was not the RAGAS metric — it ignored rank, scoring a retriever that returns the gold chunk first identically to one that returns it last; it is now rank-aware average precision. A malformed model reply scored 1.0, the best possible value, in two duplicated copies — the plumbing is now shared and an unreadable reply makes a sample unscoreable rather than perfect. Answer Relevance gained the noncommittal penalty and genuinely distinct synthetic questions, and its score is clamped. Also: a shared per-run concurrency ceiling replacing unbounded fan-out, per-sample results, chat and embedding cost recording, and a rewritten guide section. Scores changed; the guide says so.)
 
 ### Phase 3.2: Evaluation Dataset Builder — verify, test, document [status: pending]
 **Backlog items:** Evaluation Dataset Builder

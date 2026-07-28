@@ -689,20 +689,22 @@ Automatic conversation history management for multi-turn RAG. `ConversationMemor
 ## Evaluation
 
 ### RAGAS-Style Metrics
-**Package:** `Rag.NET.Evaluation`
+**Package:** `Rag.NET.Evaluation.Ragas`
 
-Implement the four core RAGAS metrics as `IRagEvaluator` implementations alongside the existing `LlmJudgeEvaluator`:
+The four core RAGAS metrics alongside the existing `LlmJudgeEvaluator`:
 
-- **Faithfulness** — are all claims in the answer supported by the retrieved chunks? LLM extracts atomic claims and verifies each against sources.
-- **Answer Relevance** — does the answer address the question? Generate `n` synthetic questions from the answer, embed them, average cosine similarity to the original question embedding.
-- **Context Precision** — are the retrieved chunks relevant? LLM classifies each chunk as relevant/irrelevant to the ground-truth answer; precision = relevant / total.
-- **Context Recall** — do the retrieved chunks cover the ground-truth answer? LLM maps each ground-truth statement to a supporting chunk; recall = covered / total.
+- **Faithfulness** — are all claims in the answer supported by the retrieved chunks? LLM extracts atomic claims and verifies each against sources; score = supported / readable verdicts.
+- **Answer Relevance** — does the answer address the question? One call generates `n` distinct synthetic questions from the answer; the mean cosine similarity to the original question embedding is clamped to `[0, 1]`. An evasive or noncommittal answer scores `0.0`.
+- **Context Precision** — were the relevant chunks ranked highly? LLM classifies each chunk against the ground-truth answer, scored as rank-aware average precision `Σ(P@k × rel_k) / total_relevant` over the retrieved order.
+- **Context Recall** — do the retrieved chunks cover the ground-truth answer? LLM verifies each ground-truth statement against the chunks; score = supported / readable verdicts.
 
-Each metric is a standalone `IRagEvaluator<T>` so they can be composed into a `RagasEvaluationSuite` that runs all four concurrently and returns a `RagasReport` with per-metric scores and an overall score.
+Each metric implements the **internal** `IRagasMetric` — unrelated to `IRagEvaluator` — so suite composition is closed: `RagasEvaluationSuite`'s constructor is internal and `RagasEvaluationSuiteBuilder` exposes four fixed `Add*` methods. Custom metric registration is a deliberate non-goal. What *is* open is standalone use: each evaluator class is public with a public `ScoreAsync`, so any one of them can be constructed and called on its own.
+
+The suite runs the registered metrics concurrently per sample and returns a `RagasReport` carrying per-metric means, an overall score, per-sample scores, and an unscoreable count per metric. Every score is nullable: a sample the model gave no readable verdict for is excluded from the mean rather than scored, and a metric — or a whole run — with nothing scoreable reports `null` rather than `0.0`. All metrics in a run share one judge, so `RagasOptions.MaxConcurrentCalls` bounds the whole run rather than each metric, and an optional `ICostLedger` records the run's spend — `CostKind.Chat` per judgement call and `CostKind.Embedding` for Answer Relevance's embedding batch.
 
 **Why:** LLM-as-judge grades answer quality holistically. RAGAS metrics decompose quality into retrieval and generation components — essential for pinpointing whether failures are retrieval misses or generation errors.
 
-**Status:** ✅ Done
+**Status:** ✅ Done — verified against the published RAGAS definitions, pinned by tests, and documented in [the evaluation guide](../guide/evaluation.md#ragas-style-metrics) in Phase 3.1. Scores changed in that phase (rank-aware precision, the evasion penalty, and no fabricated `1.0` on a parse failure); re-baseline before comparing against older runs. Chat and embedding spend are both recorded to the cost ledger, priced from `RagasOptions`.
 
 ---
 
@@ -1051,7 +1053,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | EPUB Parser | Low | `VersOne.Epub` |
 | [x] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
 | [x] | Linear Issue Tracker | Low | Linear GraphQL API |
-| [ ] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
+| [x] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
 | [ ] | Evaluation Dataset Builder | Medium | `IChatClient` |
 | [ ] | A/B Testing Framework | Medium | `IRagEvaluator` |
 | [x] | Weaviate Vector Store | Medium | REST + GraphQL via `ZeroAlloc.Rest` |

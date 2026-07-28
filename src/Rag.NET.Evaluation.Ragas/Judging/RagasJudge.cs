@@ -1,0 +1,199 @@
+using System.Text.Json;
+using Microsoft.Extensions.AI;
+using Rag.NET.Abstractions;
+using Rag.NET.Models;
+
+namespace Rag.NET.Evaluation.Ragas.Judging;
+
+/// <summary>
+/// Owns every LLM interaction the RAGAS metrics need: prompting, parsing, throttling and cost.
+/// </summary>
+/// <remarks>
+/// Exists so the metrics themselves are arithmetic over judgement arrays. Before Phase 3.1 each
+/// evaluator carried its own copy of this plumbing, which is how the same JSON-parse defect came
+/// to exist twice and the same brittle verdict parsing three times.
+/// </remarks>
+/// <param name="chatClient">The model asked for judgements.</param>
+/// <param name="options">Run tuning: the shared concurrency ceiling and the token prices.</param>
+/// <param name="costLedger">Optional ledger; when absent, nothing is billed.</param>
+internal sealed class RagasJudge(
+    IChatClient chatClient,
+    RagasOptions options,
+    ICostLedger? costLedger = null)
+{
+    private readonly SemaphoreSlim _gate = new(
+        options.MaxConcurrentCalls > 0
+            ? options.MaxConcurrentCalls
+            : throw new ArgumentOutOfRangeException(nameof(options), "MaxConcurrentCalls must be at least 1."));
+
+    /// <summary>Asks for a yes/no judgement.</summary>
+    /// <param name="systemPrompt">The instruction that frames the judgement.</param>
+    /// <param name="userPrompt">The material being judged.</param>
+    /// <param name="cancellationToken">Token to cancel the call.</param>
+    public async Task<Verdict> ClassifyAsync(
+        string systemPrompt, string userPrompt, CancellationToken cancellationToken)
+    {
+        var reply = await CompleteAsync(systemPrompt, userPrompt, cancellationToken).ConfigureAwait(false);
+        return ParseVerdict(reply);
+    }
+
+    /// <summary>Judges many items under the shared concurrency ceiling, preserving input order.</summary>
+    /// <param name="systemPrompt">The instruction that frames every judgement.</param>
+    /// <param name="items">The items to judge, in the order the result must preserve.</param>
+    /// <param name="toUserPrompt">Builds the user prompt for one item.</param>
+    /// <param name="cancellationToken">Token to cancel the calls.</param>
+    public async Task<IReadOnlyList<Verdict>> ClassifyManyAsync(
+        string systemPrompt,
+        IReadOnlyList<string> items,
+        Func<string, string> toUserPrompt,
+        CancellationToken cancellationToken)
+    {
+        var tasks = new Task<Verdict>[items.Count];
+        for (var i = 0; i < items.Count; i++)
+            tasks[i] = ClassifyAsync(systemPrompt, toUserPrompt(items[i]), cancellationToken);
+
+        return await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+
+    /// <summary>Asks for a JSON array of strings, distinguishing "empty" from "unreadable".</summary>
+    /// <param name="systemPrompt">The instruction that asks for the array.</param>
+    /// <param name="userPrompt">The material to extract from.</param>
+    /// <param name="cancellationToken">Token to cancel the call.</param>
+    public async Task<ExtractionResult> ExtractListAsync(
+        string systemPrompt, string userPrompt, CancellationToken cancellationToken)
+    {
+        var reply = await CompleteAsync(systemPrompt, userPrompt, cancellationToken).ConfigureAwait(false);
+        var payload = StripCodeFence(reply);
+        if (string.IsNullOrWhiteSpace(payload))
+            return ExtractionResult.Failed();
+
+        try
+        {
+            var items = JsonSerializer.Deserialize(payload, RagJsonSerializerContext.Default.ListString);
+
+            // A null element is a half-produced reply, not a datum. Filtering it silently would
+            // hand the caller an empty claim the model then answers arbitrarily, and that verdict
+            // would land in the denominator — the fabricated score this phase exists to remove,
+            // re-entering through a different door.
+            return items is null || items.Exists(static item => item is null)
+                ? ExtractionResult.Failed()
+                : ExtractionResult.Success(items);
+        }
+        catch (JsonException)
+        {
+            return ExtractionResult.Failed();
+        }
+    }
+
+    /// <summary>
+    /// Removes a markdown fence wrapping the whole reply, if there is one.
+    /// </summary>
+    /// <remarks>
+    /// Models emit fenced JSON constantly outside structured-output mode. Rejecting it is honest —
+    /// the sample is excluded rather than wrongly scored — but against a fence-happy model it makes
+    /// most samples unscoreable and the metric report <c>null</c>, which reads as a broken library.
+    /// <para>
+    /// Deliberately narrow. No attempt is made to salvage JSON from the middle of a reply by
+    /// scanning for the first <c>[</c> and the last <c>]</c>: that would start scoring replies the
+    /// model never intended as JSON, which is guessing.
+    /// </para>
+    /// </remarks>
+    private static string StripCodeFence(string reply)
+    {
+        const string Fence = "```";
+
+        var trimmed = reply.Trim();
+        if (trimmed.Length <= (Fence.Length * 2) ||
+            !trimmed.StartsWith(Fence, StringComparison.Ordinal) ||
+            !trimmed.EndsWith(Fence, StringComparison.Ordinal))
+            return trimmed;
+
+        // Whatever sits between the opening fence and the first line break is the language tag,
+        // if any. Without a line break this is not the fenced shape we accept.
+        var inner = trimmed[Fence.Length..^Fence.Length];
+        var lineBreak = inner.IndexOf('\n');
+        return lineBreak < 0 ? trimmed : inner[(lineBreak + 1)..].Trim();
+    }
+
+    /// <summary>
+    /// Exact match after trimming whitespace and the punctuation models decorate a one-word answer
+    /// with. Anything else is <see cref="Verdict.Unparseable"/> rather than a guess.
+    /// </summary>
+    /// <remarks>
+    /// The trim set covers <c>**Yes**</c> and <c>"yes"</c> — markdown emphasis and the quotes a
+    /// model leaves behind when it half-honours a JSON instruction. Every verdict wrongly rejected
+    /// shrinks the denominator, which is its own way of producing a quietly wrong number. It stops
+    /// well short of prose: <c>Yes, but only partially.</c> stays unparseable, because it is.
+    /// </remarks>
+    private static Verdict ParseVerdict(string reply)
+    {
+        var trimmed = reply.Trim().Trim('.', '!', '*', '"', ',', ':', ' ');
+        if (string.Equals(trimmed, "yes", StringComparison.OrdinalIgnoreCase))
+            return Verdict.Yes;
+
+        return string.Equals(trimmed, "no", StringComparison.OrdinalIgnoreCase)
+            ? Verdict.No
+            : Verdict.Unparseable;
+    }
+
+    private async Task<string> CompleteAsync(
+        string systemPrompt, string userPrompt, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var messages = new List<ChatMessage>
+            {
+                new(ChatRole.System, systemPrompt),
+                new(ChatRole.User, userPrompt),
+            };
+
+            var response = await chatClient
+                .GetResponseAsync(messages, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            await RecordCostAsync(response, cancellationToken).ConfigureAwait(false);
+            return response.Messages.LastOrDefault()?.Text?.Trim() ?? string.Empty;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async Task RecordCostAsync(ChatResponse response, CancellationToken cancellationToken)
+    {
+        // No usage reported means no honest entry to write. Recording zero tokens would state as
+        // fact that the call was free.
+        //
+        // Both counters must be provider-reported, not just the Usage object. A provider that
+        // returns an empty UsageDetails, or fills only one side, would otherwise get an entry
+        // claiming zero tokens and zero cost — and a partially-reported call is worse than an
+        // empty one, because it understates spend rather than merely stating none. Mixing a
+        // reported side with an assumed one skews the ledger silently. Same reasoning as
+        // CostTrackingChatClient, and as the embedding path in AnswerRelevanceEvaluator.
+        if (costLedger is null ||
+            response.Usage is not { InputTokenCount: { } input, OutputTokenCount: { } output })
+        {
+            return;
+        }
+
+        var entry = new CostEntry
+        {
+            Kind = CostKind.Chat,
+            InputTokens = input,
+            OutputTokens = output,
+            Cost = (input * options.PricePerInputToken) + (output * options.PricePerOutputToken),
+        };
+
+        try
+        {
+            await costLedger.RecordAsync(entry, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Billing visibility must never break an evaluation run: the judgement has already
+            // been paid for, and failing it here would lose the result over a bookkeeping error.
+        }
+    }
+}
