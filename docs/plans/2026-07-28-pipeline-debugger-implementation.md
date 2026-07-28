@@ -19,7 +19,7 @@ This phase is mostly a **join**, not a new tracing system. Building a parallel c
 | Thing | Where | Use it for |
 |---|---|---|
 | Stage spans `ragnet.{ingest,parse,chunk,embed,store,retrieve,ask}` | `src/Rag.NET/Telemetry/RagTelemetry.cs` | latency breakdown, free via `ActivityListener` |
-| `AuditChunkRef` (`DocumentId`, `ChunkIndex`, `Score`) | `src/Rag.NET.Security/Audit/AuditChunkRef.cs` | **reuse**, do not redefine |
+| `AuditChunkRef` (`DocumentId`, `ChunkIndex`, `Score`) | `src/Rag.NET.Security/Audit/AuditChunkRef.cs` | **mirror its field names**; do not reference it — see the note below |
 | `AuditRetrievalBehavior` | `src/Rag.NET.Security/Audit/` | **mirror its shape** for the diagnostics behavior |
 | `AuditAnswerEngineDecorator` | `src/Rag.NET.Security/Audit/` | mirror for the answer decorator |
 | `LogQueryText` / `LogAnswerText` | `src/Rag.NET.Security/Audit/AuditLogOptions.cs` | the naming the new `Capture*` flags parallel |
@@ -69,11 +69,21 @@ Pure and bounded, so it is table-testable with no pipeline. Same reason `RagasMa
 - Create: `src/Rag.NET.Diagnostics/Rag.NET.Diagnostics.csproj`
 - Modify: `Rag.NET.slnx`
 
-`RagTrace` carries: `TraceId`, `StartedAt`, `Query` (nullable — only when content capture is on), `QueryHash` (always), `Chunks` (`IReadOnlyList<AuditChunkRef>` — **reused**, plus an optional parallel text list), `GuardActions`, `Stages`, `Prompt` (nullable), `Answer` (nullable).
+`RagTrace` carries: `TraceId`, `StartedAt`, `Query` (nullable — only when content capture is on), `QueryHash` (always), `Chunks` (`IReadOnlyList<TraceChunk>`), `GuardActions`, `Stages`, `Prompt` (nullable), `Answer` (nullable).
+
+`TraceChunk` carries `DocumentId`, `ChunkIndex`, `Score` and a nullable `Text`.
+
+> **Corrected twice after this task was written.** It first said `IReadOnlyList<AuditChunkRef>` *"plus an optional parallel text list"*. Two positionally-aligned lists can drift, and chunk text attached to the wrong chunk is worse than no text — it sends you to debug a chunk that was never involved. Composition makes that unrepresentable.
+>
+> It then said to reuse `AuditChunkRef` rather than redefine it. Measured, that reference takes `Rag.NET.Diagnostics` from **15 transitive packages to 41** — SQLite and its native binaries, `Microsoft.ML.Tokenizers` and its data file, Polly, protobuf — for one three-property record in a package of five records and a ring buffer. `TraceChunk` mirrors the field names instead, so the vocabulary is shared without the assembly being. It was never a shape that could drift out of sync anyway: it diverges by design the moment it carries `Text`, which `AuditChunkRef` deliberately does not.
+>
+> **`src/Rag.NET.Diagnostics` therefore has no `ProjectReference` at all.** Keep it that way: the behaviors and decorators in B3–B5 need pipeline types, and if they cannot live here without dragging the closure back, they belong in their own assembly. Doc comments referring to `IAuditLog` and `AuditLogOptions` are `<c>` text rather than `<see cref>` as a result — a real, accepted cost.
 
 `RagTraceOptions`: `Capacity` (default 50), `CaptureQueryText`, `CaptureChunkText`, `CapturePromptText`, `CaptureAnswerText` (**all default `false`**), `MaxCapturedCharacters` (default 4000, per field).
 
-Every `Capture*` flag's XML must say what enabling it puts in memory, and reference `AuditLogOptions.LogQueryText`/`LogAnswerText` as the compliance-grade parallel. Validate `Capacity >= 1` and `MaxCapturedCharacters >= 0` in the initialisers, naming the property in the message (MA0015 forces `paramName` to be `value`).
+Every `Capture*` flag's XML must say what enabling it puts in memory, and name `AuditLogOptions.LogQueryText`/`LogAnswerText` as the compliance-grade parallel. Validate `Capacity >= 1` and `MaxCapturedCharacters >= 0` in the property setters, naming the property in the message (MA0015 forces `paramName` to be `value`).
+
+**Properties are `set`, not `init`.** C1 configures these through `AddRagDiagnostics(Action<RagTraceOptions>?)`, matching `AddAuditLog` in `src/Rag.NET.Security/RagBuilderExtensions.cs`, and a configure delegate is handed an instance that already exists — an `init` accessor will not compile there. Corrected after the Part A review.
 
 That validation needs tests, which this task cannot hold — the test project does not exist until A2. `tests/Rag.NET.Diagnostics.Tests/RagTraceOptionsTests.cs` lands with A2 and covers the defaults and both refusals.
 
@@ -172,18 +182,18 @@ public void WithDefaultOptions_NoTextIsCaptured()
     Assert.Null(trace.Query);
     Assert.Null(trace.Prompt);
     Assert.Null(trace.Answer);
-    // Chunks are AuditChunkRefs, which carry no text at all; the text lives in the parallel
-    // ChunkTexts list, null as a whole when CaptureChunkText is off.
-    Assert.Null(trace.ChunkTexts);
-    // Structure is still captured — that is the point of the default.
+    // Structure is still captured — that is the point of the default. The chunk is present;
+    // only its text is withheld.
     Assert.NotEmpty(trace.QueryHash);
-    Assert.Single(trace.Chunks);
+    Assert.Null(Assert.Single(trace.Chunks).Text);
 }
 ```
 
 **Verify by mutation**: flip each `Capture*` default to `true` in turn and confirm this test fails each time. Four mutations, four failures. Report them. This is the difference between a debugger and a data leak, and it is the one property in this phase that must not regress silently.
 
-Also test: with flags on, text over `MaxCapturedCharacters` is truncated and the truncation is visible (not silent) — a trace that looks complete but is not would mislead exactly when someone is debugging.
+Also test: with flags on, text over `MaxCapturedCharacters` is truncated and the truncation is visible (not silent) — a trace that looks complete but is not would mislead exactly when someone is debugging. `RagTraceOptions.TruncationMarker` is the visible suffix.
+
+**Uncommitted traces need their own bound**, which this plan did not anticipate. A trace is started by the first `Record*` call and removed by `Commit`; a request that throws in between leaves it in the map forever, which is the ring buffer's own bound defeated one level up. The collector caps in-flight traces at four times `Capacity` and declines to start new ones past it.
 
 **Commit:** `feat(diagnostics): trace collector with a single content gate`
 
@@ -195,9 +205,13 @@ Also test: with flags on, text over `MaxCapturedCharacters` is truncated and the
 
 Subscribe an `ActivityListener` to the source named `Rag.NET` and record each `ragnet.*` span's name, duration and `TraceId` into the collector.
 
-**`RagTelemetry` is `internal`**, so the source name cannot be referenced from another assembly. Either hard-code `"Rag.NET"` with a comment pointing at `RagTelemetry.SourceName`, or make that constant public. **Prefer hard-coding with the comment** — making an internal telemetry detail public to satisfy a listener is a larger commitment than it looks, and Phase 4.4 owns the OTel surface.
+**`RagTelemetry` is `internal`**, so the source name cannot be referenced from another assembly. Either hard-code `"Rag.NET"` with a comment pointing at `RagTelemetry.SourceName`, or make that constant public. **Prefer hard-coding with the comment** — making an internal telemetry detail public to satisfy a listener is a larger commitment than it looks, and Phase 4.4 owns the OTel surface. *(Done as written.)*
 
-Tests need a real `Activity`, which requires a listener with `Sample = () => ActivitySamplingResult.AllData` — otherwise `StartActivity` returns `null` and the test passes vacuously. **Assert that the activity was actually created** before asserting on what was recorded.
+Filter on the `ragnet.` name prefix as well as the source. The source is shared, so a future non-stage span under `Rag.NET` would otherwise appear in traces as though it were a stage.
+
+Note that subscribing with `AllData` **changes sampling**: the pipeline's spans start being created even with no exporter configured. That is unavoidable — an unsampled `StartActivity` returns `null` and there is nothing to time — but it belongs in the type's XML and eventually in the docs.
+
+Tests need a real `Activity`, which requires a listener with `Sample = () => ActivitySamplingResult.AllData` — otherwise `StartActivity` returns `null` and the test passes vacuously. **Assert that the activity was actually created** before asserting on what was recorded. This bites hardest in the negative tests: *"a span from another source is not recorded"* must supply its **own** `AllData` listener for that other source, or it passes by proving only that an unsampled span is not recorded.
 
 **Commit:** `feat(diagnostics): collect stage timings from the existing spans`
 
