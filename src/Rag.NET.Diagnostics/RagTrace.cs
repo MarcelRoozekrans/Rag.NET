@@ -52,22 +52,16 @@ public sealed record RagTrace
     public string? Query { get; init; }
 
     /// <summary>
-    /// Which chunks retrieval returned, and what they scored. Always present — this is structure,
-    /// not content.
-    /// </summary>
-    public IReadOnlyList<AuditChunkRef> Chunks { get; init; } = [];
-
-    /// <summary>
-    /// The chunks' text, positionally aligned with <see cref="Chunks"/>: <c>ChunkTexts[i]</c> is the
-    /// text of <c>Chunks[i]</c>, and when non-<see langword="null"/> the two lists have the same
-    /// length. <see langword="null"/> as a whole unless
-    /// <see cref="RagTraceOptions.CaptureChunkText"/> is <see langword="true"/>.
+    /// Which chunks retrieval returned, what they scored, and — only under
+    /// <see cref="RagTraceOptions.CaptureChunkText"/> — what they said. The list itself is always
+    /// present: which chunks came back is structure, not content.
     /// </summary>
     /// <remarks>
-    /// Kept beside <see cref="Chunks"/> rather than inside it so that <see cref="AuditChunkRef"/> is
-    /// reused as-is. It carries no text deliberately, and the audit log depends on that.
+    /// Each entry pairs an <see cref="AuditChunkRef"/> with its own text, so text can never be read
+    /// against the wrong chunk. See <see cref="TraceChunk"/> for why that is a composition rather
+    /// than a second list running alongside this one.
     /// </remarks>
-    public IReadOnlyList<string>? ChunkTexts { get; init; }
+    public IReadOnlyList<TraceChunk> Chunks { get; init; } = [];
 
     /// <summary>
     /// Every guard and sanitiser that ran, in order, and what each one removed or rewrote.

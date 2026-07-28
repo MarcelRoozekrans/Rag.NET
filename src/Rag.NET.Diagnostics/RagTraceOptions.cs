@@ -26,6 +26,18 @@ namespace Rag.NET.Diagnostics;
 /// </remarks>
 public sealed class RagTraceOptions
 {
+    /// <summary>
+    /// Appended to any captured field that hit <see cref="MaxCapturedCharacters"/>, so a cut value
+    /// says so.
+    /// </summary>
+    /// <remarks>
+    /// Truncation has to be visible rather than silent. A trace that looks complete but is not would
+    /// mislead exactly when someone is reading it to work out why an answer was wrong — they would
+    /// conclude the prompt ended where the capture ended. A field ending in this marker is a prefix
+    /// of the real value; a field without it is the whole thing.
+    /// </remarks>
+    public const string TruncationMarker = "…[truncated]";
+
     /// <summary>How many recent executions to keep. Default 50, minimum 1.</summary>
     /// <remarks>
     /// Older traces are evicted once the buffer is full, so this is a hard ceiling rather than a
@@ -70,7 +82,7 @@ public sealed class RagTraceOptions
     public bool CaptureQueryText { get; init; }
 
     /// <summary>
-    /// When <see langword="true"/>, <see cref="RagTrace.ChunkTexts"/> holds the retrieved chunks'
+    /// When <see langword="true"/>, <see cref="TraceChunk.Text"/> holds each retrieved chunk's
     /// contents, and guard actions record the text they were given and returned.
     /// </summary>
     /// <remarks>
@@ -108,10 +120,11 @@ public sealed class RagTraceOptions
     /// The longest any single captured text field may be, in characters. Default 4000; 0 keeps none.
     /// </summary>
     /// <remarks>
-    /// Applied per field, not per trace, and truncation is made visible rather than silent — a trace
-    /// that looks complete but is not would mislead exactly when someone is debugging. Setting it to
-    /// 0 leaves the <c>Capture*</c> flags on but captures no characters, which is a way to confirm
-    /// the wiring without retaining anything.
+    /// Applied per field, not per trace — each chunk's text is its own field — and truncation is
+    /// made visible by <see cref="TruncationMarker"/> rather than being silent. Setting it to 0
+    /// leaves the <c>Capture*</c> flags on but captures no characters, which is a way to confirm the
+    /// wiring without retaining anything: the field becomes the marker alone, which still says
+    /// "there was text here" where <see langword="null"/> would have said "the flag was off".
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">
     /// The value is negative. As with <see cref="Capacity"/>, the property is named in the message
