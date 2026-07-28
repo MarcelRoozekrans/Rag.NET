@@ -80,10 +80,10 @@ public class EvaluationDatasetBuilderTests
     }
 
     /// <summary>The one chunk behind each sample — what the seed is supposed to pin.</summary>
-    private static List<string> SourceTexts(IReadOnlyList<EvaluationSample> samples)
+    private static List<string> SourceTexts(EvaluationDataset dataset)
     {
-        var texts = new List<string>(samples.Count);
-        foreach (var sample in samples)
+        var texts = new List<string>(dataset.Samples.Count);
+        foreach (var sample in dataset.Samples)
         {
             Assert.NotNull(sample.SourceChunks);
             texts.Add(Assert.Single(sample.SourceChunks));
@@ -101,13 +101,14 @@ public class EvaluationDatasetBuilderTests
             .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "What is chunk A about?")));
 
         var builder = new EvaluationDatasetBuilder(manager, client);
-        var samples = await builder.BuildAsync(
+        var dataset = await builder.BuildAsync(
             new EvaluationDatasetBuilderOptions { SampleCount = 2, Mode = DatasetGenerationMode.QuestionOnly },
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, samples.Count);
-        Assert.All(samples, s => Assert.Equal(string.Empty, s.ReferenceAnswer));
-        Assert.All(samples, s => Assert.NotEmpty(s.Question));
+        Assert.Equal(2, dataset.Samples.Count);
+        Assert.Equal(2, dataset.Requested);
+        Assert.All(dataset.Samples, s => Assert.Equal(string.Empty, s.ReferenceAnswer));
+        Assert.All(dataset.Samples, s => Assert.NotEmpty(s.Question));
     }
 
     [Fact]
@@ -122,13 +123,13 @@ public class EvaluationDatasetBuilderTests
                 new ChatResponse(new ChatMessage(ChatRole.Assistant, "Chunk A is about X.")));
 
         var builder = new EvaluationDatasetBuilder(manager, client);
-        var samples = await builder.BuildAsync(
+        var dataset = await builder.BuildAsync(
             new EvaluationDatasetBuilderOptions { SampleCount = 1, Mode = DatasetGenerationMode.QuestionAndAnswer },
             TestContext.Current.CancellationToken);
 
-        Assert.Single(samples);
-        Assert.NotEmpty(samples[0].ReferenceAnswer);
-        Assert.NotEqual(samples[0].Question, samples[0].ReferenceAnswer);
+        var sample = Assert.Single(dataset.Samples);
+        Assert.NotEmpty(sample.ReferenceAnswer);
+        Assert.NotEqual(sample.Question, sample.ReferenceAnswer);
     }
 
     [Fact]
@@ -138,11 +139,13 @@ public class EvaluationDatasetBuilderTests
         var client = Substitute.For<IChatClient>();
 
         var builder = new EvaluationDatasetBuilder(manager, client);
-        var samples = await builder.BuildAsync(
+        var dataset = await builder.BuildAsync(
             new EvaluationDatasetBuilderOptions { SampleCount = 0 },
             TestContext.Current.CancellationToken);
 
-        Assert.Empty(samples);
+        Assert.Empty(dataset.Samples);
+        Assert.Equal(0, dataset.Requested);
+        Assert.Empty(dataset.Skipped);
     }
 
     [Fact]
@@ -154,12 +157,12 @@ public class EvaluationDatasetBuilderTests
             .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, string.Empty)));
 
         var builder = new EvaluationDatasetBuilder(manager, client);
-        var samples = await builder.BuildAsync(
+        var dataset = await builder.BuildAsync(
             new EvaluationDatasetBuilderOptions { SampleCount = 1, Mode = DatasetGenerationMode.QuestionOnly },
             TestContext.Current.CancellationToken);
 
-        Assert.Single(samples);
-        Assert.Equal(string.Empty, samples[0].Question);
+        Assert.Single(dataset.Samples);
+        Assert.Equal(string.Empty, dataset.Samples[0].Question);
     }
 
     [Fact]
@@ -171,11 +174,14 @@ public class EvaluationDatasetBuilderTests
             .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "Q?")));
 
         var builder = new EvaluationDatasetBuilder(manager, client);
-        var samples = await builder.BuildAsync(
+        var dataset = await builder.BuildAsync(
             new EvaluationDatasetBuilderOptions { SampleCount = 100 },
             TestContext.Current.CancellationToken);
 
-        Assert.Single(samples);
+        Assert.Single(dataset.Samples);
+
+        // Requested is what was sampled, not what was asked for: only one chunk exists to send.
+        Assert.Equal(1, dataset.Requested);
     }
 
     [Fact]
@@ -224,12 +230,12 @@ public class EvaluationDatasetBuilderTests
         var fetches = new Dictionary<string, int>(StringComparer.Ordinal);
         var builder = new EvaluationDatasetBuilder(MakeCorpus(200, 50, fetches), EchoingChatClient());
 
-        var samples = await builder.BuildAsync(
+        var dataset = await builder.BuildAsync(
             new EvaluationDatasetBuilderOptions { SampleCount = 5, Seed = 7 },
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(5, samples.Count);
-        Assert.Equal(5, SourceTexts(samples).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(5, dataset.Samples.Count);
+        Assert.Equal(5, SourceTexts(dataset).Distinct(StringComparer.Ordinal).Count());
 
         // Every document was read exactly once: nothing re-enumerates the corpus, which a
         // materialise-then-sort would have to do to stay this cheap.

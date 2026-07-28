@@ -79,14 +79,18 @@ public class RagasEndToEndTests
 
         // Step 1: Generate synthetic dataset
         var builder = new EvaluationDatasetBuilder(dataManager, chatClient);
-        var samples = await builder.BuildAsync(
+        var dataset = await builder.BuildAsync(
             new EvaluationDatasetBuilderOptions { SampleCount = 2, Mode = DatasetGenerationMode.QuestionOnly },
             TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, samples.Count);
+        Assert.Equal(2, dataset.Samples.Count);
+
+        // Nothing was dropped, so the pipeline below scores everything that was sampled.
+        Assert.Equal(2, dataset.Requested);
+        Assert.Empty(dataset.Skipped);
 
         // Step 2: Simulate pipeline filling PredictedAnswer
-        var evaluated = samples
+        var evaluated = dataset.Samples
             .Select(s => s with { PredictedAnswer = "A simulated answer.", SourceChunks = s.SourceChunks })
             .ToList();
 

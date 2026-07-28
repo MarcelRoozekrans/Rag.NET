@@ -30,13 +30,17 @@ public sealed class EvaluationDatasetBuilder(
     /// </summary>
     /// <param name="options">Controls sample count and generation mode. Defaults to <see cref="EvaluationDatasetBuilderOptions"/> if null.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task<IReadOnlyList<EvaluationSample>> BuildAsync(
+    /// <returns>
+    /// The generated samples together with how many chunks were sent for generation, so a caller
+    /// who asks for 50 and receives fewer can see that from the result rather than infer it.
+    /// </returns>
+    public async Task<EvaluationDataset> BuildAsync(
         EvaluationDatasetBuilderOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         options ??= new EvaluationDatasetBuilderOptions();
         if (options.SampleCount <= 0)
-            return [];
+            return new EvaluationDataset();
 
         var sampled = await SampleChunksAsync(options.SampleCount, options.Seed, cancellationToken)
             .ConfigureAwait(false);
@@ -44,7 +48,12 @@ public sealed class EvaluationDatasetBuilder(
         // Generate samples concurrently
         var tasks = sampled.Select(chunk => GenerateSampleAsync(chunk, options.Mode, cancellationToken));
         var samples = await Task.WhenAll(tasks).ConfigureAwait(false);
-        return samples;
+
+        return new EvaluationDataset
+        {
+            Samples = samples,
+            Requested = sampled.Count,
+        };
     }
 
     /// <summary>
