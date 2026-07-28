@@ -26,6 +26,24 @@ future reader can tell the difference between "never existed" and "dealt with".
   `STATUS_STACK_OVERFLOW`. The ceiling is measured headroom, not a proof. Converting the
   traversal to an explicit work queue would remove the class entirely and is the real fix if
   a large `MaxEmbeddedDepth` is ever wanted. → **Phase 3.6**
+- **Seven guide pages are unreachable from the sidebar** (found in the Phase 3.4 Part D review):
+  `sidebars.ts` omits `guide/security`, `guide/memory`, `guide/resilience`, `guide/data-providers`,
+  `guide/mediator`, `guide/graphrag` and `guide/raptor`. They exist and are linked from other
+  pages, but nobody browsing the sidebar will find them — including the security guide, which is
+  the one a reader is most likely to go looking for deliberately. A sweep, not a fix per page.
+  → **Phase 4.5** (with the sample applications, which is when the docs get read end to end)
+- **A streamed prompt does not correlate without an ambient activity** (found in Phase 3.4 Part C):
+  `ChatAnswerEngine` assembles the prompt *after* its first `yield return`, so the diagnostics
+  callback runs on the consumer's execution context, where the span the pipeline started inside
+  its own iterator is not ambient. Probe-verified. Chunks, stages, the commit and the
+  non-streamed prompt are all unaffected — only the streamed prompt field, and only when the host
+  supplies no ambient activity of its own (so: fine under ASP.NET, absent in a console app).
+  Pre-existing rather than caused by 3.4: `ragnet.ask` was already started inside an async
+  iterator. A one-line `Activity.Current = activity` before `BuildMessagesAsync` closes it, and
+  was deliberately not taken in 3.4 — it mutates ambient state in the answer engine for a
+  diagnostics benefit, and that phase spent its one production edit on the `ragnet.query` span.
+  → **Phase 4.4** (OTel wiring, which has to reason about span context across async iterators
+  regardless)
 
 ### Closed
 
