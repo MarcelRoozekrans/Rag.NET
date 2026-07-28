@@ -71,7 +71,7 @@ internal sealed partial class TraceCollector : ITraceCollector
             // The hash is written whether or not the text is: it tells repeated questions apart
             // without retaining what anybody asked, which is the point of the default.
             builder.QueryHash = HashOf(query ?? string.Empty);
-            builder.Query = Capture(query, _options.CaptureQueryText);
+            builder.Query = Capture(query, TraceContentKind.Query);
         });
 
     /// <inheritdoc/>
@@ -89,12 +89,12 @@ internal sealed partial class TraceCollector : ITraceCollector
                 var chunk = chunks[i];
 
                 if (chunk is not null)
-                    builder.Chunks.Add(chunk with { Text = Capture(chunk.Text, _options.CaptureChunkText) });
+                    builder.Chunks.Add(chunk with { Text = Capture(chunk.Text, TraceContentKind.Chunk) });
             }
         });
 
     /// <inheritdoc/>
-    public void RecordGuardAction(string traceId, TraceGuardAction action) => Update(
+    public void RecordGuardAction(string traceId, TraceGuardAction action, TraceContentKind contentKind) => Update(
         traceId,
         builder =>
         {
@@ -103,8 +103,8 @@ internal sealed partial class TraceCollector : ITraceCollector
 
             builder.GuardActions.Add(action with
             {
-                InputText = Capture(action.InputText, _options.CaptureChunkText),
-                OutputText = Capture(action.OutputText, _options.CaptureChunkText),
+                InputText = Capture(action.InputText, contentKind),
+                OutputText = Capture(action.OutputText, contentKind),
             });
         });
 
@@ -120,12 +120,12 @@ internal sealed partial class TraceCollector : ITraceCollector
     /// <inheritdoc/>
     public void RecordPrompt(string traceId, string prompt) => Update(
         traceId,
-        builder => builder.Prompt = Capture(prompt, _options.CapturePromptText));
+        builder => builder.Prompt = Capture(prompt, TraceContentKind.Prompt));
 
     /// <inheritdoc/>
     public void RecordAnswer(string traceId, string answer) => Update(
         traceId,
-        builder => builder.Answer = Capture(answer, _options.CaptureAnswerText));
+        builder => builder.Answer = Capture(answer, TraceContentKind.Answer));
 
     /// <inheritdoc/>
     public RagTrace? Current(string traceId)
@@ -168,16 +168,16 @@ internal sealed partial class TraceCollector : ITraceCollector
 
     /// <summary>The content gate. Every captured text field passes through exactly this method.</summary>
     /// <param name="text">The value as the pipeline had it: unredacted, untruncated.</param>
-    /// <param name="enabled">The <c>Capture*</c> flag that governs this field.</param>
+    /// <param name="kind">What sort of content this is, which decides the flag that governs it.</param>
     /// <returns>
     /// <see langword="null"/> when the flag is off, so "the flag was off" is distinguishable from
     /// "there was no such value"; otherwise the value, cut to
     /// <see cref="RagTraceOptions.MaxCapturedCharacters"/> with
     /// <see cref="RagTraceOptions.TruncationMarker"/> appended when it did not fit.
     /// </returns>
-    private string? Capture(string? text, bool enabled)
+    private string? Capture(string? text, TraceContentKind kind)
     {
-        if (!enabled || text is null)
+        if (text is null || !IsEnabled(kind))
             return null;
 
         var max = _options.MaxCapturedCharacters;
@@ -186,6 +186,24 @@ internal sealed partial class TraceCollector : ITraceCollector
             ? text
             : string.Concat(text.AsSpan(0, max), RagTraceOptions.TruncationMarker);
     }
+
+    /// <summary>Maps a kind of content to the one flag that governs it.</summary>
+    /// <param name="kind">The kind of content being captured.</param>
+    /// <returns>Whether that content is being kept.</returns>
+    /// <remarks>
+    /// The whole field-to-flag mapping, in one expression, so there is one place to read and one
+    /// place to get wrong. An unrecognised kind captures nothing: a future kind added without a flag
+    /// to go with it must fail closed, because the failure that matters here is retaining text
+    /// nobody asked to retain.
+    /// </remarks>
+    private bool IsEnabled(TraceContentKind kind) => kind switch
+    {
+        TraceContentKind.Query => _options.CaptureQueryText,
+        TraceContentKind.Chunk => _options.CaptureChunkText,
+        TraceContentKind.Prompt => _options.CapturePromptText,
+        TraceContentKind.Answer => _options.CaptureAnswerText,
+        _ => false,
+    };
 
     /// <summary>A stable, content-free identifier for a query.</summary>
     /// <param name="query">The query text.</param>

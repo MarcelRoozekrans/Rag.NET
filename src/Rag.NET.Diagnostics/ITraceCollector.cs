@@ -48,10 +48,15 @@ public interface ITraceCollector
     /// <summary>Records that a guard or sanitiser ran, and what it did.</summary>
     /// <param name="traceId">The <c>Activity</c> trace id this execution runs under.</param>
     /// <param name="action">
-    /// What the component was given and what it returned. Its text fields are gated by
-    /// <see cref="RagTraceOptions.CaptureChunkText"/>; the counts always survive.
+    /// What the component was given and what it returned. The counts always survive; the text fields
+    /// are gated on the flag <paramref name="contentKind"/> names.
     /// </param>
-    void RecordGuardAction(string traceId, TraceGuardAction action);
+    /// <param name="contentKind">
+    /// What sort of text this component handles, and so which <c>Capture*</c> flag governs it. A
+    /// query sanitiser's input is the user's question and a retrieval guard's is document text; the
+    /// caller is the only party that knows which, so it says. See <see cref="TraceContentKind"/>.
+    /// </param>
+    void RecordGuardAction(string traceId, TraceGuardAction action, TraceContentKind contentKind);
 
     /// <summary>Records that a pipeline stage ran, and how long it took.</summary>
     /// <param name="traceId">The <c>Activity</c> trace id this execution runs under.</param>

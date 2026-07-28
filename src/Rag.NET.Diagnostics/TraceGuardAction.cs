@@ -9,8 +9,30 @@ namespace Rag.NET.Diagnostics;
 /// never ran"</i> are different answers, and only the first produces a <see cref="TraceGuardAction"/>.
 /// </para>
 /// <para>
-/// <see cref="InputText"/> and <see cref="OutputText"/> are populated only under content capture; see
-/// <see cref="RagTraceOptions.CaptureChunkText"/> for what that puts in memory.
+/// <see cref="InputText"/> and <see cref="OutputText"/> are populated only under content capture, and
+/// <b>which flag governs them depends on which component produced the action</b>. One record shape is
+/// written by three decorators over three interfaces, and what they hold is not the same kind of
+/// thing:
+/// </para>
+/// <list type="bullet">
+/// <item>
+/// <description>
+/// a query sanitiser's text <b>is the user's raw question</b>, governed by
+/// <see cref="RagTraceOptions.CaptureQueryText"/>;
+/// </description>
+/// </item>
+/// <item>
+/// <description>
+/// a retrieval guard's and a chunk sanitiser's text is retrieved document text, governed by
+/// <see cref="RagTraceOptions.CaptureChunkText"/>.
+/// </description>
+/// </item>
+/// </list>
+/// <para>
+/// Reading <see cref="RagTraceOptions.CaptureChunkText"/> alone as the gate for every action — which
+/// is what this remark used to say — would mean enabling chunk text silently began retaining user
+/// questions with <see cref="RagTraceOptions.CaptureQueryText"/> still off. The producer declares its
+/// kind through <see cref="TraceContentKind"/> and the collector applies the matching flag.
 /// </para>
 /// </remarks>
 public sealed record TraceGuardAction
@@ -31,12 +53,14 @@ public sealed record TraceGuardAction
     public required bool Changed { get; init; }
 
     /// <summary>
-    /// What the component was given. <see langword="null"/> unless content capture is on.
+    /// What the component was given. <see langword="null"/> unless the <c>Capture*</c> flag matching
+    /// this component's own content is on — see the type remarks for which flag that is.
     /// </summary>
     public string? InputText { get; init; }
 
     /// <summary>
-    /// What the component returned. <see langword="null"/> unless content capture is on.
+    /// What the component returned. <see langword="null"/> unless the <c>Capture*</c> flag matching
+    /// this component's own content is on — see the type remarks for which flag that is.
     /// </summary>
     public string? OutputText { get; init; }
 }

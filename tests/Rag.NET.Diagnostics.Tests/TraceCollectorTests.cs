@@ -154,7 +154,7 @@ public sealed class TraceCollectorTests
         var buffer = new TraceRingBuffer(capacity: 10);
         var collector = new TraceCollector(new RagTraceOptions(), buffer);
 
-        collector.RecordGuardAction(TraceId, GuardAction());
+        collector.RecordGuardAction(TraceId, GuardAction(), TraceContentKind.Chunk);
         collector.Commit(TraceId);
 
         var action = Assert.Single(Assert.Single(buffer.Snapshot()).GuardActions);
@@ -173,7 +173,41 @@ public sealed class TraceCollectorTests
         var buffer = new TraceRingBuffer(capacity: 10);
         var collector = new TraceCollector(new RagTraceOptions { CaptureChunkText = true }, buffer);
 
-        collector.RecordGuardAction(TraceId, GuardAction());
+        collector.RecordGuardAction(TraceId, GuardAction(), TraceContentKind.Chunk);
+        collector.Commit(TraceId);
+
+        var action = Assert.Single(Assert.Single(buffer.Snapshot()).GuardActions);
+
+        Assert.Equal("five results", action.InputText);
+        Assert.Equal("three results", action.OutputText);
+    }
+
+    [Fact]
+    public void AQueryKindGuardAction_IsGatedByTheQueryFlagAndNotTheChunkFlag()
+    {
+        var buffer = new TraceRingBuffer(capacity: 10);
+        var collector = new TraceCollector(new RagTraceOptions { CaptureChunkText = true }, buffer);
+
+        collector.RecordGuardAction(TraceId, GuardAction(), TraceContentKind.Query);
+        collector.Commit(TraceId);
+
+        var action = Assert.Single(Assert.Single(buffer.Snapshot()).GuardActions);
+
+        // A query sanitiser's text IS the user's question. Gating every guard action on the chunk
+        // flag — which this collector used to do — meant "capture document text" silently also meant
+        // "retain everything anybody asked", with CaptureQueryText still off.
+        Assert.Null(action.InputText);
+        Assert.Null(action.OutputText);
+        Assert.Equal(5, action.InputCount);
+    }
+
+    [Fact]
+    public void AQueryKindGuardAction_IsCapturedWhenTheQueryFlagIsOn()
+    {
+        var buffer = new TraceRingBuffer(capacity: 10);
+        var collector = new TraceCollector(new RagTraceOptions { CaptureQueryText = true }, buffer);
+
+        collector.RecordGuardAction(TraceId, GuardAction(), TraceContentKind.Query);
         collector.Commit(TraceId);
 
         var action = Assert.Single(Assert.Single(buffer.Snapshot()).GuardActions);
@@ -303,7 +337,7 @@ public sealed class TraceCollectorTests
         collector.RecordQuery(TraceId, null!);
         collector.RecordChunks(TraceId, null!);
         collector.RecordChunks(TraceId, [null!]);
-        collector.RecordGuardAction(TraceId, null!);
+        collector.RecordGuardAction(TraceId, null!, TraceContentKind.Chunk);
         collector.RecordStage(TraceId, null!);
         collector.RecordPrompt(TraceId, null!);
         collector.RecordAnswer(TraceId, null!);

@@ -79,10 +79,13 @@ public sealed class RagTraceOptions
     /// </summary>
     /// <remarks>
     /// <b>What this puts in memory:</b> the raw text of every traced user question, retained until
-    /// evicted, readable by anything in the process. <see cref="RagTrace.QueryHash"/> is populated
-    /// either way, so leave this off if you only need to tell repeated questions apart. The
-    /// compliance-grade equivalent is <c>AuditLogOptions.LogQueryText</c>, which writes the same
-    /// text somewhere durable instead.
+    /// evicted, readable by anything in the process. That is <see cref="RagTrace.Query"/> <i>and</i>
+    /// the <c>InputText</c>/<c>OutputText</c> of any query sanitiser's
+    /// <see cref="TraceGuardAction"/> — a sanitiser's input is the question as typed, so it is
+    /// governed here rather than by <see cref="CaptureChunkText"/>.
+    /// <see cref="RagTrace.QueryHash"/> is populated either way, so leave this off if you only need
+    /// to tell repeated questions apart. The compliance-grade equivalent is
+    /// <c>AuditLogOptions.LogQueryText</c>, which writes the same text somewhere durable instead.
     /// </remarks>
     public bool CaptureQueryText { get; set; }
 
@@ -92,10 +95,14 @@ public sealed class RagTraceOptions
     /// </summary>
     /// <remarks>
     /// <b>What this puts in memory:</b> the body text of every retrieved chunk — that is, your
-    /// indexed documents — for every traced query. This is the largest of the four by far, and the
-    /// one most likely to hold something confidential. It is also the flag that makes <i>"what did
-    /// the sanitiser remove"</i> answerable, and that text is captured <b>before</b> redaction, so
-    /// a trace may hold content the pipeline itself went on to strip.
+    /// indexed documents — for every traced query. That is <see cref="TraceChunk.Text"/> <i>and</i>
+    /// the <c>InputText</c>/<c>OutputText</c> of any retrieval guard's or chunk sanitiser's
+    /// <see cref="TraceGuardAction"/>. It does <b>not</b> cover query sanitisers, whose text is the
+    /// user's question and is governed by <see cref="CaptureQueryText"/>.
+    /// This is the largest of the four by far, and the one most likely to hold something
+    /// confidential. It is also the flag that makes <i>"what did the sanitiser remove"</i>
+    /// answerable, and that text is captured <b>before</b> redaction, so a trace may hold content the
+    /// pipeline itself went on to strip.
     /// </remarks>
     public bool CaptureChunkText { get; set; }
 

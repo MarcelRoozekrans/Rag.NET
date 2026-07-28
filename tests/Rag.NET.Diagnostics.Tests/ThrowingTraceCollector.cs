@@ -15,7 +15,8 @@ internal sealed class ThrowingTraceCollector : ITraceCollector
 
     public void RecordChunks(string traceId, IReadOnlyList<TraceChunk> chunks) => throw Failure();
 
-    public void RecordGuardAction(string traceId, TraceGuardAction action) => throw Failure();
+    public void RecordGuardAction(string traceId, TraceGuardAction action, TraceContentKind contentKind) =>
+        throw Failure();
 
     public void RecordStage(string traceId, TraceStage stage) => throw Failure();
 
