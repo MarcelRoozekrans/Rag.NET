@@ -10,7 +10,8 @@ namespace Rag.NET.Evaluation.Ragas;
 /// </summary>
 /// <remarks>
 /// Every metric the builder registers shares one judge, and therefore one
-/// <see cref="RagasOptions.MaxConcurrentCalls"/> ceiling and one cost ledger for the whole run.
+/// <see cref="EvaluationCallOptions.MaxConcurrentCalls"/> ceiling and one cost ledger for the whole
+/// run.
 /// A per-metric ceiling multiplies: four metrics each fanning out over a 50-chunk sample at a
 /// ceiling of 2 is 8 requests in flight, not 2, and the number a caller sets is then not the
 /// number they get.
@@ -33,8 +34,8 @@ public sealed class RagasEvaluationSuiteBuilder
     /// <param name="options">Run tuning; defaults are used when omitted.</param>
     /// <param name="costLedger">
     /// Optional ledger for the run's LLM spend, chat and embedding alike. Recorded entries cost
-    /// zero unless <see cref="RagasOptions.PricePerInputToken"/>,
-    /// <see cref="RagasOptions.PricePerOutputToken"/> and
+    /// zero unless <see cref="EvaluationCallOptions.PricePerInputToken"/>,
+    /// <see cref="EvaluationCallOptions.PricePerOutputToken"/> and
     /// <see cref="RagasOptions.PricePerEmbeddingToken"/> are set.
     /// </param>
     public RagasEvaluationSuiteBuilder(

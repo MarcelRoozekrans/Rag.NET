@@ -123,9 +123,18 @@ So the guarantee is precisely: *the same seed and the same corpus sample the sam
 is enough to make a before/after comparison meaningful, and claiming more would be the kind of
 overstatement this milestone exists to remove.
 
-Reservoir sampling (Algorithm R) over the streamed chunks gives this in O(k) memory, provided
-enumeration order is stable — which is a property of `IRagDataManager`, and is stated as a
-condition rather than assumed.
+Reservoir sampling (Algorithm R) over the streamed chunks gives this without accumulating the
+corpus, provided enumeration order is stable — which is a property of `IRagDataManager`, and is
+stated as a condition rather than assumed.
+
+**Corrected after the Parts A+B review:** this section originally said "in O(k) memory", which
+overstates it. `IRagDataManager` exposes no `IAsyncEnumerable` overload — `GetDocumentsAsync` and
+`GetChunksAsync` both return fully materialised `IReadOnlyList<T>` — so a build's peak is *every
+`DocumentSummary` in the corpus, plus the chunks of the largest single document, plus the sample*.
+The win is still large: every chunk's **text** across the whole corpus is genuinely no longer held,
+which for a 100k-document corpus is nearly all of the old footprint. O(k) would need a streaming
+overload on the data manager, which is an `Rag.NET.Abstractions` change and out of scope for this
+phase.
 
 ## 5. A failed generation is excluded and counted
 

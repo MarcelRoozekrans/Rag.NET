@@ -13,8 +13,10 @@ namespace Rag.NET.Evaluation;
 /// <remarks>
 /// <para>
 /// Set <see cref="EvaluationDatasetBuilderOptions.Seed"/> to make the sampling repeatable — read
-/// its documentation for what that does and does not guarantee. The corpus is streamed through a
-/// reservoir rather than materialised, so a build holds the sample, not the corpus.
+/// its documentation for what that does and does not guarantee. Chunks are offered to a reservoir a
+/// document at a time rather than accumulated, so no build holds every chunk's text at once. The
+/// peak is the document list plus the largest single document's chunks plus the sample — not the
+/// sample alone; <c>SampleChunksAsync</c> records why.
 /// </para>
 /// <para>
 /// Generation runs under <see cref="EvaluationCallOptions.MaxConcurrentCalls"/> and bills the
@@ -110,15 +112,27 @@ public sealed class EvaluationDatasetBuilder(
     }
 
     /// <summary>
-    /// Draws up to <paramref name="sampleCount"/> chunks uniformly from the corpus, holding only
-    /// the sample.
+    /// Draws up to <paramref name="sampleCount"/> chunks uniformly from the corpus, one document's
+    /// chunks at a time.
     /// </summary>
     /// <remarks>
-    /// Each document's chunks are offered to the reservoir as they arrive and then dropped, so
-    /// memory is proportional to <paramref name="sampleCount"/> rather than to the corpus. This
+    /// <para>
+    /// Each document's chunks are offered to the reservoir as they arrive and then dropped. This
     /// replaces accumulating every chunk of every document into one list and sorting it by a random
     /// key — which read and held a 100k-document corpus in order to pick five chunks out of it, and
     /// which, being unseeded, could not draw the same five twice.
+    /// </para>
+    /// <para>
+    /// <b>The bound is not O(<paramref name="sampleCount"/>).</b>
+    /// <see cref="IRagDataManager"/> has no <c>IAsyncEnumerable</c> overload, so
+    /// <c>GetDocumentsAsync</c> and <c>GetChunksAsync</c> both return fully materialised lists. The
+    /// peak is therefore every <c>DocumentSummary</c> in the corpus, plus the chunks of the single
+    /// largest document, plus the sample. What the change removes is real and large — every chunk's
+    /// *text* across the whole corpus, which for a 100k-document corpus is the overwhelming majority
+    /// of it — but a caller sizing a build should use the bound above, not the smaller one this
+    /// comment used to claim. Getting past it needs a streaming overload on the data manager, which
+    /// is a change to <c>Rag.NET.Abstractions</c> and out of scope here.
+    /// </para>
     /// </remarks>
     private async Task<List<TextChunk>> SampleChunksAsync(
         int sampleCount, int? seed, CancellationToken cancellationToken)

@@ -269,6 +269,24 @@ public class EvaluationDatasetBuilderTests
     }
 
     [Fact]
+    public async Task BuildAsync_WithAnEnormousSampleCount_StillReturnsTheWholeCorpus()
+    {
+        // A SampleCount far above the corpus size is a clamp, not a failure. The streaming rewrite
+        // briefly made it one: the reservoir pre-allocated a List<TextChunk>(SampleCount), so
+        // int.MaxValue threw OutOfMemoryException before a single document had been read, where the
+        // pre-Phase-3.2 builder clamped against the corpus and returned every chunk.
+        var fetches = new Dictionary<string, int>(StringComparer.Ordinal);
+        var builder = new EvaluationDatasetBuilder(MakeCorpus(2, 3, fetches), EchoingChatClient());
+
+        var dataset = await builder.BuildAsync(
+            new EvaluationDatasetBuilderOptions { SampleCount = int.MaxValue, Seed = 11 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(6, dataset.Samples.Count);
+        Assert.Equal(6, dataset.Requested);
+    }
+
+    [Fact]
     public async Task BuildAsync_SameSeed_SamplesTheSameChunks()
     {
         // The guarantee the phase exists to add. Before this, two builds over an unchanged corpus
@@ -301,12 +319,15 @@ public class EvaluationDatasetBuilderTests
     }
 
     [Fact]
-    public async Task BuildAsync_WithACorpusFarLargerThanTheSample_KeepsOnlyTheSample()
+    public async Task BuildAsync_WithACorpusFarLargerThanTheSample_ReadsEachDocumentExactlyOnce()
     {
         // 10,000 chunks in, 5 out. The old code accumulated every chunk of every document into one
         // list and sorted it by a random key to take five; this reads each document once, offers
         // its chunks to the reservoir and drops them.
         //
+        // Named for what it asserts. It was called ..._KeepsOnlyTheSample, which a build that
+        // materialised the whole corpus and then took five would also pass — the assertions below
+        // are a single-pass enumeration and a distinct count, neither of which observes retention.
         // The retention bound itself — that the reservoir never holds more than SampleCount at any
         // point, not merely at the end — is asserted step by step in
         // ReservoirSamplerTests.Offer_NeverHoldsMoreThanCapacity, where the reservoir is visible.

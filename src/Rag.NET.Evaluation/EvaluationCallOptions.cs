@@ -2,10 +2,18 @@ namespace Rag.NET.Evaluation;
 
 /// <summary>Tuning shared by everything in this library that talks to an LLM.</summary>
 /// <remarks>
-/// The concurrency ceiling and the token prices are identical concerns for a RAGAS run and for a
-/// dataset build, and both are consumed by the same shared caller. They live here so there is one
+/// <para>
+/// The concurrency ceiling and the chat token prices are identical concerns for a RAGAS run and for
+/// a dataset build, and both are consumed by the same shared caller. They live here so there is one
 /// definition rather than one per feature — the same reasoning that gave the throttle-and-cost
 /// plumbing a single home.
+/// </para>
+/// <para>
+/// Only what every derived option actually consumes belongs here. An embedding price does not:
+/// Answer Relevance is the one thing in either library that embeds, so
+/// <c>RagasOptions.PricePerEmbeddingToken</c> lives on that run's options rather than on this base,
+/// where a dataset build would inherit a knob it can never act on.
+/// </para>
 /// </remarks>
 public abstract class EvaluationCallOptions
 {
@@ -28,17 +36,4 @@ public abstract class EvaluationCallOptions
 
     /// <summary>Price of one output token. Defaults to <c>0</c>. See <see cref="PricePerInputToken"/>.</summary>
     public decimal PricePerOutputToken { get; set; }
-
-    /// <summary>
-    /// Price of one embedding token, in whatever currency the ledger is denominated in.
-    /// Defaults to <c>0</c> — set it from your own price sheet, or cost entries record zero.
-    /// </summary>
-    /// <remarks>
-    /// Separate from <see cref="PricePerInputToken"/> because embeddings are billed at their own
-    /// rate, usually an order of magnitude below chat. Embedding APIs bill on input tokens alone,
-    /// so this is the only embedding price there is. Only the parts of a run that embed anything
-    /// consume it — a run that never embeds leaves it unused rather than defaulting to the chat
-    /// price. The ledger never prices anything itself; the caller computes the cost.
-    /// </remarks>
-    public decimal PricePerEmbeddingToken { get; set; }
 }

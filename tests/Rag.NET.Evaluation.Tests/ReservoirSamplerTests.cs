@@ -62,9 +62,12 @@ public sealed class ReservoirSamplerTests
     [Fact]
     public void Offer_NeverHoldsMoreThanCapacity()
     {
-        // The bound the streaming builder relies on: memory is proportional to the sample, not to
-        // the corpus. Asserted against the reservoir's own size rather than a memory measurement,
-        // which would be measuring the GC rather than the algorithm.
+        // The bound the streaming builder relies on: the reservoir is proportional to the sample,
+        // not to the corpus. That is the reservoir's own bound, not the whole build's — the builder
+        // still materialises the document list and one document's chunks at a time, because
+        // IRagDataManager has no streaming overload. Asserted against the reservoir's own size
+        // rather than a memory measurement, which would be measuring the GC rather than the
+        // algorithm.
         var reservoir = new ReservoirSampler<int>(5, new Random(7));
 
         for (var i = 0; i < 10_000; i++)
@@ -106,4 +109,33 @@ public sealed class ReservoirSamplerTests
     [Fact]
     public void Constructor_WithNegativeCapacity_Throws()
         => Assert.Throws<ArgumentOutOfRangeException>(() => new ReservoirSampler<int>(-1, new Random(1)));
+
+    [Fact]
+    public void Constructor_WithAnEnormousCapacity_DoesNotAllocateItUpFront()
+    {
+        // `new List<T>(capacity)` allocates a T[capacity] immediately, so an unclamped capacity
+        // turned SampleCount = int.MaxValue into an OutOfMemoryException before a single chunk had
+        // been read. The pre-Phase-3.2 builder clamped the count against the corpus first and
+        // simply returned every chunk, so this was a regression introduced by the streaming
+        // rewrite, not a pre-existing limit.
+        var reservoir = new ReservoirSampler<string>(int.MaxValue, new Random(1));
+
+        for (var i = 0; i < 100; i++)
+            reservoir.Offer($"item {i}");
+
+        // The capacity is still honoured as a ceiling — it is only the up-front allocation that is
+        // clamped — so a stream shorter than it is kept whole.
+        Assert.Equal(100, reservoir.Count);
+    }
+
+    [Fact]
+    public void Sample_WithANegativeCount_NamesTheCallersParameter()
+    {
+        // The constructor's own guard reports ParamName "capacity", which is the callee's name for
+        // it and not a parameter this caller passed.
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(
+            () => ReservoirSampler.Sample<string>([], -1, new Random(1)));
+
+        Assert.Equal("count", exception.ParamName);
+    }
 }

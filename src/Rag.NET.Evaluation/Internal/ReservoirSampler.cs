@@ -21,6 +21,11 @@ internal static class ReservoirSampler
     {
         ArgumentNullException.ThrowIfNull(source);
 
+        // Validated here as well as in the constructor so the exception names this method's
+        // parameter. Letting the constructor's guard surface reports ParamName "capacity", which is
+        // the callee's name for it and not a parameter this caller passed.
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+
         var reservoir = new ReservoirSampler<T>(count, random);
 
         // Indexed rather than foreach: no enumerator to allocate over the interface, and nothing
@@ -50,6 +55,19 @@ internal static class ReservoirSampler
 /// <typeparam name="T">The item being sampled.</typeparam>
 internal sealed class ReservoirSampler<T>
 {
+    /// <summary>
+    /// The largest capacity that is pre-allocated up front. Above it the list grows on demand.
+    /// </summary>
+    /// <remarks>
+    /// <c>new List&lt;T&gt;(capacity)</c> allocates a <c>T[capacity]</c> immediately, so an
+    /// unclamped capacity turns an absurd <c>SampleCount</c> into an
+    /// <see cref="OutOfMemoryException"/> before a single chunk has been read — where the
+    /// pre-Phase-3.2 builder simply returned the whole corpus. The reservoir never exceeds
+    /// <c>capacity</c> either way; this only decides whether the room is claimed eagerly. Realistic
+    /// sample counts are two or three digits, so they still get their one exact allocation.
+    /// </remarks>
+    private const int MaxPreallocatedCapacity = 1024;
+
     private readonly int _capacity;
     private readonly Random _random;
     private readonly List<T> _reservoir;
@@ -65,7 +83,7 @@ internal sealed class ReservoirSampler<T>
 
         _capacity = capacity;
         _random = random;
-        _reservoir = new List<T>(capacity);
+        _reservoir = new List<T>(Math.Min(capacity, MaxPreallocatedCapacity));
     }
 
     /// <summary>How many items are currently held. Never exceeds the capacity.</summary>
