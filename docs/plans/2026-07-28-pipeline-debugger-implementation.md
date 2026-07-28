@@ -75,6 +75,8 @@ Pure and bounded, so it is table-testable with no pipeline. Same reason `RagasMa
 
 Every `Capture*` flag's XML must say what enabling it puts in memory, and reference `AuditLogOptions.LogQueryText`/`LogAnswerText` as the compliance-grade parallel. Validate `Capacity >= 1` and `MaxCapturedCharacters >= 0` in the initialisers, naming the property in the message (MA0015 forces `paramName` to be `value`).
 
+That validation needs tests, which this task cannot hold — the test project does not exist until A2. `tests/Rag.NET.Diagnostics.Tests/RagTraceOptionsTests.cs` lands with A2 and covers the defaults and both refusals.
+
 **Commit:** `feat(diagnostics): trace model and capture options`
 
 ### Task A2: the bounded ring buffer
@@ -170,7 +172,9 @@ public void WithDefaultOptions_NoTextIsCaptured()
     Assert.Null(trace.Query);
     Assert.Null(trace.Prompt);
     Assert.Null(trace.Answer);
-    Assert.All(trace.Chunks, c => Assert.Null(c.Text));
+    // Chunks are AuditChunkRefs, which carry no text at all; the text lives in the parallel
+    // ChunkTexts list, null as a whole when CaptureChunkText is off.
+    Assert.Null(trace.ChunkTexts);
     // Structure is still captured — that is the point of the default.
     Assert.NotEmpty(trace.QueryHash);
     Assert.Single(trace.Chunks);
@@ -306,6 +310,6 @@ Every code sample must compile against the real API. Verify by pasting into a th
 
 1. `dotnet build Rag.NET.slnx` → 0 Warning(s), 0 Error(s).
 2. All suites at or above baseline; report every count. `Rag.NET.Tests` must be **exactly 1308** with no test edited — B5 is the only task touching existing production code.
-3. The four content-default mutations from B2, and the eviction mutation from A2.
+3. The four content-default mutations from B1, and the eviction mutation from A2.
 4. No `#pragma`/`SuppressMessage` anywhere in the diff.
 5. `docs/planning/ROADMAP.md` and `MILESTONE.md` flip to complete **after** the whole-phase review — both files, per the `73472b4` precedent.
