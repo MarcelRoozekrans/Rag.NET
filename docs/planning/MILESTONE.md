@@ -71,6 +71,10 @@ Assume nothing works until a test says so *and the test is right*.
 4. Phase 3.4 — Pipeline Debugger / Trace Viewer [pending]
 5. Phase 3.5 — CI Integration Coverage [pending]
 6. Phase 3.6 — Email Parser Debt [pending]
+7. Phase 3.7 — Retrieval Quality Benchmark Harness [pending] — public benchmarks with published
+   reference numbers, so retrieval correctness is demonstrable rather than asserted. SciFact
+   first, to prove parity before adding breadth. Distinct from Phase 3.2's synthetic builder,
+   and from the existing speed benchmarks.
 
 ## Explicitly not in scope
 
