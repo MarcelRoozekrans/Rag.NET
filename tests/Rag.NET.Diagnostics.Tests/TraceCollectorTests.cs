@@ -1,5 +1,4 @@
 using Rag.NET.Diagnostics.Internal;
-using Rag.NET.Security;
 using Xunit;
 
 namespace Rag.NET.Diagnostics.Tests;
@@ -38,8 +37,8 @@ public sealed class TraceCollectorTests
 
         // Structure is still captured — that is the point of the default.
         Assert.NotEmpty(trace.QueryHash);
-        Assert.Equal("doc-1", chunk.Chunk.DocumentId);
-        Assert.Equal(0.9, chunk.Chunk.Score);
+        Assert.Equal("doc-1", chunk.DocumentId);
+        Assert.Equal(0.9, chunk.Score);
     }
 
     [Fact]
@@ -218,7 +217,7 @@ public sealed class TraceCollectorTests
         // "the chunks from the last retrieval".
         var trace = Assert.Single(buffer.Snapshot());
         int[] expected = [0, 1];
-        Assert.Equal(expected, trace.Chunks.Select(c => c.Chunk.ChunkIndex));
+        Assert.Equal(expected, trace.Chunks.Select(c => c.ChunkIndex));
     }
 
     [Fact]
@@ -357,7 +356,9 @@ public sealed class TraceCollectorTests
 
     private static TraceChunk ChunkWithText(string text, int index = 0) => new()
     {
-        Chunk = new AuditChunkRef { DocumentId = "doc-1", ChunkIndex = index, Score = 0.9 },
+        DocumentId = "doc-1",
+        ChunkIndex = index,
+        Score = 0.9,
         Text = text,
     };
 

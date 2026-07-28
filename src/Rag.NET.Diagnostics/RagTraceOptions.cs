@@ -1,5 +1,3 @@
-using Rag.NET.Security;
-
 namespace Rag.NET.Diagnostics;
 
 /// <summary>Controls how much a trace keeps, and whether it keeps any text at all.</summary>
@@ -12,16 +10,23 @@ namespace Rag.NET.Diagnostics;
 /// user questions in process memory"</i>.
 /// </para>
 /// <para>
-/// This is the same posture <see cref="AuditLogOptions"/> takes with
-/// <see cref="AuditLogOptions.LogQueryText"/> and <see cref="AuditLogOptions.LogAnswerText"/>. The
-/// prefixes differ — <c>Capture*</c> here, <c>Log*</c> there — because these two subsystems keep
-/// content for different lengths of time in different places; the rule they express is one concept,
-/// not two.
+/// This is the same posture <c>AuditLogOptions</c> in <c>Rag.NET.Security</c> takes with
+/// <c>LogQueryText</c> and <c>LogAnswerText</c>. The prefixes differ — <c>Capture*</c> here,
+/// <c>Log*</c> there — because these two subsystems keep content for different lengths of time in
+/// different places; the rule they express is one concept, not two. Those are plain names rather
+/// than links because this package deliberately does not reference that one; see
+/// <see cref="TraceChunk"/>.
 /// </para>
 /// <para>
 /// Memory is bounded by <see cref="Capacity"/> <i>and</i> <see cref="MaxCapturedCharacters"/>
 /// together. Without the second, a large capacity quietly means tens of megabytes of document text.
 /// The worst case is <c>Capacity × (TopK + 1) × MaxCapturedCharacters</c> characters.
+/// </para>
+/// <para>
+/// Every property is settable rather than <c>init</c>-only, because registration configures these
+/// through a delegate — <c>AddRagDiagnostics(o =&gt; o.CaptureQueryText = true)</c>, the shape
+/// <c>AddAuditLog</c> already uses — and a delegate receives an instance that already exists, which
+/// an <c>init</c> accessor will not accept.
 /// </para>
 /// </remarks>
 public sealed class RagTraceOptions
@@ -45,14 +50,14 @@ public sealed class RagTraceOptions
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">
     /// The value is below 1. Validated here rather than only where the buffer is built, so the
-    /// exception names the property that was set. It cannot name it through <c>paramName</c>: an
-    /// <c>init</c> accessor's only parameter is <c>value</c>, so the property name goes in the
-    /// message instead.
+    /// exception names the property that was set. It cannot name it through <c>paramName</c>: a
+    /// property setter's only parameter is <c>value</c>, so the property name goes in the message
+    /// instead.
     /// </exception>
     public int Capacity
     {
         get => _capacity;
-        init
+        set
         {
             if (value < 1)
             {
@@ -67,7 +72,7 @@ public sealed class RagTraceOptions
         }
     }
 
-    private readonly int _capacity = 50;
+    private int _capacity = 50;
 
     /// <summary>
     /// When <see langword="true"/>, <see cref="RagTrace.Query"/> holds the question the user typed.
@@ -76,10 +81,10 @@ public sealed class RagTraceOptions
     /// <b>What this puts in memory:</b> the raw text of every traced user question, retained until
     /// evicted, readable by anything in the process. <see cref="RagTrace.QueryHash"/> is populated
     /// either way, so leave this off if you only need to tell repeated questions apart. The
-    /// compliance-grade equivalent is <see cref="AuditLogOptions.LogQueryText"/>, which writes the
-    /// same text somewhere durable instead.
+    /// compliance-grade equivalent is <c>AuditLogOptions.LogQueryText</c>, which writes the same
+    /// text somewhere durable instead.
     /// </remarks>
-    public bool CaptureQueryText { get; init; }
+    public bool CaptureQueryText { get; set; }
 
     /// <summary>
     /// When <see langword="true"/>, <see cref="TraceChunk.Text"/> holds each retrieved chunk's
@@ -92,7 +97,7 @@ public sealed class RagTraceOptions
     /// the sanitiser remove"</i> answerable, and that text is captured <b>before</b> redaction, so
     /// a trace may hold content the pipeline itself went on to strip.
     /// </remarks>
-    public bool CaptureChunkText { get; init; }
+    public bool CaptureChunkText { get; set; }
 
     /// <summary>
     /// When <see langword="true"/>, <see cref="RagTrace.Prompt"/> holds the prompt the answer engine
@@ -104,7 +109,7 @@ public sealed class RagTraceOptions
     /// <see cref="CaptureQueryText"/> and <see cref="CaptureChunkText"/> combined, in one field, and
     /// counts against <see cref="MaxCapturedCharacters"/> once rather than per chunk.
     /// </remarks>
-    public bool CapturePromptText { get; init; }
+    public bool CapturePromptText { get; set; }
 
     /// <summary>
     /// When <see langword="true"/>, <see cref="RagTrace.Answer"/> holds the generated answer.
@@ -112,9 +117,9 @@ public sealed class RagTraceOptions
     /// <remarks>
     /// <b>What this puts in memory:</b> the model's reply to every traced query, which is derived
     /// from your documents and can quote them at length. The compliance-grade equivalent is
-    /// <see cref="AuditLogOptions.LogAnswerText"/>.
+    /// <c>AuditLogOptions.LogAnswerText</c>.
     /// </remarks>
-    public bool CaptureAnswerText { get; init; }
+    public bool CaptureAnswerText { get; set; }
 
     /// <summary>
     /// The longest any single captured text field may be, in characters. Default 4000; 0 keeps none.
@@ -128,12 +133,12 @@ public sealed class RagTraceOptions
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">
     /// The value is negative. As with <see cref="Capacity"/>, the property is named in the message
-    /// because an <c>init</c> accessor's only parameter is <c>value</c>.
+    /// because a property setter's only parameter is <c>value</c>.
     /// </exception>
     public int MaxCapturedCharacters
     {
         get => _maxCapturedCharacters;
-        init
+        set
         {
             if (value < 0)
             {
@@ -149,5 +154,5 @@ public sealed class RagTraceOptions
         }
     }
 
-    private readonly int _maxCapturedCharacters = 4000;
+    private int _maxCapturedCharacters = 4000;
 }

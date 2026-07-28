@@ -1,5 +1,3 @@
-using Rag.NET.Security;
-
 namespace Rag.NET.Diagnostics;
 
 /// <summary>
@@ -8,12 +6,14 @@ namespace Rag.NET.Diagnostics;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is <b>not</b> an audit trail. <see cref="IAuditLog"/> is the compliance-grade record: it must
-/// not lose events, it is retained, and it is written for someone who may later have to prove what
-/// happened. A trace is the opposite by construction — the last N executions, in process memory,
-/// dropped on restart — and is read by a developer five minutes after the request. The two share
-/// types and vocabulary (<see cref="AuditChunkRef"/> here, <c>Log*Text</c> against
-/// <c>Capture*Text</c> in the options) and nothing else.
+/// This is <b>not</b> an audit trail. <c>IAuditLog</c> in <c>Rag.NET.Security</c> is the
+/// compliance-grade record: it must not lose events, it is retained, and it is written for someone
+/// who may later have to prove what happened. A trace is the opposite by construction — the last N
+/// executions, in process memory, dropped on restart — and is read by a developer five minutes after
+/// the request. The two share a vocabulary and nothing else: <see cref="TraceChunk"/> uses
+/// <c>AuditChunkRef</c>'s field names, and <c>Capture*Text</c> here answers <c>Log*Text</c> there.
+/// The types are not shared, and neither is the assembly — see <see cref="TraceChunk"/> for what
+/// that reference would have cost.
 /// </para>
 /// <para>
 /// Everything textual is <see langword="null"/> unless the matching <c>Capture*</c> flag on
@@ -57,9 +57,9 @@ public sealed record RagTrace
     /// present: which chunks came back is structure, not content.
     /// </summary>
     /// <remarks>
-    /// Each entry pairs an <see cref="AuditChunkRef"/> with its own text, so text can never be read
-    /// against the wrong chunk. See <see cref="TraceChunk"/> for why that is a composition rather
-    /// than a second list running alongside this one.
+    /// Each entry carries its own text, so text can never be read against the wrong chunk. See
+    /// <see cref="TraceChunk"/> for why that is one record rather than a second list running
+    /// alongside this one.
     /// </remarks>
     public IReadOnlyList<TraceChunk> Chunks { get; init; } = [];
 

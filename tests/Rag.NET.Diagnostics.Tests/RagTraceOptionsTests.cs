@@ -22,6 +22,44 @@ public sealed class RagTraceOptionsTests
     }
 
     [Fact]
+    public void EveryProperty_IsAssignableThroughAConfigureDelegate()
+    {
+        var options = new RagTraceOptions();
+
+        // Registration configures these the way AddAuditLog does — AddRagDiagnostics(o => ...) —
+        // and a delegate is handed an instance that already exists. init-only accessors would not
+        // compile here, so this test guards a decision the compiler otherwise enforces silently.
+        Action<RagTraceOptions> configure = o =>
+        {
+            o.Capacity = 5;
+            o.MaxCapturedCharacters = 100;
+            o.CaptureQueryText = true;
+            o.CaptureChunkText = true;
+            o.CapturePromptText = true;
+            o.CaptureAnswerText = true;
+        };
+
+        configure(options);
+
+        Assert.Equal(5, options.Capacity);
+        Assert.Equal(100, options.MaxCapturedCharacters);
+        Assert.True(options.CaptureQueryText);
+        Assert.True(options.CaptureChunkText);
+        Assert.True(options.CapturePromptText);
+        Assert.True(options.CaptureAnswerText);
+    }
+
+    [Fact]
+    public void Validation_StillBitesWhenSetAfterConstruction()
+    {
+        var options = new RagTraceOptions();
+
+        // The accessor changed from init to set; the refusal it guards did not.
+        Assert.Throws<ArgumentOutOfRangeException>(() => options.Capacity = 0);
+        Assert.Throws<ArgumentOutOfRangeException>(() => options.MaxCapturedCharacters = -1);
+    }
+
+    [Fact]
     public void Defaults_AreTheBoundsTheDesignSettledOn()
     {
         var options = new RagTraceOptions();

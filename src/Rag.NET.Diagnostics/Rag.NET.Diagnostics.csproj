@@ -13,10 +13,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- For AuditChunkRef, which a trace reuses rather than redefining, and for the
-         AuditLogOptions flags the Capture* options are documented against. Rag.NET.Security
-         references only Rag.NET and Rag.NET.Abstractions, so this direction is acyclic. -->
-    <ProjectReference Include="..\Rag.NET.Security\Rag.NET.Security.csproj" />
+    <!-- Deliberately no ProjectReference. Capture is five records, a ring buffer and a collector;
+         it needs no part of the pipeline to describe what the pipeline did. Referencing
+         Rag.NET.Security to reuse AuditChunkRef was measured and rejected: it takes the transitive
+         closure from 15 packages to 41, pulling in SQLite and its native binaries, the ML
+         tokenizers and their data file, Polly and protobuf. TraceChunk mirrors AuditChunkRef's
+         field names instead, so the vocabulary is still shared. The behaviors and decorators that
+         do need pipeline types are separate types and can carry the reference themselves. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
   </ItemGroup>
 
 </Project>
