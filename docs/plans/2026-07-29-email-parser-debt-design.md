@@ -21,7 +21,8 @@ the argument has been false since then. The comment was corrected at the time; t
 
 Deleting the copy removes `Sanitize`, `InvalidChars`, `Replacement`, `MaxNameLength` and
 `BuildInvalidChars` — roughly half the file — and `Compose` calls
-`FileNameSanitizer.Sanitize(name, Fallback, maxLength: 128)` instead.
+`FileNameSanitizer.Sanitize(name, Fallback)` instead, relying on the shared default
+`maxLength: 128` rather than restating it.
 
 ### One of the three recorded divergences dissolves
 
@@ -32,12 +33,17 @@ The debt lists three. `FileNameSanitizer` takes the fallback as a **parameter**,
 |---|---|---|
 | Length cap | 64 | 128 |
 | All-replacement input (`"///"`) | `"___"` | `"embedded-message"` |
-| Trailing non-breaking space after truncation | kept | trimmed |
+| Trailing non-breaking space re-exposed by dot trimming | kept | trimmed |
 
-The third is a genuine defect. `TrimEnd('.', ' ')` matches two characters; `char.IsWhiteSpace`
-matches U+00A0 and the rest of the Unicode whitespace set, and the shared implementation loops to a
-fixed point because trimming dots re-exposes spaces and vice versa. A name ending in a non-breaking
-space survives today.
+The third is a genuine defect. `TrimEnd('.', ' ')` matches two characters in a single pass;
+`char.IsWhiteSpace` matches U+00A0 and the rest of the Unicode whitespace set, and the shared
+implementation loops to a fixed point because trimming dots re-exposes whitespace and vice versa.
+
+**Corrected during implementation:** a *bare* trailing non-breaking space does **not** survive
+today — the old `Sanitize` opens with `name.Trim()`, which is `char.IsWhiteSpace`-based and removes
+U+00A0 before anything else happens. Nor does the row need truncation to fire. What survives is a
+non-breaking space that the closing `TrimEnd('.', ' ')` *uncovers* by stripping a trailing dot, and
+then cannot match: `"Quarterly report\u00A0."` keeps its U+00A0.
 
 The second is arguably a fix as well: `"___"` tells a reader nothing about what the attachment was,
 where `"embedded-message"` at least names the category.
@@ -99,7 +105,7 @@ mistake for a regression:
 
 - a name longer than 64 characters now survives to 128;
 - an all-invalid name falls back to `"embedded-message"` rather than `"___"`;
-- a name whose truncation lands on a non-breaking space no longer keeps it.
+- a name whose trailing dot, once trimmed, uncovers a non-breaking space no longer keeps it.
 
 The last is the one to write first — it fails against the current code, which is the point.
 

@@ -35,17 +35,25 @@ Baselines: `Rag.NET.Parsers.Email.Tests` — **read the current count before you
 
 ```csharp
 [Fact]
-public void ATrailingNonBreakingSpaceIsTrimmed()
+public void ANonBreakingSpaceReExposedByDotTrimmingIsTrimmed()
 {
-    // TrimEnd('.', ' ') matches exactly two characters. char.IsWhiteSpace matches U+00A0 and
-    // the rest of the Unicode whitespace set, and the shared sanitizer loops to a fixed point
-    // because trimming dots re-exposes spaces and vice versa. Today this name keeps its
+    // TrimEnd('.', ' ') matches exactly two characters in a single pass, so stripping the dot
+    // uncovers a non-breaking space it cannot see. char.IsWhiteSpace matches U+00A0 and the
+    // rest of the Unicode whitespace set, and the shared sanitizer loops to a fixed point
+    // because trimming dots re-exposes whitespace and vice versa. Today this name keeps its
     // non-breaking space.
-    var metadata = EmbeddedMessageMetadata.Create(Parent(), "Quarterly report ", ".eml", "message/rfc822");
+    var metadata = EmbeddedMessageMetadata.Create(Parent(), "Quarterly report .", ".eml", "message/rfc822");
 
     Assert.DoesNotContain(' ', metadata.FileName);
 }
 ```
+
+> **Corrected during implementation.** This plan originally passed a *bare* trailing
+> non-breaking space and claimed it fails today. It does not: the old `Sanitize` opens with
+> `name.Trim()`, which is `char.IsWhiteSpace`-based and already removes U+00A0. Verified by
+> running it — green against the pre-Task-2 code. Only the closing `TrimEnd('.', ' ')` is
+> single-pass and two-character, so a trailing **dot** is what exposes the defect. The snippet
+> above carries the corrected input.
 
 Run it. **Expected: FAIL.** Report the message.
 

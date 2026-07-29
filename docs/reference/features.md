@@ -556,7 +556,11 @@ Parse `.eml` (RFC 5322) and `.msg` (Outlook) files into sections: subject → he
 
 **Why:** Email archives are a major enterprise knowledge source. The existing Gmail/Exchange connectors ingest live mailboxes, but `.eml`/`.msg` exports from archives or migrations are unaddressed.
 
-**Status:** ✅ Done (EML via MimeKit, MSG via MsgReader; embedded/forwarded messages are not yet recursed — logged as a warning, follow-up)
+An embedded or forwarded message is parsed in place and carries the parent's `DocumentId`, distinguished by a composed file name — `parent.eml#Forwarded Subject.eml`. Depth is bounded by `EmailParserOptions.MaxEmbeddedDepth` (default `3`, hard ceiling `64`) and total fan-out by `MaxEmbeddedMessages` (default `50`); exceeding either logs a warning and skips that branch rather than throwing. The ceiling is not adjustable and not a placeholder: the traversal re-enters through the public `IDocumentParser` boundary by content-type dispatch, so its frames are not all ours to flatten.
+
+> **Changed in 3.6 — embedded-attachment names may differ.** The composed stem now goes through the shared `FileNameSanitizer` instead of a private copy. Three things follow. Long subjects keep **128** characters instead of 64, so a name that used to truncate mid-word no longer does. A subject made entirely of invalid characters (`"///"`) now yields `embedded-message` instead of `___`. And a subject ending in a non-breaking space followed by a dot no longer keeps that space — the old single-pass `TrimEnd('.', ' ')` stripped the dot and left whitespace it could not match. Only the stem changes; the `parent.eml#child.eml` composition, the `#` separator and the `embedded-message` fallback for a missing subject are unchanged. Anything keyed on these names (a downstream store, a saved filter) should be re-checked.
+
+**Status:** ✅ Done (EML via MimeKit, MSG via MsgReader; embedded/forwarded messages recursed since 2.1, bounded by depth and node caps)
 
 ---
 

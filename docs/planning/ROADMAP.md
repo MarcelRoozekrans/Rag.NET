@@ -10,22 +10,6 @@ Anything added here follows one rule: record it with its origin, then schedule i
 phase or re-justify it. Closed items move to the list below rather than vanishing, so a
 future reader can tell the difference between "never existed" and "dealt with".
 
-- **Fourth filename sanitizer** (Phase 2.1, Part C): `EmbeddedMessageMetadata.Sanitize` in
-  `Rag.NET.Parsers.Email` duplicates `FileNameSanitizer`. **The original blocker is gone** —
-  Phase 2.5 moved `FileNameSanitizer` to `Rag.NET.Abstractions`, which this parser does
-  reference — so what remains is deleting the copy. That is not mechanical: three behavioural
-  divergences mean adopting the shared sanitizer changes emitted names. The all-replacement
-  fallback (`"///"` → `"___"` vs `"embedded-message"`), the length cap (`FileNameSanitizer`
-  defaults to 128, `EmbeddedMessageMetadata.MaxNameLength` is 64), and post-truncation trimming
-  (`FileNameSanitizer.TrimEdges` re-trims to a fixed point over all `char.IsWhiteSpace`;
-  `EmbeddedMessageMetadata`'s `TrimEnd('.', ' ')` leaves a re-exposed non-breaking space).
-  → **Phase 3.6**
-- **Stack-recursive email traversal** (Phase 2.1, Part C): `MaxEmbeddedDepth` is capped at 64
-  because the embedded-message traversal recurses on the stack — ~500 levels (~40 KB of
-  crafted MIME at ~81 bytes/level) terminates the process with an uncatchable
-  `STATUS_STACK_OVERFLOW`. The ceiling is measured headroom, not a proof. Converting the
-  traversal to an explicit work queue would remove the class entirely and is the real fix if
-  a large `MaxEmbeddedDepth` is ever wanted. → **Phase 3.6**
 - **Seven guide pages are unreachable from the sidebar** (found in the Phase 3.4 Part D review):
   `sidebars.ts` omits `guide/security`, `guide/memory`, `guide/resilience`, `guide/data-providers`,
   `guide/mediator`, `guide/graphrag` and `guide/raptor`. They exist and are linked from other
@@ -59,6 +43,29 @@ future reader can tell the difference between "never existed" and "dealt with".
   naturally with 4.1, since release-please depends on the commit format holding.
 
 ### Closed
+
+- ~~**Fourth filename sanitizer**~~ (Phase 2.1, Part C) → closed in 3.6, **implemented**:
+  `EmbeddedMessageMetadata`'s private copy is deleted and `Compose` calls
+  `FileNameSanitizer.Sanitize(name, Fallback)` on the shared implementation in
+  `Rag.NET.Abstractions`. One of the three recorded divergences was never one — the shared
+  sanitizer takes the fallback as a parameter, so `"embedded-message"` is preserved exactly.
+  The other two are real and pinned by tests: the stem cap moves 64 → 128, and an all-invalid
+  stem now collapses to `embedded-message` rather than `___`. A third, genuine defect went
+  with the copy: `TrimEnd('.', ' ')` matched two characters in one pass, so stripping a
+  trailing dot re-exposed a non-breaking space it could not see.
+
+- ~~**Stack-recursive email traversal**~~ (Phase 2.1, Part C) → closed in 3.6,
+  **re-justified, not implemented**. Nothing changed in the code and nothing should: the
+  recorded fix does not work. An explicit work queue cannot flatten this recursion, because
+  `EmailAttachmentDispatcher` selects a parser by content type and re-enters through the
+  public `IDocumentParser` boundary — so an embedded-message chain runs through frames
+  belonging to arbitrary third-party parsers, which no queue of ours can unwind. That
+  indirection is deliberate; it replaced a `ReferenceEquals(parser, self)` check that missed
+  `.eml → .msg → .eml` chains because consecutive levels use different parser instances. Real
+  chains run 10–20 deep, the ceiling is 64, the measured overflow floor is ~500 — several
+  times above any real input, an order of magnitude below the failure point. The reasoning now
+  lives on `EmailParserOptions.MaxSupportedEmbeddedDepth`. **There is no work queue to go
+  looking for.**
 
 - ~~**Unsanitized webhook filename**~~ (found in the Phase 2.1 Part A review) → closed in 2.5:
   `GenericWebhookPayloadParser` now routes the untrusted `documentId` through
@@ -213,9 +220,9 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Completed:** 2026-07-29 (there was no CI at all — every test in the repository had only ever run on a developer's machine, which is why 3.5 builds the pipeline and 4.1 narrows to packaging. Test projects declare their own needs via `RequiresDocker`, `RequiresLlm` and `RequiresSecrets`, and `Rag.NET.RepoConventions.Tests` fails when a declaration and reality disagree — in both directions, so a stale declaration is as loud as a missing one. The phase's own thesis was falsified during its final review: `Rag.NET.WebSearch.Tavily.Tests` had four real tests, a correct tier, and was in no solution, so `dotnet test --no-build` exited 0 having run none of them. Both it and its source project are now in the solution, every tier loop fails a project whose assembly is absent, and two conventions tests guard `src/` and `tests/` against a repeat. **The workflows have never executed — the first pull-request run is the real verification.**)
 
 ### Phase 3.6: Email Parser Debt [status: pending]
-**Goal:** Close the two recorded email-parser debts above, both of which are behaviour changes rather than refactors. (Not a features.md row — debt carried out of Milestone 2.)
-- Retire `EmbeddedMessageMetadata.Sanitize` in favour of `Rag.NET.FileNameSanitizer`, accepting and documenting the three naming divergences.
-- Convert the embedded-message traversal from stack recursion to an explicit work queue, removing the `STATUS_STACK_OVERFLOW` class and the measured-headroom `MaxEmbeddedDepth = 64` ceiling with it.
+**Goal:** Close the two recorded email-parser debts above. Only one of them turned out to be a behaviour change; the other closes without code. (Not a features.md row — debt carried out of Milestone 2.)
+- Retire `EmbeddedMessageMetadata.Sanitize` in favour of `Rag.NET.FileNameSanitizer`, accepting and documenting the naming changes. Two of the three recorded divergences are real (the 64 → 128 cap, the `embedded-message` fallback for an all-invalid stem) plus one genuine defect fixed in passing (a non-breaking space re-exposed by trailing-dot trimming); the fallback-stem divergence dissolves, since the shared sanitizer takes the fallback as a parameter.
+- ~~Convert the embedded-message traversal to an explicit work queue.~~ **Re-justified instead.** The recursion re-enters through the public `IDocumentParser` boundary via content-type dispatch, so a queue of ours cannot unwind the third-party frames in between. `MaxSupportedEmbeddedDepth = 64` stays and gains the reasoning it lacked. See the Closed entry above.
 
 ### Phase 3.7: Retrieval Quality Benchmark Harness [status: pending]
 **Goal:** Measure retrieval quality against public benchmarks with published reference numbers, so correctness is *demonstrable* rather than asserted. (Not a features.md row — quality-hardening scope.)
