@@ -35,7 +35,7 @@ internal sealed class StorageMessageAdapter(HtmlDocumentParser htmlParser) : IMe
     {
         // Storage.Message.Attachments is a List<object> mixing file attachments
         // (Storage.Attachment) and embedded messages (Storage.Message).
-#pragma warning disable HLQ012 // CollectionsMarshal.AsSpan cannot cross yield/await boundaries in async iterators
+#pragma warning disable HLQ012 // CollectionsMarshal.AsSpan: a Span<T> cannot live across the yield returns below
         foreach (var item in message.Attachments)
 #pragma warning restore HLQ012
         {

@@ -4,9 +4,29 @@ namespace Rag.NET.Parsers.Email;
 /// Minimal file-extension → MIME-type map used when an Outlook attachment does not carry
 /// an explicit MIME type (see <see cref="MsgDocumentParser"/>). Covers the content types
 /// handled by the Rag.NET parser packages; unknown extensions map to
-/// <c>application/octet-stream</c>, which no parser claims, so those attachments are
-/// skipped with a warning by <see cref="EmailAttachmentDispatcher"/>.
+/// <c>application/octet-stream</c>.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>The fallback assumes no parser claims it.</b> On that assumption an attachment of an
+/// unknown type is skipped with a warning by <see cref="EmailAttachmentDispatcher"/>, which is
+/// the "degrades rather than breaks" behaviour <see cref="EmailParserOptions"/> documents. It
+/// holds for every parser this package ships: <c>application/octet-stream</c> means "unknown
+/// binary", so nothing format-specific should answer to it.
+/// </para>
+/// <para>
+/// <b>It does not hold when <c>Rag.NET.Chunking.Templates</c> is registered.</b> Both its
+/// <c>EmailDocumentParser</c> and its <c>QAPairsDocumentParser</c> accept
+/// <c>application/octet-stream</c> in <c>CanParse</c>, and <c>UseEmailChunking()</c> /
+/// <c>UseQAPairsChunking()</c> add them to the same
+/// <see cref="Abstractions.IDocumentParser"/> collection the dispatcher searches. One unknown
+/// extension is then routed to a parser that cannot read it, and — since the dispatcher does not
+/// wrap <c>ParseAsync</c> in a <c>try</c> — the failure escapes the whole document parse rather
+/// than being skipped. Verified end to end in the Phase 3.9 whole-phase review. The fix belongs
+/// to those parsers, not to this map; it is scheduled as <b>Phase 3.11: Duplicate Email
+/// Parser</b> in <c>docs/planning/ROADMAP.md</c>.
+/// </para>
+/// </remarks>
 internal static class MimeTypeMap
 {
     private static readonly Dictionary<string, string> s_map = new(StringComparer.OrdinalIgnoreCase)
