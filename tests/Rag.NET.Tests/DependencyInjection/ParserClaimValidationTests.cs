@@ -158,8 +158,9 @@ public class ParserClaimValidationTests
     /// The conflict message has to offer a way out that the API actually permits.
     /// <c>UseEmailChunking()</c> registers a parser <i>and</i> a chunking strategy, so "register
     /// only one of them" is unfollowable for a user who wants the email-shaped chunking with
-    /// <c>Rag.NET.Parsers.Email</c> parsing — that pairing was unreachable until
-    /// <c>RegisterParser</c> existed. The message quotes the opt-out verbatim so it can be pasted.
+    /// <c>Rag.NET.Parsers.Email</c> parsing — that pairing was unreachable until the
+    /// <c>registerParser</c> parameter existed. The message quotes the opt-out verbatim so it can
+    /// be pasted straight into a composition root.
     /// </summary>
     [Fact]
     public void TheConflictMessageNamesTheParserOptOut()
@@ -172,7 +173,7 @@ public class ParserClaimValidationTests
             }));
 
         Assert.Contains(
-            "UseEmailChunking(o => o.RegisterParser = false)", ex.Message, StringComparison.Ordinal);
+            "UseEmailChunking(registerParser: false)", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -191,7 +192,7 @@ public class ParserClaimValidationTests
 
         Assert.Equal(1, CountOccurrences(ex.Message, "to keep that registration without its parser"));
         Assert.DoesNotContain(
-            "AddEmailParser(o => o.RegisterParser", ex.Message, StringComparison.Ordinal);
+            "AddEmailParser(registerParser", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -203,7 +204,7 @@ public class ParserClaimValidationTests
         var sp = BaseServices()
             .AddRagNet(rag =>
             {
-                rag.UseEmailChunking(o => o.RegisterParser = false);
+                rag.UseEmailChunking(registerParser: false);
                 rag.AddEmailParser();
             })
             .BuildServiceProvider();
@@ -224,7 +225,7 @@ public class ParserClaimValidationTests
     public void TheQAPairsParserOptOut_DropsOnlyTheParser()
     {
         var sp = BaseServices()
-            .AddRagNet(rag => rag.UseQAPairsChunking(o => o.RegisterParser = false))
+            .AddRagNet(rag => rag.UseQAPairsChunking(registerParser: false))
             .BuildServiceProvider();
 
         Assert.DoesNotContain(sp.GetServices<IDocumentParser>(), p => p is QAPairsDocumentParser);

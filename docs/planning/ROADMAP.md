@@ -89,8 +89,12 @@ future reader can tell the difference between "never existed" and "dealt with".
   **What the design got wrong.** §4 made registering both packages a startup error while §6 made
   that same configuration the phase-defining test, and the error it produced told the user to
   "register only one of them" when `UseEmailChunking()` bundled a parser with a chunking strategy
-  and offered no way to take the strategy alone. `EmailChunkingOptions.RegisterParser` and its twin
-  on `QAPairsChunkingOptions` close that; the design doc carries the correction.
+  and offered no way to take the strategy alone. `UseEmailChunking(registerParser: false)` and its
+  twin on `UseQAPairsChunking` close that; the design doc carries the correction. The flag shipped
+  as a property on the two options types and the whole-phase review moved it to a parameter on the
+  call: neither chunking strategy takes options at all, so `UseEmailChunking(o => {
+  o.IncludeHeaders = false; o.RegisterParser = false; })` compiled, ran, threw nothing and silently
+  discarded `IncludeHeaders` — dropping the parser dropped its only reader.
 - ~~**Stack-recursive email traversal**~~ (Phase 2.1, Part C) → closed in 3.9, **implemented**.
   **Read the history before trusting the word "closed": this entry was closed once already, in
   3.6, as "re-justified, not implemented", on a premise that phase's own whole-phase review

@@ -24,7 +24,7 @@ namespace Rag.NET.Chunking.Templates.Tests;
 /// parser and a chunking strategy together and there was no way to take the strategy alone.
 /// </para>
 /// <para>
-/// <see cref="EmailChunkingOptions.RegisterParser"/> is what makes the instruction followable, and
+/// <c>UseEmailChunking(registerParser: false)</c> is what makes the instruction followable, and
 /// this file is the test that it does: email-shaped chunking with <c>Rag.NET.Parsers.Email</c>
 /// doing the parsing, which is the pairing a user would actually want. The unknown-extension
 /// attachment case it replaces is pinned by <see cref="QAPairsAttachmentClaimTests"/>, which uses
@@ -48,9 +48,33 @@ public sealed class EmailChunkingWithoutItsParserTests
     }
 
     /// <summary>
+    /// The claim goes with the parser. Leaving it behind would keep the conflict the opt-out
+    /// exists to resolve, and the container above would never have been built at all.
+    /// </summary>
+    [Fact]
+    public void OptingOutOfTheParserDropsItsClaimToo()
+    {
+        using var provider = BuildOptedOutProvider();
+
+        Assert.DoesNotContain(
+            provider.GetServices<ParserClaim>(),
+            c => string.Equals(
+                c.ParserTypeName,
+                typeof(EmailTemplateDocumentParser).FullName,
+                StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// The opt-out must drop only the parser. Taking the chunking strategy is the entire reason a
     /// user calls <c>UseEmailChunking()</c> while letting the other package parse.
     /// </summary>
+    /// <remarks>
+    /// Asserted on the registrations rather than on a flag read back out of
+    /// <see cref="EmailChunkingOptions"/>. <c>RegisterParser</c> used to live there, and a test
+    /// that resolved the options and checked it was reading the input it had just supplied — it
+    /// would have passed against a <c>UseEmailChunking</c> that stored the flag and ignored it.
+    /// The flag is a method parameter now and there is nothing to read back, which is the point.
+    /// </remarks>
     [Fact]
     public void OptingOutOfTheParserKeepsTheChunkingStrategy()
     {
@@ -59,7 +83,28 @@ public sealed class EmailChunkingWithoutItsParserTests
         Assert.Contains(
             provider.GetServices<IDocumentChunkingStrategy>(), s => s is EmailChunkingStrategy);
         Assert.Contains(provider.GetServices<IChunkingStrategy>(), s => s is EmailChunkingStrategy);
-        Assert.False(provider.GetRequiredService<EmailChunkingOptions>().RegisterParser);
+    }
+
+    /// <summary>
+    /// The trap the move closes: <c>IncludeHeaders</c> and the opt-out are now independent, and
+    /// setting both no longer silently discards the first because the parser that reads it is
+    /// gone. The container has to build and the strategy has to survive.
+    /// </summary>
+    [Fact]
+    public void ChunkingOptionsSurviveTheOptOut()
+    {
+        var services = new ServiceCollection();
+        services.AddRagNet(builder =>
+        {
+            builder.UseEmailChunking(o => o.IncludeHeaders = false, registerParser: false);
+            builder.AddEmailParser();
+        });
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.False(provider.GetRequiredService<EmailChunkingOptions>().IncludeHeaders);
+        Assert.Contains(
+            provider.GetServices<IDocumentChunkingStrategy>(), s => s is EmailChunkingStrategy);
     }
 
     /// <summary>
@@ -103,7 +148,7 @@ public sealed class EmailChunkingWithoutItsParserTests
             }));
 
         Assert.Contains(
-            "UseEmailChunking(o => o.RegisterParser = false)", ex.Message, StringComparison.Ordinal);
+            "UseEmailChunking(registerParser: false)", ex.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -126,7 +171,7 @@ public sealed class EmailChunkingWithoutItsParserTests
         var services = new ServiceCollection();
         services.AddRagNet(builder =>
         {
-            builder.UseEmailChunking(o => o.RegisterParser = false);
+            builder.UseEmailChunking(registerParser: false);
             builder.AddEmailParser();
         });
 
