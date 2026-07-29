@@ -37,6 +37,22 @@ future reader can tell the difference between "never existed" and "dealt with".
   so 3.9 traded a compile-time guarantee for a runtime convention and did not say so.
   → **Phase 3.10** (Archive Parser — the next phase to touch this area, and the one that adds a
   third container shape to the same type)
+- **No supported way to replace a built-in parser** (found while fixing the Phase 3.11 review's first
+  finding): `AddRagNETServices()` registers `TextDocumentParser` and `MarkdownDocumentParser` before
+  `configure?.Invoke(builder)` runs, so a user's own `text/plain` parser is always behind them in the
+  first-match dispatch and never wins. 3.11 made that **loud** — the conflict guard now declares
+  claims for both built-ins, so a user who declares `text/plain` gets a startup error. It did not
+  make it **resolvable**: the error names `AddRagNet()` as the other claimant, and that is not a call
+  anyone can remove.
+  The perverse incentive is the part worth recording. Declaring your claim honestly gets you
+  rejected; declaring nothing gets you the old silent failure, since `AddParser<T>()` alone still
+  registers and still loses. No capability was lost — undeclared, a user lands exactly where they
+  were before 3.11 — but the guard now points at a problem it offers no way out of.
+  The missing feature is parser *replacement*, not another opt-out: something like
+  `AddParser<T>(replaces: typeof(TextDocumentParser))`, or removing the built-in's `ServiceDescriptor`
+  and its claim together. Deliberately not designed here — 3.11 was a bug-fix phase and this is API
+  surface.
+  → **Milestone 4**, with 4.1, which is when the public API gets scrutinised for packaging anyway.
 - **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
   of scope, scheduled here so they do not stay open notes). All three exist in
   `MarcelRoozekrans/AdoNet.Async` and none exists here:
