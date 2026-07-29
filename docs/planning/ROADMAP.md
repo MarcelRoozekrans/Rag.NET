@@ -10,22 +10,6 @@ Anything added here follows one rule: record it with its origin, then schedule i
 phase or re-justify it. Closed items move to the list below rather than vanishing, so a
 future reader can tell the difference between "never existed" and "dealt with".
 
-- **Fourth filename sanitizer** (Phase 2.1, Part C): `EmbeddedMessageMetadata.Sanitize` in
-  `Rag.NET.Parsers.Email` duplicates `FileNameSanitizer`. **The original blocker is gone** —
-  Phase 2.5 moved `FileNameSanitizer` to `Rag.NET.Abstractions`, which this parser does
-  reference — so what remains is deleting the copy. That is not mechanical: three behavioural
-  divergences mean adopting the shared sanitizer changes emitted names. The all-replacement
-  fallback (`"///"` → `"___"` vs `"embedded-message"`), the length cap (`FileNameSanitizer`
-  defaults to 128, `EmbeddedMessageMetadata.MaxNameLength` is 64), and post-truncation trimming
-  (`FileNameSanitizer.TrimEdges` re-trims to a fixed point over all `char.IsWhiteSpace`;
-  `EmbeddedMessageMetadata`'s `TrimEnd('.', ' ')` leaves a re-exposed non-breaking space).
-  → **Phase 3.6**
-- **Stack-recursive email traversal** (Phase 2.1, Part C): `MaxEmbeddedDepth` is capped at 64
-  because the embedded-message traversal recurses on the stack — ~500 levels (~40 KB of
-  crafted MIME at ~81 bytes/level) terminates the process with an uncatchable
-  `STATUS_STACK_OVERFLOW`. The ceiling is measured headroom, not a proof. Converting the
-  traversal to an explicit work queue would remove the class entirely and is the real fix if
-  a large `MaxEmbeddedDepth` is ever wanted. → **Phase 3.6**
 - **Seven guide pages are unreachable from the sidebar** (found in the Phase 3.4 Part D review):
   `sidebars.ts` omits `guide/security`, `guide/memory`, `guide/resilience`, `guide/data-providers`,
   `guide/mediator`, `guide/graphrag` and `guide/raptor`. They exist and are linked from other
@@ -57,8 +41,53 @@ future reader can tell the difference between "never existed" and "dealt with".
   - **`renovate.json`** — no automated dependency updates at all.
   → **Milestone 4**, alongside the rest of the release-readiness work. `.commitlintrc.yml` pairs
   naturally with 4.1, since release-please depends on the commit format holding.
+- **Stack-recursive email traversal** (Phase 2.1, Part C — **reopened**, see below): each level of
+  embedded-message nesting adds async-iterator frames that are not unwound until the nested
+  enumeration finishes. Measured: 480 levels survive, 500+ terminate the process with
+  `STATUS_STACK_OVERFLOW`, and ~81 bytes of raw MIME buys a level. `MaxSupportedEmbeddedDepth = 64`
+  bounds it, an order of magnitude below the floor, so nothing reachable crashes today. The fix is
+  a `Stack<IAsyncEnumerator<DocumentSection>>` drained LIFO — depth-first, so section ordering is
+  byte-identical, and O(1) frames at any depth.
+  > **Phase 3.6 tried to close this as "re-justified, not implemented" and the premise was
+  > falsified in that phase's own review.** The argument was that an explicit queue cannot help
+  > because the recursion re-enters through the public `IDocumentParser` boundary by content-type
+  > dispatch, so the frames belong to arbitrary third-party parsers. That is false for the dominant
+  > path: a nested `message/rfc822` arrives as a live `MimeKit.MessagePart`, and
+  > `EmailDocumentParser.ParseAttachmentsAsync` routes it to `ParseEmbeddedAsync`, which calls
+  > `ParseMessageAsync` **directly** — `EmailAttachmentDispatcher` is never involved. Four internal
+  > frames per level, no interface hop. Probe-verified: `EmailDocumentParser` with an **empty**
+  > parsers list, against a 64-level `MessagePart` chain, recursed to the ceiling and produced 130
+  > sections with no warning. Two subsidiary errors went with it — crossing a public interface is
+  > not the same as entering third-party code (in every configuration this repository ships, the
+  > parser resolved for `message/rfc822` *is* `EmailDocumentParser`), and the "risk of changing
+  > section ordering" is a property of a FIFO queue, not of the transformation. Recorded here so a
+  > future reader can tell that this was examined and got the wrong answer once, rather than that
+  > nobody looked.
+  >
+  > The honest position, and still a defensible reason not to do it yet: an explicit stack removes
+  > the overflow class for the in-place path entirely and for the dispatcher path in every shipped
+  > configuration, leaving the ceiling only as a bound on a third-party parser registered for a
+  > message content type. The cost is a second traversal path in a parser that currently has one.
+  > The ceiling holds — 64 is an order of magnitude below the measured floor — so this is deferred,
+  > not closed.
+  → **Phase 3.9: Email Traversal Flattening**
 
 ### Closed
+
+- ~~**Fourth filename sanitizer**~~ (Phase 2.1, Part C) → closed in 3.6, **implemented**:
+  `EmbeddedMessageMetadata`'s private copy is deleted and `Compose` calls
+  `FileNameSanitizer.Sanitize(name, Fallback)` on the shared implementation in
+  `Rag.NET.Abstractions`. One of the three recorded divergences was never one — the shared
+  sanitizer takes the fallback as a parameter, so `"embedded-message"` is preserved exactly.
+  **Four** changes to emitted names, all pinned by tests: the stem cap moves 64 → 128; an
+  all-invalid stem now collapses to `embedded-message` rather than `___`; a genuine defect went
+  with the copy, since `TrimEnd('.', ' ')` matched two characters in one pass and so stripping a
+  trailing dot re-exposed a non-breaking space it could not see; and — found in the whole-phase
+  review, not recorded with the other three — the two sanitizers order replacement and trimming
+  oppositely, so a TAB/LF/VT/FF/CR at either edge is now substituted to `_` before trimming can
+  reach it (`"report\t"` → `report_`, was `report`). `FileNameSanitizer`'s ordering is
+  deliberately left alone: four other call sites depend on it, and replacing before trimming is
+  arguably the more correct rule.
 
 - ~~**Unsanitized webhook filename**~~ (found in the Phase 2.1 Part A review) → closed in 2.5:
   `GenericWebhookPayloadParser` now routes the untrusted `documentId` through
@@ -212,10 +241,27 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Plan:** `docs/plans/2026-07-28-ci-integration-coverage-design.md` + `-implementation.md`
 **Completed:** 2026-07-29 (there was no CI at all — every test in the repository had only ever run on a developer's machine, which is why 3.5 builds the pipeline and 4.1 narrows to packaging. Test projects declare their own needs via `RequiresDocker`, `RequiresLlm` and `RequiresSecrets`, and `Rag.NET.RepoConventions.Tests` fails when a declaration and reality disagree — in both directions, so a stale declaration is as loud as a missing one. The phase's own thesis was falsified during its final review: `Rag.NET.WebSearch.Tavily.Tests` had four real tests, a correct tier, and was in no solution, so `dotnet test --no-build` exited 0 having run none of them. Both it and its source project are now in the solution, every tier loop fails a project whose assembly is absent, and two conventions tests guard `src/` and `tests/` against a repeat. **The workflows have never executed — the first pull-request run is the real verification.**)
 
-### Phase 3.6: Email Parser Debt [status: pending]
-**Goal:** Close the two recorded email-parser debts above, both of which are behaviour changes rather than refactors. (Not a features.md row — debt carried out of Milestone 2.)
-- Retire `EmbeddedMessageMetadata.Sanitize` in favour of `Rag.NET.FileNameSanitizer`, accepting and documenting the three naming divergences.
-- Convert the embedded-message traversal from stack recursion to an explicit work queue, removing the `STATUS_STACK_OVERFLOW` class and the measured-headroom `MaxEmbeddedDepth = 64` ceiling with it.
+### Phase 3.6: Email Parser Debt [status: complete]
+**Goal:** Close the two recorded email-parser debts above. Only one of them turned out to be a behaviour change; the other closes without code. (Not a features.md row — debt carried out of Milestone 2.)
+- Retire `EmbeddedMessageMetadata.Sanitize` in favour of `Rag.NET.FileNameSanitizer`, accepting and documenting the naming changes. Two of the three recorded divergences are real (the 64 → 128 cap, the `embedded-message` fallback for an all-invalid stem) plus one genuine defect fixed in passing (a non-breaking space re-exposed by trailing-dot trimming) and a fourth found in the whole-phase review (replacement now runs before trimming, so a TAB/LF/VT/FF/CR at either edge becomes `_` instead of being trimmed); the fallback-stem divergence dissolves, since the shared sanitizer takes the fallback as a parameter.
+- Convert the embedded-message traversal to an explicit work queue. **Attempted as a re-justification and withdrawn.** 3.6 argued the traversal could not be flattened because it re-enters through the public `IDocumentParser` boundary via content-type dispatch; the whole-phase review falsified that — the dominant path is `MessagePart` recursion entirely inside `EmailDocumentParser`, with no dispatcher hop. `MaxSupportedEmbeddedDepth = 64` stays either way and now carries the corrected reasoning, but the debt is **reopened** and rescheduled to **Phase 3.9**. See the follow-up-debts list at the top of this file.
+
+**Completed:** 2026-07-29 (half the phase was deleting code, and the more valuable half was finding out that its own central argument was wrong. `EmbeddedMessageMetadata`'s private sanitizer is gone — 93 lines to 63 — and `Compose` calls the shared `FileNameSanitizer`. Three naming divergences were recorded in the debt; the review found the count was wrong in both directions. One dissolved, because the shared sanitizer takes the fallback as a *parameter*, so `embedded-message` is preserved rather than changed. A fourth was never recorded at all: replacement now runs before trimming, so a TAB, LF, VT, FF or CR at either edge becomes `_` instead of vanishing — reachable through `.msg`, whose subject is a raw MAPI property with no header normalization. It was found by deriving the full difference between the two implementations over three million random inputs and attributing every one of 2,228,480 differences to a named cause, which is what makes "there is no fifth" a claim rather than a hope. The traversal debt was closed as re-justified and then reopened: the argument that the recursion cannot be flattened because it re-enters through the public `IDocumentParser` boundary is false for the dominant path, where a nested `message/rfc822` arrives as a live `MessagePart` and recurses inside `EmailDocumentParser` with the dispatcher never involved — probe-verified with an empty parsers list. The original debt said "work queue"; nobody, including this phase, questioned the word, and the ordering objection that word invites does not apply to a stack drained LIFO. → **Phase 3.9**.)
+
+### Phase 3.9: Email Traversal Flattening [status: pending]
+**Goal:** Replace the stack-recursive embedded-message traversal in `EmailDocumentParser` and `MsgDocumentParser` with an explicit `Stack<IAsyncEnumerator<DocumentSection>>` drained LIFO, so nesting depth costs heap rather than stack. (Not a features.md row — debt reopened out of Phase 3.6.)
+
+> **Runs next, before 3.7 and 3.8.** It keeps the number it was assigned when it was scheduled after 3.8 — commit messages, the 3.6 design and the 3.6 plan all already point at "Phase 3.9", and renaming it would falsify those references to buy nothing. Numbers here record when a phase was created, not the order it runs in.
+
+Reopened because 3.6 closed it on a premise its own whole-phase review falsified; the corrected analysis and the probe that falsified it are recorded in the follow-up-debts list at the top of this file.
+
+**Scope:**
+- Flatten the in-place `MessagePart` path first — it is the dominant one, it is entirely internal (`ParseMessageAsync → ParseAttachmentsAsync → ParseEmbeddedAsync → ParseMessageAsync`), and it is the path the ~500-level overflow was measured on.
+- **LIFO, not FIFO.** A queue reorders sections; a stack drained depth-first reproduces the recursive order byte for byte. Pin that with a test comparing flattened output against the recorded pre-change section sequence for a multi-branch fixture, not merely against a section count.
+- `MaxSupportedEmbeddedDepth = 64` **stays**. It stops being an overflow guard and becomes a bound on a third-party parser registered for a message content type, plus a fan-out sanity limit. Its XML says so already and will need narrowing again, not deleting.
+- **Set `MaxEmbeddedMessages` deliberately in any depth test.** At its default of 50 a 64-level chain stops on the fan-out cap, not the depth ceiling — the 3.6 probe hit exactly that and would have measured the wrong bound had it been read at face value.
+
+**Not in scope:** raising `MaxEmbeddedDepth`'s default, or raising the ceiling. Nobody has asked for a deeper chain; this phase changes what the ceiling is protecting against, not where it sits.
 
 ### Phase 3.7: Retrieval Quality Benchmark Harness [status: pending]
 **Goal:** Measure retrieval quality against public benchmarks with published reference numbers, so correctness is *demonstrable* rather than asserted. (Not a features.md row — quality-hardening scope.)
