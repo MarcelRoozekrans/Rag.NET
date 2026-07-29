@@ -79,10 +79,15 @@ future reader can tell the difference between "never existed" and "dealt with".
   `FileNameSanitizer.Sanitize(name, Fallback)` on the shared implementation in
   `Rag.NET.Abstractions`. One of the three recorded divergences was never one — the shared
   sanitizer takes the fallback as a parameter, so `"embedded-message"` is preserved exactly.
-  The other two are real and pinned by tests: the stem cap moves 64 → 128, and an all-invalid
-  stem now collapses to `embedded-message` rather than `___`. A third, genuine defect went
-  with the copy: `TrimEnd('.', ' ')` matched two characters in one pass, so stripping a
-  trailing dot re-exposed a non-breaking space it could not see.
+  **Four** changes to emitted names, all pinned by tests: the stem cap moves 64 → 128; an
+  all-invalid stem now collapses to `embedded-message` rather than `___`; a genuine defect went
+  with the copy, since `TrimEnd('.', ' ')` matched two characters in one pass and so stripping a
+  trailing dot re-exposed a non-breaking space it could not see; and — found in the whole-phase
+  review, not recorded with the other three — the two sanitizers order replacement and trimming
+  oppositely, so a TAB/LF/VT/FF/CR at either edge is now substituted to `_` before trimming can
+  reach it (`"report\t"` → `report_`, was `report`). `FileNameSanitizer`'s ordering is
+  deliberately left alone: four other call sites depend on it, and replacing before trimming is
+  arguably the more correct rule.
 
 - ~~**Unsanitized webhook filename**~~ (found in the Phase 2.1 Part A review) → closed in 2.5:
   `GenericWebhookPayloadParser` now routes the untrusted `documentId` through
@@ -238,7 +243,7 @@ future reader can tell the difference between "never existed" and "dealt with".
 
 ### Phase 3.6: Email Parser Debt [status: pending]
 **Goal:** Close the two recorded email-parser debts above. Only one of them turned out to be a behaviour change; the other closes without code. (Not a features.md row — debt carried out of Milestone 2.)
-- Retire `EmbeddedMessageMetadata.Sanitize` in favour of `Rag.NET.FileNameSanitizer`, accepting and documenting the naming changes. Two of the three recorded divergences are real (the 64 → 128 cap, the `embedded-message` fallback for an all-invalid stem) plus one genuine defect fixed in passing (a non-breaking space re-exposed by trailing-dot trimming); the fallback-stem divergence dissolves, since the shared sanitizer takes the fallback as a parameter.
+- Retire `EmbeddedMessageMetadata.Sanitize` in favour of `Rag.NET.FileNameSanitizer`, accepting and documenting the naming changes. Two of the three recorded divergences are real (the 64 → 128 cap, the `embedded-message` fallback for an all-invalid stem) plus one genuine defect fixed in passing (a non-breaking space re-exposed by trailing-dot trimming) and a fourth found in the whole-phase review (replacement now runs before trimming, so a TAB/LF/VT/FF/CR at either edge becomes `_` instead of being trimmed); the fallback-stem divergence dissolves, since the shared sanitizer takes the fallback as a parameter.
 - Convert the embedded-message traversal to an explicit work queue. **Attempted as a re-justification and withdrawn.** 3.6 argued the traversal could not be flattened because it re-enters through the public `IDocumentParser` boundary via content-type dispatch; the whole-phase review falsified that — the dominant path is `MessagePart` recursion entirely inside `EmailDocumentParser`, with no dispatcher hop. `MaxSupportedEmbeddedDepth = 64` stays either way and now carries the corrected reasoning, but the debt is **reopened** and rescheduled to **Phase 3.9**. See the follow-up-debts list at the top of this file.
 
 ### Phase 3.7: Retrieval Quality Benchmark Harness [status: pending]

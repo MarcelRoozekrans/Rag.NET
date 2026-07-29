@@ -47,7 +47,7 @@ internal static class EmbeddedMessageMetadata
     /// — untrue since Phase 2.5 moved it to <c>Rag.NET.Abstractions</c>.
     /// </para>
     /// <para>
-    /// Adopting it changed emitted names three ways. The stem now caps at <b>128</b> characters
+    /// Adopting it changed emitted names four ways. The stem now caps at <b>128</b> characters
     /// rather than 64 (the shared default, taken as-is), so long subjects that used to truncate
     /// mid-word survive. A stem that is nothing but invalid characters (<c>"///"</c>) now
     /// collapses to <see cref="Fallback"/> rather than to <c>"___"</c>, which named nothing. And
@@ -56,6 +56,17 @@ internal static class EmbeddedMessageMetadata
     /// re-exposed whitespace it could not see, where the shared sanitizer trims to a fixed point
     /// over <see cref="char.IsWhiteSpace(char)"/>. <see cref="Fallback"/> is passed rather than
     /// hard-coded there, so the fallback stem is unchanged.
+    /// </para>
+    /// <para>
+    /// The fourth, found in the Phase 3.6 review rather than recorded with the other three: the
+    /// two sanitizers <b>order replacement and trimming oppositely</b>. The deleted copy trimmed
+    /// first; <see cref="FileNameSanitizer"/> replaces first. TAB, LF, VT, FF and CR are C0
+    /// control characters <i>and</i> whitespace, so one at either edge is now substituted to
+    /// <c>_</c> before trimming can see it, and <c>_</c> is not whitespace —
+    /// <c>"report\t"</c> becomes <c>report_</c> where it used to become <c>report</c>. The
+    /// shared ordering is left alone deliberately: four other call sites depend on it, and
+    /// replacing before trimming is arguably the more correct rule. Pinned by
+    /// <c>EmbeddedMessageNamingTests</c>, which records the pre-3.6 value alongside each case.
     /// </para>
     /// </remarks>
     private static string Compose(string parentFileName, string? name, string extension) =>

@@ -33,7 +33,8 @@ The debt lists three. `FileNameSanitizer` takes the fallback as a **parameter**,
 |---|---|---|
 | Length cap | 64 | 128 |
 | All-replacement input (`"///"`) | `"___"` | `"embedded-message"` |
-| Trailing non-breaking space re-exposed by dot trimming | kept | trimmed |
+| Trailing non-Ascii whitespace re-exposed by dot trimming | kept | trimmed |
+| **Whitespace control character at an edge** (found in review) | trimmed | replaced with `_` |
 
 The third is a genuine defect. `TrimEnd('.', ' ')` matches two characters in a single pass;
 `char.IsWhiteSpace` matches U+00A0 and the rest of the Unicode whitespace set, and the shared
@@ -43,7 +44,31 @@ implementation loops to a fixed point because trimming dots re-exposes whitespac
 today — the old `Sanitize` opens with `name.Trim()`, which is `char.IsWhiteSpace`-based and removes
 U+00A0 before anything else happens. Nor does the row need truncation to fire. What survives is a
 non-breaking space that the closing `TrimEnd('.', ' ')` *uncovers* by stripping a trailing dot, and
-then cannot match: `"Quarterly report\u00A0."` keeps its U+00A0.
+then cannot match: `"Quarterly report\u00A0."` keeps its U+00A0. The mechanism is general, so the
+row is not about U+00A0 specifically \u2014 U+2007 (figure space) and U+3000 (ideographic space) behave
+identically, and so does anything else `char.IsWhiteSpace` accepts but `' '` does not.
+
+**Found in the whole-phase review \u2014 a fourth divergence, and the reason the count above is four.**
+The two sanitizers order their steps oppositely. The deleted copy called `name.Trim()` **before**
+replacing invalid characters; `FileNameSanitizer.Clean` replaces **before** trimming. TAB, LF, VT,
+FF and CR are C0 control characters *and* whitespace, so one sitting in a leading or trailing
+whitespace run is now substituted to `_` first \u2014 and `_` is not whitespace, so `TrimEdges` cannot
+remove it:
+
+| input | before Phase 3.6 | after |
+|---|---|---|
+| `"report\t"` | `parent.eml#report.eml` | `parent.eml#report_.eml` |
+| `"\treport"` | `parent.eml#report.eml` | `parent.eml#_report.eml` |
+| `"report \t"` | `parent.eml#report.eml` | `parent.eml#report _.eml` |
+| `".\t"` | `parent.eml#embedded-message.eml` | `parent.eml#._.eml` |
+
+Reachable through `.msg`: `MsgDocumentParser` takes the name from `Storage.Message.Subject`, a raw
+MAPI `PidTagSubject` with no header normalization, and MsgReader was observed preserving a trailing
+tab verbatim. **`FileNameSanitizer` is not changed to match.** Its ordering is shared with four
+other call sites and is not obviously wrong \u2014 replacing first is arguably the more correct rule, and
+reordering it to suit one caller would move behaviour under all five. The divergence is documented
+and pinned by tests that record the pre-3.6 value alongside each case, so a future reader can tell
+an intentional change from a regression.
 
 The second is arguably a fix as well: `"___"` tells a reader nothing about what the attachment was,
 where `"embedded-message"` at least names the category.
@@ -170,6 +195,10 @@ mistake for a regression:
 - a name whose trailing dot, once trimmed, uncovers a non-breaking space no longer keeps it.
 
 The last is the one to write first — it fails against the current code, which is the point.
+
+**Added after the whole-phase review:** the fourth divergence in §1 gets tests too — the leading and
+trailing whitespace-control-character cases, each recording the pre-3.6 value beside the current one
+so the direction of the change is legible from the test itself.
 
 Existing recursion tests are untouched: nothing about the traversal changes.
 
