@@ -265,6 +265,13 @@ Scoped out of Phase 3.3 deliberately, because it is a production-path concern wi
 > owns build-and-test, only what is packed and pushed on top of it. (Two phases quietly both owning
 > a deliverable is how one of them ends up skipped — which is what 3.5 found when it started.)
 >
+> *"Every test project" is 64 of 64, and it was 63 when this paragraph was first written.*
+> `Rag.NET.WebSearch.Tavily.Tests` was in no solution file, so the build never produced it and its
+> tier's `dotnet test --no-build` exited 0 having run none of its four tests. Two guards now hold
+> the sentence up: `tests/Rag.NET.RepoConventions.Tests` asserts every test project is listed in
+> `Rag.NET.slnx`, and each tier loop refuses to run — and fails — a project whose test assembly is
+> not on disk, whatever the reason it was not built.
+>
 > **The versioning tool is GitVersion, not MinVer.** The house convention in
 > `MarcelRoozekrans/AdoNet.Async` is **GitVersion** (`GitVersion.yml`, a `.config/dotnet-tools.json`
 > entry, output parsed with `jq`) plus **release-please** for the release itself. Different tools,

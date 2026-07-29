@@ -31,6 +31,11 @@ stores, the Service Bus ingestion tests, and the integration suites that use `Pg
 Docker suites are **Linux-only**. The Windows runners have no Linux Docker daemon, so Testcontainers
 cannot work there; that is why `ci.yml` is not a matrix.
 
+**"Gates" in that table means the failure is real and fails the run** — no `continue-on-error`
+anywhere in `ci.yml`. It does not yet mean a merge is mechanically blocked: this repository has no
+branch protection rules, so no check is required. Both tiers are the ones to require when it is set
+up.
+
 The LLM tier is one project, `Rag.NET.E2ETests`. It pulls `nomic-embed-text` and `llama3.2:1b`, and
 its assertions are text a model wrote — Phase 2.1 measured one such assertion failing roughly **1 run
 in 11**. That is not a defect, it is a model choosing different words, and a required check that
@@ -44,8 +49,13 @@ reasons:
 
 | Label | Runs | Blocks the merge? |
 |---|---|---|
-| **`run-llm`** | the Ollama end-to-end suite — pulls ~2 GB of models | **No**, never |
-| **`run-secrets`** | the three env-gated suites — Tesseract, Document Intelligence, ONNX | Yes, when the secrets are configured |
+| **`run-llm`** | the Ollama end-to-end suite — pulls ~2 GB of models | **No**, never, by design |
+| **`run-secrets`** | the three env-gated suites — Tesseract, Document Intelligence, ONNX | **Not yet** — it fails loudly, but no branch protection exists to block on |
+
+On `run-secrets`: the job *gates* in the sense that a failure is a real failure and is reported as
+one — no `continue-on-error` anywhere in it. It does not *block* anything today, because this
+repository has no branch protection rules configured, so no check is required for a merge. When that
+is set up, this is the nightly job to require; the `llm` one never is.
 
 Use `run-llm` when you have changed the answer engine or a retrieval path and want to see the
 end-to-end result before merging. Use `run-secrets` when you have touched PDF OCR, Document
@@ -57,6 +67,13 @@ model download, and a single shared label would have made the cheap job unreacha
 for the expensive one.
 
 `workflow_dispatch` runs both, off any branch, ad hoc.
+
+**The label triggers on `labeled`, not on `synchronize`.** Pushing new commits to a pull request
+that already carries `run-llm` or `run-secrets` does **not** re-run the job: no `labeled` event
+fires, so nothing starts, and the newest result on the PR is from the commit that was current when
+the label went on. To re-run against new commits, remove the label and add it again. That is
+deliberate — a nightly job that re-ran on every push would be neither nightly nor opt-in — but it is
+easy to misread a stale green tick as covering the latest commit.
 
 ## The secrets overlay
 
@@ -90,6 +107,15 @@ The rules are enforced by `tests/Rag.NET.RepoConventions.Tests`, which reads the
 and fails the build when a declaration and reality disagree. Both directions, so a stale declaration
 fails just as loudly as a missing one.
 
+**First, add it to `Rag.NET.slnx`.** This is not bookkeeping. `ci.yml` builds the solution once and
+then runs each project with `--no-build`; a project the solution does not list is never built, and
+on a CI checkout — where `obj/` is empty — `dotnet test --no-build` against it exits 0 having
+printed nothing and run nothing. That is exactly what happened to
+`Rag.NET.WebSearch.Tavily.Tests`: four real tests, a correct tier, and not one of them ever ran.
+`EveryTestProjectIsInTheSolution` now fails naming any project that is missing, and each tier loop
+independently fails a project whose test assembly is not on disk — the guard covers every reason a
+project might not have been built, not only this one.
+
 **If your new suite starts a container** — a `Testcontainers.*` package reference, or a container
 fixture from `tests/Rag.NET.Testing` — it must declare:
 
@@ -115,11 +141,15 @@ will also need the secret added to the repository settings, or the test will kee
 
 **If it needs a model as well as a container**, add `<RequiresLlm>true</RequiresLlm>` alongside
 `RequiresDocker` — the Ollama fixture is a container, so `RequiresLlm` without `RequiresDocker` is a
-contradiction the conventions tests reject.
+contradiction the conventions tests reject. That guard runs the other way too: a project using
+`OllamaFixture` **must** declare `RequiresLlm`. Without it the suite lands in the Docker tier, which
+gates on every push, and the whole reason the LLM tier is nightly and advisory is undone by a single
+deleted line.
 
 **If it needs none of these**, do nothing. It lands in the fast tier, which is the point of the
 default: forget a declaration and the project fails loudly for want of a daemon rather than quietly
-vanishing from CI.
+vanishing from CI. Being *in the solution* is the one thing that is not a default — see above, and
+it is the one omission that used to vanish silently rather than fail.
 
 ## Why declarations rather than a list in the workflow
 
@@ -128,6 +158,11 @@ Testcontainers suite, forget to update the list, and it never runs again — wit
 notice, and a green tick every time. Self-declaration inverts that failure. It is also why the
 conventions tests assert that the workflows still *select on the properties*: replace a property
 query with a list of names and the guard tests become decorative.
+
+Those assertions name the selection pipelines verbatim, and they read the workflow with its comment
+lines stripped first. The earlier version asserted only that the string `RequiresDocker` appeared
+somewhere in `ci.yml` — where it appears four times in prose — so replacing the entire tier
+selection with a hardcoded list passed it. A guard that a comment can satisfy is not a guard.
 
 ## Running the tiers locally
 
