@@ -31,25 +31,39 @@ public sealed class EmailParserOptions
     /// an order of magnitude of headroom below the measured floor.
     /// </para>
     /// <para>
-    /// <b>The ceiling cannot be engineered away, and is not a placeholder for a fix nobody has
-    /// got to.</b> The obvious candidate — rewriting the traversal as an explicit work queue so
-    /// depth costs heap rather than stack — cannot reach the frames that matter.
-    /// <see cref="EmailAttachmentDispatcher"/> selects a parser by <b>content type</b> and
-    /// re-enters through the public <see cref="Abstractions.IDocumentParser"/> boundary, so a
-    /// chain of embedded messages runs <c>ParseAsync → DispatchAsync → ParseAsync → …</c> where
-    /// each hop may land in an arbitrary third-party parser. A queue of ours can only unwind
-    /// frames we own. That indirection is deliberate: it replaced a
-    /// <c>ReferenceEquals(parser, self)</c> check that missed <c>.eml → .msg → .eml</c> chains
-    /// entirely, because consecutive levels there are handled by <i>different</i> parser
-    /// instances. Flattening only the case where the resolved parser is one of ours would keep
-    /// the ceiling for every other case, at the cost of a second traversal path and the risk of
-    /// changing section ordering.
+    /// <b>There are two recursion paths, and only one of them leaves this assembly.</b> A
+    /// nested <c>message/rfc822</c> part arrives as a live <c>MimeKit.MessagePart</c> and is
+    /// parsed <i>in place</i>: <c>ParseMessageAsync → ParseAttachmentsAsync →
+    /// ParseEmbeddedAsync → ParseMessageAsync</c>, four async-iterator frames per level, every
+    /// one of them ours, with <see cref="EmailAttachmentDispatcher"/> never involved at all.
+    /// That is the path the ~500-level measurement was taken on — raw nested
+    /// <c>message/rfc822</c> is the ~81-bytes-per-level construction that reaches such depths
+    /// cheaply. The second path is a message-typed <i>stream</i> attachment (an <c>.eml</c>
+    /// carrying a <c>.msg</c>), which runs through <see cref="EmailAttachmentDispatcher"/>: it
+    /// selects a parser by <b>content type</b> and re-enters through the public
+    /// <see cref="Abstractions.IDocumentParser"/> boundary. That indirection is deliberate — it
+    /// replaced a <c>ReferenceEquals(parser, self)</c> check that missed
+    /// <c>.eml → .msg → .eml</c> chains entirely, because consecutive levels there are handled
+    /// by <i>different</i> parser instances.
     /// </para>
     /// <para>
-    /// Three numbers make 64 the right value: real forwarded-mail chains run <b>10–20</b> levels
-    /// deep, the ceiling is <b>64</b>, and the measured overflow floor is <b>~500</b>. It sits
-    /// several times above any real input and an order of magnitude below the failure point.
-    /// What this bound was missing was the reasoning, not a replacement.
+    /// <b>The ceiling stays regardless of how the traversal is written.</b> Draining an
+    /// explicit <c>Stack</c> of section enumerators depth-first would remove the overflow class
+    /// outright for the in-place path, and for the dispatcher path in every configuration this
+    /// repository ships — the parser resolved for a message content type <i>is</i> one of these
+    /// two. What would survive is a bound on a third-party parser registered for a message
+    /// content type, whose frames are genuinely not ours to unwind. So the ceiling narrows in
+    /// scope but does not go away, and the cost is a second traversal path in a parser that
+    /// currently has one. Not done here because the ceiling holds on its own numbers; recorded
+    /// as deferred work rather than a closed question (roadmap Phase 3.9), because the earlier
+    /// claim that an explicit stack <i>cannot</i> help was wrong.
+    /// </para>
+    /// <para>
+    /// Two measured numbers make 64 defensible on their own: the ceiling is <b>64</b> and the
+    /// overflow floor is <b>~500</b>. An order of magnitude separates them, so no input that
+    /// reaches the bound can overflow — which is the whole argument, and it does not depend on
+    /// how deep real mail runs. Real forwarded-mail chains are expected to be far shallower
+    /// still, but that is an expectation and not a measurement: nothing here has counted them.
     /// </para>
     /// </remarks>
     public const int MaxSupportedEmbeddedDepth = 64;

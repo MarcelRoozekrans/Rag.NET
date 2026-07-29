@@ -98,6 +98,68 @@ and several times above any real input. What was missing was the reasoning, not 
 So this phase records that reasoning against `EmailParserOptions.MaxSupportedEmbeddedDepth` and
 closes the debt. Leaving it open would keep implying that a fix exists and nobody has got to it.
 
+### Falsified in review
+
+**Everything above from "That premise does not hold" onward is wrong, and the debt is reopened as
+Phase 3.9.** The section is kept rather than rewritten because it is the reasoning the phase was
+built on, and the record needs both halves.
+
+**The central error.** The argument assumes every level of embedded-message recursion goes through
+`EmailAttachmentDispatcher`. It does not. `EmailDocumentParser.ParseAttachmentsAsync` tests
+`if (entity is MessagePart embedded)` and routes to `ParseEmbeddedAsync`, which calls
+`ParseMessageAsync` **directly**:
+
+```
+ParseMessageAsync → ParseAttachmentsAsync → ParseEmbeddedAsync → ParseMessageAsync
+```
+
+Four internal async-iterator frames per level, no interface hop, no dispatcher, no third-party
+parser. That is the dominant path — a nested `message/rfc822` is exactly what MimeKit surfaces as a
+live `MessagePart`, and the parser's own comment says it is "parsed in place rather than re-entering
+the stream-based `ParseAsync`". The dispatcher path exists, but it is the *other* case: a
+message-typed **stream** attachment, such as an `.eml` carrying a `.msg`.
+
+**Probe.** Construct `EmailDocumentParser` with an **empty** `IEnumerable<IDocumentParser>`, so the
+dispatcher can resolve nothing whatsoever, and feed it a 64-level `MessagePart` chain with
+`MaxEmbeddedDepth = 64` and the fan-out cap raised above 64 so depth is the only bound. Result:
+**130 sections** — two per level for 64 levels plus two for the outer message — reaching the
+innermost body, with **no warnings**. Full recursion to the ceiling with zero parsers registered.
+The dispatcher was provably not on the path.
+
+(Run first with the default `MaxEmbeddedMessages = 50`, the probe stops at 102 sections on the
+fan-out cap rather than the depth ceiling. That is the node cap doing its job, not evidence about
+depth, and it has to be raised before the probe measures what it claims to.)
+
+**Consequence for the measurement.** The ~500-level overflow floor came from the
+~81-bytes-per-level hand-crafted MIME described in `2026-07-26-engineering-debt-sweep-design.md`
+(around lines 160–180) — that is nested `message/rfc822`, i.e. this same in-place path. So the
+frames that overflowed were almost certainly all ours.
+
+**Two subsidiary errors.**
+
+- *"A queue of ours can only unwind frames we own"* conflates **crossing a public interface** with
+  **entering third-party code**. In every configuration this repository ships, the parser the
+  dispatcher resolves for `message/rfc822` **is** `EmailDocumentParser`. The interface hop is real;
+  the third-party frame is hypothetical.
+- *"the risk of changing section ordering"* is a property of a FIFO **queue**, not of the
+  transformation. The standard flattening of a recursive async iterator is a
+  `Stack<IAsyncEnumerator<DocumentSection>>` drained **LIFO** — depth-first, byte-identical
+  ordering, O(1) frames regardless of depth. This design never distinguished the two, and the word
+  "queue" carried an objection that the actual data structure does not have.
+
+**What should have been written.**
+
+> An explicit stack would remove the overflow class for the in-place `MessagePart` path entirely,
+> and for the dispatcher path in every configuration this repository ships. The ceiling would
+> survive only as a bound on a third-party parser registered for a message content type. The cost
+> is a second traversal path in a parser that currently has one. Not done because the ceiling
+> holds — 64 is an order of magnitude below the measured floor, so no input reaching the bound can
+> overflow — but it is deferred work, not a closed question.
+
+The ceiling itself is unaffected: 64 was and remains the right number. What changes is why. It is
+not "the recursion is unflattenable"; it is "the recursion is flattenable and we have not done it,
+and 64 is low enough that nothing breaks in the meantime."
+
 ## 3. Testing
 
 The three divergences in §1 get tests, because each is a behaviour change someone could otherwise
@@ -125,6 +187,8 @@ The email parser guide notes that embedded-attachment names may change, and how.
 
 - **Flattening our own recursion path** (§2). It narrows nothing that matters: the ceiling stays,
   and a second traversal path risks section ordering for a case no real input reaches.
+  *(Both halves of that sentence were falsified in the whole-phase review — see §2, "Falsified in
+  review". It stays out of scope for 3.6 and is rescheduled as Phase 3.9.)*
 - **Retiring the parsers' `EmbeddedMessageMetadata` type itself.** Only `Sanitize` is duplicated;
   `Compose` and the `parent.eml#child.eml` naming convention are the parser's own and stay.
 - **Raising `MaxEmbeddedDepth`'s default.** Nobody has asked for a deeper chain, and the ceiling is
