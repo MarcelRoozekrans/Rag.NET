@@ -564,6 +564,23 @@ An embedded or forwarded message is parsed in place and carries the parent's `Do
 
 ---
 
+### Archive Parser (ZIP)
+**Package:** `Rag.NET.Parsers.Archive` (planned)
+
+Parse `.zip` archives by dispatching each entry to the registered parser for its content type, the same way the email parsers dispatch attachments.
+
+**Why:** A zipped attachment on an email is a common enterprise shape, and today it is silently dropped. `EmailAttachmentDispatcher` finds no parser for `application/zip`, logs "No parser registered for attachment content type", and yields nothing — so the archive's contents never reach the index, and the only signal is a warning line. The same is true of a `.zip` ingested directly.
+
+Three constraints are not optional here, because an archive is the first parser to take an untrusted structure that can expand:
+
+- **Decompression ratio and entry-count caps.** A zip bomb is a small file that expands without bound; the parser must cap both the ratio and the number of entries rather than trusting the archive's own headers.
+- **Entry names are untrusted paths.** `../` traversal and absolute paths are the classic archive defect. `FileNameSanitizer` in `Rag.NET.Abstractions` already exists for this.
+- **Nested containers must share one budget.** `zip → .eml → zip` is the same unbounded-recursion shape the email parsers already bound. `EmbeddedMessageContext` carries depth and budget through `DocumentMetadata.Tags` specifically so the accounting survives a hop through `IDocumentParser` — an archive parser should ride the same channel rather than invent a second one.
+
+**Status:** ❌ Not started (scheduled Phase 3.10, after the traversal work in 3.9 that it reuses)
+
+---
+
 ## Knowledge Graph
 
 ### GraphRAG — Entity Extraction + Community Summarization
@@ -1088,6 +1105,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
 | [x] | EPUB Parser | Low | `VersOne.Epub` |
 | [x] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
+| [ ] | Archive Parser (ZIP) | Low | `System.IO.Compression` |
 | [x] | Linear Issue Tracker | Low | Linear GraphQL API |
 | [x] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
 | [x] | Evaluation Dataset Builder | Medium | `IChatClient` |
