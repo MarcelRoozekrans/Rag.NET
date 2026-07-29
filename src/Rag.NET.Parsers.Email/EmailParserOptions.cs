@@ -22,48 +22,43 @@ public sealed class EmailParserOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Recursion into an embedded message is <b>stack-recursive</b>: each level adds frames
-    /// that are not unwound until the nested enumeration finishes. Measured on this parser,
-    /// 480 levels survive and 500+ terminate the process with <c>0xC00000FD</c>
-    /// (<c>STATUS_STACK_OVERFLOW</c>) — uncatchable, so no amount of degraded-never-broken
-    /// handling helps. About 40 KB of hand-crafted MIME reaches 500 levels, which makes the
-    /// crash cheap to trigger once the depth bound allows it. 64 is 21× the default and leaves
-    /// an order of magnitude of headroom below the measured floor.
+    /// <b>The in-place path is not recursive.</b> A nested <c>message/rfc822</c> arrives as a
+    /// live <c>MimeKit.MessagePart</c>, and a nested <c>.msg</c> as a live
+    /// <c>MsgReader.Outlook.Storage.Message</c>; both are walked by
+    /// <see cref="EmbeddedTraversal"/>, which drains an explicit <c>Stack</c> of frames
+    /// depth-first. CLR stack depth there is constant regardless of nesting — depth costs heap —
+    /// so this ceiling is not what keeps that path from overflowing. Nothing does, because it
+    /// cannot.
     /// </para>
     /// <para>
-    /// <b>There are two recursion paths, and only one of them leaves this assembly.</b> A
-    /// nested <c>message/rfc822</c> part arrives as a live <c>MimeKit.MessagePart</c> and is
-    /// parsed <i>in place</i>: <c>ParseMessageAsync → ParseAttachmentsAsync →
-    /// ParseEmbeddedAsync → ParseMessageAsync</c>, four async-iterator frames per level, every
-    /// one of them ours, with <see cref="EmailAttachmentDispatcher"/> never involved at all.
-    /// That is the path the ~500-level measurement was taken on — raw nested
-    /// <c>message/rfc822</c> is the ~81-bytes-per-level construction that reaches such depths
-    /// cheaply. The second path is a message-typed <i>stream</i> attachment (an <c>.eml</c>
-    /// carrying a <c>.msg</c>), which runs through <see cref="EmailAttachmentDispatcher"/>: it
-    /// selects a parser by <b>content type</b> and re-enters through the public
+    /// <b>What the ceiling does bound.</b> A message-typed <i>stream</i> attachment (an
+    /// <c>.eml</c> carrying a <c>.msg</c>) runs through <see cref="EmailAttachmentDispatcher"/>,
+    /// which selects a parser by <b>content type</b> and re-enters through the public
     /// <see cref="Abstractions.IDocumentParser"/> boundary. That indirection is deliberate — it
     /// replaced a <c>ReferenceEquals(parser, self)</c> check that missed
     /// <c>.eml → .msg → .eml</c> chains entirely, because consecutive levels there are handled
-    /// by <i>different</i> parser instances.
+    /// by <i>different</i> parser instances. In every configuration this repository ships the
+    /// parser resolved for a message content type <i>is</i> one of these two, so the hop costs a
+    /// bounded handful of frames per level and unwinds as each level finishes. The case that
+    /// genuinely needs a bound is a <b>third-party parser registered for a message content
+    /// type</b>, whose frames are not ours to unwind and whose per-level cost is unknown to us.
+    /// Beyond that the ceiling is a sanity limit on how much work one document may ask for —
+    /// 64 levels of contexts, composed <c>parent.eml#child.eml</c> file names and metadata,
+    /// alongside the fan-out cap in <see cref="MaxEmbeddedMessages"/>.
     /// </para>
     /// <para>
-    /// <b>The ceiling stays regardless of how the traversal is written.</b> Draining an
-    /// explicit <c>Stack</c> of section enumerators depth-first would remove the overflow class
-    /// outright for the in-place path, and for the dispatcher path in every configuration this
-    /// repository ships — the parser resolved for a message content type <i>is</i> one of these
-    /// two. What would survive is a bound on a third-party parser registered for a message
-    /// content type, whose frames are genuinely not ours to unwind. So the ceiling narrows in
-    /// scope but does not go away, and the cost is a second traversal path in a parser that
-    /// currently has one. Not done here because the ceiling holds on its own numbers; recorded
-    /// as deferred work rather than a closed question (roadmap Phase 3.9), because the earlier
-    /// claim that an explicit stack <i>cannot</i> help was wrong.
-    /// </para>
-    /// <para>
-    /// Two measured numbers make 64 defensible on their own: the ceiling is <b>64</b> and the
-    /// overflow floor is <b>~500</b>. An order of magnitude separates them, so no input that
-    /// reaches the bound can overflow — which is the whole argument, and it does not depend on
-    /// how deep real mail runs. Real forwarded-mail chains are expected to be far shallower
-    /// still, but that is an expectation and not a measurement: nothing here has counted them.
+    /// <b>History, not a live property.</b> The traversal this replaced was stack-recursive:
+    /// <c>ParseMessageAsync → ParseAttachmentsAsync → ParseEmbeddedAsync → ParseMessageAsync</c>,
+    /// frames that were not unwound until the nested enumeration finished. Measured on it, 480
+    /// levels survived and 500+ terminated the process with <c>0xC00000FD</c>
+    /// (<c>STATUS_STACK_OVERFLOW</c>) — uncatchable — and about 40 KB of hand-crafted MIME
+    /// reached 500 levels, at roughly 81 bytes per level. That <b>~500</b> was the original
+    /// justification for 64, an order of magnitude below it. It is recorded here as the floor of
+    /// a traversal that no longer exists (roadmap Phase 3.9), not as a property of this parser:
+    /// the in-place path now has no such floor, and <c>EmbeddedTraversalTests</c> drives the
+    /// driver 10,000 levels deep to say so. Real forwarded-mail chains are expected to be far
+    /// shallower than 64, but that is an expectation and not a measurement: nothing here has
+    /// counted them.
     /// </para>
     /// </remarks>
     public const int MaxSupportedEmbeddedDepth = 64;

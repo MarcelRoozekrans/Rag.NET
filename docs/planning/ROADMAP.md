@@ -41,38 +41,32 @@ future reader can tell the difference between "never existed" and "dealt with".
   - **`renovate.json`** — no automated dependency updates at all.
   → **Milestone 4**, alongside the rest of the release-readiness work. `.commitlintrc.yml` pairs
   naturally with 4.1, since release-please depends on the commit format holding.
-- **Stack-recursive email traversal** (Phase 2.1, Part C — **reopened**, see below): each level of
-  embedded-message nesting adds async-iterator frames that are not unwound until the nested
-  enumeration finishes. Measured: 480 levels survive, 500+ terminate the process with
-  `STATUS_STACK_OVERFLOW`, and ~81 bytes of raw MIME buys a level. `MaxSupportedEmbeddedDepth = 64`
-  bounds it, an order of magnitude below the floor, so nothing reachable crashes today. The fix is
-  a `Stack<IAsyncEnumerator<DocumentSection>>` drained LIFO — depth-first, so section ordering is
-  byte-identical, and O(1) frames at any depth.
-  > **Phase 3.6 tried to close this as "re-justified, not implemented" and the premise was
-  > falsified in that phase's own review.** The argument was that an explicit queue cannot help
-  > because the recursion re-enters through the public `IDocumentParser` boundary by content-type
-  > dispatch, so the frames belong to arbitrary third-party parsers. That is false for the dominant
-  > path: a nested `message/rfc822` arrives as a live `MimeKit.MessagePart`, and
-  > `EmailDocumentParser.ParseAttachmentsAsync` routes it to `ParseEmbeddedAsync`, which calls
-  > `ParseMessageAsync` **directly** — `EmailAttachmentDispatcher` is never involved. Four internal
-  > frames per level, no interface hop. Probe-verified: `EmailDocumentParser` with an **empty**
-  > parsers list, against a 64-level `MessagePart` chain, recursed to the ceiling and produced 130
-  > sections with no warning. Two subsidiary errors went with it — crossing a public interface is
-  > not the same as entering third-party code (in every configuration this repository ships, the
-  > parser resolved for `message/rfc822` *is* `EmailDocumentParser`), and the "risk of changing
-  > section ordering" is a property of a FIFO queue, not of the transformation. Recorded here so a
-  > future reader can tell that this was examined and got the wrong answer once, rather than that
-  > nobody looked.
-  >
-  > The honest position, and still a defensible reason not to do it yet: an explicit stack removes
-  > the overflow class for the in-place path entirely and for the dispatcher path in every shipped
-  > configuration, leaving the ceiling only as a bound on a third-party parser registered for a
-  > message content type. The cost is a second traversal path in a parser that currently has one.
-  > The ceiling holds — 64 is an order of magnitude below the measured floor — so this is deferred,
-  > not closed.
-  → **Phase 3.9: Email Traversal Flattening**
 
 ### Closed
+
+- ~~**Stack-recursive email traversal**~~ (Phase 2.1, Part C) → closed in 3.9, **implemented**.
+  **Read the history before trusting the word "closed": this entry was closed once already, in
+  3.6, as "re-justified, not implemented", on a premise that phase's own whole-phase review
+  falsified — and it was reopened.** The false premise was that the recursion could not be
+  flattened because it re-enters through the public `IDocumentParser` boundary by content-type
+  dispatch, so its frames belong to arbitrary third-party parsers. That is false for the dominant
+  path: a nested `message/rfc822` arrived as a live `MimeKit.MessagePart` and
+  `ParseEmbeddedAsync` called `ParseMessageAsync` **directly**, with `EmailAttachmentDispatcher`
+  never involved — probe-verified with an empty parsers list against a 64-level chain. Two
+  inherited words did the rest of the damage and neither survived being questioned: the debt was
+  recorded as a **work queue** (FIFO reorders sections, which is what everyone then argued
+  against — a stack drained LIFO is depth-first and order-preserving), and the reopened entry
+  named the fix `Stack<IAsyncEnumerator<DocumentSection>>`, a type that cannot express the
+  traversal at all, since a section enumerator has no way to say "descend into a child here, then
+  resume me". The workable unit is a traversal **frame**.
+  What actually shipped: `EmbeddedTraversal` drains a `Stack<Frame<TMessage>>` depth-first,
+  shared by both parsers behind one `IMessageAdapter<TMessage>` per library and an injected
+  `IDescentPolicy`; `ParseMessageAsync`, `ParseAttachmentsAsync` and `ParseEmbeddedAsync` are
+  deleted from both, and neither parser holds a method that calls itself. Section ordering is
+  byte-identical, pinned by `EmbeddedMessageOrderingTests` written and green against the
+  recursive parsers before anything changed. `MaxSupportedEmbeddedDepth = 64` stays, now bounding
+  a third-party parser registered for a message content type plus fan-out sanity rather than an
+  overflow that the in-place path can no longer reach.
 
 - ~~**Fourth filename sanitizer**~~ (Phase 2.1, Part C) → closed in 3.6, **implemented**:
   `EmbeddedMessageMetadata`'s private copy is deleted and `Compose` calls
@@ -248,7 +242,7 @@ future reader can tell the difference between "never existed" and "dealt with".
 
 **Completed:** 2026-07-29 (half the phase was deleting code, and the more valuable half was finding out that its own central argument was wrong. `EmbeddedMessageMetadata`'s private sanitizer is gone — 93 lines to 63 — and `Compose` calls the shared `FileNameSanitizer`. Three naming divergences were recorded in the debt; the review found the count was wrong in both directions. One dissolved, because the shared sanitizer takes the fallback as a *parameter*, so `embedded-message` is preserved rather than changed. A fourth was never recorded at all: replacement now runs before trimming, so a TAB, LF, VT, FF or CR at either edge becomes `_` instead of vanishing — reachable through `.msg`, whose subject is a raw MAPI property with no header normalization. It was found by deriving the full difference between the two implementations over three million random inputs and attributing every one of 2,228,480 differences to a named cause, which is what makes "there is no fifth" a claim rather than a hope. The traversal debt was closed as re-justified and then reopened: the argument that the recursion cannot be flattened because it re-enters through the public `IDocumentParser` boundary is false for the dominant path, where a nested `message/rfc822` arrives as a live `MessagePart` and recurses inside `EmailDocumentParser` with the dispatcher never involved — probe-verified with an empty parsers list. The original debt said "work queue"; nobody, including this phase, questioned the word, and the ordering objection that word invites does not apply to a stack drained LIFO. → **Phase 3.9**.)
 
-### Phase 3.9: Email Traversal Flattening [status: pending]
+### Phase 3.9: Email Traversal Flattening [status: complete]
 **Goal:** Replace the stack-recursive embedded-message traversal in `EmailDocumentParser` and `MsgDocumentParser` with an explicit `Stack<IAsyncEnumerator<DocumentSection>>` drained LIFO, so nesting depth costs heap rather than stack. (Not a features.md row — debt reopened out of Phase 3.6.)
 
 > **Runs next, before 3.7 and 3.8.** It keeps the number it was assigned when it was scheduled after 3.8 — commit messages, the 3.6 design and the 3.6 plan all already point at "Phase 3.9", and renaming it would falsify those references to buy nothing. Numbers here record when a phase was created, not the order it runs in.
@@ -262,6 +256,8 @@ Reopened because 3.6 closed it on a premise its own whole-phase review falsified
 - **Set `MaxEmbeddedMessages` deliberately in any depth test.** At its default of 50 a 64-level chain stops on the fan-out cap, not the depth ceiling — the 3.6 probe hit exactly that and would have measured the wrong bound had it been read at face value.
 
 **Not in scope:** raising `MaxEmbeddedDepth`'s default, or raising the ceiling. Nobody has asked for a deeper chain; this phase changes what the ceiling is protecting against, not where it sits.
+
+**Completed:** 2026-07-29 (one internal depth-first driver, `EmbeddedTraversal`, draining a `Stack<Frame<TMessage>>`, shared by both parsers behind an `IMessageAdapter<TMessage>` per library and an injected `IDescentPolicy`. `EmailDocumentParser` goes 171 lines → 52 and `MsgDocumentParser` 185 → 52; `ParseMessageAsync`, `ParseAttachmentsAsync` and `ParseEmbeddedAsync` are gone from both, and neither parser now holds a method that calls itself. **The type named in the Goal above cannot express this traversal.** `Stack<IAsyncEnumerator<DocumentSection>>` was inherited from the 3.6 review: a section enumerator can say "here is a section" or "I am finished" and has no way to say "descend into a child here, then resume me", so driving off one would need a marker type smuggled through the stream. That is the second inherited word in this entry's history to fail on first inspection, after "work queue" — the transferable finding is that a debt note's vocabulary propagates into every later decision about it. The descent policy is a seam, not decoration: the overflow floor was ~500 levels and the ceiling is 64, so **no test reaching through `EmailParserOptions` can construct a case that would ever have overflowed** — a 64-level test passes identically before and after and certifies nothing, the same shape as the vacuous guards this milestone keeps finding. Wiring an always-yes policy drives the driver 10,000 levels in ~98 ms, and that test was confirmed able to fail: made recursive, it terminated the runner with `0xC00000FD` rather than going red. Ordering was pinned first — `EmbeddedMessageOrderingTests` was written and green against the recursive parsers, and its sequence is byte-identical afterwards. `MaxSupportedEmbeddedDepth` stays at 64 with its XML narrowed a second time in two phases: it now bounds a third-party parser registered for a message content type, reached through the dispatcher path, plus fan-out sanity, and the ~500 figure is kept only as the floor of a traversal that no longer exists.)
 
 ### Phase 3.10: Archive Parser (ZIP) [status: pending]
 **Goal:** Parse `.zip` archives by dispatching each entry to the registered parser for its content type, closing a gap where zipped email attachments are silently dropped. (features.md row: **Archive Parser (ZIP)**.)
