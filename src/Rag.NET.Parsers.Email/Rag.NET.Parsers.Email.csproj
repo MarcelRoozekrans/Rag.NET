@@ -14,4 +14,13 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- EmbeddedMessageMetadata is internal and composes the parent#child attachment name.
+         Driving it through a parser fixture would pin the fixture, not the naming rules, so
+         the tests call it directly. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Parsers.Email.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>
