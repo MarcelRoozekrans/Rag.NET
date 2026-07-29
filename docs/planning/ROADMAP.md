@@ -28,30 +28,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   diagnostics benefit, and that phase spent its one production edit on the `ragnet.query` span.
   → **Phase 4.4** (OTel wiring, which has to reason about span context across async iterators
   regardless)
-- **Two `EmailDocumentParser`s, and one of them breaks the other's contract** (found in the Phase 3.9
-  whole-phase review): `src/Rag.NET.Chunking.Templates/EmailDocumentParser.cs` is a second, unrelated
-  `IDocumentParser` with the same type name, whose `CanParse` accepts `message/rfc822` **and**
-  `application/octet-stream`. Pre-existing — both parsers have coexisted since 1.5 — and nothing in
-  3.9 touched either registration. Verified behaviour, worst first:
-  1. **A hard parse failure.** `application/octet-stream` is what `MimeTypeMap` returns for *any*
-     unknown extension. With both registered, one `.eml` carrying a single `payload.dat` throws
-     `InvalidOperationException: Failed to parse .eml file 'payload.dat'` out of the entire document
-     parse, because `EmailAttachmentDispatcher` has no `try`/`catch` around `parser.ParseAsync`. That
-     breaks the email parser's documented "degrades rather than breaks" contract, on a registration
-     combination a user has no reason to suspect.
-  2. **Silent content loss.** When the Templates parser wins `message/rfc822`, embedded messages are
-     not traversed at all — a 3-level nested `.eml` yields 2 sections instead of 6 — and non-text
-     attachments are dropped at `LogLevel.Debug`. No DoS: it never recurses.
-  3. **Registration-order dependence.** Both register via a plain `AddSingleton<IDocumentParser>`
-     with no `TryAdd` and no keying; `LazyDocumentParsers` resolves `GetServices<IDocumentParser>()`
-     at dispatch time and the dispatcher takes the first `CanParse` match, so which one wins depends
-     on the call order between `UseEmailChunking()` and `AddEmailParser()`.
-  The narrowest useful fix is **removing `application/octet-stream` from the Templates parsers'
-  `CanParse`** — a fallback content type meaning "unknown binary" should not be claimed by a
-  format-specific parser. `QAPairsDocumentParser` claims it too and needs the same check. The name
-  collision is the smaller half and can be settled after.
-  → **Phase 3.11**, which runs **before 3.10** despite the higher number: this is a live defect and
-  3.10 is new capability.
 - **`MessageChild<TMessage>` is a union by convention** (**created by Phase 3.9**, not pre-existing):
   `EmbeddedMessage != null` means "descend", and otherwise `OpenAsync` and `MimeType` must *both* be
   non-null. Nothing enforces that — the only check is a bare `yield break` in
@@ -77,6 +53,35 @@ future reader can tell the difference between "never existed" and "dealt with".
 
 ### Closed
 
+- ~~**Two `EmailDocumentParser`s, and one of them breaks the other's contract**~~ (Phase 3.9
+  whole-phase review) → closed in 3.11, **partly implemented and partly converted into a startup
+  error**. Read what did *not* ship before treating the name as settled.
+  **Shipped.** The hard parse failure is gone twice over: `application/octet-stream` is removed
+  from both Templates parsers' `CanParse` — a fallback type meaning "unknown binary" is a guess no
+  format-specific parser should answer — and `EmailAttachmentDispatcher` now contains a throwing
+  attachment parser to its own attachment, so the next parser to accept a type and then fail costs
+  one attachment rather than the document. The name collision is settled: the Templates type is
+  `EmailTemplateDocumentParser`.
+  **Not resolved — converted.** The `message/rfc822` overlap between `UseEmailChunking()` and
+  `AddEmailParser()` is **not fixed**. Both parsers still claim it and this phase deliberately did
+  not pick a winner: they serve different purposes, and which one a user wants is a question only
+  that user can answer. What changed is that registering both is now an `InvalidOperationException`
+  at `AddRagNet` time naming both parsers, both registration calls and the way out, instead of
+  silent content loss — a 3-level nested `.eml` yielding 2 sections instead of 6. Detection works
+  off a `ParserClaim` singleton each registration declares, because `CanParse` needs live instances
+  and `ServiceDescriptor.ImplementationType` is `null` for every colliding registration.
+  **Still open, and not scheduled.** A third-party parser registered through `AddParser<T>()`
+  declares no claim and is undetected. `CanParse` is a predicate, not an enumeration, so nothing
+  can discover what an arbitrary parser accepts without probing it against a guessed list of
+  content types — which is a worse mechanism than an undetected collision, so this is a stated
+  limit rather than a deferral. The guard also compares *declared* claims, not the parsers
+  themselves: a first-party claim that drifts from its own `CanParse` is caught by nothing but the
+  two being written next to each other.
+  **What the design got wrong.** §4 made registering both packages a startup error while §6 made
+  that same configuration the phase-defining test, and the error it produced told the user to
+  "register only one of them" when `UseEmailChunking()` bundled a parser with a chunking strategy
+  and offered no way to take the strategy alone. `EmailChunkingOptions.RegisterParser` and its twin
+  on `QAPairsChunkingOptions` close that; the design doc carries the correction.
 - ~~**Stack-recursive email traversal**~~ (Phase 2.1, Part C) → closed in 3.9, **implemented**.
   **Read the history before trusting the word "closed": this entry was closed once already, in
   3.6, as "re-justified, not implemented", on a premise that phase's own whole-phase review
@@ -292,19 +297,14 @@ Reopened because 3.6 closed it on a premise its own whole-phase review falsified
 
 **Completed:** 2026-07-29 (one internal depth-first driver, `EmbeddedTraversal`, draining a `Stack<Frame<TMessage>>`, shared by both parsers behind an `IMessageAdapter<TMessage>` per library and an injected `IDescentPolicy`. `EmailDocumentParser` goes 171 lines → 52 and `MsgDocumentParser` 185 → 52; `ParseMessageAsync`, `ParseAttachmentsAsync` and `ParseEmbeddedAsync` are gone from both, and neither parser now holds a method that calls itself. **The type named in the Goal above cannot express this traversal.** `Stack<IAsyncEnumerator<DocumentSection>>` was inherited from the 3.6 review: a section enumerator can say "here is a section" or "I am finished" and has no way to say "descend into a child here, then resume me", so driving off one would need a marker type smuggled through the stream. That is the second inherited word in this entry's history to fail on first inspection, after "work queue" — the transferable finding is that a debt note's vocabulary propagates into every later decision about it. The descent policy is a seam, not decoration: the overflow floor was ~500 levels and the ceiling is 64, so **no test reaching through `EmailParserOptions` can construct a case that would ever have overflowed** — a 64-level test passes identically before and after and certifies nothing, the same shape as the vacuous guards this milestone keeps finding. Wiring an always-yes policy drives the driver 10,000 levels in ~98 ms, and that test was confirmed able to fail: made recursive, it terminated the runner with `0xC00000FD` rather than going red. Ordering was pinned first — `EmbeddedMessageOrderingTests` was written and green against the recursive parsers, and its sequence is byte-identical afterwards. `MaxSupportedEmbeddedDepth` stays at 64 with its XML narrowed a second time in two phases: it now bounds a third-party parser registered for a message content type, reached through the dispatcher path, plus fan-out sanity, and the ~500 figure is kept only as the floor of a traversal that no longer exists. The whole-phase review found the 3.6 pattern recurring inside the phase meant to have learned it: three places still asserted stack-recursion in the present tense, and the worst was not a comment but the `ArgumentOutOfRangeException` thrown by `AddEmailParser` — a runtime message on the public API, telling a caller the parser is stack-recursive from the same assembly whose XML says otherwise, unpinned by any test. All three corrected. Its readability verdict is worth keeping: **+272 lines across 7 files replacing logic that lived in 2**, and the win is deduplication rather than the driver — the old code held two near-identical traversals with a standing obligation to keep them in sync, which this repository has a documented history of failing. The `Peek`-not-`Pop` invariant is subtle and carried entirely by a comment.)
 
-### Phase 3.11: Duplicate Email Parser [status: pending]
-**Goal:** Stop `Rag.NET.Chunking.Templates`' `EmailDocumentParser` from claiming content types it cannot parse, which today turns one unknown-extension attachment into a failed document parse. (Not a features.md row — a bug found in the Phase 3.9 whole-phase review.)
+### Phase 3.11: Duplicate Email Parser [status: complete]
+**Goal:** Stop `Rag.NET.Chunking.Templates`' email parser from claiming content types it cannot parse, which turned one unknown-extension attachment into a failed document parse. (Not a features.md row — a bug found in the Phase 3.9 whole-phase review.)
+**Plan:** `docs/plans/2026-07-29-duplicate-email-parser-design.md` + `-implementation.md`
+**Completed:** 2026-07-29 (the defect was four lines and the phase was six tasks, because the four lines were the only part anybody had noticed. `application/octet-stream` is gone from both Templates parsers' `CanParse`; `EmailAttachmentDispatcher` contains a throwing attachment parser to its own attachment, driven manually since C# forbids `yield return` inside a `try` with a `catch`, and rethrowing `OperationCanceledException` so a cancelled ingestion does not become a silently partial one; the `message/rfc822` overlap is now a startup error; and the Templates type is `EmailTemplateDocumentParser`. **The design contradicted itself and the contradiction was load-bearing.** §4 made registering both packages illegal while §6 made that exact configuration the phase-defining test, so Task 1's end-to-end test and Task 4's guard could not both stand. Underneath was the worse problem: the error said "register only one of them" while `UseEmailChunking()` registered a parser *and* a chunking strategy, with no way to take the strategy alone — it instructed the user to do something the API did not permit. `EmailChunkingOptions.RegisterParser` and its twin on `QAPairsChunkingOptions` make the instruction followable and make the pairing a user would actually want — email-shaped chunking with `Rag.NET.Parsers.Email` parsing — reachable for the first time; the `ParserClaim` carries the opt-out so the message can quote it verbatim. **Two verification findings worth more than the fix.** `ParserClaim.For` keys on `FullName`, and mutating it to `typeof(T).Name` turned four conflict tests from passing to "no exception was thrown": both colliding types were literally named `EmailDocumentParser`, so short names collapsed the two claimants into one and the guard stopped firing on the only collision it existed for. And the phase nearly shipped with **no end-to-end regression test at all** — `QAPairsAttachmentClaimTests` was re-run against a reverted Task 2 and passed, because attachment containment makes "a parser wrongly claimed this type and threw" produce sections identical to "nothing claimed it". The two states differ only in the dispatcher's log line, which is what the test now asserts and what makes it fail against the reverted fix. Registration-order roulette was also measured rather than assumed and turned out not to exist for the octet-stream defect: `Rag.NET.Parsers.Email` declines the type outright and `AddRagNETServices()` runs before `configure`, so both orders failed identically — registering the email package first was never a workaround.)
 
-Runs **next, before 3.10**, despite the higher number — this file orders by run order, and a live
-defect outranks new capability. Ranked on the hard failure, not on the name collision: `application/octet-stream` is `MimeTypeMap`'s fallback for *any* unknown extension, so a `payload.dat` in one `.eml` throws `InvalidOperationException` out of the whole parse when both packages are registered — a documented "degrades rather than breaks" contract broken by a registration combination nobody would suspect. The full finding, including the two lesser symptoms and the verification, is in the follow-up-debts list at the top of this file.
+**Deliberately not resolved:** which parser should own `message/rfc822`. They serve different purposes and the startup error asks the user. **Still open:** third-party parsers registered through `AddParser<T>()` declare no claim and go undetected — see the Closed debts list for why that is a stated limit rather than a deferral.
 
-**Scope:**
-- **Remove `application/octet-stream` from `Rag.NET.Chunking.Templates`' `CanParse` implementations** — `EmailDocumentParser` *and* `QAPairsDocumentParser`, which claims it as well. A fallback content type meaning "unknown binary" must not be answered by a format-specific parser. Pin it with a test that registers both packages and asserts an unknown-extension attachment is warned-and-skipped rather than thrown on.
-- **Decide whether `EmailAttachmentDispatcher` should contain a parser failure at all.** Removing the claim fixes this instance; it does not stop the next parser that accepts a type it then rejects. Weigh a `try`/`catch` around `parser.ParseAsync` against swallowing genuine corruption — the answer may legitimately be "no", but it should be an answer rather than an omission.
-- **Settle the two same-named `EmailDocumentParser`s**, and the registration-order dependence between `UseEmailChunking()` and `AddEmailParser()`, once the failure is gone.
-- **Correct `MimeTypeMap`'s type XML**, which records this as a known-false assumption pointing here.
-
-**Not in scope:** merging the two parsers, or changing what the Templates parser emits for a `.eml` it legitimately wins.
+**Was not in scope:** merging the two parsers, or changing what the Templates parser emits for a `.eml` it legitimately wins.
 
 ### Phase 3.10: Archive Parser (ZIP) [status: pending]
 **Goal:** Parse `.zip` archives by dispatching each entry to the registered parser for its content type, closing a gap where zipped email attachments are silently dropped. (features.md row: **Archive Parser (ZIP)**.)

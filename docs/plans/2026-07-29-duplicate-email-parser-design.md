@@ -101,6 +101,34 @@ attachment and the parser type, and continues with the next attachment.
 
 ## 4. Make the remaining overlap loud
 
+> **Corrected during implementation. §4 and §6 were mutually exclusive as written.** This section
+> makes "both packages registered" an illegal configuration. §6 makes that same configuration the
+> phase-defining test — "both packages registered, one `.eml` carrying one `payload.dat`, asserting
+> the body and the other attachments survive… that test is the phase". Both cannot stand. Adding
+> `ValidateParserClaims` turned Task 1's own end-to-end test red, and neither section notices the
+> other exists.
+>
+> Underneath was a defect this design did not see at all. The error message below tells the user to
+> "register only one of them", but `UseEmailChunking()` registers a **parser and a chunking
+> strategy**, unconditionally. There was no way to take the email chunking strategy without also
+> taking its parser, so the instruction asked the user to do something the API did not permit. The
+> conflict is only ever about the parser; the strategy consumes `DocumentSection`s and does not care
+> which parser produced them.
+>
+> **Resolved by making the parser optional.** `EmailChunkingOptions.RegisterParser` (default `true`)
+> and the same flag on `QAPairsChunkingOptions`: when `false`, the registration adds the chunking
+> strategy and its options but neither the parser nor its `ParserClaim`. The flag is on both because
+> the guard fires on *any* duplicated claim — a third-party CSV parser included — and an escape
+> hatch present on one bundling registration and absent from its twin is a trap of its own. The
+> `ParserClaim` carries the opt-out so the message can quote it verbatim rather than `AddRagNet`
+> knowing anything about the packages that collide; `AddEmailParser()` registers nothing but parsers,
+> declares none, and is offered none.
+>
+> The combination this makes reachable — email-shaped chunking with `Rag.NET.Parsers.Email` doing
+> the parsing — is the one a user would actually want, and it was unreachable before this phase.
+> §6's end-to-end test was deleted rather than repaired: it asserted behaviour in a configuration
+> this phase declares invalid. What replaced it, and what it cost, is in §6's own correction below.
+
 After §2, both parsers still claim `message/rfc822`. Registration order decides which wins, and when
 the Templates parser wins, a 3-level nested `.eml` yields **2 sections instead of 6** — measured, not
 theorised. Silent content loss.
@@ -148,6 +176,29 @@ both claiming `message/rfc822`, is a needless reading hazard in stack traces and
 A public API break, free now and expensive after 4.1 ships packages.
 
 ## 6. Testing
+
+> **Corrected during implementation.** The end-to-end case named below is a configuration §4 makes
+> illegal — see the correction there. `ParserClaimConflictTests` was deleted rather than repaired,
+> and two things replaced it.
+>
+> `EmailChunkingWithoutItsParserTests` covers the configuration that is now legal:
+> `UseEmailChunking(o => o.RegisterParser = false)` alongside `AddEmailParser()`. It asserts the
+> pairing builds, that the chunking strategy survives the opt-out, and — by driving a real `.eml`
+> with an embedded message through the resolved parser — that `Rag.NET.Parsers.Email`'s parser is
+> the one an `.eml` actually reaches, since only that parser descends.
+>
+> The `application/octet-stream` regression moved to `QAPairsAttachmentClaimTests`, whose
+> registration (`UseQAPairsChunking()` + `AddEmailParser()`) shares no content type and stays legal.
+> **That test as first written did not pin the regression at all.** Restoring the
+> `application/octet-stream` clause in `QAPairsDocumentParser.CanParse` left both of its
+> section-level assertions green, because §3's containment means a parser that wrongly claims a type
+> and then throws produces sections identical to no parser claiming it: the body and the siblings
+> survive either way. §3 and §2 were designed independently and nobody noticed that the first hides
+> the symptom the second's test was watching for. The two states differ only in the dispatcher's log
+> line — `NoParserForAttachment` versus `AttachmentParserFailed` — so the test now asserts the first
+> and the absence of the second, and was confirmed red against the reverted fix. The general lesson
+> is worth more than the fix: **a containment mechanism added in the same phase as a routing fix can
+> silently make the routing fix untestable through its original symptom.**
 
 **The end-to-end case first, and it must fail before the fix:** both packages registered, one `.eml`
 carrying one `payload.dat`, asserting the body and the other attachments survive. That test is the
