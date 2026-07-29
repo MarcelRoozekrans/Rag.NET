@@ -9,6 +9,13 @@ namespace Rag.NET.Parsers.Email;
 public static class EmailParserBuilderExtensions
 {
     /// <summary>
+    /// The call named in a <see cref="ParserClaim"/>, and therefore in the startup error a
+    /// content-type conflict produces. It is the call a user wrote, not the private
+    /// <c>Register</c> both overloads funnel through.
+    /// </summary>
+    private const string RegistrationMethod = "AddEmailParser()";
+
+    /// <summary>
     /// Registers the EML (<see cref="EmailDocumentParser"/>) and MSG
     /// (<see cref="MsgDocumentParser"/>) parsers plus their shared
     /// <see cref="HtmlDocumentParser"/> dependency, with default
@@ -58,6 +65,14 @@ public static class EmailParserBuilderExtensions
             sp.GetRequiredService<HtmlDocumentParser>(),
             sp.GetService<ILogger<MsgDocumentParser>>(),
             options));
+
+        // Declared so AddRagNet can detect another package claiming the same content type. Both
+        // registrations above use factory lambdas, so ServiceDescriptor.ImplementationType is null
+        // and the claim cannot be read back off the descriptor.
+        builder.Services.AddSingleton(ParserClaim.For<EmailDocumentParser>(
+            EmailDocumentParser.EmlContentType, RegistrationMethod));
+        builder.Services.AddSingleton(ParserClaim.For<MsgDocumentParser>(
+            MsgDocumentParser.MsgContentType, RegistrationMethod));
         return builder;
     }
 

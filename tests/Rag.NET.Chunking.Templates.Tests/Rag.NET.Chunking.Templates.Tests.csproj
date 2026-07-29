@@ -14,6 +14,10 @@
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
+    <!-- AddLogging/AddProvider, so QAPairsAttachmentClaimTests can assert *why* an attachment was
+         skipped. Containment makes "no parser claimed it" and "a parser claimed it and threw"
+         produce identical sections; only the log tells them apart. -->
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.*" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.*">

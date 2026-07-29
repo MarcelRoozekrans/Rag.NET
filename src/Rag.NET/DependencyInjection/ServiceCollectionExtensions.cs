@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -54,6 +55,7 @@ public static class ServiceCollectionExtensions
 
         var builder = new RagBuilder(services);
         configure?.Invoke(builder);
+        ValidateParserClaims(services);
         WireRefinementStrategy(services);
         WireDeepResearch(services);
         WireTimeWeighting(services);
@@ -63,6 +65,110 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IBm25Index>(sp => sp.GetRequiredService<InMemoryBm25Index>());
 
         return services;
+    }
+
+    /// <summary>
+    /// Fails registration when two parsers declare a claim on the same content type.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Runs after <c>configure</c> so it sees the final registration set whatever order the user
+    /// called things in, and before the <c>Wire*</c> methods so a misconfiguration is reported
+    /// rather than wired around.
+    /// </para>
+    /// <para>
+    /// Parser selection takes the <i>first</i> registration whose <c>CanParse</c> matches, both at
+    /// top level (<see cref="ParseBehavior"/>) and for email attachments. Two claimants therefore
+    /// means one of them silently never runs — measured on a 3-level nested <c>.eml</c> as 2
+    /// sections instead of 6. This does not pick a winner: the two parsers that collide today
+    /// serve genuinely different purposes, so the error asks the user.
+    /// </para>
+    /// <para>
+    /// Duplicate claims from the <i>same</i> parser type are not a conflict. Calling
+    /// <c>AddEmailParser()</c> twice is documented as legal, and the second call declares the same
+    /// claims the first did.
+    /// </para>
+    /// </remarks>
+    private static void ValidateParserClaims(IServiceCollection services)
+    {
+        // Sorted rather than hashed so a container with several conflicts always reports the same
+        // one, and so the claimants are listed in a stable order. Grouping is on the content type
+        // case-insensitively because every CanParse compares that way.
+        SortedDictionary<string, SortedDictionary<string, ParserClaim>>? byContentType = null;
+        foreach (var descriptor in services)
+        {
+            if (descriptor.ServiceType != typeof(ParserClaim) ||
+                descriptor.ImplementationInstance is not ParserClaim claim)
+            {
+                continue;
+            }
+
+            byContentType ??= new SortedDictionary<string, SortedDictionary<string, ParserClaim>>(
+                StringComparer.OrdinalIgnoreCase);
+            if (!byContentType.TryGetValue(claim.ContentType, out var claimants))
+            {
+                claimants = new SortedDictionary<string, ParserClaim>(StringComparer.Ordinal);
+                byContentType.Add(claim.ContentType, claimants);
+            }
+
+            // Keyed by parser type, so the same package registered twice declares one claimant.
+            claimants[claim.ParserTypeName] = claim;
+        }
+
+        if (byContentType is null)
+            return;
+
+        foreach (var (contentType, claimants) in byContentType)
+        {
+            if (claimants.Count > 1)
+                throw new InvalidOperationException(DescribeParserClaimConflict(contentType, claimants));
+        }
+    }
+
+    /// <summary>
+    /// Builds the startup error, naming every claimant, the call that registered it, and — where
+    /// the claim declares one — the way to keep that call while dropping only its parser.
+    /// </summary>
+    /// <remarks>
+    /// "Register only one of them" is not always advice the user can take. Some registration calls
+    /// bundle a parser with a chunking strategy, so removing the call to resolve the conflict also
+    /// removes something the user wanted and the conflict had nothing to do with. Those calls
+    /// declare a <see cref="ParserClaim.ParserOptOut"/>, and the message repeats it verbatim so it
+    /// can be pasted. Calls that register nothing but a parser declare none, and nothing is
+    /// offered for them.
+    /// </remarks>
+    private static string DescribeParserClaimConflict(
+        string contentType,
+        SortedDictionary<string, ParserClaim> claimants)
+    {
+        var message = new StringBuilder();
+        message.Append("More than one registered parser claims the content type '")
+            .Append(contentType)
+            .Append("'. The pipeline uses the first registered parser whose CanParse matches, so ")
+            .Append("which one wins depends on registration order and the other never runs. ")
+            .Append("Claimed by:");
+
+        var anyOptOut = false;
+        foreach (var claimant in claimants.Values)
+        {
+            message.Append("\n  - ")
+                .Append(claimant.ParserTypeName)
+                .Append(", registered by ")
+                .Append(claimant.RegistrationMethod);
+
+            if (claimant.ParserOptOut is not { Length: > 0 } optOut)
+                continue;
+
+            anyOptOut = true;
+            message.Append("\n      to keep that registration without its parser, use ")
+                .Append(optOut);
+        }
+
+        message.Append("\nRegister only one of them");
+        message.Append(anyOptOut
+            ? ", or keep both and opt one out of registering its parser as shown above."
+            : ".");
+        return message.ToString();
     }
 
     /// <summary>
