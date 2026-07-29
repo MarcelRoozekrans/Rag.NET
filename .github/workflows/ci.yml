@@ -14,11 +14,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# This job reads the repository and nothing else: no comments, no statuses, no packages. The default
+# is repository-configurable and therefore not a default at all, so it is stated here.
+permissions:
+  contents: read
+
 jobs:
   build-test:
     # Linux on purpose, not by default. The Docker tier below needs a Linux Docker daemon;
     # ubuntu-latest has one and the Windows runners do not, so Testcontainers cannot work there.
     runs-on: ubuntu-latest
+    # Generous for a run measured in minutes, and far below the 360-minute default. A Testcontainers
+    # image pull that hangs otherwise burns six hours of runner time before anyone is told.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -58,12 +66,16 @@ jobs:
       # evaluating the MSBuild property. `dotnet msbuild <proj> -getProperty:RequiresDocker` is the
       # exact read, but it is one process per project and was measured at ~40s across the 64 of them
       # against ~0.07s for these greps. The pattern is the full element
-      # `<RequiresDocker>true</RequiresDocker>`, which no comment in the repository contains today —
-      # but a future comment quoting it verbatim would silently widen the Docker tier. Two guards:
+      # `<RequiresDocker>true</RequiresDocker>`, which no comment in any `tests/*/*.csproj` contains
+      # today — the sentence is scoped to those files because only those files are grepped, and this
+      # workflow's own comments quote the element repeatedly without affecting anything. A comment
+      # inside a test csproj quoting it verbatim would silently widen the Docker tier. Three guards:
       # tests/Rag.NET.RepoConventions.Tests parses the csproj XML properly, asserts that every
-      # project starting a container declares the property and that this file still mentions it at
-      # all; and the partition check below fails loudly the moment the tiers stop covering exactly
-      # the set of test projects.
+      # project starting a container declares the property and that this file still contains the
+      # selection pipelines themselves (the commands, with comment lines stripped first — asserting
+      # over the raw text matched these comments and guarded nothing); the partition check below
+      # fails loudly the moment the tiers stop covering exactly the set of test projects; and each
+      # tier loop refuses to run a project whose test assembly is not on disk.
       #
       # RequiresSecrets is deliberately absent from the arithmetic below. It is an overlay, not a
       # fourth tier: the three env-gated projects are fast-tier projects that also run in
@@ -88,6 +100,17 @@ jobs:
       # Every test project that does not declare RequiresDocker. Each runs on its own so a failure
       # names the project rather than a 64-project batch, and every project runs before the step
       # fails so one break does not hide the next.
+      #
+      # The assembly check ahead of each `dotnet test` closes a failure mode with no symptom.
+      # `dotnet test --no-build` against a project the build never produced prints nothing at all
+      # and exits 0: the `|| failed=` below never fires and the step is green having run none of the
+      # project's tests. That is not hypothetical — tests/Rag.NET.WebSearch.Tavily.Tests was missing
+      # from Rag.NET.slnx, so `dotnet build Rag.NET.slnx` never built it and its four tests had never
+      # run anywhere. tests/Rag.NET.RepoConventions.Tests now asserts every test project is in the
+      # solution, but that guard only covers the one cause; this one covers every cause, because
+      # what it checks is the artefact rather than the reason. Dropping --no-build is the other fix
+      # and was rejected: it pays a rebuild per project across 64 of them, and it repairs the
+      # symptom by making the missing build happen silently instead of reporting it.
       - name: Test (fast tier)
         run: |
           projects=$(grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj \
@@ -95,6 +118,13 @@ jobs:
           failed=""
           for project in $projects; do
             echo "::group::$project"
+            assembly="$(basename "$project" .csproj).dll"
+            if [ -z "$(find "$(dirname "$project")/bin/Release" -name "$assembly" -type f 2>/dev/null)" ]; then
+              echo "::error::$project was never built: no $assembly under its bin/Release. Skipping it and failing, because dotnet test --no-build would print nothing and exit 0. The usual cause is that the project is missing from Rag.NET.slnx."
+              failed="$failed $project"
+              echo "::endgroup::"
+              continue
+            fi
             dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
             echo "::endgroup::"
           done
@@ -114,6 +144,13 @@ jobs:
           failed=""
           for project in $projects; do
             echo "::group::$project"
+            assembly="$(basename "$project" .csproj).dll"
+            if [ -z "$(find "$(dirname "$project")/bin/Release" -name "$assembly" -type f 2>/dev/null)" ]; then
+              echo "::error::$project was never built: no $assembly under its bin/Release. Skipping it and failing, because dotnet test --no-build would print nothing and exit 0. The usual cause is that the project is missing from Rag.NET.slnx."
+              failed="$failed $project"
+              echo "::endgroup::"
+              continue
+            fi
             dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
             echo "::endgroup::"
           done

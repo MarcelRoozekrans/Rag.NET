@@ -24,9 +24,21 @@ on:
     branches: [main]
     types: [labeled]
 
+# The label, or the event when there is no label, is part of the group — and that is the whole
+# point of it. Without it, `${{ github.workflow }}-${{ github.ref }}` puts both jobs' triggers in one
+# group on a pull request: labelling a PR `run-llm` and then `run-secrets` fires two
+# pull_request/labeled events on the same ref, and the second cancels the first. The labels were
+# split precisely so the two jobs could be asked for independently, and a cancelled run reads as
+# neither a pass nor a failure. The same mechanism made a manual workflow_dispatch on main cancel an
+# in-flight scheduled nightly; `github.event_name` separates those too.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.label.name || github.event_name }}
   cancel-in-progress: true
+
+# Both jobs read the repository and nothing else. The secrets the env-gated job needs arrive through
+# `secrets.*`, which this does not affect.
+permissions:
+  contents: read
 
 jobs:
   llm:
@@ -36,6 +48,10 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-llm'
     # Linux on purpose: OllamaFixture is a container, and only the Linux runners have a daemon.
     runs-on: ubuntu-latest
+    # Wider than ci.yml's because this job pulls about 2 GB of models before it asserts anything,
+    # and still far below the 360-minute default: a model download that hangs at 3am should be
+    # reported in the morning, not still running at lunchtime.
+    timeout-minutes: 90
     # No RAGNET_* secrets here, deliberately. They used to sit on this job and reached nothing: the
     # only project declaring RequiresLlm reads none of them. The env-gated suites are selected by
     # their own declaration in the `secrets` job below, which is where those values now live.
@@ -89,6 +105,13 @@ jobs:
           failed=""
           for project in $projects; do
             echo "::group::$project"
+            assembly="$(basename "$project" .csproj).dll"
+            if [ -z "$(find "$(dirname "$project")/bin/Release" -name "$assembly" -type f 2>/dev/null)" ]; then
+              echo "::error::$project was never built: no $assembly under its bin/Release. Skipping it and failing, because dotnet test --no-build would print nothing and exit 0. The usual cause is that the project is missing from Rag.NET.slnx."
+              failed="$failed $project"
+              echo "::endgroup::"
+              continue
+            fi
             dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
             echo "::endgroup::"
           done
@@ -129,6 +152,9 @@ jobs:
     # which is the intended and safe outcome.
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-secrets'
     runs-on: ubuntu-latest
+    # No model downloads here, so the same budget as ci.yml. A live Document Intelligence call that
+    # never returns is the thing this bounds.
+    timeout-minutes: 45
     env:
       # secrets.* with no fallback, on purpose: an unset secret leaves the tests skipping, which is
       # exactly the current behaviour and is safe in forks, where secrets are never exposed.
@@ -191,6 +217,13 @@ jobs:
           failed=""
           for project in $projects; do
             echo "::group::$project"
+            assembly="$(basename "$project" .csproj).dll"
+            if [ -z "$(find "$(dirname "$project")/bin/Release" -name "$assembly" -type f 2>/dev/null)" ]; then
+              echo "::error::$project was never built: no $assembly under its bin/Release. Skipping it and failing, because dotnet test --no-build would print nothing and exit 0. The usual cause is that the project is missing from Rag.NET.slnx."
+              failed="$failed $project"
+              echo "::endgroup::"
+              continue
+            fi
             dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
             echo "::endgroup::"
           done

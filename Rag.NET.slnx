@@ -68,6 +68,7 @@
     <Project Path="src/Rag.NET.Ingestion.AzureServiceBus/Rag.NET.Ingestion.AzureServiceBus.csproj" />
     <Project Path="src/Rag.NET.Diagnostics/Rag.NET.Diagnostics.csproj" />
     <Project Path="src/Rag.NET.Diagnostics.AspNetCore/Rag.NET.Diagnostics.AspNetCore.csproj" />
+    <Project Path="src/Rag.NET.WebSearch.Tavily/Rag.NET.WebSearch.Tavily.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Security.IntegrationTests/Rag.NET.Security.IntegrationTests.csproj" />
@@ -134,6 +135,7 @@
     <Project Path="tests/Rag.NET.Ingestion.AzureServiceBus.Tests/Rag.NET.Ingestion.AzureServiceBus.Tests.csproj" />
     <Project Path="tests/Rag.NET.Diagnostics.Tests/Rag.NET.Diagnostics.Tests.csproj" />
     <Project Path="tests/Rag.NET.RepoConventions.Tests/Rag.NET.RepoConventions.Tests.csproj" />
+    <Project Path="tests/Rag.NET.WebSearch.Tavily.Tests/Rag.NET.WebSearch.Tavily.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />

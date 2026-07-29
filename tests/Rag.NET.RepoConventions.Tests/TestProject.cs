@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -15,25 +16,46 @@ public sealed partial class TestProject
     private const string TestingProjectFileName = "Rag.NET.Testing.csproj";
 
     /// <summary>
+    /// The one fixture that downloads a language model. Named on its own because
+    /// <c>RequiresLlm</c> is about the model, not about Docker: the other fixtures start a container
+    /// and nothing else.
+    /// </summary>
+    private const string OllamaFixtureName = "OllamaFixture";
+
+    /// <summary>
     /// Container fixtures published by <c>tests/Rag.NET.Testing</c>. Adding a fixture that starts a
     /// container is one edit here.
     /// </summary>
     private static readonly string[] ContainerFixtureNames =
-        ["PgVectorFixture", "QdrantFixture", "OllamaFixture"];
+        ["PgVectorFixture", "QdrantFixture", OllamaFixtureName];
 
-    private TestProject(string name, string directory, XDocument project)
+    private TestProject(string name, string directory, string relativePath, XDocument project, ISet<string> solutionProjects)
     {
+        var fixtures = MentionedContainerFixtures(directory, project);
+
         Name = name;
+        RelativePath = relativePath;
+        IsInTheSolution = solutionProjects.Contains(relativePath);
         DeclaresRequiresDocker = DeclaresTrue(project, "RequiresDocker");
         DeclaresRequiresLlm = DeclaresTrue(project, "RequiresLlm");
         DeclaresRequiresSecrets = DeclaresTrue(project, "RequiresSecrets");
         ReferencesTestcontainers = HasTestcontainersPackage(project);
-        UsesAContainerFixture = MentionsAContainerFixture(directory, project);
+        UsesAContainerFixture = fixtures.Count > 0;
+        UsesTheOllamaFixture = fixtures.Contains(OllamaFixtureName);
         ReadsASecretEnvironmentVariable = ReadsARagnetEnvironmentVariable(directory);
     }
 
     /// <summary>Gets the project's directory name, which is also its assembly name.</summary>
     public string Name { get; }
+
+    /// <summary>
+    /// Gets the csproj path relative to the repository root, with forward slashes — the same shape
+    /// <c>Rag.NET.slnx</c> writes.
+    /// </summary>
+    public string RelativePath { get; }
+
+    /// <summary>Gets a value indicating whether <c>Rag.NET.slnx</c> lists this project.</summary>
+    public bool IsInTheSolution { get; }
 
     /// <summary>Gets a value indicating whether the csproj declares <c>RequiresDocker</c>.</summary>
     public bool DeclaresRequiresDocker { get; }
@@ -50,6 +72,9 @@ public sealed partial class TestProject
     /// <summary>Gets a value indicating whether the project uses a container fixture from Rag.NET.Testing.</summary>
     public bool UsesAContainerFixture { get; }
 
+    /// <summary>Gets a value indicating whether the project uses Rag.NET.Testing's Ollama fixture.</summary>
+    public bool UsesTheOllamaFixture { get; }
+
     /// <summary>
     /// Gets a value indicating whether any source file in the project reads a <c>RAGNET_</c>
     /// environment variable.
@@ -65,6 +90,11 @@ public sealed partial class TestProject
             ? "it references a Testcontainers package"
             : "it uses a container fixture from Rag.NET.Testing"
         : "it references no Testcontainers package and uses no container fixture from Rag.NET.Testing";
+
+    /// <summary>Gets a human-readable account of why <see cref="UsesTheOllamaFixture"/> is what it is.</summary>
+    public string LlmEvidence => UsesTheOllamaFixture
+        ? $"it uses {OllamaFixtureName}"
+        : $"it does not use {OllamaFixtureName}";
 
     /// <summary>Gets a human-readable account of why <see cref="ReadsASecretEnvironmentVariable"/> is what it is.</summary>
     public string SecretEvidence => ReadsASecretEnvironmentVariable
@@ -94,11 +124,57 @@ public sealed partial class TestProject
             "The repository-conventions tests read the working tree at run time and cannot run without it.");
     }
 
+    /// <summary>Gets the path of a workflow file under <c>.github/workflows</c>.</summary>
+    /// <param name="fileName">The workflow file name, for example <c>ci.yml</c>.</param>
+    /// <returns>The absolute path, whether or not the file exists.</returns>
+    public static string WorkflowPath(string fileName) =>
+        Path.Combine(FindRepositoryRoot(), ".github", "workflows", fileName);
+
+    /// <summary>
+    /// Reads a workflow file as the commands it will run: comment lines removed, shell line
+    /// continuations joined, runs of whitespace collapsed to one space.
+    /// </summary>
+    /// <param name="workflowPath">The absolute path of the workflow file.</param>
+    /// <returns>The workflow's non-comment text on a single line.</returns>
+    /// <remarks>
+    /// Load-bearing, and the reason is a measured failure. The guard tests used to assert
+    /// <c>Contains("RequiresDocker")</c> over the raw file, and that string appears four times in
+    /// <c>ci.yml</c>'s prose. Replacing the entire tier selection with a hardcoded list of project
+    /// names — the one thing these tests exist to catch — left the comments untouched and the suite
+    /// green. Prose cannot satisfy an assertion about what runs.
+    /// </remarks>
+    public static string ReadWorkflowCommands(string workflowPath)
+    {
+        var builder = new StringBuilder();
+
+        foreach (var line in File.ReadLines(workflowPath))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0 || trimmed[0] == '#')
+            {
+                continue;
+            }
+
+            // A trailing backslash continues a shell command onto the next line. Dropping it lets an
+            // assertion name a whole pipeline as one string instead of as YAML-wrapped fragments.
+            if (trimmed[^1] == '\\')
+            {
+                trimmed = trimmed[..^1];
+            }
+
+            _ = builder.Append(trimmed).Append(' ');
+        }
+
+        return string.Join(' ', builder.ToString().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
     /// <summary>Discovers every test project under <c>tests/</c>.</summary>
     /// <returns>The discovered projects, in directory order.</returns>
     public static IReadOnlyList<TestProject> DiscoverAll()
     {
-        var testsDirectory = Path.Combine(FindRepositoryRoot(), "tests");
+        var repositoryRoot = FindRepositoryRoot();
+        var testsDirectory = Path.Combine(repositoryRoot, "tests");
+        var solutionProjects = ReadSolutionProjectPaths(repositoryRoot);
         var projects = new List<TestProject>();
 
         // tests/*/*.csproj — the same shape the CI workflow globs, so the two never disagree about
@@ -114,13 +190,43 @@ public sealed partial class TestProject
                 // means nothing for a project no test runner ever executes.
                 if (HasPackage(document, TestSdkPackageId))
                 {
-                    projects.Add(new TestProject(Path.GetFileName(directory), directory, document));
+                    var relativePath = NormalisePath(Path.GetRelativePath(repositoryRoot, projectFile));
+                    projects.Add(new TestProject(
+                        Path.GetFileName(directory), directory, relativePath, document, solutionProjects));
                 }
             }
         }
 
         return projects;
     }
+
+    /// <summary>
+    /// Reads every <c>&lt;Project Path="…"/&gt;</c> out of <c>Rag.NET.slnx</c>.
+    /// </summary>
+    /// <remarks>
+    /// A project absent from the solution is never built by <c>dotnet build Rag.NET.slnx</c>, and on
+    /// a fresh checkout that makes the workflow's <c>dotnet test --no-build</c> exit 0 having run
+    /// nothing at all. Read from the file rather than from an SDK query because the workflow's
+    /// build reads this same file, and it is the file that must be right.
+    /// </remarks>
+    private static HashSet<string> ReadSolutionProjectPaths(string repositoryRoot)
+    {
+        var solution = XDocument.Load(Path.Combine(repositoryRoot, SolutionFileName));
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var project in solution.Descendants("Project"))
+        {
+            var path = project.Attribute("Path")?.Value;
+            if (path is not null)
+            {
+                _ = paths.Add(NormalisePath(path));
+            }
+        }
+
+        return paths;
+    }
+
+    private static string NormalisePath(string path) => path.Replace('\\', '/').Trim();
 
     private static bool DeclaresTrue(XDocument project, string propertyName) =>
         project.Root!
@@ -184,8 +290,10 @@ public sealed partial class TestProject
         }
     }
 
-    private static bool MentionsAContainerFixture(string directory, XDocument project)
+    private static HashSet<string> MentionedContainerFixtures(string directory, XDocument project)
     {
+        var mentioned = new HashSet<string>(StringComparer.Ordinal);
+
         // The gate below is load-bearing, not an optimisation. The fixture types are defined in
         // tests/Rag.NET.Testing, so a project that does not reference that project cannot be using
         // one no matter what its source text says — while a bare source scan produces false
@@ -196,7 +304,7 @@ public sealed partial class TestProject
         // same trap. Do not remove this as redundant.
         if (!ReferencesTheTestingLibrary(project))
         {
-            return false;
+            return mentioned;
         }
 
         foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
@@ -211,12 +319,12 @@ public sealed partial class TestProject
             {
                 if (source.Contains(fixtureName, StringComparison.Ordinal))
                 {
-                    return true;
+                    _ = mentioned.Add(fixtureName);
                 }
             }
         }
 
-        return false;
+        return mentioned;
     }
 
     private static bool ReadsARagnetEnvironmentVariable(string directory)
