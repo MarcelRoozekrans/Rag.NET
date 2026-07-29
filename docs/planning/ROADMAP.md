@@ -70,13 +70,22 @@ future reader can tell the difference between "never existed" and "dealt with".
   silent content loss — a 3-level nested `.eml` yielding 2 sections instead of 6. Detection works
   off a `ParserClaim` singleton each registration declares, because `CanParse` needs live instances
   and `ServiceDescriptor.ImplementationType` is `null` for every colliding registration.
-  **Still open, and not scheduled.** A third-party parser registered through `AddParser<T>()`
-  declares no claim and is undetected. `CanParse` is a predicate, not an enumeration, so nothing
-  can discover what an arbitrary parser accepts without probing it against a guessed list of
-  content types — which is a worse mechanism than an undetected collision, so this is a stated
-  limit rather than a deferral. The guard also compares *declared* claims, not the parsers
-  themselves: a first-party claim that drifts from its own `CanParse` is caught by nothing but the
-  two being written next to each other.
+  **The limit was stated too narrowly, and the whole-phase review found it in-box.** "Only a
+  third-party parser goes undetected" was wrong: the boundary is *declares a claim*, not
+  *first-party*. `AddRagNETServices()` auto-registers `TextDocumentParser` and
+  `MarkdownDocumentParser` before `configure` runs, and neither declared one — so registering a
+  parser claiming `text/plain` left a single declared claimant, the guard stayed silent, and
+  selection resolved `text/plain` to the built-in while the user's parser never ran. That is the
+  failure the guard exists to prevent, reachable without any third-party package. Both built-ins
+  now declare their claims from `AddRagNet` itself, `MarkdownDocumentParser` including the
+  `text/x-markdown` alias its `CanParse` also answers, because a source generator writes their
+  registrations and cannot host a claim.
+  **Still open, and not scheduled.** A parser registered through `AddParser<T>()` declares no claim
+  and is undetected. `CanParse` is a predicate, not an enumeration, so nothing can discover what an
+  arbitrary parser accepts without probing it against a guessed list of content types — which is a
+  worse mechanism than an undetected collision, so this is a stated limit rather than a deferral.
+  The guard also compares *declared* claims, not the parsers themselves: a claim that drifts from
+  its own `CanParse` is caught by nothing but the two being written next to each other.
   **What the design got wrong.** §4 made registering both packages a startup error while §6 made
   that same configuration the phase-defining test, and the error it produced told the user to
   "register only one of them" when `UseEmailChunking()` bundled a parser with a chunking strategy
@@ -302,7 +311,7 @@ Reopened because 3.6 closed it on a premise its own whole-phase review falsified
 **Plan:** `docs/plans/2026-07-29-duplicate-email-parser-design.md` + `-implementation.md`
 **Completed:** 2026-07-29 (the defect was four lines and the phase was six tasks, because the four lines were the only part anybody had noticed. `application/octet-stream` is gone from both Templates parsers' `CanParse`; `EmailAttachmentDispatcher` contains a throwing attachment parser to its own attachment, driven manually since C# forbids `yield return` inside a `try` with a `catch`, and rethrowing `OperationCanceledException` so a cancelled ingestion does not become a silently partial one; the `message/rfc822` overlap is now a startup error; and the Templates type is `EmailTemplateDocumentParser`. **The design contradicted itself and the contradiction was load-bearing.** §4 made registering both packages illegal while §6 made that exact configuration the phase-defining test, so Task 1's end-to-end test and Task 4's guard could not both stand. Underneath was the worse problem: the error said "register only one of them" while `UseEmailChunking()` registered a parser *and* a chunking strategy, with no way to take the strategy alone — it instructed the user to do something the API did not permit. `EmailChunkingOptions.RegisterParser` and its twin on `QAPairsChunkingOptions` make the instruction followable and make the pairing a user would actually want — email-shaped chunking with `Rag.NET.Parsers.Email` parsing — reachable for the first time; the `ParserClaim` carries the opt-out so the message can quote it verbatim. **Two verification findings worth more than the fix.** `ParserClaim.For` keys on `FullName`, and mutating it to `typeof(T).Name` turned four conflict tests from passing to "no exception was thrown": both colliding types were literally named `EmailDocumentParser`, so short names collapsed the two claimants into one and the guard stopped firing on the only collision it existed for. And the phase nearly shipped with **no end-to-end regression test at all** — `QAPairsAttachmentClaimTests` was re-run against a reverted Task 2 and passed, because attachment containment makes "a parser wrongly claimed this type and threw" produce sections identical to "nothing claimed it". The two states differ only in the dispatcher's log line, which is what the test now asserts and what makes it fail against the reverted fix. Registration-order roulette was also measured rather than assumed and turned out not to exist for the octet-stream defect: `Rag.NET.Parsers.Email` declines the type outright and `AddRagNETServices()` runs before `configure`, so both orders failed identically — registering the email package first was never a workaround.)
 
-**Deliberately not resolved:** which parser should own `message/rfc822`. They serve different purposes and the startup error asks the user. **Still open:** third-party parsers registered through `AddParser<T>()` declare no claim and go undetected — see the Closed debts list for why that is a stated limit rather than a deferral.
+**Deliberately not resolved:** which parser should own `message/rfc822`. They serve different purposes and the startup error asks the user. **Still open:** parsers registered through `AddParser<T>()` declare no claim and go undetected — see the Closed debts list for why that is a stated limit rather than a deferral, and for the whole-phase review's finding that "third-party" was the wrong word for that limit.
 
 **Was not in scope:** merging the two parsers, or changing what the Templates parser emits for a `.eml` it legitimately wins.
 

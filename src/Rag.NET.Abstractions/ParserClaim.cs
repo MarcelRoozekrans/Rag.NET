@@ -11,12 +11,20 @@ namespace Rag.NET.Abstractions;
 /// The validator treats one type name as one claimant, so that registering the same package twice
 /// is not a conflict; short names make two <i>distinct</i> parsers that happen to share a name
 /// collapse into a single claimant, and the check stops firing on exactly the collision it exists
-/// for. Verified rather than reasoned: when the two colliding types were both called
-/// <c>EmailDocumentParser</c>, mutating this line to <c>typeof(TParser).Name</c> turned four
-/// conflict tests from passing to "no exception was thrown". Phase 3.11 went on to rename one of
-/// them to <c>EmailTemplateDocumentParser</c>, which removes the hazard for that particular pair
-/// and for no other — the next same-named pair, in a third-party package this repository cannot
-/// rename, would silently disable the guard again.
+/// for. <c>ParserClaimValidationTests.TwoParsersSharingAShortName_StillConflict</c> is what holds
+/// this line to <c>FullName</c>: it registers two parsers both called <c>SharedNameParser</c> from
+/// different namespaces, both claiming one content type, and mutating this line to
+/// <c>typeof(TParser).Name</c> turns it red with "no exception was thrown".
+/// <para>
+/// History, because the reason that test exists is not obvious. The rule was originally pinned by
+/// nothing but the repository's own accident: both colliding types were literally called
+/// <c>EmailDocumentParser</c>, and the same mutation turned four conflict tests red. Phase 3.11
+/// then renamed one of them to <c>EmailTemplateDocumentParser</c> and, in doing so, abolished the
+/// coverage — the same mutation afterwards reddened one test, for an unrelated reason, and no test
+/// watched the rule the rename had just made un-hit. A same-named pair in a third-party package is
+/// not something this repository can rename away, so the rule outlived the pair that demonstrated
+/// it and now has a test of its own.
+/// </para>
 /// </param>
 /// <param name="RegistrationMethod">
 /// The call a user would recognise from their own composition root — <c>AddEmailParser()</c>,
@@ -40,11 +48,20 @@ namespace Rag.NET.Abstractions;
 /// that collides here — they all use factory lambdas, so only <c>ImplementationFactory</c> is set.
 /// </para>
 /// <para>
-/// The limit is that this catches only registrations that declare a claim. A third-party parser
-/// registered through <c>AddParser&lt;T&gt;()</c> declares nothing and goes undetected.
-/// <c>CanParse</c> is a predicate rather than an enumeration, so nothing can discover what an
-/// arbitrary parser accepts without probing it against a guessed list of content types — a worse
-/// mechanism than an undetected third-party collision.
+/// The limit is that this catches only registrations that <i>declare</i> a claim — which is not
+/// the same boundary as "first-party", and saying so understated it. The two parsers
+/// <c>AddRagNETServices()</c> auto-registers, <c>TextDocumentParser</c> and
+/// <c>MarkdownDocumentParser</c>, declared nothing when the guard shipped, so registering a parser
+/// that claimed <c>text/plain</c> left one declared claimant and the guard stayed silent while
+/// selection resolved <c>text/plain</c> to the built-in and the user's parser never ran. They
+/// declare their claims now, from <c>AddRagNet</c> itself, because a source generator writes their
+/// registrations and cannot host one.
+/// </para>
+/// <para>
+/// What genuinely goes undetected is a parser registered through <c>AddParser&lt;T&gt;()</c>,
+/// which declares nothing. <c>CanParse</c> is a predicate rather than an enumeration, so nothing
+/// can discover what an arbitrary parser accepts without probing it against a guessed list of
+/// content types — a worse mechanism than an undetected collision.
 /// </para>
 /// </remarks>
 public sealed record ParserClaim(

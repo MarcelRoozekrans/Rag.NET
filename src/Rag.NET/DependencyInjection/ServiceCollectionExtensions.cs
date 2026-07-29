@@ -8,6 +8,7 @@ using Rag.NET.AnswerGeneration;
 using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Parsers;
 using Rag.NET.Pipeline;
 using Rag.NET.Retrieval;
 using Rag.NET.Search;
@@ -26,6 +27,7 @@ public static class ServiceCollectionExtensions
         // IChunkingStrategy (Recursive), all [Singleton] behaviors,
         // PipelineIngestor (as IIngestor), PipelineRetriever (as IRetriever).
         services.AddRagNETServices();
+        DeclareBuiltInParserClaims(services);
 
         services.TryAddSingleton<ChunkingOptions>();
         services.AddSingleton<InMemoryBm25Index>(sp => new InMemoryBm25Index(sp.GetService<SynonymMap>()));
@@ -68,6 +70,50 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
+    /// Declares the claims of the two parsers <c>AddRagNETServices()</c> auto-registers, so
+    /// <see cref="ValidateParserClaims"/> can see them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Declared here rather than beside the parsers because a source generator writes their
+    /// registrations — <c>[Singleton(As = typeof(IDocumentParser), AllowMultiple = true)]</c> — and
+    /// its output cannot host a claim. This call is the next best place: every route into the
+    /// container goes through <see cref="AddRagNet"/>, and it runs before <c>configure</c>, which
+    /// is also the order the registrations themselves run in.
+    /// </para>
+    /// <para>
+    /// Without these two claims the guard was blind to the case a user is most likely to hit.
+    /// Registering a parser that declares <c>text/plain</c> left one <i>declared</i> claimant, so
+    /// nothing fired, while parser selection resolved <c>text/plain</c> to
+    /// <see cref="TextDocumentParser"/> — auto-registered before anything the user adds — and the
+    /// user's parser silently never ran. That is precisely the failure the guard exists to prevent,
+    /// and it was reachable without a third-party package.
+    /// </para>
+    /// <para>
+    /// The content types are copied from each <c>CanParse</c> and are exactly what it accepts —
+    /// <see cref="MarkdownDocumentParser"/> answers <c>text/x-markdown</c> as well as
+    /// <c>text/markdown</c>, and a claim that under-declares is a guard that under-fires. Neither
+    /// call bundles anything with the parser, so neither declares a
+    /// <see cref="ParserClaim.ParserOptOut"/>.
+    /// </para>
+    /// </remarks>
+    private static void DeclareBuiltInParserClaims(IServiceCollection services)
+    {
+        services.AddSingleton(ParserClaim.For<TextDocumentParser>(
+            "text/plain", BuiltInRegistrationMethod));
+        services.AddSingleton(ParserClaim.For<MarkdownDocumentParser>(
+            "text/markdown", BuiltInRegistrationMethod));
+        services.AddSingleton(ParserClaim.For<MarkdownDocumentParser>(
+            "text/x-markdown", BuiltInRegistrationMethod));
+    }
+
+    /// <summary>
+    /// The call a user would recognise as having registered the built-in parsers. They arrive
+    /// through <c>AddRagNETServices()</c>, which is generated and which nobody calls directly.
+    /// </summary>
+    private const string BuiltInRegistrationMethod = "AddRagNet()";
+
+    /// <summary>
     /// Fails registration when two parsers declare a claim on the same content type.
     /// </summary>
     /// <remarks>
@@ -93,7 +139,13 @@ public static class ServiceCollectionExtensions
     {
         // Sorted rather than hashed so a container with several conflicts always reports the same
         // one, and so the claimants are listed in a stable order. Grouping is on the content type
-        // case-insensitively because every CanParse compares that way.
+        // case-insensitively on purpose, and deliberately stricter than the parsers themselves:
+        // they do not agree with each other. QAPairsDocumentParser and EmailTemplateDocumentParser
+        // compare Ordinal, so MESSAGE/RFC822 reaches EmailDocumentParser and TEXT/CSV reaches
+        // nobody; Rag.NET.Parsers.Email's pair compares OrdinalIgnoreCase. Grouping the strict way
+        // would let a pair that differs only in case register cleanly and then collide at parse
+        // time for whichever casing both happen to answer. Over-strict costs a false conflict
+        // between two parsers that would never have overlapped; case-sensitive costs a silent one.
         SortedDictionary<string, SortedDictionary<string, ParserClaim>>? byContentType = null;
         foreach (var descriptor in services)
         {
