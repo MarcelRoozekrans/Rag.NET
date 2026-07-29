@@ -71,13 +71,19 @@ Assume nothing works until a test says so *and the test is right*.
 4. Phase 3.4 — Pipeline Debugger / Trace Viewer [complete — 2026-07-28]
 5. Phase 3.5 — CI Integration Coverage [complete — 2026-07-29]
 6. Phase 3.6 — Email Parser Debt [complete — 2026-07-29]
-7. Phase 3.9 — Email Traversal Flattening [pending] — **runs next**, out of numeric order. Reopened
+7. Phase 3.9 — Email Traversal Flattening [complete — 2026-07-29] — ran out of numeric order. Reopened
    out of 3.6, which closed it on a premise its own review falsified: the recursion does not cross
    the `IDocumentParser` boundary on its dominant path, so an explicit stack drained LIFO does
    flatten it, at identical section ordering. Kept its number because three committed artifacts
    already reference it. (The `Stack<IAsyncEnumerator<DocumentSection>>` this entry named until the
    3.9 design is a type that cannot express descent at all — the unit is a traversal frame.)
-8. Phase 3.10 — Archive Parser (ZIP) [pending] — raised while designing 3.9. A zipped attachment
+8. Phase 3.11 — Duplicate Email Parser [pending] — a bug found in the 3.9 review, and the most
+   urgent thing outstanding in this milestone. `Rag.NET.Chunking.Templates` holds a second
+   `EmailDocumentParser`; it and `QAPairsDocumentParser` both claim `application/octet-stream`,
+   the fallback type for any unknown extension. Registered alongside `AddEmailParser()`, one
+   `.eml` carrying one unknown-extension attachment throws out of the whole document parse.
+   Scheduled before 3.10 despite the higher number — it is a live defect, not new capability.
+9. Phase 3.10 — Archive Parser (ZIP) [pending] — raised while designing 3.9. A zipped attachment
    matches no parser today, so it is logged and dropped and never indexed. Runs straight after 3.9
    because it reuses that phase's traversal driver and descent policy for `zip → .eml → zip`.
    Stretches this milestone's "quality hardening" goal to a feature row, deliberately: the
