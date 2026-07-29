@@ -44,6 +44,19 @@ future reader can tell the difference between "never existed" and "dealt with".
   diagnostics benefit, and that phase spent its one production edit on the `ragnet.query` span.
   → **Phase 4.4** (OTel wiring, which has to reason about span context across async iterators
   regardless)
+- **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
+  of scope, scheduled here so they do not stay open notes). All three exist in
+  `MarcelRoozekrans/AdoNet.Async` and none exists here:
+  - **`docs.yml`** — a Docusaurus site is already in the tree (`sidebars.ts`, `src/css/custom.css`,
+    the whole `docs/` directory) and **nothing publishes it**. Written docs that nobody can read are
+    the same shape of gap as tests that never run, which is what 3.5 was about; it was kept out of
+    3.5 because a test-coverage phase is the wrong place to acquire a publishing pipeline, not
+    because it is small.
+  - **`.commitlintrc.yml`** — this repository already writes conventional commits by convention;
+    nothing enforces it, and release-please in 4.1 will read those messages.
+  - **`renovate.json`** — no automated dependency updates at all.
+  → **Milestone 4**, alongside the rest of the release-readiness work. `.commitlintrc.yml` pairs
+  naturally with 4.1, since release-please depends on the commit format holding.
 
 ### Closed
 
@@ -194,8 +207,10 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Plan:** `docs/plans/2026-07-28-pipeline-debugger-design.md` + `-implementation.md`
 **Completed:** 2026-07-28 (mostly a join over things that already existed — `RagTelemetry` emitted stage spans and the audit log already recorded chunks with scores, but nothing connected them. The genuinely new capability is recording what guards and sanitisers removed: `RbacRetrievalGuard` and `PiiChunkSanitiser` silently changed what the pipeline saw and nothing anywhere noted it, so "why is that chunk missing" could not be answered. Kept separate from `IAuditLog` because a compliance record and a debug buffer have opposite retention needs. Content capture is off by default behind four explicit flags, verified closed all the way to the serialised HTTP payload. Also added an enclosing `ragnet.query` span to every public pipeline entry point — without it a fan-out retriever produced one trace per sub-question, all but the last unreachable by id.)
 
-### Phase 3.5: CI Integration Coverage [status: pending]
+### Phase 3.5: CI Integration Coverage [status: complete]
 **Goal:** Run the Testcontainers-based vector-store and integration suites in CI. (Not a features.md row — quality-hardening scope.)
+**Plan:** `docs/plans/2026-07-28-ci-integration-coverage-design.md` + `-implementation.md`
+**Completed:** 2026-07-29 (there was no CI at all — every test in the repository had only ever run on a developer's machine, which is why 3.5 builds the pipeline and 4.1 narrows to packaging. Test projects declare their own needs via `RequiresDocker`, `RequiresLlm` and `RequiresSecrets`, and `Rag.NET.RepoConventions.Tests` fails when a declaration and reality disagree — in both directions, so a stale declaration is as loud as a missing one. The phase's own thesis was falsified during its final review: `Rag.NET.WebSearch.Tavily.Tests` had four real tests, a correct tier, and was in no solution, so `dotnet test --no-build` exited 0 having run none of them. Both it and its source project are now in the solution, every tier loop fails a project whose assembly is absent, and two conventions tests guard `src/` and `tests/` against a repeat. **The workflows have never executed — the first pull-request run is the real verification.**)
 
 ### Phase 3.6: Email Parser Debt [status: pending]
 **Goal:** Close the two recorded email-parser debts above, both of which are behaviour changes rather than refactors. (Not a features.md row — debt carried out of Milestone 2.)
@@ -239,9 +254,35 @@ Scoped out of Phase 3.3 deliberately, because it is a production-path concern wi
 - [ ] CI pipeline builds, tests, and produces NuGet packages
 - [ ] Release tagged v1.0
 
-### Phase 4.1: NuGet Publishing Pipeline [status: pending]
-**Goal:** GitHub Actions CI (build + test) and NuGet packaging/publishing with MinVer versioning.
+### Phase 4.1: NuGet Packaging & Publishing [status: pending]
+**Goal:** NuGet packaging, versioning and publishing on top of a pipeline that already builds and tests.
 **Backlog items:** NuGet Publishing Pipeline
+
+> **Narrowed 2026-07-29, and the tooling corrected.** This entry used to read *"GitHub Actions CI
+> (build + test) and NuGet packaging/publishing with **MinVer** versioning"*. Two things were wrong
+> with it.
+>
+> **The CI half is Phase 3.5's, and is done.** `ci.yml` builds the solution and runs every test
+> project in its tier on each push; `nightly.yml` carries the LLM and env-gated jobs. 4.1 no longer
+> owns build-and-test, only what is packed and pushed on top of it. (Two phases quietly both owning
+> a deliverable is how one of them ends up skipped — which is what 3.5 found when it started.)
+>
+> *"Every test project" is 64 of 64, and it was 63 when this paragraph was first written.*
+> `Rag.NET.WebSearch.Tavily.Tests` was in no solution file, so the build never produced it and its
+> tier's `dotnet test --no-build` exited 0 having run none of its four tests. Two guards now hold
+> the sentence up: `tests/Rag.NET.RepoConventions.Tests` asserts every test project is listed in
+> `Rag.NET.slnx`, and each tier loop refuses to run — and fails — a project whose test assembly is
+> not on disk, whatever the reason it was not built.
+>
+> **The versioning tool is GitVersion, not MinVer.** The house convention in
+> `MarcelRoozekrans/AdoNet.Async` is **GitVersion** (`GitVersion.yml`, a `.config/dotnet-tools.json`
+> entry, output parsed with `jq`) plus **release-please** for the release itself. Different tools,
+> different configuration. The MinVer entry was written before anyone looked at how these
+> repositories are actually set up.
+>
+> **`pack-push` is a job in the existing `ci.yml`, not a new workflow file.** That is how
+> `AdoNet.Async` lays it out — `build-test` and a conditional `pack-push` in one file, the latter
+> gated on push-to-main — and matching it keeps the two repositories readable side by side.
 
 > **Known blocker, found in Phase 3.2 (2026-07-28): turning on XML documentation will fail the build.**
 > `GenerateDocumentationFile` is set **nowhere** in this repo, so `CS1574` (unresolvable `<see cref>`)

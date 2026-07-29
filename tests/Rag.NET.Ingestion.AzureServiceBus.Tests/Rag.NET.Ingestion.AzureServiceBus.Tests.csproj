@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Starts a Testcontainers container. CI runs these in the Docker tier, which is
+         Linux-only: the Windows runners have no Linux Docker daemon. -->
+    <RequiresDocker>true</RequiresDocker>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Ingestion.AzureServiceBus\Rag.NET.Ingestion.AzureServiceBus.csproj" />

@@ -2,6 +2,14 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Starts a Testcontainers container, via Rag.NET.Testing's OllamaFixture rather than a
+         Testcontainers reference of its own. CI runs these in the Docker tier, which is
+         Linux-only: the Windows runners have no Linux Docker daemon. -->
+    <RequiresDocker>true</RequiresDocker>
+    <!-- Pulls nomic-embed-text and llama3.2:1b — about 2 GB per run — and its assertions are
+         model output, measured at roughly 1 failure in 11 runs in Phase 2.1. Nightly and opt-in,
+         never a required check. -->
+    <RequiresLlm>true</RequiresLlm>
   </PropertyGroup>
 
   <ItemGroup>

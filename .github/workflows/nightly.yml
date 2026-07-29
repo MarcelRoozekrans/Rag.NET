@@ -1,0 +1,233 @@
+# Everything ci.yml cannot run on a push: the LLM tier, and the suites that need secrets.
+#
+# The two jobs are not alike, and the difference is the point. `llm` reports and never gates,
+# because its assertions are model output. `env-gated` gates, because Tesseract, Azure Document
+# Intelligence and a real ONNX model are deterministic — but it can only gate meaningfully when the
+# secrets exist, and each job says so at its own definition below.
+#
+# DO NOT ADD THE `llm` JOB TO BRANCH PROTECTION. Not as a required check, not "just while we watch
+# it". Its assertions are model output — Phase 2.1 measured `Assert.Contains("Python", answer)`
+# against live Ollama failing roughly 1 run in 11 — so as a required check it would block merges on
+# a model choosing different words. A gate that fails on noise teaches people to press re-run
+# instead of read, at which point it has stopped being a gate and is only a tax. The reasoning lives
+# in docs/plans/2026-07-28-ci-integration-coverage-design.md §2, but it is repeated here because
+# nobody reads a design doc at the moment they are tempted to tick the box.
+name: Nightly
+
+on:
+  schedule:
+    # 03:17 UTC. A quiet hour, and deliberately off the hour: on-the-hour crons queue behind
+    # everyone else's on-the-hour crons.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [labeled]
+
+# The label, or the event when there is no label, is part of the group — and that is the whole
+# point of it. Without it, `${{ github.workflow }}-${{ github.ref }}` puts both jobs' triggers in one
+# group on a pull request: labelling a PR `run-llm` and then `run-secrets` fires two
+# pull_request/labeled events on the same ref, and the second cancels the first. The labels were
+# split precisely so the two jobs could be asked for independently, and a cancelled run reads as
+# neither a pass nor a failure. The same mechanism made a manual workflow_dispatch on main cancel an
+# in-flight scheduled nightly; `github.event_name` separates those too.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.label.name || github.event_name }}
+  cancel-in-progress: true
+
+# Both jobs read the repository and nothing else. The secrets the env-gated job needs arrive through
+# `secrets.*`, which this does not affect.
+permissions:
+  contents: read
+
+jobs:
+  llm:
+    # A pull_request/labeled event fires for every label on every PR. Only 'run-llm' means someone
+    # asked for this — typically because they just changed the answer engine or a retrieval path and
+    # want to see the result before merging. Opting in says "show me", not "gate me on a coin flip".
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-llm'
+    # Linux on purpose: OllamaFixture is a container, and only the Linux runners have a daemon.
+    runs-on: ubuntu-latest
+    # Wider than ci.yml's because this job pulls about 2 GB of models before it asserts anything,
+    # and still far below the 360-minute default: a model download that hangs at 3am should be
+    # reported in the morning, not still running at lunchtime.
+    timeout-minutes: 90
+    # No RAGNET_* secrets here, deliberately. They used to sit on this job and reached nothing: the
+    # only project declaring RequiresLlm reads none of them. The env-gated suites are selected by
+    # their own declaration in the `secrets` job below, which is where those values now live.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore Rag.NET.slnx
+
+      # Load-bearing, as in ci.yml: Directory.Build.props documents an SDK regression under which
+      # `dotnet test` from a completely empty obj/ still requires `dotnet build` first, and a CI
+      # checkout is empty every run.
+      - name: Build
+        run: dotnet build Rag.NET.slnx --no-restore -c Release
+
+      # Its own step, above the continue-on-error one and therefore still able to fail the job. An
+      # empty tier is indistinguishable from a passing tier once failures are advisory, so the one
+      # thing this workflow must still gate on is that it has something to run at all.
+      - name: Verify the LLM tier is not empty
+        run: |
+          if [ -z "$(grep -l '<RequiresLlm>true</RequiresLlm>' tests/*/*.csproj)" ]; then
+            echo "::error::No project declares <RequiresLlm>true</RequiresLlm>. The LLM tier has gone missing rather than passing."
+            exit 1
+          fi
+
+      # Selected by declaration, never by a list of project names — the same rule as ci.yml, and
+      # tests/Rag.NET.RepoConventions.Tests asserts that RequiresLlm never appears without
+      # RequiresDocker, because the Ollama fixture is a container.
+      #
+      # continue-on-error is on this step and not on the job, deliberately. Only the assertions are
+      # non-deterministic; a failed checkout, restore or build is a real breakage and still fails
+      # the job. Note that these suites also pull nomic-embed-text and llama3.2:1b, roughly 2 GB per
+      # run, which is the second independent reason this is not on every push.
+      - name: Test (LLM tier)
+        continue-on-error: true
+        run: |
+          projects=$(grep -l '<RequiresLlm>true</RequiresLlm>' tests/*/*.csproj)
+          failed=""
+          for project in $projects; do
+            echo "::group::$project"
+            assembly="$(basename "$project" .csproj).dll"
+            if [ -z "$(find "$(dirname "$project")/bin/Release" -name "$assembly" -type f 2>/dev/null)" ]; then
+              echo "::error::$project was never built: no $assembly under its bin/Release. Skipping it and failing, because dotnet test --no-build would print nothing and exit 0. The usual cause is that the project is missing from Rag.NET.slnx."
+              failed="$failed $project"
+              echo "::endgroup::"
+              continue
+            fi
+            dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::warning::LLM tier reported failures (advisory, not a gate):$failed"
+            exit 1
+          fi
+
+  # The env-gated suites: real Tesseract, live Azure Document Intelligence, a real ONNX embedding
+  # model. Every one of them calls Assert.Skip when its variable is absent, so they are safe
+  # everywhere and already run — and skip — in ci.yml's fast tier. This job is the only place they
+  # execute, because it is the only workflow where secrets are allowed to exist.
+  #
+  # THIS JOB GATES; the llm job above does not, and the difference is not arbitrary. These suites
+  # are deterministic: Tesseract given the same PDF and the same traineddata produces the same text,
+  # and Document Intelligence is a service with a contract, not a model writing prose. A failure
+  # here is a regression, and the 1-in-11 argument that makes the LLM tier advisory simply does not
+  # apply. So no continue-on-error anywhere in this job.
+  #
+  # What "gating" means when the secrets are absent — say it plainly, because a green tick will
+  # otherwise be read as coverage: every test skips and the job passes. That is today's behaviour
+  # and it is safe (forks and PRs from forks get no secrets at all), but it is not a pass in any
+  # useful sense. The step below prints which variables are present, so the log distinguishes
+  # "green because it ran and passed" from "green because nothing ran". Nothing here fails on
+  # absence: making an unset secret a build failure would break every fork, and the repository
+  # owner already knows which secrets are configured.
+  #
+  # RequiresSecrets is an overlay, not a fourth tier. It cuts across the fast/Docker partition that
+  # ci.yml verifies rather than adding to it: these three projects are fast-tier projects, they run
+  # in the fast tier on every push, and they run here as well with values supplied. A project is in
+  # exactly one tier and may appear in more than one workflow.
+  env-gated:
+    # Its own label, not the llm one. The two jobs cost wildly different amounts and are wanted for
+    # different reasons: a PR touching the PDF parser wants these deterministic suites and has no
+    # use for a two-gigabyte model download. One shared label would have made the cheap job
+    # unreachable without paying for the expensive one.
+    # On a fork's pull request no secrets are exposed at all, so this job runs and skips everything,
+    # which is the intended and safe outcome.
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-secrets'
+    runs-on: ubuntu-latest
+    # No model downloads here, so the same budget as ci.yml. A live Document Intelligence call that
+    # never returns is the thing this bounds.
+    timeout-minutes: 45
+    env:
+      # secrets.* with no fallback, on purpose: an unset secret leaves the tests skipping, which is
+      # exactly the current behaviour and is safe in forks, where secrets are never exposed.
+      RAGNET_TESSDATA: ${{ secrets.RAGNET_TESSDATA }}
+      RAGNET_DOCINTEL_ENDPOINT: ${{ secrets.RAGNET_DOCINTEL_ENDPOINT }}
+      RAGNET_DOCINTEL_KEY: ${{ secrets.RAGNET_DOCINTEL_KEY }}
+      RAGNET_ONNX_EMBED_MODEL: ${{ secrets.RAGNET_ONNX_EMBED_MODEL }}
+      RAGNET_ONNX_EMBED_VOCAB: ${{ secrets.RAGNET_ONNX_EMBED_VOCAB }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore Rag.NET.slnx
+
+      # Load-bearing, as in ci.yml: Directory.Build.props documents an SDK regression under which
+      # `dotnet test` from a completely empty obj/ still requires `dotnet build` first.
+      - name: Build
+        run: dotnet build Rag.NET.slnx --no-restore -c Release
+
+      # Presence only, never a value. Without this the log cannot tell a real pass from a run in
+      # which every env-gated test skipped, and those look identical in the summary.
+      - name: Report which secrets are present
+        run: |
+          for name in RAGNET_TESSDATA RAGNET_DOCINTEL_ENDPOINT RAGNET_DOCINTEL_KEY \
+                      RAGNET_ONNX_EMBED_MODEL RAGNET_ONNX_EMBED_VOCAB; do
+            if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: unset — its tests will skip"; fi
+          done
+
+      # As in ci.yml's LLM check: an empty selection is indistinguishable from a passing one, and
+      # this job's whole purpose is that the env-gated projects are reached at all.
+      - name: Verify the secrets overlay is not empty
+        run: |
+          if [ -z "$(grep -l '<RequiresSecrets>true</RequiresSecrets>' tests/*/*.csproj)" ]; then
+            echo "::error::No project declares <RequiresSecrets>true</RequiresSecrets>. The env-gated suites have gone missing rather than passing."
+            exit 1
+          fi
+
+      # Selected by declaration, never by a list of project names — the same rule as every other
+      # selection in these workflows, and the same 'Microsoft.NET.Test.Sdk' filter, so all three
+      # workflows agree on what a test project is. tests/Rag.NET.RepoConventions.Tests asserts in
+      # both directions that a project reading a RAGNET_ variable declares the property and that
+      # this file still selects on it.
+      - name: Test (env-gated suites)
+        run: |
+          projects=$(grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj \
+            | xargs -r grep -l '<RequiresSecrets>true</RequiresSecrets>')
+          failed=""
+          for project in $projects; do
+            echo "::group::$project"
+            assembly="$(basename "$project" .csproj).dll"
+            if [ -z "$(find "$(dirname "$project")/bin/Release" -name "$assembly" -type f 2>/dev/null)" ]; then
+              echo "::error::$project was never built: no $assembly under its bin/Release. Skipping it and failing, because dotnet test --no-build would print nothing and exit 0. The usual cause is that the project is missing from Rag.NET.slnx."
+              failed="$failed $project"
+              echo "::endgroup::"
+              continue
+            fi
+            dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Env-gated suites failed:$failed"
+            exit 1
+          fi

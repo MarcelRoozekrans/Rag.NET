@@ -2,6 +2,11 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Reads RAGNET_TESSDATA (a tessdata directory containing eng.traineddata) and calls
+         Assert.Skip when it is absent, so this project is safe in every tier and simply skips
+         that test. The declaration exists so nightly.yml can select it and supply the value,
+         which is the only run where the real-Tesseract path executes at all. -->
+    <RequiresSecrets>true</RequiresSecrets>
     <!-- Mirrors the parser's OCR gate so gate-conditional tests (the gate-off construction
          throw, the gated real-Tesseract integration test) compile consistently with the
          parser when building with /p:EnableOcr=true. -->
