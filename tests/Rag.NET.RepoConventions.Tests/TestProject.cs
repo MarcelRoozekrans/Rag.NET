@@ -201,6 +201,43 @@ public sealed partial class TestProject
     }
 
     /// <summary>
+    /// Finds every project under <c>src/</c> that <c>Rag.NET.slnx</c> does not list.
+    /// </summary>
+    /// <returns>The missing csproj paths relative to the repository root, or an empty list.</returns>
+    /// <remarks>
+    /// The sibling of <c>EveryTestProjectIsInTheSolution</c>, for the half of the tree that guard
+    /// cannot see. A source project outside the solution still compiles — anything referencing it
+    /// pulls it in transitively — so nothing looks wrong, which is exactly how
+    /// <c>src/Rag.NET.WebSearch.Tavily</c> stayed out of the solution alongside its test project.
+    /// <para>
+    /// It stops looking harmless at Phase 4.1: <c>dotnet pack</c> over the solution packs the
+    /// projects the solution lists, so a missing one is a package that silently never ships. That is
+    /// the same shape as a test suite that silently never runs, and it is cheaper to guard now than
+    /// to discover from an absent package on a release day.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<string> SourceProjectsMissingFromTheSolution()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var solutionProjects = ReadSolutionProjectPaths(repositoryRoot);
+        var missing = new List<string>();
+
+        foreach (var directory in Directory.EnumerateDirectories(Path.Combine(repositoryRoot, "src")))
+        {
+            foreach (var projectFile in Directory.EnumerateFiles(directory, "*.csproj", SearchOption.TopDirectoryOnly))
+            {
+                var relativePath = NormalisePath(Path.GetRelativePath(repositoryRoot, projectFile));
+                if (!solutionProjects.Contains(relativePath))
+                {
+                    missing.Add(relativePath);
+                }
+            }
+        }
+
+        return missing;
+    }
+
+    /// <summary>
     /// Reads every <c>&lt;Project Path="…"/&gt;</c> out of <c>Rag.NET.slnx</c>.
     /// </summary>
     /// <remarks>

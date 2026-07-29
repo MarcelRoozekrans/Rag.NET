@@ -51,6 +51,27 @@ public sealed class TestProjectTierTests
     }
 
     [Fact]
+    public void EverySourceProjectIsInTheSolution()
+    {
+        // The other half of the tree, where the same omission hides better. A source project outside
+        // the solution still compiles, because anything referencing it pulls it in transitively — so
+        // nothing looks wrong at all. src/Rag.NET.WebSearch.Tavily sat outside the solution for
+        // exactly that reason, and was only noticed while fixing its test project.
+        //
+        // It stops being harmless at Phase 4.1: `dotnet pack` over the solution packs what the
+        // solution lists, so a missing project is a NuGet package that silently never ships. Same
+        // shape as a suite that silently never runs, found on a release day instead of today.
+        var missing = TestProject.SourceProjectsMissingFromTheSolution();
+
+        Assert.True(
+            missing.Count == 0,
+            $"These projects under src/ are not listed in Rag.NET.slnx: {string.Join(", ", missing)}. " +
+            "They still compile — anything referencing them builds them transitively — so nothing " +
+            "appears broken until `dotnet pack` over the solution silently omits them. Add each to " +
+            "the <Folder Name=\"/src/\"> block.");
+    }
+
+    [Fact]
     public void RequiresLlmImpliesRequiresDocker()
     {
         // OllamaFixture is a container. An LLM project that does not need Docker is a contradiction,
