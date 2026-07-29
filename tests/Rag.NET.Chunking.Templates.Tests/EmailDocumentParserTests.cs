@@ -54,6 +54,23 @@ public class EmailDocumentParserTests
         Assert.True(parser.CanParse("message/rfc822"));
     }
 
+    /// <summary>
+    /// The legitimate claim survives Phase 3.11 and the greedy one does not.
+    /// <c>application/octet-stream</c> is the fallback for "unknown binary", so a format-specific
+    /// parser answering it is always guessing — and a wrong guess here threw
+    /// <c>InvalidOperationException</c> out of the caller's whole document parse rather than
+    /// merely missing one attachment. The <c>false</c> row is the fix; the <c>true</c> row is the
+    /// guard against over-correcting it into a narrower parser.
+    /// </summary>
+    [Theory]
+    [InlineData("message/rfc822", true)]
+    [InlineData("application/octet-stream", false)]
+    public void CanParse_ClaimsRfc822ButNotUnknownBinary(string contentType, bool expected)
+    {
+        var parser = new EmailDocumentParser(new EmailChunkingOptions());
+        Assert.Equal(expected, parser.CanParse(contentType));
+    }
+
     [Fact]
     public async Task ParseAsync_HeadersSectionMarkedWithHeading()
     {

@@ -40,6 +40,24 @@ public class QAPairsTests
         Assert.True(parser.CanParse("text/csv"));
     }
 
+    /// <summary>
+    /// All three legitimate claims survive Phase 3.11 and the greedy one does not.
+    /// <c>application/octet-stream</c> means "unknown binary"; answering it sent random bytes into
+    /// the CSV reader, which threw <c>Cannot resolve question/answer columns</c> out of the
+    /// caller's whole document parse. The <c>true</c> rows are the guard against over-correcting
+    /// the removal into a narrower parser.
+    /// </summary>
+    [Theory]
+    [InlineData("text/csv", true)]
+    [InlineData("application/vnd.ms-excel", true)]
+    [InlineData("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", true)]
+    [InlineData("application/octet-stream", false)]
+    public void CanParse_ClaimsTabularTypesButNotUnknownBinary(string contentType, bool expected)
+    {
+        var parser = new QAPairsDocumentParser(new QAPairsChunkingOptions());
+        Assert.Equal(expected, parser.CanParse(contentType));
+    }
+
     [Fact]
     public async Task QAPairsChunkingStrategy_StoresAnswerInMetadata()
     {

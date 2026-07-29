@@ -17,8 +17,7 @@ public sealed partial class EmailDocumentParser(
     private readonly ILogger<EmailDocumentParser> _logger = logger ?? NullLogger<EmailDocumentParser>.Instance;
 
     public bool CanParse(string contentType) =>
-        string.Equals(contentType, "message/rfc822", StringComparison.Ordinal)
-            || string.Equals(contentType, "application/octet-stream", StringComparison.Ordinal);
+        string.Equals(contentType, "message/rfc822", StringComparison.Ordinal);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,
