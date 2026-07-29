@@ -58,7 +58,7 @@ public class UseChunkingTemplatesTests
     public void UseEmailChunking_RegistersIDocumentParser()
     {
         var sp = BaseServices().AddRagNet(rag => rag.UseEmailChunking()).BuildServiceProvider();
-        Assert.IsType<EmailDocumentParser>(sp.GetRequiredService<IDocumentParser>());
+        Assert.IsType<EmailTemplateDocumentParser>(sp.GetRequiredService<IDocumentParser>());
     }
 
     [Fact]

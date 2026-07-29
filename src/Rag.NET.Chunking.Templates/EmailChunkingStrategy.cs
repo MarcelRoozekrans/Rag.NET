@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 namespace Rag.NET.Chunking.Templates;
 
 /// <summary>
-/// Converts sections produced by <see cref="EmailDocumentParser"/> into
+/// Converts sections produced by <see cref="EmailTemplateDocumentParser"/> into
 /// <see cref="TextChunk"/> instances, stamping <c>template=email</c> and
 /// <c>part=headers|body|attachment:&lt;name&gt;</c> metadata on each chunk.
 /// </summary>

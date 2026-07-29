@@ -10,21 +10,29 @@ namespace Rag.NET.Parsers.Email;
 /// <para>
 /// <b>The fallback assumes no parser claims it.</b> On that assumption an attachment of an
 /// unknown type is skipped with a warning by <see cref="EmailAttachmentDispatcher"/>, which is
-/// the "degrades rather than breaks" behaviour <see cref="EmailParserOptions"/> documents. It
-/// holds for every parser this package ships: <c>application/octet-stream</c> means "unknown
-/// binary", so nothing format-specific should answer to it.
+/// the "degrades rather than breaks" behaviour <see cref="EmailParserOptions"/> documents.
+/// <c>application/octet-stream</c> means "unknown binary", so nothing format-specific should
+/// answer to it; a parser that does is guessing, and a wrong guess costs the attachment rather
+/// than missing it.
 /// </para>
 /// <para>
-/// <b>It does not hold when <c>Rag.NET.Chunking.Templates</c> is registered.</b> Both its
-/// <c>EmailDocumentParser</c> and its <c>QAPairsDocumentParser</c> accept
-/// <c>application/octet-stream</c> in <c>CanParse</c>, and <c>UseEmailChunking()</c> /
-/// <c>UseQAPairsChunking()</c> add them to the same
-/// <see cref="Abstractions.IDocumentParser"/> collection the dispatcher searches. One unknown
-/// extension is then routed to a parser that cannot read it, and — since the dispatcher does not
-/// wrap <c>ParseAsync</c> in a <c>try</c> — the failure escapes the whole document parse rather
-/// than being skipped. Verified end to end in the Phase 3.9 whole-phase review. The fix belongs
-/// to those parsers, not to this map; it is scheduled as <b>Phase 3.11: Duplicate Email
-/// Parser</b> in <c>docs/planning/ROADMAP.md</c>.
+/// <b>The assumption held again from Phase 3.11.</b> Until then
+/// <c>Rag.NET.Chunking.Templates</c> registered two parsers whose <c>CanParse</c> accepted
+/// <c>application/octet-stream</c> into the same <see cref="Abstractions.IDocumentParser"/>
+/// collection the dispatcher searches, so an unknown extension was routed to a parser that could
+/// not read it. Both clauses are gone, and the invariant is load-bearing rather than incidental:
+/// it is what makes an unclaimed attachment a warning instead of a failure.
+/// </para>
+/// <para>
+/// <b>The Phase 3.9 addendum this replaces attributed that failure to this type, which is wrong.</b>
+/// <c>FromFileName</c> has exactly one caller in the repository — <c>StorageMessageAdapter</c>,
+/// on the <c>.msg</c> path — so an extension-table miss is the only route this map is
+/// responsible for. An <c>.eml</c> attachment never touches it: <c>MimeMessageAdapter.Enumerate</c>
+/// builds the type from the part's own MIME headers, so it is
+/// <c>application/octet-stream</c> because the sending client wrote that, which is both commoner
+/// and less avoidable than a lookup miss. Both routes produce the same type and both were broken;
+/// only the first is this map's doing. The invariant matters for both, which is why it is recorded
+/// here — but the defect was never a defect of this table.
 /// </para>
 /// </remarks>
 internal static class MimeTypeMap

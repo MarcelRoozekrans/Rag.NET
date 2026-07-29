@@ -9,16 +9,15 @@ using System.Text.RegularExpressions;
 
 namespace Rag.NET.Chunking.Templates;
 
-public sealed partial class EmailDocumentParser(
+public sealed partial class EmailTemplateDocumentParser(
     EmailChunkingOptions options,
-    ILogger<EmailDocumentParser>? logger = null) : IDocumentParser
+    ILogger<EmailTemplateDocumentParser>? logger = null) : IDocumentParser
 {
     private static readonly string[] TextExtensions = [".txt", ".md", ".csv", ".tsv"];
-    private readonly ILogger<EmailDocumentParser> _logger = logger ?? NullLogger<EmailDocumentParser>.Instance;
+    private readonly ILogger<EmailTemplateDocumentParser> _logger = logger ?? NullLogger<EmailTemplateDocumentParser>.Instance;
 
     public bool CanParse(string contentType) =>
-        string.Equals(contentType, "message/rfc822", StringComparison.Ordinal)
-            || string.Equals(contentType, "application/octet-stream", StringComparison.Ordinal);
+        string.Equals(contentType, "message/rfc822", StringComparison.Ordinal);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,

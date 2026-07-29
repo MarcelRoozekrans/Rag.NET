@@ -5,7 +5,7 @@ using Xunit;
 
 namespace Rag.NET.Chunking.Templates.Tests;
 
-public class EmailDocumentParserTests
+public class EmailTemplateDocumentParserTests
 {
     private const string SimpleEml = """
         From: sender@example.com
@@ -24,7 +24,7 @@ public class EmailDocumentParserTests
     [Fact]
     public async Task ParseAsync_EmitsBodySection()
     {
-        var parser = new EmailDocumentParser(new EmailChunkingOptions { IncludeHeaders = false });
+        var parser = new EmailTemplateDocumentParser(new EmailChunkingOptions { IncludeHeaders = false });
         var stream = new MemoryStream(Encoding.UTF8.GetBytes(SimpleEml));
 
         var sections = new List<DocumentSection>();
@@ -37,7 +37,7 @@ public class EmailDocumentParserTests
     [Fact]
     public async Task ParseAsync_EmitsHeadersSectionWhenEnabled()
     {
-        var parser = new EmailDocumentParser(new EmailChunkingOptions { IncludeHeaders = true });
+        var parser = new EmailTemplateDocumentParser(new EmailChunkingOptions { IncludeHeaders = true });
         var stream = new MemoryStream(Encoding.UTF8.GetBytes(SimpleEml));
 
         var sections = new List<DocumentSection>();
@@ -50,14 +50,31 @@ public class EmailDocumentParserTests
     [Fact]
     public async Task ParseAsync_CanParseMessageRfc822()
     {
-        var parser = new EmailDocumentParser(new EmailChunkingOptions());
+        var parser = new EmailTemplateDocumentParser(new EmailChunkingOptions());
         Assert.True(parser.CanParse("message/rfc822"));
+    }
+
+    /// <summary>
+    /// The legitimate claim survives Phase 3.11 and the greedy one does not.
+    /// <c>application/octet-stream</c> is the fallback for "unknown binary", so a format-specific
+    /// parser answering it is always guessing — and a wrong guess here threw
+    /// <c>InvalidOperationException</c> out of the caller's whole document parse rather than
+    /// merely missing one attachment. The <c>false</c> row is the fix; the <c>true</c> row is the
+    /// guard against over-correcting it into a narrower parser.
+    /// </summary>
+    [Theory]
+    [InlineData("message/rfc822", true)]
+    [InlineData("application/octet-stream", false)]
+    public void CanParse_ClaimsRfc822ButNotUnknownBinary(string contentType, bool expected)
+    {
+        var parser = new EmailTemplateDocumentParser(new EmailChunkingOptions());
+        Assert.Equal(expected, parser.CanParse(contentType));
     }
 
     [Fact]
     public async Task ParseAsync_HeadersSectionMarkedWithHeading()
     {
-        var parser = new EmailDocumentParser(new EmailChunkingOptions { IncludeHeaders = true });
+        var parser = new EmailTemplateDocumentParser(new EmailChunkingOptions { IncludeHeaders = true });
         var stream = new MemoryStream(Encoding.UTF8.GetBytes(SimpleEml));
 
         var sections = new List<DocumentSection>();

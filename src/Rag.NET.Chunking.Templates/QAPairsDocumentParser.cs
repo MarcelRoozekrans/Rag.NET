@@ -18,8 +18,7 @@ public sealed partial class QAPairsDocumentParser(
     public bool CanParse(string contentType) =>
         string.Equals(contentType, "text/csv", StringComparison.Ordinal)
             || string.Equals(contentType, "application/vnd.ms-excel", StringComparison.Ordinal)
-            || string.Equals(contentType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", StringComparison.Ordinal)
-            || string.Equals(contentType, "application/octet-stream", StringComparison.Ordinal);
+            || string.Equals(contentType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", StringComparison.Ordinal);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,
