@@ -107,6 +107,15 @@ The XML must say why it cannot be removed, not merely that it exists: `EmailAtta
 
 Include the three numbers, since they are what make 64 defensible: real chains run 10–20 deep, the ceiling is 64, the measured overflow floor is ~500.
 
+> **Falsified in the whole-phase review.** Both instructions above are wrong and the work they
+> produced was reverted. The `IDocumentParser`-boundary argument does not hold: a nested
+> `message/rfc822` arrives as a live `MessagePart` and recurses inside `EmailDocumentParser`
+> without the dispatcher, so the frames are ours and a `Stack<IAsyncEnumerator<DocumentSection>>`
+> drained LIFO would flatten them at identical section ordering. The debt is reopened as
+> **Phase 3.9**. Of the three numbers, `10–20` has no source anywhere in the repository and was
+> dropped; the two measured ones carry the argument. See design §2 "Falsified in review" and the
+> reopened `ROADMAP.md` entry.
+
 **ROADMAP:** move both entries to `### Closed`. The sanitizer one closes as implemented. The traversal one closes as **re-justified, not implemented** — say so plainly, so a future reader does not go looking for the work queue. Leaving it open would keep implying a fix exists that nobody has got to.
 
 **Guide:** note that embedded-attachment names may change and how — the cap, the all-invalid fallback, the non-breaking space.
