@@ -78,10 +78,12 @@ public static class EmailParserBuilderExtensions
         {
             throw new ArgumentOutOfRangeException(paramName, options.RequestedMaxEmbeddedDepth,
                 $"{nameof(EmailParserOptions)}.{nameof(EmailParserOptions.MaxEmbeddedDepth)} must not exceed " +
-                $"{EmailParserOptions.MaxSupportedEmbeddedDepth}. Recursion into an embedded message is " +
-                "stack-recursive: 480 levels were measured to survive and 500+ to terminate the process with " +
-                "0xC00000FD (STATUS_STACK_OVERFLOW), which is uncatchable. Roughly 40 KB of crafted MIME reaches " +
-                "500 levels, so this is a process-kill primitive rather than a tuning knob.");
+                $"{EmailParserOptions.MaxSupportedEmbeddedDepth}. The in-place traversal is flat, so the ceiling " +
+                "bounds the dispatcher path — where a third-party parser registered for a message content type " +
+                "re-enters through IDocumentParser, costing a bounded handful of frames per hop — plus how much " +
+                "fan-out and metadata one document may ask for. (The ~500-level 0xC00000FD floor that originally " +
+                "justified this ceiling belonged to the recursive traversal this replaced; it is history, not a " +
+                "live bound.)");
         }
     }
 

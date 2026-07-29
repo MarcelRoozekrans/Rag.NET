@@ -556,11 +556,28 @@ Parse `.eml` (RFC 5322) and `.msg` (Outlook) files into sections: subject → he
 
 **Why:** Email archives are a major enterprise knowledge source. The existing Gmail/Exchange connectors ingest live mailboxes, but `.eml`/`.msg` exports from archives or migrations are unaddressed.
 
-An embedded or forwarded message is parsed in place and carries the parent's `DocumentId`, distinguished by a composed file name — `parent.eml#Forwarded Subject.eml`. Depth is bounded by `EmailParserOptions.MaxEmbeddedDepth` (default `3`, hard ceiling `64`) and total fan-out by `MaxEmbeddedMessages` (default `50`); exceeding either logs a warning and skips that branch rather than throwing. The ceiling is not adjustable: the traversal is stack-recursive, and 64 sits an order of magnitude below the depth at which it overflows.
+An embedded or forwarded message is parsed in place and carries the parent's `DocumentId`, distinguished by a composed file name — `parent.eml#Forwarded Subject.eml`. Depth is bounded by `EmailParserOptions.MaxEmbeddedDepth` (default `3`, hard ceiling `64`) and total fan-out by `MaxEmbeddedMessages` (default `50`); exceeding either logs a warning and skips that branch rather than throwing. The ceiling is not adjustable — it is a safety bound on how much work a crafted file can ask for, not a preference, so the `MaxEmbeddedDepth` setter clamps to it and `AddEmailParser` throws on a larger value rather than clamping silently.
 
 > **Changed in 3.6 — embedded-attachment names may differ.** The composed stem now goes through the shared `FileNameSanitizer` instead of a private copy. Four things follow. Long subjects keep **128** characters instead of 64, so a name that used to truncate mid-word no longer does. A subject made entirely of invalid characters (`"///"`) now yields `embedded-message` instead of `___`. A subject ending in a non-breaking space followed by a dot no longer keeps that space — the old single-pass `TrimEnd('.', ' ')` stripped the dot and left whitespace it could not match. And the two sanitizers order their steps oppositely: the old copy trimmed before replacing invalid characters, the shared one replaces first. TAB, LF, VT, FF and CR are control characters *and* whitespace, so one at the start or end of a subject is now turned into `_` — which is not whitespace, so trimming cannot remove it. `"report\t"` yields `report_` where it used to yield `report`. Most visible via `.msg`, whose subject comes straight from MAPI with no header normalization. Only the stem changes; the `parent.eml#child.eml` composition, the `#` separator and the `embedded-message` fallback for a missing subject are unchanged. The composed name stays inside the parse: it is written to the embedded message's `DocumentMetadata.FileName` and read only as the prefix for the next level's name. `DocumentSection` has no file-name field, so the name reaches no section, tag, log message or stored chunk — nothing downstream is keyed on it.
 
-**Status:** ✅ Done (EML via MimeKit, MSG via MsgReader; embedded/forwarded messages recursed since 2.1, bounded by depth and node caps)
+**Status:** ✅ Done (EML via MimeKit, MSG via MsgReader; embedded/forwarded messages followed since 2.1, bounded by depth and node caps — traversed depth-first over an explicit stack rather than by recursion since 3.9, so nesting depth costs heap and the emitted section order is unchanged)
+
+---
+
+### Archive Parser (ZIP)
+**Package:** `Rag.NET.Parsers.Archive` (planned)
+
+Parse `.zip` archives by dispatching each entry to the registered parser for its content type, the same way the email parsers dispatch attachments.
+
+**Why:** A zipped attachment on an email is a common enterprise shape, and today it is silently dropped. `EmailAttachmentDispatcher` finds no parser for `application/zip`, logs "No parser registered for attachment content type", and yields nothing — so the archive's contents never reach the index, and the only signal is a warning line. The same is true of a `.zip` ingested directly.
+
+Three constraints are not optional here, because an archive is the first parser to take an untrusted structure that can expand:
+
+- **Decompression ratio and entry-count caps.** A zip bomb is a small file that expands without bound; the parser must cap both the ratio and the number of entries rather than trusting the archive's own headers.
+- **Entry names are untrusted paths.** `../` traversal and absolute paths are the classic archive defect. `FileNameSanitizer` in `Rag.NET.Abstractions` already exists for this.
+- **Nested containers must share one budget.** `zip → .eml → zip` is the same unbounded-recursion shape the email parsers already bound. `EmbeddedMessageContext` carries depth and budget through `DocumentMetadata.Tags` specifically so the accounting survives a hop through `IDocumentParser` — an archive parser should ride the same channel rather than invent a second one.
+
+**Status:** ❌ Not started (scheduled Phase 3.10, after the traversal work in 3.9 that it reuses)
 
 ---
 
@@ -1088,6 +1105,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Hypothetical Document Embeddings v2 | Low | `IChatClient` + `IEmbeddingGenerator` |
 | [x] | EPUB Parser | Low | `VersOne.Epub` |
 | [x] | Email File Parser (EML/MSG) | Low | `MimeKit` + `MsgReader` |
+| [ ] | Archive Parser (ZIP) | Low | `System.IO.Compression` |
 | [x] | Linear Issue Tracker | Low | Linear GraphQL API |
 | [x] | RAGAS-Style Metrics | Medium | `IChatClient` + `IEmbeddingGenerator` |
 | [x] | Evaluation Dataset Builder | Medium | `IChatClient` |

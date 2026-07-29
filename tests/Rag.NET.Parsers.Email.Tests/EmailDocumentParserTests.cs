@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -207,15 +208,39 @@ public class EmailDocumentParserTests
         }));
     }
 
+    /// <summary>
+    /// Pinned loosely on purpose. This message rotted unnoticed — it went on asserting the
+    /// traversal was stack-recursive for a whole phase after Phase 3.9 flattened it — precisely
+    /// because no test touched it. An exact-prose assertion would only rot differently, so what
+    /// is held here is what a caller reading a stack trace actually needs: which argument was
+    /// rejected, what value they passed, and the ceiling they have to come down to.
+    /// </summary>
+    [Fact]
+    public void AddEmailParser_DepthAboveTheCeiling_ThrowsNamingTheCeiling()
+    {
+        var builder = new RagBuilder(new ServiceCollection());
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => builder.AddEmailParser(
+            o => o.MaxEmbeddedDepth = EmailParserOptions.MaxSupportedEmbeddedDepth + 1));
+
+        Assert.Equal("configure", ex.ParamName);
+        Assert.Equal(EmailParserOptions.MaxSupportedEmbeddedDepth + 1, ex.ActualValue);
+        Assert.Contains(nameof(EmailParserOptions.MaxEmbeddedDepth), ex.Message, StringComparison.Ordinal);
+        Assert.Contains(
+            EmailParserOptions.MaxSupportedEmbeddedDepth.ToString(CultureInfo.InvariantCulture),
+            ex.Message,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AddEmailParser_DepthAtTheCeiling_IsAccepted()
     {
         var services = new ServiceCollection();
         var builder = new RagBuilder(services);
 
-        // The ceiling is what keeps MaxEmbeddedDepth below the stack-overflow floor: recursion
-        // into an embedded message is stack-recursive and ~500 levels kills the process with
-        // an uncatchable 0xC00000FD. 64 must be the last accepted value, 65 the first rejected.
+        // The ceiling bounds the dispatcher path — a third-party parser registered for a message
+        // content type re-enters through IDocumentParser — plus per-document fan-out. The in-place
+        // traversal is flat. 64 must be the last accepted value, 65 the first rejected.
         builder.AddEmailParser(o => o.MaxEmbeddedDepth = EmailParserOptions.MaxSupportedEmbeddedDepth);
 
         using var provider = services.BuildServiceProvider();
@@ -228,8 +253,9 @@ public class EmailDocumentParserTests
     /// <c>AddEmailParser</c> is only one of three ways to reach an <see cref="EmailParserOptions"/>:
     /// both parsers take one on a public constructor, and the instance registered in DI is the
     /// same one both parsers captured. The setter therefore clamps, so no path can arm a depth
-    /// above <see cref="EmailParserOptions.MaxSupportedEmbeddedDepth"/> — beyond which recursion
-    /// is an uncatchable 0xC00000FD process kill. Nothing here drives a real overflow.
+    /// above <see cref="EmailParserOptions.MaxSupportedEmbeddedDepth"/> — the bound on re-entry
+    /// through the dispatcher and on per-document fan-out. These are setter assertions; nothing
+    /// here parses a message.
     /// </summary>
     [Theory]
     [InlineData(0, 0)]
