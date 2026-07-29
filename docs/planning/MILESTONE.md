@@ -70,12 +70,17 @@ Assume nothing works until a test says so *and the test is right*.
 3. Phase 3.3 — A/B Testing Framework [complete — 2026-07-28]
 4. Phase 3.4 — Pipeline Debugger / Trace Viewer [complete — 2026-07-28]
 5. Phase 3.5 — CI Integration Coverage [complete — 2026-07-29]
-6. Phase 3.6 — Email Parser Debt [pending]
-7. Phase 3.7 — Retrieval Quality Benchmark Harness [pending] — public benchmarks with published
+6. Phase 3.6 — Email Parser Debt [complete — 2026-07-29]
+7. Phase 3.9 — Email Traversal Flattening [pending] — **runs next**, out of numeric order. Reopened
+   out of 3.6, which closed it on a premise its own review falsified: the recursion does not cross
+   the `IDocumentParser` boundary on its dominant path, so a `Stack<IAsyncEnumerator<..>>` drained
+   LIFO does flatten it, at identical section ordering. Kept its number because three committed
+   artifacts already reference it.
+8. Phase 3.7 — Retrieval Quality Benchmark Harness [pending] — public benchmarks with published
    reference numbers, so retrieval correctness is demonstrable rather than asserted. SciFact
    first, to prove parity before adding breadth. Distinct from Phase 3.2's synthetic builder,
    and from the existing speed benchmarks.
-8. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
+9. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
    of 3.3. Production traffic has no ground truth, so only the reference-free metrics apply; it
    also doubles spend per request and must never let a secondary failure reach a caller the
    primary already served.
