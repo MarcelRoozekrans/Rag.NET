@@ -162,6 +162,15 @@ Update the `ParserClaim` from Task 4 to carry the new name, and check whether an
 
 `MimeTypeMap`'s XML was rewritten in Phase 3.9 to record that its "no parser claims `application/octet-stream`" assumption was **false**, with a pointer to this phase. That is now stale in the opposite direction: after Task 2 the assumption holds again. Rewrite it to state the assumption plainly, and keep one sentence of history — that two parsers claimed it until 3.11 — so a future reader knows the invariant is load-bearing rather than incidental.
 
+> **Corrected during implementation — do not simply flip the 3.9 addendum to "true again".** That
+> addendum blames `MimeTypeMap` for a failure on a path `MimeTypeMap` never touches.
+> `FromFileName` has exactly one caller, `StorageMessageAdapter.cs:86`, so it serves `.msg` only;
+> an `.eml` attachment gets its type from the part's own MIME headers via
+> `MimeMessageAdapter.Enumerate`. Both routes produce `application/octet-stream` and both were
+> broken, but only one of them is this type's doing. State the narrower truth: the extension
+> fallback **and** a header-supplied `application/octet-stream` now both go unclaimed, and the
+> invariant matters for both. Correct the 3.9 addendum's attribution rather than preserving it.
+
 `ROADMAP.md`: move the **Two `EmailDocumentParser`s** entry to `### Closed`, recording what shipped and what did not — the `message/rfc822` overlap is now a startup error rather than resolved, and third-party parsers registered through `AddParser<T>()` are still undetected. Flip Phase 3.11 to `[status: complete]` with a `**Completed:**` line in the style of the other phases.
 
 Do **not** flip `MILESTONE.md` — that happens after the whole-phase review.

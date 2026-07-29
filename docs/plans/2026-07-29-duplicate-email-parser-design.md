@@ -9,6 +9,17 @@ parse; 3.10 is new capability.
 
 ## 1. The defect
 
+> **Corrected during implementation.** This section originally presented `MimeTypeMap` as *the*
+> source of `application/octet-stream`, and Task 1's instructions repeated it. That is true only for
+> `.msg`. `MimeTypeMap.FromFileName` has exactly one caller in the repository —
+> `StorageMessageAdapter.cs:86` — and the `.eml` path never touches it: `MimeMessageAdapter.Enumerate`
+> builds the type from the attachment's own MIME headers
+> (`$"{attachment.ContentType.MediaType}/{attachment.ContentType.MediaSubtype}"`). So an `.eml`
+> attachment is `application/octet-stream` because the sending mail client wrote that into the part
+> headers, which is both commoner and less avoidable than a lookup-table miss. The defect and the fix
+> are unchanged; the causal story below is narrower than it should have been, and §6 of the plan is
+> corrected so the `MimeTypeMap` XML does not inherit the mis-attribution.
+
 `MimeTypeMap.FromFileName` returns `application/octet-stream` for any extension it does not know,
 and `MimeTypeMap`'s own type XML documents the consequence:
 
@@ -60,8 +71,18 @@ Four lines.
 answer is always a guess, and a wrong guess here is an exception rather than a miss.
 
 The cost is real and small: a genuinely untyped `.eml` or `.csv` that one of these parsers happened
-to win today stops being parsed. Which of them won was already registration-order roulette, and the
-documented behaviour is warn-and-skip.
+to win today stops being parsed, and the documented behaviour is warn-and-skip.
+
+> **Corrected during implementation.** This paragraph originally said which parser won was
+> "registration-order roulette". It is not, for *this* defect — it is deterministic in both orders,
+> and both were measured failing identically. `Rag.NET.Parsers.Email`'s parsers decline
+> `application/octet-stream` outright, so the dispatcher's linear search falls through to the
+> Templates parser whichever order the user registered in; and `AddRagNet` calls
+> `AddRagNETServices()` *before* `configure?.Invoke(builder)`, so the built-in text and markdown
+> parsers always precede anything the user registers and user order only permutes the tail.
+> **Registering `AddEmailParser()` first is not a workaround**, and nothing here should be read as
+> implying it might be. The genuine order-dependence is on `message/rfc822`, where both packages do
+> claim — §4.
 
 ## 3. Contain attachment failures
 
