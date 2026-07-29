@@ -77,22 +77,32 @@ Assume nothing works until a test says so *and the test is right*.
    flatten it, at identical section ordering. Kept its number because three committed artifacts
    already reference it. (The `Stack<IAsyncEnumerator<DocumentSection>>` this entry named until the
    3.9 design is a type that cannot express descent at all — the unit is a traversal frame.)
-8. Phase 3.11 — Duplicate Email Parser [pending] — a bug found in the 3.9 review, and the most
-   urgent thing outstanding in this milestone. `Rag.NET.Chunking.Templates` holds a second
-   `EmailDocumentParser`; it and `QAPairsDocumentParser` both claim `application/octet-stream`,
-   the fallback type for any unknown extension. Registered alongside `AddEmailParser()`, one
-   `.eml` carrying one unknown-extension attachment throws out of the whole document parse.
-   Scheduled before 3.10 despite the higher number — it is a live defect, not new capability.
+8. Phase 3.11 — Duplicate Email Parser [complete — 2026-07-29] — a live defect found in the 3.9
+   review, run ahead of 3.10 for that reason. Both `Rag.NET.Chunking.Templates` parsers claimed
+   `application/octet-stream`, the fallback type for any unknown binary, so one `.eml` carrying one
+   `payload.dat` threw out of the whole document parse. **Shipped:** the claim is gone from both
+   `CanParse` implementations; `EmailAttachmentDispatcher` contains a throwing attachment parser to
+   its own attachment, so the next parser to accept a type and then fail costs one attachment
+   rather than the document; and the Templates type is now `EmailTemplateDocumentParser`, which
+   settles the name collision with `Rag.NET.Parsers.Email`'s `EmailDocumentParser`.
+   **Converted rather than fixed:** both parsers still claim `message/rfc822`. The phase
+   deliberately did not pick a winner — they serve different purposes, and only the user can say
+   which they want — so registering both is an `InvalidOperationException` at `AddRagNet` time
+   naming both parsers, both registration calls and the way out, driven off a `ParserClaim` each
+   registration declares. The whole-phase review found that guard blind to the two parsers
+   `AddRagNETServices()` auto-registers, which made the same silent failure reachable with no
+   third-party package at all, and moved the parser opt-out off the chunking options objects, where
+   setting it silently discarded every other option on them.
 9. Phase 3.10 — Archive Parser (ZIP) [pending] — raised while designing 3.9. A zipped attachment
    matches no parser today, so it is logged and dropped and never indexed. Runs straight after 3.9
    because it reuses that phase's traversal driver and descent policy for `zip → .eml → zip`.
    Stretches this milestone's "quality hardening" goal to a feature row, deliberately: the
    machinery is shared and building it twice is the more expensive choice.
-9. Phase 3.7 — Retrieval Quality Benchmark Harness [pending] — public benchmarks with published
+10. Phase 3.7 — Retrieval Quality Benchmark Harness [pending] — public benchmarks with published
    reference numbers, so retrieval correctness is demonstrable rather than asserted. SciFact
    first, to prove parity before adding breadth. Distinct from Phase 3.2's synthetic builder,
    and from the existing speed benchmarks.
-10. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
+11. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
    of 3.3. Production traffic has no ground truth, so only the reference-free metrics apply; it
    also doubles spend per request and must never let a secondary failure reach a caller the
    primary already served.

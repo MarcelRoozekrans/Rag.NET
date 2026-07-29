@@ -116,7 +116,16 @@ attachment and the parser type, and continues with the next attachment.
 > which parser produced them.
 >
 > **Resolved by making the parser optional.** `EmailChunkingOptions.RegisterParser` (default `true`)
-> and the same flag on `QAPairsChunkingOptions`: when `false`, the registration adds the chunking
+> and the same flag on `QAPairsChunkingOptions` — **shipped there and moved by the whole-phase
+> review to a `registerParser` parameter on `UseEmailChunking` / `UseQAPairsChunking`, which is
+> where it should have gone in the first place.** `EmailChunkingOptions`' only consumer is
+> `EmailTemplateDocumentParser` and `QAPairsChunkingOptions`' only consumer is
+> `QAPairsDocumentParser`; neither chunking strategy takes an options parameter at all. So
+> `UseEmailChunking(o => { o.IncludeHeaders = false; o.RegisterParser = false; })` compiled, ran,
+> threw nothing and silently discarded `IncludeHeaders` — opting out of the parser removed the only
+> thing that would ever read it, leaving an options object whose one live property was the switch
+> that emptied it. On the call the mutual exclusivity is visible where it applies. Read what
+> follows with that substitution: when `false`, the registration adds the chunking
 > strategy and its options but neither the parser nor its `ParserClaim`. The flag is on both because
 > the guard fires on *any* duplicated claim — a third-party CSV parser included — and an escape
 > hatch present on one bundling registration and absent from its twin is a trap of its own. The
@@ -162,6 +171,27 @@ error message can name the actual registration calls a user would recognise.
 
 ### The limit, stated rather than papered over
 
+> **Corrected after the whole-phase review.** The limit below is stated on the wrong axis. It is
+> not "first-party is covered, third-party is not" — it is "*declares a claim* is covered". The
+> difference was not academic: `AddRagNETServices()` auto-registers `MarkdownDocumentParser` and
+> `TextDocumentParser` through `[Singleton(As = typeof(IDocumentParser), AllowMultiple = true)]`,
+> **before** `configure?.Invoke(builder)`, and neither declared a claim. Registering a parser that
+> declared `text/plain` therefore left one *declared* claimant, the guard stayed silent, and
+> dispatch resolved `text/plain` to the built-in while the user's parser never ran — the exact
+> failure this section exists to prevent, reachable with nothing third-party involved. Both
+> built-ins now declare from `AddRagNet` itself, `MarkdownDocumentParser` including the
+> `text/x-markdown` alias its `CanParse` also answers, because a source generator writes their
+> registrations and cannot host a claim.
+>
+> Two further review findings on the same machinery. `ParserClaim.For`'s `FullName` keying was
+> load-bearing and, after §5's rename, pinned by nothing: the mutation to `typeof(T).Name` reddened
+> four tests only while both colliding types were literally named `EmailDocumentParser`, and
+> afterwards reddened one, for the unrelated reason that it asserts full names appear in the
+> message. A test registering two distinct parsers that share a short name across namespaces now
+> holds the rule directly. And `ValidateParserClaims` justified its case-insensitive grouping by
+> saying every `CanParse` compares that way; two of the five declaring parsers compare `Ordinal`.
+> The grouping stays — it is over-strict rather than blind — with the true reason recorded.
+
 This catches first-party registrations that declare claims. A third-party parser registered through
 `AddParser<T>()` declares nothing and will not be detected. `CanParse` is a *predicate*, not an
 enumeration, so nothing can discover what an arbitrary parser accepts without probing it against a
@@ -182,7 +212,7 @@ A public API break, free now and expensive after 4.1 ships packages.
 > and two things replaced it.
 >
 > `EmailChunkingWithoutItsParserTests` covers the configuration that is now legal:
-> `UseEmailChunking(o => o.RegisterParser = false)` alongside `AddEmailParser()`. It asserts the
+> `UseEmailChunking(registerParser: false)` alongside `AddEmailParser()`. It asserts the
 > pairing builds, that the chunking strategy survives the opt-out, and — by driving a real `.eml`
 > with an embedded message through the resolved parser — that `Rag.NET.Parsers.Email`'s parser is
 > the one an `.eml` actually reaches, since only that parser descends.
@@ -199,6 +229,20 @@ A public API break, free now and expensive after 4.1 ships packages.
 > and the absence of the second, and was confirmed red against the reverted fix. The general lesson
 > is worth more than the fix: **a containment mechanism added in the same phase as a routing fix can
 > silently make the routing fix untestable through its original symptom.**
+>
+> **Corrected after the whole-phase review: the argument above was made for one parser and not
+> applied to the other.** `EmailTemplateDocumentParser`'s half of §2 was still pinned by a
+> `CanParse` theory alone, which is precisely what the paragraph above says cannot show that the
+> claim the parser answers is the claim the dispatcher routes on. It cannot be covered the same way
+> — registering that parser alongside `AddEmailParser()` is a startup error after §4, so no
+> container exists in which its attachment dispatch is observable. Its reachable surface is
+> top-level `ParseBehavior`, named in §1 as a second failure route and covered by nothing in this
+> phase. `EmailTemplateTopLevelRoutingTests` adds it: a document typed
+> `application/octet-stream` must produce `NoParserFoundException` rather than reach this parser,
+> confirmed red against the restored clause with `InvalidOperationException: Failed to parse .eml
+> file 'payload.dat'` — the whole-document failure the phase exists to remove. `message/rfc822`
+> through the same path is asserted alongside it, so the removal cannot be over-corrected into
+> narrowing the legitimate claim.
 
 **The end-to-end case first, and it must fail before the fix:** both packages registered, one `.eml`
 carrying one `payload.dat`, asserting the body and the other attachments survive. That test is the
