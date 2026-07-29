@@ -14,7 +14,7 @@ internal static partial class EmailParserLog
     internal static partial void NoParserForAttachment(ILogger logger, string contentType, string fileName);
 
     /// <summary>
-    /// The containment warning from <see cref="EmailAttachmentDispatcher"/>. It names the parser
+    /// The containment warning from <see cref="ContainerEntryDispatcher"/>. It names the parser
     /// as well as the attachment because the attachment alone does not say which registration is
     /// at fault, and the failing parser may be a third-party one the dispatcher only knows through
     /// <c>IDocumentParser</c>. The exception is logged as an exception rather than as its message:

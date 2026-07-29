@@ -11,7 +11,7 @@ namespace Rag.NET.Parsers.Email;
 /// Parses <c>.eml</c> files (<c>message/rfc822</c>) via MimeKit: subject becomes a level-1
 /// heading section, the body prefers plain text and falls back to HTML through
 /// <see cref="HtmlDocumentParser"/>, and attachments are dispatched to the registered parsers
-/// via <see cref="EmailAttachmentDispatcher"/>.
+/// via <see cref="ContainerEntryDispatcher"/>.
 /// </summary>
 /// <remarks>
 /// Embedded messages are walked by <see cref="EmbeddedTraversal"/> over an explicit stack, so
@@ -27,7 +27,9 @@ public sealed class EmailDocumentParser(
 
     private readonly EmailParserOptions options = options ?? new EmailParserOptions();
     private readonly MimeMessageAdapter adapter = new(htmlParser);
-    private readonly EmbeddedMessageDescentPolicy policy = new(".eml", EmlContentType, logger);
+    private readonly EmailContainerLog? containerLog = EmailContainerLog.For(logger);
+
+    private readonly EmbeddedMessageDescentPolicy policy = new(".eml", EmlContentType, EmailContainerLog.For(logger));
 
     public bool CanParse(string contentType) =>
         contentType.Equals(EmlContentType, StringComparison.OrdinalIgnoreCase);
@@ -38,13 +40,13 @@ public sealed class EmailDocumentParser(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var message = await MimeMessage.LoadAsync(stream, cancellationToken).ConfigureAwait(false);
-        var context = EmbeddedMessageContext.Create(metadata, options);
+        var context = ContainerContext.Create(metadata, options.ToContainerLimits());
         int sectionIndex = 0;
 
         // SectionIndex is stamped exactly once, here: the traversal — including any embedded
         // message walked in-process — yields unstamped sections.
         await foreach (var section in EmbeddedTraversal.RunAsync(
-            message, adapter, context, policy, parsers, logger, cancellationToken).ConfigureAwait(false))
+            message, adapter, context, policy, parsers, containerLog, cancellationToken).ConfigureAwait(false))
         {
             yield return section with { SectionIndex = sectionIndex++ };
         }

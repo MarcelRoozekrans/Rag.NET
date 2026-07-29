@@ -6,7 +6,7 @@ namespace Rag.NET.Parsers.Email.Tests;
 
 /// <summary>
 /// A parser that claims a content type and then fails on it — the shape
-/// <see cref="EmailAttachmentDispatcher"/>'s containment exists for, and the one a third-party
+/// <see cref="ContainerEntryDispatcher"/>'s containment exists for, and the one a third-party
 /// <see cref="IDocumentParser"/> can take without the email package knowing anything about it.
 /// </summary>
 /// <param name="contentType">The content type this parser claims.</param>

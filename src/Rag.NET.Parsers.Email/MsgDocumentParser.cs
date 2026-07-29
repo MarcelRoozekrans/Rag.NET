@@ -11,7 +11,7 @@ namespace Rag.NET.Parsers.Email;
 /// Parses Outlook <c>.msg</c> files (<c>application/vnd.ms-outlook</c>) via MsgReader:
 /// subject becomes a level-1 heading section, the body prefers plain text and falls back
 /// to HTML through <see cref="HtmlDocumentParser"/>, and attachments are dispatched to
-/// the registered parsers via <see cref="EmailAttachmentDispatcher"/>.
+/// the registered parsers via <see cref="ContainerEntryDispatcher"/>.
 /// </summary>
 /// <remarks>
 /// Nested messages are walked by <see cref="EmbeddedTraversal"/> over an explicit stack, so
@@ -27,7 +27,9 @@ public sealed class MsgDocumentParser(
 
     private readonly EmailParserOptions options = options ?? new EmailParserOptions();
     private readonly StorageMessageAdapter adapter = new(htmlParser);
-    private readonly EmbeddedMessageDescentPolicy policy = new(".msg", MsgContentType, logger);
+    private readonly EmailContainerLog? containerLog = EmailContainerLog.For(logger);
+
+    private readonly EmbeddedMessageDescentPolicy policy = new(".msg", MsgContentType, EmailContainerLog.For(logger));
 
     public bool CanParse(string contentType) =>
         contentType.Equals(MsgContentType, StringComparison.OrdinalIgnoreCase);
@@ -38,13 +40,13 @@ public sealed class MsgDocumentParser(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         using var message = new Storage.Message(stream, FileAccess.Read, leaveStreamOpen: true);
-        var context = EmbeddedMessageContext.Create(metadata, options);
+        var context = ContainerContext.Create(metadata, options.ToContainerLimits());
         int sectionIndex = 0;
 
         // SectionIndex is stamped exactly once, here: the traversal — including any nested
         // message walked in-process — yields unstamped sections.
         await foreach (var section in EmbeddedTraversal.RunAsync(
-            message, adapter, context, policy, parsers, logger, cancellationToken).ConfigureAwait(false))
+            message, adapter, context, policy, parsers, containerLog, cancellationToken).ConfigureAwait(false))
         {
             yield return section with { SectionIndex = sectionIndex++ };
         }

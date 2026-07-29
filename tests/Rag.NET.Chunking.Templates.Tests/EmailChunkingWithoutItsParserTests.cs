@@ -152,7 +152,7 @@ public sealed class EmailChunkingWithoutItsParserTests
     }
 
     /// <summary>
-    /// Mirrors how both <c>ParseBehavior</c> and <c>EmailAttachmentDispatcher</c> choose: the first
+    /// Mirrors how both <c>ParseBehavior</c> and <c>ContainerEntryDispatcher</c> choose: the first
     /// registered parser whose <c>CanParse</c> matches.
     /// </summary>
     private static IDocumentParser SelectParserFor(string contentType, IServiceProvider provider)

@@ -15,7 +15,7 @@ namespace Rag.NET.Parsers.Email;
 /// </para>
 /// <para>
 /// The nested message keeps the parent's <see cref="DocumentId"/> — matching what
-/// <see cref="EmailAttachmentDispatcher"/> already does for attachments — and is distinguished
+/// <see cref="ContainerEntryDispatcher"/> already does for attachments — and is distinguished
 /// by a composed file name.
 /// </para>
 /// </remarks>

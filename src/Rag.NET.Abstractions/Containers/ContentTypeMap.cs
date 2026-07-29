@@ -1,16 +1,16 @@
-namespace Rag.NET.Parsers.Email;
+namespace Rag.NET;
 
 /// <summary>
 /// Minimal file-extension → MIME-type map used when an Outlook attachment does not carry
-/// an explicit MIME type (see <see cref="MsgDocumentParser"/>). Covers the content types
+/// an explicit MIME type (see <c>MsgDocumentParser</c>). Covers the content types
 /// handled by the Rag.NET parser packages; unknown extensions map to
 /// <c>application/octet-stream</c>.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>The fallback assumes no parser claims it.</b> On that assumption an attachment of an
-/// unknown type is skipped with a warning by <see cref="EmailAttachmentDispatcher"/>, which is
-/// the "degrades rather than breaks" behaviour <see cref="EmailParserOptions"/> documents.
+/// unknown type is skipped with a warning by <c>ContainerEntryDispatcher</c>, which is
+/// the "degrades rather than breaks" behaviour <c>EmailParserOptions</c> documents.
 /// <c>application/octet-stream</c> means "unknown binary", so nothing format-specific should
 /// answer to it; a parser that does is guessing, and a wrong guess costs the attachment rather
 /// than missing it.
@@ -35,7 +35,7 @@ namespace Rag.NET.Parsers.Email;
 /// here — but the defect was never a defect of this table.
 /// </para>
 /// </remarks>
-internal static class MimeTypeMap
+public static class ContentTypeMap
 {
     private static readonly Dictionary<string, string> s_map = new(StringComparer.OrdinalIgnoreCase)
     {

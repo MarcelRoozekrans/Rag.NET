@@ -83,7 +83,7 @@ public class EmbeddedTraversalTests
             CreateContext(),
             new AlwaysDescendPolicy(),
             [],
-            logger: null,
+            log: null,
             TestContext.Current.CancellationToken).ConfigureAwait(false))
         {
             if (++seen == 3)
@@ -107,7 +107,7 @@ public class EmbeddedTraversalTests
             CreateContext(),
             new AlwaysDescendPolicy(),
             [],
-            logger: null,
+            log: null,
             TestContext.Current.CancellationToken).ConfigureAwait(false))
         {
             sections.Add(section);
@@ -128,7 +128,7 @@ public class EmbeddedTraversalTests
             CreateContext(),
             policy,
             [new FakeTextParser()],
-            logger: null,
+            log: null,
             TestContext.Current.CancellationToken).ConfigureAwait(false))
         {
             sections.Add(section);
@@ -137,15 +137,15 @@ public class EmbeddedTraversalTests
         return sections;
     }
 
-    private static EmbeddedMessageContext CreateContext() =>
-        EmbeddedMessageContext.Create(
+    private static ContainerContext CreateContext() =>
+        ContainerContext.Create(
             new DocumentMetadata
             {
                 DocumentId = new DocumentId("traversal-1"),
                 FileName = "root.eml",
                 ContentType = "message/rfc822",
             },
-            new EmailParserOptions());
+            new EmailParserOptions().ToContainerLimits());
 
     // ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -310,14 +310,14 @@ public class EmbeddedTraversalTests
     /// </summary>
     private sealed class AlwaysDescendPolicy : IDescentPolicy
     {
-        public EmbeddedMessageContext? TryDescend(EmbeddedMessageContext parent, string name) =>
+        public ContainerContext? TryDescend(ContainerContext parent, string name) =>
             parent.Descend(parent.Metadata);
     }
 
     /// <summary>Refuses one named branch, so a test can pin what "skip" costs its siblings.</summary>
     private sealed class DenyByNamePolicy(string denied) : IDescentPolicy
     {
-        public EmbeddedMessageContext? TryDescend(EmbeddedMessageContext parent, string name) =>
+        public ContainerContext? TryDescend(ContainerContext parent, string name) =>
             string.Equals(name, denied, StringComparison.Ordinal)
                 ? null
                 : parent.Descend(parent.Metadata);
