@@ -46,6 +46,43 @@ internal static class EmlFixtureBuilder
         CancellationToken cancellationToken) =>
         await WriteAsync(CreateNested(subject, textBody, embedded), cancellationToken);
 
+    /// <summary>
+    /// Builds a message carrying file attachments and <i>several</i> live
+    /// <see cref="MessagePart"/> children, attachments first — the same order
+    /// <see cref="CreateNested"/> uses.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CreateNested"/> takes a single embedded message, so every fixture built with it
+    /// has at most one descent per level and no sibling after one. That shape cannot tell a
+    /// depth-first walk from a breadth-first one — both emit it identically — which is exactly
+    /// what the ordering tests need to distinguish.
+    /// </remarks>
+    public static MimeMessage CreateBranching(
+        string subject,
+        string textBody,
+        (string FileName, string ContentType, byte[] Data)[] attachments,
+        params MimeMessage[] embedded)
+    {
+        var multipart = new Multipart("mixed") { new TextPart("plain") { Text = textBody } };
+        foreach (var (fileName, contentType, data) in attachments)
+        {
+            multipart.Add(CreateAttachmentPart(fileName, contentType, data));
+        }
+
+        foreach (var child in embedded)
+        {
+            multipart.Add(CreateMessagePart(child));
+        }
+
+        var message = CreateEnvelope(subject);
+        message.Body = multipart;
+        return message;
+    }
+
+    /// <summary>Serialises a message built by <see cref="CreateBranching"/> or <see cref="CreateNested"/>.</summary>
+    public static Task<byte[]> SerializeAsync(MimeMessage message, CancellationToken cancellationToken) =>
+        WriteAsync(message, cancellationToken);
+
     /// <summary>Builds an in-memory message for use as a nested <see cref="MessagePart"/> payload.</summary>
     public static MimeMessage CreateNested(
         string subject,
@@ -63,27 +100,33 @@ internal static class EmlFixtureBuilder
         var multipart = new Multipart("mixed") { new TextPart("plain") { Text = textBody } };
         foreach (var (fileName, contentType, data) in attachments ?? [])
         {
-            multipart.Add(new MimePart(ContentType.Parse(contentType))
-            {
-                Content = new MimeContent(new MemoryStream(data)),
-                ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
-                ContentTransferEncoding = ContentEncoding.Base64,
-                FileName = fileName,
-            });
+            multipart.Add(CreateAttachmentPart(fileName, contentType, data));
         }
 
         if (embedded is not null)
         {
-            multipart.Add(new MessagePart
-            {
-                Message = embedded,
-                ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
-            });
+            multipart.Add(CreateMessagePart(embedded));
         }
 
         message.Body = multipart;
         return message;
     }
+
+    private static MimePart CreateAttachmentPart(string fileName, string contentType, byte[] data) =>
+        new(ContentType.Parse(contentType))
+        {
+            Content = new MimeContent(new MemoryStream(data)),
+            ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+            ContentTransferEncoding = ContentEncoding.Base64,
+            FileName = fileName,
+        };
+
+    private static MessagePart CreateMessagePart(MimeMessage embedded) =>
+        new()
+        {
+            Message = embedded,
+            ContentDisposition = new ContentDisposition(ContentDisposition.Attachment),
+        };
 
     private static MimeMessage CreateEnvelope(string subject)
     {

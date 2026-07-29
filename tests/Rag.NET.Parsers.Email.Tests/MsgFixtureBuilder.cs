@@ -24,36 +24,76 @@ internal static class MsgFixtureBuilder
         string? bodyHtml = null,
         (string FileName, byte[] Data, string? MimeType)[]? attachments = null,
         string? embeddedMessageSubject = null,
-        string? embeddedMessageBody = null)
+        string? embeddedMessageBody = null) =>
+        CreateTree(new MsgNode
+        {
+            Subject = subject,
+            BodyText = bodyText,
+            BodyHtml = bodyHtml,
+            Attachments = attachments ?? [],
+            Embedded = embeddedMessageSubject is null
+                ? []
+                : [new MsgNode { Subject = embeddedMessageSubject, BodyText = embeddedMessageBody ?? string.Empty }],
+        });
+
+    /// <summary>
+    /// Builds a fixture of arbitrary shape: any level may carry both file attachments and
+    /// several embedded messages, and an embedded message may carry its own.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Create"/> takes a single embedded message with no children of its own, so every
+    /// fixture built with it is one descent deep and has no sibling after a descent. That shape
+    /// cannot tell a depth-first walk from a breadth-first one — both emit it identically.
+    /// </remarks>
+    public static MemoryStream CreateTree(MsgNode root)
     {
         var stream = new MemoryStream();
-        using (var root = RootStorage.Create(stream, CfbVersion.V3, StorageModeFlags.LeaveOpen))
+        using (var storage = RootStorage.Create(stream, CfbVersion.V3, StorageModeFlags.LeaveOpen))
         {
-            WriteUnicode(root, 0x001A, "IPM.Note"); // PidTagMessageClass
-
-            if (subject is not null)
-                WriteUnicode(root, 0x0037, subject); // PidTagSubject
-
-            if (bodyText is not null)
-                WriteUnicode(root, 0x1000, bodyText); // PidTagBody
-
-            if (bodyHtml is not null)
-                WriteBytes(root, "__substg1.0_10130102", Encoding.UTF8.GetBytes(bodyHtml)); // PidTagHtml
-
-            int attachmentIndex = 0;
-            foreach (var (fileName, data, mimeType) in attachments ?? [])
-            {
-                WriteFileAttachment(root, attachmentIndex++, fileName, data, mimeType);
-            }
-
-            if (embeddedMessageSubject is not null)
-            {
-                WriteEmbeddedMessage(root, attachmentIndex, embeddedMessageSubject, embeddedMessageBody ?? string.Empty);
-            }
+            WriteMessage(storage, root);
         }
 
         stream.Position = 0;
         return stream;
+    }
+
+    /// <summary>One message in a fixture tree.</summary>
+    internal sealed class MsgNode
+    {
+        public string? Subject { get; init; }
+
+        public string? BodyText { get; init; }
+
+        public string? BodyHtml { get; init; }
+
+        public (string FileName, byte[] Data, string? MimeType)[] Attachments { get; init; } = [];
+
+        public MsgNode[] Embedded { get; init; } = [];
+    }
+
+    private static void WriteMessage(CfbStorage storage, MsgNode node)
+    {
+        WriteUnicode(storage, 0x001A, "IPM.Note"); // PidTagMessageClass
+
+        if (node.Subject is not null)
+            WriteUnicode(storage, 0x0037, node.Subject); // PidTagSubject
+
+        if (node.BodyText is not null)
+            WriteUnicode(storage, 0x1000, node.BodyText); // PidTagBody
+
+        if (node.BodyHtml is not null)
+            WriteBytes(storage, "__substg1.0_10130102", Encoding.UTF8.GetBytes(node.BodyHtml)); // PidTagHtml
+
+        int attachmentIndex = 0;
+        foreach (var (fileName, data, mimeType) in node.Attachments)
+        {
+            WriteFileAttachment(storage, attachmentIndex++, fileName, data, mimeType);
+        }
+
+        foreach (var embedded in node.Embedded)
+        {
+            WriteEmbeddedMessage(storage, attachmentIndex++, embedded);
+        }
     }
 
     private static void WriteFileAttachment(CfbStorage root, int index, string fileName, byte[] data, string? mimeType)
@@ -66,7 +106,7 @@ internal static class MsgFixtureBuilder
             WriteUnicode(storage, 0x370E, mimeType); // PidTagAttachMimeTag
     }
 
-    private static void WriteEmbeddedMessage(CfbStorage root, int index, string subject, string body)
+    private static void WriteEmbeddedMessage(CfbStorage root, int index, MsgNode node)
     {
         var storage = CreateAttachmentStorage(root, index);
 
@@ -80,10 +120,10 @@ internal static class MsgFixtureBuilder
         BitConverter.GetBytes(5).CopyTo(properties, 16); // value: ATTACH_EMBEDDED_MSG
         WriteBytes(storage, "__properties_version1.0", properties);
 
+        // Written recursively, so a nested message may carry its own attachments and its own
+        // embedded messages — the shape an ordering test needs.
         var nested = storage.CreateStorage("__substg1.0_3701000D"); // PidTagAttachDataObject
-        WriteUnicode(nested, 0x001A, "IPM.Note");
-        WriteUnicode(nested, 0x0037, subject);
-        WriteUnicode(nested, 0x1000, body);
+        WriteMessage(nested, node);
     }
 
     private static CfbStorage CreateAttachmentStorage(CfbStorage root, int index) =>
