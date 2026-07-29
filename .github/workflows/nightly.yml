@@ -1,0 +1,110 @@
+# The LLM tier. Separate from ci.yml because it cannot be a gate, and separating it is the only
+# honest way to say so.
+#
+# DO NOT ADD THIS WORKFLOW TO BRANCH PROTECTION. Not as a required check, not "just while we watch
+# it". Its assertions are model output — Phase 2.1 measured `Assert.Contains("Python", answer)`
+# against live Ollama failing roughly 1 run in 11 — so as a required check it would block merges on
+# a model choosing different words. A gate that fails on noise teaches people to press re-run
+# instead of read, at which point it has stopped being a gate and is only a tax. The reasoning lives
+# in docs/plans/2026-07-28-ci-integration-coverage-design.md §2, but it is repeated here because
+# nobody reads a design doc at the moment they are tempted to tick the box.
+name: Nightly
+
+on:
+  schedule:
+    # 03:17 UTC. A quiet hour, and deliberately off the hour: on-the-hour crons queue behind
+    # everyone else's on-the-hour crons.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [labeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  llm:
+    # A pull_request/labeled event fires for every label on every PR. Only 'run-llm' means someone
+    # asked for this — typically because they just changed the answer engine or a retrieval path and
+    # want to see the result before merging. Opting in says "show me", not "gate me on a coin flip".
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-llm'
+    # Linux on purpose: OllamaFixture is a container, and only the Linux runners have a daemon.
+    runs-on: ubuntu-latest
+    env:
+      # Env-gated tests call Assert.Skip when their variable is absent, so supplying these here is
+      # what makes them execute instead of skip. No fallback values on purpose: an unset secret
+      # leaves the tests skipping, which is exactly the current behaviour and is safe in forks.
+      #
+      # NOTE, because it is not what it looks like: every test that reads these variables today
+      # lives in a fast-tier project — Rag.NET.Parsers.Pdf.Tests (RAGNET_TESSDATA),
+      # Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests (RAGNET_DOCINTEL_*) and
+      # Rag.NET.Chunking.IntegrationTests (RAGNET_ONNX_*) — and none of them is in this job, which
+      # runs only the projects declaring RequiresLlm. So these secrets currently reach nothing.
+      # They are declared here because this is the workflow where secrets are allowed to exist, and
+      # so that the day an LLM-tier test becomes env-gated it simply works. Making the env-gated
+      # suites actually run with secrets needs a job that selects them, which is a scheduling
+      # decision, not something to slip in under a comment.
+      RAGNET_TESSDATA: ${{ secrets.RAGNET_TESSDATA }}
+      RAGNET_DOCINTEL_ENDPOINT: ${{ secrets.RAGNET_DOCINTEL_ENDPOINT }}
+      RAGNET_DOCINTEL_KEY: ${{ secrets.RAGNET_DOCINTEL_KEY }}
+      RAGNET_ONNX_EMBED_MODEL: ${{ secrets.RAGNET_ONNX_EMBED_MODEL }}
+      RAGNET_ONNX_EMBED_VOCAB: ${{ secrets.RAGNET_ONNX_EMBED_VOCAB }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore Rag.NET.slnx
+
+      # Load-bearing, as in ci.yml: Directory.Build.props documents an SDK regression under which
+      # `dotnet test` from a completely empty obj/ still requires `dotnet build` first, and a CI
+      # checkout is empty every run.
+      - name: Build
+        run: dotnet build Rag.NET.slnx --no-restore -c Release
+
+      # Its own step, above the continue-on-error one and therefore still able to fail the job. An
+      # empty tier is indistinguishable from a passing tier once failures are advisory, so the one
+      # thing this workflow must still gate on is that it has something to run at all.
+      - name: Verify the LLM tier is not empty
+        run: |
+          if [ -z "$(grep -l '<RequiresLlm>true</RequiresLlm>' tests/*/*.csproj)" ]; then
+            echo "::error::No project declares <RequiresLlm>true</RequiresLlm>. The LLM tier has gone missing rather than passing."
+            exit 1
+          fi
+
+      # Selected by declaration, never by a list of project names — the same rule as ci.yml, and
+      # tests/Rag.NET.RepoConventions.Tests asserts that RequiresLlm never appears without
+      # RequiresDocker, because the Ollama fixture is a container.
+      #
+      # continue-on-error is on this step and not on the job, deliberately. Only the assertions are
+      # non-deterministic; a failed checkout, restore or build is a real breakage and still fails
+      # the job. Note that these suites also pull nomic-embed-text and llama3.2:1b, roughly 2 GB per
+      # run, which is the second independent reason this is not on every push.
+      - name: Test (LLM tier)
+        continue-on-error: true
+        run: |
+          projects=$(grep -l '<RequiresLlm>true</RequiresLlm>' tests/*/*.csproj)
+          failed=""
+          for project in $projects; do
+            echo "::group::$project"
+            dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::warning::LLM tier reported failures (advisory, not a gate):$failed"
+            exit 1
+          fi
