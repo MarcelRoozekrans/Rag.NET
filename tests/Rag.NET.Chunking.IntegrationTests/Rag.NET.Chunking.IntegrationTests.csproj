@@ -2,6 +2,11 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Reads RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB and calls Assert.Skip when
+         either is absent or does not point at an existing file, so this project is safe in every
+         tier and simply skips that test. The declaration exists so nightly.yml can select it and
+         supply the paths, which is the only run where late chunking meets a real ONNX model. -->
+    <RequiresSecrets>true</RequiresSecrets>
   </PropertyGroup>
 
   <ItemGroup>

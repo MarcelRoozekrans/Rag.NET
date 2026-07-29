@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace Rag.NET.RepoConventions.Tests;
@@ -7,7 +8,7 @@ namespace Rag.NET.RepoConventions.Tests;
 /// belongs to, and what it actually does. The two are asserted against each other in
 /// <see cref="TestProjectTierTests"/>.
 /// </summary>
-public sealed class TestProject
+public sealed partial class TestProject
 {
     private const string SolutionFileName = "Rag.NET.slnx";
     private const string TestSdkPackageId = "Microsoft.NET.Test.Sdk";
@@ -25,8 +26,10 @@ public sealed class TestProject
         Name = name;
         DeclaresRequiresDocker = DeclaresTrue(project, "RequiresDocker");
         DeclaresRequiresLlm = DeclaresTrue(project, "RequiresLlm");
+        DeclaresRequiresSecrets = DeclaresTrue(project, "RequiresSecrets");
         ReferencesTestcontainers = HasTestcontainersPackage(project);
         UsesAContainerFixture = MentionsAContainerFixture(directory, project);
+        ReadsASecretEnvironmentVariable = ReadsARagnetEnvironmentVariable(directory);
     }
 
     /// <summary>Gets the project's directory name, which is also its assembly name.</summary>
@@ -38,11 +41,20 @@ public sealed class TestProject
     /// <summary>Gets a value indicating whether the csproj declares <c>RequiresLlm</c>.</summary>
     public bool DeclaresRequiresLlm { get; }
 
+    /// <summary>Gets a value indicating whether the csproj declares <c>RequiresSecrets</c>.</summary>
+    public bool DeclaresRequiresSecrets { get; }
+
     /// <summary>Gets a value indicating whether the csproj references a Testcontainers package.</summary>
     public bool ReferencesTestcontainers { get; }
 
     /// <summary>Gets a value indicating whether the project uses a container fixture from Rag.NET.Testing.</summary>
     public bool UsesAContainerFixture { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether any source file in the project reads a <c>RAGNET_</c>
+    /// environment variable.
+    /// </summary>
+    public bool ReadsASecretEnvironmentVariable { get; }
 
     /// <summary>Gets a value indicating whether this project starts a container when its tests run.</summary>
     public bool StartsAContainer => ReferencesTestcontainers || UsesAContainerFixture;
@@ -53,6 +65,11 @@ public sealed class TestProject
             ? "it references a Testcontainers package"
             : "it uses a container fixture from Rag.NET.Testing"
         : "it references no Testcontainers package and uses no container fixture from Rag.NET.Testing";
+
+    /// <summary>Gets a human-readable account of why <see cref="ReadsASecretEnvironmentVariable"/> is what it is.</summary>
+    public string SecretEvidence => ReadsASecretEnvironmentVariable
+        ? "a source file reads a RAGNET_ environment variable"
+        : "no source file reads a RAGNET_ environment variable";
 
     /// <summary>
     /// Walks up from <see cref="AppContext.BaseDirectory"/> to the directory holding
@@ -201,6 +218,47 @@ public sealed class TestProject
 
         return false;
     }
+
+    private static bool ReadsARagnetEnvironmentVariable(string directory)
+    {
+        foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+        {
+            if (IsBuildOutput(file, directory))
+            {
+                continue;
+            }
+
+            if (SecretEnvironmentVariableRead().IsMatch(File.ReadAllText(file)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Matches a source-level read of a <c>RAGNET_</c> environment variable.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The call, not the name. Searching for the bare text <c>RAGNET_</c> would flag
+    /// <c>Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests</c> for a doc comment that merely
+    /// cross-references the <c>RAGNET_TESSDATA</c> precedent in another suite, and it would flag
+    /// the CI documentation page and this file's own comments too. A project that documents a
+    /// variable does not need it supplied.
+    /// </para>
+    /// <para>
+    /// Load-bearing detail: the escapes make this pattern unable to match its own source text.
+    /// The regex requires a literal <c>.</c> after <c>Environment</c>, and the source here has
+    /// <c>\.</c> — so the conventions project does not conclude that it reads secrets and demand
+    /// it declare <c>RequiresSecrets</c>. The same trap that <c>MentionsAContainerFixture</c>
+    /// documents, avoided a different way because there is no project reference to gate on.
+    /// </para>
+    /// </remarks>
+    /// <returns>The compiled matcher.</returns>
+    [GeneratedRegex(@"Environment\.GetEnvironmentVariable\(\s*""RAGNET_", RegexOptions.NonBacktracking)]
+    private static partial Regex SecretEnvironmentVariableRead();
 
     private static bool IsBuildOutput(string file, string projectDirectory)
     {

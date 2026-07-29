@@ -64,14 +64,22 @@ jobs:
       # project starting a container declares the property and that this file still mentions it at
       # all; and the partition check below fails loudly the moment the tiers stop covering exactly
       # the set of test projects.
+      #
+      # RequiresSecrets is deliberately absent from the arithmetic below. It is an overlay, not a
+      # fourth tier: the three env-gated projects are fast-tier projects that also run in
+      # nightly.yml with secrets supplied. A project belongs to exactly one tier and may appear in
+      # more than one workflow, so counting the overlay here would break a partition that is
+      # correct. It is printed only, so the log shows the overlay has not silently emptied.
       - name: Verify the tiers partition every test project
         run: |
           all=$(grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj | wc -l)
           docker=$(grep -l '<RequiresDocker>true</RequiresDocker>' tests/*/*.csproj | wc -l)
           llm=$(grep -l '<RequiresLlm>true</RequiresLlm>' tests/*/*.csproj | wc -l)
+          secrets=$(grep -l '<RequiresSecrets>true</RequiresSecrets>' tests/*/*.csproj | wc -l)
           fast=$(grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj \
             | xargs -r grep -L '<RequiresDocker>true</RequiresDocker>' | wc -l)
           echo "test projects: $all | fast: $fast | docker: $((docker - llm)) | llm (nightly): $llm"
+          echo "secrets overlay (nightly, cuts across the tiers above): $secrets"
           if [ "$((fast + docker))" -ne "$all" ]; then
             echo "::error::Tiers do not partition the test projects: fast=$fast + docker=$docker != $all. A project in no tier runs nowhere and CI stays green because nothing ran."
             exit 1

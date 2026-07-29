@@ -13,7 +13,7 @@ namespace Rag.NET.RepoConventions.Tests;
 public sealed class TestProjectTierTests
 {
     /// <summary>
-    /// There are 63 test projects today. A far smaller number means the scan lost the working tree
+    /// There are 64 test projects today. A far smaller number means the scan lost the working tree
     /// and is asserting over nothing — which would pass, silently, forever.
     /// </summary>
     private const int FewestPlausibleTestProjects = 50;
@@ -62,6 +62,27 @@ public sealed class TestProjectTierTests
     }
 
     [Fact]
+    public void EveryProjectThatReadsASecretDeclaresRequiresSecrets()
+    {
+        // Both directions, the same shape as the container guard above, and it exists because the
+        // gap it closes was invisible in exactly the way this phase is about. Every env-gated test
+        // in this repository lives in a fast-tier project, so supplying RAGNET_* secrets to the LLM
+        // job reached nothing: the variables were set on a job that runs one project, and that
+        // project reads none of them. Nothing failed. The tests simply skipped, forever, and a
+        // green run said so in a way nobody would read as a gap.
+        //
+        // The reverse direction matters just as much: a project that declares RequiresSecrets and
+        // has stopped reading the variable pulls credentials into a job for nothing, and hides that
+        // the coverage it was declared for no longer exists.
+        foreach (var project in TestProject.DiscoverAll())
+        {
+            Assert.True(
+                project.ReadsASecretEnvironmentVariable == project.DeclaresRequiresSecrets,
+                SecretMismatchMessage(project));
+        }
+    }
+
+    [Fact]
     public void TheWorkflowSelectsOnThePropertyNotAHardcodedList()
     {
         // Guards the mechanism itself. If someone replaces the property query with a list of project
@@ -81,6 +102,32 @@ public sealed class TestProjectTierTests
 
         Assert.Contains("RequiresDocker", yaml, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void TheNightlyWorkflowSelectsTheSecretsJobOnTheProperty()
+    {
+        // The same mechanism guard as above, for the second property. A job that names
+        // Rag.NET.Parsers.Pdf.Tests and its two siblings directly would work today and rot the
+        // first time a fourth suite becomes env-gated — which is precisely how the gap this
+        // property closes came about.
+        var workflow = Path.Combine(TestProject.FindRepositoryRoot(), ".github", "workflows", "nightly.yml");
+
+        Assert.SkipWhen(
+            !File.Exists(workflow),
+            $"'{workflow}' does not exist yet. This test begins guarding automatically once it does.");
+
+        var yaml = File.ReadAllText(workflow);
+
+        Assert.Contains("RequiresSecrets", yaml, StringComparison.Ordinal);
+    }
+
+    private static string SecretMismatchMessage(TestProject project) => project.ReadsASecretEnvironmentVariable
+        ? $"{project.Name} reads a RAGNET_ environment variable but does not declare " +
+            "<RequiresSecrets>true</RequiresSecrets>. Without it nightly.yml never selects the " +
+            "project, the variable is never set, and the test skips on every automated run there is."
+        : $"{project.Name} declares <RequiresSecrets>true</RequiresSecrets> but {project.SecretEvidence}. " +
+            "It would pull credentials into the nightly job for nothing, or the declaration is stale " +
+            "and hiding that the env-gated coverage it stood for has gone.";
 
     private static string MismatchMessage(TestProject project) => project.StartsAContainer
         ? $"{project.Name} starts a container ({project.ContainerEvidence}) but does not declare " +

@@ -2,6 +2,11 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- Reads RAGNET_DOCINTEL_ENDPOINT and RAGNET_DOCINTEL_KEY and calls Assert.Skip when either
+         is absent, so this project is safe in every tier and simply skips that test. The
+         declaration exists so nightly.yml can select it and supply the values, which is the only
+         run where the live Azure Document Intelligence path executes — and it bills one page. -->
+    <RequiresSecrets>true</RequiresSecrets>
   </PropertyGroup>
 
   <ItemGroup>
