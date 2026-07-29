@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Deliberate divergence from the house ci.yml (MarcelRoozekrans/AdoNet.Async), earned by scale:
+# that repository is a library with 40 tests, this one has 64 test projects and a Docker tier.
+# Without cancel-in-progress, three pushes to a branch queue three complete runs, containers and
+# all, and the first two are already irrelevant before they start.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    # Linux on purpose, not by default. The Docker tier below needs a Linux Docker daemon;
+    # ubuntu-latest has one and the Windows runners do not, so Testcontainers cannot work there.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # The second deliberate divergence from the house file: a cold restore across this dependency
+      # graph costs minutes on every run. Keyed on every csproj plus Directory.Build.props, which
+      # carries the shared analyzer PackageReferences — this repository has no lock files, so there
+      # is nothing more precise to hash.
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore Rag.NET.slnx
+
+      # Load-bearing, not an optimisation. Directory.Build.props documents an SDK regression under
+      # which `dotnet test` from a completely empty obj/ still requires `dotnet build` first, and a
+      # CI checkout is empty every single run. Remove this step and every `--no-build` tier below
+      # stops working. Remove it only when that workaround comes out of Directory.Build.props.
+      - name: Build
+        run: dotnet build Rag.NET.slnx --no-restore -c Release
+
+      # Tiers are selected by reading what each project declares about itself, never from a list of
+      # project names in this file. A list fails silently in the direction that matters: add a
+      # Testcontainers suite, forget the list, and it never runs again with nothing anywhere to
+      # notice.
+      #
+      # FRAGILITY, named deliberately: the selection greps for the literal element text rather than
+      # evaluating the MSBuild property. `dotnet msbuild <proj> -getProperty:RequiresDocker` is the
+      # exact read, but it is one process per project and was measured at ~40s across the 64 of them
+      # against ~0.07s for these greps. The pattern is the full element
+      # `<RequiresDocker>true</RequiresDocker>`, which no comment in the repository contains today —
+      # but a future comment quoting it verbatim would silently widen the Docker tier. Two guards:
+      # tests/Rag.NET.RepoConventions.Tests parses the csproj XML properly, asserts that every
+      # project starting a container declares the property and that this file still mentions it at
+      # all; and the partition check below fails loudly the moment the tiers stop covering exactly
+      # the set of test projects.
+      - name: Verify the tiers partition every test project
+        run: |
+          all=$(grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj | wc -l)
+          docker=$(grep -l '<RequiresDocker>true</RequiresDocker>' tests/*/*.csproj | wc -l)
+          llm=$(grep -l '<RequiresLlm>true</RequiresLlm>' tests/*/*.csproj | wc -l)
+          fast=$(grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj \
+            | xargs -r grep -L '<RequiresDocker>true</RequiresDocker>' | wc -l)
+          echo "test projects: $all | fast: $fast | docker: $((docker - llm)) | llm (nightly): $llm"
+          if [ "$((fast + docker))" -ne "$all" ]; then
+            echo "::error::Tiers do not partition the test projects: fast=$fast + docker=$docker != $all. A project in no tier runs nowhere and CI stays green because nothing ran."
+            exit 1
+          fi
+
+      # Every test project that does not declare RequiresDocker. Each runs on its own so a failure
+      # names the project rather than a 64-project batch, and every project runs before the step
+      # fails so one break does not hide the next.
+      - name: Test (fast tier)
+        run: |
+          projects=$(grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj \
+            | xargs -r grep -L '<RequiresDocker>true</RequiresDocker>')
+          failed=""
+          for project in $projects; do
+            echo "::group::$project"
+            dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Failed test projects:$failed"
+            exit 1
+          fi
+
+      # Testcontainers suites. These gate too: they are deterministic, and ubuntu-latest has a
+      # daemon. RequiresLlm is excluded — that tier pulls ~2 GB of models and asserts on model
+      # output, so it runs in nightly.yml instead. No continue-on-error anywhere in this job: the
+      # entire point of these tiers is that they gate.
+      - name: Test (Docker tier)
+        run: |
+          projects=$(grep -l '<RequiresDocker>true</RequiresDocker>' tests/*/*.csproj \
+            | xargs -r grep -L '<RequiresLlm>true</RequiresLlm>')
+          failed=""
+          for project in $projects; do
+            echo "::group::$project"
+            dotnet test "$project" --no-build -c Release --verbosity normal || failed="$failed $project"
+            echo "::endgroup::"
+          done
+          if [ -n "$failed" ]; then
+            echo "::error::Failed test projects:$failed"
+            exit 1
+          fi
