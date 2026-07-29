@@ -37,13 +37,26 @@ in 11**. That is not a defect, it is a model choosing different words, and a req
 fails on it teaches people to press re-run instead of read. So it reports and never blocks, even when
 you asked for it.
 
-## Opting a pull request into the LLM tier
+## Opting a pull request into a nightly job
 
-Add the **`run-llm`** label to the pull request. That is the whole procedure. Use it when you have
-changed the answer engine or a retrieval path and want to see the end-to-end result before merging.
+Two labels, one per job, because the jobs cost very different amounts and are wanted for different
+reasons:
 
-The run appears on the PR and **cannot block the merge**. `workflow_dispatch` does the same thing
-off any branch, ad hoc.
+| Label | Runs | Blocks the merge? |
+|---|---|---|
+| **`run-llm`** | the Ollama end-to-end suite — pulls ~2 GB of models | **No**, never |
+| **`run-secrets`** | the three env-gated suites — Tesseract, Document Intelligence, ONNX | Yes, when the secrets are configured |
+
+Use `run-llm` when you have changed the answer engine or a retrieval path and want to see the
+end-to-end result before merging. Use `run-secrets` when you have touched PDF OCR, Document
+Intelligence or ONNX embedding — those suites are deterministic, so a failure is a real regression
+rather than a model choosing different words.
+
+They are separate labels on purpose: a PR touching the PDF parser has no use for a two-gigabyte
+model download, and a single shared label would have made the cheap job unreachable without paying
+for the expensive one.
+
+`workflow_dispatch` runs both, off any branch, ad hoc.
 
 ## The secrets overlay
 

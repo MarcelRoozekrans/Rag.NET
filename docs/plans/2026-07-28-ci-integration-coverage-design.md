@@ -67,7 +67,9 @@ engine, or a retrieval behavior, and wants to know before merging. So the tier a
 demand**:
 
 - **a `run-llm` label on the pull request** — the ergonomic path, decided per PR by whoever knows
-  the change touched the LLM path;
+  the change touched the LLM path. *(The env-gated job added later gets its own `run-secrets`
+  label rather than sharing this one: the two cost very different amounts, and a PR touching the
+  PDF parser has no use for a two-gigabyte model download.)*;
 - **`workflow_dispatch`** — ad-hoc, off any branch.
 
 **It reports but never blocks, even when requested.** Not a required status check. At roughly

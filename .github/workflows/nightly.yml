@@ -121,11 +121,13 @@ jobs:
   # in the fast tier on every push, and they run here as well with values supplied. A project is in
   # exactly one tier and may appear in more than one workflow.
   env-gated:
-    # Same opt-in as the llm job, and the label name is admittedly narrower than what it now
-    # triggers: 'run-llm' is this workflow's single opt-in, not a per-job switch. On a fork's pull
-    # request no secrets are exposed at all, so this job runs and skips everything, which is the
-    # intended and safe outcome.
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-llm'
+    # Its own label, not the llm one. The two jobs cost wildly different amounts and are wanted for
+    # different reasons: a PR touching the PDF parser wants these deterministic suites and has no
+    # use for a two-gigabyte model download. One shared label would have made the cheap job
+    # unreachable without paying for the expensive one.
+    # On a fork's pull request no secrets are exposed at all, so this job runs and skips everything,
+    # which is the intended and safe outcome.
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-secrets'
     runs-on: ubuntu-latest
     env:
       # secrets.* with no fallback, on purpose: an unset secret leaves the tests skipping, which is
