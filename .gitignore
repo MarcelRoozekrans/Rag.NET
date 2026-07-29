@@ -7,3 +7,9 @@ obj/
 BenchmarkDotNet.Artifacts/
 site/
 .worktrees/
+
+# Generated Lucent index artifacts. These were committed once, in April 2026, and had to be
+# purged from all history before this repository could be pushed: embeddings.bin reached 227 MB
+# against GitHub's hard 100 MB per-file limit, and chunks.json 73 MB. They are regenerable, so
+# nothing was lost — but the rewrite touched 589 commits, which is a bad afternoon to repeat.
+.lucent/
