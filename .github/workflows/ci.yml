@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # nightly.yml has had this since 3.5; ci.yml did not, and the gap showed the first time it
+  # mattered. GitHub does not trigger workflows for a push carrying more than 1,000 commits, and
+  # this repository's initial push carried 1,321 — so the first CI run this project ever had could
+  # not be started at all, by any means, until this trigger existed. It is also what you want for a
+  # re-run after a flake or a runner outage, neither of which should require an empty commit.
+  workflow_dispatch:
 
 # Deliberate divergence from the house ci.yml (MarcelRoozekrans/AdoNet.Async), earned by scale:
 # that repository is a library with 40 tests, this one has 64 test projects and a Docker tier.
