@@ -7,12 +7,16 @@ namespace Rag.NET.Abstractions;
 /// </summary>
 /// <param name="ContentType">The content type the parser's <c>CanParse</c> accepts.</param>
 /// <param name="ParserTypeName">
-/// The claiming parser's full type name. Full rather than short is load-bearing, not cosmetic:
-/// two packages ship a public <c>EmailDocumentParser</c>, and the validator treats one type name
-/// as one claimant so that registering the same package twice is not a conflict. Short names
-/// collapse those two distinct parsers into a single claimant and the check stops firing on the
-/// exact collision it exists for — verified by mutating this line to <c>typeof(TParser).Name</c>,
-/// which turned four conflict tests from passing to "no exception was thrown".
+/// The claiming parser's full type name. Full rather than short is load-bearing, not cosmetic.
+/// The validator treats one type name as one claimant, so that registering the same package twice
+/// is not a conflict; short names make two <i>distinct</i> parsers that happen to share a name
+/// collapse into a single claimant, and the check stops firing on exactly the collision it exists
+/// for. Verified rather than reasoned: when the two colliding types were both called
+/// <c>EmailDocumentParser</c>, mutating this line to <c>typeof(TParser).Name</c> turned four
+/// conflict tests from passing to "no exception was thrown". Phase 3.11 went on to rename one of
+/// them to <c>EmailTemplateDocumentParser</c>, which removes the hazard for that particular pair
+/// and for no other — the next same-named pair, in a third-party package this repository cannot
+/// rename, would silently disable the guard again.
 /// </param>
 /// <param name="RegistrationMethod">
 /// The call a user would recognise from their own composition root — <c>AddEmailParser()</c>,

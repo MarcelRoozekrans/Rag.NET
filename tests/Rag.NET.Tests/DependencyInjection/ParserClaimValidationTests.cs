@@ -7,7 +7,7 @@ using Rag.NET.DependencyInjection;
 using Rag.NET.Parsers.Email;
 using Xunit;
 using EmailPackageParser = Rag.NET.Parsers.Email.EmailDocumentParser;
-using TemplatesEmailParser = Rag.NET.Chunking.Templates.EmailDocumentParser;
+using TemplatesEmailParser = Rag.NET.Chunking.Templates.EmailTemplateDocumentParser;
 
 namespace Rag.NET.Tests.DependencyInjection;
 
@@ -84,10 +84,12 @@ public class ParserClaimValidationTests
     }
 
     /// <summary>
-    /// The full type name is load-bearing. Both packages export a public <c>EmailDocumentParser</c>,
-    /// so a message naming the short name twice would tell the reader nothing about which
-    /// registration to remove — and the assertion above would pass against a message that named
-    /// only one of them.
+    /// The full type name is load-bearing. Both types were called <c>EmailDocumentParser</c> until
+    /// Phase 3.11 renamed the Templates one, and a message naming the short name twice would have
+    /// told the reader nothing about which registration to remove — the assertion above would have
+    /// passed against a message that named only one of them. The rename fixes that for this pair
+    /// alone; the guard still has to distinguish claimants by full name, because a third-party
+    /// parser sharing a short name is not something this repository can rename away.
     /// </summary>
     [Fact]
     public void TheTwoClaimantsAreDistinguishableInTheMessage()

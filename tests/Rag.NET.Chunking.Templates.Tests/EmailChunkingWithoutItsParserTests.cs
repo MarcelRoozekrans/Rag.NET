@@ -7,7 +7,6 @@ using Rag.NET.Models;
 using Rag.NET.Parsers.Email;
 using Xunit;
 using EmailPackageParser = Rag.NET.Parsers.Email.EmailDocumentParser;
-using TemplatesEmailParser = Rag.NET.Chunking.Templates.EmailDocumentParser;
 
 namespace Rag.NET.Chunking.Templates.Tests;
 
@@ -45,7 +44,7 @@ public sealed class EmailChunkingWithoutItsParserTests
 
         var parsers = provider.GetServices<IDocumentParser>();
         Assert.Contains(parsers, p => p is EmailPackageParser);
-        Assert.DoesNotContain(parsers, p => p is TemplatesEmailParser);
+        Assert.DoesNotContain(parsers, p => p is EmailTemplateDocumentParser);
     }
 
     /// <summary>

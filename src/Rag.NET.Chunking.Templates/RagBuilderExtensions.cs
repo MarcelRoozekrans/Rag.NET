@@ -19,7 +19,7 @@ public static class RagBuilderExtensions
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ];
 
-    /// <summary>The content type <see cref="EmailDocumentParser.CanParse"/> accepts.</summary>
+    /// <summary>The content type <see cref="EmailTemplateDocumentParser.CanParse"/> accepts.</summary>
     private const string EmailContentType = "message/rfc822";
 
     /// <summary>
@@ -104,9 +104,9 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton(opts);
         if (opts.RegisterParser)
         {
-            builder.Services.AddSingleton<EmailDocumentParser>();
-            builder.Services.AddSingleton<IDocumentParser>(sp => sp.GetRequiredService<EmailDocumentParser>());
-            builder.Services.AddSingleton(ParserClaim.For<EmailDocumentParser>(
+            builder.Services.AddSingleton<EmailTemplateDocumentParser>();
+            builder.Services.AddSingleton<IDocumentParser>(sp => sp.GetRequiredService<EmailTemplateDocumentParser>());
+            builder.Services.AddSingleton(ParserClaim.For<EmailTemplateDocumentParser>(
                 EmailContentType, "UseEmailChunking()", EmailParserOptOut));
         }
 

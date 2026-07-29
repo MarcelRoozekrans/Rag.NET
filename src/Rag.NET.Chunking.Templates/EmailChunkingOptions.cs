@@ -6,9 +6,9 @@ public sealed class EmailChunkingOptions
     public bool IncludeAttachments { get; set; } = true;
 
     /// <summary>
-    /// Whether <c>UseEmailChunking()</c> also registers <see cref="EmailDocumentParser"/> and its
-    /// <see cref="Abstractions.ParserClaim"/>. Defaults to <see langword="true"/>; set it to
-    /// <see langword="false"/> to take the chunking strategy alone.
+    /// Whether <c>UseEmailChunking()</c> also registers <see cref="EmailTemplateDocumentParser"/>
+    /// and its <see cref="Abstractions.ParserClaim"/>. Defaults to <see langword="true"/>; set it
+    /// to <see langword="false"/> to take the chunking strategy alone.
     /// </summary>
     /// <remarks>
     /// <para>
