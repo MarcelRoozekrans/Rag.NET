@@ -27,6 +27,7 @@ const sidebars: SidebarsConfig = {
       label: 'Reference',
       items: [
         'reference/benchmarks',
+        'reference/ci',
         'reference/features',
       ],
     },

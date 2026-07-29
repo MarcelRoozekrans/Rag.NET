@@ -40,7 +40,7 @@ was written before anyone looked at how these repositories are actually set up.
 
 ## 2. Three tiers, because the suites are not alike
 
-66 test projects, and they have genuinely different requirements.
+64 test projects, and they have genuinely different requirements.
 
 **Fast** — no Docker, no network, no secrets. The large majority. Gates every push and PR.
 
@@ -48,7 +48,11 @@ was written before anyone looked at how these repositories are actually set up.
 these gate every push and PR too. Linux-only: the Windows runners have no Linux Docker daemon, so
 Testcontainers cannot work there.
 
-**LLM and env-gated** — nightly by default, **opt-in per pull request**, never blocking. Two
+**LLM and env-gated** — nightly by default, **opt-in per pull request**. *(Corrected 2026-07-29:
+these two were run together here and they should not be. The LLM tier never blocks, for the reasons
+below. The env-gated suites do block, because they are deterministic — a Tesseract or Document
+Intelligence regression is a real failure, not a model choosing different words. They are separate
+jobs in `nightly.yml`; see the end of this section.)* Two
 independent reasons it is not automatic on every PR, either sufficient on its own:
 
 - `OllamaFixture` runs `ollama pull nomic-embed-text` **and** `ollama pull llama3.2:1b` — roughly
@@ -75,6 +79,21 @@ Env-gated suites (`RAGNET_DOCINTEL_*`, `RAGNET_TESSDATA`, `RAGNET_ONNX_*`) alrea
 `Assert.Skip`, so they are safe wherever they run; nightly and label runs are where secrets can
 exist.
 
+**What this section originally left implicit, and got wrong.** *(Corrected 2026-07-29.)* Saying
+env-gated tests are "safe wherever they run" is true and was taken to mean they needed nothing
+further. It does not follow. All three env-gated projects are **fast-tier** projects, and the nightly
+workflow selected only projects declaring `RequiresLlm` — `Rag.NET.E2ETests`, which reads no
+`RAGNET_*` variable. The secrets therefore reached no test at all, and those code paths were
+exercised by no automated run. Skipping cleanly is not the same as running.
+
+Closed the same way the rest of the phase works: a third self-declaration,
+`<RequiresSecrets>true</RequiresSecrets>`, and an `env-gated` job in `nightly.yml` that selects on
+it. It is an **overlay, not a fourth tier** — those projects stay in the fast tier and run there on
+every push, so the tier partition is untouched; they simply appear in a second workflow as well.
+That job **gates**, and the one thing to be honest about is what a green tick means when the secrets
+are absent: every test skips and it passes. A step prints which variables are present so the log can
+tell the two apart. Absence is deliberately not a failure — it would break every fork.
+
 ## 3. Projects declare their own need
 
 Selection is `<RequiresDocker>true</RequiresDocker>` in the test csproj, which CI reads.
@@ -89,9 +108,15 @@ lands in the fast tier, where it fails loudly for want of a Docker daemon.
 A test asserts that every project which starts a container declares the property. The naive
 implementation — *does the csproj mention Testcontainers* — is wrong **in both directions**:
 
-- **Misses seven projects.** `Rag.NET.Testing` is a shared fixture library holding `PgVectorFixture`,
-  `QdrantFixture` and `OllamaFixture`, and seven test projects reference it. They start containers
-  without naming Testcontainers anywhere in their own csproj.
+- **Misses three projects.** `Rag.NET.Testing` is a shared fixture library holding `PgVectorFixture`,
+  `QdrantFixture` and `OllamaFixture`. Seven test projects reference it, but only three of them —
+  `Rag.NET.VectorStores.IntegrationTests`, `Rag.NET.Security.IntegrationTests` and
+  `Rag.NET.E2ETests` — actually use a container fixture. Those three start containers without naming
+  Testcontainers anywhere in their own csproj.
+
+  (Corrected 2026-07-29. This said *seven*, which is the count of projects that **reference**
+  `Rag.NET.Testing` — a different quantity, and precisely the conflation the next bullet warns
+  about. Referencing the fixture library is not the signal; using a container fixture from it is.)
 - **Falsely flags others.** Referencing `Rag.NET.Testing` does not mean needing Docker.
   `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests` uses it for WireMock cassettes and
   env-gated live tests, and starts no container at all.
@@ -106,7 +131,7 @@ obvious.
 That repository's `ci.yml` has no caching, no concurrency control and no explicit permissions. For a
 library with 40 tests that is the right amount of machinery.
 
-Rag.NET has 66 test projects and a Docker tier, so two additions earn their place:
+Rag.NET has 64 test projects and a Docker tier, so two additions earn their place:
 
 - **NuGet caching.** A cold restore across this dependency graph is minutes, on every run.
 - **`cancel-in-progress` concurrency.** Without it, three pushes to a branch queue three complete
@@ -117,7 +142,7 @@ repositories read the same way.
 
 ## 5. Build once, test per project
 
-`dotnet build Rag.NET.slnx` once, then `dotnet test <project> --no-build` per project. Rebuilding 66
+`dotnet build Rag.NET.slnx` once, then `dotnet test <project> --no-build` per project. Rebuilding 64
 projects per test invocation would dominate the run.
 
 Warnings are already errors in `Directory.Build.props`, so a warning fails the build with no CI

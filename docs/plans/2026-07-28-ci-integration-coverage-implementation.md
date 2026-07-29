@@ -45,12 +45,27 @@ Via `PgVectorFixture` / `QdrantFixture`:
 **LLM tier — 1 project.** `Rag.NET.E2ETests`, which uses `OllamaFixture`. It needs Docker *and* pulls
 `nomic-embed-text` plus `llama3.2:1b`.
 
-**Fast tier — everything else (~56).**
+**Fast tier — everything else (54).**
 
-**Env-gated tests need no tier.** `RAGNET_TESSDATA`, `RAGNET_DOCINTEL_*` and `RAGNET_ONNX_*` tests
-already `Assert.Skip` when the variable is absent, so their projects sit in whichever tier they
-belong to and simply skip. Nightly supplies the secrets so they actually execute. The design implied
-a separate tier for these; it is not needed, and a tier nobody needs is a tier that rots.
+*(Counts corrected 2026-07-29: 64 test projects, not 66; fast tier 54, not ~56. 54 + 10 declaring
+`RequiresDocker`, of which 1 also declares `RequiresLlm`, = 64.)*
+
+**Env-gated tests need no tier — but they do need a job.** `RAGNET_TESSDATA`, `RAGNET_DOCINTEL_*`
+and `RAGNET_ONNX_*` tests already `Assert.Skip` when the variable is absent, so their projects sit in
+whichever tier they belong to and simply skip. The tier claim stands. The sentence that followed it —
+*"nightly supplies the secrets so they actually execute"* — did **not**.
+
+*(Corrected 2026-07-29.)* All three env-gated projects — `Rag.NET.Parsers.Pdf.Tests`,
+`Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests` and `Rag.NET.Chunking.IntegrationTests` — are
+**fast-tier** projects, and nightly ran only the projects declaring `RequiresLlm`: `Rag.NET.E2ETests`
+alone, which reads no `RAGNET_*` variable. The secrets were set on a job that could not reach a
+single test that wanted them, so those code paths ran nowhere and nothing failed. Closed by a third
+declaration, `<RequiresSecrets>true</RequiresSecrets>`, and an `env-gated` job in `nightly.yml` that
+selects on it. It **gates** — these suites are deterministic, unlike the LLM tier — with the caveat
+that when the secrets are absent every test skips and the job passes; see the comment in the file.
+
+`RequiresSecrets` is an overlay, not a fourth tier: a project is in exactly one tier and may appear
+in more than one workflow, so `ci.yml`'s partition arithmetic is unaffected.
 
 **Do not trust these lists.** Re-derive them from the repository — that is what Task A2 exists to
 enforce, and if the lists here are wrong the conventions test should catch it and you should tell me.
@@ -131,7 +146,7 @@ public void EveryTestProjectDeclaresExactlyOneTier()
 public void EveryProjectThatStartsAContainerDeclaresRequiresDocker()
 {
     // Both directions. The obvious version of this test — grep the csproj for Testcontainers —
-    // is wrong twice over: nine projects start containers, but two of them do it through
+    // is wrong twice over: ten projects start containers, but three of them do it through
     // Rag.NET.Testing's fixtures and name Testcontainers nowhere; and one project references
     // Rag.NET.Testing for WireMock cassettes while starting no container at all.
     foreach (var project in TestProjects())
@@ -186,7 +201,7 @@ Shape, after matching the house file's exact action versions and step style:
   6. **docker tier:** every project with `RequiresDocker` and without `RequiresLlm`
 
 Select by reading the property, not a list. `dotnet msbuild <proj> -getProperty:RequiresDocker` is
-exact but is 66 process launches; a `grep -l` over `tests/*/*.csproj` is one command and obviously
+exact but is 64 process launches; a `grep -l` over `tests/*/*.csproj` is one command and obviously
 correct given the property is written literally. **Use grep, and let Task A2's third test guard that
 the workflow still selects on the property.**
 
@@ -251,7 +266,7 @@ Do **not** flip 3.5 to complete — that happens after the whole-phase review.
 2. Every baseline count above, unchanged, plus the new conventions project's count.
 3. Both Task A2 mutations.
 4. **YAML is not compiled, so read it back.** Confirm every referenced project path exists, the
-   property queries return the expected project counts (9 Docker, 1 LLM, ~56 fast), and the tier
+   property queries return the expected project counts (9 Docker, 1 LLM, 54 fast), and the tier
    sums to the total number of test projects with none counted twice.
 5. `docs/planning/ROADMAP.md` and `MILESTONE.md` flip to complete **after** the whole-phase review —
    both files, per the `73472b4` precedent.

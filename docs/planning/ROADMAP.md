@@ -44,6 +44,19 @@ future reader can tell the difference between "never existed" and "dealt with".
   diagnostics benefit, and that phase spent its one production edit on the `ragnet.query` span.
   → **Phase 4.4** (OTel wiring, which has to reason about span context across async iterators
   regardless)
+- **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
+  of scope, scheduled here so they do not stay open notes). All three exist in
+  `MarcelRoozekrans/AdoNet.Async` and none exists here:
+  - **`docs.yml`** — a Docusaurus site is already in the tree (`sidebars.ts`, `src/css/custom.css`,
+    the whole `docs/` directory) and **nothing publishes it**. Written docs that nobody can read are
+    the same shape of gap as tests that never run, which is what 3.5 was about; it was kept out of
+    3.5 because a test-coverage phase is the wrong place to acquire a publishing pipeline, not
+    because it is small.
+  - **`.commitlintrc.yml`** — this repository already writes conventional commits by convention;
+    nothing enforces it, and release-please in 4.1 will read those messages.
+  - **`renovate.json`** — no automated dependency updates at all.
+  → **Milestone 4**, alongside the rest of the release-readiness work. `.commitlintrc.yml` pairs
+  naturally with 4.1, since release-please depends on the commit format holding.
 
 ### Closed
 
@@ -239,9 +252,28 @@ Scoped out of Phase 3.3 deliberately, because it is a production-path concern wi
 - [ ] CI pipeline builds, tests, and produces NuGet packages
 - [ ] Release tagged v1.0
 
-### Phase 4.1: NuGet Publishing Pipeline [status: pending]
-**Goal:** GitHub Actions CI (build + test) and NuGet packaging/publishing with MinVer versioning.
+### Phase 4.1: NuGet Packaging & Publishing [status: pending]
+**Goal:** NuGet packaging, versioning and publishing on top of a pipeline that already builds and tests.
 **Backlog items:** NuGet Publishing Pipeline
+
+> **Narrowed 2026-07-29, and the tooling corrected.** This entry used to read *"GitHub Actions CI
+> (build + test) and NuGet packaging/publishing with **MinVer** versioning"*. Two things were wrong
+> with it.
+>
+> **The CI half is Phase 3.5's, and is done.** `ci.yml` builds the solution and runs every test
+> project in its tier on each push; `nightly.yml` carries the LLM and env-gated jobs. 4.1 no longer
+> owns build-and-test, only what is packed and pushed on top of it. (Two phases quietly both owning
+> a deliverable is how one of them ends up skipped — which is what 3.5 found when it started.)
+>
+> **The versioning tool is GitVersion, not MinVer.** The house convention in
+> `MarcelRoozekrans/AdoNet.Async` is **GitVersion** (`GitVersion.yml`, a `.config/dotnet-tools.json`
+> entry, output parsed with `jq`) plus **release-please** for the release itself. Different tools,
+> different configuration. The MinVer entry was written before anyone looked at how these
+> repositories are actually set up.
+>
+> **`pack-push` is a job in the existing `ci.yml`, not a new workflow file.** That is how
+> `AdoNet.Async` lays it out — `build-test` and a conditional `pack-push` in one file, the latter
+> gated on push-to-main — and matching it keeps the two repositories readable side by side.
 
 > **Known blocker, found in Phase 3.2 (2026-07-28): turning on XML documentation will fail the build.**
 > `GenerateDocumentationFile` is set **nowhere** in this repo, so `CS1574` (unresolvable `<see cref>`)
