@@ -133,6 +133,7 @@
     <Project Path="tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests.csproj" />
     <Project Path="tests/Rag.NET.Ingestion.AzureServiceBus.Tests/Rag.NET.Ingestion.AzureServiceBus.Tests.csproj" />
     <Project Path="tests/Rag.NET.Diagnostics.Tests/Rag.NET.Diagnostics.Tests.csproj" />
+    <Project Path="tests/Rag.NET.RepoConventions.Tests/Rag.NET.RepoConventions.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
