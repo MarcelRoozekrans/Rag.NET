@@ -69,7 +69,7 @@ Assume nothing works until a test says so *and the test is right*.
 2. Phase 3.2 — Evaluation Dataset Builder: verify, test, document [complete — 2026-07-28]
 3. Phase 3.3 — A/B Testing Framework [complete — 2026-07-28]
 4. Phase 3.4 — Pipeline Debugger / Trace Viewer [complete — 2026-07-28]
-5. Phase 3.5 — CI Integration Coverage [pending]
+5. Phase 3.5 — CI Integration Coverage [complete — 2026-07-29]
 6. Phase 3.6 — Email Parser Debt [pending]
 7. Phase 3.7 — Retrieval Quality Benchmark Harness [pending] — public benchmarks with published
    reference numbers, so retrieval correctness is demonstrable rather than asserted. SciFact
