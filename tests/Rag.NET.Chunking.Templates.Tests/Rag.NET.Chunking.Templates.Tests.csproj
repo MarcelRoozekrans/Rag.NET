@@ -6,6 +6,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Chunking.Templates\Rag.NET.Chunking.Templates.csproj" />
+    <!-- Both packages, in one test project. Nothing referenced both until Phase 3.11, which is a
+         large part of why two parsers claiming application/octet-stream went unnoticed: the
+         collision only exists once Rag.NET.Chunking.Templates and Rag.NET.Parsers.Email share a
+         parser collection. Neither package needs Docker or a model, so no tier declaration. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Email\Rag.NET.Parsers.Email.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
