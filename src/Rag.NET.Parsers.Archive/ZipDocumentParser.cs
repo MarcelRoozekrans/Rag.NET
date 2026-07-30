@@ -71,8 +71,13 @@ public sealed class ZipDocumentParser(
     /// Streams the sections of every entry a registered parser claims.
     /// </summary>
     /// <exception cref="ArchiveLimitExceededException">
-    /// The archive declares more entries than <see cref="ArchiveParserOptions.MaxEntries"/> allows, or
-    /// it decompressed past <see cref="ArchiveParserOptions.MaxTotalUncompressedBytes"/>.
+    /// Any of the three bounds was passed: the archive declares more entries than
+    /// <see cref="ArchiveParserOptions.MaxEntries"/> allows, an entry expanded past
+    /// <see cref="ArchiveParserOptions.MaxCompressionRatio"/>, or the archive decompressed past
+    /// <see cref="ArchiveParserOptions.MaxTotalUncompressedBytes"/>. The entry count is refused before
+    /// any entry is read; the two byte bounds are re-checked after each entry, because the refusal
+    /// <see cref="LimitedReadStream"/> raises is contained by
+    /// <see cref="ContainerEntryDispatcher"/> along with everything else an entry parser throws.
     /// </exception>
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,
@@ -104,10 +109,10 @@ public sealed class ZipDocumentParser(
 
             // The dispatcher contains everything an entry parser throws, which is right — it cannot
             // tell a decompression bomb from a corrupt PDF, and one bad entry must not cost the
-            // archive. But that swallows LimitedReadStream's refusal too, so the archive-wide total is
+            // archive. But that swallows LimitedReadStream's refusal too, so *both* byte bounds are
             // re-checked here, where refusing the archive is this parser's decision rather than the
             // shared machinery's. Without it a bomb would degrade into a warning per entry.
-            readBudget.ThrowIfTotalExceeded();
+            readBudget.ThrowIfExceeded();
         }
     }
 

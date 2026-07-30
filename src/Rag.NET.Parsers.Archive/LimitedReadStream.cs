@@ -157,8 +157,14 @@ internal sealed class LimitedReadStream : Stream
         var denominator = _compressedLength > 0 ? _compressedLength : 1;
         if (_entryUncompressedBytes > denominator * _budget.MaxCompressionRatio)
         {
+            // Recorded before it is thrown, because the throw does not reach the parser: the entry is
+            // being read by an entry parser, and ContainerEntryDispatcher contains everything one of
+            // those throws. The running total survives that containment on its own — it is a count the
+            // parser can re-read — and this is how the ratio gets to survive it too.
+            var observed = _entryUncompressedBytes / denominator;
+            _budget.RecordRatioBreach(observed);
             throw new ArchiveLimitExceededException(
-                ArchiveLimit.CompressionRatio, _entryUncompressedBytes / denominator, _budget.MaxCompressionRatio);
+                ArchiveLimit.CompressionRatio, observed, _budget.MaxCompressionRatio);
         }
 
         _budget.ThrowIfTotalExceeded();

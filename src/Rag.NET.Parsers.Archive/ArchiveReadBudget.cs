@@ -14,6 +14,14 @@ namespace Rag.NET.Parsers.Archive;
 /// <c>ContainerBudget</c> documents for the nesting budget, in a different place.
 /// </para>
 /// <para>
+/// <b>It is also where a breach is remembered, not only where it is counted.</b>
+/// <c>ContainerEntryDispatcher</c> catches everything an entry parser throws, so a refusal raised
+/// inside <see cref="LimitedReadStream"/> never reaches <c>ZipDocumentParser</c> as an exception. The
+/// total survives that containment because it is a running count the parser can re-read; the ratio is
+/// a per-read test with nothing left behind, so it is recorded here instead. Both are then re-raised
+/// by <see cref="ThrowIfExceeded"/> after each entry.
+/// </para>
+/// <para>
 /// One instance per archive, created by the parser before it enumerates entries. Not thread-safe:
 /// entries are read one at a time on the caller's thread, and making the counter concurrent would
 /// suggest an interleaving the parser does not produce.
@@ -21,6 +29,12 @@ namespace Rag.NET.Parsers.Archive;
 /// </remarks>
 internal sealed class ArchiveReadBudget
 {
+    /// <summary>
+    /// The expansion factor of the first entry that breached the ratio bound, or <see langword="null"/>
+    /// while none has. See the type's remarks on why a breach has to outlive the exception.
+    /// </summary>
+    private long? breachedRatio;
+
     public ArchiveReadBudget(ArchiveParserOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -48,6 +62,34 @@ internal sealed class ArchiveReadBudget
     /// <see cref="LimitedReadStream"/>.
     /// </remarks>
     public void Add(int count) => TotalUncompressedBytes += count;
+
+    /// <summary>Remembers that an entry expanded past <see cref="MaxCompressionRatio"/>.</summary>
+    /// <param name="observedRatio">The expansion factor that entry had reached.</param>
+    /// <remarks>
+    /// The first breach wins. A later entry that also expands too far says nothing new about the
+    /// archive, and the number an operator is shown should be the one that actually stopped the read.
+    /// </remarks>
+    public void RecordRatioBreach(long observedRatio) => breachedRatio ??= observedRatio;
+
+    /// <summary>Refuses the archive if either byte bound has been passed.</summary>
+    /// <exception cref="ArchiveLimitExceededException">
+    /// An entry expanded past <see cref="MaxCompressionRatio"/>, or more bytes have been read than
+    /// <see cref="MaxTotalUncompressedBytes"/> allows.
+    /// </exception>
+    /// <remarks>
+    /// <b>Ratio first, and the order matters more here than it does in
+    /// <see cref="LimitedReadStream"/>.</b> The bytes of a breaching read are booked against the total
+    /// before the ratio is tested, so a single read that passes both bounds leaves both recorded.
+    /// Testing the total first would report the vaguer diagnosis — "the archive got too big" — for an
+    /// archive that is specifically a bomb.
+    /// </remarks>
+    public void ThrowIfExceeded()
+    {
+        if (breachedRatio is { } observed)
+            throw new ArchiveLimitExceededException(ArchiveLimit.CompressionRatio, observed, MaxCompressionRatio);
+
+        ThrowIfTotalExceeded();
+    }
 
     /// <summary>Refuses the archive if the running total has passed its bound.</summary>
     /// <exception cref="ArchiveLimitExceededException">

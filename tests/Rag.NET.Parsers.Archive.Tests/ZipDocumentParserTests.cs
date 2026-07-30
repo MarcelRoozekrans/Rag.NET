@@ -17,6 +17,9 @@ public class ZipDocumentParserTests
     private const string NotesText = "the note's content";
     private const string PageText = "<p>the page</p>";
 
+    /// <summary>A megabyte, which is what makes the ratio fixture a real bomb rather than a mock.</summary>
+    private const int OneMegabyte = 1024 * 1024;
+
     private static DocumentMetadata CreateMetadata() => new()
     {
         DocumentId = new DocumentId("archive-1"),
@@ -310,6 +313,8 @@ public class ZipDocumentParserTests
         Assert.Equal(["a", "b"], sections.Select(s => s.Text));
     }
 
+    // ── The byte bounds, through the parser rather than the stream ───────────
+
     /// <summary>
     /// The total-bytes bound has to survive the containment, and this is the case that proves it
     /// does. <see cref="ContainerEntryDispatcher"/> catches everything an entry parser throws — it
@@ -331,6 +336,101 @@ public class ZipDocumentParserTests
             async () => await parser.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct));
 
         Assert.Equal(ArchiveLimit.TotalUncompressedBytes, exception.Limit);
+    }
+
+    /// <summary>
+    /// The ratio bound, on exactly the same terms, and at the <b>default</b> options — a real
+    /// megabyte of zeros at a real ~1000:1 against the default 100:1.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The whole-phase review found this half missing. The parser re-checked only the archive-wide
+    /// total after each entry, so a ratio breach stayed swallowed by the dispatcher: the archive was
+    /// not refused, the sibling entry was indexed, and the only signal was a "parser failed on archive
+    /// entry" warning — precisely the degradation the total's re-check exists to prevent. Every ratio
+    /// test lived in <see cref="LimitedReadStreamTests"/>, which drives its own read loop and never
+    /// touches this parser, so deleting the ratio refusal cost two unit tests and no end-to-end one.
+    /// </para>
+    /// <para>
+    /// The sibling assertion is the part that fails loudest under that mutation: an archive that was
+    /// not refused goes on to index what follows the bomb. The warning is asserted as still being
+    /// logged — containment has not changed, and the entry-level failure is still reported — because
+    /// the fix is that the warning is no longer <i>all</i> that happens.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ARatioBombRefusesTheArchiveRatherThanWarningPerEntry()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var text = new RecordingParser("text/plain");
+        var logger = new CapturingLogger<ZipDocumentParser>();
+        var parser = new ZipDocumentParser([text], logger);
+
+        using var stream = new MemoryStream(ZipFixtureBuilder.Archive(
+            ("zeros.txt", ZipFixtureBuilder.Zeros(OneMegabyte)),
+            ("notes.txt", Encoding.UTF8.GetBytes(NotesText))));
+
+        var exception = await Assert.ThrowsAsync<ArchiveLimitExceededException>(
+            async () => await parser.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct));
+
+        Assert.Equal(ArchiveLimit.CompressionRatio, exception.Limit);
+        Assert.Equal(new ArchiveParserOptions().MaxCompressionRatio, exception.Allowed);
+
+        var received = Assert.Single(text.ReceivedMetadata);
+        Assert.Equal("bundle.zip#zeros.txt", received.FileName);
+        Assert.Contains(
+            logger.Warnings,
+            w => w.Contains("bundle.zip#zeros.txt", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The order of refusal, end to end. One read of this entry passes both byte bounds at once, and
+    /// the caller must be told about the ratio: it names an entry as malicious where the total only
+    /// says the archive got too big.
+    /// </summary>
+    /// <remarks>
+    /// This is the case the re-check gets wrong most easily. <see cref="LimitedReadStream"/> books the
+    /// bytes against the total <i>before</i> it tests the ratio, so by the time the parser re-checks,
+    /// both bounds are breached and whichever it tests first is what the caller sees. Before the
+    /// whole-phase review it was the total, for the entry the ratio had actually stopped.
+    /// </remarks>
+    [Fact]
+    public async Task AReadPassingBothByteBoundsIsReportedAsTheRatioCap()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var archive = ZipFixtureBuilder.Archive(("zeros.txt", ZipFixtureBuilder.Zeros(4096)));
+
+        var both = await AssertRefusedAsync(
+            archive, new ArchiveParserOptions { MaxTotalUncompressedBytes = 100, MaxCompressionRatio = 5 }, ct);
+
+        Assert.Equal(ArchiveLimit.CompressionRatio, both.Limit);
+
+        // The control, and the reason the assertion above is about ordering rather than about the
+        // ratio being the only bound in reach: the same archive with the ratio lifted out of the way
+        // trips the total, so the total was genuinely breached in the case above too.
+        var totalOnly = await AssertRefusedAsync(
+            archive,
+            new ArchiveParserOptions
+            {
+                MaxTotalUncompressedBytes = 100,
+                MaxCompressionRatio = ArchiveParserOptions.MaxSupportedCompressionRatio,
+            },
+            ct);
+
+        Assert.Equal(ArchiveLimit.TotalUncompressedBytes, totalOnly.Limit);
+    }
+
+    private static async Task<ArchiveLimitExceededException> AssertRefusedAsync(
+        byte[] archiveBytes,
+        ArchiveParserOptions options,
+        CancellationToken cancellationToken)
+    {
+        var parser = new ZipDocumentParser([new RecordingParser("text/plain")], options: options);
+        using var stream = new MemoryStream(archiveBytes, writable: false);
+
+        return await Assert.ThrowsAsync<ArchiveLimitExceededException>(async () =>
+            await parser.ParseAsync(stream, CreateMetadata(), cancellationToken)
+                .ToListAsync(cancellationToken));
     }
 
     /// <summary>
