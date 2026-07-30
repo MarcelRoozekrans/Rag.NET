@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- No tier properties on purpose. Nothing here starts a container, and nothing here reads a
+         RAGNET_ variable: BeirDatasetCache resolves RAGNET_BEIR_CACHE inside
+         src/Rag.NET.Benchmarks.Quality, and every test below hands the loaders an explicit
+         temporary directory. That keeps this suite of pure unit tests in ci.yml's fast, gating
+         tier — which is the only tier where a wrong nDCG fails a pull request rather than an
+         advisory nightly run. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Benchmarks.Quality\Rag.NET.Benchmarks.Quality.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="xunit.v3" Version="2.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
