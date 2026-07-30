@@ -21,6 +21,30 @@ parity holds.
 
 ## 2. Parity target: dense retrieval through the real pipeline
 
+> **Corrected during implementation. BEIR concatenates title and text with a space, not a newline.**
+> The bullet list below asserts `title + "\n" + text`, and Task 4 of the implementation plan repeats
+> it. Upstream `beir/retrieval/models/sentence_bert.py` declares `sep: str = " "` and builds each
+> corpus sentence as `(doc["title"] + sep + doc["text"]).strip()`. The published ≈ 0.645 was produced
+> with the space.
+>
+> Both separators were measured through the shipped harness rather than argued about: **space =
+> 0.64593, newline = 0.64907**, a difference of **0.00314**. Both land inside the band, so the parity
+> test would have passed either way — which is exactly why this had to be checked against upstream
+> rather than inferred from a green run. The space is the default (`BeirLoader.DefaultTitleTextSeparator`)
+> and is passed explicitly at the call site, so a later change to the default cannot move the number
+> without someone editing the test.
+>
+> **Corrected during implementation. There was no local dense embedder to build on.** This section
+> and §5 both take for granted that Rag.NET could embed text locally. It could not:
+> `OnnxTokenEmbeddingGenerator` implements `ITokenEmbeddingGenerator` (token vectors, for late
+> chunking) and `OnnxSpladeEncoder` is sparse. There was **no way to run Rag.NET with a local, free,
+> offline dense embedder at all**, which is why the phase had to add `OnnxEmbeddingGenerator` to
+> `Rag.NET.Embeddings.Onnx` before it could measure anything. It lands in the library rather than in
+> the harness because the gap is the library's, not the benchmark's. Three of its details are
+> load-bearing for the number below: mean pooling **excludes padding**, `[CLS]` and `[SEP]` **are**
+> included in the mean as sentence-transformers includes them, and text is **truncated** at 256
+> tokens to match `all-MiniLM-L6-v2`'s `max_seq_length` rather than windowed and stitched.
+
 The published figure is **nDCG@10 ≈ 0.645** for `all-MiniLM-L6-v2` on SciFact.
 
 Measured through the actual path — embed, store, retrieve — rather than through a component built
@@ -79,6 +103,31 @@ expensive ones is worse than no table.
 
 ## 5. Parity band: 0.625 ≤ nDCG@10 ≤ 0.665
 
+> **Corrected during implementation. §4 and §5 cannot both be true, and §5 is the one that is wrong.**
+> The justification below says the band is narrow enough that "a real defect cannot hide: the
+> chunk-to-document bug shifts SciFact by considerably more than 0.02". §4 says SciFact abstracts are
+> "mostly single-chunk, so those numbers look plausible either way". Those are contradictory claims
+> about the same dataset, and §4 is the correct one — it is the reason SciFact was chosen in the
+> first place (§1: "abstracts short enough that chunk-to-document aggregation is easy to validate").
+>
+> The shipped harness makes it starker than "mostly": `SciFactParityTests` indexes **one chunk per
+> document**, because that is what BEIR's published figures embed — each corpus entry as one sequence
+> truncated at `max_seq_length`. Chunking would measure a configuration 0.645 did not come from. So
+> on this dataset max-pooling is a literal no-op, and pool-then-cut and cut-then-pool return the
+> identical ranking.
+>
+> **Therefore, on SciFact, the band does not guard the aggregation order at all.**
+> `DocumentRankingTests`' fixture — four chunks from one document among seven, where the two orders
+> disagree — is the *only* thing that does. That is an argument **for** the fixture, not against the
+> band: the band still guards pooling, normalisation, the separator, the IDCG cap, the exclusion rule
+> and whether the whole corpus was indexed, all of which do move this number. But the overstated
+> justification must not survive into the documentation, because a band credited with catching a
+> defect it cannot catch is the same shape as the vacuous guards this milestone keeps finding.
+>
+> The failure message in `SciFactParityTests` names the chunk-to-document step first among the things
+> to look at on a red run. That stays: it is advice for a *future* dataset run through the same
+> harness, where it will bite — not a claim about what this number is watching today.
+
 ±0.02, two-sided.
 
 Wide enough to absorb legitimate variation — our chunker may split a long abstract, WordPiece
@@ -90,6 +139,32 @@ chunk-to-document bug shifts SciFact by considerably more than 0.02.
 means a leak, most likely qrels reaching the ranker.
 
 ## 6. Shape and gating
+
+> **Corrected during implementation. `RequiresSecrets` on the `src` project is inert, and the
+> paragraph asserting otherwise is wrong in both halves.** Below: "Because the project reads
+> `RAGNET_*`, it **must** declare `<RequiresSecrets>true</RequiresSecrets>` — `RepoConventions`
+> enforces that in both directions". `RepoConventions` scans **`tests/*/`** only, and `nightly.yml`
+> globs `tests/*/*.csproj`. On a `src` project the property is read by nothing: it is neither
+> required, nor enforced, nor does it place anything in any job. Declaring it there would have been a
+> decoration that looked like a gate.
+>
+> The second half is wrong too, and more expensively. `RequiresSecrets` is declared **per project**,
+> not per test, so putting the parity test in `tests/Rag.NET.Benchmarks.Quality.Tests` would have
+> carried all **70** metric, loader and cache unit tests out of `ci.yml`'s fast gating tier and into
+> `nightly.yml`'s advisory job — where a wrong nDCG stops failing pull requests. The whole point of
+> the phase is a number that fails loudly when it drifts, and this section's own reasoning about
+> `benchmarks/` says exactly that two paragraphs earlier.
+>
+> **What shipped instead**, as two halves of one decision:
+> - The `RAGNET_BEIR_CACHE` read stays in `src/`, on
+>   `BeirDatasetCache.ResolveCacheDirectoryFromEnvironment`. The loader and metric tests then read no
+>   `RAGNET_*` variable at all — they are handed an explicit temporary directory — so they stay in
+>   the gating tier legitimately rather than by omission.
+> - The parity test lives in its own project,
+>   `tests/Rag.NET.Benchmarks.Quality.IntegrationTests`, which declares `RequiresSecrets` truthfully.
+>
+> Result: the arithmetic gates on every push, and the one test that needs an 86 MB model, a
+> downloaded corpus and several minutes of CPU runs nightly.
 
 `src/Rag.NET.Benchmarks.Quality` — loaders, metrics, aggregation.
 `tests/Rag.NET.Benchmarks.Quality.Tests` — metric unit tests, plus the env-gated parity test.

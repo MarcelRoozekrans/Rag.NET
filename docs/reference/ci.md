@@ -50,7 +50,7 @@ reasons:
 | Label | Runs | Blocks the merge? |
 |---|---|---|
 | **`run-llm`** | the Ollama end-to-end suite — pulls ~2 GB of models | **No**, never, by design |
-| **`run-secrets`** | the three env-gated suites — Tesseract, Document Intelligence, ONNX | **Not yet** — it fails loudly, but no branch protection exists to block on |
+| **`run-secrets`** | the env-gated suites — Tesseract, Document Intelligence, ONNX embedding and late chunking, and the SciFact retrieval-quality parity run | **Not yet** — it fails loudly, but no branch protection exists to block on |
 
 On `run-secrets`: the job *gates* in the sense that a failure is a real failure and is reported as
 one — no `continue-on-error` anywhere in it. It does not *block* anything today, because this
@@ -59,8 +59,9 @@ is set up, this is the nightly job to require; the `llm` one never is.
 
 Use `run-llm` when you have changed the answer engine or a retrieval path and want to see the
 end-to-end result before merging. Use `run-secrets` when you have touched PDF OCR, Document
-Intelligence or ONNX embedding — those suites are deterministic, so a failure is a real regression
-rather than a model choosing different words.
+Intelligence, ONNX embedding, or anything on the retrieval path that could move the
+[retrieval-quality parity number](./retrieval-quality.md) — those suites are deterministic, so a
+failure is a real regression rather than a model choosing different words.
 
 They are separate labels on purpose: a PR touching the PDF parser has no use for a two-gigabyte
 model download, and a single shared label would have made the cheap job unreachable without paying

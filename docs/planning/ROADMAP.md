@@ -53,6 +53,24 @@ future reader can tell the difference between "never existed" and "dealt with".
   and its claim together. Deliberately not designed here — 3.11 was a bug-fix phase and this is API
   surface.
   → **Milestone 4**, with 4.1, which is when the public API gets scrutinised for packaging anyway.
+- **Our BM25 is not comparable to published BM25** (recorded in the Phase 3.7 design as out of scope,
+  scheduled here so it does not stay an open note). `InMemoryBm25Index` lowercases and splits.
+  **Anserini** — which produced BEIR's published BM25 figures — applies **Porter stemming** and an
+  **English stopword list**, and BEIR runs it at **`k1=0.9, b=0.4`** where ours hard-codes Lucene's
+  **`k1=1.5, b=0.75`**. Tokenisation dominates BM25 scores, so these are not two settings of the same
+  retriever.
+  Irrelevant to Phase 3.7, which is dense-only and never touched BM25. It becomes live at the
+  **`+BM25 hybrid` row of the planned ablation table**, and the danger is specific: that row would be
+  **incomparable to any published BM25 reference while sitting in a table whose first row is
+  validated against one** — so it would read as validation of our BM25 to every reader, including the
+  person who wrote it. The failure is a published number, not a red test, which is why the numbers
+  are recorded here rather than left to be rediscovered.
+  Not a call to change `InMemoryBm25Index`. Either the row is labelled as a Rag.NET-internal
+  comparison with no published reference, or a BEIR-comparable analyzer is built for the harness —
+  and the second is the option §2 of the 3.7 design rejected for the dense path, for the same reason
+  it would apply here: a benchmark-only analyzer measures the benchmark, not the library. Whoever
+  builds the table decides; they must decide knowingly.
+  → **Phase 3.12** (BEIR Expansion & Ablation Table — the phase that builds the row)
 - **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
   of scope, scheduled here so they do not stay open notes). All three exist in
   `MarcelRoozekrans/AdoNet.Async` and none exists here:
@@ -351,8 +369,10 @@ Runs **after 3.9**, which is what makes it cheap: the shared traversal driver an
 
 **Not in scope:** other archive formats (7z, tar, rar), encrypted archives, and any change to the warn-and-skip default for unregistered content types.
 
-### Phase 3.7: Retrieval Quality Benchmark Harness [status: pending]
+### Phase 3.7: Retrieval Quality Benchmark Harness [status: complete]
 **Goal:** Measure retrieval quality against public benchmarks with published reference numbers, so correctness is *demonstrable* rather than asserted. (Not a features.md row — quality-hardening scope.)
+**Plan:** `docs/plans/2026-07-30-retrieval-quality-benchmark-design.md` + `-implementation.md`
+**Docs:** `docs/reference/retrieval-quality.md`
 
 Distinct from `EvaluationDatasetBuilder` (Phase 3.2), which synthesises QA pairs from *your* corpus: useful for iterating on your own data, but it can only show that a change moved a number, never that the number is right. Also distinct from the existing `Rag.NET.Benchmarks` project and `docs/reference/benchmarks.md`, which measure **speed**; this measures **quality**. Keep the names apart.
 
@@ -365,9 +385,11 @@ Distinct from `EvaluationDatasetBuilder` (Phase 3.2), which synthesises QA pairs
 - Datasets downloaded on demand and cached; **never vendored into the repo**. Record each dataset's licence — they differ across BEIR.
 - Env-gated like the `RAGNET_*` precedents. Corpus scale is an *embedding cost* problem rather than a disk one, so anything past SciFact needs a cached-embeddings artifact and stays out of default CI.
 
-**Later, once parity holds:** FiQA (long documents, where HyDE should show lift), ArguAna as a **negative control** (HyDE should *not* help; a harness that shows lift everywhere is broken), then EnronQA for the private-corpus and multi-tenant story. Ablation table — baseline dense → +BM25 hybrid → +HyDE → +reranker — using the behaviors that already exist.
+**Later, once parity holds:** FiQA (long documents, where HyDE should show lift), ArguAna as a **negative control** (HyDE should *not* help; a harness that shows lift everywhere is broken), then EnronQA for the private-corpus and multi-tenant story. Ablation table — baseline dense → +BM25 hybrid → +HyDE → +reranker — using the behaviors that already exist. → **Phase 3.12**, now that parity does hold.
 
 **Not in scope here:** comparative tables against other libraries. Legitimate and worth doing, but only credible with genuinely equivalent configuration (same embedding model, chunk size, top-k), which is a separate piece of work and the part such tables are usually attacked on.
+
+**Completed:** 2026-07-30 (**SciFact nDCG@10 = 0.64593** against a published ≈ 0.645 and a band of 0.625–0.665, with Recall@10 = 0.78667 and MRR@10 = 0.60483 over 300 judged queries — 809 of the 1,109 excluded as unjudged — through 5,183 documents and Rag.NET's real embed → store → retrieve path in ~355 s. Every component is the library's own; nothing in the harness is a benchmark-only reimplementation, which is the point, since a harness built out of purpose-made parts measures the harness. **The phase's first premise was already false when it started.** The design and the plan both assume a local dense embedder exists; none did — `OnnxTokenEmbeddingGenerator` is token-level for late chunking and `OnnxSpladeEncoder` is sparse, so there was no way to run Rag.NET with a local, free, offline dense embedder at all. `OnnxEmbeddingGenerator` was added to `Rag.NET.Embeddings.Onnx` rather than to the benchmark, because the gap was the library's. **The number is a conjunction, not a measurement.** Landing in-band needs six independent settings simultaneously right, and the parity run cannot say which one broke: padding excluded from the mean; `[CLS]` and `[SEP]` included in it, as sentence-transformers includes them; truncation at 256 to match `max_seq_length` rather than windowing and stitching; max-pooling chunks to documents *before* the top-k cut; IDCG over `min(|relevant|, k)` and never over `k`, which decides **277 of the 300** judged queries single-handedly, since they have exactly one relevant document and IDCG must therefore equal exactly 1; and only judged queries scored, since scoring the other 809 as zero divides the mean by ~3.7 and reads as retrieval collapse rather than as a harness bug. Each is pinned by its own test for that reason. **Three design errors, all recorded in the design rather than silently rewritten.** §2 asserts BEIR concatenates `title + "\n" + text`; upstream `sentence_bert.py` declares `sep: str = " "`, and both were measured — space 0.64593, newline 0.64907, a shift of 0.00314 with the space closer to published. Both pass the band, which is why this had to be checked against upstream instead of inferred from a green run. §6 requires `<RequiresSecrets>true</RequiresSecrets>` on the `src` project because it reads `RAGNET_*`; the property is **inert** there — `RepoConventions` scans `tests/*/` and `nightly.yml` globs `tests/*/*.csproj` — and the reasoning it was standing in for pointed the wrong way, since `RequiresSecrets` is per project and would have carried all 70 arithmetic tests out of the gating tier along with the parity test. What shipped: the env read stays in `src/` on `BeirDatasetCache`, and the parity test lives in its own `tests/Rag.NET.Benchmarks.Quality.IntegrationTests`, so the arithmetic gates every push and the run needing an 86 MB model and a downloaded corpus runs nightly. And §4 and §5 contradict each other outright: §5 justifies ±0.02 with "the chunk-to-document bug shifts SciFact by considerably more than 0.02" while §4 says SciFact abstracts are "mostly single-chunk, so those numbers look plausible either way". §4 is right — it is why SciFact was chosen — and the shipped harness is starker still, indexing one chunk per document because that is what the published figure embeds, so max-pooling is a literal no-op here and the two orderings return identical rankings. **On this dataset the band does not guard the aggregation order at all**; `DocumentRankingTests`' four-chunks-in-one-document fixture is the only thing that does. That is an argument for the fixture, not against the band — which still guards pooling, normalisation, the separator, the IDCG cap, the exclusion rule and whether the whole corpus was indexed — but the overstated justification was not allowed into the documentation, because a band credited with catching a defect it cannot catch is the same shape as the vacuous guards this milestone keeps finding. SciFact's licences are recorded from upstream rather than assumed, and they are two: ODC-By 1.0 for `corpus.jsonl` and CC BY 4.0 for queries and qrels, with the Hugging Face mirror declaring a single `cc-by-sa-4.0` that matches neither and adds a share-alike obligation upstream does not impose — upstream treated as authoritative, the disagreement recorded rather than resolved. Datasets download on demand into `RAGNET_BEIR_CACHE`, are verified against BEIR's published MD5 onto a `.partial` file deleted on any failure, and are never vendored. The BM25 comparability debt is recorded with its numbers and scheduled → **Phase 3.12**.)
 
 ### Phase 3.8: A/B Shadow Mode [status: pending]
 **Goal:** The production half of the A/B framework — wrap a live pipeline, return the primary answer to the caller, run the secondary out-of-band and score it. (Not a features.md row of its own; it is the deferred half of the `A/B Testing Framework` row delivered in 3.3.)
@@ -378,6 +400,23 @@ Scoped out of Phase 3.3 deliberately, because it is a production-path concern wi
 - **Doubled spend on every request**, invisible unless each variant gets its own ledger.
 - **Fire-and-forget loss.** Secondary work running out-of-band is lost on host shutdown, and a naive implementation drops it silently.
 - **The secondary must never break the primary.** `IRagPipeline.AskAsync` throws rather than returning a `Result`, so an unhandled secondary failure would surface on a request the caller had already been served.
+
+### Phase 3.12: BEIR Expansion & Ablation Table [status: pending]
+**Goal:** Add the datasets and the ablation table Phase 3.7 deliberately deferred until parity held. (Not a features.md row — the second half of 3.7's quality-hardening scope.)
+
+Created when 3.7 completed. Parity holds — SciFact nDCG@10 = 0.64593 against a published ≈ 0.645 — which was the precondition 3.7 attached to every item below. The harness is built and verified; this phase spends it.
+
+**Scope:**
+- **FiQA** — long documents, where HyDE should show lift, and the first dataset where chunk-to-document max-pooling is not a no-op. 3.7 measured SciFact with one chunk per document, so **nothing in the parity number exercises the aggregation order**; `DocumentRankingTests`' fixture is the only thing that does today, and FiQA is where the band starts guarding it too.
+- **ArguAna as a negative control.** HyDE should *not* help there. A harness that shows lift everywhere is broken, and without a case where the expected answer is "no change" nothing can distinguish a working ablation from an optimistic one.
+- **TREC-COVID** — the first graded-relevance dataset. `IrMetrics` uses `2^rel - 1` and has a graded fixture, but no graded dataset has ever been through it.
+- **EnronQA**, for the private-corpus and multi-tenant story.
+- **A cached-embeddings artifact.** Past SciFact the cost is embedding time rather than disk — 5,183 documents already take ~355 s of CPU — so anything larger cannot re-embed per run.
+- **Ablation table**: baseline dense → +BM25 hybrid → +HyDE → +reranker, using the behaviours that already exist.
+
+**The `+BM25 hybrid` row is the one to be careful with**, and the reason is recorded in the follow-up-debts list at the top of this file with its numbers: our BM25 and Anserini's are not two settings of the same retriever, so that row is incomparable to any published BM25 reference **while sitting in a table whose first row is validated against one**. Decide what the row is before publishing it, not after.
+
+**Not in scope:** comparative tables against other libraries — the same reasoning 3.7 gave. And no change to `InMemoryBm25Index` for benchmark comparability; §2 of the 3.7 design rejected building a benchmark-only analyzer for the dense path, and the objection is unchanged here.
 
 ## Milestone 4: Release Readiness (v1.0) [status: pending]
 **Goal:** Make Rag.NET shippable — CI, NuGet publishing, first-class configuration, logging, telemetry, and runnable samples.
