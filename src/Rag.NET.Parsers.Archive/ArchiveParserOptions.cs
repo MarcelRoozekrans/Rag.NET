@@ -35,8 +35,9 @@ public sealed class ArchiveParserOptions
     /// it, and <c>AddArchiveParser</c> throws on a larger request.
     /// </summary>
     /// <remarks>
-    /// One archive is decompressed entry by entry into memory before dispatch, so the total is the
-    /// amount of work a single document may ask a host to do. 2 GB is also where
+    /// An entry is decompressed <i>as the parser that claimed it reads it</i> — nothing here buffers
+    /// one — so the total is not a peak memory figure. It is the amount of decompression work a single
+    /// document may ask a host to do, which is the thing a bomb is trying to spend. 2 GB is also where
     /// <see cref="int"/>-shaped buffer arithmetic elsewhere in the BCL stops being obviously safe, so
     /// it is a ceiling with two reasons rather than a round number with one.
     /// </remarks>
@@ -251,8 +252,8 @@ public sealed class ArchiveParserOptions
             MaxSupportedTotalUncompressedBytes,
             nameof(MaxTotalUncompressedBytes),
             paramName,
-            "Each entry is decompressed into memory before it is dispatched, so this is the total work "
-                + "one document may ask a host to do.");
+            "Each entry is decompressed as the parser that claimed it reads it, so this is the total "
+                + "decompression work one document may ask a host to do.");
 
         ThrowIfAboveCeiling(
             RequestedMaxCompressionRatio,

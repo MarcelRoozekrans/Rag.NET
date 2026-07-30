@@ -25,9 +25,11 @@ namespace Rag.NET.Parsers.Archive;
 /// <para>
 /// <b>Entry names are sanitised as naming hygiene, not as zip-slip mitigation.</b> Zip-slip is an
 /// <i>extraction</i> vulnerability: <c>../../etc/passwd</c> is dangerous because an extractor writes
-/// it to disk. This parser never touches the filesystem. Entries are decompressed into memory and
-/// handed to another <see cref="IDocumentParser"/>, so a traversal-shaped entry name reaches
-/// <see cref="DocumentMetadata.FileName"/> and nowhere else. <see cref="FileNameSanitizer"/> is still
+/// it to disk. This parser never touches the filesystem. An entry is handed to another
+/// <see cref="IDocumentParser"/> as a forward-only stream that decompresses as that parser reads it —
+/// nothing here buffers an entry, and nothing here writes one anywhere — so a traversal-shaped entry
+/// name reaches <see cref="DocumentMetadata.FileName"/> and nowhere else.
+/// <see cref="FileNameSanitizer"/> is still
 /// applied, for the same reason it is applied to a mail subject — a name that reaches metadata should
 /// be a clean name — but recording it as a closed vulnerability would leave a future reader believing
 /// this parser was exposed to something it never was. See design §4.
