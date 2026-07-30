@@ -206,6 +206,64 @@ public class NestedContainerBudgetTests
         Assert.InRange(exception.Observed, ByteCap, 2 * ByteCap);
     }
 
+    // ── Where a refusal stops ────────────────────────────────────────────────
+
+    /// <summary>
+    /// <b>The containment boundary, stated as a test because it was neither tested nor documented.</b>
+    /// A zip bomb attached to an <c>.eml</c> refuses <i>itself</i> — <c>ZipDocumentParser</c> throws
+    /// out of its own <c>ParseAsync</c> — and the email parser's dispatcher contains that refusal one
+    /// level up, exactly as it contains a corrupt PDF. The message keeps its subject, its body and its
+    /// other attachments, and the bomb becomes a warning naming the zip.
+    /// </summary>
+    /// <remarks>
+    /// This is intended, not a second instance of the defect the whole-phase review found inside the
+    /// archive parser. There, containment swallowed a refusal the parser itself was responsible for
+    /// raising and the archive went on being indexed. Here the refusal has already done its work: the
+    /// bomb stopped being read, and what the caller named was a message, not an archive — the same
+    /// reason one unreadable attachment must not cost the mail it arrived on. The byte total still
+    /// crosses the boundary, so a document made of nothing but such attachments is bounded by
+    /// <c>MaxTotalUncompressedBytes</c> rather than by one warning per attachment.
+    /// </remarks>
+    [Fact]
+    public async Task AZipBombInsideAnEmailRefusesItselfAndCostsOnlyThatAttachment()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var text = new RecordingParser("text/plain");
+        var parsers = new List<IDocumentParser>();
+        var emailLog = new CapturingLogger<EmailDocumentParser>();
+        var zip = new ZipDocumentParser(parsers, new CapturingLogger<ZipDocumentParser>());
+        var eml = new EmailDocumentParser(parsers, new HtmlDocumentParser(), emailLog);
+        parsers.Add(zip);
+        parsers.Add(eml);
+        parsers.Add(text);
+
+        // A real megabyte of zeros at a real ~1000:1 against the default 100:1 ratio bound.
+        var bomb = ZipFixtureBuilder.Archive(("zeros.txt", ZipFixtureBuilder.Zeros(1024 * 1024)));
+        var message = await Chains.CarryingAsync("bomb.zip", "application/zip", bomb, ct);
+
+        using var stream = new MemoryStream(message);
+        var sections = await eml.ParseAsync(stream, EmailMetadata(), ct).ToListAsync(ct);
+
+        // Nothing escaped: the message's own content is all here, and the marker attachment beside
+        // the bomb was still dispatched.
+        Assert.Contains(sections, s => s.Text.Contains("carrier", StringComparison.Ordinal));
+        Assert.Contains(text.ReceivedMetadata, m => m.FileName.EndsWith("carrier.txt", StringComparison.Ordinal));
+
+        // And the bomb is a warning naming the archive parser and the attachment, not a lost message.
+        Assert.Contains(
+            emailLog.Warnings,
+            w => w.Contains("bomb.zip", StringComparison.Ordinal) &&
+                 w.Contains(nameof(ZipDocumentParser), StringComparison.Ordinal));
+    }
+
+    private static DocumentMetadata EmailMetadata() => new()
+    {
+        DocumentId = new DocumentId("carrier-1"),
+        FileName = "carrier.eml",
+        ContentType = "message/rfc822",
+        Tags = new Dictionary<string, string>(StringComparer.Ordinal),
+    };
+
     /// <summary>
     /// Asserts the outer archive's own reads are nowhere near the cap, so a refusal can only have
     /// come from what the nested archives spent. Without this the test would stay green under a
@@ -371,6 +429,14 @@ public class NestedContainerBudgetTests
 
             return ZipFixtureBuilder.Archive(entries);
         }
+
+        /// <summary>One <c>.eml</c> carrying its own marker attachment plus the given one.</summary>
+        public static Task<byte[]> CarryingAsync(
+            string name,
+            string contentType,
+            byte[] data,
+            CancellationToken cancellationToken) =>
+            EmlAsync("carrier", "carrier", [(name, contentType, data)], cancellationToken);
 
         /// <summary>A one-entry zip whose entry is big enough that two of them pass the byte cap.</summary>
         private static byte[] Payload(int index) =>

@@ -48,6 +48,16 @@ namespace Rag.NET.Parsers.Archive;
 /// a nested archive got a fresh allowance and cost its parent only its compressed size — the
 /// <c>cap × entries</c> hole the paragraph above refuses, reintroduced one level up.
 /// </para>
+/// <para>
+/// <b>Where a refusal stops.</b> An archive that breaches a bound refuses <i>itself</i>: the exception
+/// leaves this <c>ParseAsync</c>. When the archive was a top-level document that is what the caller
+/// sees; when it was an attachment on an <c>.eml</c>, the email parser's dispatcher contains it like
+/// any other failing attachment, so the message keeps its subject, its body and its other
+/// attachments and the bomb becomes a warning. That is the intended boundary rather than a hole: the
+/// refusal has already stopped the read, and what the caller named was a message. A message made of
+/// nothing but such attachments is still bounded, because the byte total crosses the boundary even
+/// though the refusal does not.
+/// </para>
 /// </remarks>
 public sealed class ZipDocumentParser(
     IEnumerable<IDocumentParser> parsers,
