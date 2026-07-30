@@ -22,6 +22,19 @@ public sealed class LateChunkingIntegrationTests
         "were computed with full attention over both paragraphs, this reference keeps its " +
         "meaning even after the text is cut into separate chunks.";
 
+    /// <summary>
+    /// Tabs as well as newlines. <c>\t</c> is a separate cause of the same defect — the normalizer
+    /// deleted it exactly as it deleted <c>\n</c> — and nothing covered it end to end. The tabs are
+    /// dense here on purpose: several rows fall inside any one 32-token window, so at least one
+    /// chunk is guaranteed to span a tab rather than merely sit near one.
+    /// </summary>
+    private const string TabbedText =
+        "The evaluation harness reports one row per metric, tab-separated, so the numbers line up " +
+        "when the report is pasted into a spreadsheet.\n\n" +
+        "Metric\tValue\nPrecision\t0.81\nRecall\t0.74\nF1 score\t0.77\nCoverage\t0.93\n\n" +
+        "Those figures come from the held-out split described earlier in this document, and the " +
+        "same harness produced every one of them under identical retrieval settings.";
+
     [Fact]
     public async Task LateChunking_WithOnnxGenerator_ProducesNormalizedEmbeddings()
     {
@@ -63,6 +76,55 @@ public sealed class LateChunkingIntegrationTests
             foreach (ref readonly var value in c.Embedding!.Value.Span)
                 normSquared += (double)value * value;
             Assert.Equal(1.0, Math.Sqrt(normSquared), 1e-3);
+        });
+    }
+
+    /// <summary>
+    /// The same end-to-end path over a document containing tabs. Before the whitespace
+    /// substitution the tokenizer deleted every <c>\t</c>, which shortened the text, tripped the
+    /// offset guard and sent the whole section down the unembedded fallback — so a non-null
+    /// embedding on every chunk is itself the assertion that the tab was handled.
+    /// </summary>
+    [Fact]
+    public async Task LateChunking_WithTabsAsWellAsNewlines_StillEmbedsEveryChunk()
+    {
+        var modelPath = Environment.GetEnvironmentVariable("RAGNET_ONNX_EMBED_MODEL");
+        var vocabPath = Environment.GetEnvironmentVariable("RAGNET_ONNX_EMBED_VOCAB");
+        Assert.SkipWhen(
+            string.IsNullOrEmpty(modelPath) || !File.Exists(modelPath) ||
+            string.IsNullOrEmpty(vocabPath) || !File.Exists(vocabPath),
+            "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to existing model/vocab files to run this test.");
+
+        var ct = TestContext.Current.CancellationToken;
+        using var generator = new OnnxTokenEmbeddingGenerator(new OnnxTokenEmbeddingOptions
+        {
+            ModelPath = modelPath,
+            TokenizerVocabPath = vocabPath,
+        });
+        var strategy = new LateChunkingStrategy(
+            generator,
+            new LateChunkingOptions { WindowSizeTokens = 32, OverlapTokens = 4 });
+        var section = new DocumentSection
+        {
+            DocumentId = new DocumentId("late-chunking-tabs"),
+            Text = TabbedText,
+        };
+
+        var chunks = await strategy.ChunkAsync(section, new ChunkingOptions(), ct).ToListAsync(ct);
+
+        Assert.True(chunks.Count > 1, $"expected multiple chunks, got {chunks.Count}");
+        Assert.All(chunks, c => Assert.NotNull(c.Embedding));
+        Assert.Contains(chunks, c => c.Text.Contains('\t', StringComparison.Ordinal));
+
+        var dimension = chunks[0].Embedding!.Value.Length;
+        Assert.True(dimension > 0, "embedding dimension must be positive");
+        Assert.All(chunks, c =>
+        {
+            Assert.Equal(dimension, c.Embedding!.Value.Length);
+
+            // The offsets index the ORIGINAL text, tabs included — that is the contract the
+            // deletion broke, and the substitution restores because it is length-preserving.
+            Assert.Equal(c.Text, TabbedText[c.StartPosition..c.EndPosition]);
         });
     }
 }
