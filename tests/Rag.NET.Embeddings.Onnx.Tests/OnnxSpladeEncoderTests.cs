@@ -15,8 +15,13 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
     public OnnxSpladeEncoderTests()
     {
         _vocabPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".vocab.txt");
+        // "alphabravo" and "##charlie" are merge bait: they exist only so that a separator the
+        // normalizer DELETED produces ids of its own rather than an indistinguishable [UNK].
         File.WriteAllLines(_vocabPath,
-            ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "alpha", "bravo", "charlie", "delta"]);
+            [
+                "[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]",
+                "alpha", "bravo", "charlie", "delta", "alphabravo", "##charlie",
+            ]);
     }
 
     public void Dispose() => File.Delete(_vocabPath);
@@ -85,6 +90,33 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
         // Line index == token id in the temp vocab; no [CLS]/[SEP] in the content ids.
         Assert.NotNull(seenIds);
         Assert.Equal([5, 6, 7, 8], seenIds);
+    }
+
+    /// <summary>
+    /// The newline/tab defect pinned on THIS encoder's own call site. It discards offsets, so
+    /// <see cref="OnnxTokenEmbeddingGenerator"/>'s normalization guard never runs here and a merged
+    /// word raises nothing at all — the ids are the only evidence there is, which is why the
+    /// assertion is on them rather than on an exception. Reverting
+    /// <see cref="OnnxSpladeEncoder.GenerateAsync"/> to call the tokenizer directly (bypassing
+    /// <see cref="BertOnnxPlumbing.EncodeToTokens"/>) lets the normalizer delete the <c>\n</c> and
+    /// the <c>\t</c>, and the three words arrive as <c>alphabravo | ##charlie</c> — terms this
+    /// encoder would then weight, for a document that never contained them.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_MultiLineTabbedText_DoesNotMergeTheWordsAcrossTheSeparators()
+    {
+        int[]? seenIds = null;
+        var sut = CreateSut((ids, start, end) =>
+        {
+            seenIds = ids;
+            return (new float[2], 2);
+        });
+
+        await sut.GenerateAsync("alpha\nbravo\tcharlie", TestContext.Current.CancellationToken);
+
+        // Three separate words: alpha=5, bravo=6, charlie=7. Never the merge-bait 9 or 10.
+        Assert.NotNull(seenIds);
+        Assert.Equal([5, 6, 7], seenIds);
     }
 
     [Fact]
@@ -165,7 +197,7 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
     [Fact]
     public async Task GenerateAsync_ModelVocabularyDiffersFromTokenizerVocab_WarnsOnce()
     {
-        // The temp vocab file has 9 lines; the fake model reports vocabulary size 3.
+        // The temp vocab file has 11 lines; the fake model reports vocabulary size 3.
         var logger = new CapturingLogger();
         var sut = new OnnxSpladeEncoder(
             new OnnxSpladeOptions { ModelPath = "unused/model.onnx", TokenizerVocabPath = _vocabPath },
@@ -177,7 +209,7 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
 
         var warning = Assert.Single(logger.Warnings); // once per instance, not per call
         Assert.Contains("3", warning, StringComparison.Ordinal);
-        Assert.Contains("9", warning, StringComparison.Ordinal);
+        Assert.Contains("11", warning, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -186,7 +218,7 @@ public sealed class OnnxSpladeEncoderTests : IDisposable
         var logger = new CapturingLogger();
         var sut = new OnnxSpladeEncoder(
             new OnnxSpladeOptions { ModelPath = "unused/model.onnx", TokenizerVocabPath = _vocabPath },
-            (ids, start, end) => (new float[9], 9),
+            (ids, start, end) => (new float[11], 11),
             logger);
 
         await sut.GenerateAsync("alpha bravo", TestContext.Current.CancellationToken);
