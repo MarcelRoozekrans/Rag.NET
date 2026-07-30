@@ -35,6 +35,12 @@ public class NestedContainerBudgetTests
     /// <summary>The shared bound both parsers are configured with. See the type's remarks.</summary>
     private const int Budget = 3;
 
+    /// <summary>The byte total the nested-payload fixtures are read against.</summary>
+    private const long ByteCap = 50_000;
+
+    /// <summary>The bytes one nested archive's single entry holds. Comfortably over half the cap.</summary>
+    private const int PayloadBytes = 40_000;
+
     private static DocumentMetadata CreateMetadata() => new()
     {
         DocumentId = new DocumentId("nested-1"),
@@ -119,6 +125,107 @@ public class NestedContainerBudgetTests
         Assert.DoesNotContain("depth-3", alternating);
         Assert.Equal(uniform, alternating);
         Assert.Contains(harness.Warnings, w => w.Contains("nesting depth", StringComparison.Ordinal));
+    }
+
+    // ── The byte total, on the same channel ──────────────────────────────────
+
+    /// <summary>
+    /// The bound the whole-phase review found missing. <c>ArchiveReadBudget</c> was created per
+    /// <c>ParseAsync</c>, so a nested zip re-entered through <see cref="ContainerEntryDispatcher"/>
+    /// and got a <b>fresh</b> allowance, costing its parent only its small compressed size.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The fixture is the review's own repro: five inner archives of 40,000 bytes each against a
+    /// 50,000-byte cap. Per-archive, every branch is admitted in full and the run delivers 200,000
+    /// bytes with no exception and no warning — and with the default nesting budget of 50 the real
+    /// ceiling was roughly <c>51 × cap</c>. Shared, the second branch is refused.
+    /// </para>
+    /// <para>
+    /// The inner content is <see cref="ZipFixtureBuilder.Compressible"/> rather than
+    /// <see cref="ZipFixtureBuilder.Zeros"/> or <see cref="ZipFixtureBuilder.Incompressible"/> for
+    /// reasons stated there: incompressible content would make the <i>outer</i> archive's own reads
+    /// exhaust the budget, which is the wrong mechanism and would keep the test green under the
+    /// mutation.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ANestedArchiveTreeSpendsOneByteTotalRatherThanOnePerArchive()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var text = new RecordingParser("text/plain");
+        var parsers = new List<IDocumentParser>();
+        var zip = new ZipDocumentParser(
+            parsers, options: new ArchiveParserOptions { MaxTotalUncompressedBytes = ByteCap });
+        parsers.Add(zip);
+        parsers.Add(text);
+
+        var archive = Chains.NestedPayloads(branches: 5);
+        AssertTheOuterArchiveCannotExhaustTheBudgetByItself(archive);
+
+        using var stream = new MemoryStream(archive);
+        var exception = await Assert.ThrowsAsync<ArchiveLimitExceededException>(
+            async () => await zip.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct));
+
+        Assert.Equal(ArchiveLimit.TotalUncompressedBytes, exception.Limit);
+        Assert.Equal(ByteCap, exception.Allowed);
+
+        // The number that says "one total, not one per archive". Per-archive this run delivered
+        // 200,000 bytes and threw nothing at all; shared, it stops within one read of the cap.
+        Assert.InRange(exception.Observed, ByteCap, 2 * ByteCap);
+        Assert.True(
+            text.ReceivedMetadata.Count < 5,
+            $"All five nested archives were read, delivering {exception.Observed} bytes against a " +
+            $"{ByteCap}-byte cap, which is the per-archive budget this test exists to refuse.");
+    }
+
+    /// <summary>
+    /// The byte total across the format boundary, which is the same claim design §5 makes for depth
+    /// and the container budget. An <c>.eml</c> has no byte bound of its own, so it neither reads nor
+    /// writes the running total — it has to carry it, or a <c>zip → .eml → zip</c> chain buys an
+    /// attacker the reset that <c>zip → zip</c> no longer does.
+    /// </summary>
+    [Fact]
+    public async Task TheByteTotalSurvivesAHopThroughTheEmailParser()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var text = new RecordingParser("text/plain");
+        var parsers = new List<IDocumentParser>();
+        var zip = new ZipDocumentParser(
+            parsers, options: new ArchiveParserOptions { MaxTotalUncompressedBytes = ByteCap });
+        var eml = new EmailDocumentParser(parsers, new HtmlDocumentParser());
+        parsers.Add(zip);
+        parsers.Add(eml);
+        parsers.Add(text);
+
+        using var stream = new MemoryStream(await Chains.NestedPayloadsBehindEmailAsync(branches: 5, ct));
+        var exception = await Assert.ThrowsAsync<ArchiveLimitExceededException>(
+            async () => await zip.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct));
+
+        Assert.Equal(ArchiveLimit.TotalUncompressedBytes, exception.Limit);
+        Assert.InRange(exception.Observed, ByteCap, 2 * ByteCap);
+    }
+
+    /// <summary>
+    /// Asserts the outer archive's own reads are nowhere near the cap, so a refusal can only have
+    /// come from what the nested archives spent. Without this the test would stay green under a
+    /// per-archive budget for the wrong reason.
+    /// </summary>
+    private static void AssertTheOuterArchiveCannotExhaustTheBudgetByItself(byte[] archiveBytes)
+    {
+        using var source = new MemoryStream(archiveBytes, writable: false);
+        using var archive = new System.IO.Compression.ZipArchive(source, System.IO.Compression.ZipArchiveMode.Read);
+
+        long outerBytes = 0;
+        foreach (var entry in archive.Entries)
+        {
+            outerBytes += entry.Length;
+        }
+
+        Assert.True(
+            outerBytes < ByteCap / 2,
+            $"The outer archive's entries are {outerBytes} bytes against a {ByteCap}-byte cap, so " +
+            "reading the outer archive alone could account for the refusal.");
     }
 
     private static async Task<IReadOnlyList<string>> AdmitAsync(
@@ -229,6 +336,46 @@ public class NestedContainerBudgetTests
             var first = ZipFixtureBuilder.Archive(Marker("depth-1"), ("l2.zip", second));
             return ZipFixtureBuilder.Archive(Marker("top"), ("l1.zip", first));
         }
+
+        /// <summary>
+        /// One outer zip holding <paramref name="branches"/> inner zips, each holding one
+        /// <see cref="PayloadBytes"/> entry. Wide rather than deep, because a per-archive byte budget
+        /// and a shared one are only distinguishable across siblings.
+        /// </summary>
+        public static byte[] NestedPayloads(int branches)
+        {
+            var entries = new (string Name, byte[] Content)[branches];
+            for (var index = 0; index < branches; index++)
+            {
+                entries[index] = ($"branch-{index}.zip", Payload(index));
+            }
+
+            return ZipFixtureBuilder.Archive(entries);
+        }
+
+        /// <summary>The same shape with an <c>.eml</c> between each inner zip and the outer one.</summary>
+        public static async Task<byte[]> NestedPayloadsBehindEmailAsync(
+            int branches,
+            CancellationToken cancellationToken)
+        {
+            var entries = new (string Name, byte[] Content)[branches];
+            for (var index = 0; index < branches; index++)
+            {
+                var carrier = await EmlAsync(
+                    $"branch {index}",
+                    $"carrier-{index}",
+                    [($"payload-{index}.zip", "application/zip", Payload(index))],
+                    cancellationToken);
+                entries[index] = ($"branch-{index}.eml", carrier);
+            }
+
+            return ZipFixtureBuilder.Archive(entries);
+        }
+
+        /// <summary>A one-entry zip whose entry is big enough that two of them pass the byte cap.</summary>
+        private static byte[] Payload(int index) =>
+            ZipFixtureBuilder.Archive(
+                ($"payload-{index}.txt", ZipFixtureBuilder.Compressible(PayloadBytes, seed: index + 1)));
 
         /// <summary>A one-entry zip holding nothing but its own marker.</summary>
         private static (string Name, string ContentType, byte[] Data) InnerZip(string marker) =>

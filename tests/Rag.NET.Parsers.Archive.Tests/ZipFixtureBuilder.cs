@@ -22,6 +22,9 @@ namespace Rag.NET.Parsers.Archive.Tests;
 /// </remarks>
 internal static class ZipFixtureBuilder
 {
+    /// <summary>How far apart <see cref="Compressible"/> scatters its incompressible bytes.</summary>
+    private const int NoiseInterval = 16;
+
     /// <summary>Builds an archive containing the given entries, stored with default deflate.</summary>
     /// <param name="entries">Entry names and their uncompressed content, in order.</param>
     /// <returns>The archive bytes.</returns>
@@ -53,6 +56,33 @@ internal static class ZipFixtureBuilder
     /// failure here rather than a bomb test that stopped testing bombs.
     /// </remarks>
     public static byte[] Zeros(int count) => new byte[count];
+
+    /// <summary>
+    /// Content that shrinks a lot without looking like a bomb: zero bytes with one random byte every
+    /// <see cref="NoiseInterval"/>.
+    /// </summary>
+    /// <param name="count">How many bytes.</param>
+    /// <param name="seed">The generator seed, so the archive is byte-for-byte reproducible.</param>
+    /// <returns>The buffer.</returns>
+    /// <remarks>
+    /// What the nested-archive byte-budget fixture is made of, and neither of the other two would do.
+    /// It has to compress well, so that an archive holding several of these stays small and the
+    /// <i>outer</i> archive's own reads cannot be what exhausts the budget — that is the whole point
+    /// of the case. And it has to compress only moderately, so the ratio bound is not what fires: a
+    /// bomb that trips the wrong cap is a test passing for the wrong reason, and
+    /// <see cref="Zeros"/> at these sizes sits within a factor of two of the ratio ceiling.
+    /// </remarks>
+    public static byte[] Compressible(int count, int seed)
+    {
+        var buffer = new byte[count];
+        var random = new Random(seed);
+        for (var index = 0; index < count; index += NoiseInterval)
+        {
+            buffer[index] = (byte)random.Next(1, 256);
+        }
+
+        return buffer;
+    }
 
     /// <summary>
     /// Content deflate cannot usefully shrink, so an entry made of it has a ratio near 1:1.

@@ -1,17 +1,26 @@
 namespace Rag.NET.Parsers.Archive;
 
 /// <summary>
-/// The running total of bytes decompressed from one archive, shared by every entry read through a
+/// One archive's view of the document-wide decompression total, shared by every entry read through a
 /// <see cref="LimitedReadStream"/>.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>Shared on purpose, and that is the whole reason this type exists rather than a field on the
 /// stream.</b> <see cref="ArchiveParserOptions.MaxTotalUncompressedBytes"/> is a bound on the
-/// archive, not on an entry: a thousand entries of 2 MB each, all of them at an unremarkable 2:1,
+/// document, not on an entry: a thousand entries of 2 MB each, all of them at an unremarkable 2:1,
 /// trip no per-entry check and together cost 2 GB. A counter that reset per entry would enforce
 /// <c>cap × entries</c> instead of <c>cap</c> — the same shape of hole
 /// <c>ContainerBudget</c> documents for the nesting budget, in a different place.
+/// </para>
+/// <para>
+/// <b>The count itself is not held here, and the phase's whole-phase review is why.</b> It lives on
+/// <see cref="ContainerByteBudget"/>, which rides <c>ContainerContext</c>'s reserved tags across the
+/// <c>IDocumentParser</c> boundary. A per-invocation counter was a counter that <i>reset per
+/// archive</i>: a nested zip re-entered through <c>ContainerEntryDispatcher</c>, got a fresh one, and
+/// cost its parent only its small compressed size — <c>cap × entries</c> refused one level down and
+/// reintroduced one level up, worth roughly <c>51 × cap</c> at the default nesting budget. This type
+/// now holds the bounds and the verdict; the number is the document's.
 /// </para>
 /// <para>
 /// <b>It is also where a breach is remembered, not only where it is counted.</b>
@@ -22,6 +31,13 @@ namespace Rag.NET.Parsers.Archive;
 /// by <see cref="ThrowIfExceeded"/> after each entry.
 /// </para>
 /// <para>
+/// <b>The ratio breach deliberately does not cross the boundary, where the total does.</b> The total
+/// is a resource the whole document spends and a parent has to be told about; the ratio is a verdict
+/// on one archive's entry, and a nested archive that refuses itself, contained by its parent, is the
+/// same boundary a zip nested in an <c>.eml</c> already has. The parent still refuses once the shared
+/// total is passed, so nothing is lost by leaving the verdict local.
+/// </para>
+/// <para>
 /// One instance per archive, created by the parser before it enumerates entries. Not thread-safe:
 /// entries are read one at a time on the caller's thread, and making the counter concurrent would
 /// suggest an interleaving the parser does not produce.
@@ -29,13 +45,22 @@ namespace Rag.NET.Parsers.Archive;
 /// </remarks>
 internal sealed class ArchiveReadBudget
 {
+    private readonly ContainerByteBudget documentBytes;
+
     /// <summary>
     /// The expansion factor of the first entry that breached the ratio bound, or <see langword="null"/>
     /// while none has. See the type's remarks on why a breach has to outlive the exception.
     /// </summary>
     private long? breachedRatio;
 
-    public ArchiveReadBudget(ArchiveParserOptions options)
+    /// <summary>Creates the budget one archive is read against.</summary>
+    /// <param name="options">The bounds, read once.</param>
+    /// <param name="documentBytes">
+    /// The document-wide running total this archive books its reads against, normally
+    /// <c>ContainerContext.Bytes</c>. Omitted only where there is no surrounding document — the
+    /// stream's own unit tests — in which case this archive starts the count at zero.
+    /// </param>
+    public ArchiveReadBudget(ArchiveParserOptions options, ContainerByteBudget? documentBytes = null)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -43,6 +68,7 @@ internal sealed class ArchiveReadBudget
         // mutation must not move a bound out from under an archive that is already half-read.
         MaxTotalUncompressedBytes = options.MaxTotalUncompressedBytes;
         MaxCompressionRatio = options.MaxCompressionRatio;
+        this.documentBytes = documentBytes ?? new ContainerByteBudget(0, null);
     }
 
     /// <summary>Gets the total-bytes bound this archive is read against.</summary>
@@ -51,8 +77,11 @@ internal sealed class ArchiveReadBudget
     /// <summary>Gets the per-entry expansion bound entries of this archive are read against.</summary>
     public int MaxCompressionRatio { get; }
 
-    /// <summary>Gets the bytes read from this archive so far, across every entry.</summary>
-    public long TotalUncompressedBytes { get; private set; }
+    /// <summary>
+    /// Gets the bytes decompressed so far — across every entry of this archive <i>and</i> every
+    /// container the document already spent before this archive was opened.
+    /// </summary>
+    public long TotalUncompressedBytes => documentBytes.Spent;
 
     /// <summary>Adds bytes that have <b>already been read</b> to the running total.</summary>
     /// <param name="count">The byte count a read returned.</param>
@@ -61,7 +90,7 @@ internal sealed class ArchiveReadBudget
     /// which bound is reported when a single read breaches more than one — see
     /// <see cref="LimitedReadStream"/>.
     /// </remarks>
-    public void Add(int count) => TotalUncompressedBytes += count;
+    public void Add(int count) => documentBytes.Add(count);
 
     /// <summary>Remembers that an entry expanded past <see cref="MaxCompressionRatio"/>.</summary>
     /// <param name="observedRatio">The expansion factor that entry had reached.</param>

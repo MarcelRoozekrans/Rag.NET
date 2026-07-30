@@ -43,7 +43,10 @@ namespace Rag.NET.Parsers.Archive;
 /// Nesting is bounded by the same depth counter and entry budget the email parsers use, carried
 /// across the <c>IDocumentParser</c> boundary on <see cref="ContainerContext"/>'s reserved tags. A
 /// <c>zip → .eml → zip</c> chain therefore spends one budget rather than two that each look correct
-/// in isolation.
+/// in isolation. <b>The byte total rides the same channel</b>, on
+/// <see cref="ContainerByteBudget"/>: it was per-invocation until the phase's whole-phase review, so
+/// a nested archive got a fresh allowance and cost its parent only its compressed size — the
+/// <c>cap × entries</c> hole the paragraph above refuses, reintroduced one level up.
 /// </para>
 /// </remarks>
 public sealed class ZipDocumentParser(
@@ -85,7 +88,7 @@ public sealed class ZipDocumentParser(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var context = ContainerContext.Create(metadata, options.ToContainerLimits());
-        var readBudget = new ArchiveReadBudget(options);
+        var readBudget = new ArchiveReadBudget(options, context.Bytes);
 
         // leaveOpen: the stream belongs to whoever handed it over — the ingestion pipeline at the top
         // level, ContainerEntryDispatcher for a nested archive — and both dispose it themselves.

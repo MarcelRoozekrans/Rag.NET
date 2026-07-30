@@ -4,8 +4,8 @@ using Rag.NET.Models;
 namespace Rag.NET;
 
 /// <summary>
-/// Tracks how deep the current parse sits inside a chain of nested containers, and how much of the
-/// per-document container budget is left.
+/// Tracks how deep the current parse sits inside a chain of nested containers, how much of the
+/// per-document container budget is left, and what the document has already cost to decompress.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -13,20 +13,23 @@ namespace Rag.NET;
 /// <c>IDocumentParser.ParseAsync(Stream, DocumentMetadata, CancellationToken)</c> boundary:
 /// <see cref="ContainerEntryDispatcher"/> resolves an arbitrary parser for a nested container and
 /// can only reach it through that signature. <see cref="DocumentMetadata.Tags"/> is the only channel
-/// that crosses it, so depth and remaining budget ride there under the reserved keys
-/// <see cref="DepthTag"/> and <see cref="BudgetTag"/>.
+/// that crosses it, so depth, remaining budget and bytes spent ride there under the reserved keys
+/// <see cref="DepthTag"/>, <see cref="BudgetTag"/> and <see cref="BytesTag"/>.
 /// </para>
 /// <para>
-/// Both keys are stripped from <see cref="Metadata"/> on entry, so they never reach a section, a
+/// All three keys are stripped from <see cref="Metadata"/> on entry, so they never reach a section, a
 /// body sub-parse, or a non-container entry — and therefore never reach stored chunk metadata. The
-/// caller's own dictionary is never mutated except through <see cref="ContainerBudget"/>, and then
-/// only when the dispatcher created it.
+/// caller's own dictionary is never mutated except through <see cref="ContainerBudget"/> or
+/// <see cref="ContainerByteBudget"/>, and then only when the dispatcher created it.
 /// </para>
 /// <para>
 /// The tags were named <c>__rag_email_depth</c> and <c>__rag_email_budget</c> until Phase 3.10, when
 /// the archive parser needed the same accounting. They are shared rather than per-format on purpose:
 /// see <see cref="ContainerContentTypes"/> for why two independent budgets would leave an
-/// alternating chain bounded by neither.
+/// alternating chain bounded by neither. <see cref="BytesTag"/> was added by the phase's whole-phase
+/// review, which found the byte bound left per-archive while the container bound was shared — so
+/// alternating formats bought an attacker nothing but nesting the <i>same</i> format bought them a
+/// fresh allowance per archive.
 /// </para>
 /// </remarks>
 public sealed class ContainerContext
@@ -37,15 +40,20 @@ public sealed class ContainerContext
     /// <summary>Reserved tag carrying the container budget still available.</summary>
     public const string BudgetTag = "__rag_container_budget";
 
+    /// <summary>Reserved tag carrying the decompressed bytes the document has already cost.</summary>
+    public const string BytesTag = "__rag_container_bytes";
+
     private ContainerContext(
         DocumentMetadata metadata,
         ContainerLimits limits,
         ContainerBudget budget,
+        ContainerByteBudget bytes,
         int depth)
     {
         Metadata = metadata;
         Limits = limits;
         Budget = budget;
+        Bytes = bytes;
         Depth = depth;
     }
 
@@ -55,6 +63,13 @@ public sealed class ContainerContext
     public ContainerLimits Limits { get; }
 
     public ContainerBudget Budget { get; }
+
+    /// <summary>
+    /// The decompressed bytes this document has cost so far, across every container in the tree. A
+    /// format with no byte bound of its own — email — carries it without reading it, so a nested
+    /// archive inherits what its ancestors spent.
+    /// </summary>
+    public ContainerByteBudget Bytes { get; }
 
     /// <summary>Nesting level of the container being parsed; <c>0</c> for the top-level document.</summary>
     public int Depth { get; }
@@ -69,8 +84,15 @@ public sealed class ContainerContext
     public static ContainerContext Create(DocumentMetadata metadata, ContainerLimits limits)
     {
         var tags = metadata.Tags;
-        if (tags is not { Count: > 0 } || (!tags.ContainsKey(DepthTag) && !tags.ContainsKey(BudgetTag)))
-            return new ContainerContext(metadata, limits, new ContainerBudget(limits.MaxEntries, null), 0);
+        if (tags is not { Count: > 0 } || !HasReservedTag(tags))
+        {
+            return new ContainerContext(
+                metadata,
+                limits,
+                new ContainerBudget(limits.MaxEntries, null),
+                new ContainerByteBudget(0, null),
+                0);
+        }
 
         var scoped = new DocumentMetadata
         {
@@ -84,20 +106,24 @@ public sealed class ContainerContext
         // The tags are attacker-reachable: DocumentMetadata comes from the caller, and a
         // connector can populate Tags from remote data. A larger depth is more restrictive, so
         // it is taken as read; a larger budget is less restrictive, so it is clamped to the
-        // configured cap and can only ever lower it.
+        // configured cap and can only ever lower it. Bytes are carried as an amount already
+        // spent rather than as an allowance left, which makes "larger is more restrictive" true
+        // of them too — see ContainerByteBudget.
         int depth = ReadTag(tags, DepthTag, 0);
         int remaining = Math.Min(ReadTag(tags, BudgetTag, limits.MaxEntries), limits.MaxEntries);
+        long spent = ReadLongTag(tags, BytesTag, 0);
 
         // Write-back is adopted only below the top level. At depth 0 the dictionary belongs to
         // the caller — it reaches stored chunk metadata — and must never be written to, even
         // when the caller happens to have set a reserved key itself.
         var sink = depth > 0 ? tags : null;
-        return new ContainerContext(scoped, limits, new ContainerBudget(remaining, sink), depth);
+        return new ContainerContext(
+            scoped, limits, new ContainerBudget(remaining, sink), new ContainerByteBudget(spent, sink), depth);
     }
 
     /// <summary>Derives the context a nested container parsed in-process runs under.</summary>
     public ContainerContext Descend(DocumentMetadata metadata) =>
-        new(metadata, Limits, Budget, ChildDepth);
+        new(metadata, Limits, Budget, Bytes, ChildDepth);
 
     /// <summary>
     /// Reserves one nested container against both limits. Returns <see langword="false"/> after
@@ -133,18 +159,32 @@ public sealed class ContainerContext
     {
         tags[DepthTag] = ChildDepth.ToString(CultureInfo.InvariantCulture);
         tags[BudgetTag] = Budget.Remaining.ToString(CultureInfo.InvariantCulture);
+        tags[BytesTag] = Bytes.Spent.ToString(CultureInfo.InvariantCulture);
     }
 
     /// <summary>
-    /// Adopts whatever budget a dispatched child left behind, so the cap stays a total across
-    /// sibling branches rather than resetting for each one.
+    /// Adopts whatever a dispatched child left behind — both the container budget and the bytes it
+    /// spent — so each cap stays a total across sibling branches rather than resetting for each one.
     /// </summary>
-    public void AdoptChildBudget(IDictionary<string, string> childTags) =>
+    /// <remarks>
+    /// Called after the child's enumeration whether or not the child completed it. A child that
+    /// refused itself still cost the host the bytes it read before refusing, and
+    /// <see cref="ContainerEntryDispatcher"/> contains that refusal, so this is the only place the
+    /// parent learns of them.
+    /// </remarks>
+    public void AdoptChildBudget(IDictionary<string, string> childTags)
+    {
         Budget.SetRemaining(ReadTag(childTags, BudgetTag, Budget.Remaining));
+        Bytes.SetSpent(ReadLongTag(childTags, BytesTag, Bytes.Spent));
+    }
 
     internal static bool IsReservedTag(string key) =>
         string.Equals(key, DepthTag, StringComparison.Ordinal) ||
-        string.Equals(key, BudgetTag, StringComparison.Ordinal);
+        string.Equals(key, BudgetTag, StringComparison.Ordinal) ||
+        string.Equals(key, BytesTag, StringComparison.Ordinal);
+
+    private static bool HasReservedTag(IDictionary<string, string> tags) =>
+        tags.ContainsKey(DepthTag) || tags.ContainsKey(BudgetTag) || tags.ContainsKey(BytesTag);
 
     private static Dictionary<string, string> CopyWithoutReservedTags(IDictionary<string, string> tags)
     {
@@ -161,6 +201,13 @@ public sealed class ContainerContext
     private static int ReadTag(IDictionary<string, string> tags, string key, int fallback) =>
         tags.TryGetValue(key, out var raw) &&
         int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) &&
+        value >= 0
+            ? value
+            : fallback;
+
+    private static long ReadLongTag(IDictionary<string, string> tags, string key, long fallback) =>
+        tags.TryGetValue(key, out var raw) &&
+        long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) &&
         value >= 0
             ? value
             : fallback;

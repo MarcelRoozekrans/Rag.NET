@@ -75,14 +75,24 @@ public sealed class ArchiveParserOptions
     private int _maxEntries = DefaultEntries;
 
     /// <summary>
-    /// Total bytes decompressed across every entry of one archive, counted as they are read. Default
-    /// 256 MB.
+    /// Total bytes decompressed across every entry of every archive in one <b>document</b>, counted as
+    /// they are read. Default 256 MB.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The bound two caps would miss is the <b>low-ratio, high-total</b> archive: a thousand entries
     /// that each expand 2:1 trip no ratio check and no per-entry check, and together exhaust the host.
     /// The setter clamps to <see cref="MaxSupportedTotalUncompressedBytes"/>; see
     /// <see cref="RequestedMaxTotalUncompressedBytes"/> for why the request is still remembered.
+    /// </para>
+    /// <para>
+    /// <b>A document, not an archive, and the difference is the whole bound.</b> The running total is
+    /// carried across the <c>IDocumentParser</c> boundary on <see cref="ContainerContext"/>'s reserved
+    /// tags, so a nested archive continues its parent's count. Until the phase's whole-phase review it
+    /// did not: each archive started a fresh total and cost its parent only its compressed size, which
+    /// with <see cref="MaxNestedContainers"/> at its default made the real ceiling roughly
+    /// <c>51 ×</c> this number.
+    /// </para>
     /// </remarks>
     public long MaxTotalUncompressedBytes
     {
