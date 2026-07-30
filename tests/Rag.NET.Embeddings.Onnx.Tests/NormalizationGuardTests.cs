@@ -14,10 +14,17 @@ namespace Rag.NET.Embeddings.Onnx.Tests;
 /// would have caught it could not run without a model file.
 /// </para>
 /// <para>
-/// Both directions are pinned because they are different problems: normalization GROWS CJK text
-/// (measured 8 → 14, a space inserted either side of every ideograph) and SHRINKS NFD-decomposed
-/// text (measured 14 → 11, combining marks stripped). The message has to say which, so a reader can
-/// tell a Japanese corpus from a macOS-normalized filename.
+/// Both directions are pinned because they are different problems: normalization GROWS CJK text (a
+/// space inserted either side of every ideograph) and SHRINKS NFD-decomposed text (combining marks
+/// stripped). The message has to say which, so a reader can tell a Japanese corpus from a
+/// macOS-normalized filename.
+/// </para>
+/// <para>
+/// The two figures quoted here are THIS file's own fixtures, and the real-tokenizer cases assert
+/// them: <c>"日本語 text"</c> grows 8 → 14, and <c>"cafe" + U+0301 + " test"</c>
+/// shrinks 10 → 9. The 14 → 11 this remark used to quote for the NFD direction is a real
+/// measurement, but of a longer probe string from the design — not of anything below. Reading it
+/// beside a fixture that measures something else implied both figures came from these tests.
 /// </para>
 /// </remarks>
 public sealed class NormalizationGuardTests
@@ -114,6 +121,9 @@ public sealed class NormalizationGuardTests
 
         Assert.Contains("grew", message, StringComparison.Ordinal);
         Assert.Contains(CjkCausePhrase, message, StringComparison.Ordinal);
+        // The class remark quotes 8 → 14 for this fixture; asserting it here is what makes that a
+        // measurement rather than a claim. Three ideographs, a space inserted either side of each.
+        Assert.Contains("from 8 to 14", message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -129,6 +139,9 @@ public sealed class NormalizationGuardTests
         Assert.Contains("shrank", message, StringComparison.Ordinal);
         Assert.Contains(NfdCausePhrase, message, StringComparison.Ordinal);
         Assert.Contains("NFC", message, StringComparison.Ordinal);
+        // 10 → 9, one character per combining mark — and NOT the 14 → 11 the remark used to quote
+        // for this direction, which measures a different, longer string.
+        Assert.Contains("from 10 to 9", message, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -234,8 +234,10 @@ public sealed class OnnxTokenEmbeddingGenerator : ITokenEmbeddingGenerator, IDis
 
     /// <summary>
     /// Names the likely cause of a length change in the given direction, with the remedy that
-    /// applies to it — the two directions have measurably different causes (CJK 8 → 14, NFD
-    /// 14 → 11) and only one of them is something the caller can fix.
+    /// applies to it — the two directions have measurably different causes and only one of them is
+    /// something the caller can fix. Both figures are measured, and asserted by
+    /// <c>NormalizationGuardTests</c>' real-tokenizer cases: CJK grows (<c>"日本語 text"</c>,
+    /// 8 → 14) and NFD shrinks (<c>"cafe" + U+0301 + " test"</c>, 10 → 9).
     /// </summary>
     private static string LikelyCauseOfLengthChange(bool grew) => grew
         ? "The text most likely contains CJK: the normalizer inserts a space either side of every " +

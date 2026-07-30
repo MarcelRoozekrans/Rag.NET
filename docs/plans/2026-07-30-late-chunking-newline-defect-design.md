@@ -40,6 +40,13 @@ no overload that returns original-text offsets.
 | NFD-decomposed accents | 14 → 11 | **refused** |
 | **CJK** | 8 → **14** | **refused** |
 
+Each row is one probe string, and the rows do not share one. The NFD row is a longer string carrying
+**three** combining marks, which is why it loses three characters; the single-accent fixture the
+tests use, `"cafe" + U+0301 + " test"`, measures **10 → 9** on the same code path. The CJK row is
+`"日本語 text"` — three ideographs, a space inserted either side of each. Quote a row's figure only
+with the string it came from: `NormalizationGuardTests` asserts 8 → 14 and 10 → 9 because those are
+*its* fixtures, and 14 → 11 belongs to neither of them.
+
 Late chunking works only on single-line, NFC, non-CJK text. It is inert for any document with a line
 break, for all Japanese, Chinese and Korean text, and for NFD text — which is what macOS filesystems
 produce.
