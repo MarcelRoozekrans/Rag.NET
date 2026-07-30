@@ -58,10 +58,19 @@ public class ZipDocumentParserTests
     /// <summary>
     /// The drift Phase 3.11 left unenforced: <c>AddArchiveParser</c> declares the claims the startup
     /// guard reasons about, and nothing made them agree with the predicate that actually selects the
-    /// parser. Asserted in both directions over every content type this repository maps, so adding a
-    /// clause to <c>CanParse</c> without a matching <see cref="ParserClaim"/> — or the reverse — is a
-    /// failure here rather than a conflict the guard silently stops detecting.
+    /// parser. Asserted in both directions, so adding a clause to <c>CanParse</c> without a matching
+    /// <see cref="ParserClaim"/> — or the reverse — is a failure here rather than a conflict the guard
+    /// silently stops detecting.
     /// </summary>
+    /// <remarks>
+    /// <b>The universe is wider than <see cref="ContentTypeMap"/>, and the whole-phase review is why.</b>
+    /// Built from the map alone, this test caught an over-claim of <c>application/epub+zip</c> — which
+    /// is in the map — and missed one of <c>application/x-7z-compressed</c> entirely, leaving 44 of 44
+    /// green. The startup <see cref="ParserClaim"/> guard cannot see that either, because an
+    /// over-claim in <c>CanParse</c> is by definition one nobody declared. So the map is joined by the
+    /// declared claims themselves and by <see cref="NeighbouringContentTypes"/> — the types a zip
+    /// parser is plausibly tempted into, none of which this repository maps.
+    /// </remarks>
     [Fact]
     public void TheDeclaredClaimsMatchCanParseExactly()
     {
@@ -78,10 +87,27 @@ public class ZipDocumentParserTests
         Assert.All(claims, c => Assert.Equal("AddArchiveParser()", c.RegistrationMethod));
 
         var parser = new ZipDocumentParser([]);
-        foreach (var contentType in AllKnownContentTypes())
+        foreach (var contentType in CandidateContentTypes(claimed))
         {
             Assert.Equal(claimed.Contains(contentType), parser.CanParse(contentType));
         }
+    }
+
+    /// <summary>
+    /// Guards the guard: the widened universe must actually contain types
+    /// <see cref="ContentTypeMap"/> does not know, or it is the old test under a new name.
+    /// </summary>
+    [Fact]
+    public void TheClaimDriftUniverseReachesBeyondTheContentTypeMap()
+    {
+        var mapped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var extension in MappedExtensions)
+        {
+            mapped.Add(ContentTypeMap.FromFileName("file" + extension));
+        }
+
+        Assert.NotEmpty(NeighbouringContentTypes);
+        Assert.All(NeighbouringContentTypes, t => Assert.DoesNotContain(t, mapped, StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -434,24 +460,61 @@ public class ZipDocumentParserTests
     }
 
     /// <summary>
-    /// Every content type this repository maps an extension to, plus the one zip alias that no
-    /// extension produces. The set is derived from <see cref="ContentTypeMap"/> rather than written
-    /// out, so a content type added there is automatically covered by the drift assertion.
+    /// Every extension this repository maps, so a content type added to <see cref="ContentTypeMap"/>
+    /// is automatically covered by the drift assertion rather than written out twice.
     /// </summary>
-    private static IReadOnlyCollection<string> AllKnownContentTypes()
-    {
-        string[] extensions =
-        [
-            ".pdf", ".html", ".htm", ".docx", ".xlsx", ".pptx", ".epub", ".eml", ".msg", ".zip",
-            ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff",
-            ".wav", ".mp3", ".flac", ".ogg", ".m4a", ".mp4", ".mov", ".mkv", ".avi", ".webm",
-            ".no-such-extension",
-        ];
+    private static readonly string[] MappedExtensions =
+    [
+        ".pdf", ".html", ".htm", ".docx", ".xlsx", ".pptx", ".epub", ".eml", ".msg", ".zip",
+        ".txt", ".md", ".csv", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff",
+        ".wav", ".mp3", ".flac", ".ogg", ".m4a", ".mp4", ".mov", ".mkv", ".avi", ".webm",
+        ".no-such-extension",
+    ];
 
-        var types = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "application/x-zip-compressed" };
-        foreach (var extension in extensions)
+    /// <summary>
+    /// Content types a zip parser is plausibly tempted into and that this repository maps <b>no</b>
+    /// extension to, which is exactly why they have to be listed by hand.
+    /// </summary>
+    /// <remarks>
+    /// Other archive containers first, since "it is an archive, so this parser should have it" is the
+    /// over-claim that would actually get written — and <c>System.IO.Compression</c> reads none of
+    /// them. Then the zip-shaped formats another parser owns or nobody does: a JAR, an APK and an
+    /// ODF document are all zips, and answering their content type here would produce entry-by-entry
+    /// rubbish for the same reason <c>application/epub+zip</c> would. Finally the generic
+    /// "compressed" aliases, which are the ones a well-meaning alias list grows by.
+    /// </remarks>
+    private static readonly string[] NeighbouringContentTypes =
+    [
+        "application/x-7z-compressed",
+        "application/x-tar",
+        "application/gzip",
+        "application/x-gzip",
+        "application/vnd.rar",
+        "application/x-rar-compressed",
+        "application/x-bzip2",
+        "application/java-archive",
+        "application/vnd.android.package-archive",
+        "application/vnd.oasis.opendocument.text",
+        "application/x-compressed",
+        "multipart/x-zip",
+    ];
+
+    /// <summary>
+    /// The universe the claim-drift assertion runs over: everything this repository maps, everything
+    /// the registration declared, and the near misses of <see cref="NeighbouringContentTypes"/>.
+    /// </summary>
+    /// <param name="claimed">The declared claims, so a claim for an unmapped type is checked too.</param>
+    private static IReadOnlyCollection<string> CandidateContentTypes(IEnumerable<string> claimed)
+    {
+        var types = new HashSet<string>(claimed, StringComparer.OrdinalIgnoreCase);
+        foreach (var extension in MappedExtensions)
         {
             types.Add(ContentTypeMap.FromFileName("file" + extension));
+        }
+
+        foreach (var contentType in NeighbouringContentTypes)
+        {
+            types.Add(contentType);
         }
 
         return types;
