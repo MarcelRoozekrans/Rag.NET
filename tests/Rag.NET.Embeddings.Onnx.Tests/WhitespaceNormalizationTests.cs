@@ -84,7 +84,7 @@ public sealed class WhitespaceNormalizationTests
     /// </summary>
     [Theory]
     [InlineData("日本語 text")]
-    [InlineData("café test")] // NFD: 'e' + COMBINING ACUTE ACCENT, written as an escape so it survives editors
+    [InlineData("cafe\u0301 test")] // NFD: 'e' + COMBINING ACUTE ACCENT, written as an escape so it survives editors
     public async Task LengthChangingNormalization_IsStillRefused(string text)
     {
         var vocabPath = ResolveVocabPath();

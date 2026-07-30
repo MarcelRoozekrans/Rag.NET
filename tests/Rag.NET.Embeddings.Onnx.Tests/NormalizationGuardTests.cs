@@ -110,7 +110,7 @@ public sealed class NormalizationGuardTests
     public async Task Nfd_ThroughTheRealTokenizer_IsRefusedNamingNfd()
     {
         // 'e' + COMBINING ACUTE ACCENT, as an escape so no editor can silently recompose it.
-        var message = await RefusalMessageAsync("café test");
+        var message = await RefusalMessageAsync("cafe\u0301 test");
 
         Assert.Contains("shrank", message, StringComparison.Ordinal);
         Assert.Contains("NFD", message, StringComparison.Ordinal);
