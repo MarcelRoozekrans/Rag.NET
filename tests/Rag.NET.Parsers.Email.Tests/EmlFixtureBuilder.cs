@@ -37,7 +37,7 @@ internal static class EmlFixtureBuilder
     /// <summary>
     /// Builds a message whose only attachment is a live <see cref="MessagePart"/> — the shape
     /// MimeKit produces for a forwarded mail, and the one the parser recurses into in memory
-    /// rather than through <c>EmailAttachmentDispatcher</c>.
+    /// rather than through <c>ContainerEntryDispatcher</c>.
     /// </summary>
     public static async Task<byte[]> CreateWithEmbeddedAsync(
         string subject,

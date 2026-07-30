@@ -1,5 +1,4 @@
 using System.Runtime.CompilerServices;
-using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 
@@ -33,10 +32,10 @@ internal static class EmbeddedTraversal
     public static async IAsyncEnumerable<DocumentSection> RunAsync<TMessage>(
         TMessage root,
         IMessageAdapter<TMessage> adapter,
-        EmbeddedMessageContext context,
+        ContainerContext context,
         IDescentPolicy policy,
         IEnumerable<IDocumentParser> parsers,
-        ILogger? logger,
+        IContainerLog? log,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
         where TMessage : class
     {
@@ -80,7 +79,7 @@ internal static class EmbeddedTraversal
 
                 // Dispatcher hops are awaited inline, never pushed: they are bounded, and pushing
                 // them would make the stack carry two kinds of frame for no gain.
-                await foreach (var section in DispatchAsync(child, frame.Context, parsers, logger, cancellationToken).ConfigureAwait(false))
+                await foreach (var section in DispatchAsync(child, frame.Context, parsers, log, cancellationToken).ConfigureAwait(false))
                 {
                     yield return section;
                 }
@@ -127,9 +126,9 @@ internal static class EmbeddedTraversal
     /// <summary>Opens a file attachment and streams whatever parser claims its content type.</summary>
     private static async IAsyncEnumerable<DocumentSection> DispatchAsync<TMessage>(
         MessageChild<TMessage> child,
-        EmbeddedMessageContext context,
+        ContainerContext context,
         IEnumerable<IDocumentParser> parsers,
-        ILogger? logger,
+        IContainerLog? log,
         [EnumeratorCancellation] CancellationToken cancellationToken)
         where TMessage : class
     {
@@ -139,8 +138,8 @@ internal static class EmbeddedTraversal
         var content = await child.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using (content.ConfigureAwait(false))
         {
-            await foreach (var section in EmailAttachmentDispatcher.DispatchAsync(
-                parsers, child.Name, child.MimeType, content, context, logger, cancellationToken).ConfigureAwait(false))
+            await foreach (var section in ContainerEntryDispatcher.DispatchAsync(
+                parsers, child.Name, child.MimeType, content, context, log, cancellationToken).ConfigureAwait(false))
             {
                 yield return section;
             }
@@ -149,7 +148,7 @@ internal static class EmbeddedTraversal
 
     private static Frame<TMessage> NewFrame<TMessage>(
         TMessage message,
-        EmbeddedMessageContext context,
+        ContainerContext context,
         IMessageAdapter<TMessage> adapter)
         where TMessage : class =>
         new()
@@ -165,7 +164,7 @@ internal static class EmbeddedTraversal
     {
         public required TMessage Message { get; init; }
 
-        public required EmbeddedMessageContext Context { get; init; }
+        public required ContainerContext Context { get; init; }
 
         public required IEnumerator<MessageChild<TMessage>> Children { get; init; }
 

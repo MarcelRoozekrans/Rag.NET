@@ -18,6 +18,7 @@
     <Project Path="src/Rag.NET.Parsers.Html/Rag.NET.Parsers.Html.csproj" />
     <Project Path="src/Rag.NET.Parsers.Epub/Rag.NET.Parsers.Epub.csproj" />
     <Project Path="src/Rag.NET.Parsers.Email/Rag.NET.Parsers.Email.csproj" />
+    <Project Path="src/Rag.NET.Parsers.Archive/Rag.NET.Parsers.Archive.csproj" />
     <Project Path="src/Rag.NET.Parsers.Word/Rag.NET.Parsers.Word.csproj" />
     <Project Path="src/Rag.NET.Mcp.Tool/Rag.NET.Mcp.Tool.csproj" />
     <Project Path="src/Rag.NET.Mcp/Rag.NET.Mcp.csproj" />
@@ -90,6 +91,7 @@
     <Project Path="tests/Rag.NET.Parsers.Word.Tests/Rag.NET.Parsers.Word.Tests.csproj" />
     <Project Path="tests/Rag.NET.Mcp.Tests/Rag.NET.Mcp.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Audio.Tests/Rag.NET.Parsers.Audio.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Parsers.Archive.Tests/Rag.NET.Parsers.Archive.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Email.Tests/Rag.NET.Parsers.Email.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Epub.Tests/Rag.NET.Parsers.Epub.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Excel.Tests/Rag.NET.Parsers.Excel.Tests.csproj" />

@@ -17,5 +17,5 @@ internal interface IDescentPolicy
     /// The context the child is parsed under, or <see langword="null"/> to skip the branch —
     /// in which case the driver continues with the next sibling.
     /// </summary>
-    EmbeddedMessageContext? TryDescend(EmbeddedMessageContext parent, string name);
+    ContainerContext? TryDescend(ContainerContext parent, string name);
 }
