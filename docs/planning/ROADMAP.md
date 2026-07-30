@@ -71,6 +71,30 @@ future reader can tell the difference between "never existed" and "dealt with".
   it would apply here: a benchmark-only analyzer measures the benchmark, not the library. Whoever
   builds the table decides; they must decide knowingly.
   → **Phase 3.12** (BEIR Expansion & Ablation Table — the phase that builds the row)
+- **Late chunking silently produces no embeddings for any text containing a newline or a tab**
+  (found in the Phase 3.7 whole-phase review, while provisioning the ONNX model `nightly.yml` had
+  only been claiming to supply). `OnnxTokenEmbeddingGenerator` rejects input whose tokenizer
+  normalization changes the text length — deliberately, because token offsets index the *normalized*
+  text and cannot otherwise be mapped back to the caller's string — and BertTokenizer's normalizer
+  **removes** `\n` and `\t` outright rather than folding them to a space. Probe-verified against a
+  real `all-MiniLM-L6-v2`: `"alpha beta"` and `"alpha  beta"` embed, while `"alpha\nbeta"`,
+  `"alpha\n\nbeta"` and `"alpha\tbeta"` all throw
+  `Tokenizer normalization changed the text length from 10 to 9`. `LateChunkingStrategy` catches that
+  as a generator failure and falls back to text-only chunks with `Embedding = null`, so nothing
+  throws, nothing logs above Warning, and late chunking degrades to ordinary chunking for
+  essentially every real document — real documents have paragraphs.
+  **Nobody could have noticed.** The only test that covers it,
+  `LateChunkingIntegrationTests.LateChunking_WithOnnxGenerator_ProducesNormalizedEmbeddings`, needs a
+  real model and has never executed anywhere: `RAGNET_ONNX_EMBED_MODEL` was a repository *secret*
+  naming a file path that no CI step ever created, so it has skipped in every run since Phase 3.5.
+  The fixture's `"\n\n"` was written in `b5bea3d`; the guard that rejects it arrived in `d53b672`,
+  a review commit two commits later **in the same phase**, and the test that would have caught the
+  collision was already unrunnable when it landed.
+  **This is live, not latent, and the nightly job now shows it.** Provisioning the model turns that
+  test from a skip into a failure, which is the correct outcome and is deliberately not silenced —
+  the finding it came out of was a green tick standing in for a measurement, and suppressing this
+  would rebuild exactly that.
+  → **Phase 3.13**
 - **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
   of scope, scheduled here so they do not stay open notes). All three exist in
   `MarcelRoozekrans/AdoNet.Async` and none exists here:
@@ -417,6 +441,19 @@ Created when 3.7 completed. Parity holds — SciFact nDCG@10 = 0.64593 against a
 **The `+BM25 hybrid` row is the one to be careful with**, and the reason is recorded in the follow-up-debts list at the top of this file with its numbers: our BM25 and Anserini's are not two settings of the same retriever, so that row is incomparable to any published BM25 reference **while sitting in a table whose first row is validated against one**. Decide what the row is before publishing it, not after.
 
 **Not in scope:** comparative tables against other libraries — the same reasoning 3.7 gave. And no change to `InMemoryBm25Index` for benchmark comparability; §2 of the 3.7 design rejected building a benchmark-only analyzer for the dense path, and the objection is unchanged here.
+
+### Phase 3.13: Late Chunking Newline Defect [status: pending]
+**Goal:** Make late chunking work on text that has paragraphs. (Not a features.md row — a defect found by the Phase 3.7 whole-phase review and recorded in the follow-up-debts list at the top of this file.)
+
+Created when that review provisioned the ONNX model `nightly.yml` had been claiming to supply, which ran `LateChunkingIntegrationTests` for the first time since it was written and turned it red. `OnnxTokenEmbeddingGenerator` refuses any input whose tokenizer normalization changes the text length, BertTokenizer's normalizer deletes `\n` and `\t`, and `LateChunkingStrategy` swallows the resulting failure into text-only chunks with `Embedding = null`. The feature is inert for any document containing a line break, which is all of them.
+
+**Scope:**
+- **Decide where the fix belongs.** Position-preserving pre-normalization in the generator — mapping `\n` and `\t` to a space keeps the length, and consecutive spaces already survive — is the cheap option; a real offset map through the normalizer is the thorough one. The guard itself is correct and stays: it is the only reason this was diagnosable at all rather than a silent quality regression.
+- **A fixture that would have caught it.** The current one contains `"\n\n"` and was written before the guard existed. Whatever replaces it must fail against the unfixed generator.
+- **Decide whether the strategy's silent fallback is right.** Falling back to unembedded chunks on a *contract* violation is indistinguishable from working, and that is what hid this for two phases. A generator rejecting its input is not a transient failure.
+- **Ask the same question of `OnnxEmbeddingGenerator`.** It pools internally and exposes no offsets, so it has no equivalent guard and embedded the whole SciFact corpus without complaint. Worth confirming rather than assuming that it is unaffected.
+
+**Not in scope:** the tokenizer. Microsoft.ML.Tokenizers' BERT normalization is upstream behaviour and matching it is the point.
 
 ## Milestone 4: Release Readiness (v1.0) [status: pending]
 **Goal:** Make Rag.NET shippable — CI, NuGet publishing, first-class configuration, logging, telemetry, and runnable samples.
