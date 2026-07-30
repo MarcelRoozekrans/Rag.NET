@@ -8,7 +8,7 @@ namespace Rag.NET.Parsers.Email;
 /// <remarks>
 /// This is the seam that keeps the traversal written once. MimeKit needs
 /// <c>MimeContent.DecodeToAsync</c> into a <see cref="MemoryStream"/> to produce an attachment
-/// stream; MsgReader hands over a <c>byte[]</c> and needs the <see cref="MimeTypeMap"/> fallback
+/// stream; MsgReader hands over a <c>byte[]</c> and needs the <see cref="ContentTypeMap"/> fallback
 /// for senders that omit <c>PidTagAttachMimeTag</c>. Those differences live in the adapters; the
 /// depth-first walk, the ordering guarantee and the disposal contract live in the driver.
 /// </remarks>

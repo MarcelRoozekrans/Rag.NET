@@ -32,7 +32,7 @@ public sealed class EmailParserOptions
     /// </para>
     /// <para>
     /// <b>What the ceiling does bound.</b> A message-typed <i>stream</i> attachment (an
-    /// <c>.eml</c> carrying a <c>.msg</c>) runs through <see cref="EmailAttachmentDispatcher"/>,
+    /// <c>.eml</c> carrying a <c>.msg</c>) runs through <see cref="ContainerEntryDispatcher"/>,
     /// which selects a parser by <b>content type</b> and re-enters through the public
     /// <see cref="Abstractions.IDocumentParser"/> boundary. That indirection is deliberate — it
     /// replaced a <c>ReferenceEquals(parser, self)</c> check that missed
@@ -62,6 +62,17 @@ public sealed class EmailParserOptions
     /// </para>
     /// </remarks>
     public const int MaxSupportedEmbeddedDepth = 64;
+
+    /// <summary>
+    /// Projects these options onto the format-neutral bounds the shared container machinery takes.
+    /// </summary>
+    /// <remarks>
+    /// One mapping point on purpose. <c>ContainerContext</c> held an <see cref="EmailParserOptions"/>
+    /// directly until Phase 3.10, which made it unusable by any other container format; the
+    /// conversion now lives here rather than at each of the three call sites that build a context,
+    /// so the two properties cannot drift apart from the limits they feed.
+    /// </remarks>
+    internal ContainerLimits ToContainerLimits() => new(MaxEmbeddedDepth, MaxEmbeddedMessages);
 
     private const int DefaultEmbeddedDepth = 3;
 

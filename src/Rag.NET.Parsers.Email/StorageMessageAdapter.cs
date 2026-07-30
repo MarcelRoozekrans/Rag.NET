@@ -83,7 +83,7 @@ internal sealed class StorageMessageAdapter(HtmlDocumentParser htmlParser) : IMe
         // file extension when it is absent.
         var mimeType = !string.IsNullOrWhiteSpace(attachment.MimeType)
             ? attachment.MimeType
-            : MimeTypeMap.FromFileName(attachment.FileName);
+            : ContentTypeMap.FromFileName(attachment.FileName);
 
         var data = attachment.Data;
         return new MessageChild<Storage.Message>

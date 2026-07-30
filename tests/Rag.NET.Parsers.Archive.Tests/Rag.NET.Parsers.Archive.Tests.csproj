@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- No <RequiresDocker> and no <RequiresLlm>: these tests build zip fixtures in memory and assert
+       on byte counts. A stale tier declaration fails Rag.NET.RepoConventions.Tests as loudly as a
+       missing one, so neither is declared. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Archive\Rag.NET.Parsers.Archive.csproj" />
+    <!-- NestedContainerBudgetTests needs a second container format on the other side of the
+         IDocumentParser boundary. A zip-only chain cannot show that the depth counter and the entry
+         budget are shared rather than per-package, which is the whole justification for promoting
+         the container machinery into Rag.NET.Abstractions. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Email\Rag.NET.Parsers.Email.csproj" />
+    <!-- BuildServiceProvider, for the test that the declared ParserClaims match CanParse. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="xunit.v3" Version="2.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

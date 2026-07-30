@@ -297,7 +297,7 @@ public class EmbeddedMessageRecursionTests
     /// Builds <paramref name="nestedLevels"/> messages nested inside one another, alternating
     /// container format at every level so consecutive levels are handled by two different
     /// parser instances. Every level is carried as an ordinary binary attachment, so the whole
-    /// chain travels through <c>EmailAttachmentDispatcher</c>. <paramref name="nestedLevels"/>
+    /// chain travels through <c>ContainerEntryDispatcher</c>. <paramref name="nestedLevels"/>
     /// must be even, which makes the outermost container an <c>.eml</c>.
     /// </summary>
     private static async Task<byte[]> BuildAlternatingChainAsync(int nestedLevels, CancellationToken cancellationToken)

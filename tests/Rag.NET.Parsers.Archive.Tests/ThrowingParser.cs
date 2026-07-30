@@ -2,28 +2,23 @@ using System.Runtime.CompilerServices;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 
-namespace Rag.NET.Parsers.Email.Tests;
+namespace Rag.NET.Parsers.Archive.Tests;
 
 /// <summary>
 /// A parser that claims a content type and then fails on it — the shape
 /// <see cref="ContainerEntryDispatcher"/>'s containment exists for, and the one a third-party
-/// <see cref="IDocumentParser"/> can take without the email package knowing anything about it.
+/// <see cref="IDocumentParser"/> can take without this package knowing anything about it.
 /// </summary>
 /// <param name="contentType">The content type this parser claims.</param>
 /// <param name="sectionsBeforeThrow">
-/// How many sections to yield before throwing. A non-zero value is the case a naive containment
-/// gets wrong: those sections have already reached the caller and must survive the failure.
+/// How many sections to yield before throwing. Zero is the plain case; a non-zero value is the one a
+/// naive containment gets wrong, since those sections have already reached the caller.
 /// </param>
-/// <param name="exceptionFactory">
-/// Builds the exception to throw. Defaults to an <see cref="InvalidOperationException"/>; a test
-/// that needs cancellation to stay cancellation supplies an
-/// <see cref="OperationCanceledException"/>.
-/// </param>
-internal sealed class ThrowingDocumentParser(
-    string contentType,
-    int sectionsBeforeThrow = 0,
-    Func<Exception>? exceptionFactory = null) : IDocumentParser
+internal sealed class ThrowingParser(string contentType, int sectionsBeforeThrow = 0) : IDocumentParser
 {
+    /// <summary>The message of the exception thrown, so a test can tell it from any other failure.</summary>
+    public const string FailureMessage = "this entry's parser failed";
+
     /// <summary>The text of every section yielded before the failure.</summary>
     public const string YieldedText = "content produced before the parser failed";
 
@@ -47,7 +42,6 @@ internal sealed class ThrowingDocumentParser(
         }
 
         await Task.Yield();
-        throw exceptionFactory?.Invoke()
-            ?? new InvalidOperationException($"Failed to parse '{metadata.FileName}'.");
+        throw new InvalidOperationException(FailureMessage);
     }
 }
