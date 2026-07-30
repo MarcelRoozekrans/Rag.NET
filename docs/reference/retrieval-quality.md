@@ -120,9 +120,11 @@ The first two are the existing `RAGNET_ONNX_*` precedents, shared with the late-
 embedding suites. Neither the model nor the dataset is in this repository, and neither is downloaded
 by the build.
 
-**The model.** Bring your own export. Any `all-MiniLM-L6-v2` ONNX conversion with token-level output
-works; the identity reported to the ingestion path comes from `OnnxEmbeddingOptions.ModelId`, which
-the parity test sets explicitly so a file named `model.onnx` does not become every model's identity.
+**The model.** Bring your own export, or use the one CI uses —
+`huggingface.co/sentence-transformers/all-MiniLM-L6-v2`, files `onnx/model.onnx` (~86 MB) and
+`vocab.txt` (~230 KB). Any `all-MiniLM-L6-v2` ONNX conversion with token-level output works; the
+identity reported to the ingestion path comes from `OnnxEmbeddingOptions.ModelId`, which the parity
+test sets explicitly so a file named `model.onnx` does not become every model's identity.
 
 **The dataset.** SciFact is **downloaded on demand** into `RAGNET_BEIR_CACHE` on first run, from
 BEIR's published archive, and is **never vendored into this repository**. What arrives is verified
@@ -131,12 +133,20 @@ against the MD5 BEIR publishes before anything is scored against it: the downloa
 fetch fails loudly instead of extracting into a short corpus that scores badly and looks exactly like
 a retrieval defect. Nothing under the cache path is tracked by git.
 
-**Where it runs.** The project declares `<RequiresSecrets>true</RequiresSecrets>`, so it runs in
-`nightly.yml` rather than on every push — see [CI and Test Tiers](./ci.md). It is a project of its
+**Where it runs.** The project declares `<RequiresSecrets>true</RequiresSecrets>`, so `nightly.yml`
+selects it rather than every push doing so — see [CI and Test Tiers](./ci.md). It is a project of its
 own for that reason: the 70 arithmetic tests in `Rag.NET.Benchmarks.Quality.Tests` (metrics, loaders,
 cache) need no model, no corpus and no network, and putting the parity test beside them would have
 carried all 70 out of the gating tier. The arithmetic gates every pull request; the run that needs an
 86 MB model and several minutes of CPU runs nightly.
+
+Selection is not execution, and for a while it was mistaken for it. `RAGNET_BEIR_CACHE` was never
+supplied to that job at all, so the parity test skipped every night and the job passed having
+measured nothing — and the two ONNX variables were held as repository *secrets* naming file paths
+that no step ever created on a fresh runner, which fails the same way. The job now fetches
+`all-MiniLM-L6-v2` from Hugging Face at a pinned revision, verifies a SHA-256, caches it, and points
+all three variables at runner paths. None of the three is a credential and none of them is a secret
+any more.
 
 ## Licences
 

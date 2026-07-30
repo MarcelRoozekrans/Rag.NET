@@ -7,9 +7,9 @@ sidebar_position: 3
 # CI and Test Tiers
 
 Rag.NET has 64 test projects and they do not all want the same thing. Some need nothing but a
-runtime; some start Docker containers; one downloads two gigabytes of language model; three need
-credentials that only exist on the repository. Running them all on every push would be slow and
-flaky. Running only the easy ones would be a lie.
+runtime; some start Docker containers; one downloads two gigabytes of language model; five need
+credentials or large local assets that a plain checkout does not have. Running them all on every
+push would be slow and flaky. Running only the easy ones would be a lie.
 
 So each test project **declares what it needs**, and the workflows select on those declarations.
 Nothing in a workflow file names a project.
@@ -50,7 +50,7 @@ reasons:
 | Label | Runs | Blocks the merge? |
 |---|---|---|
 | **`run-llm`** | the Ollama end-to-end suite — pulls ~2 GB of models | **No**, never, by design |
-| **`run-secrets`** | the env-gated suites — Tesseract, Document Intelligence, ONNX embedding and late chunking, and the SciFact retrieval-quality parity run | **Not yet** — it fails loudly, but no branch protection exists to block on |
+| **`run-secrets`** | the env-gated suites — Document Intelligence, ONNX embedding and late chunking, and the SciFact retrieval-quality parity run | **Not yet** — it fails loudly, but no branch protection exists to block on |
 
 On `run-secrets`: the job *gates* in the sense that a failure is a real failure and is reported as
 one — no `continue-on-error` anywhere in it. It does not *block* anything today, because this
@@ -78,29 +78,47 @@ easy to misread a stale green tick as covering the latest commit.
 
 ## The secrets overlay
 
-Three projects contain tests that need credentials or large local assets:
+Five projects contain tests that need credentials or large local assets:
 
-| Project | Reads |
-|---|---|
-| `Rag.NET.Parsers.Pdf.Tests` | `RAGNET_TESSDATA` |
-| `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests` | `RAGNET_DOCINTEL_ENDPOINT`, `RAGNET_DOCINTEL_KEY` |
-| `Rag.NET.Chunking.IntegrationTests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` |
+| Project | Reads | Where the value comes from |
+|---|---|---|
+| `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests` | `RAGNET_DOCINTEL_ENDPOINT`, `RAGNET_DOCINTEL_KEY` | repository secrets |
+| `Rag.NET.Embeddings.Onnx.Tests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
+| `Rag.NET.Chunking.IntegrationTests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
+| `Rag.NET.Benchmarks.Quality.IntegrationTests` | those two, plus `RAGNET_BEIR_CACHE` | downloaded, plus a runner temp path |
+| `Rag.NET.Parsers.Pdf.Tests` | `RAGNET_TESSDATA` | repository secret — **but see below** |
 
 Each of those tests calls `Assert.Skip` when its variable is absent, so the projects are safe
 anywhere and skip on a normal developer machine. They declare
 `<RequiresSecrets>true</RequiresSecrets>`, and the `env-gated` job in `nightly.yml` selects on that
 property and supplies the values.
 
-**This is an overlay, not a fourth tier.** All three are fast-tier projects: they run in `ci.yml` on
+**Only two of these are actually secret.** That distinction was missing for two phases and it cost
+the whole point of the job. `RAGNET_ONNX_EMBED_MODEL` and `RAGNET_ONNX_EMBED_VOCAB` are *paths to
+files*; every reader calls `File.Exists` on them. Held as repository secrets they named a path that
+no step ever created on a fresh runner, so the ONNX suites skipped every night and the job went
+green. `RAGNET_BEIR_CACHE` is a scratch directory, and it was not supplied at all. The job now
+downloads `all-MiniLM-L6-v2` from Hugging Face at a pinned revision, checks it against a SHA-256,
+caches it between runs, and points all three variables at runner paths — and **fails** if the files
+are not there afterwards, because there is no fork-safety argument for skipping a test whose input
+the job could have fetched.
+
+**`RAGNET_TESSDATA` still reaches nothing, and that is recorded rather than fixed.** Its only reader
+is inside `#if ENABLE_OCR`, and no workflow builds with `/p:EnableOcr=true`, so the test is not in
+the compiled assembly at all — `dotnet test --list-tests` on that project lists 51 tests and none of
+them is it. The secret is harmless and is still supplied; it will start meaning something when
+someone adds the OCR build flag and Tesseract's native binaries to the job.
+
+**This is an overlay, not a fourth tier.** All five are fast-tier projects: they run in `ci.yml` on
 every push (skipping the gated tests) *and* in `nightly.yml` with the values supplied. A project is
 in one tier and may appear in more than one workflow.
 
-**The `env-gated` job gates.** Unlike the LLM tier these suites are deterministic — Tesseract given
-the same PDF and the same traineddata produces the same text — so a failure is a regression. One
-honest caveat: when the secrets are not configured, every test skips and the job passes. A step in
-the job prints which variables are present so a log reader can tell a real pass from a run in which
-nothing executed. Forks never receive secrets, and that is deliberate: an unset secret is not a
-failure.
+**The `env-gated` job gates.** Unlike the LLM tier these suites are deterministic — the same model
+over the same corpus produces the same vectors — so a failure is a regression. The honest caveat is
+now narrower than it was: when the *Document Intelligence* secrets are not configured, that one
+suite skips and the job still passes. A step prints which variables are present so a log reader can
+tell a real pass from a run in which nothing executed. Forks never receive secrets, and that is
+deliberate: an unset secret is not a failure. A missing model file is.
 
 ## Adding a test project
 
@@ -137,8 +155,12 @@ Declare it without starting a container and the same test fails the other way.
 </PropertyGroup>
 ```
 
-`EveryProjectThatReadsASecretDeclaresRequiresSecrets` enforces both directions the same way. You
-will also need the secret added to the repository settings, or the test will keep skipping.
+`EveryProjectThatReadsASecretDeclaresRequiresSecrets` enforces both directions the same way. The
+declaration only gets `nightly.yml` to *select* your project; something still has to supply the
+value, or the test skips there exactly as it does locally. If the value is a real credential, add it
+to the repository secrets. **If it is a file path or a directory — a model, a vocab, a cache — add a
+step to the `env-gated` job that creates it, and do not make it a secret.** A secret cannot put a
+file on a runner, and a variable pointing at a path that does not exist skips silently and green.
 
 **If it needs a model as well as a container**, add `<RequiresLlm>true</RequiresLlm>` alongside
 `RequiresDocker` — the Ollama fixture is a container, so `RequiresLlm` without `RequiresDocker` is a

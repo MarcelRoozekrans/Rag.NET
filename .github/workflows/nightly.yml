@@ -132,15 +132,20 @@ jobs:
   # apply. So no continue-on-error anywhere in this job.
   #
   # What "gating" means when the secrets are absent — say it plainly, because a green tick will
-  # otherwise be read as coverage: every test skips and the job passes. That is today's behaviour
-  # and it is safe (forks and PRs from forks get no secrets at all), but it is not a pass in any
-  # useful sense. The step below prints which variables are present, so the log distinguishes
-  # "green because it ran and passed" from "green because nothing ran". Nothing here fails on
-  # absence: making an unset secret a build failure would break every fork, and the repository
-  # owner already knows which secrets are configured.
+  # otherwise be read as coverage: those tests skip and the job passes. That is safe (forks and PRs
+  # from forks get no secrets at all), but it is not a pass in any useful sense. The presence report
+  # below distinguishes "green because it ran and passed" from "green because nothing ran". Nothing
+  # here fails on an absent SECRET: making that a build failure would break every fork, and the
+  # repository owner already knows which secrets are configured.
+  #
+  # That reasoning does NOT extend to the ONNX model, the vocab or the BEIR cache directory, and
+  # treating it as though it did is what made this job measure nothing for two phases. None of the
+  # three is a credential: two are files anyone can download and one is a scratch directory. They
+  # are provisioned by steps below and the job FAILS if the provisioning did not work, because there
+  # is no fork-safety argument for skipping a test whose input the job could simply have fetched.
   #
   # RequiresSecrets is an overlay, not a fourth tier. It cuts across the fast/Docker partition that
-  # ci.yml verifies rather than adding to it: these three projects are fast-tier projects, they run
+  # ci.yml verifies rather than adding to it: these five projects are fast-tier projects, they run
   # in the fast tier on every push, and they run here as well with values supplied. A project is in
   # exactly one tier and may appear in more than one workflow.
   env-gated:
@@ -152,17 +157,44 @@ jobs:
     # which is the intended and safe outcome.
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-secrets'
     runs-on: ubuntu-latest
-    # No model downloads here, so the same budget as ci.yml. A live Document Intelligence call that
-    # never returns is the thing this bounds.
-    timeout-minutes: 45
+    # Wider than ci.yml's 45 now that this job actually runs the SciFact parity measurement instead
+    # of skipping it. That measurement embeds 5,183 documents and 1,109 queries on CPU — ~355 s per
+    # separator on a fast developer machine, and the theory runs both — so 45 minutes was a budget
+    # for a job that measured nothing. A hosted runner is slower than that machine, and the bound
+    # still has to catch the real failure it is here for: a live Document Intelligence call that
+    # never returns.
+    timeout-minutes: 120
     env:
-      # secrets.* with no fallback, on purpose: an unset secret leaves the tests skipping, which is
-      # exactly the current behaviour and is safe in forks, where secrets are never exposed.
+      # ONLY the values that are genuinely secret. secrets.* with no fallback, on purpose: an unset
+      # secret leaves those tests skipping, which is safe in forks, where secrets are never exposed.
+      #
+      # RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB used to sit here as secrets and could
+      # never work. They are consumed as PATHS TO FILES — every reader calls File.Exists on them —
+      # and no step put a model on the runner, so on a GitHub-hosted ubuntu-latest they resolved to
+      # a path that does not exist and every ONNX-gated test skipped. Measured, not inferred: with
+      # exactly the old env block, tests/Rag.NET.Embeddings.Onnx.Tests reported "Passed: 124,
+      # Skipped: 1" and tests/Rag.NET.Chunking.IntegrationTests "Passed: 2, Skipped: 1". They are
+      # now provisioned by the two steps below instead, because a cache directory and a model file
+      # are not credentials and a secret cannot conjure either onto a fresh runner.
+      #
+      # RAGNET_TESSDATA is kept, and is honestly labelled: it is the one value here that still
+      # reaches nothing. Its only reader, PdfOcrFallbackTests.OcrFallback_RealTesseract_*, is inside
+      # `#if ENABLE_OCR`, and no workflow builds with /p:EnableOcr=true — so the test is not in the
+      # compiled assembly at all, let alone skipped. `dotnet test --list-tests` on that project
+      # lists 51 tests and none of them is it. Supplying the secret changes nothing until someone
+      # adds the OCR build flag and Tesseract's native binaries to this job.
       RAGNET_TESSDATA: ${{ secrets.RAGNET_TESSDATA }}
       RAGNET_DOCINTEL_ENDPOINT: ${{ secrets.RAGNET_DOCINTEL_ENDPOINT }}
       RAGNET_DOCINTEL_KEY: ${{ secrets.RAGNET_DOCINTEL_KEY }}
-      RAGNET_ONNX_EMBED_MODEL: ${{ secrets.RAGNET_ONNX_EMBED_MODEL }}
-      RAGNET_ONNX_EMBED_VOCAB: ${{ secrets.RAGNET_ONNX_EMBED_VOCAB }}
+
+      # Not secrets, and here rather than on the steps that use them for one reason: the cache key
+      # below is a `with:` expression, and job-level env is unambiguously in the `env` context there
+      # while a step's own env feeding that same step's `with:` is the sort of thing that resolves to
+      # an empty string and degrades to a constant cache key without ever failing. Two steps read
+      # MINILM_REVISION, so it also stops the two copies drifting apart.
+      MINILM_REVISION: 1110a243fdf4706b3f48f1d95db1a4f5529b4d41
+      MINILM_MODEL_SHA256: 6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452
+      MINILM_VOCAB_SHA256: 07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -187,12 +219,70 @@ jobs:
       - name: Build
         run: dotnet build Rag.NET.slnx --no-restore -c Release
 
+      # ~86 MB, and the nightly would otherwise re-fetch it 365 times a year for a file that has not
+      # changed since 2022. Keyed on the pinned revision, so bumping the revision below is what
+      # invalidates the cache — there is nothing else in the key that could go stale against it.
+      - name: Cache the all-MiniLM-L6-v2 ONNX export
+        id: onnx-model-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/models/all-MiniLM-L6-v2
+          key: all-MiniLM-L6-v2-onnx-${{ env.MINILM_REVISION }}
+
+      # Pinned to a revision and checked against a SHA-256, not fetched from `main` and trusted.
+      # `main` is a branch on someone else's repository: it can be force-pushed, and a silently
+      # different model would move the SciFact parity number by an amount nobody could attribute.
+      # This is the same discipline BeirDatasetCache already applies to the dataset with BEIR's
+      # published MD5, for the same reason.
+      #
+      # If a checksum fails, do NOT edit the checksum to match. Check whether upstream republished
+      # the revision (it should not be able to) before changing anything here.
+      - name: Fetch the all-MiniLM-L6-v2 ONNX export
+        if: steps.onnx-model-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          base="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/$MINILM_REVISION"
+          dir="$RUNNER_TEMP/models/all-MiniLM-L6-v2"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 --retry-all-errors -o "$dir/model.onnx" "$base/onnx/model.onnx"
+          curl -fsSL --retry 3 --retry-all-errors -o "$dir/vocab.txt"  "$base/vocab.txt"
+          echo "$MINILM_MODEL_SHA256  $dir/model.onnx" | sha256sum -c -
+          echo "$MINILM_VOCAB_SHA256  $dir/vocab.txt"  | sha256sum -c -
+
+      # The two ONNX variables and the BEIR cache are set HERE rather than in the job's `env:`
+      # block, and that is not a style choice: `runner` is not one of the contexts available to
+      # `jobs.<id>.env`, and a literal "$RUNNER_TEMP/beir" would reach the test process unexpanded.
+      #
+      # RAGNET_BEIR_CACHE is a plain runner path and was never a secret. BeirDatasetCache downloads
+      # SciFact on demand into it and verifies BEIR's published MD5, so the only thing the variable
+      # has to name is a writable directory. It was omitted from this job entirely until now, which
+      # meant SciFactParityTests skipped every night and the job went green having measured nothing.
+      - name: Point the env-gated suites at the model and the dataset cache
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/models/all-MiniLM-L6-v2"
+          for file in "$dir/model.onnx" "$dir/vocab.txt"; do
+            if [ ! -s "$file" ]; then
+              echo "::error::$file is missing or empty after the fetch/cache steps. Failing rather than exporting a path that does not exist, because every reader of these variables calls File.Exists and would silently skip instead."
+              exit 1
+            fi
+          done
+          {
+            echo "RAGNET_ONNX_EMBED_MODEL=$dir/model.onnx"
+            echo "RAGNET_ONNX_EMBED_VOCAB=$dir/vocab.txt"
+            echo "RAGNET_BEIR_CACHE=$RUNNER_TEMP/beir"
+          } >> "$GITHUB_ENV"
+
       # Presence only, never a value. Without this the log cannot tell a real pass from a run in
       # which every env-gated test skipped, and those look identical in the summary.
-      - name: Report which secrets are present
+      #
+      # EVERY variable this job supplies is listed, and the list is the point. RAGNET_BEIR_CACHE was
+      # missing from both the env block and this loop, so the one omission that mattered was also
+      # the one omission this report could not have shown. Add a variable to the job, add it here.
+      - name: Report which env-gated variables are present
         run: |
           for name in RAGNET_TESSDATA RAGNET_DOCINTEL_ENDPOINT RAGNET_DOCINTEL_KEY \
-                      RAGNET_ONNX_EMBED_MODEL RAGNET_ONNX_EMBED_VOCAB; do
+                      RAGNET_ONNX_EMBED_MODEL RAGNET_ONNX_EMBED_VOCAB RAGNET_BEIR_CACHE; do
             if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: unset — its tests will skip"; fi
           done
 
