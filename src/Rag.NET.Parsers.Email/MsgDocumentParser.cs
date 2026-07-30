@@ -17,19 +17,34 @@ namespace Rag.NET.Parsers.Email;
 /// Nested messages are walked by <see cref="EmbeddedTraversal"/> over an explicit stack, so
 /// nesting depth costs heap rather than CLR stack. This parser holds no method that calls itself.
 /// </remarks>
-public sealed class MsgDocumentParser(
-    IEnumerable<IDocumentParser> parsers,
-    HtmlDocumentParser htmlParser,
-    ILogger<MsgDocumentParser>? logger = null,
-    EmailParserOptions? options = null) : IDocumentParser
+public sealed class MsgDocumentParser : IDocumentParser
 {
     internal const string MsgContentType = "application/vnd.ms-outlook";
 
-    private readonly EmailParserOptions options = options ?? new EmailParserOptions();
-    private readonly StorageMessageAdapter adapter = new(htmlParser);
-    private readonly EmailContainerLog? containerLog = EmailContainerLog.For(logger);
+    private readonly IEnumerable<IDocumentParser> parsers;
+    private readonly EmailParserOptions options;
+    private readonly StorageMessageAdapter adapter;
+    private readonly EmailContainerLog? containerLog;
+    private readonly EmbeddedMessageDescentPolicy policy;
 
-    private readonly EmbeddedMessageDescentPolicy policy = new(".msg", MsgContentType, EmailContainerLog.For(logger));
+    /// <summary>Creates the parser.</summary>
+    /// <param name="parsers">The registered parsers attachments are dispatched to.</param>
+    /// <param name="htmlParser">Used for an HTML body when there is no plain-text one.</param>
+    /// <param name="logger">Sink for the warnings; <see langword="null"/> silences them.</param>
+    /// <param name="options">The nesting bounds; defaults are used when omitted.</param>
+    /// <remarks>See <see cref="EmailDocumentParser"/>'s constructor for why this is written out.</remarks>
+    public MsgDocumentParser(
+        IEnumerable<IDocumentParser> parsers,
+        HtmlDocumentParser htmlParser,
+        ILogger<MsgDocumentParser>? logger = null,
+        EmailParserOptions? options = null)
+    {
+        this.parsers = parsers;
+        this.options = options ?? new EmailParserOptions();
+        adapter = new StorageMessageAdapter(htmlParser);
+        containerLog = EmailContainerLog.For(logger);
+        policy = new EmbeddedMessageDescentPolicy(".msg", MsgContentType, containerLog);
+    }
 
     public bool CanParse(string contentType) =>
         contentType.Equals(MsgContentType, StringComparison.OrdinalIgnoreCase);
