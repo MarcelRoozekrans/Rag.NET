@@ -32,7 +32,11 @@ public static class BeirLoader
     /// was produced with the space. The default was corrected in Task 5 rather than left as written.
     /// </para>
     /// <para>
-    /// Still a parameter, because the alternative is worth being able to measure: MEASURED_NUMBERS
+    /// Still a parameter, because the alternative is worth being able to measure. Both were, through
+    /// the shipped harness: the space gives SciFact nDCG@10 = <b>0.64593</b> and the newline
+    /// <b>0.64907</b>, a difference of <b>0.00314</b>. Both land inside the ±0.02 parity band, so the
+    /// test would have passed either way — which is precisely why the separator had to be checked
+    /// against upstream instead of inferred from a green run.
     /// </para>
     /// </remarks>
     public const string DefaultTitleTextSeparator = " ";
