@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 
@@ -5,6 +6,46 @@ namespace Rag.NET.Embeddings.Onnx;
 
 public static class RagBuilderExtensions
 {
+    /// <summary>
+    /// Registers <see cref="OnnxEmbeddingGenerator"/> as the singleton
+    /// <see cref="IEmbeddingGenerator{TInput, TEmbedding}"/> — the dense embedder the ingestion
+    /// and retrieval paths use — producing mean-pooled, L2-normalised sentence embeddings from a
+    /// local ONNX model. The only dense embedder in Rag.NET that needs no external API.
+    /// </summary>
+    /// <param name="builder">The RAG builder.</param>
+    /// <param name="configure">
+    /// Configures the <see cref="OnnxEmbeddingOptions"/>; required, and must set
+    /// <see cref="OnnxEmbeddingOptions.ModelPath"/> and
+    /// <see cref="OnnxEmbeddingOptions.TokenizerVocabPath"/> to non-empty paths.
+    /// </param>
+    /// <exception cref="ArgumentNullException">When <paramref name="configure"/> is null.</exception>
+    /// <exception cref="ArgumentException">
+    /// At registration, when <see cref="OnnxEmbeddingOptions.ModelPath"/> or
+    /// <see cref="OnnxEmbeddingOptions.TokenizerVocabPath"/> is empty. File EXISTENCE is checked
+    /// at resolution time by the <see cref="OnnxEmbeddingGenerator"/> constructor
+    /// (<see cref="FileNotFoundException"/>) — the same timing as
+    /// <see cref="UseOnnxTokenEmbeddings"/>.
+    /// </exception>
+    public static TBuilder UseOnnxEmbeddings<TBuilder>(this TBuilder builder, Action<OnnxEmbeddingOptions> configure)
+        where TBuilder : IRagBuilder
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var options = new OnnxEmbeddingOptions { ModelPath = "", TokenizerVocabPath = "" };
+        configure(options);
+
+        if (string.IsNullOrWhiteSpace(options.ModelPath))
+            throw new ArgumentException("OnnxEmbeddingOptions.ModelPath must be a non-empty path.", nameof(configure));
+
+        if (string.IsNullOrWhiteSpace(options.TokenizerVocabPath))
+            throw new ArgumentException("OnnxEmbeddingOptions.TokenizerVocabPath must be a non-empty path.", nameof(configure));
+
+        builder.Services.AddSingleton(options);
+        builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>, OnnxEmbeddingGenerator>();
+
+        return builder;
+    }
+
     /// <summary>
     /// Registers <see cref="OnnxTokenEmbeddingGenerator"/> as the singleton
     /// <see cref="ITokenEmbeddingGenerator"/>, producing token-level embeddings from a local

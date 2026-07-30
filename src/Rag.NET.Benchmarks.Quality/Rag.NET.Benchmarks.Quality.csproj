@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Benchmarks.Quality</RootNamespace>
+    <Description>Retrieval quality benchmark harness for Rag.NET: BEIR dataset loaders, native IR metrics and chunk-to-document aggregation</Description>
+    <!-- A measurement harness, not a library anyone consumes: it exists so `dotnet build
+         Rag.NET.slnx` compiles it and RepoConventions can see it, not so it ships. Phase 4.1 packs
+         what the solution lists, and a nDCG calculator on nuget.org under the Rag.NET name would be
+         a support surface nobody asked for. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+  </ItemGroup>
+
+</Project>

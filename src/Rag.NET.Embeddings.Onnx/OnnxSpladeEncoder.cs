@@ -89,21 +89,14 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
                 $"MaxTokens ({options.MaxTokens}) must exceed the {SpecialTokensPerWindow} positions reserved for [CLS]/[SEP].");
         }
 
-        if (windowRunner is null && !File.Exists(options.ModelPath))
-            throw new FileNotFoundException($"ONNX model file not found: {options.ModelPath}", options.ModelPath);
+        if (windowRunner is null)
+            BertOnnxPlumbing.EnsureModelFileExists(options.ModelPath);
 
-        if (!File.Exists(options.TokenizerVocabPath))
-        {
-            throw new FileNotFoundException(
-                $"BERT vocabulary file not found: {options.TokenizerVocabPath}", options.TokenizerVocabPath);
-        }
+        BertOnnxPlumbing.EnsureVocabularyFileExists(options.TokenizerVocabPath);
 
         _options = options;
         _logger = logger;
-        // Explicit BertOptions: passing null options makes BertTokenizer.Create skip the Bert
-        // normalizer and basic tokenization entirely (verified against 0.22.0), which would
-        // break uncased-vocab matching (uppercase words all become [UNK]).
-        _tokenizer = BertTokenizer.Create(options.TokenizerVocabPath, new BertOptions());
+        _tokenizer = BertOnnxPlumbing.CreateTokenizer(options.TokenizerVocabPath);
         // One-time line count of the vocab file: cheap and lets GenerateAsync warn when the
         // model's logits dimension disagrees with the tokenizer vocabulary (a likely
         // model/vocab mix-up). Warn-only — some exports pad the vocabulary dimension.
@@ -311,21 +304,9 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
     /// Resolves the logits output: the preferred name when the model declares it, else the
     /// model's single output, else fails listing the model's actual outputs.
     /// </summary>
-    internal static string ResolveOutputName(IReadOnlyList<string> modelOutputs, string preferredName)
-    {
-        for (var i = 0; i < modelOutputs.Count; i++)
-        {
-            if (string.Equals(modelOutputs[i], preferredName, StringComparison.Ordinal))
-                return preferredName;
-        }
-
-        if (modelOutputs.Count == 1)
-            return modelOutputs[0];
-
-        throw new InvalidOperationException(
-            $"Model does not declare an output named '{preferredName}'; its outputs are: {string.Join(", ", modelOutputs)}. " +
+    internal static string ResolveOutputName(IReadOnlyList<string> modelOutputs, string preferredName) =>
+        BertOnnxPlumbing.ResolveOutputName(modelOutputs, preferredName,
             "Set OnnxSpladeOptions.OutputName to the output holding the MLM logits [1, sequence, vocabulary].");
-    }
 
     /// <summary>
     /// The resolved output must be the MLM logits — rank 3 with the pass's exact sequence
@@ -334,15 +315,11 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
     /// </summary>
     internal static void ValidateOutputShape(ReadOnlySpan<int> dimensions, int expectedSequenceLength, string outputName)
     {
-        if (dimensions.Length == 3 && dimensions[1] == expectedSequenceLength)
+        if (BertOnnxPlumbing.IsRank3WithSequenceLength(dimensions, expectedSequenceLength))
             return;
 
-        var parts = new string[dimensions.Length];
-        for (var i = 0; i < dimensions.Length; i++)
-            parts[i] = dimensions[i].ToString(System.Globalization.CultureInfo.InvariantCulture);
-        var shape = string.Join(", ", parts);
         throw new InvalidOperationException(
-            $"Model output '{outputName}' has shape [{shape}] but MLM logits " +
+            $"Model output '{outputName}' has shape [{BertOnnxPlumbing.FormatShape(dimensions)}] but MLM logits " +
             $"[1, {expectedSequenceLength}, vocabulary] are required. A pooled-embedding export cannot " +
             "produce SPLADE term weights; set OnnxSpladeOptions.OutputName to the logits output or use " +
             "a model exported with its MLM head.");

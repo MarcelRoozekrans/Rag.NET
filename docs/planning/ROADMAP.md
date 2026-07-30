@@ -67,6 +67,48 @@ future reader can tell the difference between "never existed" and "dealt with".
   and its claim together. Deliberately not designed here — 3.11 was a bug-fix phase and this is API
   surface.
   → **Milestone 4**, with 4.1, which is when the public API gets scrutinised for packaging anyway.
+- **Our BM25 is not comparable to published BM25** (recorded in the Phase 3.7 design as out of scope,
+  scheduled here so it does not stay an open note). `InMemoryBm25Index` lowercases and splits.
+  **Anserini** — which produced BEIR's published BM25 figures — applies **Porter stemming** and an
+  **English stopword list**, and BEIR runs it at **`k1=0.9, b=0.4`** where ours hard-codes Lucene's
+  **`k1=1.5, b=0.75`**. Tokenisation dominates BM25 scores, so these are not two settings of the same
+  retriever.
+  Irrelevant to Phase 3.7, which is dense-only and never touched BM25. It becomes live at the
+  **`+BM25 hybrid` row of the planned ablation table**, and the danger is specific: that row would be
+  **incomparable to any published BM25 reference while sitting in a table whose first row is
+  validated against one** — so it would read as validation of our BM25 to every reader, including the
+  person who wrote it. The failure is a published number, not a red test, which is why the numbers
+  are recorded here rather than left to be rediscovered.
+  Not a call to change `InMemoryBm25Index`. Either the row is labelled as a Rag.NET-internal
+  comparison with no published reference, or a BEIR-comparable analyzer is built for the harness —
+  and the second is the option §2 of the 3.7 design rejected for the dense path, for the same reason
+  it would apply here: a benchmark-only analyzer measures the benchmark, not the library. Whoever
+  builds the table decides; they must decide knowingly.
+  → **Phase 3.12** (BEIR Expansion & Ablation Table — the phase that builds the row)
+- **Late chunking silently produces no embeddings for any text containing a newline or a tab**
+  (found in the Phase 3.7 whole-phase review, while provisioning the ONNX model `nightly.yml` had
+  only been claiming to supply). `OnnxTokenEmbeddingGenerator` rejects input whose tokenizer
+  normalization changes the text length — deliberately, because token offsets index the *normalized*
+  text and cannot otherwise be mapped back to the caller's string — and BertTokenizer's normalizer
+  **removes** `\n` and `\t` outright rather than folding them to a space. Probe-verified against a
+  real `all-MiniLM-L6-v2`: `"alpha beta"` and `"alpha  beta"` embed, while `"alpha\nbeta"`,
+  `"alpha\n\nbeta"` and `"alpha\tbeta"` all throw
+  `Tokenizer normalization changed the text length from 10 to 9`. `LateChunkingStrategy` catches that
+  as a generator failure and falls back to text-only chunks with `Embedding = null`, so nothing
+  throws, nothing logs above Warning, and late chunking degrades to ordinary chunking for
+  essentially every real document — real documents have paragraphs.
+  **Nobody could have noticed.** The only test that covers it,
+  `LateChunkingIntegrationTests.LateChunking_WithOnnxGenerator_ProducesNormalizedEmbeddings`, needs a
+  real model and has never executed anywhere: `RAGNET_ONNX_EMBED_MODEL` was a repository *secret*
+  naming a file path that no CI step ever created, so it has skipped in every run since Phase 3.5.
+  The fixture's `"\n\n"` was written in `b5bea3d`; the guard that rejects it arrived in `d53b672`,
+  a review commit two commits later **in the same phase**, and the test that would have caught the
+  collision was already unrunnable when it landed.
+  **This is live, not latent, and the nightly job now shows it.** Provisioning the model turns that
+  test from a skip into a failure, which is the correct outcome and is deliberately not silenced —
+  the finding it came out of was a green tick standing in for a measurement, and suppressing this
+  would rebuild exactly that.
+  → **Phase 3.13**
 - **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
   of scope, scheduled here so they do not stay open notes). All three exist in
   `MarcelRoozekrans/AdoNet.Async` and none exists here:
@@ -366,6 +408,7 @@ Runs **after 3.9**, which is what makes it cheap: the shared traversal driver an
 
 **Not in scope:** other archive formats (7z, tar, rar), encrypted archives, and any change to the warn-and-skip default for unregistered content types.
 
+
 **Completed:** 2026-07-30 (a **promotion plus an addition**, not the reuse this entry predicted. Every piece the archive parser needed was `internal` to `Rag.NET.Parsers.Email` — the depth/budget context, the budget, the extension→content-type map and the attachment dispatcher — so the phase opens by moving all four into `Rag.NET.Abstractions/Containers` as `ContainerContext`, `ContainerBudget`, `ContentTypeMap` and `ContainerEntryDispatcher`, under the acceptance criterion that no existing test changes an *assertion*. None did; Email stayed at 76 and Templates at 51 across the move. **Sharing the accounting is a security property, not tidiness.** The tags carry depth and entry budget across the `IDocumentParser` boundary, and an archive parser holding its own pair would leave `zip → .eml → zip` counted by two bounds that each look correct in isolation while neither bounds the chain — an attacker who alternates formats walks through both. `ContainerContentTypes` centralises which content types count as containers for the same reason, and states the trap that follows: a container format not listed there is not bounded at all, its own tests pass, and nothing complains.
 
 **Phase 3.11's containment swallowed this phase's headline behaviour, and every test stayed green.** `ContainerEntryDispatcher` catches everything an entry parser throws, which is right — it cannot tell a decompression bomb from a corrupt PDF, and one bad entry must not cost the archive — but it caught `LimitedReadStream`'s refusal too, degrading a zip bomb into a warning per entry rather than a refused archive. The *bound* still held, since the stream stops producing bytes either way, so nothing measuring the bound could see it: the tests passed while the behaviour they were written for was absent. The fix during the phase re-checked the archive-wide total in `ZipDocumentParser` after each entry, where refusing the archive is this parser's decision rather than the shared machinery's.
@@ -378,8 +421,10 @@ Runs **after 3.9**, which is what makes it cheap: the shared traversal driver an
 
 **The `MessageChild<TMessage>` debt scheduled into this phase was not closed, because the premise that scheduled it here is false.** The entry says this phase "adds a third container shape to that type". It does not add any: `MessageChild<TMessage>`, `IMessageAdapter<TMessage>` and `EmbeddedTraversal` model an *email message tree* — live library message objects, descend-or-open — and stayed `internal` to `Rag.NET.Parsers.Email`. `ZipDocumentParser` drives its own `foreach` over `ZipArchive.Entries` and calls `ContainerEntryDispatcher` directly; it has no adapter, constructs no `MessageChild`, and the type still has exactly the two adapters 3.9 left it with. So the debt is neither closed nor worsened — it is exactly as latent as it was, and touching it here would have been a refactor with no caller. Rescheduled on a corrected trigger rather than left open; see the follow-up-debts list. Counts: Archive **44**, Email **76**, Templates **51**, `Rag.NET.Tests` **1325**, RepoConventions **9**, build 0 Warning(s) 0 Error(s).)
 
-### Phase 3.7: Retrieval Quality Benchmark Harness [status: pending]
+### Phase 3.7: Retrieval Quality Benchmark Harness [status: complete]
 **Goal:** Measure retrieval quality against public benchmarks with published reference numbers, so correctness is *demonstrable* rather than asserted. (Not a features.md row — quality-hardening scope.)
+**Plan:** `docs/plans/2026-07-30-retrieval-quality-benchmark-design.md` + `-implementation.md`
+**Docs:** `docs/reference/retrieval-quality.md`
 
 Distinct from `EvaluationDatasetBuilder` (Phase 3.2), which synthesises QA pairs from *your* corpus: useful for iterating on your own data, but it can only show that a change moved a number, never that the number is right. Also distinct from the existing `Rag.NET.Benchmarks` project and `docs/reference/benchmarks.md`, which measure **speed**; this measures **quality**. Keep the names apart.
 
@@ -392,9 +437,11 @@ Distinct from `EvaluationDatasetBuilder` (Phase 3.2), which synthesises QA pairs
 - Datasets downloaded on demand and cached; **never vendored into the repo**. Record each dataset's licence — they differ across BEIR.
 - Env-gated like the `RAGNET_*` precedents. Corpus scale is an *embedding cost* problem rather than a disk one, so anything past SciFact needs a cached-embeddings artifact and stays out of default CI.
 
-**Later, once parity holds:** FiQA (long documents, where HyDE should show lift), ArguAna as a **negative control** (HyDE should *not* help; a harness that shows lift everywhere is broken), then EnronQA for the private-corpus and multi-tenant story. Ablation table — baseline dense → +BM25 hybrid → +HyDE → +reranker — using the behaviors that already exist.
+**Later, once parity holds:** FiQA (long documents, where HyDE should show lift), ArguAna as a **negative control** (HyDE should *not* help; a harness that shows lift everywhere is broken), then EnronQA for the private-corpus and multi-tenant story. Ablation table — baseline dense → +BM25 hybrid → +HyDE → +reranker — using the behaviors that already exist. → **Phase 3.12**, now that parity does hold.
 
 **Not in scope here:** comparative tables against other libraries. Legitimate and worth doing, but only credible with genuinely equivalent configuration (same embedding model, chunk size, top-k), which is a separate piece of work and the part such tables are usually attacked on.
+
+**Completed:** 2026-07-30 (**SciFact nDCG@10 = 0.64593** against a published ≈ 0.645 and a band of 0.625–0.665, with Recall@10 = 0.78667 and MRR@10 = 0.60483 over 300 judged queries — 809 of the 1,109 excluded as unjudged — through 5,183 documents and Rag.NET's real embed → store → retrieve path in ~355 s. Every component is the library's own; nothing in the harness is a benchmark-only reimplementation, which is the point, since a harness built out of purpose-made parts measures the harness. **The phase's first premise was already false when it started.** The design and the plan both assume a local dense embedder exists; none did — `OnnxTokenEmbeddingGenerator` is token-level for late chunking and `OnnxSpladeEncoder` is sparse, so there was no way to run Rag.NET with a local, free, offline dense embedder at all. `OnnxEmbeddingGenerator` was added to `Rag.NET.Embeddings.Onnx` rather than to the benchmark, because the gap was the library's. **The number is a conjunction, not a measurement.** Landing in-band needs five independent settings simultaneously right, and the parity run cannot say which one broke: padding excluded from the mean; `[CLS]` and `[SEP]` included in it, as sentence-transformers includes them; truncation at 256 to match `max_seq_length` rather than windowing and stitching; IDCG over `min(|relevant|, k)` and never over `k`, which decides **277 of the 300** judged queries single-handedly, since they have exactly one relevant document and IDCG must therefore equal exactly 1; and only judged queries scored, since scoring the other 809 as zero divides the mean by ~3.7 and reads as retrieval collapse rather than as a harness bug. Each is pinned by its own test for that reason. **Two settings the harness gets right are deliberately NOT on that list**, because on this dataset the number cannot see either: the chunk-to-document aggregation order (below), and Recall's denominator being *every* relevant document rather than `min(|relevant|, k)` — the exact inverse of the IDCG rule above, which is what makes confusing the two so easy. SciFact's most-judged query has 5 relevant documents, so `min(|relevant|, 10)` equals `|relevant|` for all 300 judged queries and the wrong denominator gives the same Recall@10 of 0.78667. `IrMetricsTests` guards that one; nothing about 0.78667 does. **Three design errors, all recorded in the design rather than silently rewritten.** §2 asserts BEIR concatenates `title + "\n" + text`; upstream `sentence_bert.py` declares `sep: str = " "`, and both were measured — space 0.64593, newline 0.64907, a shift of 0.00314 with the space closer to published. Both pass the band, which is why this had to be checked against upstream instead of inferred from a green run. §6 requires `<RequiresSecrets>true</RequiresSecrets>` on the `src` project because it reads `RAGNET_*`; the property is **inert** there — `RepoConventions` scans `tests/*/` and `nightly.yml` globs `tests/*/*.csproj` — and the reasoning it was standing in for pointed the wrong way, since `RequiresSecrets` is per project and would have carried all 70 arithmetic tests out of the gating tier along with the parity test. What shipped: the env read stays in `src/` on `BeirDatasetCache`, and the parity test lives in its own `tests/Rag.NET.Benchmarks.Quality.IntegrationTests`, so the arithmetic gates every push and the run needing an 86 MB model and a downloaded corpus runs nightly. And §4 and §5 contradict each other outright: §5 justifies ±0.02 with "the chunk-to-document bug shifts SciFact by considerably more than 0.02" while §4 says SciFact abstracts are "mostly single-chunk, so those numbers look plausible either way". §4 is right — it is why SciFact was chosen — and the shipped harness is starker still, indexing one chunk per document because that is what the published figure embeds, so max-pooling is a literal no-op here and the two orderings return identical rankings. **On this dataset the band does not guard the aggregation order at all**; `DocumentRankingTests`' four-chunks-in-one-document fixture is the only thing that does, and cut-then-pool fails **3 of its 13** tests, the disagreement being documents going *missing* rather than being reordered. Checked rather than argued: one chunk per document and `TopK` equal to the cutoff means both orderings pool the same ten hits, so the ranking is the same for all 1,109 queries and nDCG@10 is identically **0.64593** — confirmed by mutating `DocumentRanking` to cut-then-pool and re-running the full measurement, which passes unchanged at both separators. That is an argument for the fixture, not against the band — which still guards pooling, normalisation, the separator, the IDCG cap, the exclusion rule and whether the whole corpus was indexed — but the overstated justification was not allowed into the documentation, because a band credited with catching a defect it cannot catch is the same shape as the vacuous guards this milestone keeps finding. SciFact's licences are recorded from upstream rather than assumed, and they are two: ODC-By 1.0 for `corpus.jsonl` and CC BY 4.0 for queries and qrels, with the Hugging Face mirror declaring a single `cc-by-sa-4.0` that matches neither and adds a share-alike obligation upstream does not impose — upstream treated as authoritative, the disagreement recorded rather than resolved. Datasets download on demand into `RAGNET_BEIR_CACHE`, are verified against BEIR's published MD5 onto a `.partial` file deleted on any failure, and are never vendored. The BM25 comparability debt is recorded with its numbers and scheduled → **Phase 3.12**.)
 
 ### Phase 3.8: A/B Shadow Mode [status: pending]
 **Goal:** The production half of the A/B framework — wrap a live pipeline, return the primary answer to the caller, run the secondary out-of-band and score it. (Not a features.md row of its own; it is the deferred half of the `A/B Testing Framework` row delivered in 3.3.)
@@ -405,6 +452,36 @@ Scoped out of Phase 3.3 deliberately, because it is a production-path concern wi
 - **Doubled spend on every request**, invisible unless each variant gets its own ledger.
 - **Fire-and-forget loss.** Secondary work running out-of-band is lost on host shutdown, and a naive implementation drops it silently.
 - **The secondary must never break the primary.** `IRagPipeline.AskAsync` throws rather than returning a `Result`, so an unhandled secondary failure would surface on a request the caller had already been served.
+
+### Phase 3.12: BEIR Expansion & Ablation Table [status: pending]
+**Goal:** Add the datasets and the ablation table Phase 3.7 deliberately deferred until parity held. (Not a features.md row — the second half of 3.7's quality-hardening scope.)
+
+Created when 3.7 completed. Parity holds — SciFact nDCG@10 = 0.64593 against a published ≈ 0.645 — which was the precondition 3.7 attached to every item below. The harness is built and verified; this phase spends it.
+
+**Scope:**
+- **FiQA** — long documents, where HyDE should show lift, and the first dataset where chunk-to-document max-pooling is not a no-op. 3.7 measured SciFact with one chunk per document, so **nothing in the parity number exercises the aggregation order**; `DocumentRankingTests`' fixture is the only thing that does today, and FiQA is where the band starts guarding it too.
+- **ArguAna as a negative control.** HyDE should *not* help there. A harness that shows lift everywhere is broken, and without a case where the expected answer is "no change" nothing can distinguish a working ablation from an optimistic one.
+- **TREC-COVID** — the first graded-relevance dataset. `IrMetrics` uses `2^rel - 1` and has a graded fixture, but no graded dataset has ever been through it.
+- **EnronQA**, for the private-corpus and multi-tenant story.
+- **A cached-embeddings artifact.** Past SciFact the cost is embedding time rather than disk — 5,183 documents already take ~355 s of CPU — so anything larger cannot re-embed per run.
+- **Ablation table**: baseline dense → +BM25 hybrid → +HyDE → +reranker, using the behaviours that already exist.
+
+**The `+BM25 hybrid` row is the one to be careful with**, and the reason is recorded in the follow-up-debts list at the top of this file with its numbers: our BM25 and Anserini's are not two settings of the same retriever, so that row is incomparable to any published BM25 reference **while sitting in a table whose first row is validated against one**. Decide what the row is before publishing it, not after.
+
+**Not in scope:** comparative tables against other libraries — the same reasoning 3.7 gave. And no change to `InMemoryBm25Index` for benchmark comparability; §2 of the 3.7 design rejected building a benchmark-only analyzer for the dense path, and the objection is unchanged here.
+
+### Phase 3.13: Late Chunking Newline Defect [status: pending]
+**Goal:** Make late chunking work on text that has paragraphs. (Not a features.md row — a defect found by the Phase 3.7 whole-phase review and recorded in the follow-up-debts list at the top of this file.)
+
+Created when that review provisioned the ONNX model `nightly.yml` had been claiming to supply, which ran `LateChunkingIntegrationTests` for the first time since it was written and turned it red. `OnnxTokenEmbeddingGenerator` refuses any input whose tokenizer normalization changes the text length, BertTokenizer's normalizer deletes `\n` and `\t`, and `LateChunkingStrategy` swallows the resulting failure into text-only chunks with `Embedding = null`. The feature is inert for any document containing a line break, which is all of them.
+
+**Scope:**
+- **Decide where the fix belongs.** Position-preserving pre-normalization in the generator — mapping `\n` and `\t` to a space keeps the length, and consecutive spaces already survive — is the cheap option; a real offset map through the normalizer is the thorough one. The guard itself is correct and stays: it is the only reason this was diagnosable at all rather than a silent quality regression.
+- **A fixture that would have caught it.** The current one contains `"\n\n"` and was written before the guard existed. Whatever replaces it must fail against the unfixed generator.
+- **Decide whether the strategy's silent fallback is right.** Falling back to unembedded chunks on a *contract* violation is indistinguishable from working, and that is what hid this for two phases. A generator rejecting its input is not a transient failure.
+- **Ask the same question of `OnnxEmbeddingGenerator`.** It pools internally and exposes no offsets, so it has no equivalent guard and embedded the whole SciFact corpus without complaint. Worth confirming rather than assuming that it is unaffected.
+
+**Not in scope:** the tokenizer. Microsoft.ML.Tokenizers' BERT normalization is upstream behaviour and matching it is the point.
 
 ## Milestone 4: Release Readiness (v1.0) [status: pending]
 **Goal:** Make Rag.NET shippable — CI, NuGet publishing, first-class configuration, logging, telemetry, and runnable samples.

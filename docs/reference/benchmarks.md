@@ -6,6 +6,10 @@ sidebar_position: 1
 
 # Rag.NET Benchmarks
 
+**This page measures speed. For accuracy, see [Retrieval Quality](./retrieval-quality.md).** Nothing
+here says anything about whether retrieval returns the right chunks; the two are separate pages with
+separate names on purpose.
+
 Measured with [BenchmarkDotNet](https://benchmarkdotnet.org/) v0.15.8 on .NET 10.0.4, Windows 11 (25H2).
 Hardware: Intel Core i9-12900HK 2.50 GHz, 20 logical cores.
 
