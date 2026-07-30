@@ -49,14 +49,19 @@ public sealed class BeirLoaderTests : IDisposable
     }
 
     [Fact]
-    public void LoadCorpus_JoinsTitleAndTextWithANewline()
+    public void LoadCorpus_JoinsTitleAndTextWithASingleSpace()
     {
         // BEIR's concatenation, and it decides what gets embedded — so it shifts the parity number
         // rather than failing. Pinned as an exact string, not as "contains the title".
+        //
+        // A SPACE, not the newline this phase's design and plan both assert: BEIR's own
+        // SentenceBERT declares sep = " " and computes (title + sep + text).strip(), and the
+        // published ≈ 0.645 was produced that way. The design was checked against upstream and
+        // corrected rather than followed.
         var documents = BeirLoader.LoadCorpus(At("scifact/corpus.jsonl"));
 
         Assert.Equal(
-            "Cerebral white matter\nAlterations of the architecture.",
+            "Cerebral white matter Alterations of the architecture.",
             documents[0].RetrievalText,
             StringComparer.Ordinal);
     }
@@ -65,7 +70,7 @@ public sealed class BeirLoaderTests : IDisposable
     public void LoadCorpus_AnEmptyTitleLeavesNoLeadingSeparator()
     {
         // BEIR computes (title + sep + text).strip(), so a document with no title embeds its text
-        // alone. A stray leading newline would be a difference in every such document's input.
+        // alone. A stray leading space would be a difference in every such document's input.
         var documents = BeirLoader.LoadCorpus(At("scifact/corpus.jsonl"));
 
         Assert.Equal("An abstract that carries no title.", documents[1].RetrievalText, StringComparer.Ordinal);
@@ -74,14 +79,14 @@ public sealed class BeirLoaderTests : IDisposable
     [Fact]
     public void LoadCorpus_TheSeparatorCanBeOverridden()
     {
-        // BEIR's own SentenceBERT declares sep = " " and joins with a single space, which disagrees
-        // with the newline this phase's design pins. The disagreement is recorded on
-        // BeirLoader.DefaultTitleTextSeparator; this test proves the alternative is one argument
-        // away, so testing it against the parity band costs nothing.
-        var documents = BeirLoader.LoadCorpus(At("scifact/corpus.jsonl"), titleTextSeparator: " ");
+        // The parameter survives the correction of the default because the counterfactual is worth
+        // being able to measure: the SciFact parity run was scored under both separators, and the
+        // difference is recorded on BeirLoader.DefaultTitleTextSeparator. Datasets with longer,
+        // more structured titles are where the choice starts to matter.
+        var documents = BeirLoader.LoadCorpus(At("scifact/corpus.jsonl"), titleTextSeparator: "\n");
 
         Assert.Equal(
-            "Cerebral white matter Alterations of the architecture.",
+            "Cerebral white matter\nAlterations of the architecture.",
             documents[0].RetrievalText,
             StringComparer.Ordinal);
     }

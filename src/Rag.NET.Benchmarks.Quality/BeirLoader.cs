@@ -24,16 +24,18 @@ public static class BeirLoader
     /// Load-bearing: it changes what gets embedded and therefore shifts the parity number.
     /// </para>
     /// <para>
-    /// <b>Known discrepancy, recorded rather than silently resolved.</b> Phase 3.7's design pins a
-    /// newline, and that is the default here. BEIR's own encoder does not use one: as of the current
+    /// <b>A single space, which is what BEIR actually does.</b> As of the current
     /// <c>beir/retrieval/models/sentence_bert.py</c>, <c>SentenceBERT</c> declares
     /// <c>sep: str = " "</c> and builds each corpus sentence as
-    /// <c>(doc["title"] + sep + doc["text"]).strip()</c> — a single space. If the SciFact parity run
-    /// lands outside 0.625–0.665, passing <c>" "</c> to <see cref="LoadCorpus"/> is the first thing
-    /// to try, and it is a parameter precisely so that experiment costs nothing.
+    /// <c>(doc["title"] + sep + doc["text"]).strip()</c>. Phase 3.7's design and implementation plan
+    /// both assert a newline; both are wrong, checked against upstream, and the published ≈ 0.645
+    /// was produced with the space. The default was corrected in Task 5 rather than left as written.
+    /// </para>
+    /// <para>
+    /// Still a parameter, because the alternative is worth being able to measure: MEASURED_NUMBERS
     /// </para>
     /// </remarks>
-    public const string DefaultTitleTextSeparator = "\n";
+    public const string DefaultTitleTextSeparator = " ";
 
     /// <summary>The header BEIR writes as the first line of every qrels TSV.</summary>
     /// <remarks>
