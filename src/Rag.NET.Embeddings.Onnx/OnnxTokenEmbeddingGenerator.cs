@@ -209,17 +209,44 @@ public sealed class OnnxTokenEmbeddingGenerator : ITokenEmbeddingGenerator, IDis
     /// Rejects inputs whose tokenizer normalization changed the text length: token offsets
     /// index the normalized text and can no longer be mapped to the original input.
     /// </summary>
+    /// <remarks>
+    /// The message names the DIRECTION the length moved and the cause that direction implies,
+    /// because the remaining causes are different problems with different answers: text that GREW
+    /// is CJK (unsupported), text that SHRANK is NFD or a control character (both fixable by the
+    /// caller). It used to advise stripping control characters without qualification, which now
+    /// misleads for the commonest members of that class — <c>\n</c>, <c>\t</c> and <c>\r</c> are
+    /// substituted with a space by <see cref="BertOnnxPlumbing.SubstituteWhitespace"/> before this
+    /// point and can no longer be the cause, while the rarer control characters still can.
+    /// </remarks>
     internal static void ThrowIfNormalizationChangedLength(int originalLength, string? normalized)
     {
-        if (normalized is not null && normalized.Length != originalLength)
-        {
-            throw new InvalidOperationException(
-                $"Tokenizer normalization changed the text length from {originalLength} to {normalized.Length}; " +
-                "token offsets index the normalized text and cannot be mapped to the original input. " +
-                "Pre-normalize the input (e.g. strip control characters) or use a vocabulary/options " +
-                "without length-changing normalization.");
-        }
+        // A null normalized text means there is nothing to compare, not that nothing changed:
+        // the caller has already re-run the normalizer to get a non-null one where it could.
+        if (normalized is null || normalized.Length == originalLength)
+            return;
+
+        var grew = normalized.Length > originalLength;
+        throw new InvalidOperationException(
+            $"Tokenizer normalization {(grew ? "grew" : "shrank")} the text length from {originalLength} " +
+            $"to {normalized.Length}; token offsets index the normalized text and cannot be mapped back " +
+            $"to the original input. {LikelyCauseOfLengthChange(grew)}");
     }
+
+    /// <summary>
+    /// Names the likely cause of a length change in the given direction, with the remedy that
+    /// applies to it — the two directions have measurably different causes (CJK 8 → 14, NFD
+    /// 14 → 11) and only one of them is something the caller can fix.
+    /// </summary>
+    private static string LikelyCauseOfLengthChange(bool grew) => grew
+        ? "The text most likely contains CJK: the normalizer inserts a space either side of every " +
+          "Chinese, Japanese and Korean ideograph, so the text grows. No length-preserving rewrite " +
+          "exists for that, so token-level embedding (and therefore late chunking) does not support " +
+          "CJK text."
+        : "The text is most likely NFD-decomposed — the form macOS filesystems produce — whose " +
+          "combining marks the normalizer strips, so the text shrinks; pre-normalize it to NFC " +
+          "(string.Normalize()) and it will be accepted. A remaining control character is deleted " +
+          "the same way, so removing those helps too — but newlines, tabs and CRs cannot be the " +
+          "cause: they are substituted with a space before this point.";
 
     /// <summary>
     /// Resolves the token-level output: the preferred name when the model declares it, else

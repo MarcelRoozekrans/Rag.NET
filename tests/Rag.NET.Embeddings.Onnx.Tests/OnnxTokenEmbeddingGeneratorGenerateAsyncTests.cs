@@ -134,6 +134,11 @@ public sealed class OnnxTokenEmbeddingGeneratorGenerateAsyncTests : IDisposable
         // BERT normalization strips the control character, so token offsets would index a
         // 10-char normalized string while the input has 11 chars — must fail loudly instead
         // of returning misaligned offsets. The model must never run.
+        //
+        // U+0001 is the case Phase 3.13's substitution deliberately does NOT cover: only \n, \t
+        // and \r become a space, so the rarer control characters still shrink the text and this
+        // guard still fires for them. The message now names the direction and the cause — see
+        // NormalizationGuardTests for those pins.
         var calls = 0;
         var sut = CreateSut(TaggedRunner(dimension: 2, onCall: () => calls++));
 
@@ -141,7 +146,8 @@ public sealed class OnnxTokenEmbeddingGeneratorGenerateAsyncTests : IDisposable
             await sut.GenerateAsync("alpha\u0001bravo", TestContext.Current.CancellationToken));
 
         Assert.Equal(0, calls);
-        Assert.Contains("normalization changed the text length", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("normalization shrank the text length", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("control character", ex.Message, StringComparison.Ordinal);
         Assert.Contains("11", ex.Message, StringComparison.Ordinal);
         Assert.Contains("10", ex.Message, StringComparison.Ordinal);
     }
