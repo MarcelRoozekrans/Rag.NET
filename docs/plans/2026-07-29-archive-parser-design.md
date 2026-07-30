@@ -83,6 +83,34 @@ if a future change makes this parser claim a type another parser already claims.
 
 ## 3. The caps, and why they cannot be read from the archive
 
+> **Corrected during implementation. §2 and §3 are in tension as written, and neither notices.** §2
+> presents `ContainerEntryDispatcher`'s containment as a benefit — "contains a throwing parser to its
+> own entry rather than failing the whole archive". §3 says the caps refuse the archive. But a cap is
+> detected *inside a read the entry parser makes*, so the refusal is thrown on that parser's call
+> stack, and it is exactly what §2's containment catches. As written, the caps cannot do what §3 says
+> they do: a bomb degrades into a warning per entry and the archive is indexed anyway. The bound still
+> holds — the stream stops producing bytes either way — which is why nothing measuring the bound could
+> see the difference and every test stayed green.
+>
+> Resolved by re-checking after each entry in `ZipDocumentParser`, where refusing the archive is the
+> parser's decision rather than the shared machinery's. **Twice, and the second time is the part worth
+> recording.** The fix made during the phase re-checked only the archive-wide total, leaving the
+> **ratio** — the cap that detects bombs most directly — still swallowed at default options. The
+> whole-phase review found it. A breach of either byte cap is now recorded on `ArchiveReadBudget`,
+> which outlives the containment, and both are re-raised together, ratio first so the order of refusal
+> below holds end to end and not only inside the stream.
+>
+> **`MaxTotalUncompressedBytes` is a bound on a *document*, which this section does not say.** The
+> implementation shipped it per `ParseAsync`, so a nested archive re-entered through the dispatcher and
+> got a fresh allowance while costing its parent only its compressed size — worth roughly `51 × cap` at
+> §5's nesting budget. The running total now rides `ContainerContext`'s reserved tags as a third
+> reserved key, which is the mechanism §1 exists to provide.
+>
+> **§2's "decompressed to memory" is wrong, and so is §4's repetition of it.** Nothing is buffered:
+> the entry is handed over as a forward-only stream and decompresses as the receiving parser reads it.
+> §4's argument is unaffected — the load-bearing half is that nothing is *written* anywhere — but the
+> cap's justification is decompression work rather than peak memory.
+
 `ZipArchiveEntry.Length` comes from the **central directory, which is attacker-controlled**. A bomb
 declares whatever size it likes. So the caps are enforced by counting bytes actually read through a
 limiting stream wrapper — not by trusting a header, and not by pre-flighting declared sizes.
@@ -135,6 +163,14 @@ alternates formats must be bounded by the same numbers as a chain that does not.
 
 **Part A:** the existing email suites, unmodified, green. Any edit to an existing email test is a
 signal that the promotion changed behaviour and must be reported rather than accommodated.
+
+> **Corrected during implementation. "One bomb per cap" does not say at which *level*, and that is
+> what let §3's tension go undetected.** Every bomb test was written against the limiting stream, with
+> its own read loop and its own budget, so none of them crossed the containment boundary the caps have
+> to survive. A cap can only be shown to refuse an archive by a test that goes through
+> `ZipDocumentParser`; measured at the stream, "the bound held" and "the archive was refused" are
+> indistinguishable. Read as **one bomb per cap, through the parser** — the stream-level tests are
+> worth keeping, but they are tests of the counting, not of the refusal.
 
 **Part B:**
 

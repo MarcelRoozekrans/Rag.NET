@@ -2,10 +2,19 @@ namespace Rag.NET.Parsers.Archive;
 
 /// <summary>
 /// Wraps one archive entry's decompression stream and counts the bytes it <b>actually produces</b>,
-/// refusing the archive with an <see cref="ArchiveLimitExceededException"/> the moment a bound is
-/// passed.
+/// stopping the read with an <see cref="ArchiveLimitExceededException"/> the moment a bound is passed.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>Refusing the archive is not this type's doing, and cannot be.</b> The exception is thrown on the
+/// entry parser's call stack, and <c>ContainerEntryDispatcher</c> contains everything one of those
+/// throws — it cannot tell a decompression bomb from a corrupt PDF, and one bad entry must not cost
+/// the archive. So a breach reaches <c>ZipDocumentParser</c> as state on
+/// <see cref="ArchiveReadBudget"/> rather than as an exception, and the archive is refused there,
+/// after the entry. The read stops the moment a bound is passed; the archive is refused a moment
+/// later. Both byte bounds work that way — until the phase's whole-phase review only the total did,
+/// and a ratio breach degraded into a warning per entry with the archive indexed anyway.
+/// </para>
 /// <para>
 /// <b>Nothing here trusts a declared size, and that is the point of the type.</b>
 /// <c>ZipArchiveEntry.Length</c> is read from the archive's central directory, which is written by
@@ -28,6 +37,9 @@ namespace Rag.NET.Parsers.Archive;
 /// <b>Order of refusal.</b> When one read breaches both bounds, the ratio is reported. It is the more
 /// specific diagnosis — it names an entry as malicious, where the total only says the archive got too
 /// big — and reporting the vaguer one would tell an operator the wrong thing about the same file.
+/// <see cref="ArchiveReadBudget.ThrowIfExceeded"/> has to repeat that ordering rather than inherit it,
+/// because by the time it runs both bounds are recorded: the bytes are booked before the ratio is
+/// tested.
 /// </para>
 /// <para>
 /// This is a read-only, forward-only stream: an entry's deflate stream is not seekable and does not
