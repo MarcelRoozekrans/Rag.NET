@@ -54,8 +54,9 @@ public sealed class NormalizationGuardTests
     /// The phrase that NAMES the cause, not merely the token somewhere in the message. Pinning
     /// bare <c>"NFD"</c>/<c>"CJK"</c> lets a rewrite drop the diagnosis and still pass on an
     /// incidental mention elsewhere in the sentence — measured: renaming the CJK clause to
-    /// "contains ideographs" left all 147 tests green, because "CJK" survived in the closing
-    /// "does not support CJK text."
+    /// "contains ideographs" left the entire suite green (147 tests, as it stood before these
+    /// phrases replaced the bare tokens), because "CJK" survived in the closing "does not support
+    /// CJK text."
     /// </summary>
     private const string NfdCausePhrase = "most likely NFD-decomposed";
 
