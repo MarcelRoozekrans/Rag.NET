@@ -45,8 +45,10 @@ likely qrels reaching the ranker.
 ## What the number does not mean
 
 It is **one dataset, one embedding model, one configuration**. Read it as evidence that the retrieval
-path computes what BEIR computes — that the metrics, the chunk-to-document aggregation, the pooling
-and the normalisation are right. Read it as nothing else.
+path computes what BEIR computes — that the metrics, the pooling and the normalisation are right.
+Not the chunk-to-document aggregation, which this dataset cannot exercise; see
+[what the band does not guard](#two-settings-the-band-does-not-guard-and-what-does). Read it as
+nothing else.
 
 In particular, 0.64593 is not:
 
@@ -69,11 +71,11 @@ can still land inside a ±0.02 band while the headline number reads as evidence.
 a published reference is worth more than five unvalidated ones. That is the whole argument for this
 page existing before FiQA, ArguAna, TREC-COVID or an ablation table exist.
 
-## Six settings, all of which must be right at once
+## Five settings the band actually guards
 
-The band is not loose enough to hide a defect, and landing inside it depends on six independent
-decisions being simultaneously correct. Each is pinned by its own test, because the parity number
-alone cannot tell you which one broke:
+The band is not loose enough to hide a defect, and landing inside it depends on five independent
+decisions being simultaneously correct. Each is *also* pinned by its own test, because the parity
+number alone cannot tell you which one broke:
 
 1. **Mean pooling excludes padding.** Sequences in a batch are padded to the longest one. Pooling
    over the padding makes a text's vector depend on what it was batched with.
@@ -81,20 +83,45 @@ alone cannot tell you which one broke:
    Excluding them is defensible and produces a different number.
 3. **Truncation at 256 tokens**, matching `all-MiniLM-L6-v2`'s `max_seq_length`. Raising it measures
    a configuration the published figure did not come from.
-4. **Max-pool chunks to documents *before* taking the top *k***, not after. BEIR ranks documents;
-   Rag.NET retrieves chunks. Cutting first evicts documents rather than reordering them.
-5. **IDCG is summed over `min(|relevant|, k)` ideal gains, never over `k`.** 277 of SciFact's 300
+4. **IDCG is summed over `min(|relevant|, k)` ideal gains, never over `k`.** 277 of SciFact's 300
    judged queries have exactly one relevant document, so for 92% of the dataset IDCG must equal
    exactly 1. Summing ten assumed gains instead scales almost every query down by the same factor —
    a uniform, plausible-looking collapse rather than a visible failure.
-6. **Only judged queries are scored.** SciFact ships 1,109 queries and judges 300 in the test split.
+5. **Only judged queries are scored.** SciFact ships 1,109 queries and judges 300 in the test split.
    Scoring the other 809 as zero divides the mean by roughly 3.7 and reads as catastrophic retrieval
    failure rather than as a harness bug.
 
-A seventh setting is smaller but real: BEIR's `SentenceBERT` joins a document's title and text with
-a **single space** (`sep: str = " "` in `beir/retrieval/models/sentence_bert.py`). Measured with a
-newline instead, nDCG@10 is **0.64907** — a shift of 0.00314. Both land inside the band; the space is
-closer to published and is the default.
+A sixth is smaller but real: BEIR's `SentenceBERT` joins a document's title and text with a **single
+space** (`sep: str = " "` in `beir/retrieval/models/sentence_bert.py`). Measured with a newline
+instead, nDCG@10 is **0.64907** — a shift of 0.00314. Both land inside the band; the space is closer
+to published and is the default.
+
+## Two settings the band does *not* guard, and what does
+
+This list matters more than the one above, because a number credited with catching a defect it
+cannot catch is worse than a number nobody trusts. Both of these are correct in the shipped harness
+and both are pinned — just not by 0.64593.
+
+- **Max-pooling chunks to documents *before* the top-*k* cut.** Pinned by `DocumentRankingTests`,
+  **not by this number.** The parity run indexes one chunk per document — that is what BEIR's
+  published figures embed — and retrieves with `TopK` equal to the cutoff, so ten chunks are ten
+  distinct documents and max-pooling is a literal no-op. Both orderings therefore pool the same ten
+  hits and return the same ranking for every one of the 1,109 queries, so nDCG@10 is identically
+  **0.64593** either way — checked rather than argued, by mutating `DocumentRanking` to cut-then-pool
+  and re-running the whole measurement, which passes unchanged at both separators. What guards the
+  order is a fixture where one document contributes four chunks among seven; against that,
+  cut-then-pool fails **3 of `DocumentRankingTests`' 13 tests**, and the disagreement is documents
+  going *missing* rather than being reordered. FiQA is where the band starts guarding this too,
+  because FiQA is where a document stops being one chunk.
+- **Recall's denominator is *every* relevant document, never `min(|relevant|, k)`.** Pinned by
+  `IrMetricsTests`, not by this number. This is the exact opposite of setting 4 above, and that is
+  precisely the trap: IDCG *must* cap at `min(|relevant|, k)` and Recall *must not*, so reusing the
+  one rule for the other reports perfect recall for a run that found half the answer. On SciFact the
+  mistake is invisible. The most-judged query has **5** relevant documents — the distribution is 277
+  queries with 1, then 14, 4, 3 and 2 queries with 2, 3, 4 and 5 — so `min(|relevant|, 10)` equals
+  `|relevant|` for all 300 of them, the wrong denominator is the right one, and Recall@10 stays
+  0.78667 either way. A dataset with more than ten relevant documents for some query is what would
+  make this observable.
 
 ## Running it yourself
 
