@@ -15,10 +15,23 @@ namespace Rag.NET.Benchmarks.Quality.Tests;
 /// length as well as in content.
 /// </para>
 /// <para>
+/// <b>Cut-then-pool fails 3 of these 13 tests</b>, and the three are
+/// <see cref="TopDocuments_MaxPoolingBeforeTheCutKeepsDocumentsAChunkHeavyRivalWouldSqueezeOut"/>,
+/// <see cref="TopDocuments_CuttingChunksFirstWouldReturnFewerDocumentsThanRequested"/> and
+/// <see cref="TopDocumentIds_CuttingChunksFirstWouldScoreZeroOnAQueryPoolingFirstScoresPointFive"/>.
+/// The count is stated because it was reported as four when this file was written, and the fourth —
+/// <see cref="TopDocuments_EqualPooledScoresBreakOnDocumentIdSoTheRankingIsDeterministic"/> —
+/// <b>passes</b> under cut-then-pool alone. It only reddens if the deterministic tie-break is
+/// removed as well, which is a second, independent mutation. Three is what the ordering by itself
+/// is worth here, and all three fail the same way: a document goes MISSING, none of them reorder.
+/// </para>
+/// <para>
 /// The damage is uneven, which is what makes it dangerous. SciFact abstracts are mostly
-/// single-chunk, so SciFact's number looks plausible either way; FiQA and TREC-COVID have long
-/// documents where the discrepancy is real. A table that is right in the cheap places and wrong in
-/// the expensive ones is worse than no table.
+/// single-chunk — the parity run indexes literally one chunk per document, which makes pooling a
+/// no-op there and the two orderings byte-identical over all 1,109 queries — so SciFact's number
+/// says nothing about this either way. FiQA and TREC-COVID have long documents where the
+/// discrepancy is real. A table that is right in the cheap places and wrong in the expensive ones
+/// is worse than no table. Until such a dataset exists, <b>this file is the only guard</b>.
 /// </para>
 /// </summary>
 public sealed class DocumentRankingTests
