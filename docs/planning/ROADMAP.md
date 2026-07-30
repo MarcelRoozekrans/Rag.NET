@@ -35,8 +35,22 @@ future reader can tell the difference between "never existed" and "dealt with".
   rather than live, but a future adapter that sets `MimeType` and forgets `OpenAsync` drops every
   attachment with no log line at all. The recursion this replaced made that state unrepresentable,
   so 3.9 traded a compile-time guarantee for a runtime convention and did not say so.
-  → **Phase 3.10** (Archive Parser — the next phase to touch this area, and the one that adds a
-  third container shape to the same type)
+  **Rescheduled out of Phase 3.10 on 2026-07-30, because the reason it was scheduled there was
+  wrong.** 3.10 was expected to "add a third container shape to the same type"; it added none.
+  `MessageChild<TMessage>`, `IMessageAdapter<TMessage>` and `EmbeddedTraversal` model an *email
+  message tree* — live library message objects, descend-or-open — and 3.10's promotion deliberately
+  left all three `internal` to `Rag.NET.Parsers.Email` while moving only the four container types.
+  `ZipDocumentParser` enumerates `ZipArchive.Entries` itself and calls `ContainerEntryDispatcher`
+  directly, so it constructs no `MessageChild` and the type still has exactly the two adapters 3.9
+  left it with. The debt is therefore unchanged rather than closed: still latent, still two correct
+  adapters, still nothing enforcing the rule.
+  **The real trigger is a third `IMessageAdapter<TMessage>`** — another message library, not another
+  container format — and no phase on this roadmap adds one. Scheduling it against a trigger that may
+  never fire is how a debt becomes an open note, so it gets a backstop instead: whichever comes
+  first.
+  → **the next phase that adds an `IMessageAdapter<TMessage>` implementation, and failing that
+  **Milestone 4** as a deadline** (the fix is small and local — a sealed hierarchy or a private
+  constructor with two factory methods — so it needs a slot, not a phase of its own)
 - **No supported way to replace a built-in parser** (found while fixing the Phase 3.11 review's first
   finding): `AddRagNETServices()` registers `TextDocumentParser` and `MarkdownDocumentParser` before
   `configure?.Invoke(builder)` runs, so a user's own `text/plain` parser is always behind them in the
@@ -335,8 +349,9 @@ Reopened because 3.6 closed it on a premise its own whole-phase review falsified
 
 **Was not in scope:** merging the two parsers, or changing what the Templates parser emits for a `.eml` it legitimately wins.
 
-### Phase 3.10: Archive Parser (ZIP) [status: pending]
+### Phase 3.10: Archive Parser (ZIP) [status: complete]
 **Goal:** Parse `.zip` archives by dispatching each entry to the registered parser for its content type, closing a gap where zipped email attachments are silently dropped. (features.md row: **Archive Parser (ZIP)**.)
+**Plan:** `docs/plans/2026-07-29-archive-parser-design.md` + `-implementation.md`
 
 Raised while designing 3.9. Today a `.zip` attachment reaches `EmailAttachmentDispatcher`, matches no parser, logs a warning and yields nothing — the archive's contents never reach the index. Every attachment type with no registered parser behaves this way; the warning is the only signal that content was dropped. That default is deliberate and stays, but zip is common enough in real mail that it should not be one of the misses.
 
@@ -347,9 +362,17 @@ Runs **after 3.9**, which is what makes it cheap: the shared traversal driver an
 - **Cap decompression ratio and entry count.** A zip bomb expands without bound from a small file, and an archive's own headers cannot be trusted to declare it. This is the first parser to accept an untrusted structure that *expands*, so the limits are part of the feature, not a hardening pass afterwards.
 - **Sanitize entry names.** `../` traversal and absolute paths are the classic archive defect; `FileNameSanitizer` in `Rag.NET.Abstractions` already exists and is the fourth-copy lesson from 2.1 — use it rather than writing another.
 - **Share one budget across nested containers.** `zip → .eml → zip` is the same unbounded-recursion shape the email parsers bound. `EmbeddedMessageContext` carries depth and budget through `DocumentMetadata.Tags` precisely so the accounting survives a hop through `IDocumentParser`; the archive parser rides that channel rather than inventing a second one.
-- **Make `MessageChild<TMessage>` a real union** (the 3.9-created debt above). This phase adds a third container shape to that type, which is the moment its "descend, or open — never neither" rule stops being enforced by two adapters that happen to be written correctly.
+- **Make `MessageChild<TMessage>` a real union** (the 3.9-created debt above). This phase adds a third container shape to that type, which is the moment its "descend, or open — never neither" rule stops being enforced by two adapters that happen to be written correctly. — **Not done, and the sentence above is false.** See the Completed paragraph; the debt is rescheduled rather than left open.
 
 **Not in scope:** other archive formats (7z, tar, rar), encrypted archives, and any change to the warn-and-skip default for unregistered content types.
+
+**Completed:** 2026-07-30 (a **promotion plus an addition**, not the reuse this entry predicted. Every piece the archive parser needed was `internal` to `Rag.NET.Parsers.Email` — the depth/budget context, the budget, the extension→content-type map and the attachment dispatcher — so the phase opens by moving all four into `Rag.NET.Abstractions/Containers` as `ContainerContext`, `ContainerBudget`, `ContentTypeMap` and `ContainerEntryDispatcher`, under the acceptance criterion that no existing test changes an *assertion*. None did; Email stayed at 76 and Templates at 51 across the move. **Sharing the accounting is a security property, not tidiness.** The tags carry depth and entry budget across the `IDocumentParser` boundary, and an archive parser holding its own pair would leave `zip → .eml → zip` counted by two bounds that each look correct in isolation while neither bounds the chain — an attacker who alternates formats walks through both. `ContainerContentTypes` centralises which content types count as containers for the same reason, and states the trap that follows: a container format not listed there is not bounded at all, its own tests pass, and nothing complains.
+
+**Phase 3.11's containment swallowed this phase's headline behaviour, and every test stayed green.** `ContainerEntryDispatcher` catches everything an entry parser throws, which is right — it cannot tell a decompression bomb from a corrupt PDF, and one bad entry must not cost the archive — but it caught `LimitedReadStream`'s refusal too, degrading a zip bomb into a warning per entry rather than a refused archive. The *bound* still held, since the stream stops producing bytes either way, so nothing measuring the bound could see it: the tests passed while the behaviour they were written for was absent. Fixed by re-checking the archive-wide total in `ZipDocumentParser` after each entry, where refusing the archive is this parser's decision rather than the shared machinery's. **This is the second time in this milestone that containment quietly undermined the thing a phase was about while the tests stayed green** — the first was 3.11's own `QAPairsAttachmentClaimTests`, which passed against a reverted fix because containment makes "a parser wrongly claimed this type and threw" produce sections identical to "nothing claimed it". Same mechanism, same signature, two phases apart, and the transferable finding is the one worth keeping: **a containment boundary makes the failure it contains unobservable to every assertion downstream of it, so a test for a behaviour on the far side of one is presumed blind until it has been watched to fail.** 3.11 recorded this as a lesson about adding containment in the same phase as a routing fix; it is wider than that — the containment here was two phases old and inherited.
+
+**Three things the plan did not have, each found by building it.** `ContentTypeMap` had no `.zip` entry, so a zip inside a zip typed as `application/octet-stream`, matched no parser and was warn-and-skipped — which looks exactly like the designed degradation and is not, because an entry that never reaches a parser never counts against the shared budget. `ArchiveParserOptions` as specified had only the three bomb caps and no nesting bounds, so there was nothing to build a `ContainerContext` from; `MaxNestingDepth` and `MaxNestedContainers` were added, defaulted to match `EmailParserOptions` deliberately, since design §5's claim that an alternating chain is bounded by the same numbers as a non-alternating one holds only while the two packages agree. And `ArchiveReadBudget` had to be per-archive rather than per-stream: the plan put the counting in `LimitedReadStream`, one of which exists per entry, which would have enforced `cap × entries` instead of `cap` — the same shape of hole `ContainerBudget` documents for nesting, in a different place.
+
+**The `MessageChild<TMessage>` debt scheduled into this phase was not closed, because the premise that scheduled it here is false.** The entry says this phase "adds a third container shape to that type". It does not add any: `MessageChild<TMessage>`, `IMessageAdapter<TMessage>` and `EmbeddedTraversal` model an *email message tree* — live library message objects, descend-or-open — and stayed `internal` to `Rag.NET.Parsers.Email`. `ZipDocumentParser` drives its own `foreach` over `ZipArchive.Entries` and calls `ContainerEntryDispatcher` directly; it has no adapter, constructs no `MessageChild`, and the type still has exactly the two adapters 3.9 left it with. So the debt is neither closed nor worsened — it is exactly as latent as it was, and touching it here would have been a refactor with no caller. Rescheduled on a corrected trigger rather than left open; see the follow-up-debts list. Counts: Archive **44**, Email **76**, Templates **51**, `Rag.NET.Tests` **1325**, RepoConventions **9**, build 0 Warning(s) 0 Error(s).)
 
 ### Phase 3.7: Retrieval Quality Benchmark Harness [status: pending]
 **Goal:** Measure retrieval quality against public benchmarks with published reference numbers, so correctness is *demonstrable* rather than asserted. (Not a features.md row — quality-hardening scope.)
