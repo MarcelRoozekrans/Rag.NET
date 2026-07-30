@@ -98,6 +98,39 @@ public sealed class WhitespaceNormalizationTests
         Assert.Contains("length", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The substitution is one character for one. Length-preserving is the whole point: an offset
+    /// into the substituted string is only a valid offset into the original while the two are the
+    /// same length. Needs no vocabulary — it is a pure string operation.
+    /// </summary>
+    [Theory]
+    [InlineData("alpha\n\nbeta gamma")]
+    [InlineData("alpha\nbeta")]
+    [InlineData("alpha\tbeta")]
+    [InlineData("alpha\r\nbeta")]
+    [InlineData("alpha beta\n")]
+    [InlineData("nothing here needs substituting")]
+    [InlineData("")]
+    public void SubstituteWhitespace_ReplacesOnlyTheDeletedWhitespace_AndKeepsTheLength(string text)
+    {
+        var substituted = BertOnnxPlumbing.SubstituteWhitespace(text);
+
+        Assert.Equal(text.Length, substituted.Length);
+        for (var i = 0; i < text.Length; i++)
+        {
+            Assert.Equal(text[i] is '\n' or '\r' or '\t' ? ' ' : text[i], substituted[i]);
+        }
+    }
+
+    /// <summary>
+    /// Not a trim and not a collapse: either would change the length and reintroduce the bug.
+    /// </summary>
+    [Fact]
+    public void SubstituteWhitespace_DoesNotTrimEdgesOrCollapseRuns()
+    {
+        Assert.Equal("  alpha  beta  ", BertOnnxPlumbing.SubstituteWhitespace("\r\nalpha\t\nbeta \n"));
+    }
+
     private static string? ResolveVocabPath()
     {
         var vocabPath = Environment.GetEnvironmentVariable("RAGNET_ONNX_EMBED_VOCAB");
