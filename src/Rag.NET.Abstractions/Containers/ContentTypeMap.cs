@@ -48,6 +48,12 @@ public static class ContentTypeMap
         [".epub"] = "application/epub+zip",
         [".eml"] = "message/rfc822",
         [".msg"] = "application/vnd.ms-outlook",
+        // Added in Phase 3.10, and it is load-bearing rather than tidy: this map is how
+        // ZipDocumentParser types an entry, so without it a zip inside a zip resolved to
+        // application/octet-stream, matched no parser, and was warn-and-skipped. That looks like the
+        // designed degradation and is not — ContainerContentTypes lists application/zip as something
+        // the shared budget must count, and an entry that never reaches a parser never counts.
+        [".zip"] = "application/zip",
         [".txt"] = "text/plain",
         [".md"] = "text/markdown",
         [".csv"] = "text/csv",

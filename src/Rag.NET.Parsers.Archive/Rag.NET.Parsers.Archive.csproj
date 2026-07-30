@@ -9,6 +9,7 @@
   <ItemGroup>
     <!-- System.IO.Compression is in the BCL, so this package adds no third-party dependency. -->
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
   </ItemGroup>
 
   <ItemGroup>

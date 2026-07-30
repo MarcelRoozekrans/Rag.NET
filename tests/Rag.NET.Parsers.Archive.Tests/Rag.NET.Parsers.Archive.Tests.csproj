@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Archive\Rag.NET.Parsers.Archive.csproj" />
+    <!-- BuildServiceProvider, for the test that the declared ParserClaims match CanParse. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.*">

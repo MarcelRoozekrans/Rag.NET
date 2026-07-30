@@ -67,6 +67,8 @@ public sealed class ArchiveParserOptions
     private const long DefaultTotalUncompressedBytes = 256L * 1024 * 1024;
     private const int DefaultCompressionRatio = 100;
     private const int DefaultEntries = 1_024;
+    private const int DefaultNestingDepth = 3;
+    private const int DefaultNestedContainers = 50;
 
     private long _maxTotalUncompressedBytes = DefaultTotalUncompressedBytes;
     private int _maxCompressionRatio = DefaultCompressionRatio;
@@ -134,6 +136,53 @@ public sealed class ArchiveParserOptions
     }
 
     /// <summary>
+    /// How deep a chain of nested containers this parser follows below the archive it was handed.
+    /// <c>0</c> disables descent entirely, and does so silently. Default <c>3</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The default matches <c>EmailParserOptions.MaxEmbeddedDepth</c> deliberately.</b> Depth is
+    /// carried across the <c>IDocumentParser</c> boundary on <see cref="ContainerContext"/>'s reserved
+    /// tags, so a <c>zip → .eml → zip</c> chain is counted by whichever parser owns each level. If the
+    /// two packages defaulted differently, a chain that alternates formats would be bounded by
+    /// whichever happened to be lower at each hop rather than by a number a reader can predict.
+    /// Design §5's claim — that an alternating chain is bounded by the same numbers as one that does
+    /// not alternate — is only true while these defaults agree.
+    /// </para>
+    /// </remarks>
+    public int MaxNestingDepth { get; set; } = DefaultNestingDepth;
+
+    /// <summary>
+    /// How many nested containers may be entered across the whole document, as a total rather than
+    /// per branch. Default <c>50</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not <see cref="MaxEntries"/>, and the two are easy to confuse.</b> <see cref="MaxEntries"/>
+    /// bounds how many entries <i>one archive</i> may declare, of any kind. This bounds how many of
+    /// those entries — across every archive and every message in the document — may themselves be
+    /// containers that get parsed in turn. A zip of 900 PDFs spends 900 of the first and none of the
+    /// second.
+    /// </para>
+    /// <para>
+    /// Shared with the email parsers through <see cref="ContainerBudget"/>, which is what makes the
+    /// bound a total rather than <c>cap ^ depth</c>. Defaulted to
+    /// <c>EmailParserOptions.MaxEmbeddedMessages</c> for the reason given on
+    /// <see cref="MaxNestingDepth"/>.
+    /// </para>
+    /// </remarks>
+    public int MaxNestedContainers { get; set; } = DefaultNestedContainers;
+
+    /// <summary>
+    /// Projects these options onto the format-neutral bounds the shared container machinery takes.
+    /// </summary>
+    /// <remarks>
+    /// One mapping point, mirroring <c>EmailParserOptions.ToContainerLimits</c>, so the two properties
+    /// cannot drift apart from the limits they feed.
+    /// </remarks>
+    internal ContainerLimits ToContainerLimits() => new(MaxNestingDepth, MaxNestedContainers);
+
+    /// <summary>
     /// The last value assigned to <see cref="MaxTotalUncompressedBytes"/>, before clamping. Exists
     /// only so <c>AddArchiveParser</c> can still see — and throw on — a request the setter has
     /// already made safe; nothing at parse time reads it.
@@ -180,6 +229,12 @@ public sealed class ArchiveParserOptions
         ThrowIfNegative(RequestedMaxTotalUncompressedBytes, nameof(MaxTotalUncompressedBytes), paramName);
         ThrowIfNegative(RequestedMaxCompressionRatio, nameof(MaxCompressionRatio), paramName);
         ThrowIfNegative(RequestedMaxEntries, nameof(MaxEntries), paramName);
+
+        // No ceiling on these two, so the requested value is the effective one and there is nothing
+        // to read a Requested… property back from. A negative nesting bound is still nonsense rather
+        // than harmless: it would read as "descend nowhere" while looking like a number.
+        ThrowIfNegative(MaxNestingDepth, nameof(MaxNestingDepth), paramName);
+        ThrowIfNegative(MaxNestedContainers, nameof(MaxNestedContainers), paramName);
 
         ThrowIfAboveCeiling(
             RequestedMaxTotalUncompressedBytes,
