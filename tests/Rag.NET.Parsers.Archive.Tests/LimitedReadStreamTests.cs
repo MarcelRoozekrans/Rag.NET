@@ -91,8 +91,12 @@ public class LimitedReadStreamTests
         // and four entries is nowhere near the entry bound — yet together they exceed the archive's
         // byte budget.
         //
-        // It is also the test that catches a per-entry byte counter. No single entry here passes
-        // 100,000 bytes; only the shared total does.
+        // What it catches is a counter living on LimitedReadStream, of which there is one per entry:
+        // no single entry here passes 100,000 bytes, so a per-stream count never fires. It does *not*
+        // catch a parser that hands each entry a fresh budget, because it drives its own read loop
+        // and supplies the budget itself — the whole-phase review found that claim here and it was
+        // false. ZipDocumentParserTests.ALowRatioHighTotalArchiveIsRefusedThroughTheParser is the
+        // one that covers the budget's lifetime.
         var archive = ZipFixtureBuilder.Archive(
             ("a.bin", ZipFixtureBuilder.Incompressible(32 * 1024, seed: 1)),
             ("b.bin", ZipFixtureBuilder.Incompressible(32 * 1024, seed: 2)),

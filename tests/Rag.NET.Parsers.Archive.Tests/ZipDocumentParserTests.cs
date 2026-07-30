@@ -206,6 +206,46 @@ public class ZipDocumentParserTests
         Assert.Equal("bundle.zip#.._.._etc_passwd.txt", received.FileName);
     }
 
+    /// <summary>
+    /// The content type comes from the entry's <b>unsanitised</b> name, and this is the case where
+    /// the two answers differ. <see cref="FileNameSanitizer"/> caps a stem at 128 characters, so an
+    /// entry named with 130 characters and a <c>.txt</c> extension loses that extension on its way to
+    /// metadata — and a parser selected from the sanitised name would type it as
+    /// <c>application/octet-stream</c>, warn that nothing claimed it, and drop content the archive
+    /// really did carry.
+    /// </summary>
+    /// <remarks>
+    /// The reasoning was recorded in <see cref="ZipDocumentParser"/>'s remarks and in features.md but
+    /// pinned by nothing, so ordering the two operations the other way round was a silent change.
+    /// Typing an entry is not something a display concern gets to decide.
+    /// </remarks>
+    [Fact]
+    public async Task TheContentTypeComesFromTheEntryNameBeforeItIsSanitised()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var text = new RecordingParser("text/plain");
+        var logger = new CapturingLogger<ZipDocumentParser>();
+        var parser = new ZipDocumentParser([text], logger);
+
+        var stem = new string('a', 130);
+        using var stream = new MemoryStream(ZipFixtureBuilder.Archive(
+            (stem + ".txt", Encoding.UTF8.GetBytes(NotesText))));
+
+        var sections = await parser.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
+
+        Assert.Equal([NotesText], sections.Select(s => s.Text));
+        var received = Assert.Single(text.ReceivedMetadata);
+        Assert.Equal("text/plain", received.ContentType);
+
+        // The sanitised name really did lose the extension, so the assertion above is about ordering
+        // rather than about a name the sanitiser left alone.
+        Assert.Equal("bundle.zip#" + new string('a', 128), received.FileName);
+        Assert.Equal(
+            "application/octet-stream",
+            ContentTypeMap.FromFileName(FileNameSanitizer.Sanitize(stem + ".txt", "archive-entry")));
+        Assert.Empty(logger.Warnings);
+    }
+
     [Fact]
     public async Task AnEntryWithNoRegisteredParserIsWarnedAboutAndSkipped()
     {
@@ -444,6 +484,34 @@ public class ZipDocumentParserTests
             ct);
 
         Assert.Equal(ArchiveLimit.TotalUncompressedBytes, totalOnly.Limit);
+    }
+
+    /// <summary>
+    /// The low-ratio, high-total archive through the parser, which is where the budget's
+    /// <i>lifetime</i> is decided. Four entries of 32 KB of incompressible bytes: no entry expands, no
+    /// entry passes the 100,000-byte bound on its own, and together they pass it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="LimitedReadStreamTests.ALowRatioHighTotalArchiveIsReportedAsTheTotalBytesCap"/>
+    /// claimed to be "the test that catches a per-entry byte counter" and was not: it drives its own
+    /// read loop and constructs the budget itself, so it cannot see how long the parser keeps one.
+    /// This is that test.
+    /// </remarks>
+    [Fact]
+    public async Task ALowRatioHighTotalArchiveIsRefusedThroughTheParser()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var archive = ZipFixtureBuilder.Archive(
+            ("a.txt", ZipFixtureBuilder.Incompressible(32 * 1024, seed: 1)),
+            ("b.txt", ZipFixtureBuilder.Incompressible(32 * 1024, seed: 2)),
+            ("c.txt", ZipFixtureBuilder.Incompressible(32 * 1024, seed: 3)),
+            ("d.txt", ZipFixtureBuilder.Incompressible(32 * 1024, seed: 4)));
+
+        var exception = await AssertRefusedAsync(
+            archive, new ArchiveParserOptions { MaxTotalUncompressedBytes = 100_000 }, ct);
+
+        Assert.Equal(ArchiveLimit.TotalUncompressedBytes, exception.Limit);
+        Assert.Equal(100_000, exception.Allowed);
     }
 
     private static async Task<ArchiveLimitExceededException> AssertRefusedAsync(
