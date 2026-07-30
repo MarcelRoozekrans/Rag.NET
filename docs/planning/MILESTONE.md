@@ -93,16 +93,25 @@ Assume nothing works until a test says so *and the test is right*.
    `AddRagNETServices()` auto-registers, which made the same silent failure reachable with no
    third-party package at all, and moved the parser opt-out off the chunking options objects, where
    setting it silently discarded every other option on them.
-9. Phase 3.10 — Archive Parser (ZIP) [pending] — raised while designing 3.9. A zipped attachment
+9. Phase 3.10 — Archive Parser (ZIP) [complete — 2026-07-30] — raised while designing 3.9. A zipped attachment
    matches no parser today, so it is logged and dropped and never indexed. Runs straight after 3.9
    because it reuses that phase's traversal driver and descent policy for `zip → .eml → zip`.
    Stretches this milestone's "quality hardening" goal to a feature row, deliberately: the
    machinery is shared and building it twice is the more expensive choice.
-10. Phase 3.7 — Retrieval Quality Benchmark Harness [pending] — public benchmarks with published
+10. Phase 3.7 — Retrieval Quality Benchmark Harness [complete — 2026-07-30] — public benchmarks with published
    reference numbers, so retrieval correctness is demonstrable rather than asserted. SciFact
    first, to prove parity before adding breadth. Distinct from Phase 3.2's synthetic builder,
    and from the existing speed benchmarks.
-11. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
+11. Phase 3.13 — Late Chunking Newline Defect [pending] — **a live production defect**, found only
+   because 3.7 provisioned an ONNX model for the first time in this project's history. BertTokenizer
+   deletes newline and tab characters, tripping `OnnxTokenEmbeddingGenerator`'s offset-alignment guard, and
+   `LateChunkingStrategy` swallows it into chunks with `Embedding = null`. Late chunking has never
+   worked on any document containing a paragraph break — shipped in 1.1, inert since, invisible
+   behind a test nothing could run. Nightly is deliberately red until this lands.
+12. Phase 3.12 — BEIR Expansion & Ablation Table [pending] — the datasets 3.7 deferred until parity
+   held: FiQA for long documents, ArguAna as a negative control, then the ablation table. Owns the
+   recorded BM25 comparability debt, because the `+BM25 hybrid` row is where it becomes live.
+13. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
    of 3.3. Production traffic has no ground truth, so only the reference-free metrics apply; it
    also doubles spend per request and must never let a secondary failure reach a caller the
    primary already served.
