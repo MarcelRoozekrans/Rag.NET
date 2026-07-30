@@ -43,17 +43,31 @@ public sealed class NormalizationGuardTests
         OnnxTokenEmbeddingGenerator.ThrowIfNormalizationChangedLength(10, normalized: null);
     }
 
+    /// <summary>
+    /// The phrase that NAMES the cause, not merely the token somewhere in the message. Pinning
+    /// bare <c>"NFD"</c>/<c>"CJK"</c> lets a rewrite drop the diagnosis and still pass on an
+    /// incidental mention elsewhere in the sentence — measured: renaming the CJK clause to
+    /// "contains ideographs" left all 147 tests green, because "CJK" survived in the closing
+    /// "does not support CJK text."
+    /// </summary>
+    private const string NfdCausePhrase = "most likely NFD-decomposed";
+
+    /// <inheritdoc cref="NfdCausePhrase"/>
+    private const string CjkCausePhrase = "most likely contains CJK";
+
     /// <summary>A shorter normalization is the NFD direction, and the message must say so.</summary>
     [Fact]
     public void ShorterNormalization_ThrowsNamingNfd()
     {
+        // 14 and 11 are arbitrary lengths chosen to be unequal — this case calls the guard
+        // directly, so no string is normalized here and nothing is being measured.
         var ex = Assert.Throws<InvalidOperationException>(
             () => OnnxTokenEmbeddingGenerator.ThrowIfNormalizationChangedLength(14, new string('x', 11)));
 
         Assert.Contains("shrank", ex.Message, StringComparison.Ordinal);
         Assert.Contains("14", ex.Message, StringComparison.Ordinal);
         Assert.Contains("11", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("NFD", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(NfdCausePhrase, ex.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("CJK", ex.Message, StringComparison.Ordinal);
     }
 
@@ -67,7 +81,7 @@ public sealed class NormalizationGuardTests
         Assert.Contains("grew", ex.Message, StringComparison.Ordinal);
         Assert.Contains("8", ex.Message, StringComparison.Ordinal);
         Assert.Contains("14", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("CJK", ex.Message, StringComparison.Ordinal);
+        Assert.Contains(CjkCausePhrase, ex.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("NFD", ex.Message, StringComparison.Ordinal);
     }
 
@@ -99,7 +113,7 @@ public sealed class NormalizationGuardTests
         var message = await RefusalMessageAsync("日本語 text");
 
         Assert.Contains("grew", message, StringComparison.Ordinal);
-        Assert.Contains("CJK", message, StringComparison.Ordinal);
+        Assert.Contains(CjkCausePhrase, message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -113,7 +127,7 @@ public sealed class NormalizationGuardTests
         var message = await RefusalMessageAsync("cafe\u0301 test");
 
         Assert.Contains("shrank", message, StringComparison.Ordinal);
-        Assert.Contains("NFD", message, StringComparison.Ordinal);
+        Assert.Contains(NfdCausePhrase, message, StringComparison.Ordinal);
         Assert.Contains("NFC", message, StringComparison.Ordinal);
     }
 
