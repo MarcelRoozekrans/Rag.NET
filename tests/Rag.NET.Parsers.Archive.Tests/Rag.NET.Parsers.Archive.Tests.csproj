@@ -9,6 +9,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Archive\Rag.NET.Parsers.Archive.csproj" />
+    <!-- NestedContainerBudgetTests needs a second container format on the other side of the
+         IDocumentParser boundary. A zip-only chain cannot show that the depth counter and the entry
+         budget are shared rather than per-package, which is the whole justification for promoting
+         the container machinery into Rag.NET.Abstractions. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Email\Rag.NET.Parsers.Email.csproj" />
     <!-- BuildServiceProvider, for the test that the declared ParserClaims match CanParse. -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
