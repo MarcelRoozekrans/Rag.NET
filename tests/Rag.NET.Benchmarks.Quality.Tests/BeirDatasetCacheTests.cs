@@ -182,7 +182,10 @@ public sealed class BeirDatasetCacheTests : IDisposable
         "test fixture",
         DocumentCount: 1,
         QueryCount: 1,
-        TestQueryCount: 1);
+        TestQueryCount: 1,
+        TitledDocumentCount: 1,
+        ExcludesSelfRetrievedDocument: false,
+        ParityTarget: new BeirParityTarget(0.5, "test fixture; never measured"));
 
     /// <summary>
     /// A zip in BEIR's layout: one top-level folder named after the dataset, holding

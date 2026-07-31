@@ -269,30 +269,9 @@ public sealed class BeirLoaderTests : IDisposable
         Assert.Equal(2, evaluation.EvaluatedQueryCount);
     }
 
-    [Fact]
-    public void SciFact_RecordsItsLicenceNextToTheLoader()
-    {
-        // BEIR publishes no per-dataset licence — its README says only that it "downloaded and
-        // prepared public datasets" and that permission remains the user's responsibility — so the
-        // licence has to be recorded on our side or it is recorded nowhere.
-        var licence = BeirDatasetDescriptor.SciFact.Licence;
-
-        Assert.Contains("ODC-By 1.0", licence, StringComparison.Ordinal);
-        Assert.Contains("CC BY 4.0", licence, StringComparison.Ordinal);
-        Assert.Contains("github.com/allenai/scifact", licence, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void SciFact_CarriesThePublishedChecksumAndTheCountsOnDisk()
-    {
-        var scifact = BeirDatasetDescriptor.SciFact;
-
-        Assert.Equal("5f7d1de60b170fc8027bb7898e2efca1", scifact.ArchiveMd5, StringComparer.Ordinal);
-        Assert.Equal(5183, scifact.DocumentCount);
-        Assert.Equal(1109, scifact.QueryCount);
-        Assert.Equal(300, scifact.TestQueryCount);
-        Assert.Equal("scifact.zip", scifact.ArchiveFileName, StringComparer.Ordinal);
-    }
+    // The descriptor's own assertions — checksum, counts, licence and, since Phase 3.12, the parity
+    // target — moved to BeirDatasetDescriptorTests when the parity test became a theory over
+    // datasets. Nothing about them belongs next to the loader's fixtures.
 
     private string At(string relativePath) =>
         Path.Combine(_directory, relativePath.Replace('/', Path.DirectorySeparatorChar));

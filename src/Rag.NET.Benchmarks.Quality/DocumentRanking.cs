@@ -24,10 +24,21 @@ namespace Rag.NET.Benchmarks.Quality;
 /// 0.5. Against a parity band of ±0.02, that is not a rounding difference.
 /// </para>
 /// <para>
-/// It also bites unevenly, which is what makes it dangerous. SciFact abstracts and ArguAna arguments
-/// are mostly single-chunk, so those numbers look plausible either way; FiQA and TREC-COVID have long
-/// documents where the discrepancy is real. A table that is right in the cheap places and wrong in
-/// the expensive ones is worse than no table.
+/// <b>It also bites unevenly — but this paragraph named the wrong datasets, and Phase 3.12 measured
+/// them.</b> It used to say SciFact abstracts and ArguAna arguments "are mostly single-chunk", so
+/// those numbers "look plausible either way", and that FiQA is where the discrepancy is real. All of
+/// that is false: at stock 512-character chunking SciFact's 5,183 abstracts produce 56,707 units, up
+/// to 221 from one document, and ArguAna's 8,674 arguments produce 82,618, up to 285. 99.2% of
+/// SciFact's documents exceed the chunk size and 87.3% of ArguAna's — more, in both cases, than
+/// FiQA's 51.0%.
+/// </para>
+/// <para>
+/// What is true is narrower, and is a property of the <i>protocol</i> rather than of any corpus: the
+/// order cannot bite at all under the parity protocol, which indexes one chunk per document, and it
+/// bites on every query of both measured datasets under the real one — SciFact pooled on 1,109 of
+/// 1,109 queries and ArguAna on 1,406 of 1,406. A table that is right in the cheap places and wrong
+/// in the expensive ones is still worse than no table; the mistake was in guessing which places were
+/// which without measuring.
 /// </para>
 /// </summary>
 public static class DocumentRanking
@@ -54,6 +65,11 @@ public static class DocumentRanking
     /// caller's ordering is irrelevant and no assumption is made about it.
     /// </param>
     /// <param name="k">How many documents to return. Must be positive.</param>
+    /// <param name="excludedDocumentId">
+    /// A document id to drop before pooling, or <see langword="null"/> to keep everything. Passed the
+    /// query's own id when the dataset's
+    /// <see cref="BeirDatasetDescriptor.ExcludesSelfRetrievedDocument"/> is set — see the remarks.
+    /// </param>
     /// <returns>
     /// At most <paramref name="k"/> distinct documents, best pooled score first, ties broken by
     /// ordinal document id. Fewer than <paramref name="k"/> when the hits name fewer distinct
@@ -61,11 +77,25 @@ public static class DocumentRanking
     /// zero rather than an error.
     /// </returns>
     /// <remarks>
+    /// <para>
     /// The cut happens <b>after</b> pooling. Reversing the two lets one heavily chunked document
     /// consume several of the <paramref name="k"/> slots and evict documents that belong in the
     /// ranking.
+    /// </para>
+    /// <para>
+    /// <b>The exclusion happens before pooling too</b>, and for the same reason: a document dropped
+    /// after the cut leaves a hole in the ranking rather than promoting the document behind it, so
+    /// nDCG@k would be computed over k−1 results on some queries and k on others.
+    /// </para>
+    /// <para>
+    /// <paramref name="excludedDocumentId"/> is BEIR's <c>if corpus_id != query_id</c> and MTEB's
+    /// <c>ignore_identical_ids</c>. It is a protocol decision, not a convenience: on ArguAna the
+    /// query text <i>is</i> a corpus document, so without it 92% of queries retrieve themselves at
+    /// cosine 1.0 and the relevant counterargument never sees rank 1.
+    /// </para>
     /// </remarks>
-    public static IReadOnlyList<ScoredDocument> TopDocuments(IReadOnlyList<ChunkHit> chunkHits, int k)
+    public static IReadOnlyList<ScoredDocument> TopDocuments(
+        IReadOnlyList<ChunkHit> chunkHits, int k, string? excludedDocumentId = null)
     {
         ArgumentNullException.ThrowIfNull(chunkHits);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(k);
@@ -81,6 +111,11 @@ public static class DocumentRanking
             if (hit is null)
             {
                 throw new ArgumentException($"chunkHits[{i}] is null.", nameof(chunkHits));
+            }
+
+            if (string.Equals(hit.DocumentId, excludedDocumentId, StringComparison.Ordinal))
+            {
+                continue;
             }
 
             if (!pooledByDocument.TryGetValue(hit.DocumentId, out var pooled) || hit.Score > pooled)
@@ -108,10 +143,14 @@ public static class DocumentRanking
     /// </summary>
     /// <param name="chunkHits">The retrieved chunks with their parent document ids.</param>
     /// <param name="k">How many documents to return. Must be positive.</param>
+    /// <param name="excludedDocumentId">
+    /// A document id to drop before pooling, or <see langword="null"/> to keep everything.
+    /// </param>
     /// <returns>At most <paramref name="k"/> distinct document ids, best first.</returns>
-    public static IReadOnlyList<string> TopDocumentIds(IReadOnlyList<ChunkHit> chunkHits, int k)
+    public static IReadOnlyList<string> TopDocumentIds(
+        IReadOnlyList<ChunkHit> chunkHits, int k, string? excludedDocumentId = null)
     {
-        var documents = TopDocuments(chunkHits, k);
+        var documents = TopDocuments(chunkHits, k, excludedDocumentId);
         var documentIds = new string[documents.Count];
         for (var i = 0; i < documents.Count; i++)
         {

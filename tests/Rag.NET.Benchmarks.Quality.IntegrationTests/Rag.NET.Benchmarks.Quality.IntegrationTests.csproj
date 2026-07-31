@@ -3,7 +3,7 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <!-- A project of its own rather than a file in Rag.NET.Benchmarks.Quality.Tests, and the split
-         is the whole point. SciFactParityTests reads RAGNET_ONNX_EMBED_MODEL,
+         is the whole point. BeirParityTests reads RAGNET_ONNX_EMBED_MODEL,
          RAGNET_ONNX_EMBED_VOCAB and RAGNET_BEIR_CACHE, so RepoConventions requires
          <RequiresSecrets>true</RequiresSecrets> — and that property is declared per PROJECT, not
          per test. Putting the parity test next to the metric and loader unit tests would carry all

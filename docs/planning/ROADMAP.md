@@ -84,7 +84,63 @@ future reader can tell the difference between "never existed" and "dealt with".
   and the second is the option §2 of the 3.7 design rejected for the dense path, for the same reason
   it would apply here: a benchmark-only analyzer measures the benchmark, not the library. Whoever
   builds the table decides; they must decide knowingly.
-  → **Phase 3.12** (BEIR Expansion & Ablation Table — the phase that builds the row)
+  **Re-pointed on 2026-07-31, because the phase it named stopped being the phase that builds the
+  row.** 3.12 shipped the datasets and the two-run protocol; the ablation table moved to **3.15**
+  during that phase's design, since two of its four rows need infrastructure — an `IChatClient` for
+  HyDE, a cross-encoder for the reranker — that no phase had built. The debt is unchanged: same
+  numbers, same decision, still to be made before the row is published rather than after.
+  → **Phase 3.15** (the ablation table — the phase that builds the row)
+- **`RecursiveChunkingStrategy` never merges short split parts back up** (measured in Phase 3.12
+  while costing the real-chunking runs, and a **probable library defect independent of that phase**).
+  The strategy splits a document and emits *every* part as its own chunk, with no pass that merges
+  short neighbours back towards `ChunkingOptions.MaxChunkSize`. A document of short lines becomes one
+  chunk per line.
+  Measured at stock options — 512 characters, 50 of overlap — over three corpora: **FiQA 429,850
+  units from 57,638 documents** (7.5×, and up to **1,723** units from a single document), ArguAna
+  82,618 from 8,674 (9.5×), SciFact 56,707 from 5,183 (10.9×). FiQA's median document is 522
+  characters against a 512-character chunk size, which suggests roughly 2×; it produces 7.5×.
+  This is not a benchmark problem. It inflates embedding cost, vector-store size and query-time
+  sorting for **every user of the default chunker**, and the multiplier is largest on exactly the
+  corpora people have most of. Its visible consequence here is that FiQA's real run is measured in
+  hours rather than in minutes, which is why that run is deferred.
+  Not diagnosed beyond the counts — whether the fix is a merge pass, a minimum chunk size, or a
+  different split-and-pack loop is a design question, and changing what the default chunker emits
+  changes every downstream number in the project.
+  **Worth running before 3.15**, whose cost model is built on these counts.
+  → **Phase 3.16** (Recursive Chunking Short-Part Merge)
+- **FiQA's two protocols do not index the same corpus** (found in Phase 3.12). 38 of FiQA's 57,638
+  corpus entries have an empty `title` *and* an empty `text`, and one of them — `117276` — is judged
+  relevant in `qrels/test.tsv`. `RecursiveChunkingStrategy` correctly yields nothing for empty input,
+  so a real-chunking run indexes 38 fewer documents than the parity run does.
+  Already surfaced rather than hidden: `BeirRunResult.UnindexedDocumentCount` reports it, and the
+  alternative — a placeholder chunk for an empty document — would have made the two legs agree by
+  indexing text the corpus does not contain. The reason it is recorded is that it is a genuine
+  protocol difference between two numbers that will be printed side by side, and an unindexed
+  document is indistinguishable in an nDCG from a document that was indexed and ranked badly.
+  Nothing to fix; something to **state alongside FiQA's real number when it is produced**.
+  → **Phase 3.15** (which produces that number)
+- **Two live suites have never actually run against the real thing** (surfaced 2026-07-31, while
+  reading the first genuine nightly). Both are correctly built and correctly gated; neither has ever
+  executed, which is a different claim from "they pass".
+  - **`AzureDocumentIntelligenceLiveTests`** needs `RAGNET_DOCINTEL_ENDPOINT` and
+    `RAGNET_DOCINTEL_KEY` — a real Azure resource, billed one page per run (free tier covers it).
+    Offline coverage is WireMock cassettes, which catch regressions in *our* code; this test exists
+    to catch the day those cassettes stop describing the real service, and until it runs once,
+    nothing has confirmed they ever did.
+  - **`PdfOcrFallbackTests`' OCR case** needs `RAGNET_TESSDATA` **and** `/p:EnableOcr=true`.
+    `RAGNET_TESSDATA` is free — a path to `eng.traineddata` from `tesseract-ocr/tessdata`, no account
+    — but the MSBuild gate means the test is not skipped, it is **not compiled**, so no run of any
+    kind reports on it. This is the third inert guard Phase 3.7 found and the only one still open.
+  **The container route was considered and declined.** Document Intelligence does ship as an Azure AI
+  container, but those require `Billing` and `ApiKey` pointing at a live Azure resource and meter
+  against it — so it keeps the subscription and the per-page cost while adding a multi-gigabyte pull,
+  and its version lags the cloud service, so it does not reliably catch the cloud drift the live test
+  exists for. Most of the price of the real thing for a weaker guarantee. (Verify Microsoft's current
+  container billing and access terms before revisiting; they change.)
+  The cheap half is the OCR one: fixing the `EnableOcr` gate costs nothing but a decision about how
+  to compile it in CI. The Azure half needs a resource and a deliberate choice to spend a page.
+  → **Milestone 4**, with the release-readiness work, where "has this ever been exercised against the
+  real service" is a question worth answering before publishing packages.
 - **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
   of scope, scheduled here so they do not stay open notes). All three exist in
   `MarcelRoozekrans/AdoNet.Async` and none exists here:
@@ -101,6 +157,37 @@ future reader can tell the difference between "never existed" and "dealt with".
 
 ### Closed
 
+- ~~**The nightly `run-secrets` job now selects hours of work it has 120 minutes for**~~ (found while
+  documenting Phase 3.12, from the numbers that phase measured — never observed on a run) → **closed
+  in 3.12, by the phase that opened it, before the first nightly it would have affected.**
+  **The problem was as recorded.** `nightly.yml` runs `dotnet test` over every `RequiresSecrets`
+  project with **no filter**, and 3.12 added five parity cases and three real-chunking cases to that
+  project. FiQA's parity leg alone measures **1 h 11 m** and its real leg — a case of the same theory
+  — is estimated at **eight to nine hours**, against a `timeout-minutes: 120` that also covers a
+  restore, a whole-solution build and four other secret-gated projects. `RUNNER_TEMP/beir` is fresh
+  every night, so the embedding cache saves that job nothing.
+  **What shipped is a budget table, not the `--filter` this entry proposed.** `BeirRunBudget` records
+  what every dataset costs under every protocol and which of them the nightly can afford; the four it
+  cannot are gated behind `RAGNET_BEIR_LONG_RUNS`, which `nightly.yml` deliberately never sets. A
+  gated case skips with its own name, its **measured** cost and the exact command that runs it —
+  never a bare "skipped", which is indistinguishable from a pass. A filter was rejected because it
+  lives in a workflow file where nothing type-checks it and nothing explains it; the table throws
+  when a dataset is added without being timed, so the next dataset cannot silently default either
+  into the job or out of it.
+  **What it gives up, stated rather than buried.** No chunk-to-document max-pooling runs against a
+  corpus in the nightly any more. The cheap chunk-shape checks still do — no model, ~1.5 s for all
+  three datasets — and still catch a chunker that stopped chunking; the pooling half is
+  `DocumentRankingTests`' fixture plus an opt-in run. What the nightly keeps is the SciFact and
+  ArguAna **parity** legs, which are the only numbers comparable to a published figure at all.
+  **The `ci.md` half of this entry was already stale when the entry was written.** It said that page
+  "still describes this job as running the SciFact retrieval-quality parity run"; the same commit
+  that gated the runs rewrote that section into a per-case cost table. Left here because a debt
+  register that quietly deletes its own wrong sentences teaches nobody anything.
+  Two things did **not** ship and are not pretended to have. FiQA's real leg still has no number —
+  it moves to **Phase 3.15** with the cached-embeddings artifact that makes it affordable, and it is
+  listed under "Not measured, and why" rather than counted. And a gated case is a case nothing
+  re-checks: FiQA's parity target and its 0.37086 are now guarded only by
+  `BeirDatasetDescriptorTests` and `BeirReproduction`, on a pull request, not by any run.
 - ~~**Late chunking silently produces no embeddings for any text containing a newline or a tab**~~
   (Phase 3.7 whole-phase review, while provisioning the ONNX model `nightly.yml` had only been
   claiming to supply) → closed in 3.13. **Read the corrections before quoting the original entry:
@@ -441,7 +528,7 @@ Distinct from `EvaluationDatasetBuilder` (Phase 3.2), which synthesises QA pairs
 
 **First cut: SciFact only, to prove parity.** ~5k documents, runs in seconds, and its abstracts are short enough that chunk-to-document aggregation is easy to validate. One number matching the published reference is worth more than five unvalidated ones — a harness defect is inherited by every dataset added after it.
 
-**The methodological trap, recorded up front.** BEIR is evaluated at **document** level: qrels map `query_id → doc_id`, and nDCG@10 ranks documents. Rag.NET chunks. Ranking *chunks* computes a different quantity that merely resembles nDCG@10. The harness must map chunk → parent document, max-pool to one score per document, dedupe, and only then take the top k. This bites unevenly, which is what makes it dangerous: SciFact abstracts and ArguAna arguments are mostly single-chunk so those numbers look plausible, while FiQA and TREC-COVID have long documents where the discrepancy is real — a table that is right in the cheap places and wrong in the expensive ones. Also pin BEIR's `title + text` concatenation and cosine over normalised embeddings; both shift the numbers.
+**The methodological trap, recorded up front.** BEIR is evaluated at **document** level: qrels map `query_id → doc_id`, and nDCG@10 ranks documents. Rag.NET chunks. Ranking *chunks* computes a different quantity that merely resembles nDCG@10. The harness must map chunk → parent document, max-pool to one score per document, dedupe, and only then take the top k. This bites unevenly, which is what makes it dangerous: SciFact abstracts and ArguAna arguments are mostly single-chunk so those numbers look plausible, while FiQA and TREC-COVID have long documents where the discrepancy is real — a table that is right in the cheap places and wrong in the expensive ones. [**Corrected by Phase 3.12 (2026-07-31): "mostly single-chunk" is false, and it is false of the two datasets it names.** Measured against `ChunkingOptions`' stock 512 characters, **99.2%** of SciFact's abstracts and **87.3%** of ArguAna's arguments exceed the chunk size, against FiQA's **51.0%** — the reverse of the ordering this paragraph assumes. The default chunker produces 56,707 units from SciFact's 5,183 documents and 82,618 from ArguAna's 8,674. The aggregation was a no-op on SciFact because the **parity protocol indexes one chunk per document**, which is what the published figures embed, and not because of anything about the length of an abstract. Right conclusion — SciFact was the right first dataset and its number is unaffected — reached from a premise that does not hold.] Also pin BEIR's `title + text` concatenation and cosine over normalised embeddings; both shift the numbers.
 
 **Scope:**
 - `Rag.NET.Benchmarks.Quality` — BEIR qrels/corpus/queries loaders, nDCG@k, Recall@k, MRR implemented natively (no `pytrec_eval` dependency), and the chunk-to-document aggregation above.
@@ -464,13 +551,15 @@ Scoped out of Phase 3.3 deliberately, because it is a production-path concern wi
 - **Fire-and-forget loss.** Secondary work running out-of-band is lost on host shutdown, and a naive implementation drops it silently.
 - **The secondary must never break the primary.** `IRagPipeline.AskAsync` throws rather than returning a `Result`, so an unhandled secondary failure would surface on a request the caller had already been served.
 
-### Phase 3.12: BEIR Expansion & Ablation Table [status: pending]
+### Phase 3.12: BEIR Expansion & Ablation Table [status: complete]
 **Goal:** Add the datasets and the ablation table Phase 3.7 deliberately deferred until parity held. (Not a features.md row — the second half of 3.7's quality-hardening scope.)
+**Plan:** `docs/plans/2026-07-31-beir-expansion-ablation-design.md` + `2026-07-31-beir-expansion-implementation.md`
+**Docs:** `docs/reference/retrieval-quality.md`
 
 Created when 3.7 completed. Parity holds — SciFact nDCG@10 = 0.64593 against a published ≈ 0.645 — which was the precondition 3.7 attached to every item below. The harness is built and verified; this phase spends it.
 
 **Scope:**
-- **FiQA** — long documents, where HyDE should show lift, and the first dataset where chunk-to-document max-pooling is not a no-op. 3.7 measured SciFact with one chunk per document, so **nothing in the parity number exercises the aggregation order**; `DocumentRankingTests`' fixture is the only thing that does today, and FiQA is where the band starts guarding it too.
+- **FiQA** — long documents, where HyDE should show lift, and the first dataset where chunk-to-document max-pooling is not a no-op. 3.7 measured SciFact with one chunk per document, so **nothing in the parity number exercises the aggregation order**; `DocumentRankingTests`' fixture is the only thing that does today, and FiQA is where the band starts guarding it too. [**Corrected by this phase, and it is the contradiction §0 of the design was written to resolve.** The second sentence is right and the first and third are wrong, for one reason: max-pooling is a no-op under the **parity protocol**, not on SciFact's documents. Every dataset is measured under that protocol against its published figure, so **no parity band will ever guard the aggregation order** — not FiQA's, not any. The length premise is also false: 99.2% of SciFact's abstracts exceed the 512-character chunk size against FiQA's 51.0%, so if document length decided this, SciFact would have exercised it first. What exercises the aggregation is the **real run** this phase added, where ArguAna pooled on 1,406 of 1,406 queries against the parity leg's 0 — and that run is compared to our own parity measurement, because there is no published figure for its protocol.]
 - **ArguAna as a negative control.** HyDE should *not* help there. A harness that shows lift everywhere is broken, and without a case where the expected answer is "no change" nothing can distinguish a working ablation from an optimistic one.
 - **TREC-COVID** — the first graded-relevance dataset. `IrMetrics` uses `2^rel - 1` and has a graded fixture, but no graded dataset has ever been through it.
 - **EnronQA**, for the private-corpus and multi-tenant story.
@@ -480,6 +569,10 @@ Created when 3.7 completed. Parity holds — SciFact nDCG@10 = 0.64593 against a
 **The `+BM25 hybrid` row is the one to be careful with**, and the reason is recorded in the follow-up-debts list at the top of this file with its numbers: our BM25 and Anserini's are not two settings of the same retriever, so that row is incomparable to any published BM25 reference **while sitting in a table whose first row is validated against one**. Decide what the row is before publishing it, not after.
 
 **Not in scope:** comparative tables against other libraries — the same reasoning 3.7 gave. And no change to `InMemoryBm25Index` for benchmark comparability; §2 of the 3.7 design rejected building a benchmark-only analyzer for the dense path, and the objection is unchanged here.
+
+**Scope split, decided after the design was approved and before the plan was written.** The four items above are four independent pieces, and the last of them needs two model dependencies nothing in this project has. **§1–§3 shipped here** — the two-run protocol, the embeddings cache, FiQA and ArguAna. **§4–§5 moved to Phase 3.15**, the ablation table, along with **TREC-COVID**, **EnronQA** and the `+BM25 hybrid` debt this entry owned. The design keeps both sections rather than moving them, because the reasoning about what each row *is* was the expensive part.
+
+**Completed:** 2026-07-31 (**three parity numbers against three published references, every one of them in band: SciFact 0.64593 against 0.64508, FiQA 0.37086 against 0.36867, ArguAna 0.50432 against 0.50167** — one chunk per document, truncated at 256 tokens, over 5,183, 57,638 and 8,674 documents, through Rag.NET's own embed → store → retrieve path. Published figures were **looked up rather than assumed**, per the plan's refusal to supply them: MTEB's official results repository at `sentence-transformers__all-MiniLM-L6-v2/8b3219a929…`, `mteb_version 1.12.75`, test split, cited by dataset revision on each descriptor. That path segment is the model's own Hugging Face commit, so the figures are pinned to a **revision** rather than to a name. The BEIR paper is not a second opinion on any of them — it does not evaluate this model at all, its only MiniLM being the ms-marco cross-encoder — so the plan's "MTEB and the BEIR paper sometimes differ" had no disagreement to adjudicate. The same lookup found SciFact's **0.64508**, which is the bare `0.645` 3.7 carried unsourced for two phases; the band stays centred on 0.645 and now has a citation. **All three land above published**, by +0.00085, +0.00219 and +0.00265. Each is an order of magnitude inside ±0.02 and none is a failure, but three out of three in the same direction is a sign rather than noise, and it is recorded as an open observation with the obvious candidates named — tie-breaking at equal scores, or the exact truncation boundary — and **neither checked nor claimed**. **The real run is the first thing that has ever exercised chunk-to-document max-pooling against a corpus**, and its two counters are what make that verifiable rather than asserted: **0 queries** retrieved two units of one document under the parity protocol on either dataset, and **all 1,406** of ArguAna's and **all 1,109** of SciFact's did under Rag.NET's chunking — 82,618 units from 8,674 documents at up to 285 from one, and 56,707 from 5,183 at up to 221. **The two real deltas have opposite signs, which is the most useful thing the phase produced.** Default chunking **costs 0.0784 nDCG@10 on ArguAna** — 0.50432 → 0.42594, with Recall@10 0.79161 → 0.70057 and MRR@10 0.41515 → 0.34147, so documents are missed rather than reordered — and **gains 0.0100 on SciFact**, 0.64593 → 0.65589, with Recall@10 flat at 0.78667 → 0.78222 and MRR@10 up 0.60483 → 0.62057, which is the same documents better ordered. [**SciFact's real leg was measured in the whole-phase review, 2026-07-31**; the phase itself recorded it as "not recorded", and one page argued from its absence that the helping case "is FiQA's, and FiQA's real run has not been measured". It is SciFact's, and it is measured.] As reasoning and not as measurement: the sign tracks whether relevance is passage-level — a claim supported by two sentences inside an abstract — or document-level, as a whole counterargument to a whole argument is. One dataset could not have told those apart. **FiQA's real run was deliberately not made**, with a measured basis rather than an estimate: FiQA's parity leg took 1 h 11 m for 64,247 distinct embeddings, its real leg is 429,850 chunks, and the vector store would sort 429,850 entries per query across 6,648 queries — eight to nine hours. It is still the run worth having, because FiQA's documents are genuinely long and heterogeneous where ArguAna's 9.5× fan-out comes largely from the chunker's short-part behaviour and SciFact's abstracts are uniform — but [**with SciFact's real leg measured it is no longer the only thing that can answer whether max-pooling helps or hurts**: the answer is both, and it depends on the corpus] → **Phase 3.15**, which needs a cached-embeddings artifact anyway. **Three debts recorded with their numbers.** `RecursiveChunkingStrategy` never merges short split parts back towards `MaxChunkSize`, so a document of short lines becomes one chunk per line: FiQA 429,850 units from 57,638 documents, up to 1,723 from one, against the ~2× a 522-character median document over a 512-character chunk size suggests. That is a probable library defect with nothing to do with benchmarking — it inflates embedding cost, storage and query-time sorting for every user of the default chunker → **Phase 3.16**. And FiQA has 38 corpus entries whose title and text are both empty, one of them (`117276`) judged relevant, so the real leg indexes 38 fewer documents than the parity leg — surfaced as `UnindexedDocumentCount` rather than papered over with a placeholder chunk → **Phase 3.15**, to be stated alongside FiQA's real number. The third was found while writing this entry rather than while running anything: `nightly.yml` selects the whole integration project with no filter and allows it **120 minutes**, and the cases this phase added are hours — so the nightly would have failed on a timeout, which reports on parity exactly as little as skipping did. [**Closed inside the phase rather than carried to 3.15.** `BeirRunBudget` records what each dataset costs under each protocol and gates the four the job cannot afford behind `RAGNET_BEIR_LONG_RUNS`, which `nightly.yml` never sets; each skips naming its measured cost and the command that runs it. The nightly keeps the SciFact and ArguAna parity legs and gives up corpus-scale max-pooling, which is stated rather than buried.] **Self-exclusion is carried per dataset**, because it is part of the published figure rather than a preference: MTEB's `ignore_identical_ids` and BEIR's `if corpus_id != query_id`, set for ArguAna and FiQA and off for SciFact. ArguAna is unrunnable without it — 1,298 of its 1,406 queries are byte-identical to the corpus document sharing their id — and SciFact's ids do not intersect at all, so 0.64593 is untouched. **Licences are not uniform and all three disagree with their mirrors.** ArguAna is CC BY 4.0 from the Zenodo deposit that replaced BEIR's dead homepage link, against `cc-by-sa-4.0` from both mirrors. FiQA names **no** licence and restricts to non-commercial use twice in upstream's own words, while `BeIR/fiqa` declares `cc-by-sa-4.0` — permitting precisely the commercial use upstream refuses — and `mteb/fiqa` declares `unknown`. The meta-finding is that `BeIR/scifact`, `BeIR/fiqa` and `BeIR/arguana` all declare the same `cc-by-sa-4.0`: a blanket mirror-wide declaration rather than a per-dataset determination, which is why it disagrees with all three upstreams at once. Upstream is authoritative throughout; nothing is redistributed. **The roadmap entry that scheduled this phase was wrong about why**, corrected inline above and in `docs/reference/retrieval-quality.md` rather than silently: max-pooling was a no-op on SciFact because of the *parity protocol*, not because abstracts are short — 99.2% of them exceed the chunk size against FiQA's 51.0% — and no parity band will ever guard the aggregation order, on any dataset. **One inaccuracy was knowingly left in place and is now gone**: `BeirDatasetDescriptor.FiQA`'s remarks still said 51% of its documents exceeding `MaxChunkSize` "is what makes this the first dataset where chunk-to-document max-pooling is not a no-op", the same wrong reason surviving into a comment. [**Corrected in the whole-phase review**, along with a fourth copy of the same false premise nobody had listed — `DocumentRanking`'s own summary still said SciFact abstracts and ArguAna arguments "are mostly single-chunk".] **The review also closed the gap the phase's own numbers were pinned by**: nothing asserted 0.64593, 0.37086 or 0.50432 anywhere, and the ±0.02 published band plus the real run's 0.5×–1.5× envelope both pass a cut-then-pool mutation that moves those numbers by 0.016–0.020. `BeirReproduction` pins the measured figures at ±0.005, labelled as this machine's reproduction rather than as agreement with anyone's publication, and `BeirDatasetDescriptorTests` now pins FiQA's and ArguAna's targets, which were pinned by nothing at all. Supporting work: the parity test is a theory over `BeirDatasetDescriptor.All` with each dataset carrying its own target and band, so a dataset is a descriptor rather than a copied test file; `EmbeddingCache` is content-addressed on the model identity **and** the text, treats a truncated entry as a miss, and is what makes measuring each dataset twice affordable; and `Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments` needs no model and finishes in seconds, which is how the chunk counts here were measured rather than guessed.)
 
 ### Phase 3.13: Late Chunking Newline Defect [status: complete]
 **Goal:** Make late chunking work on text that has paragraphs. (Not a features.md row — a defect found by the Phase 3.7 whole-phase review and recorded in the follow-up-debts list at the top of this file.)
@@ -495,6 +588,57 @@ Created when that review provisioned the ONNX model `nightly.yml` had been claim
 **Not in scope:** the tokenizer. Microsoft.ML.Tokenizers' BERT normalization is upstream behaviour and matching it is the point.
 
 **Completed:** 2026-07-30 (late chunking works on multi-line, tab-separated, NFC text of any script but CJK, and `LateChunkingIntegrationTests` — written in Phase 1.1 and **never once executed anywhere** — now passes against a real `all-MiniLM-L6-v2`, with a tab case added to it. The fix is a length-preserving substitution of a space for `\n`, `\t` and `\r` in `BertOnnxPlumbing` before every `EncodeToTokens` call. **The defect was five times broader than the debt entry said**, which the design established by probing rather than reasoning: not only paragraph breaks but `\t`, `\r`, a trailing newline, any other control character, NFD-decomposed text (`"cafe" + U+0301 + " test"`, 10 → 9, the form macOS filesystems produce) and **all CJK** (`"日本語 text"`) — which *grows*, 8 → 14, and so cannot be fixed by any substitution at all. **It corrupted tokens, not only offsets.** `"alpha\n\nbeta gamma"` normalized to `"alphabeta gamma"` and tokenized as `alphabet | ##a | gamma`: BERT's reference implementation treats `\n` as whitespace and substitutes a space, this tokenizer deleted it as a control character, and the words either side merged into one the document never contained. A fix restoring only the offsets would still have embedded `alphabet`, which is why the substitution went into the shared plumbing rather than the late-chunking path. **`OnnxSpladeEncoder` and `OnnxEmbeddingGenerator` shared the defect and never tripped the guard**, because they discard offsets — the guard only ever protected the one encoder that read them, while the other two embedded the merged word in silence. That is not hypothetical: it is where Phase 3.7's `title + "\n" + text` measurement got its 0.00314 from, and correcting it is recorded above. **Severity was overstated in the debt entry.** `EmbeddingBehavior` backfills every chunk whose embedding is null or empty, so the fallback degraded to *ordinary* embeddings rather than losing chunks — nothing was ever unretrievable, and what actually happened is that a configured feature silently did not apply. The fallback is therefore kept, per the design: one awkward section should not fail a document. **The guard stays and gets tests.** Probing showed CJK token offsets going genuinely out of bounds, so refusing is correct rather than cautious; what changed is the message, which now names the direction the length moved and the cause that direction implies — grew means CJK and there is no remedy, shrank means NFD (fixable with `string.Normalize()`) or a rarer control character. **The plan's claim that the guard had "no test coverage at all" was wrong**: `GenerateAsync_NormalizationChangesTextLength_ThrowsClearError` reached it through `GenerateAsync` with a `U+0001` and pinned the old wording, so it failed on the message change. What was genuinely missing was a direct test of the guard and any pin on the *cause*, both added in `NormalizationGuardTests`. **And the plan's premise that control characters are "now substituted" is only true of `\n`, `\t` and `\r`** — the rarer ones are still deleted and still a live cause, so the message qualifies that advice instead of dropping it. Verified with the model provisioned rather than skipped: `Rag.NET.Embeddings.Onnx.Tests` 147 passed / 0 skipped, `Rag.NET.Chunking.IntegrationTests` 4 passed / 0 skipped, and both the guard's cause-naming and the new tab case were mutation-checked — removing "CJK" from the message fails two assertions, and neutralising the substitution fails both late-chunking tests with every chunk's `Embedding` null, which is the fallback the design predicts rather than a thrown error. SciFact parity is unmoved: **0.64593** measured under both separators when the substitution landed, and `Rag.NET.Benchmarks.Quality.IntegrationTests` re-run green afterwards — 2 passed / 0 skipped in ~7 minutes, against a band the run reports the number for only on failure.)
+
+### Phase 3.14: Library Comparison at Defaults [status: pending]
+**Goal:** Compare Rag.NET's retrieval quality against other RAG libraries on the same corpus and the same embedding model, **each at its own defaults**. (Not a features.md row — scoped out of 3.7 and framed in the 3.12 design.)
+
+Created by the 3.12 design, which decided the framing that 3.7 left open. 3.7 declined comparative tables because they are "only credible with genuinely equivalent configuration"; the 3.12 design went further and rejected *matched* configuration as the wrong target:
+
+- **A matched-configuration table measures how carefully each library was configured**, not the libraries. Match the model, the chunk size and the top-k across four libraries and they converge on near-identical numbers, because at that point they are all calling the same embedding model through different syntax. The differences that survive are rounding.
+- **The credible comparison is each library's defaults** — same corpus, same model, every configuration published in full. That measures the decisions a library makes on your behalf when you do not make them yourself, which is a real difference and the one a reader is choosing between.
+- It is also the harder table to write honestly, because "our defaults win" is exactly what every such table concludes. Whatever ships must publish the configuration of every entrant, and a default that loses is a finding rather than a bug to be tuned away.
+
+**Depends on** the 3.12 harness: the parity protocol, the descriptors and `EmbeddingCache` are what make running one corpus through several libraries affordable.
+
+**Not in scope:** changing any Rag.NET default in response to the table within the same phase. Measure first; a defaults change is its own decision with its own phase.
+
+### Phase 3.15: Retrieval Ablation Table [status: pending]
+**Goal:** Publish the ablation table — baseline dense → +BM25 hybrid → +HyDE → +reranker — over the datasets 3.12 landed. (Not a features.md row — §4–§5 of the 3.12 design, split out before that plan was written.)
+
+Created by the 3.12 scope split. §4 and §5 of `docs/plans/2026-07-31-beir-expansion-ablation-design.md` are kept in that document rather than moved, because the reasoning about what each row *is* was the expensive part to work out and this phase should start from it rather than rediscover it.
+
+**The rows are not uniform, and each is labelled for what it is:**
+- **dense** — free, deterministic, validated against a published figure. The anchor.
+- **+BM25 hybrid** — free, deterministic, and **incomparable to any published BM25**. `IHybridSearchable` is implemented only by the Azure AI Search and Weaviate stores, so in-memory this row is `InMemoryBm25Index` combined with dense results via RRF. The comparability debt is in the follow-up-debts list with its numbers; the decision it demands is due **before** the row is published, not after.
+- **+HyDE** — needs an `IChatClient`, and is the only nondeterministic row. The generated hypotheticals must be **cached alongside the embeddings**, or a re-run produces different hypotheticals and the table is noise with a border around it.
+- **+reranker** — needs a cross-encoder. `OnnxReranker` rather than `CohereReranker`: local, free, deterministic, provisioned the way the embedder already is, and no API key or per-call cost in a table meant to be re-runnable.
+
+**What the table must be able to show:** lift where lift is expected (HyDE on FiQA), and **no lift where none is expected** (HyDE on ArguAna). A table that only ever goes up is indistinguishable from a table that cannot go down, which is why ArguAna is the negative control and the most valuable single dataset here.
+
+**Also carried into this phase, from 3.12:**
+- **FiQA's real-chunking run**, deferred there with a measured cost basis: 429,850 chunks against a parity leg that took 1 h 11 m for 64,247 embeddings, so eight to nine hours plus 429,850 entries sorted per query across 6,648 queries. It adds a **third corpus shape** — documents long and heterogeneous in their own right, where ArguAna's fan-out is mostly the chunker's short-part behaviour and SciFact's abstracts are uniform — rather than the only evidence about whether max-pooling helps or hurts, which SciFact (+0.0100) and ArguAna (−0.0784) already answer in both directions. **This phase needs a cached-embeddings artifact regardless**, which is what makes it the natural home.
+- **The 38 empty FiQA corpus entries**, one of them judged relevant, which make the real leg index 38 fewer documents than the parity leg. State it alongside FiQA's real number.
+- ~~**A one-line correction to `BeirDatasetDescriptor.FiQA`'s remarks**~~ — **done in the 3.12 whole-phase review**, not carried here. The remark credited FiQA's 51% of over-long documents with making it "the first dataset where chunk-to-document max-pooling is not a no-op"; the protocol makes it a no-op, not the document length, and SciFact exceeds the chunk size more often (99.2%). The same false premise was also still in `DocumentRanking`'s own summary ("SciFact abstracts and ArguAna arguments are mostly single-chunk") and was corrected with it.
+- **TREC-COVID** — the first graded-relevance dataset. `IrMetrics` uses `2^rel - 1` and has a graded fixture, but no graded dataset has ever been through it.
+- **EnronQA**, for the private-corpus and multi-tenant story.
+- ~~**What the nightly runs.**~~ **Settled in 3.12 rather than carried here.** `BeirRunBudget` records what every dataset costs under every protocol and gates the four cases the job cannot afford behind `RAGNET_BEIR_LONG_RUNS`; the SciFact and ArguAna parity legs still run unasked, so the job reports a parity number rather than a timeout. What remains for this phase is narrower and is the *reason* for the artifact: with cached embeddings, FiQA and the real legs could come back into a 120-minute job instead of staying opt-in.
+
+**Runs after Phase 3.16 if that phase runs at all**, because the chunk counts this phase budgets against are the ones the short-part defect produces.
+
+### Phase 3.16: Recursive Chunking Short-Part Merge [status: pending]
+**Goal:** Stop `RecursiveChunkingStrategy` emitting every split part as its own chunk, so a document of short lines does not become one chunk per line. (Not a features.md row — a probable library defect measured in Phase 3.12 and recorded in the follow-up-debts list at the top of this file.)
+
+Measured at stock `ChunkingOptions` — 512 characters, 50 of overlap: **FiQA 429,850 units from 57,638 documents** (7.5×, up to **1,723** from a single document), ArguAna 82,618 from 8,674 (9.5×), SciFact 56,707 from 5,183 (10.9×). FiQA's median document is 522 characters against a 512-character chunk size, which suggests roughly 2×.
+
+**This is a library problem, not a benchmark one.** Every user of the default chunker pays it in embedding calls, vector-store rows and query-time sorting, and the multiplier is largest on the corpora people have most of. It was found only because 3.12 was costing an embedding run and the arithmetic did not work.
+
+**Scope:**
+- **Decide what the fix is.** A merge pass over the emitted parts, a minimum chunk size, or a split-and-pack loop that fills towards `MaxChunkSize` are three different answers with three different effects on chunk boundaries. Not decided here.
+- **Overlap interacts with all three** and must be reasoned about explicitly rather than left to fall out.
+- **Every downstream number in the project moves**, including the real-chunking runs in `docs/reference/retrieval-quality.md`. Whatever ships re-measures them rather than leaving the page describing the old chunker.
+- **Confirm it is a defect before fixing it.** The counts are measured; the intent behind the current behaviour is not, and a strategy that deliberately preserves split boundaries is a different conversation from one that forgot to pack them.
+
+**Not in scope:** the other chunking strategies, unless the same shape is found in them — in which case say so rather than widening quietly.
 
 ## Milestone 4: Release Readiness (v1.0) [status: pending]
 **Goal:** Make Rag.NET shippable — CI, NuGet publishing, first-class configuration, logging, telemetry, and runnable samples.

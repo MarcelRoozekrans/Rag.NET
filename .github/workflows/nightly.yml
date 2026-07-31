@@ -157,12 +157,18 @@ jobs:
     # which is the intended and safe outcome.
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-secrets'
     runs-on: ubuntu-latest
-    # Wider than ci.yml's 45 now that this job actually runs the SciFact parity measurement instead
-    # of skipping it. That measurement embeds 5,183 documents and 1,109 queries on CPU — ~355 s per
-    # separator on a fast developer machine, and the theory runs both — so 45 minutes was a budget
-    # for a job that measured nothing. A hosted runner is slower than that machine, and the bound
-    # still has to catch the real failure it is here for: a live Document Intelligence call that
-    # never returns.
+    # Wider than ci.yml's 45 now that this job actually runs the BEIR parity measurements instead of
+    # skipping them. SciFact embeds 5,183 documents and 1,109 queries on CPU — ~355 s per separator
+    # on a fast developer machine, and the theory runs both — and ArguAna adds ~4 min per separator,
+    # so 45 minutes was a budget for a job that measured nothing. A hosted runner is slower than that
+    # machine, and the bound still has to catch the real failure it is here for: a live Document
+    # Intelligence call that never returns.
+    #
+    # This number is NOT the thing to raise when a BEIR case does not fit. Phase 3.12 added FiQA,
+    # whose parity leg measures 1 h 11 m and whose real leg has never finished at an estimated 8-9 h;
+    # no timeout makes those two affordable here, and a job that times out reports nothing about
+    # parity at all. They are gated behind RAGNET_BEIR_LONG_RUNS instead, which this job never sets,
+    # and each one skips naming its own cost. BeirRunBudget holds the split and the measurements.
     timeout-minutes: 120
     env:
       # ONLY the values that are genuinely secret. secrets.* with no fallback, on purpose: an unset
@@ -279,10 +285,17 @@ jobs:
       # EVERY variable this job supplies is listed, and the list is the point. RAGNET_BEIR_CACHE was
       # missing from both the env block and this loop, so the one omission that mattered was also
       # the one omission this report could not have shown. Add a variable to the job, add it here.
+      #
+      # RAGNET_BEIR_LONG_RUNS is the exception that proves it: this job deliberately does NOT set it,
+      # and it is listed anyway so the log says so out loud. It opts into the BEIR measurements that
+      # do not fit this job's 120 minutes — FiQA under either protocol, and every dataset's real
+      # chunking leg; see BeirRunBudget for the measured costs. Reporting it unset is the difference
+      # between "the long runs were off tonight" and a test count nobody can interpret.
       - name: Report which env-gated variables are present
         run: |
           for name in RAGNET_TESSDATA RAGNET_DOCINTEL_ENDPOINT RAGNET_DOCINTEL_KEY \
-                      RAGNET_ONNX_EMBED_MODEL RAGNET_ONNX_EMBED_VOCAB RAGNET_BEIR_CACHE; do
+                      RAGNET_ONNX_EMBED_MODEL RAGNET_ONNX_EMBED_VOCAB RAGNET_BEIR_CACHE \
+                      RAGNET_BEIR_LONG_RUNS; do
             if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: unset — its tests will skip"; fi
           done
 

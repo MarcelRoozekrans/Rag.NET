@@ -124,10 +124,73 @@ Assume nothing works until a test says so *and the test is right*.
    go genuinely out of bounds — now with a message naming the cause and a documented limit in
    `docs/guide/chunking.md`. The phase also corrected 3.7's "the separator shifts the number by
    0.00314": that shift was this defect, not the separator.
-12. Phase 3.12 — BEIR Expansion & Ablation Table [pending] — the datasets 3.7 deferred until parity
-   held: FiQA for long documents, ArguAna as a negative control, then the ablation table. Owns the
-   recorded BM25 comparability debt, because the `+BM25 hybrid` row is where it becomes live.
-13. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
+12. Phase 3.12 — BEIR Expansion & Ablation Table [complete — 2026-07-31] — the datasets 3.7 deferred
+   until parity held. **Scope split before the plan was written:** the two-run protocol, the
+   embeddings cache and the two datasets shipped here; the ablation table, TREC-COVID, EnronQA and
+   the BM25 comparability debt moved to **Phase 3.15**, whose rows need an `IChatClient` and a
+   cross-encoder that nothing in this project had.
+   **Shipped:** three parity numbers against three published references, all in band — SciFact
+   **0.64593** vs 0.64508, FiQA **0.37086** vs 0.36867, ArguAna **0.50432** vs 0.50167, every figure
+   looked up from MTEB's results repository at a pinned *model revision* rather than assumed. All
+   three land above published by 0.001–0.003; three out of three in the same direction is recorded as
+   an open observation with candidates named (tie-breaking, the truncation boundary) and neither
+   checked nor claimed.
+   **The real run is the first thing that has ever exercised chunk-to-document max-pooling against a
+   corpus**, and the counters prove it rather than assert it: 0 queries pooled under the parity
+   protocol on either dataset, and all 1,406 of ArguAna's and all 1,109 of SciFact's under Rag.NET's
+   chunking.
+   **The two real deltas have opposite signs, which is the phase's most useful result.** Default
+   chunking **costs 0.0784 nDCG@10 on ArguAna** (0.50432 → 0.42594, Recall and MRR falling with it,
+   so documents are missed rather than reordered) and **gains 0.0100 on SciFact** (0.64593 →
+   0.65589, over 56,707 units from 5,183 documents and up to 221 from one, with Recall flat —
+   0.78667 → 0.78222 — and MRR up 0.60483 → 0.62057, the same documents better ordered). Offered as reasoning and not
+   as measurement: the sign tracks whether relevance is passage-level, as a claim supported by two
+   sentences inside an abstract is, or document-level, as a whole counterargument to a whole argument
+   is. A single dataset could not have distinguished those.
+   **FiQA's real run was deliberately not made**, with a measured basis: 429,850 chunks against a
+   parity leg that took 1 h 11 m for 64,247 embeddings — eight to nine hours → **Phase 3.15**, which
+   needs a cached-embeddings artifact anyway and where FiQA adds a third corpus shape rather than the
+   only evidence about pooling.
+   **Corrected rather than silently rewritten:** the roadmap entry that scheduled this phase said
+   FiQA is "the first dataset where max-pooling is not a no-op" and 3.7's said SciFact abstracts are
+   "mostly single-chunk". Both are false — 99.2% of SciFact's abstracts exceed the chunk size against
+   FiQA's 51.0%, and pooling is a no-op under the *parity protocol*, which every dataset is measured
+   under, so no parity band will ever guard the aggregation order. Two source files still carried the
+   same false premise and the whole-phase review corrected both: `BeirDatasetDescriptor.FiQA`'s
+   remarks, knowingly deferred at the time, and `DocumentRanking`'s own summary, which nobody had
+   listed.
+   **Two debts recorded with their numbers:** `RecursiveChunkingStrategy` never merges short split
+   parts back towards `MaxChunkSize` (FiQA 429,850 units from 57,638 documents, up to 1,723 from one)
+   → **Phase 3.16**; and FiQA's 38 empty corpus entries, one judged relevant, which make the real leg
+   index 38 fewer documents than the parity leg → **Phase 3.15**.
+   **A third was found and closed inside the phase.** The nightly `run-secrets` job selected the
+   whole integration project with no filter under a 120-minute timeout, against cases that now cost
+   hours — so it would have failed on a timeout and reported on parity as little as skipping did.
+   `BeirRunBudget` now records what every dataset costs under every protocol and gates the four the
+   job cannot afford behind `RAGNET_BEIR_LONG_RUNS`, which `nightly.yml` never sets; each skips
+   naming its measured cost and the command that runs it. The nightly keeps the SciFact and ArguAna
+   parity legs and loses corpus-scale max-pooling, which is stated rather than buried.
+   **What the gate costs is that a gated number is re-checked by nothing**, so the phase closed with
+   the pins the review found missing: `BeirDatasetDescriptorTests` now pins FiQA's and ArguAna's
+   parity targets and requires every target's digits to appear in the source string citing it, and
+   `BeirReproduction` pins the **measured** figures — separately from the published band, because
+   ±0.02 is wider than most defects and a cut-then-pool mutation of `DocumentRanking` passed both the
+   band and the real run's 0.5×–1.5× envelope green.
+13. Phase 3.14 — Library Comparison at Defaults [pending] — created by the 3.12 design, which decided
+   the framing 3.7 left open: matched-configuration tables measure how carefully each library was
+   configured and converge on rounding errors, because every entrant calls the same embedding model.
+   The credible comparison is each library's **defaults**, same corpus and same model, every
+   configuration published.
+14. Phase 3.15 — Retrieval Ablation Table [pending] — §4–§5 of the 3.12 design: dense → +BM25 hybrid
+   → +HyDE → +reranker, with each row labelled for what it is. Owns the BM25 comparability debt,
+   because the `+BM25 hybrid` row is where it becomes live; owns FiQA's real run, TREC-COVID and
+   EnronQA. Must be able to show **no** lift where none is expected (HyDE on ArguAna) — a table that
+   only goes up is indistinguishable from one that cannot go down.
+15. Phase 3.16 — Recursive Chunking Short-Part Merge [pending] — a probable library defect measured
+   in 3.12: every split part becomes its own chunk, so a document of short lines becomes one chunk
+   per line. It inflates embedding cost, storage and query-time sorting for every user of the default
+   chunker, and it is why FiQA's real run is measured in hours.
+16. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
    of 3.3. Production traffic has no ground truth, so only the reference-free metrics apply; it
    also doubles spend per request and must never let a secondary failure reach a caller the
    primary already served.
