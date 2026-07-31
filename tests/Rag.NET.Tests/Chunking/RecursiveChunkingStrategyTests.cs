@@ -146,4 +146,56 @@ public class RecursiveChunkingStrategyTests
         Assert.All(chunks, c => Assert.True(c.Text.Length <= 10, $"Chunk too long: '{c.Text}'"));
         Assert.Equal(text, string.Concat(chunks.Select(c => c.Text)));
     }
+
+    [Fact]
+    public async Task ChunkAsync_ManyShortLines_PacksThemTowardsMaxChunkSize()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // 60 lines of ~16 characters = 1,010 characters against a 512 limit.
+        var text = string.Join("\n", Enumerable.Range(1, 60).Select(i => $"- item number {i}"));
+        var section = CreateSection(text);
+        var options = new ChunkingOptions { MaxChunkSize = 512, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(section, options, ct).ToListAsync(ct);
+
+        // Before this task: 60 chunks averaging 31 characters.
+        Assert.InRange(chunks.Count, 2, 3);
+        Assert.All(chunks, c => Assert.True(c.Text.Length <= 512, $"Chunk of {c.Text.Length} exceeds 512"));
+    }
+
+    [Fact]
+    public async Task ChunkAsync_WordsWithNoSentenceOrLineBreak_DoNotBecomeOneChunkPerWord()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // 150 words, no ". " and no newline, so the recursion reaches the " " separator.
+        var text = string.Join(" ", Enumerable.Repeat("word", 150));
+        var section = CreateSection(text);
+        var options = new ChunkingOptions { MaxChunkSize = 512, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(section, options, ct).ToListAsync(ct);
+
+        // Before this task: 150 chunks of 4 characters. This is the case that proves it is a defect.
+        Assert.InRange(chunks.Count, 2, 3);
+        // Greedy packing fills every chunk towards MaxChunkSize; only the final
+        // chunk may carry the short tail (749 chars total cannot make two chunks
+        // that both exceed 400).
+        Assert.All(chunks[..^1], c => Assert.True(c.Text.Length > 400, $"Chunk of {c.Text.Length} was not packed"));
+        Assert.All(chunks, c => Assert.True(c.Text.Length <= 512, $"Chunk of {c.Text.Length} exceeds 512"));
+    }
+
+    [Fact]
+    public async Task ChunkAsync_SentencesArePackedAndKeepTheirSeparators()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var text = "Alpha one. Bravo two. Charlie three. Delta four.";
+        var section = CreateSection(text);
+        var options = new ChunkingOptions { MaxChunkSize = 30, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(section, options, ct).ToListAsync(ct);
+
+        // Sentences pack until the next will not fit, and the ". " between packed
+        // sentences is restored rather than dropped.
+        Assert.Contains(chunks, c => c.Text.Contains(". ", StringComparison.Ordinal));
+        Assert.All(chunks, c => Assert.True(c.Text.Length <= 30, $"Chunk of {c.Text.Length} exceeds 30"));
+    }
 }

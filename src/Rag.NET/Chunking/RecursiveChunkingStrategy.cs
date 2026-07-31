@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -94,28 +95,66 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
 
     private static IEnumerable<string> SplitParts(string[] parts, int maxSize, int separatorIndex)
     {
+        var separator = Separators[separatorIndex];
+        var pending = new List<string>();
+
         foreach (var part in parts)
         {
-            if (string.IsNullOrWhiteSpace(part))
+            if (part.Length <= maxSize)
             {
+                pending.Add(part);
                 continue;
             }
 
-            if (part.Length <= maxSize)
+            foreach (var packed in Pack(pending, separator, maxSize))
             {
-                var trimmed = part.Trim();
-                if (trimmed.Length > 0)
-                {
-                    yield return trimmed;
-                }
+                yield return packed;
             }
-            else
+
+            pending.Clear();
+
+            foreach (var sub in SplitRecursively(part, maxSize, separatorIndex + 1))
             {
-                foreach (var sub in SplitRecursively(part, maxSize, separatorIndex + 1))
-                {
-                    yield return sub;
-                }
+                yield return sub;
             }
+        }
+
+        foreach (var packed in Pack(pending, separator, maxSize))
+        {
+            yield return packed;
+        }
+    }
+
+    private static IEnumerable<string> Pack(List<string> parts, string separator, int maxSize)
+    {
+        if (parts.Count == 0)
+        {
+            yield break;
+        }
+
+        var buffer = new StringBuilder(parts[0]);
+
+        for (var i = 1; i < parts.Count; i++)
+        {
+            if (buffer.Length + separator.Length + parts[i].Length <= maxSize)
+            {
+                buffer.Append(separator).Append(parts[i]);
+                continue;
+            }
+
+            var flushed = buffer.ToString().Trim();
+            if (flushed.Length > 0)
+            {
+                yield return flushed;
+            }
+
+            buffer.Clear().Append(parts[i]);
+        }
+
+        var last = buffer.ToString().Trim();
+        if (last.Length > 0)
+        {
+            yield return last;
         }
     }
 
