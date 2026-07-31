@@ -294,6 +294,88 @@ public class RecursiveChunkingStrategyTests
     }
 
     [Fact]
+    public async Task ChunkAsync_ShortPartsBeforeAnOversizeSibling_AreNotDropped()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // A run of short lines, then one line far longer than MaxChunkSize, then
+        // more short lines. The short run before the oversize sibling sits in
+        // `pending` and must be flushed before recursing into the long line —
+        // deleting that mid-stream flush silently discards the whole run while
+        // every surviving chunk is still a perfect substring of the source.
+        var shortLinesBefore = string.Join("\n", Enumerable.Range(1, 5).Select(i => $"before line {i}"));
+        var oversize = string.Join(" ", Enumerable.Repeat("stretch", 30));
+        var shortLinesAfter = string.Join("\n", Enumerable.Range(1, 5).Select(i => $"after line {i}"));
+        var text = shortLinesBefore + "\n" + oversize + "\n" + shortLinesAfter;
+        var options = new ChunkingOptions { MaxChunkSize = 50, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(CreateSection(text), options, ct).ToListAsync(ct);
+
+        AssertNoSourceTextIsLost(text, chunks, "short-parts-before-oversize-sibling");
+    }
+
+    [Fact]
+    public async Task ChunkAsync_NoSourceTextIsSilentlyDropped_AcrossGeneratedShapes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // Substring tests prove every chunk came from the source; this proves the
+        // converse — the source's text all ends up in some chunk. Overlap must be 0:
+        // overlap prepends text, but positions still describe the un-overlapped span,
+        // so coverage is only measurable without it.
+        var pieces = new[]
+        {
+            "alpha", "b", "  ", "\n", "\n\n", ". ", " ", "gamma delta", "\t", "x.",
+            "one two three four five six seven", new string('y', 90),
+        };
+        var random = new Random(20260731); // fixed seed — a failure must be reproducible
+
+        for (var iteration = 0; iteration < 500; iteration++)
+        {
+            var builder = new StringBuilder();
+            var pieceCount = random.Next(1, 40);
+            for (var i = 0; i < pieceCount; i++)
+            {
+                builder.Append(pieces[random.Next(pieces.Length)]);
+            }
+
+            var text = builder.ToString();
+            var options = new ChunkingOptions { MaxChunkSize = random.Next(4, 64), Overlap = 0 };
+            var chunks = await _sut.ChunkAsync(CreateSection(text), options, ct).ToListAsync(ct);
+
+            AssertNoSourceTextIsLost(text, chunks, $"iteration {iteration}");
+        }
+    }
+
+    private static void AssertNoSourceTextIsLost(string text, IReadOnlyList<TextChunk> chunks, string context)
+    {
+        // Mark every index covered by some chunk's [StartPosition..EndPosition) span,
+        // then require every uncovered character to be one the chunker may drop:
+        //   - whitespace: separators between chunks and edges removed by Trim();
+        //   - '.': splitting on ". " strips the terminal period; packing restores it
+        //     inside a chunk, but the one at each chunk's end sits in the separator
+        //     and is not restored (the documented ~one-period-per-chunk residual).
+        // An uncovered letter or digit means source text was silently lost.
+        var covered = new bool[text.Length];
+        foreach (var chunk in chunks)
+        {
+            Array.Fill(covered, true, chunk.StartPosition, chunk.EndPosition - chunk.StartPosition);
+        }
+
+        var index = 0;
+        foreach (var character in text)
+        {
+            if (!covered[index])
+            {
+                Assert.True(
+                    char.IsWhiteSpace(character) || character == '.',
+                    $"{context}: character '{character}' (U+{(int)character:X4}) at index {index} is in no chunk's span; " +
+                    $"only whitespace and pack-boundary periods may be dropped. Source: \"{text}\"");
+            }
+
+            index++;
+        }
+    }
+
+    [Fact]
     public async Task ChunkAsync_EveryChunkIsASubstring_AcrossGeneratedWhitespaceShapes()
     {
         var ct = TestContext.Current.CancellationToken;
