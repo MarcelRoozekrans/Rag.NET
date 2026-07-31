@@ -85,6 +85,28 @@ future reader can tell the difference between "never existed" and "dealt with".
   it would apply here: a benchmark-only analyzer measures the benchmark, not the library. Whoever
   builds the table decides; they must decide knowingly.
   → **Phase 3.12** (BEIR Expansion & Ablation Table — the phase that builds the row)
+- **Two live suites have never actually run against the real thing** (surfaced 2026-07-31, while
+  reading the first genuine nightly). Both are correctly built and correctly gated; neither has ever
+  executed, which is a different claim from "they pass".
+  - **`AzureDocumentIntelligenceLiveTests`** needs `RAGNET_DOCINTEL_ENDPOINT` and
+    `RAGNET_DOCINTEL_KEY` — a real Azure resource, billed one page per run (free tier covers it).
+    Offline coverage is WireMock cassettes, which catch regressions in *our* code; this test exists
+    to catch the day those cassettes stop describing the real service, and until it runs once,
+    nothing has confirmed they ever did.
+  - **`PdfOcrFallbackTests`' OCR case** needs `RAGNET_TESSDATA` **and** `/p:EnableOcr=true`.
+    `RAGNET_TESSDATA` is free — a path to `eng.traineddata` from `tesseract-ocr/tessdata`, no account
+    — but the MSBuild gate means the test is not skipped, it is **not compiled**, so no run of any
+    kind reports on it. This is the third inert guard Phase 3.7 found and the only one still open.
+  **The container route was considered and declined.** Document Intelligence does ship as an Azure AI
+  container, but those require `Billing` and `ApiKey` pointing at a live Azure resource and meter
+  against it — so it keeps the subscription and the per-page cost while adding a multi-gigabyte pull,
+  and its version lags the cloud service, so it does not reliably catch the cloud drift the live test
+  exists for. Most of the price of the real thing for a weaker guarantee. (Verify Microsoft's current
+  container billing and access terms before revisiting; they change.)
+  The cheap half is the OCR one: fixing the `EnableOcr` gate costs nothing but a decision about how
+  to compile it in CI. The Azure half needs a resource and a deliberate choice to spend a page.
+  → **Milestone 4**, with the release-readiness work, where "has this ever been exercised against the
+  real service" is a question worth answering before publishing packages.
 - **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
   of scope, scheduled here so they do not stay open notes). All three exist in
   `MarcelRoozekrans/AdoNet.Async` and none exists here:
