@@ -32,15 +32,14 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <para>
 /// <b>How expensive, measured rather than guessed.</b>
 /// <see cref="Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments"/> runs in seconds and reports
-/// what the default strategy actually produces: SciFact 56,707 units from 5,183 documents, ArguAna
-/// 82,618 from 8,674, FiQA <b>429,850 from 57,638</b> — roughly 7.5× the corpus, and up to 1,723
-/// units from a single document. That is not the ~2× a 512-character chunk size over a 522-character
-/// median document suggests, because
-/// <see cref="RecursiveChunkingStrategy"/> emits every split part as its own chunk and never merges
-/// short ones back up towards <see cref="ChunkingOptions.MaxChunkSize"/>; a document of short lines
-/// becomes one chunk per line. So FiQA's real leg embeds 7.5× the parity leg's texts and
-/// <see cref="InMemoryVectorStore"/> sorts 429,850 scored entries per query for 6,648 queries. Run
-/// SciFact and ArguAna first.
+/// what the default strategy actually produces: SciFact 20,155 units from 5,183 documents, ArguAna
+/// 24,003 from 8,674, FiQA <b>121,236 from 57,638</b> — roughly 2.1× the corpus, and up to 41
+/// units from a single document. Before Phase 3.16 taught
+/// <see cref="RecursiveChunkingStrategy"/> to pack split parts back up towards
+/// <see cref="ChunkingOptions.MaxChunkSize"/>, every part became its own chunk and FiQA produced
+/// 429,850 units, 7.5× the corpus and up to 1,723 from one document. FiQA's real leg still embeds
+/// 2.1× the parity leg's texts and <see cref="InMemoryVectorStore"/> sorts 121,236 scored entries
+/// per query for 6,648 queries. Run SciFact and ArguAna first.
 /// </para>
 /// <para>
 /// Skipped unless <c>RAGNET_ONNX_EMBED_MODEL</c>, <c>RAGNET_ONNX_EMBED_VOCAB</c> and

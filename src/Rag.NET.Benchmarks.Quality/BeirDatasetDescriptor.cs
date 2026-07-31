@@ -129,7 +129,8 @@ public sealed record BeirDatasetDescriptor(
     /// the <i>real</i> protocol it is a no-op on none of them: SciFact's real leg pooled on all
     /// 1,109 of its queries and ArguAna's on all 1,406. 51.0% is in fact the <i>lowest</i>
     /// over-size fraction of the three — SciFact 99.2%, ArguAna 87.3%. What is genuinely FiQA's
-    /// alone is the scale it is measured over: 57,638 documents becoming 429,850 chunks.
+    /// alone is the scale it is measured over: 57,638 documents becoming 121,236 chunks under
+    /// Phase 3.16's packing chunker, and 429,850 before it.
     /// </para>
     /// </remarks>
     public static BeirDatasetDescriptor FiQA { get; } = new(

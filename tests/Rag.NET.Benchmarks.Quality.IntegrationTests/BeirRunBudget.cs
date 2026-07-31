@@ -8,7 +8,8 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <c>timeout-minutes: 120</c> and spends part of that restoring, building the whole solution and
 /// running four other <c>&lt;RequiresSecrets&gt;</c> projects before this one starts. Phase 3.12
 /// Task 4 added FiQA, whose parity run measures 1 h 11 m and whose real run has never been run to
-/// completion at an estimated 8–9 h. There is no arrangement of a 120-minute job in which those two
+/// completion — then estimated at 8–9 h, since revised to a derived ~1.5–2 h by Phase 3.16's
+/// packing chunker. There is no arrangement of a 120-minute job in which those two
 /// finish, so the job as it stood would have timed out — and <b>a timeout reports nothing about
 /// parity</b>, which is the same silence this workflow was fixed to stop producing.
 /// </para>
@@ -25,9 +26,10 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <see cref="BeirProtocol.Parity"/> — roughly 15–20 minutes cold, all four cases — because parity
 /// is the only protocol whose number can be checked against a published one, and that number is
 /// what this milestone exists to protect. Everything else is opt-in. That is not a judgement that
-/// the real runs matter less; it is that 28 measured minutes for ArguAna's real leg plus SciFact's
-/// (timed warm, and only warm — see its entry) on a hosted runner slower than the machine these were
-/// measured on is how the timeout comes back.
+/// the real runs matter less; it is that roughly 11 measured minutes each for ArguAna's and
+/// SciFact's real legs (with the parity vectors already cached — the fully cold price is higher and
+/// untimed, see their entries) on a hosted runner slower than the machine these were measured on is
+/// how the timeout comes back.
 /// </para>
 /// <para>
 /// <b>What that costs, stated rather than buried.</b> No chunk-to-document max-pooling runs against
@@ -77,12 +79,12 @@ public static class BeirRunBudget
             "scifact",
             BeirProtocol.Real,
             FitsTheNightly: false,
-            "5 min 15 s WARM, measured 2026-07-31 (314.6 s; an earlier warm run of the same case " +
-            "on the same machine took 260.9 s). That run is the one that produced SciFact's real " +
-            "nDCG@10 of 0.65589, so this case is no longer untimed. What remains DERIVED is the " +
-            "COLD figure, ~19 min: ArguAna's real leg measured 28 min cold over 82,618 chunks and " +
-            "SciFact's 56,707 are the same shape of text. The nightly pays the cold price, so it " +
-            "is the cold one that has to be timed before it is quoted as measured."),
+            "10 min 43 s, measured 2026-07-31 (643.1 s: parity vectors warm from the cache, all " +
+            "16,628 chunk vectors embedded fresh). That run produced SciFact's real nDCG@10 of " +
+            "0.67742 under Phase 3.16's packing chunker, which cut the leg from 56,707 chunks to " +
+            "20,155; the pre-3.16 fully-warm runs were 260.9 s and 314.6 s. The fully COLD figure " +
+            "remains DERIVED — the nightly pays the cold price, so it is the cold one that has to " +
+            "be timed before it is quoted as measured."),
         new(
             "fiqa",
             BeirProtocol.Parity,
@@ -93,9 +95,12 @@ public static class BeirRunBudget
             "fiqa",
             BeirProtocol.Real,
             FitsTheNightly: false,
-            "~8-9 h, ESTIMATED: it has never been run to completion. The real leg embeds 429,850 " +
-            "chunks — 7.5x the corpus — and InMemoryVectorStore sorts all of them per query for " +
-            "6,648 queries."),
+            "~1.5-2 h, DERIVED: it has never been run to completion. Phase 3.16's packing chunker " +
+            "cut the real leg from 429,850 chunks (the basis of the old 8-9 h estimate) to " +
+            "121,236 — 2.1x the corpus — and the packed SciFact and ArguAna real legs embedded " +
+            "35,589 fresh texts in 1,310 s combined (~27/s), which prices ~128,000 embeddings at " +
+            "~80 min before InMemoryVectorStore sorts all 121,236 entries per query for 6,648 " +
+            "queries."),
         new(
             "arguana",
             BeirProtocol.Parity,
@@ -106,8 +111,10 @@ public static class BeirRunBudget
             "arguana",
             BeirProtocol.Real,
             FitsTheNightly: false,
-            "28 min, measured, both legs. The only case that has been timed exercising max-pooling " +
-            "against a whole corpus."),
+            "11 min 7 s, measured 2026-07-31, both legs (667.1 s: parity vectors warm, all 18,961 " +
+            "chunk vectors fresh) under Phase 3.16's packing chunker, which cut the leg from " +
+            "82,618 chunks to 24,003; the pre-3.16 figures were 28 min cold and 461.9 s fully " +
+            "warm."),
     ];
 
     /// <summary>

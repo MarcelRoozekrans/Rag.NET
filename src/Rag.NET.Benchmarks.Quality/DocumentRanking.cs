@@ -27,8 +27,9 @@ namespace Rag.NET.Benchmarks.Quality;
 /// <b>It also bites unevenly — but this paragraph named the wrong datasets, and Phase 3.12 measured
 /// them.</b> It used to say SciFact abstracts and ArguAna arguments "are mostly single-chunk", so
 /// those numbers "look plausible either way", and that FiQA is where the discrepancy is real. All of
-/// that is false: at stock 512-character chunking SciFact's 5,183 abstracts produce 56,707 units, up
-/// to 221 from one document, and ArguAna's 8,674 arguments produce 82,618, up to 285. 99.2% of
+/// that is false: at stock 512-character chunking SciFact's 5,183 abstracts produce 20,155 units, up
+/// to 25 from one document, and ArguAna's 8,674 arguments produce 24,003, up to 16 — and that is
+/// under Phase 3.16's packing chunker; before it the counts were 56,707 and 82,618. 99.2% of
 /// SciFact's documents exceed the chunk size and 87.3% of ArguAna's — more, in both cases, than
 /// FiQA's 51.0%.
 /// </para>
