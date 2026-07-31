@@ -72,18 +72,21 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
 
     private static IEnumerable<string> SplitRecursively(string text, int maxSize, int separatorIndex)
     {
+        if (text.Length <= maxSize)
+        {
+            return YieldTrimmed(text);
+        }
+
         if (separatorIndex >= Separators.Length)
         {
-            return HardSplit(text, maxSize);
+            return HardSplitCore(text, maxSize);
         }
 
         var parts = text.Split(Separators[separatorIndex]);
 
         if (parts.Length <= 1)
         {
-            return text.Length <= maxSize
-                ? YieldTrimmed(text)
-                : SplitRecursively(text, maxSize, separatorIndex + 1);
+            return SplitRecursively(text, maxSize, separatorIndex + 1);
         }
 
         return SplitParts(parts, maxSize, separatorIndex);
@@ -114,16 +117,6 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
                 }
             }
         }
-    }
-
-    private static IEnumerable<string> HardSplit(string text, int maxSize)
-    {
-        if (text.Length <= maxSize)
-        {
-            return YieldTrimmed(text);
-        }
-
-        return HardSplitCore(text, maxSize);
     }
 
     private static IEnumerable<string> HardSplitCore(string text, int maxSize)

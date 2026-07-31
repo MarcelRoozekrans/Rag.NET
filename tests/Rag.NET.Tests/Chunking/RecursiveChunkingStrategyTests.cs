@@ -21,7 +21,7 @@ public class RecursiveChunkingStrategyTests
     {
         var text = "First paragraph.\n\nSecond paragraph.";
         var section = CreateSection(text);
-        var options = new ChunkingOptions { MaxChunkSize = 200, Overlap = 0 };
+        var options = new ChunkingOptions { MaxChunkSize = 20, Overlap = 0 };
 
         var chunks = await _sut.ChunkAsync(section, options, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
@@ -71,7 +71,7 @@ public class RecursiveChunkingStrategyTests
     {
         var text = "First paragraph.\n\nSecond paragraph.";
         var section = CreateSection(text);
-        var options = new ChunkingOptions { MaxChunkSize = 200, Overlap = 0 };
+        var options = new ChunkingOptions { MaxChunkSize = 20, Overlap = 0 };
 
         var chunks = await _sut.ChunkAsync(section, options, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
@@ -85,7 +85,7 @@ public class RecursiveChunkingStrategyTests
     {
         var text = "First paragraph.\n\nSecond paragraph.";
         var section = CreateSection(text);
-        var options = new ChunkingOptions { MaxChunkSize = 200, Overlap = 5 };
+        var options = new ChunkingOptions { MaxChunkSize = 20, Overlap = 5 };
 
         var chunks = await _sut.ChunkAsync(section, options, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
@@ -101,7 +101,7 @@ public class RecursiveChunkingStrategyTests
     {
         var text = "First paragraph.\n\nSecond paragraph.";
         var section = CreateSection(text);
-        var options = new ChunkingOptions { MaxChunkSize = 200, Overlap = 0 };
+        var options = new ChunkingOptions { MaxChunkSize = 20, Overlap = 0 };
 
         var chunks = await _sut.ChunkAsync(section, options, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
@@ -115,6 +115,20 @@ public class RecursiveChunkingStrategyTests
         var expectedStart = text.IndexOf("Second paragraph.", StringComparison.Ordinal);
         Assert.Equal(expectedStart, chunks[1].StartPosition);
         Assert.Equal(expectedStart + "Second paragraph.".Length, chunks[1].EndPosition);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_TextShorterThanMaxChunkSize_IsNotSplitAtAll()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // 35 characters against a 512 limit. There is nothing to split.
+        var section = CreateSection("First paragraph.\n\nSecond paragraph.");
+        var options = new ChunkingOptions { MaxChunkSize = 512, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(section, options, ct).ToListAsync(ct);
+
+        Assert.Single(chunks);
+        Assert.Equal("First paragraph.\n\nSecond paragraph.", chunks[0].Text);
     }
 
     [Fact]
