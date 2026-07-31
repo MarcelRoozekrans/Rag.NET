@@ -87,8 +87,17 @@ fabricating source text that does not exist.
 
 ## 2. Rejoining must reproduce the source exactly
 
-`Split` drops the separator; `Pack` puts it back. That fixes the destroyed sentence punctuation of
-§0 for free, but only if the rejoin is faithful, and two things currently prevent that.
+`Split` drops the separator; `Pack` puts it back. That addresses the destroyed sentence punctuation
+of §0, but only if the rejoin is faithful, and two things currently prevent that.
+
+**It reduces the loss rather than eliminating it, and the difference matters.** Splitting `"A. B. C"`
+on `". "` gives `["A", "B", "C"]` — every part but the last has lost its terminal period. Rejoining
+restores the periods *inside* a packed chunk, but each chunk's own final sentence still ends without
+one, because the separator that followed it fell on a pack boundary. The loss goes from one period
+per sentence to one per chunk — at stock options roughly a tenfold reduction, not a fix. Removing it
+entirely means splitting in a way that keeps the delimiter attached to the preceding part, a larger
+change to the split contract than this phase is taking. **Stated here so the phase cannot later
+claim to have solved it.**
 
 **Parts must not be trimmed before joining.** Today each part is `.Trim()`ed. Trimming then
 rejoining normalises whitespace, so `"a  \n\n  b"` would come back as `"a\n\nb"` — text that never
