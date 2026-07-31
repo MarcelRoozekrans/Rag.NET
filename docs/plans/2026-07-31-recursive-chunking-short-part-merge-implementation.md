@@ -282,13 +282,19 @@ Task 2 packs untrimmed parts, but parts are still trimmed *elsewhere* — the `p
 
 **Step 1: write the failing test.** This is the property that makes positions meaningful:
 
+**These inputs must be longer than `MaxChunkSize`, or Task 1's fit check returns them whole and the
+test exercises nothing.** The Task 2 review caught exactly that in an earlier draft: `"a\n\n\n\nb"`
+is 6 characters against a limit of 8, so it never reached the split path at all. Each case below is
+comfortably over the limit, and blank-line runs are kept in the data because they are the only thing
+that exercises the keep-empty-parts invariant.
+
 ```csharp
 [Theory]
-[InlineData("a  \n\n  b")]
-[InlineData("a\n\n\n\nb")]
-[InlineData("  leading and trailing  \n\nsecond  ")]
-[InlineData("one.  two.   three.")]
-[InlineData("tab\there\n\nand\tthere")]
+[InlineData("alpha  \n\n  bravo charlie delta echo")]
+[InlineData("alpha\n\n\n\nbravo\n\n\n\ncharlie delta")]
+[InlineData("  leading and trailing  \n\nsecond one here  ")]
+[InlineData("one.  two.   three. four. five. six.")]
+[InlineData("tab\there\n\nand\tthere plus more words")]
 public async Task ChunkAsync_EveryChunkIsAnExactSubstringOfTheSource(string text)
 {
     var ct = TestContext.Current.CancellationToken;
