@@ -127,7 +127,7 @@ seven of them.
 | ArguAna parity, both separators | ~4 min each | **Yes** |
 | Chunk-shape checks, all three datasets | ~1.5 s for all three | **Yes** — no model needed |
 | FiQA parity | 1 h 11 m | No — opt-in |
-| SciFact real | ~19 min (derived, never timed alone) | No — opt-in |
+| SciFact real | ~19 min (derived; 5 min 15 s measured **warm**) | No — opt-in |
 | ArguAna real | 28 min | No — opt-in |
 | FiQA real | ~8–9 h, never run to completion | No — opt-in |
 

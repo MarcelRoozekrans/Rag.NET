@@ -26,7 +26,7 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// is the only protocol whose number can be checked against a published one, and that number is
 /// what this milestone exists to protect. Everything else is opt-in. That is not a judgement that
 /// the real runs matter less; it is that 28 measured minutes for ArguAna's real leg plus SciFact's
-/// (never timed on its own; see its entry) on a hosted runner slower than the machine these were
+/// (timed warm, and only warm — see its entry) on a hosted runner slower than the machine these were
 /// measured on is how the timeout comes back.
 /// </para>
 /// <para>
@@ -77,9 +77,12 @@ public static class BeirRunBudget
             "scifact",
             BeirProtocol.Real,
             FitsTheNightly: false,
-            "~19 min cold, DERIVED AND NOT DIRECTLY TIMED: ArguAna's real leg measured 28 min over " +
-            "82,618 chunks, and SciFact's 56,707 chunks are the same shape of text. Time it before " +
-            "quoting it as measured."),
+            "5 min 15 s WARM, measured 2026-07-31 (314.6 s; an earlier warm run of the same case " +
+            "on the same machine took 260.9 s). That run is the one that produced SciFact's real " +
+            "nDCG@10 of 0.65589, so this case is no longer untimed. What remains DERIVED is the " +
+            "COLD figure, ~19 min: ArguAna's real leg measured 28 min cold over 82,618 chunks and " +
+            "SciFact's 56,707 are the same shape of text. The nightly pays the cold price, so it " +
+            "is the cold one that has to be timed before it is quoted as measured."),
         new(
             "fiqa",
             BeirProtocol.Parity,

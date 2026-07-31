@@ -19,10 +19,10 @@ path compute what the published research computes?
 
 ## The measurement
 
-**Three datasets, `all-MiniLM-L6-v2`, dense retrieval.** SciFact measured 2026-07-30, FiQA and
-ArguAna 2026-07-31. Every number below came out of Rag.NET's own path — `OnnxEmbeddingGenerator`
-embeds, `InMemoryVectorStore` stores and scores cosine, `DocumentRanking` aggregates chunks to
-documents, `IrMetrics` scores. No component was built for the benchmark.
+**Three datasets, `all-MiniLM-L6-v2`, dense retrieval.** SciFact's parity leg measured 2026-07-30,
+FiQA, ArguAna and SciFact's real leg 2026-07-31. Every number below came out of Rag.NET's own path —
+`OnnxEmbeddingGenerator` embeds, `InMemoryVectorStore` stores and scores cosine, `DocumentRanking`
+aggregates chunks to documents, `IrMetrics` scores. No component was built for the benchmark.
 
 ### Two protocols, and why every number has one attached
 
@@ -45,7 +45,7 @@ across the boundary.
 
 | Dataset | parity nDCG@10 | published | delta vs published | real nDCG@10 | delta vs **our** parity |
 |---|---:|---:|---:|---:|---:|
-| **SciFact** | **0.64593** | 0.64508 | +0.00085 | not recorded | — |
+| **SciFact** | **0.64593** | 0.64508 | +0.00085 | **0.65589** | **+0.00995** |
 | **FiQA** | **0.37086** | 0.36867 | +0.00219 | [not run](#what-fiqas-real-run-would-cost-and-why-it-has-not-run) | — |
 | **ArguAna** | **0.50432** | 0.50167 | +0.00265 | **0.42594** | **−0.07839** |
 
@@ -53,9 +53,9 @@ across the boundary.
 nDCG@10 for "chunked with Rag.NET's defaults and max-pooled", none is invented here, and nothing in
 the literature says what chunking ought to do to nDCG on these corpora — which is why the run exists.
 
-*Not recorded* is not *not run*: SciFact is a case of the same real-chunking theory and nothing
-excludes it, but no measured figure from it was written down in this phase — and a number nobody
-wrote down from a run they watched is not a number this page will print.
+**The two real deltas have opposite signs, and that is the phase's most useful result:** Rag.NET's
+default chunking **helps SciFact by +0.0100 and hurts ArguAna by −0.0784**. See
+[what chunking does, in both directions](#what-chunking-does-to-the-numbers-and-it-goes-both-ways).
 
 **Only the SciFact and ArguAna parity rows are under nightly regression guard.** The others cost more
 than the `env-gated` job's 120 minutes allow and are now opt-in behind `RAGNET_BEIR_LONG_RUNS`, which
@@ -75,6 +75,7 @@ The supporting metrics, printed by the same runs:
 | Dataset / run | nDCG@10 | Recall@10 | MRR@10 |
 |---|---:|---:|---:|
 | SciFact parity | 0.64593 | 0.78667 | 0.60483 |
+| **SciFact real** | **0.65589** | **0.78222** | **0.62057** |
 | FiQA parity | 0.37086 | not recorded | not recorded |
 | ArguAna parity | 0.50432 | 0.79161 | 0.41515 |
 | **ArguAna real** | **0.42594** | **0.70057** | **0.34147** |
@@ -91,8 +92,8 @@ And the corpora, from the downloaded archives rather than from a paper:
 | Self-hit excluded (`ignore_identical_ids`) | no | yes | yes |
 | Documents over the 512-character chunk size | 99.2% | 51.0% | 87.3% |
 | Units under real chunking | 56,707 | 429,850 | 82,618 |
-| Most units from one document | not recorded | 1,723 | 285 |
-| Parity elapsed (CPU) | ~355 s | ~1 h 11 m | not recorded |
+| Most units from one document | 221 | 1,723 | 285 |
+| Parity elapsed (CPU) | ~355 s | ~1 h 11 m | ~4 min per separator |
 
 ### Everything lands above published, by a little
 
@@ -112,41 +113,60 @@ reads as a protocol detail rather than as contamination. It stays an open observ
 SciFact's, the one dataset that does *not* exclude the query's own document. Three points is not a
 pattern.)
 
-### What Rag.NET's own chunking costs on ArguAna
+### What chunking does to the numbers, and it goes both ways
 
-This is the first time chunk-to-document max-pooling has been exercised against a corpus rather than
-against `DocumentRankingTests`' seven-hit fixture, and the run's own counters are what make that
-verifiable instead of asserted:
+**Chunking helps SciFact and hurts ArguAna, and the two runs are the same code over two corpora.**
+That is the phase's most useful result and it is a stronger one than either delta alone, because a
+single dataset moving in one direction cannot tell you whether you are looking at a property of
+chunking or a property of that dataset.
 
-| | parity | real |
-|---|---:|---:|
-| nDCG@10 | 0.50432 | 0.42594 |
-| Recall@10 | 0.79161 | 0.70057 |
-| MRR@10 | 0.41515 | 0.34147 |
-| Units indexed over 8,674 documents | 8,674 | 82,618 |
-| Most units from one document | 1 | 285 |
-| **Queries that retrieved two or more units of one document** | **0** | **1,406 of 1,406** |
+| | SciFact parity | SciFact real | ArguAna parity | ArguAna real |
+|---|---:|---:|---:|---:|
+| nDCG@10 | 0.64593 | **0.65589** | 0.50432 | **0.42594** |
+| Recall@10 | 0.78667 | 0.78222 | 0.79161 | 0.70057 |
+| MRR@10 | 0.60483 | 0.62057 | 0.41515 | 0.34147 |
+| Units indexed | 5,183 | 56,707 | 8,674 | 82,618 |
+| Most units from one document | 1 | 221 | 1 | 285 |
+| **Queries that pooled two or more units of one document** | **0** | **1,109 of 1,109** | **0** | **1,406 of 1,406** |
+| **delta nDCG@10 vs our parity leg** | — | **+0.00995** | — | **−0.07839** |
 
-The last row is the one to read. Under the parity protocol max-pooling had nothing to pool on any
-query; under Rag.NET's chunking it had something to pool on **every** query. The aggregation is no
-longer a code path that only a fixture has ever entered.
+The pooling row is what makes the rest verifiable rather than asserted. Under the parity protocol
+max-pooling had nothing to pool on any query of either dataset; under Rag.NET's chunking it had
+something to pool on **every** query of both. This is the first time chunk-to-document max-pooling
+has been exercised against a corpus at all, rather than against `DocumentRankingTests`' seven-hit
+fixture.
 
-**The finding: Rag.NET's default chunking costs 0.078 nDCG@10 on ArguAna** — the run reports the
-delta as −0.07839. Recall and MRR move with it, so this is documents being missed rather than
-reordered.
+Read the supporting metrics alongside each delta, because they do not move the same way. On ArguAna,
+Recall and MRR both fall with nDCG — documents are being **missed**, not reordered. On SciFact,
+Recall is flat to slightly *down* (0.78667 → 0.78222) while MRR is clearly **up** (0.60483 →
+0.62057): chunking finds fractionally fewer of the relevant documents and ranks the ones it finds
+higher.
 
-*Why*, as reasoning and not as measurement: ArguAna's task is to retrieve the best counterargument to
-a whole argument. Its queries average 1,193 characters, its documents 1,030, and relevance is
-document-level and one-per-query. Splitting a counterargument at 512 characters means the unit that
-best matches a whole-argument query is a fragment of the argument rather than the argument, and no
-amount of max-pooling recovers a similarity that was never computed against the whole text. Nothing
-here measures that explanation; it is the shape the numbers have, offered so the next person knows
-which experiment would test it.
+*Why*, as reasoning and not as measurement. The direction tracks whether relevance in the dataset is
+**passage-level** or **document-level**:
 
-**Do not read −0.078 as "chunking is worse".** It is one dataset whose task is unusually hostile to
-fragmenting a document, and the opposite case is easy to describe: a long document whose one relevant
-passage sits past token 256 is invisible to the parity run and retrievable by the chunked one. That
-case is FiQA's, and FiQA's real run has not been measured.
+- **SciFact is passage-level.** A claim is supported by a specific sentence or two inside an
+  abstract, and 99.2% of those abstracts exceed the 512-character chunk size. The parity protocol
+  embeds each abstract as one vector truncated at 256 tokens, so the supporting passage is averaged
+  in with everything around it and, past the truncation point, is not embedded at all. A chunk that
+  contains only the supporting sentences scores against the claim on its own terms, and max-pooling
+  then promotes the abstract on the strength of its best passage. That is the shape of both the
+  higher MRR and the flat Recall: the same documents, better ordered.
+- **ArguAna is document-level.** The task is to retrieve the best counterargument to a whole
+  argument. Its queries average 1,193 characters and its documents 1,030, with exactly one relevant
+  document per query. Splitting a counterargument at 512 characters means the unit that best matches
+  a whole-argument query is a fragment rather than the argument, and no amount of max-pooling
+  recovers a similarity that was never computed against the whole text.
+
+**Nothing here measures that explanation.** It is the shape the two numbers have, offered so the next
+person knows which experiment would test it — the obvious one being to vary `MaxChunkSize` and watch
+whether the two deltas move apart.
+
+**And do not read either sign as "chunking is better" or "chunking is worse".** Two datasets with
+opposite signs is exactly the evidence that the answer depends on the corpus and the task. What was
+written here before SciFact's real run existed was that the helping case "is FiQA's, and FiQA's real
+run has not been measured" — a speculation where there is now a measurement, and one that guessed the
+wrong dataset.
 
 ### What FiQA's real run would cost, and why it has not run
 
@@ -155,11 +175,14 @@ case is FiQA's, and FiQA's real run has not been measured.
 corpus — so the embedding alone is on the order of eight to nine hours, and on top of that
 `InMemoryVectorStore` sorts 429,850 scored entries for each of 6,648 queries.
 
-It is the run worth having, and that is why it is scheduled rather than dropped. FiQA's documents are
-genuinely long and heterogeneous, so it is the better test of whether max-pooling *helps or hurts* in
-practice. ArguAna cannot answer that: its 9.5× fan-out comes largely from the chunker's short-part
-behaviour ([below](#the-chunker-emits-every-split-part-as-its-own-chunk)) rather than from documents
-that are long in any interesting way.
+It is still the run worth having, and that is why it is scheduled rather than dropped — but **it is
+no longer the only thing that can answer "does max-pooling help or hurt"**, and this section used to
+say it was. SciFact's real leg answers it in the affirmative (+0.00995) and ArguAna's in the negative
+(−0.07839), which is a two-sided answer that neither alone could give. What FiQA adds is a *third*
+corpus shape: documents that are long and heterogeneous in their own right, where ArguAna's 9.5×
+fan-out comes largely from the chunker's short-part behaviour
+([below](#the-chunker-emits-every-split-part-as-its-own-chunk)) rather than from documents that are
+long in any interesting way, and SciFact's abstracts are uniform.
 
 It lands in **Phase 3.15**, which needs a cached-embeddings artifact for the ablation table anyway
 and is therefore its natural home.
@@ -173,7 +196,7 @@ lines becomes one chunk per line.
 
 | Corpus | Documents | Units at stock 512-character chunking | Factor | Most from one document |
 |---|---:|---:|---:|---:|
-| SciFact | 5,183 | 56,707 | 10.9× | not recorded |
+| SciFact | 5,183 | 56,707 | 10.9× | 221 |
 | FiQA | 57,638 | **429,850** | 7.5× | **1,723** |
 | ArguAna | 8,674 | 82,618 | 9.5× | 285 |
 
@@ -305,8 +328,9 @@ and all are pinned — just not by 0.64593, 0.37086 or 0.50432.
   > it will stay false for every dataset.** Max-pooling is a no-op under the *parity protocol*, not
   > because of anything about SciFact's documents, and every dataset is measured under that protocol
   > against its published figure. No parity band will ever guard the aggregation order. What does
-  > exercise it is the **real run**, where ArguAna pooled on 1,406 of 1,406 queries against the parity
-  > leg's 0 — and that run has no published reference to be a band around, by design.
+  > exercise it is the **real run**, where ArguAna pooled on 1,406 of 1,406 queries and SciFact on
+  > 1,109 of 1,109, both against a parity leg's 0 — and that run has no published reference to be a
+  > band around, by design.
 
 - **Recall's denominator is *every* relevant document, never `min(|relevant|, k)`.** Pinned by
   `IrMetricsTests`, not by these numbers. This is the exact opposite of setting 4 above, and that is
@@ -478,9 +502,10 @@ Knowledge", ACL 2018 (ArguAna).
 ## Not measured, and why
 
 - **FiQA under real chunking.** Deferred with a measured cost basis rather than dropped — roughly
-  eight to nine hours of embedding plus 429,850 entries sorted per query across 6,648 queries. It is
-  the better test of whether max-pooling helps or hurts than ArguAna is. → **Phase 3.15**, which needs
-  a cached-embeddings artifact anyway.
+  eight to nine hours of embedding plus 429,850 entries sorted per query across 6,648 queries.
+  SciFact's and ArguAna's real legs already answer whether max-pooling helps or hurts, in both
+  directions; FiQA adds a third corpus shape rather than the only evidence. → **Phase 3.15**, which
+  needs a cached-embeddings artifact anyway.
 - **TREC-COVID and EnronQA.** TREC-COVID is the first graded-relevance dataset — `IrMetrics` uses
   `2^rel - 1` and has a graded fixture, but no graded *dataset* has been through it, which deserves its
   own attention. EnronQA is the private-corpus and multi-tenant story. Past FiQA the cost is embedding
