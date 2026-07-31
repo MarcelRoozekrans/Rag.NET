@@ -7,6 +7,22 @@
 Parity holds — SciFact nDCG@10 = 0.64593 against a published ≈ 0.645 — which was the precondition
 3.7 attached to everything here. The harness is built and verified; this phase spends it.
 
+> **Scope split, decided after this design was approved and before the plan was written.** As
+> designed, this phase is four independent pieces: the two-run protocol, the embeddings cache, two
+> datasets, and an ablation table whose rows need an `IChatClient` and a cross-encoder model. That is
+> larger than Phase 3.7, which built the entire harness plus a production embedder in six tasks.
+>
+> **§1–§3 stay in 3.12** — the two-run protocol, the cache, FiQA and ArguAna, with parity numbers for
+> both. That part stands entirely on published references and needs no new model dependency.
+>
+> **§4 and §5 move to Phase 3.15**, the ablation table. It needs the cache 3.12 builds, and its three
+> awkward parts — provisioning an LLM, caching hypotheticals so the table is reproducible, and
+> obtaining a cross-encoder — deserve designing rather than bolting onto a phase that already has two
+> datasets. ArguAna is still its negative control; 3.12 simply lands the dataset first.
+>
+> Both sections are kept here rather than moved, because the reasoning in §4 about what each row *is*
+> was the expensive part to work out and 3.15 should start from it rather than rediscover it.
+
 ## 0. A contradiction in the entry that scheduled this phase
 
 The roadmap says FiQA is "the first dataset where chunk-to-document max-pooling is not a no-op".
