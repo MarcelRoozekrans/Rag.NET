@@ -1,3 +1,4 @@
+using System.Text;
 using Rag.NET.Chunking;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -238,5 +239,57 @@ public class RecursiveChunkingStrategyTests
         Assert.Equal(new string('a', 10), chunks[0].Text);
         Assert.Equal(new string('b', 10), chunks[1].Text);
         Assert.All(chunks, c => Assert.True(c.Text.Length <= 20, $"Chunk of {c.Text.Length} exceeds 20"));
+    }
+
+    [Theory]
+    [InlineData("alpha  \n\n  bravo charlie delta echo")]
+    [InlineData("alpha\n\n\n\nbravo\n\n\n\ncharlie delta")]
+    [InlineData("  leading and trailing  \n\nsecond one here  ")]
+    [InlineData("one.  two.   three. four. five. six.")]
+    [InlineData("tab\there\n\nand\tthere plus more words")]
+    public async Task ChunkAsync_EveryChunkIsAnExactSubstringOfTheSource(string text)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var section = CreateSection(text);
+        // Small enough to force splitting, Overlap 0 so chunk text is unmodified.
+        var options = new ChunkingOptions { MaxChunkSize = 8, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(section, options, ct).ToListAsync(ct);
+
+        Assert.All(chunks, c => Assert.True(
+            text.Contains(c.Text, StringComparison.Ordinal),
+            $"Chunk \"{c.Text}\" does not appear in the source \"{text}\""));
+    }
+
+    [Fact]
+    public async Task ChunkAsync_EveryChunkIsASubstring_AcrossGeneratedWhitespaceShapes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var pieces = new[] { "alpha", "b", "  ", "\n", "\n\n", ". ", " ", "gamma delta", "\t", "x." };
+        var random = new Random(20260731); // fixed seed — a failure must be reproducible
+
+        for (var iteration = 0; iteration < 500; iteration++)
+        {
+            var builder = new StringBuilder();
+            var pieceCount = random.Next(1, 40);
+            for (var i = 0; i < pieceCount; i++)
+            {
+                builder.Append(pieces[random.Next(pieces.Length)]);
+            }
+
+            var text = builder.ToString();
+            var options = new ChunkingOptions { MaxChunkSize = random.Next(4, 64), Overlap = 0 };
+            var chunks = await _sut.ChunkAsync(CreateSection(text), options, ct).ToListAsync(ct);
+
+            foreach (var chunk in chunks)
+            {
+                Assert.True(
+                    text.Contains(chunk.Text, StringComparison.Ordinal),
+                    $"iteration {iteration}: chunk \"{chunk.Text}\" not in source \"{text}\"");
+                Assert.True(
+                    chunk.Text.Length <= options.MaxChunkSize,
+                    $"iteration {iteration}: chunk of {chunk.Text.Length} exceeds {options.MaxChunkSize}");
+            }
+        }
     }
 }
