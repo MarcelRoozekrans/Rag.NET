@@ -57,6 +57,13 @@ the literature says what chunking ought to do to nDCG on these corpora — which
 excludes it, but no measured figure from it was written down in this phase — and a number nobody
 wrote down from a run they watched is not a number this page will print.
 
+**Only the SciFact and ArguAna parity rows are under nightly regression guard.** The others cost more
+than the `env-gated` job's 120 minutes allow and are now opt-in behind `RAGNET_BEIR_LONG_RUNS`, which
+skips them with their measured cost and the command that runs them; see
+[what the nightly actually measures](./ci.md#what-the-nightly-actually-measures-and-what-it-does-not).
+A number on this page that is not in those two rows will not be re-measured until someone asks for
+it, so treat it as a reading taken on a date rather than as a figure something is watching.
+
 Every published figure is MTEB's, for this model, at a pinned revision — see
 [Where the published figures come from](#where-the-published-figures-come-from). SciFact's parity
 **band** is centred on the bare `0.645` Phase 3.7 measured against and carried unsourced for two

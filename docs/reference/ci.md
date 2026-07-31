@@ -50,7 +50,7 @@ reasons:
 | Label | Runs | Blocks the merge? |
 |---|---|---|
 | **`run-llm`** | the Ollama end-to-end suite — pulls ~2 GB of models | **No**, never, by design |
-| **`run-secrets`** | the env-gated suites — Document Intelligence, ONNX embedding and late chunking, and the SciFact retrieval-quality parity run | **Not yet** — it fails loudly, but no branch protection exists to block on |
+| **`run-secrets`** | the env-gated suites — Document Intelligence, ONNX embedding and late chunking, and the SciFact and ArguAna retrieval-quality parity runs | **Not yet** — it fails loudly, but no branch protection exists to block on |
 
 On `run-secrets`: the job *gates* in the sense that a failure is a real failure and is reported as
 one — no `continue-on-error` anywhere in it. It does not *block* anything today, because this
@@ -85,7 +85,7 @@ Five projects contain tests that need credentials or large local assets:
 | `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests` | `RAGNET_DOCINTEL_ENDPOINT`, `RAGNET_DOCINTEL_KEY` | repository secrets |
 | `Rag.NET.Embeddings.Onnx.Tests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Chunking.IntegrationTests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
-| `Rag.NET.Benchmarks.Quality.IntegrationTests` | those two, plus `RAGNET_BEIR_CACHE` | downloaded, plus a runner temp path |
+| `Rag.NET.Benchmarks.Quality.IntegrationTests` | those two, plus `RAGNET_BEIR_CACHE` and `RAGNET_BEIR_LONG_RUNS` | downloaded, plus a runner temp path; the last is deliberately **never set** — see below |
 | `Rag.NET.Parsers.Pdf.Tests` | `RAGNET_TESSDATA` | repository secret — **but see below** |
 
 Each of those tests calls `Assert.Skip` when its variable is absent, so the projects are safe
@@ -112,6 +112,53 @@ someone adds the OCR build flag and Tesseract's native binaries to the job.
 **This is an overlay, not a fourth tier.** All five are fast-tier projects: they run in `ci.yml` on
 every push (skipping the gated tests) *and* in `nightly.yml` with the values supplied. A project is
 in one tier and may appear in more than one workflow.
+
+## What the nightly actually measures, and what it does not
+
+`Rag.NET.Benchmarks.Quality.IntegrationTests` describes **three** BEIR datasets — SciFact, FiQA and
+ArguAna — under **two** protocols: *parity* (one chunk per document, truncated at 256 tokens, the
+only protocol comparable to a published figure) and *real* (Rag.NET's own chunking, max-pooled back
+to documents, compared only to our own parity run). That is eleven cases, and the nightly runs
+seven of them.
+
+| Case | Cold cost | In the nightly? |
+|---|---|---|
+| SciFact parity, both separators | ~5 min each | **Yes** |
+| ArguAna parity, both separators | ~4 min each | **Yes** |
+| Chunk-shape checks, all three datasets | ~1.5 s for all three | **Yes** — no model needed |
+| FiQA parity | 1 h 11 m | No — opt-in |
+| SciFact real | ~19 min (derived, never timed alone) | No — opt-in |
+| ArguAna real | 28 min | No — opt-in |
+| FiQA real | ~8–9 h, never run to completion | No — opt-in |
+
+The `env-gated` job has `timeout-minutes: 120` and spends part of that restoring, building the whole
+solution and running the four other `RequiresSecrets` projects. FiQA's real leg alone is longer than
+the job's entire budget, and its parity leg would consume most of what is left, so a job that ran
+everything would not report a slow parity number — it would **time out and report nothing**, which
+is the same silence supplying `RAGNET_BEIR_CACHE` was meant to end.
+
+So the expensive cases are gated behind `RAGNET_BEIR_LONG_RUNS`, which `nightly.yml` never sets.
+Each one skips with a message naming itself, its measured cost and the exact command that runs it —
+the job's presence report also prints the variable as unset, so a log reader is told the long runs
+were off rather than left to infer it from a test count. To run one:
+
+```bash
+RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
+  --filter "DisplayName~BeirRealChunkingTests&DisplayName~arguana"
+```
+
+The split keeps the *parity* number under nightly regression guard on two datasets, which is the
+number the milestone exists to protect and the only one that can be checked against a published
+figure at all. **What it gives up is stated rather than buried:** no chunk-to-document max-pooling
+runs against a corpus in the nightly any more. The cheap chunk-shape checks still run there and
+still catch a chunker that stopped chunking; pooling itself is covered by `DocumentRankingTests`'
+fixture and by an opt-in run. The costs behind every row above live in `BeirRunBudget`, which throws
+rather than guesses when a dataset is added without being timed.
+
+Every figure is the **cold** cost, because `RAGNET_BEIR_CACHE` is `RUNNER_TEMP/beir` — a fresh
+directory every night. The embedding cache makes a developer's second run much faster and saves the
+nightly nothing at all. Note also that it only caches *embeddings*: retrieval and scoring are paid
+in full on every run, which is why four warm parity cases still take about five minutes.
 
 **The `env-gated` job gates.** Unlike the LLM tier these suites are deterministic — the same model
 over the same corpus produces the same vectors — so a failure is a regression. The honest caveat is

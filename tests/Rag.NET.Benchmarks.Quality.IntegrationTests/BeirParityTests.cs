@@ -88,6 +88,13 @@ public sealed class BeirParityTests
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
 
+        // Second, and in this order deliberately. An unprovisioned machine should be told it is
+        // unprovisioned; the budget message is for the case that could have run and was not asked
+        // to, which is exactly the nightly's situation.
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.Parity, out var budgetReason),
+            budgetReason);
+
         var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
 

@@ -115,6 +115,15 @@ public sealed class BeirRealChunkingTests
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
 
+        // Every dataset's real leg is opt-in — see BeirRunBudget for why the cheapest of them still
+        // does not fit a 120-minute job that builds the solution first. The cheap half of this
+        // file's coverage, Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments, is deliberately not
+        // gated: it needs no model, runs in seconds, and is what still catches a chunker that
+        // stopped chunking on the nightly.
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.Real, out var budgetReason),
+            budgetReason);
+
         var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
         var dataset = await BeirHarness.LoadAsync(
