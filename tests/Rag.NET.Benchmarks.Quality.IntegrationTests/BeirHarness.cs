@@ -362,13 +362,22 @@ public static class BeirHarness
             {
                 var results = await store.SearchAsync(vectors[i - start], options, cancellationToken);
                 var hits = ToChunkHits(results);
-                if (HasRepeatedDocument(hits))
+
+                // The same excluded id goes to both, and it has to. DocumentRanking drops the
+                // excluded document's chunks BEFORE it pools, so a query whose only repeated
+                // document is its own — every ArguAna query whose argument was chunked, for
+                // instance — would otherwise be counted as pooled on a ranking that pooling never
+                // touched. PooledQueryCount is documented as "queries on which max-pooling had
+                // anything to do at all"; measuring it on the pre-exclusion list measures a
+                // different sentence.
+                var excludedDocumentId = excludesSelf ? queries[i].Id : null;
+                if (HasRepeatedDocument(hits, excludedDocumentId))
                 {
                     pooledQueries++;
                 }
 
                 runs[queries[i].Id] = DocumentRanking.TopDocumentIds(
-                    hits, Cutoff, excludesSelf ? queries[i].Id : null);
+                    hits, Cutoff, excludedDocumentId);
             }
         }
 
@@ -426,15 +435,28 @@ public static class BeirHarness
     }
 
     /// <summary>
-    /// Reports whether any document contributed two or more of these hits — the condition under
-    /// which max-pooling does anything at all.
+    /// Reports whether any document that survives the exclusion contributed two or more of these
+    /// hits — the condition under which max-pooling does anything at all.
     /// </summary>
-    private static bool HasRepeatedDocument(IReadOnlyList<ChunkHit> hits)
+    /// <param name="hits">The retrieved chunks, before <see cref="DocumentRanking"/> sees them.</param>
+    /// <param name="excludedDocumentId">
+    /// The document <see cref="DocumentRanking.TopDocuments"/> will drop, or <see langword="null"/>.
+    /// Skipped here for the same reason it is dropped there: chunks that never reach the pool
+    /// cannot be evidence that the pool did anything.
+    /// </param>
+    private static bool HasRepeatedDocument(
+        IReadOnlyList<ChunkHit> hits, string? excludedDocumentId)
     {
         var seen = new HashSet<string>(hits.Count, StringComparer.Ordinal);
         for (var i = 0; i < hits.Count; i++)
         {
-            if (!seen.Add(hits[i].DocumentId))
+            var documentId = hits[i].DocumentId;
+            if (string.Equals(documentId, excludedDocumentId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!seen.Add(documentId))
             {
                 return true;
             }

@@ -36,6 +36,12 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// Queries whose retrieved chunk list held two or more units of the same document — the queries on
 /// which max-pooling had anything to do at all. Zero here on a chunked run is "the aggregation did
 /// not aggregate", and it is the other half of the finding the plan asks for.
+/// <para>
+/// Counted <b>after</b> the dataset's self-exclusion has been applied, because
+/// <see cref="DocumentRanking.TopDocuments"/> drops the excluded document's chunks before it pools.
+/// A query whose only repeated document is the one being excluded had nothing pooled, and counting
+/// it would make this figure say something other than what the sentence above says.
+/// </para>
 /// </param>
 /// <param name="Elapsed">Wall-clock time for the measurement, cache hits included.</param>
 /// <param name="CacheHits">Texts served from <see cref="EmbeddingCache"/> rather than embedded.</param>
