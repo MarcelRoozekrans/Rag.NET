@@ -26,6 +26,11 @@ namespace Rag.NET.Benchmarks.Quality;
 /// <paramref name="TestQueryCount"/>.
 /// </param>
 /// <param name="TestQueryCount">Distinct query ids in <c>qrels/test.tsv</c>.</param>
+/// <param name="ParityTarget">
+/// The published nDCG@10 the parity run is measured against, and the band around it. Carried by the
+/// dataset rather than by a test, so adding a dataset is adding a descriptor rather than copying a
+/// test file and editing three constants out of it.
+/// </param>
 public sealed record BeirDatasetDescriptor(
     string Name,
     Uri ArchiveUrl,
@@ -33,7 +38,8 @@ public sealed record BeirDatasetDescriptor(
     string Licence,
     int DocumentCount,
     int QueryCount,
-    int TestQueryCount)
+    int TestQueryCount,
+    BeirParityTarget ParityTarget)
 {
     /// <summary>
     /// SciFact: scientific claims against a corpus of abstracts.
@@ -58,7 +64,33 @@ public sealed record BeirDatasetDescriptor(
         SciFactLicence,
         DocumentCount: 5183,
         QueryCount: 1109,
-        TestQueryCount: 300);
+        TestQueryCount: 300,
+        ParityTarget: new BeirParityTarget(0.645, SciFactPublishedSource));
+
+    /// <summary>
+    /// Every dataset the harness knows about, in the order they were added.
+    /// </summary>
+    /// <remarks>
+    /// The parity test enumerates this, so a dataset that is described here is measured. There is no
+    /// second list to keep in step and no way to add a descriptor that nothing runs.
+    /// </remarks>
+    public static IReadOnlyList<BeirDatasetDescriptor> All { get; } = [SciFact];
+
+    /// <summary>
+    /// The provenance of SciFact's published figure, recorded as it actually stands rather than
+    /// invented.
+    /// </summary>
+    /// <remarks>
+    /// Phase 3.7 measured against a bare <c>0.645</c> and cited nothing for it: neither its design,
+    /// its plan nor <c>docs/reference/retrieval-quality.md</c> names where the figure was read from.
+    /// This string is a verbatim carry-over of that constant and says so, because a fabricated
+    /// citation would be worse than an acknowledged gap — every dataset added after this one is
+    /// required to name its source.
+    /// </remarks>
+    private const string SciFactPublishedSource =
+        "≈ 0.645 for all-MiniLM-L6-v2, carried verbatim from the constant Phase 3.7 measured " +
+        "against. No source was recorded for it at the time and none is invented here; the " +
+        "measured value under this harness is 0.64593.";
 
     /// <summary>
     /// SciFact's licence, read from the upstream repository rather than assumed, because the
@@ -97,4 +129,27 @@ public sealed record BeirDatasetDescriptor(
 
     /// <summary>Gets the archive's file name in the cache directory.</summary>
     public string ArchiveFileName => Name + ".zip";
+
+    /// <summary>Finds the descriptor in <see cref="All"/> whose <see cref="Name"/> matches.</summary>
+    /// <param name="name">The BEIR dataset name, matched ordinally.</param>
+    /// <returns>The descriptor.</returns>
+    /// <exception cref="ArgumentException">No dataset is described under that name.</exception>
+    /// <remarks>
+    /// A lookup by name exists so a test can be a theory over dataset <i>names</i>. Handing xUnit the
+    /// descriptors themselves would put a non-serializable record into theory data, and the run would
+    /// then be one unnamed case per dataset instead of one legible case per dataset.
+    /// </remarks>
+    public static BeirDatasetDescriptor ByName(string name)
+    {
+        foreach (var descriptor in All)
+        {
+            if (string.Equals(descriptor.Name, name, StringComparison.Ordinal))
+            {
+                return descriptor;
+            }
+        }
+
+        throw new ArgumentException(
+            $"No BEIR dataset is described under the name '{name}'.", nameof(name));
+    }
 }

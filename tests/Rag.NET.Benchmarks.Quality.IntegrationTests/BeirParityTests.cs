@@ -10,13 +10,21 @@ using Xunit;
 namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 
 /// <summary>
-/// The measurement Phase 3.7 exists for: SciFact nDCG@10 through Rag.NET's real embed → store →
-/// retrieve path, checked against the published ≈ 0.645 for <c>all-MiniLM-L6-v2</c>.
+/// The measurement Phase 3.7 exists for, generalised: every dataset in
+/// <see cref="BeirDatasetDescriptor.All"/> scored for nDCG@10 through Rag.NET's real embed → store →
+/// retrieve path, and checked against the published figure that dataset carries in its
+/// <see cref="BeirDatasetDescriptor.ParityTarget"/>.
 /// <para>
 /// Every component is the library's own — <see cref="OnnxEmbeddingGenerator"/> embeds,
 /// <see cref="InMemoryVectorStore"/> stores and scores cosine, <see cref="DocumentRanking"/>
 /// aggregates and <see cref="IrMetrics"/> scores. Nothing here is a benchmark-only reimplementation,
 /// which is the point: a harness built out of purpose-made parts measures the harness.
+/// </para>
+/// <para>
+/// <b>One test over the datasets, not one file per dataset.</b> The target and the band come off the
+/// descriptor, so a second dataset is a second descriptor rather than a copy of this file with three
+/// constants edited. Copies are how a band ends up widened to fit a number that should have been
+/// investigated instead.
 /// </para>
 /// <para>
 /// Skipped unless <c>RAGNET_ONNX_EMBED_MODEL</c>, <c>RAGNET_ONNX_EMBED_VOCAB</c> and
@@ -26,16 +34,10 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <c>Rag.NET.Benchmarks.Quality.Tests</c>' unit tests out of the gating tier with it.
 /// </para>
 /// </summary>
-public sealed class SciFactParityTests
+public sealed class BeirParityTests
 {
-    /// <summary>The rank cutoff the published figure is quoted at.</summary>
+    /// <summary>The rank cutoff the published figures are quoted at.</summary>
     private const int Cutoff = 10;
-
-    /// <summary>The published nDCG@10 for <c>all-MiniLM-L6-v2</c> on SciFact.</summary>
-    private const double PublishedNdcgAt10 = 0.645;
-
-    private const double LowerBound = 0.625;
-    private const double UpperBound = 0.665;
 
     /// <summary>
     /// Documents embedded per <see cref="OnnxEmbeddingGenerator.GenerateAsync"/> call. Only a
@@ -47,19 +49,40 @@ public sealed class SciFactParityTests
     private const string SkipReason =
         "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to an existing all-MiniLM-L6-v2 " +
         "ONNX export (token-level output) and its WordPiece vocab.txt, and RAGNET_BEIR_CACHE to a " +
-        "writable directory for the SciFact download, to run the SciFact parity measurement.";
+        "writable directory for the dataset downloads, to run the BEIR parity measurements.";
 
     private readonly ITestOutputHelper _output;
 
-    public SciFactParityTests(ITestOutputHelper output)
+    public BeirParityTests(ITestOutputHelper output)
     {
         _output = output;
     }
 
+    /// <summary>
+    /// Gets every described dataset crossed with both title/text separators.
+    /// </summary>
+    /// <returns>Dataset name and separator pairs.</returns>
+    /// <remarks>
+    /// Names rather than descriptors, because theory data that is not serializable costs the run its
+    /// per-case test names — and a parity failure that cannot say which dataset failed is most of the
+    /// way to useless.
+    /// </remarks>
+    public static TheoryData<string, string> DatasetsAndSeparators()
+    {
+        var data = new TheoryData<string, string>();
+        foreach (var descriptor in BeirDatasetDescriptor.All)
+        {
+            data.Add(descriptor.Name, " ");
+            data.Add(descriptor.Name, "\n");
+        }
+
+        return data;
+    }
+
     [Theory]
-    [InlineData(" ")]
-    [InlineData("\n")]
-    public async Task SciFactNdcgAt10_ThroughTheRealPipeline_LandsWithinTwoHundredthsOfPublished(string sep)
+    [MemberData(nameof(DatasetsAndSeparators))]
+    public async Task NdcgAt10_ThroughTheRealPipeline_LandsWithinToleranceOfPublished(
+        string datasetName, string sep)
     {
         var modelPath = Environment.GetEnvironmentVariable("RAGNET_ONNX_EMBED_MODEL");
         var vocabPath = Environment.GetEnvironmentVariable("RAGNET_ONNX_EMBED_VOCAB");
@@ -71,39 +94,42 @@ public sealed class SciFactParityTests
             string.IsNullOrEmpty(cacheDirectory),
             SkipReason);
 
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
         var startedAt = Stopwatch.GetTimestamp();
 
         // The separator is passed explicitly, not left to the default, because it decides what is
         // embedded: BEIR's SentenceBERT joins title and text with a single space and the published
-        // figure was produced that way. A later change to the default must not move this number
+        // figures were produced that way. A later change to the default must not move these numbers
         // without someone editing this line.
-        var evaluation = await MeasureAsync(modelPath!, vocabPath!, cacheDirectory!, sep, ct);
+        var evaluation = await MeasureAsync(descriptor, modelPath!, vocabPath!, cacheDirectory!, sep, ct);
         var elapsed = Stopwatch.GetElapsedTime(startedAt);
 
         _output.WriteLine("SEPARATOR=" + (string.Equals(sep, " ", StringComparison.Ordinal) ? "SPACE" : "NEWLINE"));
-        _output.WriteLine(Describe(evaluation, elapsed));
+        _output.WriteLine(Describe(descriptor, evaluation, elapsed));
 
         var ndcg = evaluation.NormalizedDiscountedCumulativeGain;
-        Assert.True(ndcg >= LowerBound && ndcg <= UpperBound, FailureMessage(evaluation, elapsed));
+        Assert.True(descriptor.ParityTarget.Contains(ndcg), FailureMessage(descriptor, evaluation, elapsed));
     }
 
     /// <summary>
-    /// Loads SciFact, embeds and indexes its corpus, retrieves for every query, and scores the run.
+    /// Loads the dataset, embeds and indexes its corpus, retrieves for every query, and scores the
+    /// run.
     /// </summary>
     private static async Task<IrEvaluation> MeasureAsync(
+        BeirDatasetDescriptor descriptor,
         string modelPath,
         string vocabPath,
         string cacheDirectory,
         string titleTextSeparator,
         CancellationToken cancellationToken)
     {
-        var dataset = await LoadSciFactAsync(cacheDirectory, titleTextSeparator, cancellationToken);
+        var dataset = await LoadAsync(descriptor, cacheDirectory, titleTextSeparator, cancellationToken);
 
-        // MaxTokens is deliberately left at its default of 256 — all-MiniLM-L6-v2's
-        // max_seq_length, and the configuration the published 0.645 was produced under. Raising it
-        // would measure something else. ModelId is set because a bare "model.onnx" would otherwise
-        // become every model's identity.
+        // MaxTokens is deliberately left at its default of 256 — all-MiniLM-L6-v2's max_seq_length,
+        // and the configuration the published figures were produced under. Raising it would measure
+        // something else. ModelId is set because a bare "model.onnx" would otherwise become every
+        // model's identity.
         using var generator = new OnnxEmbeddingGenerator(new OnnxEmbeddingOptions
         {
             ModelPath = modelPath,
@@ -119,19 +145,21 @@ public sealed class SciFactParityTests
     }
 
     /// <summary>
-    /// Downloads SciFact if it is not cached, loads it, and checks it is the whole dataset before
+    /// Downloads the dataset if it is not cached, loads it, and checks it is the whole dataset before
     /// anything is scored against it.
     /// </summary>
     /// <remarks>
     /// The three assertions are cheap and they are the difference between a diagnosable failure and
     /// an undiagnosable one: a short corpus or a half-loaded qrels split produces a bad number that
     /// looks exactly like a retrieval defect, and this is the last point where the real cause is
-    /// still visible.
+    /// still visible. They come off the descriptor, so every dataset is checked the way SciFact was.
     /// </remarks>
-    private static async Task<BeirDataset> LoadSciFactAsync(
-        string cacheDirectory, string titleTextSeparator, CancellationToken cancellationToken)
+    private static async Task<BeirDataset> LoadAsync(
+        BeirDatasetDescriptor descriptor,
+        string cacheDirectory,
+        string titleTextSeparator,
+        CancellationToken cancellationToken)
     {
-        var descriptor = BeirDatasetDescriptor.SciFact;
         var cache = new BeirDatasetCache(cacheDirectory);
         var datasetDirectory = await cache.EnsureAsync(descriptor, cancellationToken);
         var dataset = BeirLoader.Load(datasetDirectory, "test", titleTextSeparator);
@@ -150,9 +178,9 @@ public sealed class SciFactParityTests
     /// One chunk per document, deliberately. BEIR's published figures embed each corpus entry as one
     /// sequence truncated at the model's <c>max_seq_length</c>, which is exactly what
     /// <see cref="OnnxEmbeddingGenerator"/> does at <c>MaxTokens = 256</c>. Chunking here would
-    /// measure a configuration 0.645 did not come from. It also makes
-    /// <see cref="DocumentRanking"/>'s max-pooling a no-op on this dataset — which is why the
-    /// pool-before-cut order is pinned by its own fixture rather than by this number.
+    /// measure a configuration the published figures did not come from. It also makes
+    /// <see cref="DocumentRanking"/>'s max-pooling a no-op on a single-chunk dataset — which is why
+    /// the pool-before-cut order is pinned by its own fixture rather than by these numbers.
     /// </remarks>
     private static async Task IndexCorpusAsync(
         OnnxEmbeddingGenerator generator,
@@ -187,10 +215,10 @@ public sealed class SciFactParityTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Every</b> query in <c>queries.jsonl</c>, not only the judged 300. The ranker never sees
+    /// <b>Every</b> query in <c>queries.jsonl</c>, not only the judged ones. The ranker never sees
     /// qrels — which is what "materially above the band means a leak" is about — and
     /// <see cref="IrMetrics.Evaluate"/> is the single place the exclusion rule is applied, reporting
-    /// the 809 unjudged ones as <see cref="IrEvaluation.ExcludedQueryCount"/>.
+    /// the unjudged ones as <see cref="IrEvaluation.ExcludedQueryCount"/>.
     /// </para>
     /// <para>
     /// <c>TopK</c> equals the cutoff only because indexing stores one chunk per document, so ten
@@ -271,34 +299,59 @@ public sealed class SciFactParityTests
         return hits;
     }
 
-    private static string Describe(IrEvaluation evaluation, TimeSpan elapsed) =>
-        FormattableString.Invariant($"""
-            SciFact nDCG@{evaluation.Cutoff} = {evaluation.NormalizedDiscountedCumulativeGain:F5} (published ≈ {PublishedNdcgAt10:F3}, band {LowerBound:F3}–{UpperBound:F3})
+    /// <summary>
+    /// The line the run prints. It leads with the dataset name because the theory now produces one of
+    /// these per dataset.
+    /// </summary>
+    private static string Describe(
+        BeirDatasetDescriptor descriptor, IrEvaluation evaluation, TimeSpan elapsed)
+    {
+        var target = descriptor.ParityTarget;
+
+        return FormattableString.Invariant($"""
+            {descriptor.Name} nDCG@{evaluation.Cutoff} = {evaluation.NormalizedDiscountedCumulativeGain:F5} (published ≈ {target.PublishedNdcgAt10:F3}, band {target.LowerBound:F3}–{target.UpperBound:F3})
             Recall@{evaluation.Cutoff} = {evaluation.Recall:F5}, MRR@{evaluation.Cutoff} = {evaluation.MeanReciprocalRank:F5}
             {evaluation.EvaluatedQueryCount} queries evaluated, {evaluation.ExcludedQueryCount} excluded as unjudged
             elapsed {elapsed.TotalSeconds:F1} s
             """);
+    }
 
     /// <summary>
     /// The message a red run leaves behind. It names the computed value first, because a parity
     /// failure that only says "false is not true" tells whoever sees it nothing at all.
     /// </summary>
-    private static string FailureMessage(IrEvaluation evaluation, TimeSpan elapsed)
+    private static string FailureMessage(
+        BeirDatasetDescriptor descriptor, IrEvaluation evaluation, TimeSpan elapsed)
     {
-        var diagnosis = evaluation.NormalizedDiscountedCumulativeGain < LowerBound
-            ? "BELOW the band: retrieval or aggregation is wrong. Look at the chunk-to-document " +
-                "step, at whether the vectors were pooled or normalised twice, at the title/text " +
-                "separator, and at whether the whole 5,183-document corpus was indexed."
-            : "ABOVE the band, which is not good news: it indicates a leak, most likely qrels " +
-                "reaching the ranker. Nothing in this harness should be able to score better than " +
-                "the model published figure.";
+        var target = descriptor.ParityTarget;
 
         return FormattableString.Invariant($"""
-            SciFact parity FAILED. Measured nDCG@{evaluation.Cutoff} = {evaluation.NormalizedDiscountedCumulativeGain:F5}, outside {LowerBound:F3}–{UpperBound:F3} (published ≈ {PublishedNdcgAt10:F3}).
-            {diagnosis}
-            {Describe(evaluation, elapsed)}
-            Do NOT widen the band to fit the number: the band is ±0.02 because the defects it exists
-            to catch move SciFact by considerably more than that.
+            {descriptor.Name} parity FAILED. Measured nDCG@{evaluation.Cutoff} = {evaluation.NormalizedDiscountedCumulativeGain:F5}, outside {target.LowerBound:F3}–{target.UpperBound:F3} (published ≈ {target.PublishedNdcgAt10:F3}).
+            The published figure is recorded as: {target.Source}
+            {Diagnose(descriptor, evaluation)}
+            {Describe(descriptor, evaluation, elapsed)}
+            Do NOT widen the band to fit the number: the band is ±{target.Tolerance:F2} because the defects it
+            exists to catch move a dataset by considerably more than that.
+            """);
+    }
+
+    /// <summary>
+    /// Names the likely cause from the direction the measurement missed in. The two directions have
+    /// nothing in common, which is why the band is two-sided.
+    /// </summary>
+    private static string Diagnose(BeirDatasetDescriptor descriptor, IrEvaluation evaluation)
+    {
+        if (evaluation.NormalizedDiscountedCumulativeGain >= descriptor.ParityTarget.LowerBound)
+        {
+            return "ABOVE the band, which is not good news: it indicates a leak, most likely qrels " +
+                "reaching the ranker. Nothing in this harness should be able to score better than " +
+                "the model's own published figure.";
+        }
+
+        return FormattableString.Invariant($"""
+            BELOW the band: retrieval or aggregation is wrong. Look at the chunk-to-document step, at
+            whether the vectors were pooled or normalised twice, at the title/text separator, and at
+            whether the whole {descriptor.DocumentCount}-document corpus was indexed.
             """);
     }
 }

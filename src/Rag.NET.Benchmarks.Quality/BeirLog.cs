@@ -27,4 +27,10 @@ internal static partial class BeirLog
         Level = LogLevel.Information,
         Message = "Verified BEIR dataset '{DatasetName}': {ByteCount} bytes, MD5 {ArchiveMd5} matches the checksum BEIR publishes")]
     internal static partial void ArchiveVerified(ILogger logger, string datasetName, long byteCount, string archiveMd5);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Embedding cache for '{ModelIdentity}': {HitCount} served from disk, {MissCount} embedded; keys cover the model identity as well as the text, so a model change is a miss rather than a stale vector")]
+    internal static partial void EmbeddingCacheBatch(
+        ILogger logger, string modelIdentity, int hitCount, int missCount);
 }

@@ -142,7 +142,7 @@ and all are pinned — just not by 0.64593.
 
 ## Running it yourself
 
-The parity run is a test, `SciFactParityTests`, in
+The parity run is a test, `BeirParityTests`, in
 `tests/Rag.NET.Benchmarks.Quality.IntegrationTests`. It **skips** unless all three environment
 variables are set and usable:
 
