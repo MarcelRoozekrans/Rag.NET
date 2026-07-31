@@ -275,6 +275,7 @@ public class RecursiveChunkingStrategyTests
         // Guard: an input that no longer splits would exercise nothing.
         Assert.True(chunks.Count > 1, $"Input must produce multiple chunks; got {chunks.Count}");
 
+        var previousEnd = 0;
         foreach (var chunk in chunks)
         {
             Assert.InRange(chunk.StartPosition, 0, text.Length);
@@ -282,6 +283,13 @@ public class RecursiveChunkingStrategyTests
             Assert.Equal(
                 chunk.Text,
                 text[chunk.StartPosition..chunk.EndPosition]);
+            // At Overlap 0 chunks partition the source in order: a chunk may not
+            // start before the previous one ended, or a duplicate occurrence
+            // earlier in the text could masquerade as this chunk's position.
+            Assert.True(
+                chunk.StartPosition >= previousEnd,
+                $"Chunk at [{chunk.StartPosition}..{chunk.EndPosition}] starts before previous end {previousEnd}");
+            previousEnd = chunk.EndPosition;
         }
     }
 
@@ -305,6 +313,7 @@ public class RecursiveChunkingStrategyTests
             var options = new ChunkingOptions { MaxChunkSize = random.Next(4, 64), Overlap = 0 };
             var chunks = await _sut.ChunkAsync(CreateSection(text), options, ct).ToListAsync(ct);
 
+            var previousEnd = 0;
             foreach (var chunk in chunks)
             {
                 Assert.True(
@@ -318,6 +327,14 @@ public class RecursiveChunkingStrategyTests
                 Assert.True(
                     string.Equals(chunk.Text, text[chunk.StartPosition..chunk.EndPosition], StringComparison.Ordinal),
                     $"iteration {iteration}: positions [{chunk.StartPosition}..{chunk.EndPosition}] point at \"{text[chunk.StartPosition..chunk.EndPosition]}\" not \"{chunk.Text}\"");
+                // The pieces repeat, so duplicate text is abundant: a search that
+                // matched an earlier occurrence would pass the substring check yet
+                // report a position before the previous chunk's end. At Overlap 0
+                // positions must strictly advance.
+                Assert.True(
+                    chunk.StartPosition >= previousEnd,
+                    $"iteration {iteration}: chunk at [{chunk.StartPosition}..{chunk.EndPosition}] starts before previous end {previousEnd} in \"{text}\"");
+                previousEnd = chunk.EndPosition;
             }
         }
     }
