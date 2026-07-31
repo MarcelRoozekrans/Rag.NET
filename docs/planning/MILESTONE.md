@@ -143,12 +143,16 @@ Assume nothing works until a test says so *and the test is right*.
    chunking **costs 0.0784 nDCG@10 on ArguAna** (0.50432 → 0.42594, Recall and MRR falling with it,
    so documents are missed rather than reordered) and **gains 0.0100 on SciFact** (0.64593 →
    0.65589, over 56,707 units from 5,183 documents and up to 221 from one, with Recall flat —
-   0.78667 → 0.78222 — and MRR up 0.60483 → 0.62057, the same documents better ordered). Offered as reasoning and not
+   0.78667 → 0.78222 — and MRR up 0.60483 → 0.62057, the same documents better ordered).
+   [Re-measured by 3.16 under the packing chunker: SciFact 0.67742 (+0.03148 vs parity), ArguAna
+   0.47559 (−0.02873) — both improved, both signs held, and ArguAna's ~63% recovery is what
+   confirmed this entry's fragmentation explanation.] Offered as reasoning and not
    as measurement: the sign tracks whether relevance is passage-level, as a claim supported by two
    sentences inside an abstract is, or document-level, as a whole counterargument to a whole argument
    is. A single dataset could not have distinguished those.
    **FiQA's real run was deliberately not made**, with a measured basis: 429,850 chunks against a
-   parity leg that took 1 h 11 m for 64,247 embeddings — eight to nine hours → **Phase 3.15**, which
+   parity leg that took 1 h 11 m for 64,247 embeddings — eight to nine hours [re-based by 3.16:
+   packing cuts the leg to 121,236 chunks and a derived ~1.5–2 h] → **Phase 3.15**, which
    needs a cached-embeddings artifact anyway and where FiQA adds a third corpus shape rather than the
    only evidence about pooling.
    **Corrected rather than silently rewritten:** the roadmap entry that scheduled this phase said
@@ -161,7 +165,8 @@ Assume nothing works until a test says so *and the test is right*.
    listed.
    **Two debts recorded with their numbers:** `RecursiveChunkingStrategy` never merges short split
    parts back towards `MaxChunkSize` (FiQA 429,850 units from 57,638 documents, up to 1,723 from one)
-   → **Phase 3.16**; and FiQA's 38 empty corpus entries, one judged relevant, which make the real leg
+   → **Phase 3.16** [closed there, 2026-07-31 — confirmed, and it was three faults rather than
+   one]; and FiQA's 38 empty corpus entries, one judged relevant, which make the real leg
    index 38 fewer documents than the parity leg → **Phase 3.15**.
    **A third was found and closed inside the phase.** The nightly `run-secrets` job selected the
    whole integration project with no filter under a 120-minute timeout, against cases that now cost
@@ -186,10 +191,45 @@ Assume nothing works until a test says so *and the test is right*.
    because the `+BM25 hybrid` row is where it becomes live; owns FiQA's real run, TREC-COVID and
    EnronQA. Must be able to show **no** lift where none is expected (HyDE on ArguAna) — a table that
    only goes up is indistinguishable from one that cannot go down.
-15. Phase 3.16 — Recursive Chunking Short-Part Merge [pending] — a probable library defect measured
-   in 3.12: every split part becomes its own chunk, so a document of short lines becomes one chunk
-   per line. It inflates embedding cost, storage and query-time sorting for every user of the default
-   chunker, and it is why FiQA's real run is measured in hours.
+15. Phase 3.16 — Recursive Chunking Short-Part Merge [complete — 2026-07-31] — the "probable
+   defect" 3.12 measured, with confirmation required before fixing. **Confirmed, and it was three
+   faults rather than one:** the size limit was not consulted before splitting
+   (`SplitRecursively` checked fit only on the branch where the current separator was absent, so a
+   35-character section became 2 chunks against a 512-character limit); split parts were never
+   packed back (with no sentence separator present the recursion reached the `" "` separator and
+   emitted **one chunk per word** — 150 words became 150 chunks of 4 characters, which is what
+   settled "is it deliberate?"); and `Split(". ")` destroyed sentence punctuation. Also fixed: a
+   silent chunk-position fallback that reported a wrong position as a real one is now an
+   exception, justified by 500 generated-input iterations proving it unreachable.
+   **The existing tests asserted the defect and the docs drew it** —
+   `ChunkAsync_SplitsByParagraphsFirst` asserted 2 chunks for a 35-character input and passed, and
+   the chunking guide's flowchart had no merge step — the sixth instance in this milestone of
+   code, tests and docs agreeing with each other and being wrong together.
+   **Chunk counts at stock options:** SciFact 56,707 → **20,155** (10.9× → 3.9×, worst document
+   221 → 25), FiQA 429,850 → **121,236** (7.5× → **2.1×**, worst 1,723 → 41 — closing the
+   ~2×-suggested / 7.5×-measured discrepancy that opened the investigation), ArguAna 82,618 →
+   **24,003** (9.5× → 2.8×, worst 285 → 16).
+   **Parity runs unmoved — the phase's regression gate:** SciFact 0.64593, ArguAna 0.50432, both
+   separators, identical to 3.12 to five decimal places; FiQA's parity 0.37086 not re-run (gated,
+   and the parity protocol never calls the split path). **Both real runs improved:** SciFact
+   0.65589 → **0.67742** (delta vs parity +0.00995 → +0.03148; Recall@10 0.81322, MRR@10 0.63757,
+   1,109 queries pooled), ArguAna 0.42594 → **0.47559** (delta −0.07839 → −0.02873; Recall@10
+   0.77240, MRR@10 0.38435, 1,406 queries pooled). **The design's falsifiable prediction held:**
+   §6 said packing should substantially shrink ArguAna's loss if 3.12's fragmentation explanation
+   was right, and that a flat ArguAna would mean correcting the roadmap instead. ArguAna
+   recovered ~63% of the loss, so the explanation stands; the signs stay opposite, and the
+   residual is what packing cannot touch — whole-argument queries scored against 512-character
+   pieces. FiQA's real-leg cost is revised from an estimated 8–9 h to a **derived** ~1.5–2 h
+   (121,236 chunk + 6,648 query embeddings at the ~27 embeddings/s the packed real legs
+   observed) → still 3.15's run.
+   **Three debts recorded in the roadmap's follow-up list, each with its origin:**
+   `HierarchicalMergerChunkingStrategy` never reads `MaxChunkSize` — the inverse defect, found by
+   this phase's audit of the other strategies, and all three templates that delegate to it
+   silently ignore the option → Milestone 4, with 4.1; the speed-benchmark page's Recursive rows
+   predate packing → being closed by the re-measure running immediately after this phase; and one
+   unreproduced failure in `Rag.NET.Benchmarks.Quality.Tests` — 86 clean runs since, ruled out as
+   branch-related with evidence, not diagnosed, next occurrence to be captured with
+   `--logger trx` before re-running → the next occurrence, backstopped by Milestone 4.
 16. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
    of 3.3. Production traffic has no ground truth, so only the reference-free metrics apply; it
    also doubles spend per request and must never let a secondary failure reach a caller the
