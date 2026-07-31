@@ -103,10 +103,13 @@ future reader can tell the difference between "never existed" and "dealt with".
   to make is *document the limit or honour the option*, not a presumed fix.
   → **Milestone 4, with 4.1**, which is when the public API — including every option a user can
   set — gets scrutinised for packaging.
-- **One unreproduced test failure in `Rag.NET.Benchmarks.Quality.Tests`** (seen once during Phase
-  3.16, then **not reproduced in 86 subsequent runs** — 26 solo, 45 under three-way concurrency, 15
-  under a concurrent full-solution build). Investigated and explicitly **not diagnosed**; recorded
-  so the next occurrence starts from evidence rather than from zero. Ruled out with evidence: the
+- **A twice-seen, twice-unnamed test failure in `Rag.NET.Benchmarks.Quality.Tests`** (seen once
+  during Phase 3.16, **not reproduced in 86 subsequent runs** — 26 solo, 45 under three-way
+  concurrency, 15 under a concurrent full-solution build — then **seen a second time during the
+  whole-phase review**: `Failed: 1, Passed: 109` on the reviewer's first run, then 110/110 on nine
+  subsequent runs including four against a byte-identical binary). Investigated and explicitly
+  **not diagnosed**; recorded so the next occurrence starts from evidence rather than from zero.
+  Ruled out with evidence: the
   project's dependency closure is byte-identical to `main` (`git diff main...HEAD` over both its
   src and test directories is empty, and the src project has zero ProjectReferences), so it cannot
   involve the 3.16 branch; no shared mutable state — every filesystem test class uses a GUID-unique
@@ -116,8 +119,13 @@ future reader can tell the difference between "never existed" and "dealt with".
   flagged as a **candidate, not a diagnosis**: three `Dispose()` methods call
   `Directory.Delete(_root, recursive: true)` with no retry or catch, which on Windows throws
   intermittently when a transient handle — antivirus, search indexer — is open on a just-written
-  file. The right shape, and unreproduced. **The failing test's name is the missing evidence**, so
-  the standing instruction is: capture the next occurrence with `--logger trx` *before* re-running.
+  file. The right shape, and still undemonstrated — the second sighting neither confirms nor
+  clears it, so it stays a **candidate**.
+  **Both sightings lost the test's name** — the second because the run used summary-only logging —
+  which vindicates the standing instruction rather than replacing it. That instruction is now the
+  whole entry: **the failing test's name is the one piece of evidence needed, it has been lost
+  twice, and capturing the next occurrence with `--logger trx` *before* any re-run is the only
+  thing that gets it.** A summary-only run that hits this failure is evidence destroyed.
   → **the next occurrence, and failing that Milestone 4 as a deadline** — the same backstop shape
   as the `MessageChild` debt above, because "all tests passing" is in that milestone's Definition
   of Done and a suite that has failed once cannot carry that claim uninvestigated.
@@ -170,6 +178,23 @@ future reader can tell the difference between "never existed" and "dealt with".
 
 ### Closed
 
+- ~~**Nothing established that the source's text all ends up in some chunk**~~ (found by Phase
+  3.16's whole-phase review) → **closed by `9682967`, which adds the missing coverage property. A
+  test gap, not a product defect — the shipped code never dropped anything.** The phase's tests
+  established that every chunk is a substring of the source; nothing established the converse.
+  The review proved the gap exploitable: mutating `SplitParts` to delete the mid-stream flush —
+  the `Pack(pending, …)` yield loop before recursing into an oversize part, keeping only
+  `pending.Clear()` — silently discards every run of short parts preceding an oversize sibling,
+  and **all 1,340 core tests and all 110 quality tests stayed green**. Measured under the
+  mutation: FiQA 121,236 → 119,279 units, SciFact 20,155 → 19,958, ArguAna 24,003 → 23,626.
+  **The fix is a coverage property:** mark every index covered by some chunk's
+  `[StartPosition..EndPosition)` span at `Overlap = 0`, and require every uncovered character to
+  be whitespace or a `'.'` on a pack boundary — the only two things the chunker may drop. A
+  500-iteration fixed-seed generated test plus a deterministic short-run-then-oversize-sibling
+  case, both verified to fail under the mutation. Suite 1,340 → **1,342**.
+  **Said twice so nobody records it as a bug that shipped:** across the 500 generated shapes plus
+  20,000 randomized inputs in the review's own harness, every uncovered character was whitespace
+  or `.`. What was missing was the test that would notice if that stopped being true.
 - ~~**`RecursiveChunkingStrategy` never merges short split parts back up**~~ (measured in Phase
   3.12 while costing the real-chunking runs, recorded as a *probable* defect with confirmation
   required first) → **closed in 3.16, implemented — and the hedge resolved: confirmed, and it was
@@ -192,14 +217,30 @@ future reader can tell the difference between "never existed" and "dealt with".
   step — the sixth instance in this milestone of code, tests and docs agreeing with each other and
   being wrong together. Full numbers in the Phase 3.16 entry.
 - ~~**`docs/reference/benchmarks.md` publishes chunking performance measured against the old
-  splitter**~~ (found by Phase 3.16's Task 5 documentation agent) → **being closed by the
-  benchmark re-measure running immediately after 3.16's close, on the same branch; the commit that
-  lands the new numbers finishes this entry.** The Recursive rows — 512 ns / 2.94 KB at 500
-  characters, 5.0 μs / 31.91 KB at 5 KB, 47.3 μs / 315.54 KB at 50 KB — and the "~94 µs" Recursive
-  cell in the chunking guide's comparison table all predate packing. Packing changes chunk counts
-  by 3–10× and adds `StringBuilder` joins, so both per-call time and allocation almost certainly
-  moved, and in no direction anyone should guess in print — which is why this is a re-measurement
-  rather than a footnote.
+  splitter**~~ (found by Phase 3.16's Task 5 documentation agent) → **closed by `cfea8e9`, the
+  re-measure this entry said would finish it — run immediately after 3.16's close, on the same
+  branch.** The old Recursive rows — 512 ns / 2.94 KB at 500 characters, 5.0 μs / 31.91 KB at
+  5 KB, 47.3 μs / 315.54 KB at 50 KB — predated packing, and the entry's refusal to guess a
+  direction in print was right: the numbers moved both ways at once.
+  **What was measured.** Packing made `Recursive` faster at every size — 512 → **188 ns** at 500
+  characters, 5.0 → **4.0 μs** at 5 KB, 47.3 → **38.5 μs** at 50 KB — on far fewer `TextChunk`
+  allocations. Allocation moved in both directions: down at 500 characters (2.94 → **1.41 KB**,
+  fewer chunk objects) and up at 50 KB (315.54 → **354.21 KB**), where the `StringBuilder` joins
+  rebuilding each packed chunk cost more than the chunk objects they save. The whole table was
+  re-measured in one run, so the four strategies stay comparable.
+  **Two things found while doing it.** First, the benchmark suite could not run at all:
+  BenchmarkDotNet searches subfolders for the project it is asked to build and refuses on two
+  matches, so a leftover agent worktree holding a second `Rag.NET.Benchmarks.csproj` killed the
+  run in about three seconds with output that reads like a build failure — nobody could have
+  reproduced this page while an agent worktree existed under the repository. Now documented in
+  `benchmarks.md`, with `git worktree list` as the first check. Second, the chunking guide's
+  overhead row disagreed with `benchmarks.md` by roughly 2× — ~29/~94/~1,750 μs against
+  17.9/47.3/972 μs — and had done so **before this phase**. Both now carry the same measurement,
+  and the two cells that were never measured say "not measured" instead of carrying a number.
+  **Also worth recording:** the three strategies this phase did not touch moved 10–25% between
+  runs on identical hardware, standard deviations reach ±14% of the mean, and five of eleven
+  benchmarks are bimodal — these figures are bands, not numbers to compare at one significant
+  figure.
 - ~~**The nightly `run-secrets` job now selects hours of work it has 120 minutes for**~~ (found while
   documenting Phase 3.12, from the numbers that phase measured — never observed on a run) → **closed
   in 3.12, by the phase that opened it, before the first nightly it would have affected.**
@@ -686,7 +727,7 @@ Measured at stock `ChunkingOptions` — 512 characters, 50 of overlap: **FiQA 42
 
 **Not in scope:** the other chunking strategies, unless the same shape is found in them — in which case say so rather than widening quietly.
 
-**Completed:** 2026-07-31 (**confirmed a defect — the precondition this entry set — and it was three faults rather than one.** First, the size limit was not consulted before splitting: `SplitRecursively` checked whether text fit within `MaxChunkSize` only on the branch where the current separator was absent, so a 35-character section became 2 chunks against a 512-character limit. Second, split parts were never packed back: every part that fit was emitted as its own chunk, and with no sentence separator present the recursion reached the `" "` separator and emitted **one chunk per word** — 150 words became 150 chunks of 4 characters, which is what settled the "is it deliberate?" question, because nobody deliberately makes word boundaries chunk boundaries. Third, `Split(". ")` destroyed sentence punctuation and nothing put it back. Also fixed: chunk positions had a silent fallback that reported a wrong position as a real one — now an exception, justified by 500 generated-input iterations proving it unreachable. **The existing tests asserted the defect and the docs drew it.** `ChunkAsync_SplitsByParagraphsFirst` asserted 2 chunks for a 35-character input and passed; the chunking guide's flowchart drew "fits in MaxChunkSize? → yes → emit chunk" with no merge step. Code, tests and docs agreed with each other and all three were wrong — the sixth instance of that shape in this milestone. **Chunk counts, re-measured at the same stock options:** SciFact 56,707 → **20,155** units from 5,183 documents (10.9× → **3.9×**, worst single document 221 → 25); FiQA 429,850 → **121,236** from 57,638 (7.5× → **2.1×**, worst 1,723 → 41); ArguAna 82,618 → **24,003** from 8,674 (9.5× → **2.8×**, worst 285 → 16). FiQA's 522-character median against a 512-character chunk size suggested ~2× and produced 7.5×; it now produces **2.1×** — the discrepancy that opened the investigation is closed. **Parity runs unmoved, which was the phase's regression gate:** SciFact 0.64593 and ArguAna 0.50432, both separators, identical to Phase 3.12 to five decimal places. FiQA's parity 0.37086 was not re-run: it is gated, and the parity protocol indexes one chunk per document and never calls the split path. **Both real runs improved in absolute terms:** SciFact 0.65589 → **0.67742** (delta against parity +0.00995 → **+0.03148**; Recall@10 0.81322, MRR@10 0.63757, all 1,109 queries pooled) and ArguAna 0.42594 → **0.47559** (delta −0.07839 → **−0.02873**; Recall@10 0.77240, MRR@10 0.38435, all 1,406 queries pooled). **The design made a falsifiable prediction and it held.** §6 said: if 3.12's explanation was right that ArguAna's −0.0784 came from fragmenting whole counterarguments, packing should shrink the loss substantially — and said explicitly that if ArguAna did *not* improve, 3.12's recorded explanation was wrong and the roadmap must be corrected. ArguAna recovered about **63%** of the loss, so the explanation stands. The signs remain opposite, so "where relevance lives" still holds: the residual is what packing cannot touch — whole-argument queries scored against 512-character pieces. **FiQA's real-leg cost is revised from an estimated 8–9 h to a derived ~1.5–2 h** — 121,236 chunk plus 6,648 query embeddings at the ~27 embeddings/s observed across the two packed real legs — still Phase 3.15's run, not this one's. **The audit of the other strategies found the inverse defect**, and per this entry's own not-in-scope rule it is said rather than quietly widened into: `HierarchicalMergerChunkingStrategy` never reads `MaxChunkSize` at all, and `BookChunkingStrategy`, `LegalChunkingStrategy` and `AcademicPaperChunkingStrategy` all delegate to it, so a user setting `MaxChunkSize` on any of those templates gets no effect from it — recorded in the follow-up-debts list → Milestone 4, with 4.1. Two more debts recorded with it: `docs/reference/benchmarks.md`'s Recursive rows predate packing and are being re-measured immediately after this phase closes (in the Closed list, with the re-measure in flight), and one unreproduced failure in `Rag.NET.Benchmarks.Quality.Tests` — 86 clean runs since, ruled out as branch-related with evidence, deliberately not diagnosed, next occurrence to be captured with `--logger trx` before any re-run.)
+**Completed:** 2026-07-31 (**confirmed a defect — the precondition this entry set — and it was three faults rather than one.** First, the size limit was not consulted before splitting: `SplitRecursively` checked whether text fit within `MaxChunkSize` only on the branch where the current separator was absent, so a 35-character section became 2 chunks against a 512-character limit. Second, split parts were never packed back: every part that fit was emitted as its own chunk, and with no sentence separator present the recursion reached the `" "` separator and emitted **one chunk per word** — 150 words became 150 chunks of 4 characters, which is what settled the "is it deliberate?" question, because nobody deliberately makes word boundaries chunk boundaries. Third, `Split(". ")` destroyed sentence punctuation and nothing put it back. Also fixed: chunk positions had a silent fallback that reported a wrong position as a real one — now an exception, justified by 500 generated-input iterations proving it unreachable. **The existing tests asserted the defect and the docs drew it.** `ChunkAsync_SplitsByParagraphsFirst` asserted 2 chunks for a 35-character input and passed; the chunking guide's flowchart drew "fits in MaxChunkSize? → yes → emit chunk" with no merge step. Code, tests and docs agreed with each other and all three were wrong — the sixth instance of that shape in this milestone. **Chunk counts, re-measured at the same stock options:** SciFact 56,707 → **20,155** units from 5,183 documents (10.9× → **3.9×**, worst single document 221 → 25); FiQA 429,850 → **121,236** from 57,638 (7.5× → **2.1×**, worst 1,723 → 41); ArguAna 82,618 → **24,003** from 8,674 (9.5× → **2.8×**, worst 285 → 16). FiQA's 522-character median against a 512-character chunk size suggested ~2× and produced 7.5×; it now produces **2.1×** — the discrepancy that opened the investigation is closed. **Parity runs unmoved, which was the phase's regression gate:** SciFact 0.64593 and ArguAna 0.50432, both separators, identical to Phase 3.12 to five decimal places. FiQA's parity 0.37086 was not re-run: it is gated, and the parity protocol indexes one chunk per document and never calls the split path. **Both real runs improved in absolute terms:** SciFact 0.65589 → **0.67742** (delta against parity +0.00995 → **+0.03148**; Recall@10 0.81322, MRR@10 0.63757, all 1,109 queries pooled) and ArguAna 0.42594 → **0.47559** (delta −0.07839 → **−0.02873**; Recall@10 0.77240, MRR@10 0.38435, all 1,406 queries pooled). **The design made a falsifiable prediction and it held.** §6 said: if 3.12's explanation was right that ArguAna's −0.0784 came from fragmenting whole counterarguments, packing should shrink the loss substantially — and said explicitly that if ArguAna did *not* improve, 3.12's recorded explanation was wrong and the roadmap must be corrected. ArguAna recovered about **63%** of the loss, so the explanation stands. The signs remain opposite, so "where relevance lives" still holds: the residual is what packing cannot touch — whole-argument queries scored against 512-character pieces. **FiQA's real-leg cost is revised from an estimated 8–9 h to a derived ~1.5–2 h** — 121,236 chunk plus 6,648 query embeddings at the ~27 embeddings/s observed across the two packed real legs — still Phase 3.15's run, not this one's. **The audit of the other strategies found the inverse defect**, and per this entry's own not-in-scope rule it is said rather than quietly widened into: `HierarchicalMergerChunkingStrategy` never reads `MaxChunkSize` at all, and `BookChunkingStrategy`, `LegalChunkingStrategy` and `AcademicPaperChunkingStrategy` all delegate to it, so a user setting `MaxChunkSize` on any of those templates gets no effect from it — recorded in the follow-up-debts list → Milestone 4, with 4.1. Two more debts recorded with it: `docs/reference/benchmarks.md`'s Recursive rows predate packing → re-measured immediately after this phase closed, `cfea8e9` — packing made Recursive faster at every size, allocation down at 500 characters and up at 50 KB (closed; full numbers in the Closed list), and a failure in `Rag.NET.Benchmarks.Quality.Tests` — seen once in this phase, 86 clean runs, then **seen a second time during the whole-phase review and again unnamed**, because the run logged summary-only; still not diagnosed, and the open entry's `--logger trx` instruction stands vindicated. **The whole-phase review also found and closed a test gap:** every chunk was proven a substring of the source, but nothing proved the converse — a mutation deleting `SplitParts`' mid-stream flush silently discarded every run of short parts preceding an oversize sibling and all 1,340 core plus 110 quality tests stayed green. `9682967` adds a coverage property — every character not covered by a chunk span at `Overlap = 0` must be whitespace or a `'.'` on a pack boundary — plus a deterministic case, both failing under the mutation; the suite is now **1,342**. The shipped code never dropped anything — a missing test, not a shipped bug.)
 
 ## Milestone 4: Release Readiness (v1.0) [status: pending]
 **Goal:** Make Rag.NET shippable — CI, NuGet publishing, first-class configuration, logging, telemetry, and runnable samples.

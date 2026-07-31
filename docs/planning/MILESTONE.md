@@ -226,10 +226,26 @@ Assume nothing works until a test says so *and the test is right*.
    `HierarchicalMergerChunkingStrategy` never reads `MaxChunkSize` — the inverse defect, found by
    this phase's audit of the other strategies, and all three templates that delegate to it
    silently ignore the option → Milestone 4, with 4.1; the speed-benchmark page's Recursive rows
-   predate packing → being closed by the re-measure running immediately after this phase; and one
-   unreproduced failure in `Rag.NET.Benchmarks.Quality.Tests` — 86 clean runs since, ruled out as
-   branch-related with evidence, not diagnosed, next occurrence to be captured with
-   `--logger trx` before re-running → the next occurrence, backstopped by Milestone 4.
+   predate packing → closed by the re-measure immediately after this phase, `cfea8e9` — packing
+   made Recursive faster at every size (512 → 188 ns, 5.0 → 4.0 μs, 47.3 → 38.5 μs) with
+   allocation down at 500 characters and up at 50 KB, where the `StringBuilder` joins outweigh
+   the chunk objects they save; and a failure in `Rag.NET.Benchmarks.Quality.Tests` — seen once,
+   86 clean runs, then **seen a second time during the whole-phase review** (`Failed: 1,
+   Passed: 109`, then 110/110 on nine runs, four against a byte-identical binary) and **again
+   unnamed**, because the run logged summary-only; not diagnosed, the `Directory.Delete` shape
+   still a candidate, and the standing instruction stands vindicated: capture the next occurrence
+   with `--logger trx` before re-running → the next occurrence, backstopped by Milestone 4.
+   **The whole-phase review also found and closed a test gap:** every chunk was proven a
+   substring of the source, but nothing proved the source's text all ends up in some chunk — a
+   mutation deleting `SplitParts`' mid-stream flush silently discarded every run of short parts
+   preceding an oversize sibling and all 1,340 core plus 110 quality tests stayed green (under
+   the mutation: FiQA 121,236 → 119,279 units, SciFact 20,155 → 19,958, ArguAna 24,003 →
+   23,626). Closed by `9682967`: a coverage property — every character not covered by a chunk
+   span at `Overlap = 0` must be whitespace or a `'.'` on a pack boundary, the only two things
+   the chunker may drop — plus a deterministic short-run-then-oversize-sibling case, both
+   verified to fail under the mutation; the suite is now **1,342**. The shipped code never
+   dropped anything — across 500 generated shapes and 20,000 randomized inputs every uncovered
+   character was whitespace or `.` — a missing test, not a shipped bug.
 16. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
    of 3.3. Production traffic has no ground truth, so only the reference-free metrics apply; it
    also doubles spend per request and must never let a secondary failure reach a caller the
