@@ -119,8 +119,17 @@ public sealed record BeirDatasetDescriptor(
     /// </para>
     /// <para>
     /// <b>The corpus has no titles at all</b> — every one of the 57,638 lines has an empty
-    /// <c>title</c> — and 51% of documents exceed <c>ChunkingOptions.MaxChunkSize</c>, which is what
-    /// makes this the first dataset where chunk-to-document max-pooling is not a no-op.
+    /// <c>title</c> — and 51.0% of its documents exceed <c>ChunkingOptions.MaxChunkSize</c>.
+    /// </para>
+    /// <para>
+    /// <b>That fraction is not what makes max-pooling stop being a no-op, and this remark used to
+    /// claim it was.</b> Pooling is a no-op under the <i>parity</i> protocol on <i>every</i>
+    /// dataset — FiQA included — because that protocol indexes one chunk per document by
+    /// construction, and parity is the only protocol any published figure is comparable to. Under
+    /// the <i>real</i> protocol it is a no-op on none of them: SciFact's real leg pooled on all
+    /// 1,109 of its queries and ArguAna's on all 1,406. 51.0% is in fact the <i>lowest</i>
+    /// over-size fraction of the three — SciFact 99.2%, ArguAna 87.3%. What is genuinely FiQA's
+    /// alone is the scale it is measured over: 57,638 documents becoming 429,850 chunks.
     /// </para>
     /// </remarks>
     public static BeirDatasetDescriptor FiQA { get; } = new(
