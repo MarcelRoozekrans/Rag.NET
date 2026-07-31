@@ -24,10 +24,21 @@ namespace Rag.NET.Benchmarks.Quality;
 /// 0.5. Against a parity band of ±0.02, that is not a rounding difference.
 /// </para>
 /// <para>
-/// It also bites unevenly, which is what makes it dangerous. SciFact abstracts and ArguAna arguments
-/// are mostly single-chunk, so those numbers look plausible either way; FiQA and TREC-COVID have long
-/// documents where the discrepancy is real. A table that is right in the cheap places and wrong in
-/// the expensive ones is worse than no table.
+/// <b>It also bites unevenly — but this paragraph named the wrong datasets, and Phase 3.12 measured
+/// them.</b> It used to say SciFact abstracts and ArguAna arguments "are mostly single-chunk", so
+/// those numbers "look plausible either way", and that FiQA is where the discrepancy is real. All of
+/// that is false: at stock 512-character chunking SciFact's 5,183 abstracts produce 56,707 units, up
+/// to 221 from one document, and ArguAna's 8,674 arguments produce 82,618, up to 285. 99.2% of
+/// SciFact's documents exceed the chunk size and 87.3% of ArguAna's — more, in both cases, than
+/// FiQA's 51.0%.
+/// </para>
+/// <para>
+/// What is true is narrower, and is a property of the <i>protocol</i> rather than of any corpus: the
+/// order cannot bite at all under the parity protocol, which indexes one chunk per document, and it
+/// bites on every query of both measured datasets under the real one — SciFact pooled on 1,109 of
+/// 1,109 queries and ArguAna on 1,406 of 1,406. A table that is right in the cheap places and wrong
+/// in the expensive ones is still worse than no table; the mistake was in guessing which places were
+/// which without measuring.
 /// </para>
 /// </summary>
 public static class DocumentRanking
