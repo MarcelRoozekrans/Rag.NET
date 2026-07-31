@@ -135,6 +135,24 @@ public static class BeirRunBudget
         return true;
     }
 
+    /// <summary>
+    /// Reports what the table alone says about one case, with no reference to the environment.
+    /// </summary>
+    /// <param name="datasetName">The BEIR dataset name, as it appears in the theory data.</param>
+    /// <param name="protocol">Which protocol the case measures under.</param>
+    /// <returns><see langword="true"/> when the case runs without anyone asking for it.</returns>
+    /// <remarks>
+    /// <see cref="IsGatedOff"/> answers "did this case run", which is the question a test method
+    /// needs and which necessarily consults <see cref="OptInVariable"/>. That makes it the wrong
+    /// question for a test <i>about the table</i>: with the variable set, every case is ungated and
+    /// an assertion phrased against <see cref="IsGatedOff"/> holds no matter what the table says.
+    /// This is the table, read directly, so
+    /// <see cref="BeirRunBudgetTests.TheNightlyStillMeasuresParityOnAtLeastTwoDatasets"/> asserts the
+    /// same thing on a developer's machine mid-measurement as it does in <c>ci.yml</c>.
+    /// </remarks>
+    public static bool FitsTheNightly(string datasetName, BeirProtocol protocol) =>
+        Find(datasetName, protocol).FitsTheNightly;
+
     /// <summary>Reports whether the long runs were explicitly asked for.</summary>
     /// <returns><see langword="true"/> when <see cref="OptInVariable"/> asks for them.</returns>
     /// <remarks>

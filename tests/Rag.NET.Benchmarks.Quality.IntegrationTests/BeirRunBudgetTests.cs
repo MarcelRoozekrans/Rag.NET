@@ -45,10 +45,15 @@ public sealed class BeirRunBudgetTests
         // precisely the failure this workflow was fixed to stop: a job that passes having measured
         // nothing. Two is the number that survives today; raising this is fine, lowering it is the
         // thing to argue about in review rather than in a commit nobody reads.
+        //
+        // FitsTheNightly, never IsGatedOff. The latter consults RAGNET_BEIR_LONG_RUNS, so a
+        // developer who sets it to run a measurement would turn this test into an assertion that
+        // three is at least two — green whatever the table says, on the one machine most likely to
+        // be editing the table.
         var measured = 0;
         foreach (var descriptor in BeirDatasetDescriptor.All)
         {
-            if (!BeirRunBudget.IsGatedOff(descriptor.Name, BeirProtocol.Parity, out _))
+            if (BeirRunBudget.FitsTheNightly(descriptor.Name, BeirProtocol.Parity))
             {
                 measured++;
             }
