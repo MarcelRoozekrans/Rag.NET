@@ -403,11 +403,18 @@ caches) need no model, no corpus and no network, and putting the parity test bes
 carried all of them out of the gating tier. The arithmetic gates every pull request; the run that
 needs an 86 MB model and hours of CPU runs nightly.
 
-**With a caveat that is recorded rather than fixed:** that job selects the whole project with no
-filter and allows it 120 minutes, and the cases on this page cost more than that — FiQA's parity leg
-alone is 1 h 11 m and its real leg is a case of the same theory. Until the cached-embeddings artifact
-Phase 3.15 needs exists, or a filter selects the datasets that fit, the nightly is liable to report a
-timeout instead of a number. It is a scheduled debt in the roadmap, with these numbers.
+**That job used to select the whole project with no filter under a 120-minute timeout**, against
+cases costing more than that — FiQA's parity leg alone is 1 h 11 m — so it would have reported a
+timeout instead of a number. It no longer does. `BeirRunBudget` records what each dataset costs under
+each protocol and gates the four cases the job cannot afford behind `RAGNET_BEIR_LONG_RUNS`, which
+`nightly.yml` never sets; the SciFact and ArguAna parity legs still run unasked. See
+[what the nightly actually measures](./ci.md#what-the-nightly-actually-measures-and-what-it-does-not)
+for the per-case table.
+
+**What that costs is on this page rather than in the workflow:** a gated number is re-checked by
+nothing. FiQA's 0.37086 is guarded on a pull request — by `BeirDatasetDescriptorTests`, which pins
+the published target against the source string quoting it, and by `BeirReproduction`, which pins the
+measured figure — and by no run at all until someone sets the variable.
 
 Selection is not execution, and for a while it was mistaken for it. `RAGNET_BEIR_CACHE` was never
 supplied to that job at all, so the parity test skipped every night and the job passed having

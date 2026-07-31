@@ -136,27 +136,46 @@ Assume nothing works until a test says so *and the test is right*.
    an open observation with candidates named (tie-breaking, the truncation boundary) and neither
    checked nor claimed.
    **The real run is the first thing that has ever exercised chunk-to-document max-pooling against a
-   corpus**, and the counters prove it rather than assert it: on ArguAna, 0 queries pooled under the
-   parity protocol and all 1,406 under Rag.NET's chunking. **The default chunking costs 0.078
-   nDCG@10 there** (0.50432 → 0.42594), with Recall and MRR moving with it, so documents are missed
-   rather than reordered — plausible for a task whose queries are whole arguments averaging 1,193
-   characters, offered as reasoning and not as measurement.
+   corpus**, and the counters prove it rather than assert it: 0 queries pooled under the parity
+   protocol on either dataset, and all 1,406 of ArguAna's and all 1,109 of SciFact's under Rag.NET's
+   chunking.
+   **The two real deltas have opposite signs, which is the phase's most useful result.** Default
+   chunking **costs 0.0784 nDCG@10 on ArguAna** (0.50432 → 0.42594, Recall and MRR falling with it,
+   so documents are missed rather than reordered) and **gains 0.0100 on SciFact** (0.64593 →
+   0.65589, over 56,707 units from 5,183 documents and up to 221 from one, with Recall flat —
+   0.78667 → 0.78222 — and MRR up 0.60483 → 0.62057, the same documents better ordered). Offered as reasoning and not
+   as measurement: the sign tracks whether relevance is passage-level, as a claim supported by two
+   sentences inside an abstract is, or document-level, as a whole counterargument to a whole argument
+   is. A single dataset could not have distinguished those.
    **FiQA's real run was deliberately not made**, with a measured basis: 429,850 chunks against a
    parity leg that took 1 h 11 m for 64,247 embeddings — eight to nine hours → **Phase 3.15**, which
-   needs a cached-embeddings artifact anyway and where FiQA is the better test of whether pooling
-   helps or hurts.
+   needs a cached-embeddings artifact anyway and where FiQA adds a third corpus shape rather than the
+   only evidence about pooling.
    **Corrected rather than silently rewritten:** the roadmap entry that scheduled this phase said
    FiQA is "the first dataset where max-pooling is not a no-op" and 3.7's said SciFact abstracts are
    "mostly single-chunk". Both are false — 99.2% of SciFact's abstracts exceed the chunk size against
    FiQA's 51.0%, and pooling is a no-op under the *parity protocol*, which every dataset is measured
-   under, so no parity band will ever guard the aggregation order.
-   **Three debts recorded with their numbers:** `RecursiveChunkingStrategy` never merges short split
+   under, so no parity band will ever guard the aggregation order. Two source files still carried the
+   same false premise and the whole-phase review corrected both: `BeirDatasetDescriptor.FiQA`'s
+   remarks, knowingly deferred at the time, and `DocumentRanking`'s own summary, which nobody had
+   listed.
+   **Two debts recorded with their numbers:** `RecursiveChunkingStrategy` never merges short split
    parts back towards `MaxChunkSize` (FiQA 429,850 units from 57,638 documents, up to 1,723 from one)
-   → **Phase 3.16**; FiQA's 38 empty corpus entries, one judged relevant, which make the real leg
-   index 38 fewer documents than the parity leg → **Phase 3.15**; and the nightly `run-secrets` job,
-   which selects the whole integration project with no filter under a 120-minute timeout against
-   cases that now cost hours, so it will fail on a timeout and report on parity as little as skipping
-   did → **Phase 3.15**, live before then.
+   → **Phase 3.16**; and FiQA's 38 empty corpus entries, one judged relevant, which make the real leg
+   index 38 fewer documents than the parity leg → **Phase 3.15**.
+   **A third was found and closed inside the phase.** The nightly `run-secrets` job selected the
+   whole integration project with no filter under a 120-minute timeout, against cases that now cost
+   hours — so it would have failed on a timeout and reported on parity as little as skipping did.
+   `BeirRunBudget` now records what every dataset costs under every protocol and gates the four the
+   job cannot afford behind `RAGNET_BEIR_LONG_RUNS`, which `nightly.yml` never sets; each skips
+   naming its measured cost and the command that runs it. The nightly keeps the SciFact and ArguAna
+   parity legs and loses corpus-scale max-pooling, which is stated rather than buried.
+   **What the gate costs is that a gated number is re-checked by nothing**, so the phase closed with
+   the pins the review found missing: `BeirDatasetDescriptorTests` now pins FiQA's and ArguAna's
+   parity targets and requires every target's digits to appear in the source string citing it, and
+   `BeirReproduction` pins the **measured** figures — separately from the published band, because
+   ±0.02 is wider than most defects and a cut-then-pool mutation of `DocumentRanking` passed both the
+   band and the real run's 0.5×–1.5× envelope green.
 13. Phase 3.14 — Library Comparison at Defaults [pending] — created by the 3.12 design, which decided
    the framing 3.7 left open: matched-configuration tables measure how carefully each library was
    configured and converge on rounding errors, because every entrant calls the same embedding model.
