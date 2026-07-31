@@ -32,7 +32,14 @@ namespace Rag.NET.Benchmarks.Quality.Tests;
 /// no-op there and the two orderings byte-identical over all 1,109 queries — so SciFact's number
 /// says nothing about this either way. FiQA and TREC-COVID have long documents where the
 /// discrepancy is real. A table that is right in the cheap places and wrong in the expensive ones
-/// is worse than no table. Until such a dataset exists, <b>this file is the only guard</b>.
+/// is worse than no table.
+/// </para>
+/// <para>
+/// <b>No longer the only guard, as of Phase 3.12.</b> <c>BeirRealChunkingTests</c> runs FiQA and
+/// ArguAna through the library's own chunker — 429,850 units over FiQA's 57,638 documents — and
+/// asserts that the result differs from the same corpus indexed one chunk per document. This file is
+/// still the only <i>offline</i> guard, and still the only one that pins the ordering rather than
+/// merely observing that it changed something.
 /// </para>
 /// </summary>
 public sealed class DocumentRankingTests
