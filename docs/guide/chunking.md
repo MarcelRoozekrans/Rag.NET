@@ -43,7 +43,7 @@ The default strategy when nothing is configured is `RecursiveChunkingStrategy` w
 | Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window | None | None | Optional | None (passages partition) | Token-level sliding window |
 | Heading awareness | No | No | No | No (sentence-level) | Yes | No | No | No |
 | Respects token limits | No | No | Yes | Approximate (min/max chars) | Approximate (max chars) | No | Yes (passage budget) | Yes |
-| Chunking overhead (50 KB) | ~29 µs | ~94 µs | ~1,750 µs | Embedding-latency-bound | ~50 µs | ~50 µs | LLM-latency-bound (1 call/passage) | Token-embedding-latency-bound |
+| Chunking overhead (50 KB) | ~14 µs | ~39 µs | ~853 µs | Embedding-latency-bound | not measured | not measured | LLM-latency-bound (1 call/passage) | Token-embedding-latency-bound |
 | Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text | Coherent meaning boundaries, QA systems | Structured documents with headings | Code files (Python, JS/TS, Go, Rust, C#, …) | Precise factoid retrieval | Context-aware chunk embeddings |
 
 See [benchmarks](benchmarks.md) for full throughput numbers. Semantic chunking overhead is embedding-latency-bound (50–500 ms per batch), not CPU-bound — CPU processing is negligible.
@@ -151,7 +151,7 @@ services.AddRagNet(rag => rag
 
 **Constraint:** the effective overlap must be strictly less than the effective window size; the strategy throws `ArgumentOutOfRangeException` otherwise (at construction when both are set via `TokenAwareChunkingOptions`, at chunk time when falling back to `ChunkingOptions`).
 
-**Overhead:** Tiktoken encoding/decoding adds ~20–60× CPU overhead compared to character-based strategies on 50 KB input (~1,750 µs vs. ~29–94 µs). This is negligible relative to embedding API latency (typically 50–500 ms per batch).
+**Overhead:** Tiktoken encoding/decoding adds ~20–60× CPU overhead compared to character-based strategies on 50 KB input (~853 µs vs. ~14–39 µs, measured 2026-07-31). This is negligible relative to embedding API latency (typically 50–500 ms per batch).
 
 ## `SemanticChunkingStrategy`
 

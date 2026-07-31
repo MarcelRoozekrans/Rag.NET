@@ -25,19 +25,46 @@ dotnet run --project benchmarks/Rag.NET.Benchmarks -c Release -- --filter "*"
 
 `MaxChunkSize = 512, Overlap = 50`. Input sizes approximate character counts.
 
+Re-measured **2026-07-31**, whole table in one run, after Phase 3.16 changed
+`RecursiveChunkingStrategy` to pack split parts back towards `MaxChunkSize`.
+
 | Strategy | Input | Mean | Allocated |
 |----------|-------|-----:|----------:|
-| Fixed | 500 chars | 250 ns | 1.70 KB |
-| Fixed | 5 KB | 1.8 μs | 16.74 KB |
-| Fixed | 50 KB | 17.9 μs | 158.37 KB |
-| Recursive | 500 chars | 512 ns | 2.94 KB |
-| Recursive | 5 KB | 5.0 μs | 31.91 KB |
-| Recursive | 50 KB | 47.3 μs | 315.54 KB |
-| TokenAware | 500 chars | 11.3 μs | 6.10 KB |
-| TokenAware | 5 KB | 103 μs | 36.74 KB |
-| TokenAware | 50 KB | 972 μs | 388.89 KB |
-| C# | 500 chars | 31.9 μs | 24.72 KB |
-| C# | 50 KB | 293 μs | 211.80 KB |
+| Fixed | 500 chars | 190 ns | 1.74 KB |
+| Fixed | 5 KB | 1.5 μs | 17.05 KB |
+| Fixed | 50 KB | 13.7 μs | 160.97 KB |
+| Recursive | 500 chars | 188 ns | 1.41 KB |
+| Recursive | 5 KB | 4.0 μs | 38.52 KB |
+| Recursive | 50 KB | 38.5 μs | 354.21 KB |
+| TokenAware | 500 chars | 8.9 μs | 6.13 KB |
+| TokenAware | 5 KB | 86 μs | 36.81 KB |
+| TokenAware | 50 KB | 853 μs | 389.39 KB |
+| C# | 500 chars | 28.4 μs | 24.98 KB |
+| C# | 50 KB | 239 μs | 214.16 KB |
+
+**What Phase 3.16 did to `Recursive`, and what it did not.** Packing made it
+**faster at every size** — 512 → 188 ns, 5.0 → 4.0 μs, 47.3 → 38.5 μs — because it
+emits far fewer chunks and therefore far fewer `TextChunk` allocations. Allocation
+moves in *both* directions: down at 500 characters (2.94 → 1.41 KB, fewer chunk
+objects) and up on larger inputs (315.54 → 354.21 KB at 50 KB), where the
+`StringBuilder` joins that rebuild each packed chunk cost more than the chunk
+objects they save.
+
+**Do not read the other three strategies' movement as a change.** Phase 3.16
+touched only `Recursive`, yet `Fixed`, `TokenAware` and `C#` all shifted by
+10–25% between the two runs on the same hardware. That is run-to-run variance and
+toolchain drift, not behaviour: standard deviations here reach ±14% of the mean
+(for example `Fixed` at 500 chars is 190 ± 24 ns) and BenchmarkDotNet reported
+bimodal distributions for five of the eleven benchmarks. Treat every figure on
+this page as an order of magnitude with a wide band, not a number to compare at
+one significant figure.
+
+**Reproducing this requires no git worktrees under the repository.** BenchmarkDotNet
+searches subfolders for the project it is asked to build and refuses when it finds
+two matches, so a leftover worktree containing a second copy of
+`Rag.NET.Benchmarks.csproj` makes the whole suite fail in about three seconds with
+a message that reads like a build error. Run `git worktree list` first if the suite
+exits immediately having executed nothing.
 
 **Notes:**
 - `TokenAware` uses `TiktokenTokenizer` (cl100k_base) — encoding/decoding overhead is 20–60× that of character-based strategies.
