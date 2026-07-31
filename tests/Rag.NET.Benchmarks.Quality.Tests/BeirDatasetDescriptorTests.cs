@@ -1,3 +1,4 @@
+using System.Globalization;
 using Rag.NET.Benchmarks.Quality;
 using Xunit;
 
@@ -110,6 +111,67 @@ public sealed class BeirDatasetDescriptorTests
         Assert.Equal(6648, fiqa.QueryCount);
         Assert.Equal(648, fiqa.TestQueryCount);
         Assert.Equal("fiqa.zip", fiqa.ArchiveFileName, StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public void FiQA_CarriesTheParityTargetAndBandItsOwnSourceStringQuotes()
+    {
+        // Pinned for the same reason SciFact's is, and more urgently. SciFact's target was pinned
+        // from the day it moved onto the descriptor; FiQA's and ArguAna's arrived in Phase 3.12
+        // pinned by nothing, and the gap was demonstrated rather than argued: changing this target
+        // from 0.36867 to 0.40000 — leaving FiQAPublishedSource, which literally begins "0.36867
+        // for all-MiniLM-L6-v2", untouched — passed all 107 tests in this project.
+        //
+        // The exposure is not symmetric, and FiQA has the worse half of it. A wrong ArguAna target
+        // is still caught by the nightly, whose ~50 s warm parity leg runs unasked. A wrong FiQA
+        // target is caught only by a case BeirRunBudget gates behind RAGNET_BEIR_LONG_RUNS at
+        // 1 h 11 m, which nothing sets — so in practice the descriptor is FiQA's only guard, and a
+        // target that silently disagreed with the provenance string quoting it would move the band
+        // under the number with nothing to say so.
+        var target = BeirDatasetDescriptor.FiQA.ParityTarget;
+
+        Assert.Equal(0.36867, target.PublishedNdcgAt10, 10);
+        Assert.Equal(0.34867, target.LowerBound, 10);
+        Assert.Equal(0.38867, target.UpperBound, 10);
+        Assert.Equal(BeirParityTarget.DefaultTolerance, target.Tolerance, 10);
+    }
+
+    [Fact]
+    public void ArguAna_CarriesTheParityTargetAndBandItsOwnSourceStringQuotes()
+    {
+        // ArguAna's parity leg does run nightly, so a wrong target here fails within a day rather
+        // than never. That is a reason to pin it as well as FiQA's, not instead: "the nightly will
+        // notice" is a guard measured in hours against a pull request measured in seconds, and it
+        // is the guard that reports a failed measurement rather than a wrong constant.
+        var target = BeirDatasetDescriptor.ArguAna.ParityTarget;
+
+        Assert.Equal(0.50167, target.PublishedNdcgAt10, 10);
+        Assert.Equal(0.48167, target.LowerBound, 10);
+        Assert.Equal(0.52167, target.UpperBound, 10);
+        Assert.Equal(BeirParityTarget.DefaultTolerance, target.Tolerance, 10);
+    }
+
+    [Fact]
+    public void EveryPublishedFigureAppearsVerbatimInTheSourceStringThatCitesIt()
+    {
+        // BeirParityTarget's own documentation says a number and its provenance "cannot drift
+        // apart" because they live in one record, and retrieval-quality.md repeats the claim. That
+        // was architecture, not enforcement: the record holds a double and a string, and nothing
+        // compared them. This is the comparison, and it generalises — a fourth dataset gets it for
+        // free, which the two assertions above deliberately do not.
+        //
+        // "0.#####" rather than F5, because each source string quotes its figure the way it is
+        // written upstream: SciFact's opens "0.645", not "0.64500".
+        foreach (var descriptor in BeirDatasetDescriptor.All)
+        {
+            var target = descriptor.ParityTarget;
+            var figure = target.PublishedNdcgAt10.ToString("0.#####", CultureInfo.InvariantCulture);
+
+            Assert.Contains(
+                figure,
+                target.Source,
+                StringComparison.Ordinal);
+        }
     }
 
     [Fact]
