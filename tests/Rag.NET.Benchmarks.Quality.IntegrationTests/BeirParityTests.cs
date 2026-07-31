@@ -113,6 +113,14 @@ public sealed class BeirParityTests
         _output.WriteLine(Describe(descriptor, run));
 
         Assert.True(descriptor.ParityTarget.Contains(run.NdcgAt10), FailureMessage(descriptor, run));
+
+        // Second, and the two are answering different questions. The band above asks "does this
+        // agree with MTEB", which is a question about the harness and is the reason the phase
+        // exists. This asks "did OUR number move", which the band cannot: ±0.02 is wider than most
+        // defects, and a cut-then-pool mutation of DocumentRanking passes it green. Band first
+        // because a harness that disagrees with the literature should say so before it reports a
+        // drift from its own history.
+        BeirReproduction.AssertReproduces(datasetName, BeirProtocol.Parity, run.NdcgAt10, _output);
     }
 
     /// <summary>

@@ -144,6 +144,15 @@ public sealed class BeirRealChunkingTests
         AssertTheProtocolActuallyChunkedAndAggregated(descriptor, real);
         AssertTheTwoRunsDiffer(descriptor, parity, real);
         AssertTheRealRunDidNotCollapse(descriptor, parity, real);
+
+        // Both legs, because this test's headline result is the DELTA between them and a delta is
+        // pinned by pinning its ends. The collapse envelope above is 0.5x-1.5x of parity — it
+        // catches a protocol that fell over, and it is the right instrument for that — but ArguAna's
+        // real leg can lose 0.020 inside it without a word. That is the whole gap:
+        // BeirReproduction's window is 0.005 and it is centred on what this repository measured, not
+        // on anything published, because for this protocol there is nothing published to centre on.
+        BeirReproduction.AssertReproduces(datasetName, BeirProtocol.Parity, parity.NdcgAt10, _output);
+        BeirReproduction.AssertReproduces(datasetName, BeirProtocol.Real, real.NdcgAt10, _output);
     }
 
     [Theory]
