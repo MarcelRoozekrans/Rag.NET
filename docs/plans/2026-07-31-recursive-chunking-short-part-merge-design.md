@@ -151,7 +151,23 @@ tuned `Overlap` against the old fragment sizes will find it means something diff
 ## 5. Breaking change, taken deliberately
 
 **Packing is the default and there is no opt-out.** Chunk boundaries change for every user of the
-default strategy, so `DeterministicChunkId` changes and stored vectors must be re-ingested.
+default strategy, and stored vectors must be re-ingested.
+
+> **Correction, made during Task 5 and verified against the code.** This section originally said
+> "`DeterministicChunkId` changes". **It does not.** `DeterministicChunkId.Derive` hashes
+> `(documentId, chunkIndex)` and nothing else — chunk text is not an input, and its own remarks pin
+> the algorithm as a persistent storage contract. Ids for a given document-and-index pair are
+> identical before and after this phase.
+>
+> **The real consequence is worse than the one I wrote.** What changes is the *number* of chunks per
+> document, and it collapses — 60 to 2 on the short-lines case. On the id-addressed stores (Qdrant
+> sparse, Weaviate), re-ingesting a document that previously produced 60 chunks now overwrites
+> indices 0–1 and **leaves indices 2–59 in the collection**, still addressable, holding text from the
+> old chunker. Retrieval then serves fragments that no longer correspond to any chunk the library
+> would produce. Id churn would have been self-announcing; silent orphans are not.
+>
+> So the re-ingestion instruction stands, and it needs `Overwrite = true` plus attention to the
+> stranded tail rather than a plain re-run.
 
 The library is pre-1.0 with Milestone 4 as the release milestone, which is exactly when this is
 affordable. An option would preserve the broken mode permanently, force every downstream strategy
