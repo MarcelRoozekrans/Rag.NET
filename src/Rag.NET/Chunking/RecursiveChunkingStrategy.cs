@@ -32,12 +32,7 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
             cancellationToken.ThrowIfCancellationRequested();
 
             // Find where this chunk appears in the source text, starting from the cursor
-            int pos = sourceText.IndexOf(text, cursor, StringComparison.Ordinal);
-            if (pos < 0)
-            {
-                // Fallback: trimmed text may not match exactly; search from cursor
-                pos = cursor;
-            }
+            int pos = FindChunkStart(sourceText, text, cursor);
 
             int startPosition = pos;
             int endPosition = pos + text.Length;
@@ -69,6 +64,21 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
         }
 
         await Task.CompletedTask.ConfigureAwait(false);
+    }
+
+    private static int FindChunkStart(string sourceText, string text, int cursor)
+    {
+        int pos = sourceText.IndexOf(text, cursor, StringComparison.Ordinal);
+        if (pos < 0)
+        {
+            throw new InvalidOperationException(
+                FormattableString.Invariant(
+                    $"Chunk text of {text.Length} characters was not found in the section from offset {cursor}. ") +
+                "Every chunk must be an exact substring of the section text; this indicates the splitter " +
+                "fabricated text rather than reproducing it.");
+        }
+
+        return pos;
     }
 
     private static IEnumerable<string> SplitRecursively(string text, int maxSize, int separatorIndex)

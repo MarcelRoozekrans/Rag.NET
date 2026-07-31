@@ -261,6 +261,30 @@ public class RecursiveChunkingStrategyTests
             $"Chunk \"{c.Text}\" does not appear in the source \"{text}\""));
     }
 
+    [Theory]
+    [InlineData("a  \n\n  b  \n\n  c")]
+    [InlineData("  leading  \n\nsecond  \n\nthird")]
+    [InlineData("one.  two.   three.")]
+    public async Task ChunkAsync_PositionsPointAtTheChunkText(string text)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var options = new ChunkingOptions { MaxChunkSize = 8, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(CreateSection(text), options, ct).ToListAsync(ct);
+
+        // Guard: an input that no longer splits would exercise nothing.
+        Assert.True(chunks.Count > 1, $"Input must produce multiple chunks; got {chunks.Count}");
+
+        foreach (var chunk in chunks)
+        {
+            Assert.InRange(chunk.StartPosition, 0, text.Length);
+            Assert.InRange(chunk.EndPosition, chunk.StartPosition, text.Length);
+            Assert.Equal(
+                chunk.Text,
+                text[chunk.StartPosition..chunk.EndPosition]);
+        }
+    }
+
     [Fact]
     public async Task ChunkAsync_EveryChunkIsASubstring_AcrossGeneratedWhitespaceShapes()
     {
@@ -289,6 +313,11 @@ public class RecursiveChunkingStrategyTests
                 Assert.True(
                     chunk.Text.Length <= options.MaxChunkSize,
                     $"iteration {iteration}: chunk of {chunk.Text.Length} exceeds {options.MaxChunkSize}");
+                Assert.InRange(chunk.StartPosition, 0, text.Length);
+                Assert.InRange(chunk.EndPosition, chunk.StartPosition, text.Length);
+                Assert.True(
+                    string.Equals(chunk.Text, text[chunk.StartPosition..chunk.EndPosition], StringComparison.Ordinal),
+                    $"iteration {iteration}: positions [{chunk.StartPosition}..{chunk.EndPosition}] point at \"{text[chunk.StartPosition..chunk.EndPosition]}\" not \"{chunk.Text}\"");
             }
         }
     }
