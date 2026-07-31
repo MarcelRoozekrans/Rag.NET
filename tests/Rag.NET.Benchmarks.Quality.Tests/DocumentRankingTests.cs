@@ -15,7 +15,8 @@ namespace Rag.NET.Benchmarks.Quality.Tests;
 /// length as well as in content.
 /// </para>
 /// <para>
-/// <b>Cut-then-pool fails 3 of these 13 tests</b>, and the three are
+/// <b>Cut-then-pool fails 3 of these 18 tests</b> (3 of 13 before Phase 3.12 added the five
+/// self-exclusion cases at the end, which are orthogonal to the ordering), and the three are
 /// <see cref="TopDocuments_MaxPoolingBeforeTheCutKeepsDocumentsAChunkHeavyRivalWouldSqueezeOut"/>,
 /// <see cref="TopDocuments_CuttingChunksFirstWouldReturnFewerDocumentsThanRequested"/> and
 /// <see cref="TopDocumentIds_CuttingChunksFirstWouldScoreZeroOnAQueryPoolingFirstScoresPointFive"/>.
@@ -200,5 +201,61 @@ public sealed class DocumentRankingTests
     public void TopDocuments_RejectsANullChunkList()
     {
         Assert.Throws<ArgumentNullException>(() => DocumentRanking.TopDocuments(null!, k: 10));
+    }
+
+    [Fact]
+    public void TopDocuments_WithoutAnExclusion_KeepsEveryDocument()
+    {
+        // The default has to stay exactly what it was: SciFact passes null here and its 0.64593 is
+        // this phase's regression gate.
+        Assert.Equal(
+            DocumentRanking.TopDocumentIds(ChunkHeavyRival(), k: 4),
+            DocumentRanking.TopDocumentIds(ChunkHeavyRival(), k: 4, excludedDocumentId: null));
+    }
+
+    [Fact]
+    public void TopDocuments_ExcludingADocumentPromotesTheOneBehindIt_RatherThanLeavingAHole()
+    {
+        // BEIR's `if corpus_id != query_id`. Dropping doc-long must not cost the ranking a slot:
+        // three documents were asked for and three must come back, or nDCG@k is computed over k on
+        // some queries and k-1 on others and the mean is over two different metrics.
+        var ranked = DocumentRanking.TopDocumentIds(ChunkHeavyRival(), k: 3, excludedDocumentId: "doc-long");
+
+        Assert.Equal(["doc-b", "doc-c", "doc-d"], ranked);
+    }
+
+    [Fact]
+    public void TopDocuments_ExclusionRemovesEveryChunkOfTheDocument_NotOnlyItsBestOne()
+    {
+        // doc-long contributes four chunks. Excluding on the pooled document rather than on the
+        // individual hit is what makes this true, and a real corpus is where it would matter: a
+        // query's own document chunked into six pieces would otherwise occupy five of the ten slots.
+        var ranked = DocumentRanking.TopDocuments(ChunkHeavyRival(), k: 10, excludedDocumentId: "doc-long");
+
+        Assert.DoesNotContain(ranked, static document => string.Equals(
+            document.DocumentId, "doc-long", StringComparison.Ordinal));
+        Assert.Equal(3, ranked.Count);
+    }
+
+    [Fact]
+    public void TopDocuments_ExcludingAnAbsentDocument_ChangesNothing()
+    {
+        // FiQA's query ids and corpus ids are both bare integers and 621 of them collide by
+        // coincidence, so most queries exclude an id that is nowhere in their results. That has to
+        // be a no-op rather than an off-by-one.
+        Assert.Equal(
+            DocumentRanking.TopDocumentIds(ChunkHeavyRival(), k: 4),
+            DocumentRanking.TopDocumentIds(ChunkHeavyRival(), k: 4, excludedDocumentId: "doc-absent"));
+    }
+
+    [Fact]
+    public void TopDocuments_ExclusionIsOrdinal_NotCaseInsensitive()
+    {
+        // Ordinal everywhere else in this file — qrels ids are matched ordinally and
+        // BeirDatasetDescriptor.ByName rejects "SciFact" for the same reason. A comparison that
+        // folded case here would silently drop a different document on a corpus with mixed-case ids.
+        var ranked = DocumentRanking.TopDocumentIds(ChunkHeavyRival(), k: 4, excludedDocumentId: "DOC-LONG");
+
+        Assert.Contains("doc-long", ranked, StringComparer.Ordinal);
     }
 }

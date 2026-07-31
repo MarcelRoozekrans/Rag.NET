@@ -183,6 +183,8 @@ public sealed class BeirDatasetCacheTests : IDisposable
         DocumentCount: 1,
         QueryCount: 1,
         TestQueryCount: 1,
+        TitledDocumentCount: 1,
+        ExcludesSelfRetrievedDocument: false,
         ParityTarget: new BeirParityTarget(0.5, "test fixture; never measured"));
 
     /// <summary>

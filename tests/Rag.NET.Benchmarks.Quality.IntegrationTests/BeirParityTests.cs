@@ -63,9 +63,20 @@ public sealed class BeirParityTests
     /// </summary>
     /// <returns>Dataset name and separator pairs.</returns>
     /// <remarks>
+    /// <para>
     /// Names rather than descriptors, because theory data that is not serializable costs the run its
     /// per-case test names — and a parity failure that cannot say which dataset failed is most of the
     /// way to useless.
+    /// </para>
+    /// <para>
+    /// <b>Both separators only where the corpus has titles.</b> The separator sits between title and
+    /// text, so on a corpus with no titles <c>title + sep + text</c> trims back to identical bytes and
+    /// the second case measures the first again. FiQA titles none of its 57,638 documents, and one
+    /// FiQA measurement is roughly an order of magnitude more expensive than SciFact's ~355 s — an
+    /// hour spent re-deriving a number that is equal by construction. The count comes off the
+    /// descriptor and <see cref="LoadAsync"/> asserts it against the archive, so a dataset that
+    /// quietly gained titles fails loudly rather than silently losing a case.
+    /// </para>
     /// </remarks>
     public static TheoryData<string, string> DatasetsAndSeparators()
     {
@@ -73,7 +84,10 @@ public sealed class BeirParityTests
         foreach (var descriptor in BeirDatasetDescriptor.All)
         {
             data.Add(descriptor.Name, " ");
-            data.Add(descriptor.Name, "\n");
+            if (descriptor.TitledDocumentCount > 0)
+            {
+                data.Add(descriptor.Name, "\n");
+            }
         }
 
         return data;
@@ -139,7 +153,7 @@ public sealed class BeirParityTests
 
         using var store = new InMemoryVectorStore();
         await IndexCorpusAsync(generator, store, dataset.Documents, cancellationToken);
-        var runs = await RetrieveAsync(generator, store, dataset.Queries, cancellationToken);
+        var runs = await RetrieveAsync(generator, store, dataset.Queries, descriptor, cancellationToken);
 
         return IrMetrics.Evaluate(runs, dataset.Qrels, Cutoff);
     }
@@ -167,8 +181,30 @@ public sealed class BeirParityTests
         Assert.Equal(descriptor.DocumentCount, dataset.Documents.Count);
         Assert.Equal(descriptor.QueryCount, dataset.Queries.Count);
         Assert.Equal(descriptor.TestQueryCount, dataset.JudgedQueryCount);
+        Assert.Equal(descriptor.TitledDocumentCount, CountTitled(dataset.Documents));
 
         return dataset;
+    }
+
+    /// <summary>Counts documents whose <c>title</c> is present and non-empty.</summary>
+    /// <remarks>
+    /// Asserted because <see cref="DatasetsAndSeparators"/> drops the newline case for a corpus with
+    /// no titles, on the grounds that it would measure identical bytes. If a corpus ever gained
+    /// titles, that reasoning would stop holding and the case would go on being skipped silently —
+    /// which reads from the test summary exactly like a case that passed.
+    /// </remarks>
+    private static int CountTitled(IReadOnlyList<BeirDocument> documents)
+    {
+        var titled = 0;
+        for (var i = 0; i < documents.Count; i++)
+        {
+            if (!string.IsNullOrEmpty(documents[i].Title))
+            {
+                titled++;
+            }
+        }
+
+        return titled;
     }
 
     /// <summary>
@@ -221,19 +257,32 @@ public sealed class BeirParityTests
     /// the unjudged ones as <see cref="IrEvaluation.ExcludedQueryCount"/>.
     /// </para>
     /// <para>
-    /// <c>TopK</c> equals the cutoff only because indexing stores one chunk per document, so ten
-    /// chunks are ten distinct documents. A harness that chunked would have to over-retrieve here,
-    /// or pooling would be handed a list that top-k had already truncated.
+    /// <c>TopK</c> equals the cutoff, plus one when the dataset excludes the query's own document —
+    /// which is what BEIR does too, its <c>torch.topk</c> taking <c>min(top_k + 1, …)</c> before the
+    /// same filter. Indexing stores one chunk per document, so hits are already distinct documents;
+    /// without the spare, an excluded self-hit would leave nine. It is <b>not</b> added
+    /// unconditionally, because a wider retrieval could reorder the tenth and eleventh documents
+    /// under tie-breaking and SciFact's 0.64593 is this phase's regression gate. A harness that
+    /// chunked would have to over-retrieve by much more, or pooling would be handed a list top-k had
+    /// already truncated.
+    /// </para>
+    /// <para>
+    /// <b>The exclusion is BEIR's own.</b> <c>DenseRetrievalExactSearch.search</c> pushes a hit only
+    /// <c>if corpus_id != query_id</c>, and MTEB exposes the same thing as
+    /// <c>ignore_identical_ids</c>, set for ArguAna and FiQA. It is a no-op on SciFact, whose query
+    /// ids and corpus ids do not intersect at all, which is why the harness got this far without it.
     /// </para>
     /// </remarks>
     private static async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> RetrieveAsync(
         OnnxEmbeddingGenerator generator,
         InMemoryVectorStore store,
         IReadOnlyList<BeirQuery> queries,
+        BeirDatasetDescriptor descriptor,
         CancellationToken cancellationToken)
     {
+        var excludesSelf = descriptor.ExcludesSelfRetrievedDocument;
         var runs = new Dictionary<string, IReadOnlyList<string>>(queries.Count, StringComparer.Ordinal);
-        var options = new SearchOptions { TopK = Cutoff };
+        var options = new SearchOptions { TopK = excludesSelf ? Cutoff + 1 : Cutoff };
 
         for (var start = 0; start < queries.Count; start += SlabSize)
         {
@@ -249,7 +298,8 @@ public sealed class BeirParityTests
             {
                 var results = await store
                     .SearchAsync(embeddings[i - start].Vector, options, cancellationToken);
-                runs[queries[i].Id] = DocumentRanking.TopDocumentIds(ToChunkHits(results), Cutoff);
+                runs[queries[i].Id] = DocumentRanking.TopDocumentIds(
+                    ToChunkHits(results), Cutoff, excludesSelf ? queries[i].Id : null);
             }
         }
 
