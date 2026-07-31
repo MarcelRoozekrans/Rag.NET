@@ -198,4 +198,45 @@ public class RecursiveChunkingStrategyTests
         Assert.Contains(chunks, c => c.Text.Contains(". ", StringComparison.Ordinal));
         Assert.All(chunks, c => Assert.True(c.Text.Length <= 30, $"Chunk of {c.Text.Length} exceeds 30"));
     }
+
+    [Fact]
+    public async Task ChunkAsync_PartsThatExactlyFillMaxChunkSize_PackIntoOneChunk()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // Exact-boundary pin for the fit check `buffer + separator + next <= maxSize`.
+        // Lines of 9 and 10 chars joined by "\n" (1 char): 9 + 1 + 10 = 20 = MaxChunkSize
+        // exactly — the case where `<=` and `<` disagree. The third 10-char line makes
+        // the whole text 31 chars so splitting actually happens, and it cannot join
+        // (20 + 1 + 10 = 31 > 20), so it must land alone in the second chunk.
+        var text = new string('a', 9) + "\n" + new string('b', 10) + "\n" + new string('c', 10);
+        var section = CreateSection(text);
+        var options = new ChunkingOptions { MaxChunkSize = 20, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(section, options, ct).ToListAsync(ct);
+
+        Assert.Equal(2, chunks.Count);
+        Assert.Equal(new string('a', 9) + "\n" + new string('b', 10), chunks[0].Text);
+        Assert.Equal(20, chunks[0].Text.Length);
+        Assert.Equal(new string('c', 10), chunks[1].Text);
+    }
+
+    [Fact]
+    public async Task ChunkAsync_PartsOneCharOverMaxChunkSize_SplitIntoTwoChunks()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // The other side of the boundary: two 10-char lines joined by "\n" (1 char)
+        // sum to 10 + 1 + 10 = 21 = MaxChunkSize + 1. Only the separator's own length
+        // pushes this over the limit, so a fit check that forgets `separator.Length`
+        // (10 + 10 = 20 <= 20) would pack them into a 21-char chunk exceeding MaxChunkSize.
+        var text = new string('a', 10) + "\n" + new string('b', 10);
+        var section = CreateSection(text);
+        var options = new ChunkingOptions { MaxChunkSize = 20, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(section, options, ct).ToListAsync(ct);
+
+        Assert.Equal(2, chunks.Count);
+        Assert.Equal(new string('a', 10), chunks[0].Text);
+        Assert.Equal(new string('b', 10), chunks[1].Text);
+        Assert.All(chunks, c => Assert.True(c.Text.Length <= 20, $"Chunk of {c.Text.Length} exceeds 20"));
+    }
 }
