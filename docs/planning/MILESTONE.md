@@ -102,12 +102,28 @@ Assume nothing works until a test says so *and the test is right*.
    reference numbers, so retrieval correctness is demonstrable rather than asserted. SciFact
    first, to prove parity before adding breadth. Distinct from Phase 3.2's synthetic builder,
    and from the existing speed benchmarks.
-11. Phase 3.13 — Late Chunking Newline Defect [pending] — **a live production defect**, found only
-   because 3.7 provisioned an ONNX model for the first time in this project's history. BertTokenizer
-   deletes newline and tab characters, tripping `OnnxTokenEmbeddingGenerator`'s offset-alignment guard, and
-   `LateChunkingStrategy` swallows it into chunks with `Embedding = null`. Late chunking has never
-   worked on any document containing a paragraph break — shipped in 1.1, inert since, invisible
-   behind a test nothing could run. Nightly is deliberately red until this lands.
+11. Phase 3.13 — Late Chunking Newline Defect [complete — 2026-07-30] — **a live production defect**,
+   found only because 3.7 provisioned an ONNX model for the first time in this project's history.
+   BertTokenizer deletes newline and tab characters, tripping `OnnxTokenEmbeddingGenerator`'s
+   offset-alignment guard, and `LateChunkingStrategy` swallows it into chunks with
+   `Embedding = null`. Late chunking had never worked on any document containing a paragraph break —
+   shipped in 1.1, inert since, invisible behind a test nothing could run.
+   **Shipped:** a length-preserving substitution of a space for `\n`, `\t` and `\r` in
+   `BertOnnxPlumbing`, before every `EncodeToTokens` call rather than in the late-chunking path
+   alone, and `LateChunkingIntegrationTests` now passes against a real model with a tab case added.
+   Nightly is green again.
+   **Broader and milder than recorded.** Broader: `\t`, `\r`, trailing newlines, other control
+   characters, NFD text and **all CJK** were affected too, and it corrupted the *tokens* rather than
+   only the offsets — `"alpha\n\nbeta gamma"` tokenized as `alphabet | ##a | gamma`, so an
+   offsets-only fix would still have embedded a word the document never contained. `OnnxSpladeEncoder`
+   and `OnnxEmbeddingGenerator` shared it and never tripped the guard, because they discard offsets.
+   Milder: `EmbeddingBehavior` backfills empty embeddings, so the fallback degraded to ordinary
+   embeddings rather than losing chunks — nothing was unretrievable; a configured feature silently
+   did not apply.
+   **CJK and NFD stay refused** — neither is length-preserving under normalization and CJK offsets
+   go genuinely out of bounds — now with a message naming the cause and a documented limit in
+   `docs/guide/chunking.md`. The phase also corrected 3.7's "the separator shifts the number by
+   0.00314": that shift was this defect, not the separator.
 12. Phase 3.12 — BEIR Expansion & Ablation Table [pending] — the datasets 3.7 deferred until parity
    held: FiQA for long documents, ArguAna as a negative control, then the ablation table. Owns the
    recorded BM25 comparability debt, because the `+BM25 hybrid` row is where it becomes live.

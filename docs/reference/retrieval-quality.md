@@ -47,7 +47,7 @@ likely qrels reaching the ranker.
 It is **one dataset, one embedding model, one configuration**. Read it as evidence that the retrieval
 path computes what BEIR computes — that the metrics, the pooling and the normalisation are right.
 Not the chunk-to-document aggregation, which this dataset cannot exercise; see
-[what the band does not guard](#two-settings-the-band-does-not-guard-and-what-does). Read it as
+[what the band does not guard](#settings-the-band-does-not-guard-and-what-does). Read it as
 nothing else.
 
 In particular, 0.64593 is not:
@@ -91,16 +91,33 @@ number alone cannot tell you which one broke:
    Scoring the other 809 as zero divides the mean by roughly 3.7 and reads as catastrophic retrieval
    failure rather than as a harness bug.
 
-A sixth is smaller but real: BEIR's `SentenceBERT` joins a document's title and text with a **single
-space** (`sep: str = " "` in `beir/retrieval/models/sentence_bert.py`). Measured with a newline
-instead, nDCG@10 is **0.64907** — a shift of 0.00314. Both land inside the band; the space is closer
-to published and is the default.
+A sixth was recorded here and **was wrong**: BEIR's `SentenceBERT` joins a document's title and text
+with a **single space** (`sep: str = " "` in `beir/retrieval/models/sentence_bert.py`), and this page
+reported that measuring with a newline instead gave **0.64907** — a shift of 0.00314 — treating that
+as a sixth setting the number depends on.
 
-## Two settings the band does *not* guard, and what does
+> **Corrected by Phase 3.13 (2026-07-30).** The 0.00314 was a Rag.NET defect, not a property of the
+> separator. The BERT tokenizer's normalizer **deleted** `\n` rather than folding it to a space, so
+> the newline run merged each title's last word into its abstract's first word across all 5,183
+> documents; the shift measured that merge. With the newline substituted to a space, both separators
+> produce nDCG@10 = **0.64593** and the concatenation makes no difference to the number at all
+> (re-measured: space unchanged at 0.64593, newline converged 0.64907 → 0.64593). Use the space,
+> because upstream does — but not because the number can tell.
+
+The separator is still worth pinning against upstream for the reason the original entry gave: both
+values sat inside the band, so a green run could never have chosen between them. It just was not one
+of the settings the number is sensitive to.
+
+## Settings the band does *not* guard, and what does
 
 This list matters more than the one above, because a number credited with catching a defect it
-cannot catch is worse than a number nobody trusts. Both of these are correct in the shipped harness
-and both are pinned — just not by 0.64593.
+cannot catch is worse than a number nobody trusts. All of these are correct in the shipped harness
+and all are pinned — just not by 0.64593.
+
+> **Phase 3.13 moved a third item onto this list: the title/text separator.** It was the sixth entry
+> above until the newline defect it was really measuring was fixed. Both separators now produce
+> 0.64593, so the parity number cannot see the concatenation at all; what keeps it correct is
+> `BeirLoaderTests` and the upstream source, not this measurement.
 
 - **Max-pooling chunks to documents *before* the top-*k* cut.** Pinned by `DocumentRankingTests`,
   **not by this number.** The parity run indexes one chunk per document — that is what BEIR's

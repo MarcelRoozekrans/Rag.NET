@@ -33,10 +33,19 @@ public static class BeirLoader
     /// </para>
     /// <para>
     /// Still a parameter, because the alternative is worth being able to measure. Both were, through
-    /// the shipped harness: the space gives SciFact nDCG@10 = <b>0.64593</b> and the newline
+    /// the shipped harness: the space gave SciFact nDCG@10 = <b>0.64593</b> and the newline
     /// <b>0.64907</b>, a difference of <b>0.00314</b>. Both land inside the ±0.02 parity band, so the
     /// test would have passed either way — which is precisely why the separator had to be checked
     /// against upstream instead of inferred from a green run.
+    /// </para>
+    /// <para>
+    /// <b>Corrected by Phase 3.13: that 0.00314 was OUR defect, not the separator's effect.</b> The
+    /// BERT normalizer deleted <c>\n</c> instead of folding it to a space, so the newline run merged
+    /// each title's last word into its abstract's first across all 5,183 documents and the shift
+    /// measured the merge. With <c>\n</c> substituted to a space, both separators produce
+    /// <b>0.64593</b> and the choice moves the number by nothing (re-measured 2026-07-30: space
+    /// unchanged, newline converged 0.64907 → 0.64593). The default stays a space because upstream
+    /// uses one — the number cannot tell them apart and never could have.
     /// </para>
     /// </remarks>
     public const string DefaultTitleTextSeparator = " ";

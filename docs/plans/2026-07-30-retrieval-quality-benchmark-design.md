@@ -34,6 +34,16 @@ parity holds.
 > and is passed explicitly at the call site, so a later change to the default cannot move the number
 > without someone editing the test.
 >
+> > **Corrected by Phase 3.13. The 0.00314 was a Rag.NET defect, not a property of the separator.**
+> > `OnnxEmbeddingGenerator` tokenized through a normalizer that **deleted** `\n` instead of folding
+> > it to a space, so the newline run merged every title's last word into its abstract's first
+> > across all 5,183 documents — the shift measured the merge. With the substitution Phase 3.13
+> > added, both separators produce nDCG@10 = **0.64593** and the choice makes no difference at all
+> > (re-measured 2026-07-30: space unchanged at 0.64593, newline converged 0.64907 → 0.64593).
+> > Everything above about checking upstream rather than inferring from a green run still holds, and
+> > holds harder: the separator was never worth 0.00314, so a green run agreed with upstream for a
+> > reason that had nothing to do with the separator.
+>
 > **Corrected during implementation. There was no local dense embedder to build on.** This section
 > and §5 both take for granted that Rag.NET could embed text locally. It could not:
 > `OnnxTokenEmbeddingGenerator` implements `ITokenEmbeddingGenerator` (token vectors, for late

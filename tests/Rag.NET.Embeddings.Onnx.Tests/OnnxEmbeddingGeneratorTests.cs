@@ -20,8 +20,13 @@ public sealed class OnnxEmbeddingGeneratorTests : IDisposable
     public OnnxEmbeddingGeneratorTests()
     {
         _vocabPath = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".vocab.txt");
+        // "alphabravo" and "##charlie" are merge bait: they exist only so that a separator the
+        // normalizer DELETED produces ids of its own rather than an indistinguishable [UNK].
         File.WriteAllLines(_vocabPath,
-            ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "alpha", "bravo", "charlie", "delta"]);
+            [
+                "[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]",
+                "alpha", "bravo", "charlie", "delta", "alphabravo", "##charlie",
+            ]);
     }
 
     public void Dispose() => File.Delete(_vocabPath);
@@ -199,6 +204,35 @@ public sealed class OnnxEmbeddingGeneratorTests : IDisposable
         Assert.NotNull(seenMask);
         Assert.Equal([2, 5, 3, 0, 0, 0, 2, 5, 6, 7, 8, 3], seenIds);
         Assert.Equal([1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1], seenMask);
+    }
+
+    /// <summary>
+    /// The newline/tab defect pinned on THIS generator's own call site. It pools internally and
+    /// exposes no offsets, so <see cref="OnnxTokenEmbeddingGenerator"/>'s normalization guard never
+    /// runs here and a merged word raises nothing at all — the ids are the only evidence there is,
+    /// which is why the assertion is on them rather than on an exception. Reverting
+    /// <c>Encode</c> to call the tokenizer directly (bypassing
+    /// <see cref="BertOnnxPlumbing.EncodeToTokens"/>) lets the normalizer delete the <c>\n</c> and
+    /// the <c>\t</c>, and the three words arrive as <c>alphabravo | ##charlie</c> — a vector for a
+    /// document that never contained those words.
+    /// </summary>
+    [Fact]
+    public async Task GenerateAsync_MultiLineTabbedText_DoesNotMergeTheWordsAcrossTheSeparators()
+    {
+        long[]? seenIds = null;
+        var sut = CreateSut((inputIds, attentionMask, batchSize, sequenceLength) =>
+        {
+            seenIds = inputIds;
+            return (new float[batchSize * sequenceLength * 2], 2);
+        });
+
+        await sut.GenerateAsync(
+            ["alpha\nbravo\tcharlie"], cancellationToken: TestContext.Current.CancellationToken);
+
+        // [CLS]=2 then three separate words alpha=5, bravo=6, charlie=7 then [SEP]=3. Never the
+        // merge-bait 9 or 10.
+        Assert.NotNull(seenIds);
+        Assert.Equal([2, 5, 6, 7, 3], seenIds);
     }
 
     [Fact]

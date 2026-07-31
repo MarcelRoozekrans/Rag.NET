@@ -771,6 +771,8 @@ Embed the full document (or section) first to capture global context, then split
 
 **Why:** Standard chunk-then-embed loses cross-chunk context. Late chunking preserves full-document attention during embedding, improving retrieval for references, pronouns, and cross-paragraph reasoning.
 
+**Text it does not apply to (Phase 3.13):** token offsets must survive the BERT tokenizer's normalization, and two kinds of text change length under it — **CJK**, which grows as the normalizer spaces out every ideograph, and **NFD-decomposed** text, which shrinks as combining marks are stripped (fixable with `string.Normalize()`). Those sections fall back to ordinary chunk-then-embed rather than failing. Newlines, tabs and CRs used to be a third case and are not any more; see [the chunking guide](../guide/chunking.md#latechunkingstrategy) for the detail.
+
 ---
 
 ### Proposition Extraction Chunking

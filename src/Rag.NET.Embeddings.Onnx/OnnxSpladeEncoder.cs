@@ -122,8 +122,10 @@ public sealed class OnnxSpladeEncoder : ISparseEmbeddingGenerator, IDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         // No special tokens here: each pass adds its own [CLS]/[SEP]. Offsets are discarded —
-        // see the class remarks for why no normalization length guard is needed.
-        var tokens = _tokenizer.EncodeToTokens(text, out _);
+        // see the class remarks for why no normalization length guard is needed. The whitespace
+        // substitution is NOT about offsets, though: without it the normalizer deletes newlines
+        // and this encoder weights terms the document never contained.
+        var tokens = BertOnnxPlumbing.EncodeToTokens(_tokenizer, text, out _, out _);
         if (tokens.Count == 0)
             return SparseVector.Empty;
 

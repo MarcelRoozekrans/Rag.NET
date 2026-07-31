@@ -20,8 +20,11 @@ namespace Rag.NET.Embeddings.Onnx;
 /// wraps its window in [CLS] … [SEP] (as BERT-style models expect) and the two special-token
 /// rows are dropped from the output — offsets and matrix rows stay aligned.
 /// Offsets index the tokenizer's normalized text; standard BERT normalization (lowercasing,
-/// whitespace cleanup) is position-preserving, and inputs where normalization CHANGES the text
-/// length (e.g. control characters being stripped) are rejected with
+/// whitespace cleanup) is position-preserving. Newlines, tabs and CRs are NOT: the normalizer
+/// deletes them, so <see cref="BertOnnxPlumbing.SubstituteWhitespace"/> replaces each with a
+/// space first — one character for one, which keeps every offset valid and stops the words
+/// either side of a line break merging. Inputs where normalization still CHANGES the text
+/// length (CJK, which grows, and NFD-decomposed accents, which shrink) are rejected with
 /// <see cref="InvalidOperationException"/> rather than returning silently misaligned offsets —
 /// late chunking treats that as a generator failure and falls back to unembedded chunks.
 /// </para>
@@ -117,7 +120,10 @@ public sealed class OnnxTokenEmbeddingGenerator : ITokenEmbeddingGenerator, IDis
         cancellationToken.ThrowIfCancellationRequested();
 
         // No special tokens here: one EncodedToken per content token, offsets into the text.
-        var tokens = _tokenizer.EncodeToTokens(text, out var normalizedText);
+        // BertOnnxPlumbing substitutes a space for every newline, tab and CR first — the
+        // normalizer deletes them, which merges the words either side. The substitution is
+        // length-preserving, so every offset into encodedText is the same offset into text.
+        var tokens = BertOnnxPlumbing.EncodeToTokens(_tokenizer, text, out var encodedText, out var normalizedText);
         if (tokens.Count == 0)
         {
             // Nothing to embed (e.g. whitespace-only input): an empty, contract-consistent
@@ -134,7 +140,8 @@ public sealed class OnnxTokenEmbeddingGenerator : ITokenEmbeddingGenerator, IDis
         // spans into the ORIGINAL input. Fail loudly when normalization changed the length
         // (0.22.0 returns a null normalizedText even when it normalized, so re-run the
         // normalizer to compare).
-        ThrowIfNormalizationChangedLength(text.Length, normalizedText ?? _tokenizer.Normalizer?.Normalize(text));
+        ThrowIfNormalizationChangedLength(
+            encodedText.Length, normalizedText ?? _tokenizer.Normalizer?.Normalize(encodedText));
 
         var offsets = new (int Start, int End)[tokens.Count];
         var ids = new int[tokens.Count];
@@ -202,17 +209,46 @@ public sealed class OnnxTokenEmbeddingGenerator : ITokenEmbeddingGenerator, IDis
     /// Rejects inputs whose tokenizer normalization changed the text length: token offsets
     /// index the normalized text and can no longer be mapped to the original input.
     /// </summary>
+    /// <remarks>
+    /// The message names the DIRECTION the length moved and the cause that direction implies,
+    /// because the remaining causes are different problems with different answers: text that GREW
+    /// is CJK (unsupported), text that SHRANK is NFD or a control character (both fixable by the
+    /// caller). It used to advise stripping control characters without qualification, which now
+    /// misleads for the commonest members of that class — <c>\n</c>, <c>\t</c> and <c>\r</c> are
+    /// substituted with a space by <see cref="BertOnnxPlumbing.SubstituteWhitespace"/> before this
+    /// point and can no longer be the cause, while the rarer control characters still can.
+    /// </remarks>
     internal static void ThrowIfNormalizationChangedLength(int originalLength, string? normalized)
     {
-        if (normalized is not null && normalized.Length != originalLength)
-        {
-            throw new InvalidOperationException(
-                $"Tokenizer normalization changed the text length from {originalLength} to {normalized.Length}; " +
-                "token offsets index the normalized text and cannot be mapped to the original input. " +
-                "Pre-normalize the input (e.g. strip control characters) or use a vocabulary/options " +
-                "without length-changing normalization.");
-        }
+        // A null normalized text means there is nothing to compare, not that nothing changed:
+        // the caller has already re-run the normalizer to get a non-null one where it could.
+        if (normalized is null || normalized.Length == originalLength)
+            return;
+
+        var grew = normalized.Length > originalLength;
+        throw new InvalidOperationException(
+            $"Tokenizer normalization {(grew ? "grew" : "shrank")} the text length from {originalLength} " +
+            $"to {normalized.Length}; token offsets index the normalized text and cannot be mapped back " +
+            $"to the original input. {LikelyCauseOfLengthChange(grew)}");
     }
+
+    /// <summary>
+    /// Names the likely cause of a length change in the given direction, with the remedy that
+    /// applies to it — the two directions have measurably different causes and only one of them is
+    /// something the caller can fix. Both figures are measured, and asserted by
+    /// <c>NormalizationGuardTests</c>' real-tokenizer cases: CJK grows (<c>"日本語 text"</c>,
+    /// 8 → 14) and NFD shrinks (<c>"cafe" + U+0301 + " test"</c>, 10 → 9).
+    /// </summary>
+    private static string LikelyCauseOfLengthChange(bool grew) => grew
+        ? "The text most likely contains CJK: the normalizer inserts a space either side of every " +
+          "Chinese, Japanese and Korean ideograph, so the text grows. No length-preserving rewrite " +
+          "exists for that, so token-level embedding (and therefore late chunking) does not support " +
+          "CJK text."
+        : "The text is most likely NFD-decomposed — the form macOS filesystems produce — whose " +
+          "combining marks the normalizer strips, so the text shrinks; pre-normalize it to NFC " +
+          "(string.Normalize()) and it will be accepted. A remaining control character is deleted " +
+          "the same way, so removing those helps too — but newlines, tabs and CRs cannot be the " +
+          "cause: they are substituted with a space before this point.";
 
     /// <summary>
     /// Resolves the token-level output: the preferred name when the model declares it, else

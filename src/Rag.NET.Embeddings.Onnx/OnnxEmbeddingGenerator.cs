@@ -184,8 +184,10 @@ public sealed class OnnxEmbeddingGenerator : IEmbeddingGenerator<string, Embeddi
         ArgumentNullException.ThrowIfNull(text);
 
         // No special tokens from the tokenizer: they are added here, so truncation cannot drop
-        // the [SEP] the model expects at the end of the sequence.
-        var tokens = _tokenizer.EncodeToTokens(text, out _);
+        // the [SEP] the model expects at the end of the sequence. Offsets are discarded, but the
+        // whitespace substitution still matters: without it the normalizer deletes newlines and
+        // the words either side are embedded as one the document never contained.
+        var tokens = BertOnnxPlumbing.EncodeToTokens(_tokenizer, text, out _, out _);
         var contentLength = Math.Min(tokens.Count, _options.MaxTokens - SpecialTokensPerSequence);
 
         var ids = new long[contentLength + SpecialTokensPerSequence];

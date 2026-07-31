@@ -80,8 +80,10 @@ public sealed class BeirLoaderTests : IDisposable
     public void LoadCorpus_TheSeparatorCanBeOverridden()
     {
         // The parameter survives the correction of the default because the counterfactual is worth
-        // being able to measure: the SciFact parity run was scored under both separators, and the
-        // difference is recorded on BeirLoader.DefaultTitleTextSeparator. Datasets with longer,
+        // being able to measure: the SciFact parity run was scored under both separators. Phase 3.13
+        // then made them agree — the 0.00314 the newline used to cost was the tokenizer deleting it
+        // and merging each title's last word into its abstract's first, not the separator — so both
+        // now give 0.64593. Recorded on BeirLoader.DefaultTitleTextSeparator. Datasets with longer,
         // more structured titles are where the choice starts to matter.
         var documents = BeirLoader.LoadCorpus(At("scifact/corpus.jsonl"), titleTextSeparator: "\n");
 
