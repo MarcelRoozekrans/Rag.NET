@@ -36,7 +36,8 @@ namespace Rag.NET.Benchmarks.Quality.Tests;
 /// </para>
 /// <para>
 /// <b>No longer the only guard, as of Phase 3.12.</b> <c>BeirRealChunkingTests</c> runs FiQA and
-/// ArguAna through the library's own chunker — 429,850 units over FiQA's 57,638 documents — and
+/// ArguAna through the library's own chunker — 121,236 units over FiQA's 57,638 documents since
+/// Phase 3.16's packing chunker, 429,850 before it — and
 /// asserts that the result differs from the same corpus indexed one chunk per document. This file is
 /// still the only <i>offline</i> guard, and still the only one that pins the ordering rather than
 /// merely observing that it changed something.

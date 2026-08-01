@@ -71,7 +71,7 @@ public static class BeirReproduction
     /// </para>
     /// <para>
     /// <b>An entry may record that no figure exists</b>, which is a different state from being
-    /// absent and is the state FiQA's real leg is in — never run to completion, at an estimated 8–9
+    /// absent and is the state FiQA's real leg is in — never run to completion, at a derived ~1.5–2
     /// hours. <see cref="AssertReproduces"/> prints what such a run measured and asserts nothing
     /// about it, because a nine-hour measurement whose only outcome is a failure telling the runner
     /// to write down what they just watched is a measurement people learn to skip.
@@ -96,10 +96,12 @@ public static class BeirReproduction
         new(
             "scifact",
             BeirProtocol.Real,
-            [0.65589],
-            "56,707 chunks over 5,183 of 5,183 documents, max 221 from one, pooled on all 1,109 " +
-            "queries. Measured 2026-07-31 on the same machine; 260.9 s and 314.6 s warm on two runs. " +
-            "This is the leg that was called 'not recorded' until then."),
+            [0.67742],
+            "20,155 chunks over 5,183 of 5,183 documents, max 25 from one, pooled on all 1,109 " +
+            "queries. Re-measured 2026-07-31 on the same machine, 643.1 s, after Phase 3.16 taught " +
+            "RecursiveChunkingStrategy to pack split parts towards MaxChunkSize — the packing " +
+            "lifted this leg from 3.12's 0.65589 (56,707 chunks, max 221) to 0.67742, +0.03148 " +
+            "against a parity leg the fix did not move."),
         new(
             "fiqa",
             BeirProtocol.Parity,
@@ -111,9 +113,12 @@ public static class BeirReproduction
             "fiqa",
             BeirProtocol.Real,
             [],
-            "NEVER RUN. 429,850 chunks at an estimated 8-9 h, deferred to Phase 3.15 with a " +
-            "measured cost basis rather than dropped. If you are reading this in a test log, the " +
-            "run above it is the first one: record its nDCG@10 here."),
+            "NEVER RUN. 121,236 chunks since Phase 3.16's packing chunker (429,850 before it), at " +
+            "a DERIVED ~1.5-2 h: the packed SciFact and ArguAna real legs embedded 35,589 fresh " +
+            "texts in 1,310 s combined (~27/s), and this leg is ~121,236 chunk plus 6,648 query " +
+            "embeddings at that rate, plus the per-query sorting. Deferred to Phase 3.15 rather " +
+            "than dropped. If you are reading this in a test log, the run above it is the first " +
+            "one: record its nDCG@10 here."),
         new(
             "arguana",
             BeirProtocol.Parity,
@@ -123,10 +128,12 @@ public static class BeirReproduction
         new(
             "arguana",
             BeirProtocol.Real,
-            [0.42594],
-            "82,618 chunks over 8,674 documents, max 285 from one, pooled on all 1,406 queries. " +
-            "Measured 2026-07-31: 28 min cold, 461.9 s warm. Its delta of -0.07839 against the " +
-            "parity leg is the phase's other headline number and is pinned by pinning both legs."),
+            [0.47559],
+            "24,003 chunks over 8,674 documents, max 16 from one, pooled on all 1,406 queries. " +
+            "Re-measured 2026-07-31, 667.1 s, under Phase 3.16's packing chunker. Its delta of " +
+            "-0.02873 against the unmoved parity leg is still the headline number and is pinned by " +
+            "pinning both legs — packing recovered about 63% of 3.12's -0.07839 (0.42594, 82,618 " +
+            "chunks, max 285), which is what design §6 predicted if fragmentation was the cause."),
     ];
 
     /// <summary>

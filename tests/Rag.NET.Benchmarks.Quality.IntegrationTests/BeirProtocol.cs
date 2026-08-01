@@ -6,8 +6,8 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <remarks>
 /// Exists so <see cref="BeirRunBudget"/> can key a cost on the pair that actually determines it. A
 /// dataset does not have "a cost": SciFact costs ~5 minutes under
-/// <see cref="Parity"/> and roughly four times that under <see cref="Real"/>, because the real
-/// protocol embeds 56,707 chunks where parity embeds 5,183 documents. Keying the budget on the
+/// <see cref="Parity"/> and roughly twice that under <see cref="Real"/>, because the real
+/// protocol embeds 20,155 chunks where parity embeds 5,183 documents. Keying the budget on the
 /// dataset alone would have to pick one of those two numbers and be wrong about the other.
 /// </remarks>
 public enum BeirProtocol

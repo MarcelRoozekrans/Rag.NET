@@ -43,7 +43,7 @@ The default strategy when nothing is configured is `RecursiveChunkingStrategy` w
 | Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window | None | None | Optional | None (passages partition) | Token-level sliding window |
 | Heading awareness | No | No | No | No (sentence-level) | Yes | No | No | No |
 | Respects token limits | No | No | Yes | Approximate (min/max chars) | Approximate (max chars) | No | Yes (passage budget) | Yes |
-| Chunking overhead (50 KB) | ~29 µs | ~94 µs | ~1,750 µs | Embedding-latency-bound | ~50 µs | ~50 µs | LLM-latency-bound (1 call/passage) | Token-embedding-latency-bound |
+| Chunking overhead (50 KB) | ~14 µs | ~39 µs | ~853 µs | Embedding-latency-bound | not measured | not measured | LLM-latency-bound (1 call/passage) | Token-embedding-latency-bound |
 | Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text | Coherent meaning boundaries, QA systems | Structured documents with headings | Code files (Python, JS/TS, Go, Rust, C#, …) | Precise factoid retrieval | Context-aware chunk embeddings |
 
 See [benchmarks](benchmarks.md) for full throughput numbers. Semantic chunking overhead is embedding-latency-bound (50–500 ms per batch), not CPU-bound — CPU processing is negligible.
@@ -67,21 +67,35 @@ services.AddRagNet(rag => rag
 
 ## `RecursiveChunkingStrategy`
 
-Attempts to split on natural text boundaries using a priority list of separators tried in order:
+Splits on natural text boundaries using a priority list of separators tried in order, then packs the resulting parts back towards `MaxChunkSize`:
 
 ```mermaid
 flowchart TD
-    A["Candidate piece"] --> B{Fits in MaxChunkSize?}
+    A["Candidate text"] --> B{"Fits in MaxChunkSize?"}
     B -- yes --> OUT["Emit chunk"]
-    B -- no --> C{"Try next<br>separator"}
-    C -- "1. paragraph break \\n\\n" --> A
-    C -- "2. line break \\n" --> A
-    C -- "3. sentence boundary '. '" --> A
-    C -- "4. word boundary ' '" --> A
-    C -- "5. hard character split (fallback)" --> OUT
+    B -- no --> C{"Split on the first separator<br>present in the text"}
+    C -- "1. paragraph break \\n\\n" --> D{"Does the part fit?"}
+    C -- "2. line break \\n" --> D
+    C -- "3. sentence boundary '. '" --> D
+    C -- "4. word boundary ' '" --> D
+    C -- "5. no separator left:<br>hard split at MaxChunkSize" --> OUT
+    D -- yes --> PACK["Pack with adjacent fitting parts,<br>rejoined with that separator,<br>greedily up to MaxChunkSize"] --> OUT
+    D -- no --> A
 ```
 
-For each candidate piece, if it is still larger than `MaxChunkSize`, the strategy recurses with the next separator in the list. Overlap is prepended from the trailing characters of the previous chunk.
+The fit check runs **before** any splitting: text that already fits within `MaxChunkSize` is emitted as a single chunk regardless of which separators it contains. Only oversized text is split, and each recursion moves one step down the separator list.
+
+**Packing.** Parts that fit are not emitted one-by-one — consecutive parts are packed greedily towards `MaxChunkSize`, rejoined with the exact separator they were split on. At the default options, a section of 60 short lines totalling ~1,000 characters becomes 2 chunks of ~500 characters, not 60 chunks of ~31. Parts only ever pack with siblings from their own separator level: when a part is too large and recurses to a deeper separator, the deeper level's chunks are emitted as-is and never rejoined using the outer separator — joining them with a separator that did not sit between them would fabricate text that never appears in the document.
+
+**Positions are exact.** Because packed parts are rejoined with the separator they were split on, every emitted chunk is an exact substring of the section text, and `StartPosition`/`EndPosition` point at that substring. If a chunk cannot be located in the source, the strategy throws `InvalidOperationException` rather than reporting a wrong position as a real one.
+
+**Overlap and the size ceiling.** Overlap is prepended from the trailing characters of the previous chunk *after* packing, so an emitted chunk's `Text` can reach `MaxChunkSize + Overlap` — 562 characters at the default `512/50`. Size your embedding budget against that ceiling, not against `MaxChunkSize`. `StartPosition`/`EndPosition` describe the un-overlapped span; the prepended overlap is not included.
+
+> **Tuning note:** packing changed what an `Overlap` value means in practice. Before packing, chunks were individual fragments (measured: ~108 characters on sentence-heavy text, ~31 on line-heavy), so `Overlap = 50` could be close to half of each chunk — 46% at ~108 characters. With packing, chunks approach `MaxChunkSize` and the same `Overlap = 50` is ~10% of a chunk. If you tuned `Overlap` against the old fragment sizes, you now get different behaviour without changing a line of your own code — revisit the value.
+
+**Sentence punctuation is reduced-loss, not lossless.** Splitting on `". "` consumes the separator: `"A. B. C"` becomes `["A", "B", "C"]`, and every part but the last has lost its period. Rejoining during packing restores the `". "` *between* sentences inside a chunk, but each chunk's final sentence still ends without its terminal period at a pack boundary. The loss goes from one period per sentence to roughly one per chunk — about a tenfold reduction at the default options, not a fix.
+
+> **Upgrading across the packing change (breaking):** chunk boundaries, sizes, and counts all change, so the text and embedding stored for a given document are different after the change. **Re-ingest every stored document** (`IngestionOptions.Overwrite = true` — see [Getting Started](../getting-started.md#re-ingesting-a-document)) so old chunks are deleted rather than left behind. Chunk ids derive from `(DocumentId, ChunkIndex)`, and packing produces far fewer chunks per document, so on stores addressed by those ids an ingest without `Overwrite` replaces the low indices but leaves the old higher-index fragments in place. Skipping re-ingestion leaves retrieval running against the old fragmented chunks — degraded quality with nothing to indicate why.
 
 ```csharp
 services.AddRagNet(rag => rag
@@ -137,7 +151,7 @@ services.AddRagNet(rag => rag
 
 **Constraint:** the effective overlap must be strictly less than the effective window size; the strategy throws `ArgumentOutOfRangeException` otherwise (at construction when both are set via `TokenAwareChunkingOptions`, at chunk time when falling back to `ChunkingOptions`).
 
-**Overhead:** Tiktoken encoding/decoding adds ~20–60× CPU overhead compared to character-based strategies on 50 KB input (~1,750 µs vs. ~29–94 µs). This is negligible relative to embedding API latency (typically 50–500 ms per batch).
+**Overhead:** Tiktoken encoding/decoding adds ~20–60× CPU overhead compared to character-based strategies on 50 KB input (~853 µs vs. ~14–39 µs, measured 2026-07-31). This is negligible relative to embedding API latency (typically 50–500 ms per batch).
 
 ## `SemanticChunkingStrategy`
 
