@@ -1,4 +1,5 @@
 using Rag.NET.Benchmarks.Quality;
+using Rag.NET.Models.Options;
 using Rag.NET.Reranking.Onnx;
 using Xunit;
 
@@ -153,6 +154,115 @@ public sealed class BeirAblationTests
         row.AssertRerankerReordered(descriptor.Name);
     }
 
+    [Theory]
+    [MemberData(nameof(Datasets))]
+    public async Task NdcgAt10_UnderCachedHyde_MeasuresWithHydeProvablyDiverging(string datasetName)
+    {
+        Assert.SkipUnless(
+            BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
+            BeirHarness.SkipReason);
+        Assert.SkipWhen(!BeirRunBudget.IsOptedIn(), FormattableString.Invariant($"""
+            {datasetName} +hyde cell is OPT-IN and did NOT run.
+            Cost: DERIVED, not measured — the dataset's parity run when the embedding cache is cold,
+            plus three hypothetical embeddings and one extra search per query when it is warm; Task 7
+            measures it and records it in BeirRunBudget, which throws on unmeasured dataset/protocol
+            pairs and so cannot gate this cell yet.
+            To run this cell:
+              {BeirRunBudget.OptInVariable}=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build --filter "DisplayName~{nameof(BeirAblationTests)}&DisplayName~{datasetName}"
+            """));
+        // Deliberately NO skip for an absent hypothetical cache. The cache is the experiment: an
+        // opted-in run that cannot find an entry must fail through refuse-on-miss, naming the key
+        // and the generation tool — a skip here would read, from the summary, like a measurement.
+
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+        var ct = TestContext.Current.CancellationToken;
+
+        // The space separator, explicitly, for the reason BeirParityTests passes it explicitly:
+        // it decides what is embedded, and the ablation's anchor row was validated under it.
+        var dataset = await BeirHarness.LoadAsync(descriptor, cacheDirectory, " ", ct);
+
+        using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
+        var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
+
+        // ONE options object feeds every key component: the identity takes its temperature and the
+        // cache takes its prompt template from the same HydeOptions the generation tool defaulted,
+        // so the keys computed here are byte-for-byte the keys the tool wrote under.
+        var hydeOptions = new HydeOptions();
+        var hypotheticals = new HypotheticalCache(
+            cacheDirectory,
+            HypotheticalModelIdentity.For(hydeOptions.HypothesisTemperature),
+            hydeOptions.PromptTemplate,
+            HypotheticalCacheMode.RefuseOnMiss);
+        var row = new HydeAblationRow(hypotheticals, hydeOptions.HypothesisCount);
+
+        var units = BeirHarness.OneChunkPerDocument(dataset.Documents);
+        var run = await BeirHarness.MeasureAsync(
+            descriptor, dataset, units, row, generator, embeddings, ct);
+
+        _output.WriteLine(Describe(descriptor, row, run));
+
+        // Before the number is trusted: if the hypothetical path collapsed to the query embedding,
+        // this cell is the dense cell wearing a HyDE label.
+        row.AssertHydeDiverged(descriptor.Name);
+    }
+
+    [Fact]
+    public async Task HypotheticalCacheIdentity_MatchesTheEntriesTheGenerationToolWrote()
+    {
+        // The no-drift check, against the real cache: the identity and prompt template constructed
+        // the way the HyDE cell constructs them must hit entries the generation tool actually
+        // wrote. A drifted identity never throws — it just misses every key — so the only place it
+        // can be caught is here, where the frozen entries are on hand to compare against.
+        Assert.SkipUnless(
+            BeirHarness.IsDatasetCacheProvisioned(out var cacheDirectory), BeirHarness.SkipReason);
+
+        var hydeOptions = new HydeOptions();
+        var hypotheticals = new HypotheticalCache(
+            cacheDirectory,
+            HypotheticalModelIdentity.For(hydeOptions.HypothesisTemperature),
+            hydeOptions.PromptTemplate,
+            HypotheticalCacheMode.RefuseOnMiss);
+        Assert.SkipUnless(
+            Directory.Exists(hypotheticals.EntryDirectory),
+            "No hypothetical cache at this BEIR cache root — the generation tool has not run here.");
+
+        var descriptor = BeirDatasetDescriptor.ByName("scifact");
+        var dataset = await BeirHarness.LoadAsync(
+            descriptor, cacheDirectory, " ", TestContext.Current.CancellationToken);
+
+        var judged = FirstJudgedQuery(dataset);
+        for (var hypothesisIndex = 0; hypothesisIndex < hydeOptions.HypothesisCount; hypothesisIndex++)
+        {
+            Assert.True(
+                hypotheticals.Contains(judged.Text, hypothesisIndex),
+                FormattableString.Invariant($"""
+                    IDENTITY DRIFT, OR AN INCOMPLETE GENERATION RUN. scifact query '{judged.Id}'
+                    hypothesis {hypothesisIndex} is not in the cache under identity
+                    "{hypotheticals.ModelIdentity}" with the library's default prompt template,
+                    yet the cache directory exists. Either HypotheticalModelIdentity or
+                    HydeOptions' defaults changed since the generation run — orphaning every entry
+                    — or the run never covered scifact. Re-run the generation tool to fill the
+                    gap, or reconcile the identity before trusting any HyDE cell.
+                    """));
+        }
+    }
+
+    /// <summary>The first query the split judges — the only kind a hypothetical was paid for.</summary>
+    private static BeirQuery FirstJudgedQuery(BeirDataset dataset)
+    {
+        foreach (var query in dataset.Queries)
+        {
+            if (dataset.Qrels.ContainsKey(query.Id))
+            {
+                return query;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"{dataset.Name} has no judged queries at all, which LoadAsync's descriptor " +
+            "assertions should have made impossible.");
+    }
+
     /// <summary>The cell, labelled the way the published table must label it.</summary>
     private static string Describe(
         BeirDatasetDescriptor descriptor, HybridBm25AblationRow row, BeirRunResult run) =>
@@ -170,6 +280,16 @@ public sealed class BeirAblationTests
             === {descriptor.Name} · {row.Name} ===
             Dense anchor comparable to published ≈ {descriptor.ParityTarget.PublishedNdcgAt10:F5}; this row rescores that anchor's top-k with the cross-encoder.
             Reranked order differed from dense order on {row.ReorderedQueryCount} of {row.QueryCount} queries.
+            {run.Describe()}
+            """);
+
+    /// <summary>The HyDE cell, stating the evidence its guard judges.</summary>
+    private static string Describe(
+        BeirDatasetDescriptor descriptor, HydeAblationRow row, BeirRunResult run) =>
+        FormattableString.Invariant($"""
+            === {descriptor.Name} · {row.Name} ===
+            Dense anchor comparable to published ≈ {descriptor.ParityTarget.PublishedNdcgAt10:F5}; this row searches with the cached hypotheticals' mean vector instead of the query vector.
+            HyDE ranking differed from dense ranking on {row.DivergedQueryCount} of {row.QueryCount} queries.
             {run.Describe()}
             """);
 }

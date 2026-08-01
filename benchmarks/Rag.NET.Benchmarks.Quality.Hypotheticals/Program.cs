@@ -35,9 +35,6 @@ namespace Rag.NET.Benchmarks.Quality.Hypotheticals;
 /// </summary>
 internal static class Program
 {
-    /// <summary>The exact model string sent to OpenRouter.</summary>
-    internal const string ModelName = "openai/gpt-4o-mini";
-
     private const string ApiKeyVariable = "OPENROUTER_API_KEY";
 
     private static readonly Uri OpenRouterEndpoint = new("https://openrouter.ai/api/v1");
@@ -47,30 +44,16 @@ internal static class Program
     private static readonly TimeSpan FirstRetryDelay = TimeSpan.FromSeconds(2);
 
     /// <summary>
-    /// The identity hashed into every cache key: the model string and the sampling temperature,
-    /// as <c>openai/gpt-4o-mini@t0.8</c>.
+    /// The identity hashed into every cache key. <b>Not defined here</b>: it lives in
+    /// <see cref="HypotheticalModelIdentity"/>, beside <see cref="HypotheticalCache"/>, because the
+    /// ablation table's HyDE row computes the very same string to read what this tool wrote — two
+    /// hand-maintained copies would be a drift waiting to orphan the whole cache.
     /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Temperature belongs in the key because it changes the output distribution.</b> The model
-    /// string alone was the first version of this and it was wrong in the expensive direction:
-    /// re-sampling at a different temperature would have hit every existing entry and silently
-    /// served text drawn from different settings, with nothing anywhere to say so — the same
-    /// failure the prompt template is in the key to prevent, one component over. Anything else that
-    /// moves the distribution — a top-p, a seed, a system message — has to be added here too, and
-    /// the run that adds it regenerates rather than reuses.
-    /// </para>
-    /// <para>
-    /// Readable rather than hashed, because this string appears in every refuse-on-miss failure the
-    /// table can produce, and "no cached hypothetical under openai/gpt-4o-mini@t0.8" is a message
-    /// someone can act on.
-    /// </para>
-    /// </remarks>
     internal static string BuildModelIdentity(HydeOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        return FormattableString.Invariant($"{ModelName}@t{options.HypothesisTemperature}");
+        return HypotheticalModelIdentity.For(options.HypothesisTemperature);
     }
 
     public static async Task<int> Main(string[] args)
@@ -265,7 +248,7 @@ internal static class Program
         new OpenAIClient(
                 new ApiKeyCredential(apiKey),
                 new OpenAIClientOptions { Endpoint = OpenRouterEndpoint })
-            .GetChatClient(ModelName)
+            .GetChatClient(HypotheticalModelIdentity.ModelName)
             .AsIChatClient();
 
     /// <summary>
