@@ -18,13 +18,14 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// row collects per query while the harness aggregates identically for every row.
 /// </para>
 /// <para>
-/// <b>Opt-in until its cells are budgeted.</b> <see cref="BeirRunBudget"/> keys costs on
-/// dataset × protocol and throws on unmeasured pairs; every ablation cell is such a pair until
-/// Task 7 measures them. Gating on <see cref="BeirRunBudget.IsOptedIn"/> directly keeps the
-/// unmeasured cells out of the nightly's 120-minute budget without pretending a parity cost entry
-/// answers for them. Warm cost is far below the parity run's cold figure — the corpus embeddings
-/// are shared through <see cref="EmbeddingCache"/>, so a machine that has run parity pays only
-/// query-side search plus seconds of lexical indexing; cold, it pays the parity run's price first.
+/// <b>Opt-in, through the budget table.</b> <see cref="BeirRunBudget"/> keys costs on
+/// dataset × protocol, throws on unmeasured pairs, and since Phase 3.15 measured every cell it
+/// carries an entry for each — so each cell gates through
+/// <see cref="BeirRunBudget.IsGatedOff"/> on its own pair and skips with its measured cost and the
+/// command that runs it, like every other case the nightly cannot afford. Warm cost is far below
+/// the parity run's cold figure — the corpus embeddings are shared through
+/// <see cref="EmbeddingCache"/>, so a machine that has run parity pays only query-side search plus
+/// seconds of lexical indexing; cold, it pays the parity run's price first.
 /// </para>
 /// <para>
 /// Selecting one dataset: <c>--filter "DisplayName~BeirAblationTests&amp;DisplayName~scifact"</c>.
@@ -67,15 +68,9 @@ public sealed class BeirAblationTests
         Assert.SkipUnless(
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
-        Assert.SkipWhen(!BeirRunBudget.IsOptedIn(), FormattableString.Invariant($"""
-            {datasetName} +bm25 hybrid cell is OPT-IN and did NOT run.
-            Cost: DERIVED, not measured — roughly the dataset's parity run when the embedding cache is
-            cold, and query-side work only when it is warm; Task 7 measures it and records it in
-            BeirRunBudget, which throws on unmeasured dataset/protocol pairs and so cannot gate this
-            cell yet.
-            To run this cell:
-              {BeirRunBudget.OptInVariable}=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build --filter "DisplayName~{nameof(BeirAblationTests)}&DisplayName~{datasetName}"
-            """));
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.HybridBm25, out var budgetReason),
+            budgetReason);
 
         var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
@@ -113,15 +108,9 @@ public sealed class BeirAblationTests
         Assert.SkipUnless(
             BeirHarness.IsRerankerProvisioned(out var rerankModelPath, out var rerankVocabPath),
             BeirHarness.RerankerSkipReason);
-        Assert.SkipWhen(!BeirRunBudget.IsOptedIn(), FormattableString.Invariant($"""
-            {datasetName} +reranker cell is OPT-IN and did NOT run.
-            Cost: DERIVED, not measured — the dataset's parity run when the embedding cache is cold,
-            plus one cross-encoder inference per (query, candidate) pair on top of the query-side
-            work; Task 7 measures it and records it in BeirRunBudget, which throws on unmeasured
-            dataset/protocol pairs and so cannot gate this cell yet.
-            To run this cell:
-              {BeirRunBudget.OptInVariable}=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build --filter "DisplayName~{nameof(BeirAblationTests)}&DisplayName~{datasetName}"
-            """));
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.Reranked, out var budgetReason),
+            budgetReason);
 
         var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
@@ -161,15 +150,9 @@ public sealed class BeirAblationTests
         Assert.SkipUnless(
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
-        Assert.SkipWhen(!BeirRunBudget.IsOptedIn(), FormattableString.Invariant($"""
-            {datasetName} +hyde cell is OPT-IN and did NOT run.
-            Cost: DERIVED, not measured — the dataset's parity run when the embedding cache is cold,
-            plus three hypothetical embeddings and one extra search per query when it is warm; Task 7
-            measures it and records it in BeirRunBudget, which throws on unmeasured dataset/protocol
-            pairs and so cannot gate this cell yet.
-            To run this cell:
-              {BeirRunBudget.OptInVariable}=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build --filter "DisplayName~{nameof(BeirAblationTests)}&DisplayName~{datasetName}"
-            """));
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.Hyde, out var budgetReason),
+            budgetReason);
         // Deliberately NO skip for an absent hypothetical cache. The cache is the experiment: an
         // opted-in run that cannot find an entry must fail through refuse-on-miss, naming the key
         // and the generation tool — a skip here would read, from the summary, like a measurement.

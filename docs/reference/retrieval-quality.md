@@ -19,7 +19,9 @@ path compute what the published research computes?
 
 ## The measurement
 
-**Three datasets, `all-MiniLM-L6-v2`, dense retrieval.** The parity legs were measured in Phase
+**Three datasets, `all-MiniLM-L6-v2`, dense retrieval** — the anchor every other number on this
+page hangs off; what BM25 hybrid, HyDE and a cross-encoder reranker each do to that anchor is
+measured separately, in [the ablation table](#the-ablation-table). The parity legs were measured in Phase
 3.12 (2026-07-30/31) and verified unmoved after Phase 3.16 changed the chunker; the SciFact and
 ArguAna real legs were re-measured 2026-07-31 under Phase 3.16's packing chunker, which is the
 chunker the numbers below describe. Every number below came out of Rag.NET's own path —
@@ -258,6 +260,169 @@ It is surfaced as `BeirRunResult.UnindexedDocumentCount` rather than papered ove
 chunk. Recorded as a debt against Phase 3.15, where FiQA's real number will be produced and where the
 difference has to be stated alongside it.
 
+## The ablation table
+
+**Four rows, three datasets, one protocol, measured by Phase 3.15 (2026-08-01/02).** Every cell
+below is on the **parity** protocol — one chunk per document, truncated at 256 — evaluated over the
+judged queries only, and the dense row *is* the parity run above, not a re-measurement of it. That
+is not a cost decision: the dense row's whole value is that it is validated against a published
+figure, so every delta in the table hangs off something external. Running the ablation on the real
+leg would measure three techniques against an anchor that agrees with nothing published.
+
+The row labels are the runs' own labels, verbatim, because two of them carry load: the BM25 row's
+label is what stops its number being read as a comparison to published BM25 figures, and the
+reranker's label states both truncation lengths so nobody infers that one of them is a mistake.
+Deltas are against the dense anchor; each addition is measured **alone** on top of dense — the rows
+are not cumulative.
+
+| nDCG@10, parity protocol, judged queries only | SciFact | FiQA | ArguAna |
+|---|---:|---:|---:|
+| **dense** (the parity anchor) | 0.64593 | 0.37086 | 0.50432 |
+| `+bm25 hybrid via RRF (incomparable to published BM25: no stemming or stopwords, k1=1.5 b=0.75)` | **0.69913** (+0.0532) | **0.35665** (−0.0142) | **0.51173** (+0.0074) |
+| `+hyde (mean of 3 cached openai/gpt-4o-mini@t0.8 hypotheticals, L2-normalised; no LLM call — reads the frozen generation run)` | **0.70001** (+0.0541) | **0.36543** (−0.0054) | **0.50293** (−0.0014) |
+| `+reranker (cross-encoder/ms-marco-MiniLM-L6-v2 over dense top-k; pairs truncated at 512 tokens, dense embeddings at 256)` | **0.68442** (+0.0385) | **0.38458** (+0.0137) | **0.47917** (−0.0252) |
+
+**Four of the nine cells go down**, and that is the first thing to check before interpreting any of
+them: the design named "a table that only ever goes up" as the signature of a table measuring
+something other than what it claims. This one goes down where going down is the defensible answer.
+
+The supporting metrics, printed by the same runs (dense from the parity runs above; FiQA's parity
+leg did not record them):
+
+| Dataset / row | nDCG@10 | Recall@10 | MRR@10 |
+|---|---:|---:|---:|
+| SciFact dense | 0.64593 | 0.78667 | 0.60483 |
+| SciFact +bm25 hybrid | 0.69913 | 0.83933 | 0.65676 |
+| SciFact +hyde | 0.70001 | 0.85033 | 0.65563 |
+| SciFact +reranker | 0.68442 | 0.78667 | 0.65789 |
+| FiQA dense | 0.37086 | not recorded | not recorded |
+| FiQA +bm25 hybrid | 0.35665 | 0.43951 | 0.42914 |
+| FiQA +hyde | 0.36543 | 0.44738 | 0.43124 |
+| FiQA +reranker | 0.38458 | 0.44295 | 0.46744 |
+| ArguAna dense | 0.50432 | 0.79161 | 0.41515 |
+| ArguAna +bm25 hybrid | 0.51173 | 0.80228 | 0.42141 |
+| ArguAna +hyde | 0.50293 | 0.79516 | 0.41258 |
+| ArguAna +reranker | 0.47917 | 0.79374 | 0.38188 |
+
+**Every row proves its mechanism did something before its number is read**, because a row whose
+machinery silently did nothing is the dense ranking wearing another label — the failure shape this
+milestone keeps finding. The counters from the published runs: HyDE's search vector produced a
+ranking that diverged from dense on **300/300** SciFact, **648/648** FiQA and **1,405/1,406**
+ArguAna queries; the reranker reordered the dense top-k on **648/648** FiQA and **1,406/1,406**
+ArguAna queries, and on **1,108/1,109** in SciFact's pre-fix run — a counter quoted deliberately,
+because that guard passing on a defective run is itself a finding
+([below](#the-reranker-row-was-measured-twice-because-the-first-measurement-found-a-library-defect));
+the BM25 row asserts per dataset that BM25 returned results and that the fused ranking diverged
+from dense.
+
+### Two of the three predictions failed, and are reported as failures
+
+The design stated an expectation for every HyDE cell **before anything was measured**, precisely so
+the table could be found wrong — the standard Phase 3.16 set when it predicted ArguAna's recovery
+and had to be able to report that it had not happened. Two of the three predictions failed:
+
+| Prediction (design §2, pre-measurement) | Measured | Outcome |
+|---|---:|---|
+| **FiQA: clear lift from HyDE** — the positive control | −0.0054 | **FAILED.** No lift. |
+| **ArguAna: no lift, plausibly negative** — the negative control | −0.0014 | **HELD.** |
+| **SciFact: modest lift, smaller than FiQA's** | +0.0541 | **FAILED.** Large, and the largest of the three. |
+
+The design also named its own escape hatch: "FiQA shows no lift" was listed as the outcome that
+would make the table uninterpretable, because a weak model and an unhelpful method are
+indistinguishable in a run that is flat everywhere. **That escape hatch does not apply.** SciFact
+gained +0.0541 from the same model, the same prompt and the same cache, so the model demonstrably
+produces hypotheticals that help. FiQA's flat cell is a measurement, not an artefact.
+
+Why the two predictions failed is a **post-hoc explanation, and it is recorded as post-hoc** — the
+design did not foresee it. The design's reasoning was that HyDE helps where the query–corpus
+vocabulary gap is widest. The numbers suggest a different variable: HyDE helps when the
+*hypothetical* sits closer to the corpus register than the query does. A one-sentence SciFact claim
+expands into abstract-like prose that resembles the corpus; a FiQA question expands into a clean
+LLM answer, while FiQA's actual answers are messy StackExchange posts. **That is a hypothesis to
+test, not a conclusion** — nothing in this run distinguishes it from other explanations of the same
+three numbers.
+
+### The negative control held, and with an observed mechanism
+
+ArguAna's −0.0014 is the expected answer rather than a disappointing one, and there is an observed
+mechanism behind it, not a hand-wave. Recorded during hypothetical generation, independently of the
+measurement: ArguAna's hypotheticals are **compressed restatements of the input argument** — same
+stance, recycling the argument's own statistics (the FAO 18% figure, the 100,000-litres-per-kilogram
+figure). ArguAna asks for the best *counter*argument, so HyDE moves the search vector toward the
+query's own position and away from the target.
+
+### The reranker row was measured twice, because the first measurement found a library defect
+
+**This is the most important finding on this page.** The first reranker measurement gave SciFact
+**0.56693**, FiQA **0.34085**, ArguAna **0.41806** — the cross-encoder harming every dataset. That
+was not what the cross-encoder does; it was what `OnnxReranker.TokenizePair` did. It was not a
+WordPiece tokenizer: it split on whitespace and looked up whole lowercased words in the vocabulary,
+mapping every miss to `[UNK]`. Measured over both corpora in full, **26.59% of SciFact's 1,112,417
+words and 17.62% of FiQA's 7,660,017 words** reached the model as `[UNK]`; through WordPiece the
+same corpora produce 0.01% and 0.10%.
+
+Fixed in commit `a912187`, and the row was re-measured; the re-measured numbers are what the table
+above publishes. The swing, **from tokenization alone**: **+0.117** on SciFact, **+0.061** on
+ArguAna, **+0.044** on FiQA.
+
+Two things are worth stating plainly:
+
+- **No guard could have caught it.** `AssertRerankerReordered` proves the cross-encoder *moved* the
+  ranking — and garbage-but-varying scores reorder every query, which is exactly what it observed:
+  the defective run reordered 1,108 of SciFact's 1,109 queries and passed the guard. The guard
+  added with the fix is of a different kind: a tokenizer round-trip test that fails on the old
+  algorithm.
+- **The out-of-domain prediction was right all along, masked by the defect.** With real tokens
+  reaching the model, FiQA — the dataset most like the reranker's MS MARCO training data — gains
+  (+0.0137, the table's only reranker lift), and ArguAna loses (−0.0252), because the best
+  counterargument is not the passage a relevance model scores highest.
+
+### What the reranker row does not measure
+
+`TopK` equals the evaluation cutoff of 10, so the reranker permutes exactly the ten documents it
+will be scored on and **Recall@10 is frozen by construction** — visible in the numbers: SciFact's
+reranker Recall@10 is 0.78667, identical to dense. A real reranking pipeline retrieves ~100
+candidates and reranks down to 10, which can also change what is *in* the top 10; this row cannot.
+That is a design limitation of what was measured, not a defect — read the row as "what reordering
+the dense top-10 does", never as the best a cross-encoder can do.
+
+### The BM25 row is an internal comparison, and its label is the deliverable
+
+The row is incomparable to any published BM25 figure, for the reason recorded before it was built:
+Anserini — the source of BEIR's published BM25 numbers — applies Porter stemming and an English
+stopword list at `k1=0.9, b=0.4`; `InMemoryBm25Index` lowercases and splits at `k1=1.5, b=0.75`.
+Those are not two settings of one retriever, and tokenisation dominates BM25 scores. That is why
+the incomparability is in the row's own label in the table above, not only in the prose here: a
+`+bm25` row that looked comparable would read as validation of ours against the literature, which
+is worse than no row at all. What the row *is* comparable to is the dense anchor beside it, and
+that internal comparison is the row's whole claim.
+
+### HyDE ran from a frozen cache, and the cache is not in this repository
+
+The hypotheticals were generated once, by the one-time tool in
+`benchmarks/Rag.NET.Benchmarks.Quality.Hypotheticals`: **7,062 generations for the 2,354 judged
+queries** across the three datasets, at the library's own `HypothesisCount = 3`, by
+`openai/gpt-4o-mini` at `HydeOptions.HypothesisTemperature` (0.8) — total cost **$0.66**, zero
+failures. The table run never calls an LLM: the HyDE row reads the frozen generation run from a
+content-addressed cache, and a missing entry is a refusal that names the key, never a silent
+regeneration — a regeneration would blend two generations into one table with nothing saying so.
+The cache identity is `openai/gpt-4o-mini@t0.8`, and the temperature is part of the key
+deliberately: hypotheticals sampled at another temperature are another experiment.
+
+**The cache is never committed.** It derives from BEIR's queries, and this project's standing
+position ([Licences](#licences)) is that nothing downloaded here is redistributed — FiQA's upstream
+restricts commercial use in so many words. Committing LLM text generated *from* those queries would
+quietly reverse that position, so the cache gets the same treatment as the datasets and the model:
+produced locally, cached, never vendored.
+
+### Running the ablation
+
+The cells are `BeirAblationTests`, gated through `BeirRunBudget` behind `RAGNET_BEIR_LONG_RUNS`
+like every case the nightly cannot afford; each skips with its measured cost and the command that
+runs it. The HyDE cells additionally need the hypothetical cache, which only the generation tool
+produces — an opted-in run without it **fails**, naming the missing key, rather than skipping,
+because a skip would read like a measurement from the summary.
+
 ## What the numbers do not mean
 
 They are **three datasets, one embedding model, two protocols**, and only the parity column is
@@ -274,9 +439,12 @@ In particular, none of these is:
 - **A claim about any other embedding model.** The numbers belong to `all-MiniLM-L6-v2` at
   `max_seq_length = 256`. Swapping the model swaps every one of them.
 - **A claim about any other configuration.** Cosine over L2-normalised vectors, in-memory storage,
-  top-k = 10, no hybrid search, no HyDE, no reranker; the parity runs at one chunk per document, the
-  real run at `RecursiveChunkingStrategy` and stock `ChunkingOptions`. Changing any of those measures
-  something else.
+  top-k = 10; the parity runs at one chunk per document, the real run at `RecursiveChunkingStrategy`
+  and stock `ChunkingOptions`. The parity and real columns are dense-only — what BM25 hybrid, HyDE
+  and a reranker each do to the dense number is measured in
+  [the ablation table](#the-ablation-table), one addition at a time, under the configurations its
+  row labels state, and never in combination. Changing any of those settings measures something
+  else.
 - **A comparison against another library.** Comparative tables are legitimate work, but only credible
   with genuinely equivalent configuration, and that equivalence is the part such tables are usually
   attacked on. There is none here. → Phase 3.14.
@@ -563,17 +731,12 @@ Knowledge", ACL 2018 (ArguAna).
   `2^rel - 1` and has a graded fixture, but no graded *dataset* has been through it, which deserves its
   own attention. EnronQA is the private-corpus and multi-tenant story. Past FiQA the cost is embedding
   time rather than disk.
-- **The ablation table** — baseline dense → +BM25 hybrid → +HyDE → +reranker. It needs an `IChatClient`
-  for HyDE and a cross-encoder for the reranker, and its BM25 row needs the caveat below resolved
-  first. ArguAna is its negative control: HyDE should *not* help there, and a table that only ever goes
-  up is indistinguishable from a table that cannot go down. → **Phase 3.15**.
-- **BM25, at all.** Everything here is dense-only, and that is not an oversight: `InMemoryBm25Index`
-  lowercases and splits, while Anserini — which produced BEIR's published BM25 figures — applies
-  Porter stemming and an English stopword list, and BEIR runs it at `k1=0.9, b=0.4` where ours
-  hard-codes Lucene's `k1=1.5, b=0.75`. Tokenisation dominates BM25 scores. A `+BM25 hybrid` row
-  published today would be incomparable to any published BM25 reference **while looking like
-  validation of ours**, which is worse than not publishing it. Recorded as a scheduled debt in the
-  roadmap with those numbers, so whoever builds the table knows before they publish it.
+- **BM25 against anything published.** [The ablation table](#the-ablation-table) now carries a
+  `+bm25 hybrid` row, but it is an **internal** comparison against the dense anchor and nothing
+  else, for the reason that kept it out of earlier phases: `InMemoryBm25Index` lowercases and
+  splits at `k1=1.5, b=0.75` while Anserini — which produced BEIR's published BM25 figures — stems
+  and applies stopwords at `k1=0.9, b=0.4`. The debt was resolved by labelling the row incomparable
+  in the table itself, not by making the retrievers comparable.
 - **Comparative tables against other libraries.** A fair one needs a decided framing, not just
   equivalent configuration: matched-configuration comparisons mostly measure how carefully each
   library was configured and converge on near-identical numbers, because every library calls the same

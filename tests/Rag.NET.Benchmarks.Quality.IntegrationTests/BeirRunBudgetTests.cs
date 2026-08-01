@@ -23,16 +23,21 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 public sealed class BeirRunBudgetTests
 {
     [Fact]
-    public void EveryDescribedDatasetHasARecordedCostUnderBothProtocols()
+    public void EveryDescribedDatasetHasARecordedCostUnderEveryProtocol()
     {
         // BeirRunBudget.Find throws on a pair it has no measurement for, which is the behaviour that
         // stops a fourth dataset from silently defaulting into — or out of — the nightly. But that
         // throw only fires when the case actually runs, and the cases that run are exactly the ones
-        // gated behind provisioning. So the throw is provoked here, where nothing is gated.
+        // gated behind provisioning. So the throw is provoked here, where nothing is gated. Every
+        // protocol, not just the two chunking legs: since Phase 3.15 the ablation cells gate through
+        // the same table, so a fourth dataset owes those three measurements too before its cells can
+        // skip with an honest cost.
         foreach (var descriptor in BeirDatasetDescriptor.All)
         {
-            _ = BeirRunBudget.IsGatedOff(descriptor.Name, BeirProtocol.Parity, out _);
-            _ = BeirRunBudget.IsGatedOff(descriptor.Name, BeirProtocol.Real, out _);
+            foreach (var protocol in Enum.GetValues<BeirProtocol>())
+            {
+                _ = BeirRunBudget.IsGatedOff(descriptor.Name, protocol, out _);
+            }
         }
     }
 
