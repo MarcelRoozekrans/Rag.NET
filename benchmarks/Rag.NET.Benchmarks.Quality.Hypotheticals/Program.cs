@@ -12,10 +12,17 @@ namespace Rag.NET.Benchmarks.Quality.Hypotheticals;
 /// <see cref="HydeOptions.HypothesisCount"/> hypothetical answer passages per query through
 /// OpenRouter, and writes them into <see cref="HypotheticalCache"/>.
 /// <para>
-/// <b>The cached text is the experiment.</b> Hosted LLMs are not bit-deterministic even at
-/// temperature 0, so the ablation table's HyDE row never calls an LLM: it reads what this tool
-/// wrote, verbatim, forever. That is also why this tool is resumable — every entry already on disk
-/// is skipped, so an interrupted run continues instead of regenerating text it can never reproduce.
+/// <b>The cached text is the experiment.</b> Hosted LLMs are not bit-deterministic at any
+/// temperature, so the ablation table's HyDE row never calls an LLM: it reads what this tool wrote,
+/// verbatim, forever. That is also why this tool is resumable — every entry already on disk is
+/// skipped, so an interrupted run continues instead of regenerating text it can never reproduce.
+/// </para>
+/// <para>
+/// <b>Determinism is the cache's job, not the sampler's</b>, which is why generation runs at
+/// <see cref="HydeOptions.HypothesisTemperature"/>'s 0.8 rather than at 0. Once the text is on disk
+/// the experiment is frozen however it was sampled; turning the temperature down would only have
+/// made the three hypotheses per query near-identical, collapsing the mean-of-3 that
+/// <see cref="HydeOptions.HypothesisCount"/> exists for into a mean-of-1 nobody ships.
 /// </para>
 /// <para>
 /// Usage: <c>dotnet run [--max-queries N]</c>, with
@@ -28,31 +35,43 @@ namespace Rag.NET.Benchmarks.Quality.Hypotheticals;
 /// </summary>
 internal static class Program
 {
-    /// <summary>
-    /// The model identity hashed into every cache key, and the exact model string sent to
-    /// OpenRouter — one constant so the two cannot drift. A later model change therefore misses
-    /// rather than silently reusing another model's prose.
-    /// </summary>
-    internal const string ModelIdentity = "openai/gpt-4o-mini";
+    /// <summary>The exact model string sent to OpenRouter.</summary>
+    internal const string ModelName = "openai/gpt-4o-mini";
 
     private const string ApiKeyVariable = "OPENROUTER_API_KEY";
 
     private static readonly Uri OpenRouterEndpoint = new("https://openrouter.ai/api/v1");
 
-    /// <summary>
-    /// Temperature 0 — the provider's nearest equivalent of determinism, per the phase plan. This
-    /// deliberately diverges from <see cref="HydeOptions.HypothesisTemperature"/>'s 0.8 default,
-    /// which exists to diversify the hypotheses being averaged; at 0 the three per query may be
-    /// near-duplicates. Recorded here because whoever changes it must also accept regenerating
-    /// everything: the setting shapes the frozen text even though it is not part of the cache key.
-    /// </summary>
-    private const float Temperature = 0f;
-
     private const int MaxAttempts = 5;
 
     private static readonly TimeSpan FirstRetryDelay = TimeSpan.FromSeconds(2);
 
-    private static readonly ChatOptions GenerationOptions = new() { Temperature = Temperature };
+    /// <summary>
+    /// The identity hashed into every cache key: the model string and the sampling temperature,
+    /// as <c>openai/gpt-4o-mini@t0.8</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Temperature belongs in the key because it changes the output distribution.</b> The model
+    /// string alone was the first version of this and it was wrong in the expensive direction:
+    /// re-sampling at a different temperature would have hit every existing entry and silently
+    /// served text drawn from different settings, with nothing anywhere to say so — the same
+    /// failure the prompt template is in the key to prevent, one component over. Anything else that
+    /// moves the distribution — a top-p, a seed, a system message — has to be added here too, and
+    /// the run that adds it regenerates rather than reuses.
+    /// </para>
+    /// <para>
+    /// Readable rather than hashed, because this string appears in every refuse-on-miss failure the
+    /// table can produce, and "no cached hypothetical under openai/gpt-4o-mini@t0.8" is a message
+    /// someone can act on.
+    /// </para>
+    /// </remarks>
+    internal static string BuildModelIdentity(HydeOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return FormattableString.Invariant($"{ModelName}@t{options.HypothesisTemperature}");
+    }
 
     public static async Task<int> Main(string[] args)
     {
@@ -82,14 +101,18 @@ internal static class Program
             return 2;
         }
 
-        // The library's own defaults, deliberately: the table measures what the library does, so
-        // the prompt template in every cache key is the one LlmHypotheticalDocumentGenerator uses.
+        // The library's own defaults throughout — prompt template, hypothesis count AND sampling
+        // temperature — because the table measures what the library does. Temperature 0 was the
+        // first version of this and it was a mistake worth recording: determinism comes from the
+        // cache, not from the sampler, so 0 bought nothing and cost the variance that
+        // HypothesisCount = 3 exists to average away. At 0 the three hypotheses per query come back
+        // near-identical and mean-of-3 collapses toward mean-of-1 — a configuration nobody ships.
         var options = new HydeOptions();
         var datasets = await LoadEvaluatedQueriesAsync(cacheRoot).ConfigureAwait(false);
-        PrintPlan(datasets, options.HypothesisCount, maxQueries.Value);
+        PrintPlan(datasets, options, maxQueries.Value);
 
         var cache = new HypotheticalCache(
-            cacheRoot, ModelIdentity, options.PromptTemplate, HypotheticalCacheMode.Fill);
+            cacheRoot, BuildModelIdentity(options), options.PromptTemplate, HypotheticalCacheMode.Fill);
         using var chatClient = CreateChatClient(apiKey);
 
         var counters = new Counters();
@@ -166,7 +189,7 @@ internal static class Program
         return datasets;
     }
 
-    private static void PrintPlan(IReadOnlyList<DatasetQueries> datasets, int hypothesisCount, int maxQueries)
+    private static void PrintPlan(IReadOnlyList<DatasetQueries> datasets, HydeOptions options, int maxQueries)
     {
         var total = 0;
         foreach (var dataset in datasets)
@@ -177,7 +200,7 @@ internal static class Program
         }
 
         Console.WriteLine(FormattableString.Invariant(
-            $"{total} evaluated queries -> {total * hypothesisCount} hypotheticals at HypothesisCount = {hypothesisCount}, model {ModelIdentity}, temperature {Temperature}."));
+            $"{total} evaluated queries -> {total * options.HypothesisCount} hypotheticals at HypothesisCount = {options.HypothesisCount}, cache identity {BuildModelIdentity(options)}."));
 
         if (maxQueries != int.MaxValue)
         {
@@ -190,7 +213,7 @@ internal static class Program
         new OpenAIClient(
                 new ApiKeyCredential(apiKey),
                 new OpenAIClientOptions { Endpoint = OpenRouterEndpoint })
-            .GetChatClient(ModelIdentity)
+            .GetChatClient(ModelName)
             .AsIChatClient();
 
     /// <summary>
@@ -256,6 +279,10 @@ internal static class Program
     {
         var prompt = options.PromptTemplate.Replace("{query}", queryText, StringComparison.Ordinal);
 
+        // The library's temperature, and the reason the three calls below are worth making at all:
+        // at 0.8 they sample three different passages, which is what averaging smooths.
+        var chatOptions = new ChatOptions { Temperature = options.HypothesisTemperature };
+
         var pending = new List<Task>(options.HypothesisCount);
         for (var hypothesisIndex = 0; hypothesisIndex < options.HypothesisCount; hypothesisIndex++)
         {
@@ -265,7 +292,8 @@ internal static class Program
                 continue;
             }
 
-            pending.Add(GenerateOneAsync(cache, chatClient, prompt, queryText, hypothesisIndex, counters));
+            pending.Add(GenerateOneAsync(
+                cache, chatClient, prompt, chatOptions, queryText, hypothesisIndex, counters));
         }
 
         await Task.WhenAll(pending).ConfigureAwait(false);
@@ -275,6 +303,7 @@ internal static class Program
         HypotheticalCache cache,
         IChatClient chatClient,
         string prompt,
+        ChatOptions chatOptions,
         string queryText,
         int hypothesisIndex,
         Counters counters)
@@ -282,7 +311,7 @@ internal static class Program
         _ = await cache.GetOrAddAsync(
             queryText,
             hypothesisIndex,
-            cancellationToken => GenerateWithRetryAsync(chatClient, prompt, cancellationToken),
+            cancellationToken => GenerateWithRetryAsync(chatClient, prompt, chatOptions, cancellationToken),
             CancellationToken.None).ConfigureAwait(false);
         counters.RecordGenerated();
     }
@@ -294,7 +323,7 @@ internal static class Program
     /// failure path, so an error string cannot become a cached hypothetical.
     /// </summary>
     private static async Task<string> GenerateWithRetryAsync(
-        IChatClient chatClient, string prompt, CancellationToken cancellationToken)
+        IChatClient chatClient, string prompt, ChatOptions chatOptions, CancellationToken cancellationToken)
     {
         var delay = FirstRetryDelay;
         for (var attempt = 1; ; attempt++)
@@ -302,7 +331,7 @@ internal static class Program
             try
             {
                 var response = await chatClient
-                    .GetResponseAsync(prompt, GenerationOptions, cancellationToken)
+                    .GetResponseAsync(prompt, chatOptions, cancellationToken)
                     .ConfigureAwait(false);
                 if (string.IsNullOrWhiteSpace(response.Text))
                 {
