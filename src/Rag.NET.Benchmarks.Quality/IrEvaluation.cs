@@ -24,8 +24,10 @@ namespace Rag.NET.Benchmarks.Quality;
 /// <param name="ExcludedQueryCount">
 /// How many of the supplied runs were skipped for having no positive relevance judgement. Reported
 /// rather than swallowed because a surprisingly large number here is the visible symptom of loading
-/// the wrong qrels split — SciFact ships 1,109 queries against 300 judged ones, so a full-corpus run
-/// against the test split should show 809.
+/// the wrong qrels split — SciFact ships 1,109 queries against 300 judged ones, so a run supplying
+/// every query against the test split would show 809. The BEIR harness no longer produces such
+/// runs: it retrieves only for judged queries, so its figure here is 0 unless a judged query
+/// carries nothing but zero-grade judgements.
 /// </param>
 public sealed record IrEvaluation(
     double NormalizedDiscountedCumulativeGain,

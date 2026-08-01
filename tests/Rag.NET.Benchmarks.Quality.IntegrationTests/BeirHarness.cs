@@ -207,7 +207,7 @@ public static class BeirHarness
     }
 
     /// <summary>
-    /// Embeds and indexes <paramref name="units"/>, retrieves for every query with
+    /// Embeds and indexes <paramref name="units"/>, retrieves for every <b>judged</b> query with
     /// <paramref name="row"/>, and scores the run.
     /// </summary>
     /// <param name="descriptor">The dataset, for its retrieval protocol.</param>
@@ -247,7 +247,8 @@ public static class BeirHarness
         using var store = new InMemoryVectorStore();
         await IndexAsync(generator, embeddings, store, units, cancellationToken);
         var (runs, pooledQueries) = await RetrieveAsync(
-            row, generator, embeddings, store, dataset.Queries, descriptor, maxPerDocument, cancellationToken);
+            row, generator, embeddings, store, JudgedQueries(dataset), descriptor, maxPerDocument,
+            cancellationToken);
 
         return new BeirRunResult(
             IrMetrics.Evaluate(runs, dataset.Qrels, Cutoff),
@@ -259,6 +260,42 @@ public static class BeirHarness
             Stopwatch.GetElapsedTime(startedAt),
             embeddings.Hits - hitsBefore,
             embeddings.Misses - missesBefore);
+    }
+
+    /// <summary>
+    /// The queries a run retrieves for: exactly those <c>qrels</c> judges, in <c>queries.jsonl</c>
+    /// order.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Unjudged queries are excluded because they cannot be scored, not as an optimisation.</b>
+    /// <see cref="IrMetrics.Evaluate"/> iterates the qrels — an unjudged query's ranking never
+    /// enters any mean no matter what is retrieved for it — so retrieving for the 809 of SciFact's
+    /// 1,109 queries the test split does not judge computed rankings that were thrown away, and it
+    /// billed every per-query resource for them: wall clock, query embeddings, and one cached
+    /// hypothetical per hypothesis on the HyDE row, whose refuse-on-miss cache rightly failed on
+    /// queries the generation tool never paid for. The metrics are unchanged by construction;
+    /// the run's counters (<see cref="BeirRunResult.PooledQueryCount"/>, cache traffic, elapsed)
+    /// now describe the judged set only.
+    /// </para>
+    /// <para>
+    /// This is not qrels reaching the ranker. Only <i>membership</i> of the judged set is read
+    /// here — which documents are relevant, and how relevant, stays invisible to retrieval, so the
+    /// leak the parity band's upper edge watches for cannot enter through this filter.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<BeirQuery> JudgedQueries(BeirDataset dataset)
+    {
+        var judged = new List<BeirQuery>(dataset.JudgedQueryCount);
+        for (var i = 0; i < dataset.Queries.Count; i++)
+        {
+            if (dataset.Qrels.ContainsKey(dataset.Queries[i].Id))
+            {
+                judged.Add(dataset.Queries[i]);
+            }
+        }
+
+        return judged;
     }
 
     /// <summary>Counts documents whose <c>title</c> is present and non-empty.</summary>
@@ -348,14 +385,15 @@ public static class BeirHarness
     }
 
     /// <summary>
-    /// Retrieves for every query with the row and aggregates each result list to a document ranking.
+    /// Retrieves for each of <paramref name="queries"/> with the row and aggregates each result
+    /// list to a document ranking.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Every</b> query in <c>queries.jsonl</c>, not only the judged ones. The ranker never sees
-    /// qrels — which is what "materially above the band means a leak" is about — and
-    /// <see cref="IrMetrics.Evaluate"/> is the single place the exclusion rule is applied, reporting
-    /// the unjudged ones as <see cref="IrEvaluation.ExcludedQueryCount"/>.
+    /// The judged queries only — <see cref="JudgedQueries"/> says why, and why that is not qrels
+    /// reaching the ranker. <see cref="IrMetrics.Evaluate"/> remains the single place the scoring
+    /// exclusion rule is applied: a judged query with no positive judgement is still excluded
+    /// there, reported as <see cref="IrEvaluation.ExcludedQueryCount"/>.
     /// </para>
     /// <para>
     /// The retrieval itself is the row's; everything downstream of the hit list is not. Pooling,

@@ -158,8 +158,9 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-secrets'
     runs-on: ubuntu-latest
     # Wider than ci.yml's 45 now that this job actually runs the BEIR parity measurements instead of
-    # skipping them. SciFact embeds 5,183 documents and 1,109 queries on CPU — ~355 s per separator
-    # on a fast developer machine, and the theory runs both — and ArguAna adds ~4 min per separator,
+    # skipping them. SciFact embeds 5,183 documents and its 300 judged queries on CPU — the harness
+    # retrieves only for judged queries; ~355 s per separator on a fast developer machine, measured
+    # when it still embedded all 1,109, and the theory runs both — and ArguAna adds ~4 min per separator,
     # so 45 minutes was a budget for a job that measured nothing. A hosted runner is slower than that
     # machine, and the bound still has to catch the real failure it is here for: a live Document
     # Intelligence call that never returns.

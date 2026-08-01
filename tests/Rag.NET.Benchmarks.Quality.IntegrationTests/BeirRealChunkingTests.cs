@@ -39,7 +39,8 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <see cref="ChunkingOptions.MaxChunkSize"/>, every part became its own chunk and FiQA produced
 /// 429,850 units, 7.5× the corpus and up to 1,723 from one document. FiQA's real leg still embeds
 /// 2.1× the parity leg's texts and <see cref="InMemoryVectorStore"/> sorts 121,236 scored entries
-/// per query for 6,648 queries. Run SciFact and ArguAna first.
+/// per query for the 648 judged queries — the only ones the harness retrieves for, since an
+/// unjudged query's ranking cannot be scored. Run SciFact and ArguAna first.
 /// </para>
 /// <para>
 /// Skipped unless <c>RAGNET_ONNX_EMBED_MODEL</c>, <c>RAGNET_ONNX_EMBED_VOCAB</c> and

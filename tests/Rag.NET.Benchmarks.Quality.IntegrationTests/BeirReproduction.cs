@@ -98,7 +98,9 @@ public static class BeirReproduction
             BeirProtocol.Real,
             [0.67742],
             "20,155 chunks over 5,183 of 5,183 documents, max 25 from one, pooled on all 1,109 " +
-            "queries. Re-measured 2026-07-31 on the same machine, 643.1 s, after Phase 3.16 taught " +
+            "queries — a count over every query in queries.jsonl; since Phase 3.15 cut retrieval " +
+            "to the judged set, a re-run pools on at most the 300 judged and the nDCG is unchanged " +
+            "by construction. Re-measured 2026-07-31 on the same machine, 643.1 s, after Phase 3.16 taught " +
             "RecursiveChunkingStrategy to pack split parts towards MaxChunkSize — the packing " +
             "lifted this leg from 3.12's 0.65589 (56,707 chunks, max 221) to 0.67742, +0.03148 " +
             "against a parity leg the fix did not move."),
@@ -107,7 +109,9 @@ public static class BeirReproduction
             BeirProtocol.Parity,
             [0.37086],
             "One separator — FiQA titles none of its 57,638 documents. Measured 2026-07-31, 1 h " +
-            "11 m for 64,247 embeddings. GATED: BeirRunBudget keeps this case behind " +
+            "11 m for 64,247 embeddings, retrieving for all 6,648 queries; since Phase 3.15 cut " +
+            "retrieval to the 648 judged, a re-run embeds ~6,000 fewer query texts and the nDCG " +
+            "is unchanged by construction. GATED: BeirRunBudget keeps this case behind " +
             "RAGNET_BEIR_LONG_RUNS, so nothing re-checks this figure unless somebody asks for it."),
         new(
             "fiqa",
@@ -115,8 +119,9 @@ public static class BeirReproduction
             [],
             "NEVER RUN. 121,236 chunks since Phase 3.16's packing chunker (429,850 before it), at " +
             "a DERIVED ~1.5-2 h: the packed SciFact and ArguAna real legs embedded 35,589 fresh " +
-            "texts in 1,310 s combined (~27/s), and this leg is ~121,236 chunk plus 6,648 query " +
-            "embeddings at that rate, plus the per-query sorting. Deferred to Phase 3.15 rather " +
+            "texts in 1,310 s combined (~27/s), and this leg is ~121,236 chunk plus 648 query " +
+            "embeddings at that rate — the 648 judged queries are the only ones retrieved since " +
+            "Phase 3.15 — plus the per-query sorting. Deferred to Phase 3.15 rather " +
             "than dropped. If you are reading this in a test log, the run above it is the first " +
             "one: record its nDCG@10 here."),
         new(

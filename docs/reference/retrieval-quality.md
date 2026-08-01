@@ -90,14 +90,23 @@ And the corpora, from the downloaded archives rather than from a paper:
 |---|---:|---:|---:|
 | Corpus documents | 5,183 | 57,638 | 8,674 |
 | Queries in `queries.jsonl` | 1,109 | 6,648 | 1,406 |
-| Queries scored (judged, test split) | 300 | 648 | 1,406 |
-| Excluded as unjudged | 809 | 6,000 | 0 |
+| Queries retrieved and scored (judged, test split) | 300 | 648 | 1,406 |
+| Unjudged — never retrieved, cannot be scored | 809 | 6,000 | 0 |
 | Documents carrying a title | 5,183 | 0 | 2,699 |
 | Self-hit excluded (`ignore_identical_ids`) | no | yes | yes |
 | Documents over the 512-character chunk size | 99.2% | 51.0% | 87.3% |
 | Units under real chunking | 20,155 | 121,236 | 24,003 |
 | Most units from one document | 25 | 41 | 16 |
 | Parity elapsed (CPU) | ~355 s | ~1 h 11 m | ~4 min per separator |
+
+**The harness retrieves only for the judged queries** — the row above the unjudged one — because
+`IrMetrics.Evaluate` scores exactly that set and a ranking retrieved for an unjudged query is
+computed and thrown away. Only *membership* of the judged set reaches retrieval, never a judgement's
+content, so this cannot leak relevance into the ranker. The nDCG figures are unchanged by
+construction; what it changes is the **per-run counters and costs**: elapsed time, query embeddings,
+and "queries that pooled" are over the judged set, so figures recorded before this (SciFact real
+"pooled on 1,109 of 1,109", FiQA's parity leg embedding all 6,648 queries) count a superset that a
+re-run no longer retrieves. ArguAna judges every query, so its counters are unaffected.
 
 ### Everything lands above published, by a little
 
@@ -139,6 +148,11 @@ max-pooling had nothing to pool on any query of either dataset; under Rag.NET's 
 something to pool on **every** query of both. This is the first time chunk-to-document max-pooling
 has been exercised against a corpus at all, rather than against `DocumentRankingTests`' seven-hit
 fixture.
+
+SciFact's "1,109 of 1,109" was counted when the harness still retrieved for every query in
+`queries.jsonl`. It now retrieves only the 300 judged (see the corpora table above), so a re-run
+reports the pooled count over those 300 — and since every one of the 1,109 pooled, every judged
+one did. ArguAna's 1,406 are all judged, so its row is unchanged.
 
 Read the supporting metrics alongside each delta, because they do not move the same way. On ArguAna,
 Recall and MRR both fall with nDCG — documents are being **missed**, not reordered — though far less
@@ -190,9 +204,11 @@ since Phase 3.16's packing fix — roughly 2.1× the corpus, down from 429,850 �
 was derived from the old chunk count and died with it. The new figure is **derived, not measured**,
 and here is the arithmetic so it can be checked: the packed SciFact and ArguAna real legs embedded
 35,589 fresh texts in a combined 1,310 s of wall clock (~27 embeddings/s, scoring included), and
-FiQA's leg is ~121,236 chunk embeddings plus 6,648 query embeddings — roughly 4,700 s, so call it
-**1.5–2 hours** once `InMemoryVectorStore` has also sorted 121,236 scored entries for each of 6,648
-queries.
+FiQA's leg is ~121,236 chunk embeddings plus 648 query embeddings — the 648 judged queries are the
+only ones the harness retrieves for — roughly 4,500 s, so call it **1.5–2 hours** once
+`InMemoryVectorStore` has also sorted 121,236 scored entries for each of those 648 queries. Before
+retrieval was cut to the judged set, this leg priced 6,648 sorts to report on 648 scores — ten
+times the query-side work, spent on rankings nothing could score.
 
 It is still the run worth having, and that is why it is scheduled rather than dropped — but **it is
 no longer the only thing that can answer "does max-pooling help or hurt"**, and this section used to
@@ -294,8 +310,10 @@ number alone cannot tell you which one broke:
 5. **Only judged queries are scored.** SciFact ships 1,109 queries and judges 300 in the test split;
    FiQA judges 648 of 6,648. Scoring the rest as zero divides SciFact's mean by roughly 3.7 and
    FiQA's by ten, and reads as catastrophic retrieval failure rather than as a harness bug. ArguAna
-   judges all 1,406 of its queries, so its excluded count must be exactly 0 — a non-zero one there is
-   a loading defect rather than the usual dilution.
+   judges all 1,406 of its queries. The harness now also *retrieves* only for the judged queries —
+   the unjudged ones were retrieved and discarded until Phase 3.15 — which cannot move the mean,
+   for the same reason the exclusion rule exists: nothing retrieved for an unjudged query ever
+   entered it.
 
 **A sixth, added by FiQA and ArguAna: the query's own document is excluded from the ranking.** This
 is MTEB's `ignore_identical_ids` and BEIR's `if corpus_id != query_id`, and it is a property of the
@@ -341,7 +359,8 @@ and all are pinned — just not by 0.64593, 0.37086 or 0.50432.
   **not by any parity number.** A parity run indexes one chunk per document — that is what BEIR's
   published figures embed — and retrieves with `TopK` equal to the cutoff, so ten hits are ten
   distinct documents and max-pooling is a literal no-op. On SciFact both orderings therefore pool the
-  same ten hits and return the same ranking for every one of the 1,109 queries, so nDCG@10 is
+  same ten hits and return the same ranking for every retrieved query (all 1,109 when that
+  mutation run was made; the harness now retrieves only the 300 judged), so nDCG@10 is
   identically **0.64593** either way — checked rather than argued, by mutating `DocumentRanking` to
   cut-then-pool and re-running the whole measurement, which passes unchanged at both separators. What
   guards the order is a fixture where one document contributes four chunks among seven; against that,
@@ -354,8 +373,9 @@ and all are pinned — just not by 0.64593, 0.37086 or 0.50432.
   > because of anything about SciFact's documents, and every dataset is measured under that protocol
   > against its published figure. No parity band will ever guard the aggregation order. What does
   > exercise it is the **real run**, where ArguAna pooled on 1,406 of 1,406 queries and SciFact on
-  > 1,109 of 1,109, both against a parity leg's 0 — and that run has no published reference to be a
-  > band around, by design.
+  > 1,109 of 1,109 (counted before retrieval was cut to the judged set; a SciFact re-run pools on
+  > at most its 300 judged), both against a parity leg's 0 — and that run has no published
+  > reference to be a band around, by design.
 
 - **Recall's denominator is *every* relevant document, never `min(|relevant|, k)`.** Pinned by
   `IrMetricsTests`, not by these numbers. This is the exact opposite of setting 4 above, and that is
@@ -535,8 +555,8 @@ Knowledge", ACL 2018 (ArguAna).
 
 - **FiQA under real chunking.** Deferred rather than dropped — a **derived** 1.5–2 hours since
   Phase 3.16's packing fix cut the leg from 429,850 to 121,236 chunks (derived from the ~27
-  embeddings/s the packed SciFact and ArguAna real legs observed, over ~128,000 embeddings), plus
-  121,236 entries sorted per query across 6,648 queries. SciFact's and ArguAna's real legs already
+  embeddings/s the packed SciFact and ArguAna real legs observed, over ~122,000 embeddings), plus
+  121,236 entries sorted per query across the 648 judged queries — the only ones retrieved. SciFact's and ArguAna's real legs already
   answer whether max-pooling helps or hurts, in both directions; FiQA adds a third corpus shape
   rather than the only evidence. → **Phase 3.15**, which needs a cached-embeddings artifact anyway.
 - **TREC-COVID and EnronQA.** TREC-COVID is the first graded-relevance dataset — `IrMetrics` uses

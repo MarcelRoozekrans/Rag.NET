@@ -98,9 +98,10 @@ public static class BeirRunBudget
             "~1.5-2 h, DERIVED: it has never been run to completion. Phase 3.16's packing chunker " +
             "cut the real leg from 429,850 chunks (the basis of the old 8-9 h estimate) to " +
             "121,236 — 2.1x the corpus — and the packed SciFact and ArguAna real legs embedded " +
-            "35,589 fresh texts in 1,310 s combined (~27/s), which prices ~128,000 embeddings at " +
-            "~80 min before InMemoryVectorStore sorts all 121,236 entries per query for 6,648 " +
-            "queries."),
+            "35,589 fresh texts in 1,310 s combined (~27/s), which prices ~122,000 embeddings at " +
+            "~75 min before InMemoryVectorStore sorts all 121,236 entries per query for the 648 " +
+            "judged queries — the only ones retrieved since Phase 3.15, where retrieving for all " +
+            "6,648 would have spent ten times the query-side work on rankings nothing can score."),
         new(
             "arguana",
             BeirProtocol.Parity,
