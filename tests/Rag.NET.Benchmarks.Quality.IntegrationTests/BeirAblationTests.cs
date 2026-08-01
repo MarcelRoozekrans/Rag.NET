@@ -1,4 +1,5 @@
 using Rag.NET.Benchmarks.Quality;
+using Rag.NET.Reranking.Onnx;
 using Xunit;
 
 namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
@@ -100,6 +101,58 @@ public sealed class BeirAblationTests
         row.AssertBm25Contributed(descriptor.Name);
     }
 
+    [Theory]
+    [MemberData(nameof(Datasets))]
+    public async Task NdcgAt10_UnderCrossEncoderRerank_MeasuresWithRerankerProvablyReordering(
+        string datasetName)
+    {
+        Assert.SkipUnless(
+            BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
+            BeirHarness.SkipReason);
+        Assert.SkipUnless(
+            BeirHarness.IsRerankerProvisioned(out var rerankModelPath, out var rerankVocabPath),
+            BeirHarness.RerankerSkipReason);
+        Assert.SkipWhen(!BeirRunBudget.IsOptedIn(), FormattableString.Invariant($"""
+            {datasetName} +reranker cell is OPT-IN and did NOT run.
+            Cost: DERIVED, not measured — the dataset's parity run when the embedding cache is cold,
+            plus one cross-encoder inference per (query, candidate) pair on top of the query-side
+            work; Task 7 measures it and records it in BeirRunBudget, which throws on unmeasured
+            dataset/protocol pairs and so cannot gate this cell yet.
+            To run this cell:
+              {BeirRunBudget.OptInVariable}=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build --filter "DisplayName~{nameof(BeirAblationTests)}&DisplayName~{datasetName}"
+            """));
+
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+        var ct = TestContext.Current.CancellationToken;
+
+        // The space separator, explicitly, for the reason BeirParityTests passes it explicitly:
+        // it decides what is embedded, and the ablation's anchor row was validated under it.
+        var dataset = await BeirHarness.LoadAsync(descriptor, cacheDirectory, " ", ct);
+
+        using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
+        var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
+
+        // MaxLength stays at OnnxRerankerOptions' default of 512 — ms-marco-MiniLM-L6-v2's own
+        // limit. The dense candidates it rescores were embedded at 256; see the row's remarks for
+        // why the two truncations differ on purpose.
+        using var reranker = new OnnxReranker(new OnnxRerankerOptions
+        {
+            ModelPath = rerankModelPath,
+            VocabPath = rerankVocabPath,
+        });
+        var row = new RerankedAblationRow(reranker);
+
+        var units = BeirHarness.OneChunkPerDocument(dataset.Documents);
+        var run = await BeirHarness.MeasureAsync(
+            descriptor, dataset, units, row, generator, embeddings, ct);
+
+        _output.WriteLine(Describe(descriptor, row, run));
+
+        // Before the number is trusted: if the cross-encoder returned its input order — all-equal
+        // scores, wrong output tensor — this cell is the dense cell wearing a reranker label.
+        row.AssertRerankerReordered(descriptor.Name);
+    }
+
     /// <summary>The cell, labelled the way the published table must label it.</summary>
     private static string Describe(
         BeirDatasetDescriptor descriptor, HybridBm25AblationRow row, BeirRunResult run) =>
@@ -107,6 +160,16 @@ public sealed class BeirAblationTests
             === {descriptor.Name} · {row.Name} ===
             Internal comparison ONLY: the dense anchor is comparable to published ≈ {descriptor.ParityTarget.PublishedNdcgAt10:F5}; this row is comparable to NO published BM25 or hybrid figure.
             BM25 non-empty for {row.Bm25ProductiveQueryCount} of {row.QueryCount} queries; fused ranking diverged from dense on {row.DivergedQueryCount}.
+            {run.Describe()}
+            """);
+
+    /// <summary>The reranked cell, stating the evidence its guard judges.</summary>
+    private static string Describe(
+        BeirDatasetDescriptor descriptor, RerankedAblationRow row, BeirRunResult run) =>
+        FormattableString.Invariant($"""
+            === {descriptor.Name} · {row.Name} ===
+            Dense anchor comparable to published ≈ {descriptor.ParityTarget.PublishedNdcgAt10:F5}; this row rescores that anchor's top-k with the cross-encoder.
+            Reranked order differed from dense order on {row.ReorderedQueryCount} of {row.QueryCount} queries.
             {run.Describe()}
             """);
 }

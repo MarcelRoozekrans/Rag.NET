@@ -201,6 +201,29 @@ jobs:
       MINILM_REVISION: 1110a243fdf4706b3f48f1d95db1a4f5529b4d41
       MINILM_MODEL_SHA256: 6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452
       MINILM_VOCAB_SHA256: 07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3
+
+      # The cross-encoder the +reranker ablation row rescores the dense top-k with. The Hugging Face
+      # repository is cross-encoder/ms-marco-MiniLM-L6-v2 — upstream renamed it from
+      # ms-marco-MiniLM-L-6-v2, and the old name is a redirect, so the canonical name is pinned here.
+      # Where each value came from, recorded on 2026-08-01 so a failed checksum can be re-derived
+      # rather than "fixed":
+      #   RERANKER_REVISION is main's targetCommit from the HF API
+      #     (api/models/cross-encoder/ms-marco-MiniLM-L6-v2/refs).
+      #   RERANKER_MODEL_SHA256 is the Git LFS oid the HF tree API reports for onnx/model.onnx at
+      #     that revision (LFS oids ARE the SHA-256 of the content), re-verified locally with
+      #     sha256sum over the downloaded file.
+      #   RERANKER_VOCAB_SHA256 was computed locally (sha256sum) over vocab.txt fetched at that
+      #     revision; vocab.txt is not an LFS file, so HF publishes no digest for it. It is
+      #     byte-identical to MINILM_VOCAB_SHA256 above, and that is expected rather than a
+      #     copy-paste accident: both models tokenize with the standard BERT uncased WordPiece
+      #     vocabulary.
+      # Token limits, stated so nobody reads one as a bug: the reranker scores query-passage pairs
+      # truncated at OnnxRerankerOptions' default MaxLength of 512 (this model's own limit), while
+      # the embedder above truncates at 256 (all-MiniLM-L6-v2's max_seq_length, the published
+      # configuration). Different models doing different jobs; they need not agree.
+      RERANKER_REVISION: c5ee24cb16019beea0893ab7796b1df96625c6b8
+      RERANKER_MODEL_SHA256: 5d3e70fd0c9ff14b9b5169a51e957b7a9c74897afd0a35ce4bd318150c1d4d4a
+      RERANKER_VOCAB_SHA256: 07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -255,6 +278,31 @@ jobs:
           echo "$MINILM_MODEL_SHA256  $dir/model.onnx" | sha256sum -c -
           echo "$MINILM_VOCAB_SHA256  $dir/vocab.txt"  | sha256sum -c -
 
+      # ~87 MB, cached for the same reason as the embedder above, keyed on the pinned revision for
+      # the same reason: bumping RERANKER_REVISION is the one thing that invalidates it.
+      - name: Cache the ms-marco-MiniLM-L6-v2 cross-encoder ONNX export
+        id: reranker-model-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/models/ms-marco-MiniLM-L6-v2
+          key: ms-marco-MiniLM-L6-v2-onnx-${{ env.RERANKER_REVISION }}
+
+      # Pinned and digest-checked exactly like the embedder's fetch above, and for the same reason:
+      # `main` on someone else's repository can be force-pushed, and a silently different
+      # cross-encoder would move the reranked cells by an amount nobody could attribute. If a
+      # checksum fails, do NOT edit the checksum to match — see the embedder's fetch step.
+      - name: Fetch the ms-marco-MiniLM-L6-v2 cross-encoder ONNX export
+        if: steps.reranker-model-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          base="https://huggingface.co/cross-encoder/ms-marco-MiniLM-L6-v2/resolve/$RERANKER_REVISION"
+          dir="$RUNNER_TEMP/models/ms-marco-MiniLM-L6-v2"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 --retry-all-errors -o "$dir/model.onnx" "$base/onnx/model.onnx"
+          curl -fsSL --retry 3 --retry-all-errors -o "$dir/vocab.txt"  "$base/vocab.txt"
+          echo "$RERANKER_MODEL_SHA256  $dir/model.onnx" | sha256sum -c -
+          echo "$RERANKER_VOCAB_SHA256  $dir/vocab.txt"  | sha256sum -c -
+
       # The two ONNX variables and the BEIR cache are set HERE rather than in the job's `env:`
       # block, and that is not a style choice: `runner` is not one of the contexts available to
       # `jobs.<id>.env`, and a literal "$RUNNER_TEMP/beir" would reach the test process unexpanded.
@@ -263,11 +311,12 @@ jobs:
       # SciFact on demand into it and verifies BEIR's published MD5, so the only thing the variable
       # has to name is a writable directory. It was omitted from this job entirely until now, which
       # meant SciFactParityTests skipped every night and the job went green having measured nothing.
-      - name: Point the env-gated suites at the model and the dataset cache
+      - name: Point the env-gated suites at the models and the dataset cache
         run: |
           set -euo pipefail
           dir="$RUNNER_TEMP/models/all-MiniLM-L6-v2"
-          for file in "$dir/model.onnx" "$dir/vocab.txt"; do
+          rerankerDir="$RUNNER_TEMP/models/ms-marco-MiniLM-L6-v2"
+          for file in "$dir/model.onnx" "$dir/vocab.txt" "$rerankerDir/model.onnx" "$rerankerDir/vocab.txt"; do
             if [ ! -s "$file" ]; then
               echo "::error::$file is missing or empty after the fetch/cache steps. Failing rather than exporting a path that does not exist, because every reader of these variables calls File.Exists and would silently skip instead."
               exit 1
@@ -276,6 +325,8 @@ jobs:
           {
             echo "RAGNET_ONNX_EMBED_MODEL=$dir/model.onnx"
             echo "RAGNET_ONNX_EMBED_VOCAB=$dir/vocab.txt"
+            echo "RAGNET_ONNX_RERANK_MODEL=$rerankerDir/model.onnx"
+            echo "RAGNET_ONNX_RERANK_VOCAB=$rerankerDir/vocab.txt"
             echo "RAGNET_BEIR_CACHE=$RUNNER_TEMP/beir"
           } >> "$GITHUB_ENV"
 
@@ -294,7 +345,8 @@ jobs:
       - name: Report which env-gated variables are present
         run: |
           for name in RAGNET_TESSDATA RAGNET_DOCINTEL_ENDPOINT RAGNET_DOCINTEL_KEY \
-                      RAGNET_ONNX_EMBED_MODEL RAGNET_ONNX_EMBED_VOCAB RAGNET_BEIR_CACHE \
+                      RAGNET_ONNX_EMBED_MODEL RAGNET_ONNX_EMBED_VOCAB \
+                      RAGNET_ONNX_RERANK_MODEL RAGNET_ONNX_RERANK_VOCAB RAGNET_BEIR_CACHE \
                       RAGNET_BEIR_LONG_RUNS; do
             if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: unset — its tests will skip"; fi
           done

@@ -38,6 +38,19 @@ public static class BeirHarness
         "ONNX export (token-level output) and its WordPiece vocab.txt, and RAGNET_BEIR_CACHE to a " +
         "writable directory for the dataset downloads, to run the BEIR measurements.";
 
+    /// <summary>The message a run without the cross-encoder skips with.</summary>
+    /// <remarks>
+    /// The reranker's variables follow the embedder's convention —
+    /// <c>RAGNET_ONNX_EMBED_MODEL</c>/<c>RAGNET_ONNX_EMBED_VOCAB</c> begat
+    /// <c>RAGNET_ONNX_RERANK_MODEL</c>/<c>RAGNET_ONNX_RERANK_VOCAB</c> — and both are provisioned
+    /// by the same pinned-revision, SHA-256-verified steps in <c>nightly.yml</c>, where the pins
+    /// and their sources are recorded.
+    /// </remarks>
+    public const string RerankerSkipReason =
+        "Set RAGNET_ONNX_RERANK_MODEL and RAGNET_ONNX_RERANK_VOCAB to an existing " +
+        "cross-encoder/ms-marco-MiniLM-L6-v2 ONNX export and its WordPiece vocab.txt to run the " +
+        "reranked ablation cell.";
+
     /// <summary>
     /// What the embedding cache's keys are salted with.
     /// </summary>
@@ -88,6 +101,23 @@ public static class BeirHarness
         cacheDirectory = BeirDatasetCache.ResolveCacheDirectoryFromEnvironment() ?? string.Empty;
 
         return File.Exists(modelPath) && File.Exists(vocabPath) && cacheDirectory.Length > 0;
+    }
+
+    /// <summary>Reports whether the cross-encoder the reranked row rescores with is present.</summary>
+    /// <param name="modelPath">Receives <c>RAGNET_ONNX_RERANK_MODEL</c>.</param>
+    /// <param name="vocabPath">Receives <c>RAGNET_ONNX_RERANK_VOCAB</c>.</param>
+    /// <returns><see langword="true"/> when the reranked cell can run.</returns>
+    /// <remarks>
+    /// Separate from <see cref="IsProvisioned"/> rather than folded into it, because folding it in
+    /// would make every dense, hybrid and HyDE measurement skip on a machine that has the embedder
+    /// but not the cross-encoder — three rows held hostage to a model only the fourth one reads.
+    /// </remarks>
+    public static bool IsRerankerProvisioned(out string modelPath, out string vocabPath)
+    {
+        modelPath = Environment.GetEnvironmentVariable("RAGNET_ONNX_RERANK_MODEL") ?? string.Empty;
+        vocabPath = Environment.GetEnvironmentVariable("RAGNET_ONNX_RERANK_VOCAB") ?? string.Empty;
+
+        return File.Exists(modelPath) && File.Exists(vocabPath);
     }
 
     /// <summary>
