@@ -134,9 +134,11 @@ public sealed class BeirRealChunkingTests
         // Both legs in one process, off one cache, so the comparison is between two protocols and
         // not between two runs of the machine.
         var parity = await BeirHarness.MeasureAsync(
-            descriptor, dataset, BeirHarness.OneChunkPerDocument(dataset.Documents), generator, embeddings, ct);
+            descriptor, dataset, BeirHarness.OneChunkPerDocument(dataset.Documents), AblationRow.Dense,
+            generator, embeddings, ct);
         var real = await BeirHarness.MeasureAsync(
-            descriptor, dataset, await ChunkAsync(dataset.Documents, ct), generator, embeddings, ct);
+            descriptor, dataset, await ChunkAsync(dataset.Documents, ct), AblationRow.Dense,
+            generator, embeddings, ct);
 
         _output.WriteLine(Describe(descriptor, parity, real));
 
