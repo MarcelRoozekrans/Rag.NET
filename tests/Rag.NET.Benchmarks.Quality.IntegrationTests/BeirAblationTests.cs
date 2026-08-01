@@ -15,7 +15,10 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// machinery silently did nothing produces the dense ranking under another label — a passing test
 /// displaying a meaningless cell, the failure shape this milestone keeps finding. For the hybrid
 /// row that guard is <see cref="HybridBm25AblationRow.AssertBm25Contributed"/>, whose evidence the
-/// row collects per query while the harness aggregates identically for every row.
+/// row collects per query while the harness aggregates identically for every row. Once the
+/// mechanism is proven, every cell's figure is checked against <see cref="BeirReproduction"/>'s
+/// recorded reproduction at ±0.005 — no published figure exists for any cell, so that window is
+/// the only thing pinning the ablation table's numbers to anything.
 /// </para>
 /// <para>
 /// <b>Opt-in, through the budget table.</b> <see cref="BeirRunBudget"/> keys costs on
@@ -95,6 +98,11 @@ public sealed class BeirAblationTests
         // Before the number is trusted: if BM25 returned nothing, or returned things that never
         // moved a ranking, this cell is the dense cell wearing a hybrid label.
         row.AssertBm25Contributed(descriptor.Name);
+
+        // Last, once the mechanism is proven: did OUR number move. No published band exists for
+        // this cell at all, so BeirReproduction's ±0.005 window is the only thing pinning it.
+        BeirReproduction.AssertReproduces(
+            datasetName, BeirProtocol.HybridBm25, run.NdcgAt10, _output);
     }
 
     [Theory]
@@ -141,6 +149,11 @@ public sealed class BeirAblationTests
         // Before the number is trusted: if the cross-encoder returned its input order — all-equal
         // scores, wrong output tensor — this cell is the dense cell wearing a reranker label.
         row.AssertRerankerReordered(descriptor.Name);
+
+        // Last, once the mechanism is proven: did OUR number move. The recorded figures are the
+        // post-a912187 ones; a run reproducing the pre-fix figure fails here, by design.
+        BeirReproduction.AssertReproduces(
+            datasetName, BeirProtocol.Reranked, run.NdcgAt10, _output);
     }
 
     [Theory]
@@ -187,6 +200,10 @@ public sealed class BeirAblationTests
         // Before the number is trusted: if the hypothetical path collapsed to the query embedding,
         // this cell is the dense cell wearing a HyDE label.
         row.AssertHydeDiverged(descriptor.Name);
+
+        // Last, once the mechanism is proven: did OUR number move. No published band exists for
+        // this cell at all, so BeirReproduction's ±0.005 window is the only thing pinning it.
+        BeirReproduction.AssertReproduces(datasetName, BeirProtocol.Hyde, run.NdcgAt10, _output);
     }
 
     [Fact]

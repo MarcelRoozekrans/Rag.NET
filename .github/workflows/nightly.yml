@@ -166,7 +166,7 @@ jobs:
     # Intelligence call that never returns.
     #
     # This number is NOT the thing to raise when a BEIR case does not fit. Phase 3.12 added FiQA,
-    # whose parity leg measures 1 h 11 m and whose real leg has never finished at an estimated 8-9 h;
+    # whose parity leg measures 1 h 11 m and whose real leg measured 1 h 4 m when Phase 3.15 ran it;
     # no timeout makes those two affordable here, and a job that times out reports nothing about
     # parity at all. They are gated behind RAGNET_BEIR_LONG_RUNS instead, which this job never sets,
     # and each one skips naming its own cost. BeirRunBudget holds the split and the measurements.

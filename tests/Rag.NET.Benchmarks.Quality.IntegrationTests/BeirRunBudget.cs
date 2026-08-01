@@ -7,9 +7,9 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <b>Why there is a budget at all.</b> <c>nightly.yml</c>'s <c>env-gated</c> job has
 /// <c>timeout-minutes: 120</c> and spends part of that restoring, building the whole solution and
 /// running four other <c>&lt;RequiresSecrets&gt;</c> projects before this one starts. Phase 3.12
-/// Task 4 added FiQA, whose parity run measures 1 h 11 m and whose real run has never been run to
-/// completion — then estimated at 8–9 h, since revised to a derived ~1.5–2 h by Phase 3.16's
-/// packing chunker. There is no arrangement of a 120-minute job in which those two
+/// Task 4 added FiQA, whose parity run measures 1 h 11 m and whose real run — estimated at 8–9 h,
+/// revised to a derived ~1.5–2 h by Phase 3.16's packing chunker — measured 1 h 4 m when Phase
+/// 3.15 finally ran it. There is no arrangement of a 120-minute job in which those two
 /// finish, so the job as it stood would have timed out — and <b>a timeout reports nothing about
 /// parity</b>, which is the same silence this workflow was fixed to stop producing.
 /// </para>
@@ -95,13 +95,14 @@ public static class BeirRunBudget
             "fiqa",
             BeirProtocol.Real,
             FitsTheNightly: false,
-            "~1.5-2 h, DERIVED: it has never been run to completion. Phase 3.16's packing chunker " +
-            "cut the real leg from 429,850 chunks (the basis of the old 8-9 h estimate) to " +
-            "121,236 — 2.1x the corpus — and the packed SciFact and ArguAna real legs embedded " +
-            "35,589 fresh texts in 1,310 s combined (~27/s), which prices ~122,000 embeddings at " +
-            "~75 min before InMemoryVectorStore sorts all 121,236 entries per query for the 648 " +
-            "judged queries — the only ones retrieved since Phase 3.15, where retrieving for all " +
-            "6,648 would have spent ten times the query-side work on rankings nothing can score."),
+            "1 h 4 m for the whole test, MEASURED 2026-08-02 (Phase 3.15); the real leg alone was " +
+            "3,587.5 s (59.8 min), with the parity leg's vectors warm from the cache. 121,236 " +
+            "chunk embeddings plus the 648 judged queries' — the only ones retrieved since Phase " +
+            "3.15 — then InMemoryVectorStore sorts all 121,236 entries per query. The derived " +
+            "~1.5-2 h estimate this replaces (~27 embeddings/s, taken from the packed SciFact " +
+            "and ArguAna real legs) was conservative: it overshot the measured hour, and is " +
+            "recorded as having overshot rather than quietly replaced. The 8-9 h figure before " +
+            "it priced the pre-3.16 fragmenting chunker's 429,850 chunks and died with them."),
         new(
             "arguana",
             BeirProtocol.Parity,
