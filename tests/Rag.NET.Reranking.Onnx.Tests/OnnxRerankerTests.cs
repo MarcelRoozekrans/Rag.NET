@@ -16,6 +16,28 @@ public class OnnxRerankerTests
         Assert.Throws<FileNotFoundException>(() => new OnnxReranker(options));
     }
 
+    /// <summary>
+    /// MaxLength is the ceiling on the whole feed, and [CLS] plus two [SEP] already occupy three
+    /// positions. A MaxLength that cannot hold them leaves no truncation that honours it, so it is
+    /// refused at construction rather than silently producing a longer sequence than asked for.
+    /// Checked before the file paths are, so the message names the option and not a missing file.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void Constructor_WhenMaxLengthCannotHoldTheSpecialTokens_ThrowsArgumentOutOfRangeException(int maxLength)
+    {
+        var options = new OnnxRerankerOptions
+        {
+            ModelPath = "nonexistent/model.onnx",
+            VocabPath = "nonexistent/vocab.txt",
+            MaxLength = maxLength,
+        };
+
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new OnnxReranker(options));
+        Assert.Contains("MaxLength", ex.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Constructor_WhenOptionsIsNull_ThrowsArgumentNullException()
     {
@@ -41,27 +63,6 @@ public class OnnxRerankerTests
         finally
         {
             File.Delete(tempModel);
-        }
-    }
-
-    [Fact]
-    public void LoadVocab_CorrectlyMapsLineIndexToTokenId()
-    {
-        // Write a minimal vocab file: [PAD]=0, [UNK]=1, hello=2, world=3
-        var vocabFile = Path.GetTempFileName();
-        File.WriteAllLines(vocabFile, ["[PAD]", "[UNK]", "hello", "world"]);
-
-        try
-        {
-            var vocab = OnnxReranker.LoadVocabForTest(vocabFile);
-            Assert.Equal(0, vocab["[PAD]"]);
-            Assert.Equal(1, vocab["[UNK]"]);
-            Assert.Equal(2, vocab["hello"]);
-            Assert.Equal(3, vocab["world"]);
-        }
-        finally
-        {
-            File.Delete(vocabFile);
         }
     }
 }

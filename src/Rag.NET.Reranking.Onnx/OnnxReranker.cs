@@ -9,11 +9,19 @@ public sealed class OnnxReranker : IReranker, IDisposable
 {
     private readonly InferenceSession _session;
     private readonly OnnxRerankerOptions _options;
-    private readonly IReadOnlyDictionary<string, int> _vocab;
+    private readonly CrossEncoderPairTokenizer _tokenizer;
 
     public OnnxReranker(OnnxRerankerOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
+
+        // Before the file checks, so the message names the option rather than a missing file.
+        if (options.MaxLength <= CrossEncoderPairTokenizer.SpecialTokensPerPair)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options),
+                $"MaxLength ({options.MaxLength}) must exceed the " +
+                $"{CrossEncoderPairTokenizer.SpecialTokensPerPair} positions reserved for [CLS] and the two [SEP].");
+        }
 
         if (!File.Exists(options.ModelPath))
             throw new FileNotFoundException($"ONNX model file not found: {options.ModelPath}", options.ModelPath);
@@ -23,7 +31,7 @@ public sealed class OnnxReranker : IReranker, IDisposable
                 $"BERT vocabulary file not found: {options.VocabPath}", options.VocabPath);
 
         _options = options;
-        _vocab = LoadVocab(options.VocabPath);
+        _tokenizer = new CrossEncoderPairTokenizer(options.VocabPath);
         _session = new InferenceSession(options.ModelPath);
     }
 
@@ -74,75 +82,14 @@ public sealed class OnnxReranker : IReranker, IDisposable
     private (DenseTensor<long> InputIds, DenseTensor<long> AttentionMask, DenseTensor<long> TokenTypeIds) TokenizePair(
         string query, string passage)
     {
-        const int unkId = 100; // [UNK] in standard BERT vocab
+        var (inputIds, attentionMask, tokenTypeIds) = _tokenizer.Encode(query, passage, _options.MaxLength);
+        ReadOnlySpan<int> shape = [1, inputIds.Length];
 
-        var maxLen = _options.MaxLength;
-        var queryTokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var passageTokens = passage.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-        // Reserve 3 tokens for [CLS] and two [SEP]
-        var available = maxLen - 3;
-        var queryLen = Math.Min(queryTokens.Length, available / 2);
-        var passageLen = Math.Min(passageTokens.Length, available - queryLen);
-        var totalLen = queryLen + passageLen + 3;
-
-        int[] queryIds = Array.ConvertAll(queryTokens, w => _vocab.TryGetValue(w.ToLowerInvariant(), out var id) ? id : unkId);
-        int[] passageIds = Array.ConvertAll(passageTokens, w => _vocab.TryGetValue(w.ToLowerInvariant(), out var id) ? id : unkId);
-
-        var inputIds = new DenseTensor<long>([1, totalLen]);
-        var attentionMask = new DenseTensor<long>([1, totalLen]);
-        var tokenTypeIds = new DenseTensor<long>([1, totalLen]);
-
-        // [CLS] = 101
-        inputIds[0, 0] = 101;
-        attentionMask[0, 0] = 1;
-        tokenTypeIds[0, 0] = 0;
-
-        var pos = 1;
-        for (var i = 0; i < queryLen; i++, pos++)
-        {
-            inputIds[0, pos] = queryIds[i];
-            attentionMask[0, pos] = 1;
-            tokenTypeIds[0, pos] = 0;
-        }
-
-        // [SEP] = 102
-        inputIds[0, pos] = 102;
-        attentionMask[0, pos] = 1;
-        tokenTypeIds[0, pos] = 0;
-        pos++;
-
-        for (var i = 0; i < passageLen; i++, pos++)
-        {
-            inputIds[0, pos] = passageIds[i];
-            attentionMask[0, pos] = 1;
-            tokenTypeIds[0, pos] = 1;
-        }
-
-        // [SEP]
-        inputIds[0, pos] = 102;
-        attentionMask[0, pos] = 1;
-        tokenTypeIds[0, pos] = 1;
-
-        return (inputIds, attentionMask, tokenTypeIds);
+        return (
+            new DenseTensor<long>(inputIds, shape),
+            new DenseTensor<long>(attentionMask, shape),
+            new DenseTensor<long>(tokenTypeIds, shape));
     }
-
-    private static IReadOnlyDictionary<string, int> LoadVocab(string vocabPath)
-    {
-        var lines = File.ReadAllLines(vocabPath);
-        var vocab = new Dictionary<string, int>(lines.Length, StringComparer.Ordinal);
-        for (var i = 0; i < lines.Length; i++)
-        {
-            var token = lines[i];
-            if (!string.IsNullOrEmpty(token))
-                vocab[token] = i;
-        }
-        return vocab;
-    }
-
-    // Internal for unit-test access; not part of the public API.
-    internal static IReadOnlyDictionary<string, int> LoadVocabForTest(string vocabPath) =>
-        LoadVocab(vocabPath);
 
     private static double Sigmoid(float x) => 1.0 / (1.0 + Math.Exp(-x));
 
