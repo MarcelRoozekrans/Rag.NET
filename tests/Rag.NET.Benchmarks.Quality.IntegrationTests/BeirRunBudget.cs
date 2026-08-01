@@ -169,9 +169,12 @@ public static class BeirRunBudget
     /// Presence is not enough on its own: <c>RAGNET_BEIR_LONG_RUNS=0</c> in a workflow reads to
     /// every human as "off", and a gate that turned nine hours of measurement on for it would be a
     /// trap rather than a switch. "0" and "false" are therefore off, and anything else present is
-    /// on.
+    /// on. Internal rather than private since Phase 3.15: the ablation cells have no cost entries
+    /// yet — Task 7 measures them — and until they do, <see cref="BeirAblationTests"/> gates on
+    /// this directly so an unmeasured cell cannot default into the nightly through
+    /// <see cref="IsGatedOff"/>'s table lookup throwing or, worse, a parity entry answering for it.
     /// </remarks>
-    private static bool IsOptedIn()
+    internal static bool IsOptedIn()
     {
         var value = Environment.GetEnvironmentVariable(OptInVariable);
 

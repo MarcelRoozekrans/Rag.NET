@@ -17,10 +17,10 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <para>
 /// A row receives the per-run machinery as arguments — the query, the embedder, the vector cache,
 /// the store and how deep to search — and returns a ranked list of <see cref="ChunkHit"/>. What it
-/// does <b>not</b> receive as arguments is anything row-specific: a hybrid row's lexical index, a
-/// HyDE row's hypothetical cache or a reranked row's cross-encoder belong to the row instance that
-/// needs them, handed to its constructor, so adding a row never widens this signature for the rows
-/// that came before it.
+/// does <b>not</b> receive as arguments is anything row-specific: a hybrid row's lexical index
+/// (<see cref="HybridBm25AblationRow"/>), a HyDE row's hypothetical cache or a reranked row's
+/// cross-encoder belong to the row instance that needs them, handed to its constructor, so adding
+/// a row never widens this signature for the rows that came before it.
 /// </para>
 /// <para>
 /// The row stops at chunk hits deliberately. Max-pooling chunks back to documents, the
