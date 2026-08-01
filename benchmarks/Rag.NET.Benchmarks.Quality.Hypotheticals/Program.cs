@@ -75,11 +75,12 @@ internal static class Program
 
     public static async Task<int> Main(string[] args)
     {
-        var maxQueries = ParseMaxQueries(args);
-        if (maxQueries is null)
+        var arguments = ParseArguments(args);
+        if (arguments is null)
         {
             await Console.Error.WriteLineAsync(
-                "Usage: Rag.NET.Benchmarks.Quality.Hypotheticals [--max-queries N]").ConfigureAwait(false);
+                "Usage: Rag.NET.Benchmarks.Quality.Hypotheticals [--dataset NAME] [--max-queries N]")
+                .ConfigureAwait(false);
             return 2;
         }
 
@@ -108,8 +109,8 @@ internal static class Program
         // HypothesisCount = 3 exists to average away. At 0 the three hypotheses per query come back
         // near-identical and mean-of-3 collapses toward mean-of-1 — a configuration nobody ships.
         var options = new HydeOptions();
-        var datasets = await LoadEvaluatedQueriesAsync(cacheRoot).ConfigureAwait(false);
-        PrintPlan(datasets, options, maxQueries.Value);
+        var datasets = await LoadEvaluatedQueriesAsync(cacheRoot, arguments.DatasetName).ConfigureAwait(false);
+        PrintPlan(datasets, options, arguments.MaxQueries);
 
         var cache = new HypotheticalCache(
             cacheRoot, BuildModelIdentity(options), options.PromptTemplate, HypotheticalCacheMode.Fill);
@@ -119,7 +120,7 @@ internal static class Program
         foreach (var dataset in datasets)
         {
             await GenerateForDatasetAsync(
-                dataset, cache, chatClient, options, counters, maxQueries.Value).ConfigureAwait(false);
+                dataset, cache, chatClient, options, counters, arguments.MaxQueries).ConfigureAwait(false);
         }
 
         PrintSummary(counters);
@@ -127,26 +128,70 @@ internal static class Program
     }
 
     /// <summary>
-    /// <c>--max-queries N</c> or nothing; anything else is <see langword="null"/>, which prints
-    /// usage. The limit counts queries <i>visited</i> rather than generated, so a re-run of the
-    /// same limit revisits the same queries and reports them all cached — the resume check.
+    /// Parses <c>--dataset NAME</c> and <c>--max-queries N</c>, in either order; anything else is
+    /// <see langword="null"/>, which prints usage.
     /// </summary>
-    private static int? ParseMaxQueries(string[] args)
+    /// <remarks>
+    /// <para>
+    /// <c>--max-queries</c> counts queries <i>visited</i>, not generated, so re-running the same
+    /// limit revisits the same queries and reports them all cached — the resume check.
+    /// </para>
+    /// <para>
+    /// <c>--dataset</c> exists because the datasets are walked in descriptor order and ArguAna is
+    /// 948 queries down: without a filter there is no way to sample it, or to run the generation in
+    /// slices. Slicing is free — every already-cached index is skipped on the way past.
+    /// </para>
+    /// </remarks>
+    private static RunArguments? ParseArguments(string[] args)
     {
-        if (args.Length == 0)
+        string? datasetName = null;
+        var maxQueries = int.MaxValue;
+
+        for (var i = 0; i < args.Length; i += 2)
         {
-            return int.MaxValue;
+            if (i + 1 >= args.Length)
+            {
+                return null;
+            }
+
+            var value = args[i + 1];
+            if (string.Equals(args[i], "--dataset", StringComparison.Ordinal))
+            {
+                if (!KnowsDataset(value))
+                {
+                    return null;
+                }
+
+                datasetName = value;
+            }
+            else if (string.Equals(args[i], "--max-queries", StringComparison.Ordinal))
+            {
+                if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out maxQueries)
+                    || maxQueries <= 0)
+                {
+                    return null;
+                }
+            }
+            else
+            {
+                return null;
+            }
         }
 
-        if (args.Length == 2
-            && string.Equals(args[0], "--max-queries", StringComparison.Ordinal)
-            && int.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out var value)
-            && value > 0)
+        return new RunArguments(datasetName, maxQueries);
+    }
+
+    private static bool KnowsDataset(string name)
+    {
+        foreach (var descriptor in BeirDatasetDescriptor.All)
         {
-            return value;
+            if (string.Equals(descriptor.Name, name, StringComparison.Ordinal))
+            {
+                return true;
+            }
         }
 
-        return null;
+        return false;
     }
 
     /// <summary>
@@ -157,13 +202,20 @@ internal static class Program
     /// A dataset's evaluated-query count disagrees with its descriptor, which would mean filling
     /// the cache for the wrong query set.
     /// </exception>
-    private static async Task<IReadOnlyList<DatasetQueries>> LoadEvaluatedQueriesAsync(string cacheRoot)
+    private static async Task<IReadOnlyList<DatasetQueries>> LoadEvaluatedQueriesAsync(
+        string cacheRoot, string? datasetName)
     {
         var datasetCache = new BeirDatasetCache(cacheRoot);
         var datasets = new List<DatasetQueries>(BeirDatasetDescriptor.All.Count);
 
         foreach (var descriptor in BeirDatasetDescriptor.All)
         {
+            if (datasetName is not null
+                && !string.Equals(descriptor.Name, datasetName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
             var directory = await datasetCache.EnsureAsync(descriptor).ConfigureAwait(false);
             var queries = BeirLoader.LoadQueries(Path.Combine(directory, "queries.jsonl"));
             var qrels = BeirLoader.LoadQrels(Path.Combine(directory, "qrels", "test.tsv"));
@@ -371,6 +423,9 @@ internal static class Program
     /// <summary>One dataset and the subset of its queries that qrels judge.</summary>
     private sealed record DatasetQueries(
         BeirDatasetDescriptor Descriptor, IReadOnlyList<BeirQuery> Evaluated);
+
+    /// <summary>The command line: which dataset to walk, and how many of its queries to visit.</summary>
+    private sealed record RunArguments(string? DatasetName, int MaxQueries);
 
     /// <summary>
     /// Run totals. Generated and skipped counts are incremented from a query's concurrent
