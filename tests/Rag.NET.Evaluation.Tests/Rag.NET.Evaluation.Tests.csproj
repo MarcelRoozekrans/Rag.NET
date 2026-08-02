@@ -8,6 +8,8 @@
     <ProjectReference Include="..\..\src\Rag.NET.Evaluation\Rag.NET.Evaluation.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Evaluation.Ragas\Rag.NET.Evaluation.Ragas.csproj" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="9.*" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.*">

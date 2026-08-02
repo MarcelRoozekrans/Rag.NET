@@ -1007,13 +1007,13 @@ Lowering it buys nothing either. The resampling is `pairs × resamples` multiply
 
 **Below 1000 it throws**, and the reason is worth knowing. A 95% percentile interval trims `floor(0.025 × resamples)` values from each tail — and that expression is **zero for every value at or below 39**. With nothing trimmed the "interval" is simply the smallest and largest resample mean, whose expected coverage is `(B−1)/(B+1)`: 0.818 at ten resamples, not 0.95. It *under*-covers while still being labelled 95%, so it excludes zero more often than it should, which is the one failure this whole comparison exists to prevent. The floor sits at 1000 rather than 40 because each endpoint is an order statistic whose own jitter shrinks with how many draws land in the tail; at 1000 the lower endpoint is the 25th of 1000, which no handful of draws decides.
 
-### Shadow mode is not in this release
+### Shadow mode has its own guide
 
 `RagAbTester` is an **offline** harness. It runs a dataset you supply, out of band, at your own cost. It does not wrap production traffic.
 
-Shadow mode — a live pipeline returning the primary answer to the caller while a secondary runs out-of-band for scoring — is **scheduled as Phase 3.8** and deliberately not bolted on here. It is a production-path concern with its own failure modes: doubled LLM spend on every request, fire-and-forget work that is lost on host shutdown, a secondary that must never break a primary the caller has already received, and — because live traffic has no ground-truth answer — only the two reference-free metrics of the four. It deserves its own design rather than a flag on this one.
+Shadow mode — a live pipeline returning the primary answer to the caller while a secondary runs out-of-band, its result captured for offline scoring — shipped in Phase 3.8 as its own design rather than a flag on this one, because it is a production-path concern with its own failure modes: doubled spend on sampled requests, fire-and-forget work lost on host shutdown, a secondary that must never break a primary the caller already received, and — because live traffic has no ground-truth answer — only the two reference-free metrics until references are supplied at replay. See [the shadow mode guide](shadow-mode.md); `ShadowReplay.From` is the bridge that turns stored captures into this harness's `CompareAsync` input.
 
-Side-by-side review of two live answers is likewise out of scope for the same reason.
+Side-by-side review of two live answers remains out of scope.
 
 ### Limitations
 
