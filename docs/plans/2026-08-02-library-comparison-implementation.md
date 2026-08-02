@@ -136,11 +136,25 @@ Emit a run file. Score it with the same `IrMetrics` as the control.
 
 ---
 
-## Task 5: Kernel Memory at its defaults
+## Task 5: Kernel Memory — dropped, and why
 
-Same shape as Task 4.
+**Decided 2026-08-02, after Task 3 read its defaults and before any entrant was written.**
 
-**Commit:** `test(quality): Kernel Memory at its defaults`
+Kernel Memory is **archived**. Its NuGet packages are marked legacy and no longer maintained, and
+the repository's own README calls it "an archived research project"; `0.98.250508.3` (2025-05-09) is
+the final release.
+
+**Publishing a number against a project its own authors archived invites the fair objection that we
+picked something that could not answer back.** The finding — that the .NET ecosystem's other
+RAG-ingestion library is end-of-life — is worth more than the row would have been, and it is
+recorded **without a number attached**.
+
+Task 3 also established what the row would have shown, and it stays recorded because it is a real
+interoperability fact rather than a criticism: Kernel Memory's own `ChunkTooBigForEmbeddings` guard
+refuses its 1000-token default chunk size against a 256-token embedder, so the row could only have
+run at 256/100 — forced by Kernel Memory's validation, not by us.
+
+**No entrant is written. The finding goes in the published table's prose, and in the phase close.**
 
 ---
 

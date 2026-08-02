@@ -1,5 +1,10 @@
 # Library Comparison — the Defaults Every Entrant Is Measured At
 
+> **The measured results this page underpins are published:**
+> [Library Comparison at Defaults](./library-comparison.md) (Phase 3.14, 2026-08-02). This page
+> stays what it was — the pre-registered reading of every entrant's defaults, written before any
+> entrant existed.
+
 **Date read:** 2026-08-02
 **Phase:** 3.14, Task 3 — recorded **before** any comparator entrant was written
 **Design:** [`docs/plans/2026-08-02-library-comparison-design.md`](../plans/2026-08-02-library-comparison-design.md) §4
@@ -36,6 +41,13 @@ check the readings. The citations and the caveats *are* the content.
 library whose packages are deprecated and whose repository calls itself an archived research
 project. The row is still worth measuring — KM is widely deployed and 0.98.250508.3 is what a user
 gets — but the table must say the row is a final, unmaintained version, not a moving competitor.
+
+> **Overtaken 2026-08-02, before any entrant was written: the KM row was dropped.** Publishing a
+> number against a project its own authors archived invites the fair objection that the table
+> picked something that could not answer back, so the finding is recorded with **no number
+> attached** — the decision and its reasoning are in the implementation plan (Task 5) and the
+> [results page](./library-comparison.md). The readings below stand as readings; nothing ran at
+> them.
 
 ---
 
