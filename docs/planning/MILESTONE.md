@@ -1,7 +1,7 @@
 # Milestone 3: Quality Hardening & Evaluation
 
-**Status:** active — 15 of 16 phases complete; only Phase 3.14 (Library Comparison at Defaults)
-pending
+**Status:** active — all 16 phases complete (Phase 3.14 closed 2026-08-02); **the milestone stays
+open on its Definition of Done** — see the close assessment below
 **Started:** 2026-07-27
 
 ## Goal
@@ -14,7 +14,9 @@ Completed milestones are archived under `docs/planning/milestones/`.
 
 ## Definition of Done
 
-- [ ] All planned phases complete
+- [x] All planned phases complete (all 16 as of 2026-08-02; Phase 3.14 closed last. This box is a
+      phase criterion and its tick does not close the milestone: TREC-COVID/EnronQA's
+      run-or-decline still sits in this milestone's scope — see the close assessment)
 - [ ] No feature marked done in `features.md` lacks tests and docs — the detail sections and the
       summary matrix agree with each other and with the code
       **Failing as of the 2026-08-02 audit, not merely unfinished:** `features.md:666-676` marks
@@ -30,8 +32,17 @@ Completed milestones are archived under `docs/planning/milestones/`.
       `KnownFalseClaims` allow-list whose staleness tests fail when either is fixed or leaves the
       docs; the other 52 claims name code that exists. What the sweep does **not** establish: that
       the named code does what the row says — existence, not behaviour.
-- [ ] Integration/vector-store suites run in CI (Dockerized)
-- [ ] All tests passing; solution builds 0 warnings / 0 errors
+- [x] Integration/vector-store suites run in CI (Dockerized) — holding as of 2026-08-02: `ci.yml`
+      partitions the test projects into fast and Docker tiers with guards that fail a project
+      landing in neither, and the latest `main` push run (30760759923, 2026-08-02) is green
+      through the Docker tier
+- [ ] All tests passing; solution builds 0 warnings / 0 errors — **failing as of 2026-08-02,
+      narrowly and with the failure named**: the first genuine execution of the post-3.15
+      nightly (run 30735435427, 06:10 UTC) failed on the `BeirDatasetCache` download race — a
+      harness concurrency defect the run found, not a measurement; all four parity cases in the
+      same job passed. Recorded in the ROADMAP follow-up-debts list → Milestone 4, with 4.1. The
+      solution builds 0 warnings / 0 errors (verified locally 2026-08-02) and push CI on `main`
+      is green
 
 ## Scope correction found at milestone start (2026-07-27)
 
@@ -197,11 +208,40 @@ Assume nothing works until a test says so *and the test is right*.
    `BeirReproduction` pins the **measured** figures — separately from the published band, because
    ±0.02 is wider than most defects and a cut-then-pool mutation of `DocumentRanking` passed both the
    band and the real run's 0.5×–1.5× envelope green.
-13. Phase 3.14 — Library Comparison at Defaults [pending] — created by the 3.12 design, which decided
-   the framing 3.7 left open: matched-configuration tables measure how carefully each library was
-   configured and converge on rounding errors, because every entrant calls the same embedding model.
-   The credible comparison is each library's **defaults**, same corpus and same model, every
-   configuration published.
+13. Phase 3.14 — Library Comparison at Defaults [complete — 2026-08-02] — created by the 3.12 design,
+   which decided the framing 3.7 left open: matched-configuration tables measure how carefully each
+   library was configured and converge on rounding errors, because every entrant calls the same
+   embedding model. The credible comparison is each library's **defaults**, same corpus and same
+   model, every configuration published.
+   **Shipped: five entrants on SciFact and ArguAna, one matched embedder (the pinned
+   `all-MiniLM-L6-v2`), everything else at each library's own defaults, every row scored from a
+   TREC run file by the one `IrMetrics` behind the published figures.** nDCG@10, SciFact /
+   ArguAna: Rag.NET control **0.64593 / 0.50432**, Semantic Kernel 1.78.0 0.64593 / 0.50306,
+   LangChain core 1.5.3 **0.64613 / 0.50450**, LlamaIndex core 0.14.23 0.64508 / **0.50450**,
+   Haystack 3.0.0 0.62757 / 0.49715 — LangChain highest on SciFact, LangChain and LlamaIndex tied
+   highest on ArguAna, published plainly. The control row reproduced the published parity figures
+   exactly through the run-file boundary, which is what makes the other rows readable.
+   **The headline is that defaults barely matter on these corpora**: everything except Haystack
+   sits within thousandths, because most default chunk sizes exceed these documents — LangChain
+   and LlamaIndex produced at most 3 and 2 units per document — so the four non-Haystack rows are
+   published as **not separable** rather than ranked; **Haystack, the only entrant that chunks
+   hard at its defaults (200 words → 8,042 / 11,342 units), is the only one measurably lower.**
+   **Semantic Kernel has no default chunker at all** — no ingestion pipeline, `TextChunker`
+   experimental and size-less — so its row *is* the parity protocol, which is why it scored
+   identically to the control on SciFact. **Kernel Memory was dropped**: packages legacy, README
+   "an archived research project", 0.98.250508.3 final — a finding recorded with no number
+   attached. **LlamaIndex's default embedder validates an OpenAI API key at resolution**, so it
+   will not run offline at its true defaults; all three Python libraries default to
+   `text-embedding-ada-002`, each would-have-been embedder published beside its row. **The
+   identity check found the two ecosystems' tokenizers disagreeing on accented text at their
+   defaults** — HF strips accents, `Microsoft.ML.Tokenizers` does not (`müllerian` → `[UNK]`),
+   0.166 max-abs apart until Python was pinned `strip_accents=False`, then all six battery
+   strings bitwise identical — given a section of its own on the results page because anyone
+   comparing this repository's BEIR figures against Python-stack numbers needs it. **FiQA is
+   unrun for every entrant**, recorded NEVER RUN at a derived ~1 h each. Reproducible: every
+   version pinned, `uv.lock` committed, run files re-scorable by an outsider's `trec_eval`,
+   every figure pinned in `BeirReproduction` at ±0.005. Docs:
+   `docs/reference/library-comparison.md` + `library-comparison-defaults.md`.
 14. Phase 3.15 — Retrieval Ablation Table [complete — 2026-08-02] — §4–§5 of the 3.12 design: dense
    → +BM25 hybrid → +HyDE → +reranker over SciFact, FiQA and ArguAna on the parity protocol
    (judged queries only), each row labelled for what it is, plus FiQA's long-deferred real leg.
@@ -362,6 +402,41 @@ Assume nothing works until a test says so *and the test is right*.
    fails safe, and retention, encryption and deletion are named as the store implementer's.
    Documented in `docs/guide/shadow-mode.md`; features.md's A/B row updated in place, no new
    `KnownFalseClaims` entry.
+
+## Close assessment (2026-08-02, at Phase 3.14's close)
+
+Every DoD criterion checked against reality, the way the 2026-08-02 audit checked claims — because
+an honestly open milestone is worth more than a ticked box:
+
+1. **All planned phases complete — holds.** 16 of 16, Phase 3.14 last. Ticked above.
+2. **features.md detail sections, matrix and code agree — fails, and has been recorded failing
+   since the audit.** Phase 4.0's `FeatureClaimTests` holds exactly two live failures in
+   `KnownFalseClaims`: `Rag.NET.Telemetry` (a package that does not exist, marked Done,
+   `features.md:666-676`) → **Phase 4.4**, and `Rag.NET.Parsers.CSharp` (a real feature under a
+   package name that does not exist; it lives at `src/Rag.NET.Chunking.CSharp`) → **Phase 4.1**.
+   Phase 3.14 neither fixed them nor added to them. Both owners are Milestone 4 phases, so this
+   criterion cannot become true inside Milestone 3 as currently scheduled — whoever closes this
+   milestone either waits for those fixes or explicitly re-scopes the criterion, and that
+   re-scope would have to be written here, not implied.
+3. **Integration/vector-store suites run in CI (Dockerized) — holds.** Ticked above, with the run
+   id it was checked against.
+4. **All tests passing; 0 warnings / 0 errors — fails today, narrowly.** Build 0/0 and push CI
+   green; but the first genuine execution of the post-3.15 nightly (2026-08-02) failed on the
+   `BeirDatasetCache` download race — named test, named cause, recorded in the ROADMAP
+   follow-up-debts list → Milestone 4, with 4.1. All four parity measurements in that job passed,
+   so the failure is a harness defect, not a retrieval regression; the criterion still reads
+   "all tests passing" and a red nightly on `main` fails it.
+
+**Verdict: Milestone 3 does not close.** What remains, named and owned:
+
+- **The two `KnownFalseClaims` entries** (criterion 2): OTel ghost → Phase 4.4,
+  `Rag.NET.Parsers.CSharp` name → Phase 4.1.
+- **A green nightly on `main`** (criterion 4): the `BeirDatasetCache` download race → Milestone 4,
+  with 4.1.
+- **TREC-COVID and EnronQA: run or explicitly declined before this milestone closes** (the
+  Milestone 4 replan §5's rule — not smuggled into 4), the FiQA-qrels check first. No phase owns
+  this; it sits with whoever closes the milestone, and a decline must be written into the ROADMAP
+  debt entry, not implied.
 
 ## Explicitly not in scope
 
