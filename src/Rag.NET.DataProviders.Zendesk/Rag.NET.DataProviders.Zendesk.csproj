@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.Zendesk</RootNamespace>
     <PackageId>Rag.NET.DataProviders.Zendesk</PackageId>
     <Description>Zendesk data provider for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />

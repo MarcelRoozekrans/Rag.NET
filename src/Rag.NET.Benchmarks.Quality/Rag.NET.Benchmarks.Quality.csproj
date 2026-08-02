@@ -8,6 +8,7 @@
          what the solution lists, and a nDCG calculator on nuget.org under the Rag.NET name would be
          a support surface nobody asked for. -->
     <IsPackable>false</IsPackable>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

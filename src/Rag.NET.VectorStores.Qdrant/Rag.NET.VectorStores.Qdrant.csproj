@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.VectorStores.Qdrant</RootNamespace>
     <PackageId>Rag.NET.VectorStores.Qdrant</PackageId>
     <Description>Qdrant vector store for Rag.NET</Description>
+    <VerifiedBy>container</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

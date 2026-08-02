@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.Asana</RootNamespace>
     <PackageId>Rag.NET.DataProviders.Asana</PackageId>
     <Description>Asana data provider for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />

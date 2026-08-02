@@ -4,6 +4,10 @@
     <RootNamespace>Rag.NET.VectorStores.Pinecone</RootNamespace>
     <PackageId>Rag.NET.VectorStores.Pinecone</PackageId>
     <Description>Pinecone vector store for Rag.NET</Description>
+    <!-- container via pinecone-local, the vendor's own emulator. Known limit: it cannot
+         accept sparse-on-dense upserts, so the sparse round-trip is permanently skipped
+         and can only ever run against the real serverless service. -->
+    <VerifiedBy>container</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

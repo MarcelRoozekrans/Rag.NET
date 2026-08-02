@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Parsers.Pdf</RootNamespace>
     <PackageId>Rag.NET.Parsers.Pdf</PackageId>
     <Description>PDF document parser for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Parsers.Excel</RootNamespace>
     <PackageId>Rag.NET.Parsers.Excel</PackageId>
     <Description>Excel document parser for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

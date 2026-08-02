@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.DataProviders.GitLab</RootNamespace>
     <PackageId>Rag.NET.DataProviders.GitLab</PackageId>
     <Description>GitLab data provider for Rag.NET using NGitLab</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

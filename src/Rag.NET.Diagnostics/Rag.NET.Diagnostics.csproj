@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Diagnostics</RootNamespace>
     <PackageId>Rag.NET.Diagnostics</PackageId>
     <Description>Disposable in-memory pipeline traces for Rag.NET: the last N query executions, with chunk scores, stage latencies and guard actions</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

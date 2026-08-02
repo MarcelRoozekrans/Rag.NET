@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.QueryTechniques</RootNamespace>
     <PackageId>Rag.NET.QueryTechniques</PackageId>
     <Description>HyDE, multi-query, and self-query techniques for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

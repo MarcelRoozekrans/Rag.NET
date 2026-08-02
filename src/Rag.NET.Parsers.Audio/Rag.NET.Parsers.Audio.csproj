@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Parsers.Audio</RootNamespace>
     <PackageId>Rag.NET.Parsers.Audio</PackageId>
     <Description>Audio transcription parser for Rag.NET using Whisper.net</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

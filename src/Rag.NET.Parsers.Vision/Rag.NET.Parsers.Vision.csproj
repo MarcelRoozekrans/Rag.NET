@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Parsers.Vision</RootNamespace>
     <PackageId>Rag.NET.Parsers.Vision</PackageId>
     <Description>Image and video description parsers for Rag.NET using a vision LLM and FFMpeg</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

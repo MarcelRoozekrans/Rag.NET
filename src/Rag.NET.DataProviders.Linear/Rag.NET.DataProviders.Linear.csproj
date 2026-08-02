@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.Linear</RootNamespace>
     <PackageId>Rag.NET.DataProviders.Linear</PackageId>
     <Description>Linear issue tracker data provider for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />

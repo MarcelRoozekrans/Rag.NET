@@ -3,6 +3,9 @@
     <RootNamespace>Rag.NET.Ingestion.AzureServiceBus</RootNamespace>
     <PackageId>Rag.NET.Ingestion.AzureServiceBus</PackageId>
     <Description>Azure Service Bus ingestion trigger for Rag.NET: consumes messages from a queue or subscription, ingests each one end-to-end, and settles it on the outcome (complete / abandon / dead-letter).</Description>
+    <!-- container: the Docker-tier suite exercises the trigger against Microsoft's
+         official Service Bus emulator container. -->
+    <VerifiedBy>container</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />

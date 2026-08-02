@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.VectorStores.Chroma</RootNamespace>
     <PackageId>Rag.NET.VectorStores.Chroma</PackageId>
     <Description>Chroma vector store for Rag.NET</Description>
+    <VerifiedBy>container</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

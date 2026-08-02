@@ -4,6 +4,11 @@
     <RootNamespace>Rag.NET.Parsers.Pdf.AzureDocumentIntelligence</RootNamespace>
     <PackageId>Rag.NET.Parsers.Pdf.AzureDocumentIntelligence</PackageId>
     <Description>Azure Document Intelligence document-level OCR engine for Rag.NET's PDF parser</Description>
+    <!-- unit, not recorded, deliberately: the WireMock cassettes were written by hand, not
+         recorded from the live service, and the live suite has never run anywhere because
+         its secrets were never configured (see TestGateTests). Nothing has ever confirmed
+         the cassettes describe the real service. -->
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <!-- No <EnableOcr> gate on purpose. That gate exists for Tesseract's native binaries and

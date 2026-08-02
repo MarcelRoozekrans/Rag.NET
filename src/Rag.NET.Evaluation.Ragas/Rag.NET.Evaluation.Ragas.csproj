@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Evaluation.Ragas</RootNamespace>
     <PackageId>Rag.NET.Evaluation.Ragas</PackageId>
     <Description>RAGAS-style evaluation metrics for Rag.NET pipelines</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

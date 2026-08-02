@@ -6,6 +6,9 @@
     <ToolCommandName>ragnet-mcp</ToolCommandName>
     <PackAsTool>true</PackAsTool>
     <Description>Self-contained MCP server for Rag.NET. Configure via appsettings.json or environment variables.</Description>
+    <!-- No test anywhere runs this host: it is a Program.cs scaffold that no test project
+         references. Honest state, recorded; getting it above none is later Milestone 4 work. -->
+    <VerifiedBy>none</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

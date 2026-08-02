@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Graph</RootNamespace>
     <PackageId>Rag.NET.Graph</PackageId>
     <Description>Standalone graph library — Leiden community detection, PageRank, IGraphStore abstraction</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

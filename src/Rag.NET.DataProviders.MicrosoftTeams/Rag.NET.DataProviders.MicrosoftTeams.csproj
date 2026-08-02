@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.MicrosoftTeams</RootNamespace>
     <PackageId>Rag.NET.DataProviders.MicrosoftTeams</PackageId>
     <Description>Microsoft Teams data provider for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <!-- One definition, compiled into each Graph connector. It cannot live in the shared

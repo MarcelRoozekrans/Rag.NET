@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Chunking.TokenAware</RootNamespace>
     <PackageId>Rag.NET.Chunking.TokenAware</PackageId>
     <Description>Token-count-aware chunking strategy for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

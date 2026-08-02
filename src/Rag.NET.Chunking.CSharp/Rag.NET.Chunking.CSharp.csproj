@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Chunking.CSharp</RootNamespace>
     <PackageId>Rag.NET.Chunking.CSharp</PackageId>
     <Description>Roslyn-based C# semantic chunking strategy for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Evaluation</RootNamespace>
     <PackageId>Rag.NET.Evaluation</PackageId>
     <Description>Evaluation utilities for Rag.NET pipelines</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

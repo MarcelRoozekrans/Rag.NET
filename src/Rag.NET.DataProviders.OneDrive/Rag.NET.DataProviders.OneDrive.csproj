@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.OneDrive</RootNamespace>
     <PackageId>Rag.NET.DataProviders.OneDrive</PackageId>
     <Description>OneDrive data provider for Rag.NET via Microsoft Graph</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <!-- One definition, compiled into each Graph connector. It cannot live in the shared

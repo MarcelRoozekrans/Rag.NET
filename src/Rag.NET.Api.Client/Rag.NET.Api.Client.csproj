@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.Api.Client</RootNamespace>
     <PackageId>Rag.NET.Api.Client</PackageId>
     <Description>HTTP client for Rag.NET.Api — implements IRagPipeline over HTTP</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

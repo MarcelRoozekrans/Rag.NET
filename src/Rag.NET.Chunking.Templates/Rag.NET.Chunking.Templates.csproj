@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Chunking.Templates</RootNamespace>
     <PackageId>Rag.NET.Chunking.Templates</PackageId>
     <Description>Domain-specific chunking templates for Rag.NET (Legal, Book, Academic Paper, Q&amp;A Pairs, Email, Resume)</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

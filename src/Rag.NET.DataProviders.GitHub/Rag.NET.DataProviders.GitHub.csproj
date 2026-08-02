@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.DataProviders.GitHub</RootNamespace>
     <PackageId>Rag.NET.DataProviders.GitHub</PackageId>
     <Description>GitHub data provider for Rag.NET using Octokit</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>
