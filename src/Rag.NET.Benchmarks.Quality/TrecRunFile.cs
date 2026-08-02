@@ -5,9 +5,9 @@ namespace Rag.NET.Benchmarks.Quality;
 
 /// <summary>
 /// The run-file boundary of the Phase 3.14 library comparison: every entrant — Rag.NET, Semantic
-/// Kernel, Kernel Memory, and the Python libraries — emits a TREC-format run file, and nothing
-/// else, and every run file is scored by the one <see cref="IrMetrics"/> that produced this
-/// repository's published BEIR figures. One line per ranked document:
+/// Kernel, and the Python libraries (LangChain, LlamaIndex, Haystack) — emits a TREC-format run
+/// file, and nothing else, and every run file is scored by the one <see cref="IrMetrics"/> that
+/// produced this repository's published BEIR figures. One line per ranked document:
 /// <code>
 /// &lt;queryId&gt; Q0 &lt;docId&gt; &lt;rank&gt; &lt;score&gt; &lt;runTag&gt;
 /// </code>

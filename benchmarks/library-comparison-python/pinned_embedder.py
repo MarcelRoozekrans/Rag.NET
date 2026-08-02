@@ -21,8 +21,10 @@ The pipeline mirrors ``OnnxEmbeddingGenerator`` step for step:
   intact and WordPiece maps the accented word to ``[UNK]``. With ``strip_accents=None`` the
   vector for ``"anti-Müllerian hormone. It’s café naïveté."`` diverged
   from the .NET dump by 0.166 max-abs; with ``strip_accents=False`` it matched all 384 floats
-  bitwise, so ``False`` is pinned here. The corpus-wide comparison in ``identity_check.py``
-  demonstrates the match over every SciFact and ArguAna text rather than asserting it.
+  bitwise, so ``False`` is pinned here. ``identity_check.py``'s six-string battery demonstrates
+  the match float for float rather than asserting it -- a battery, not a corpus sweep: its own
+  docstring says why sweeping every SciFact and ArguAna text would only re-demonstrate the same
+  equality at a thousand times the cost.
 - ``[CLS] content [SEP]`` with the content truncated to ``256 - 2`` tokens, so truncation can
   never drop the trailing ``[SEP]``.
 - one padded batch per pass; **padding is excluded from the mean** -- masked rows contribute to
