@@ -288,6 +288,91 @@ public static class BeirReproduction
             "TensorPrimitives.CosineSimilarity — not a retrieval difference. 1,406 queries " +
             "evaluated. Measured 2026-08-02 (Phase 3.14 Task 4), Windows 11, .NET 10, CPU " +
             "ONNX Runtime."),
+        new(
+            "scifact",
+            BeirProtocol.LangChain,
+            [0.64613],
+            "The library-comparison LangChain row (langchain-core 1.5.3, " +
+            "langchain-text-splitters 1.1.2, Python 3.14.5, onnxruntime 1.28.0): " +
+            "RecursiveCharacterTextSplitter at its defaults (4000 characters, 200 overlap), " +
+            "InMemoryVectorStore cosine, pinned all-MiniLM-L6-v2 behind LangChain's Embeddings " +
+            "interface, max-pooled to documents writer-side and scored from the read-back TREC " +
+            "run file. Measured 2026-08-02 (Phase 3.14 Stage 2), Windows 11, CPU ONNX Runtime; " +
+            "the Python-side embedder was verified against OnnxEmbeddingGenerator on a " +
+            "six-string battery, all bitwise-equal (identity_check.py), before any Python " +
+            "figure was trusted."),
+        new(
+            "fiqa",
+            BeirProtocol.LangChain,
+            [],
+            "The library-comparison LangChain row. NEVER RUN — producing the run file embeds " +
+            "FiQA's chunked corpus through the Python-side pinned embedder, derived to cost " +
+            "roughly an hour (FiQA's .NET parity leg measured 1 h 11 m for comparable " +
+            "embedding work); Phase 3.14 Stage 2 ran SciFact and ArguAna and deliberately not " +
+            "FiQA. When somebody pays for the run, its figure belongs here."),
+        new(
+            "arguana",
+            BeirProtocol.LangChain,
+            [0.50450],
+            "The library-comparison LangChain row (langchain-core 1.5.3, " +
+            "langchain-text-splitters 1.1.2, Python 3.14.5, onnxruntime 1.28.0), self-exclusion " +
+            "applied on the writer's side of the boundary (the written file held zero " +
+            "query-id = document-id lines). Measured 2026-08-02 (Phase 3.14 Stage 2), Windows " +
+            "11, CPU ONNX Runtime."),
+        new(
+            "scifact",
+            BeirProtocol.LlamaIndex,
+            [0.64508],
+            "The library-comparison LlamaIndex row (llama-index-core 0.14.23, Python 3.14.5, " +
+            "onnxruntime 1.28.0): SentenceSplitter at its defaults (1024 cl100k tokens, 200 " +
+            "overlap), SimpleVectorStore cosine, pinned all-MiniLM-L6-v2 behind " +
+            "Settings.embed_model, max-pooled to documents writer-side and scored from the " +
+            "read-back TREC run file. Measured 2026-08-02 (Phase 3.14 Stage 2), Windows 11, " +
+            "CPU ONNX Runtime."),
+        new(
+            "fiqa",
+            BeirProtocol.LlamaIndex,
+            [],
+            "The library-comparison LlamaIndex row. NEVER RUN — FiQA's Python-side embedding " +
+            "cost is derived at roughly an hour per entrant; Phase 3.14 Stage 2 ran SciFact " +
+            "and ArguAna and deliberately not FiQA. When somebody pays for the run, its " +
+            "figure belongs here."),
+        new(
+            "arguana",
+            BeirProtocol.LlamaIndex,
+            [0.50450],
+            "The library-comparison LlamaIndex row (llama-index-core 0.14.23, Python 3.14.5, " +
+            "onnxruntime 1.28.0), self-exclusion applied on the writer's side of the boundary " +
+            "(the written file held zero query-id = document-id lines). Measured 2026-08-02 " +
+            "(Phase 3.14 Stage 2), Windows 11, CPU ONNX Runtime."),
+        new(
+            "scifact",
+            BeirProtocol.Haystack,
+            [0.62757],
+            "The library-comparison Haystack row (haystack-ai 3.0.0, Python 3.14.5, " +
+            "onnxruntime 1.28.0): DocumentSplitter at its defaults (200 words, 0 overlap), " +
+            "InMemoryDocumentStore under its default dot_product similarity (the pinned " +
+            "vectors are unit-length, so dot product and cosine coincide), pinned " +
+            "all-MiniLM-L6-v2 filling Document.embedding, max-pooled to documents writer-side " +
+            "and scored from the read-back TREC run file. Measured 2026-08-02 (Phase 3.14 " +
+            "Stage 2), Windows 11, CPU ONNX Runtime."),
+        new(
+            "fiqa",
+            BeirProtocol.Haystack,
+            [],
+            "The library-comparison Haystack row. NEVER RUN — FiQA's Python-side embedding " +
+            "cost is derived at roughly an hour per entrant, likely more for Haystack, whose " +
+            "200-word default produces the most chunks of the three; Phase 3.14 Stage 2 ran " +
+            "SciFact and ArguAna and deliberately not FiQA. When somebody pays for the run, " +
+            "its figure belongs here."),
+        new(
+            "arguana",
+            BeirProtocol.Haystack,
+            [0.49715],
+            "The library-comparison Haystack row (haystack-ai 3.0.0, Python 3.14.5, " +
+            "onnxruntime 1.28.0), self-exclusion applied on the writer's side of the boundary " +
+            "(the written file held zero query-id = document-id lines). Measured 2026-08-02 " +
+            "(Phase 3.14 Stage 2), Windows 11, CPU ONNX Runtime."),
     ];
 
     /// <summary>
