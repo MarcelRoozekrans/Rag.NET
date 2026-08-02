@@ -104,11 +104,17 @@ future reader can tell the difference between "never existed" and "dealt with".
   intermittently when a transient handle — antivirus, search indexer — is open on a just-written
   file. The right shape, and still undemonstrated — the second sighting neither confirms nor
   clears it, so it stays a **candidate**.
-  **Both sightings lost the test's name** — the second because the run used summary-only logging —
-  which vindicates the standing instruction rather than replacing it. That instruction is now the
-  whole entry: **the failing test's name is the one piece of evidence needed, it has been lost
-  twice, and capturing the next occurrence with `--logger trx` *before* any re-run is the only
-  thing that gets it.** A summary-only run that hits this failure is evidence destroyed.
+  **All three sightings lost the test's name**, and the third one changes what the instruction
+  should be. It happened on 2026-08-02 during Phase 3.8's documentation task, on a docs-only tree
+  (1 failed / 128 passed; the immediate re-run passed 129/129) — and the name was lost because the
+  run was piped through `tail -3`. The second was lost to summary-only logging.
+  **Twice now the standing instruction has been defeated not by forgetting it but by tooling**,
+  which is the signal that "capture the next occurrence" is the wrong shape of instruction: by the
+  time you know it is the occurrence, the evidence is already gone.
+  **So it stops being a reaction and becomes the default: every run of
+  `Rag.NET.Benchmarks.Quality.Tests` uses `--logger trx`, and its output is never piped through
+  `head`/`tail`/`grep` in a way that can discard a failing test's name.** The failing test's name
+  remains the one piece of evidence needed, and three sightings have now produced none of it.
   **The candidate fix has since shipped — into the one file this entry does not name** (found by
   the 2026-08-02 audit). Phase 3.15's `HypotheticalCacheTests.cs:34-61`, the project's fourth
   filesystem test class, wraps its `Directory.Delete` in a two-retry mitigation and cites this
