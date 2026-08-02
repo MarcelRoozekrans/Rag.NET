@@ -15,6 +15,7 @@ namespace Rag.NET.Evaluation.Tests.Shadow;
 /// <c>try/catch</c> around an awaited secondary passes every "does it throw?" test and fails
 /// these.
 /// </summary>
+[Collection("ShadowTelemetry")] // emits shadow counters; see ShadowTelemetryCollection
 public sealed class ShadowRagPipelineTests
 {
     /// <summary>

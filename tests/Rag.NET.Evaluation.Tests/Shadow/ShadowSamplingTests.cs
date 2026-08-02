@@ -10,6 +10,7 @@ namespace Rag.NET.Evaluation.Tests.Shadow;
 /// lets those two tests run against the default <c>Random.Shared</c> source in registration
 /// tests without a flake.
 /// </summary>
+[Collection("ShadowTelemetry")] // emits shadow counters; see ShadowTelemetryCollection
 public sealed class ShadowSamplingTests
 {
     [Fact]

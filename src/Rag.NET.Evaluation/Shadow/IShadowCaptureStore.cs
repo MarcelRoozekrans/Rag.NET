@@ -10,9 +10,11 @@ namespace Rag.NET.Evaluation.Shadow;
 /// </para>
 /// <para>
 /// <b>What an implementation is signing up for:</b> a capture contains the production question and
-/// retrieved document text verbatim. Retention, encryption at rest and subject-access deletion
-/// belong to the implementation — the seam provides none of them, and says so rather than
-/// implying protection it does not provide.
+/// retrieved document text verbatim — unless the application registered an
+/// <see cref="IShadowCaptureSanitiser"/>, which runs before every save; without one, verbatim is
+/// the default. Retention, encryption at rest and subject-access deletion belong to the
+/// implementation either way — the seam provides none of them, and says so rather than implying
+/// protection it does not provide.
 /// </para>
 /// </remarks>
 public interface IShadowCaptureStore

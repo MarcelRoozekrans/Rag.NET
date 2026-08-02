@@ -45,6 +45,7 @@ public sealed class ShadowCaptureConsumer : BackgroundService
     private readonly ShadowCaptureQueue _queue;
     private readonly IShadowCaptureStore _store;
     private readonly ShadowCaptureConsumerOptions _options;
+    private readonly IShadowCaptureSanitiser? _sanitiser;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _drainDeadline = new();
     private readonly ConcurrentQueue<ShadowPersistenceFailure> _failures = new();
@@ -54,13 +55,20 @@ public sealed class ShadowCaptureConsumer : BackgroundService
     /// <summary>Creates the consumer over the queue it drains and the store it fills.</summary>
     /// <param name="queue">The queue the request path enqueues captures onto.</param>
     /// <param name="store">Where each dequeued capture is persisted.</param>
-    /// <param name="options">The shutdown drain grace period.</param>
+    /// <param name="options">The shutdown drain grace period and the optional secondary cost ledger.</param>
+    /// <param name="sanitiser">
+    /// Optional scrubber applied to every capture before the store sees it. <b>Without one,
+    /// captures persist verbatim</b> — the user's question and the retrieved document text,
+    /// exactly as they were; see <see cref="IShadowCaptureSanitiser"/> for why that default is
+    /// deliberate and how the seam fails safe.
+    /// </param>
     /// <param name="logger">Optional; persistence failures and shutdown loss are logged to it.</param>
     /// <exception cref="ArgumentNullException">Any of the required arguments is null.</exception>
     public ShadowCaptureConsumer(
         ShadowCaptureQueue queue,
         IShadowCaptureStore store,
         ShadowCaptureConsumerOptions options,
+        IShadowCaptureSanitiser? sanitiser = null,
         ILogger<ShadowCaptureConsumer>? logger = null)
     {
         ArgumentNullException.ThrowIfNull(queue);
@@ -70,6 +78,7 @@ public sealed class ShadowCaptureConsumer : BackgroundService
         _queue = queue;
         _store = store;
         _options = options;
+        _sanitiser = sanitiser;
         _logger = logger ?? NullLogger<ShadowCaptureConsumer>.Instance;
     }
 
@@ -283,10 +292,16 @@ public sealed class ShadowCaptureConsumer : BackgroundService
     {
         try
         {
+            // Sanitised inside the try, so a sanitiser that throws costs the capture — counted
+            // and recorded below — rather than letting it through unsanitised, which is the only
+            // safe direction for that seam to fail in.
+            var sanitised = await SanitiseAsync(capture).ConfigureAwait(false);
+
             // WaitAsync bounds the save even against a store that ignores its token: a drain
             // without a working timeout hangs host shutdown, which is never acceptable.
-            await _store.SaveAsync(capture, _drainDeadline.Token)
+            await _store.SaveAsync(sanitised, _drainDeadline.Token)
                 .WaitAsync(_drainDeadline.Token).ConfigureAwait(false);
+            ShadowTelemetry.Processed.Add(1);
         }
         catch (OperationCanceledException) when (_drainDeadline.IsCancellationRequested)
         {
@@ -299,8 +314,30 @@ public sealed class ShadowCaptureConsumer : BackgroundService
         catch (Exception exception)
         {
             _failures.Enqueue(ShadowPersistenceFailure.FromException(capture.Question, exception));
+            ShadowTelemetry.Failed.Add(1);
             ShadowLog.CapturePersistenceFailed(_logger, exception);
         }
+    }
+
+    /// <summary>The capture as it may be persisted: scrubbed when a sanitiser is configured, verbatim otherwise.</summary>
+    /// <remarks>
+    /// WaitAsync bounds the sanitiser like the run and the save — an LLM-backed scrubber that
+    /// ignores its token must not hang shutdown. A null result is refused here, inside the
+    /// caller's try, so it is recorded as a lost capture rather than handed to the store.
+    /// </remarks>
+    private async Task<ShadowCapture> SanitiseAsync(ShadowCapture capture)
+    {
+        if (_sanitiser is null)
+        {
+            return capture;
+        }
+
+        var sanitised = await _sanitiser.SanitiseAsync(capture, _drainDeadline.Token)
+            .WaitAsync(_drainDeadline.Token).ConfigureAwait(false);
+
+        return sanitised ?? throw new InvalidOperationException(
+            "The shadow capture sanitiser returned null. The capture is treated as lost rather " +
+            "than persisted unsanitised.");
     }
 
     private void ReportAbandonment()
@@ -310,6 +347,7 @@ public sealed class ShadowCaptureConsumer : BackgroundService
 
         if (abandoned > 0)
         {
+            ShadowTelemetry.Abandoned.Add(abandoned);
             ShadowLog.CapturesAbandonedAtShutdown(_logger, abandoned, _options.DrainTimeout);
         }
     }

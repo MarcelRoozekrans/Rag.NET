@@ -13,6 +13,7 @@ namespace Rag.NET.Evaluation.Tests.Shadow;
 /// lost silently — silent abandonment is the fire-and-forget loss this phase exists to close, and
 /// it is exactly what the neighbouring ingestion processor's clean-exit-on-cancel shutdown does.
 /// </summary>
+[Collection("ShadowTelemetry")] // emits shadow counters; see ShadowTelemetryCollection
 public sealed class ShadowCaptureConsumerTests
 {
     /// <summary>

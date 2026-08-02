@@ -42,9 +42,11 @@ public static class RagBuilderExtensions
     /// retention and protection remain the application's responsibility.
     /// </para>
     /// <para>
-    /// Also honoured if registered beforehand: <see cref="ShadowCaptureQueueOptions"/> (queue
-    /// capacity) and <see cref="ShadowCaptureConsumerOptions"/> (shutdown drain timeout, and the
-    /// dedicated cost ledger that makes the secondary's per-request spend visible in each capture).
+    /// Also honoured if registered beforehand: an <see cref="IShadowCaptureSanitiser"/> —
+    /// <b>without one, captures persist verbatim</b>, a deliberate default documented on the
+    /// seam itself — plus <see cref="ShadowCaptureQueueOptions"/> (queue capacity) and
+    /// <see cref="ShadowCaptureConsumerOptions"/> (shutdown drain timeout, and the dedicated
+    /// cost ledger that makes the secondary's per-request spend visible in each capture).
     /// </para>
     /// <para>
     /// The capture consumer is registered as an <see cref="Microsoft.Extensions.Hosting.IHostedService"/>
@@ -91,6 +93,7 @@ public static class RagBuilderExtensions
             sp.GetRequiredService<ShadowCaptureQueue>(),
             sp.GetRequiredService<IShadowCaptureStore>(),
             sp.GetRequiredService<ShadowCaptureConsumerOptions>(),
+            sp.GetService<IShadowCaptureSanitiser>(),
             sp.GetService<ILogger<ShadowCaptureConsumer>>()));
         services.AddHostedService(static sp => sp.GetRequiredService<ShadowCaptureConsumer>());
     }

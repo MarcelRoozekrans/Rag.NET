@@ -12,6 +12,7 @@ namespace Rag.NET.Evaluation.Tests.Shadow;
 /// registration rather than silently at runtime, and the consumer the host runs is the same
 /// instance whose counters an operator reads.
 /// </summary>
+[Collection("ShadowTelemetry")] // emits shadow counters; see ShadowTelemetryCollection
 public sealed class RagBuilderExtensionsTests
 {
     [Fact]

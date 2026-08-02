@@ -13,6 +13,7 @@ namespace Rag.NET.Evaluation.Tests.Shadow;
 /// unreadable ledger drops the figure rather than fabricating one, and a ledger problem never
 /// costs the capture itself.
 /// </summary>
+[Collection("ShadowTelemetry")] // emits shadow counters; see ShadowTelemetryCollection
 public sealed class ShadowSecondarySpendTests
 {
     [Fact]

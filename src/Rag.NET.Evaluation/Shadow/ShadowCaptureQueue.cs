@@ -43,7 +43,11 @@ public sealed class ShadowCaptureQueue
             {
                 FullMode = BoundedChannelFullMode.DropWrite,
             },
-            _ => Interlocked.Increment(ref _dropped));
+            _ =>
+            {
+                Interlocked.Increment(ref _dropped);
+                ShadowTelemetry.Dropped.Add(1);
+            });
     }
 
     /// <summary>How many samples were dropped because the queue was full. Exact, monotonic.</summary>
@@ -78,6 +82,11 @@ public sealed class ShadowCaptureQueue
             return ValueTask.FromCanceled(cancellationToken);
         }
 
+        // Counts the offer, dropped or not: on the meter, enqueued tracks the configured sample
+        // rate and enqueued − dropped is what the queue accepted — see ShadowTelemetry for the
+        // full identity down to what the store holds.
+        ShadowTelemetry.Enqueued.Add(1);
+
         if (!_channel.Writer.TryWrite(pending))
         {
             // TryWrite only refuses on a completed channel — a full one accepts the write and
@@ -85,6 +94,7 @@ public sealed class ShadowCaptureQueue
             // lost as one dropped on overflow, and an uncounted loss would put the real capture
             // rate quietly below the configured sample rate, so it is counted the same way.
             Interlocked.Increment(ref _dropped);
+            ShadowTelemetry.Dropped.Add(1);
         }
 
         return ValueTask.CompletedTask;

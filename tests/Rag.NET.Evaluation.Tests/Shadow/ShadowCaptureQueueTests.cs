@@ -10,6 +10,7 @@ namespace Rag.NET.Evaluation.Tests.Shadow;
 /// costs must be counted exactly, or the real capture rate falls quietly below the configured
 /// sample rate.
 /// </summary>
+[Collection("ShadowTelemetry")] // emits shadow counters; see ShadowTelemetryCollection
 public sealed class ShadowCaptureQueueTests
 {
     [Fact]
