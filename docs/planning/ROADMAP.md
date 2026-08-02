@@ -103,6 +103,18 @@ future reader can tell the difference between "never existed" and "dealt with".
   whole entry: **the failing test's name is the one piece of evidence needed, it has been lost
   twice, and capturing the next occurrence with `--logger trx` *before* any re-run is the only
   thing that gets it.** A summary-only run that hits this failure is evidence destroyed.
+  **The candidate fix has since shipped — into the one file this entry does not name** (found by
+  the 2026-08-02 audit). Phase 3.15's `HypotheticalCacheTests.cs:34-61`, the project's fourth
+  filesystem test class, wraps its `Directory.Delete` in a two-retry mitigation and cites this
+  very debt in its comment — while the three `Dispose` methods this entry names
+  (`BeirLoaderTests.cs:47`, `EmbeddingCacheTests.cs:33`, `BeirDatasetCacheTests.cs:39`) still
+  delete with no retry. So the candidate cause is mitigated in the one class where the flake has
+  never been seen and unmitigated in the three where it may have occurred — backwards whichever
+  way the diagnosis lands, and nobody had recorded the asymmetry. Deliberately not spread by the
+  audit: this entry's rule is trx-before-anything, and while the asymmetry stands, a failure
+  landing in the three bare classes and never in the retrying one is itself weak evidence for the
+  candidate. The suite figure above is stale too: the project is **129** tests now, not 110 —
+  3.15 added the fourth class and more.
   → **the next occurrence, and failing that Milestone 4 as a deadline** — the same backstop shape
   as the `MessageChild` debt above, because "all tests passing" is in that milestone's Definition
   of Done and a suite that has failed once cannot carry that claim uninvestigated.
@@ -152,10 +164,18 @@ future reader can tell the difference between "never existed" and "dealt with".
   on FiQA are floors of a sort, and part of its −0.0252 on ArguAna may be the protocol rather
   than the model. The plan fixed one `TopK` across all four rows for comparability, and nobody
   asked what a uniform cutoff does to the one technique whose value is reaching below it.
+  **The "or labelled" exit condition is already satisfied** (noted by the 2026-08-02 audit, so
+  this entry does not read as wholly open): `docs/reference/retrieval-quality.md:406-413` states
+  the freeze, the 0.78667 Recall@10 identity with dense, and instructs the reader to take the row
+  as "what reordering the dense top-10 does", *never* as the best a cross-encoder can do. The
+  page already labels the row for what it is, which was one of the two ways this entry allowed
+  itself to close. What remains is only the depth re-measure (~100 in, 10 out), as an optional
+  improvement rather than a release blocker.
   → **the next phase that re-measures the ablation table, and failing that Milestone 4 as a
   deadline** — the table ships in `docs/reference/retrieval-quality.md` with the v1.0 docs, and a
   row that understates a shipped component gets re-measured at depth (~100 in, 10 out) or
-  labelled for what it is before that page goes out as release documentation.
+  labelled for what it is before that page goes out as release documentation. [Labelled — see
+  above; only the optional re-measure remains against this deadline.]
 - **`docs/reference/ci.md` does not list the nine ablation cells** (found in Phase 3.15, while
   writing up the table). That page counts "eleven cases" in what the nightly measures, and the
   nine ablation cells are now real gated cases in `BeirRunBudget` — so the page's count is stale
@@ -171,9 +191,124 @@ future reader can tell the difference between "never existed" and "dealt with".
   *dataset*; EnronQA is still the private-corpus and multi-tenant story. Recorded here rather
   than carried silently inside a completed phase's scope list, because a deferral that lives only
   in a closed entry is how work disappears.
+  **The code contradicts this entry, and at most one of the two is right** (found by the
+  2026-08-02 audit): `src/Rag.NET.Benchmarks.Quality/IrMetrics.cs:31-32` states "FiQA and
+  TREC-COVID are graded", while this entry says the `2^rel − 1` path has never seen a graded
+  *dataset* — which is only true if FiQA's qrels are binary. BEIR's published FiQA-2018 qrels are
+  binary, which favours this entry, but that has **not been verified against the actual qrels
+  file** and is recorded as unverified. What settles it: read `qrels/test.tsv` in the cached FiQA
+  archive and check whether any relevance value exceeds 1. If FiQA is graded, the graded path has
+  been exercised by three phases of FiQA runs and this entry's premise falls; if binary,
+  `IrMetrics`' own doc comment is wrong and gets corrected when this is picked up. Either way one
+  sentence must change, and this paragraph exists so whoever runs TREC-COVID first knows which
+  check comes before the run.
   → **Milestone 4**, with the release-readiness work — the same shape as the two never-run live
   suites above: "has the graded-relevance path ever been exercised against a real dataset" is a
   question worth answering before publishing packages.
+- **`docs/reference/features.md` documents an observability package that does not exist — a live
+  Definition-of-Done failure** (found by the 2026-08-02 milestone audit; the first failing DoD
+  criterion this milestone has recorded, now annotated on the DoD in both planning files). The
+  detail section at `features.md:666-676` reads "OpenTelemetry Tracing & Metrics — **Status:**
+  ✅ Done, **Package:** `Rag.NET.Telemetry`", and describes `.UseTelemetry()` registration, GenAI
+  semantic conventions (`gen_ai.system`, `gen_ai.request.model`, …) and metrics named
+  `ragnet.retrieve.latency`, `ragnet.answer.tokens` and `ragnet.embed.batch_size`. **None of it
+  exists.** There is no `Rag.NET.Telemetry` package, no `UseTelemetry` anywhere in `src/`, and no
+  `gen_ai.*` attribute; the real instruments are `internal` in
+  `src/Rag.NET/Telemetry/RagTelemetry.cs` under different names (`ragnet.retrieve.duration`,
+  `ragnet.llm.tokens`). The summary-matrix row at `features.md:1135` is **unchecked** — so the
+  detail section contradicts its own matrix, the exact shape the 2026-07-27 scope correction
+  opened this milestone on, and once again the matrix row is the honest one. This fails Milestone
+  3's DoD criterion that detail sections, matrix and code agree, and nobody had recorded it.
+  → **Phase 4.4, or any documentation pass before it** — 4.4 owns the OTel wiring, so the doc
+  correction belongs with it or earlier; 4.4 must not start from a detail section that describes
+  the package it has yet to build as already done.
+- **`BuildMetadata` drops `baseMetadata.CreatedAt`, so provider-ingested documents score as brand
+  new** (found in Phase 2.2; recorded until now only in
+  `docs/plans/2026-07-26-connector-metadata-design.md:237-240`, and surfaced into this list by
+  the 2026-08-02 audit, because a closed phase's design doc is not a destination under this
+  list's own rule — the doc even says "recorded so it is not rediscovered as new", and it was
+  rediscovered as new anyway, by an audit, which is what recording a debt in a file nothing
+  re-reads buys). `src/Rag.NET/DataProviders/RagPipelineExtensions.cs:322-328` builds a
+  `DocumentMetadata` without copying `CreatedAt`, so
+  `src/Rag.NET.Abstractions/Models/DocumentMetadata.cs:22` defaults it to `DateTime.UtcNow` —
+  and the field is read: it is serialised into chunk metadata as `created_at` by
+  `MetadataBehavior` for `TimeWeightedRetriever`, per its own doc comment. A real behaviour
+  defect, not a documentation one: every document ingested through a data provider loses its
+  real creation time and time-weighted retrieval ranks it as ingested-now.
+  → **the next phase that touches the data-provider ingestion path, and failing that Milestone 4
+  as a deadline** — the same backstop shape as the `MessageChild` debt, because the fix is one
+  copied property plus a test: a slot, not a phase.
+- **The current `nightly.yml` has never executed, and its reranker download feeds nothing**
+  (found by the 2026-08-02 audit, reading the workflow against the run history). No nightly has
+  run since PR #7 merged; the last run, 2026-08-01, executed the pre-3.15 workflow. So the
+  reranker provisioning Phase 3.15 added — the ~87 MB `ms-marco-MiniLM-L6-v2` download, its
+  pinned `RERANKER_REVISION` and both SHA-256 verifications — is **unexecuted**: the same
+  "workflow that has never run" state Phase 3.5 closed on ("the first pull-request run is the
+  real verification"), recurring in the nightly two phases later. Worse, when it does run, the
+  download feeds no test: every test reading `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` sits behind
+  `RAGNET_BEIR_LONG_RUNS`, which that job deliberately never sets — so the nightly pays the
+  download, the cache and the checksum verification for nothing it runs. **The decision is
+  genuinely open and this entry does not pre-take it:** either the nightly should run something
+  that uses the reranker (a budget question, with `BeirRunBudget` holding the numbers), or it
+  should stop provisioning what nothing consumes.
+  → **Milestone 4, with 4.1** — the phase that reworks `ci.yml` and must reread
+  `docs/reference/ci.md` against the workflows anyway is where the decision lands; the first
+  genuine run of the current nightly is the verification either way, and is worth having before
+  that phase starts.
+- **Two near-duplicate RAGAS test suites** (found by the 2026-08-02 audit):
+  `tests/Rag.NET.Tests/Evaluation/` (~650 lines) and `tests/Rag.NET.Evaluation.Tests/Ragas/`
+  (~1,570 lines) carry near-duplicate test names over the same metrics. Phase 3.1 removed
+  exactly this hazard from `src/` — the malformed-reply defect lived in two duplicated copies of
+  the scoring plumbing — and the two-copies shape survives in the tests that certify the fix: an
+  assertion updated in one suite and not the other is how a metric gets one green certificate
+  and one stale one, and the smaller suite is the very folder the 2026-07-27 scope correction
+  records a narrowly-scoped search missing entirely. Nobody has recorded which suite is
+  authoritative.
+  → **Milestone 4, with 4.1** — merge them, or name one authoritative and delete the other, when
+  the test surface is next scrutinised whole for packaging.
+- **Nothing pins the Security→Diagnostics decoration** (found by the 2026-08-02 audit). Phase
+  3.4's headline capability — recording what `RbacRetrievalGuard` and `PiiChunkSanitiser`
+  removed — works only if the Security package's registrations are in place before
+  `AddRagDiagnostics` decorates; no test exercises the combination, and
+  `Rag.NET.Diagnostics.Tests` does not reference `Rag.NET.Security` at all. Phase 3.4's
+  completion claim is therefore an inference across a package boundary — the shape this
+  milestone has repeatedly found blind, where a behaviour on the far side of a boundary is
+  presumed covered until a test has been watched to fail. Not a known defect: an unpinned claim.
+  → **Milestone 4, with 4.4** — the OTel wiring phase reasons about registration order and
+  cross-package instrumentation regardless, and the missing combination test belongs with it.
+- **A permanent `[Fact(Skip)]` in `AzureAISearchVectorStoreTests` appears in no planning record**
+  (found by the 2026-08-02 audit): `AzureAISearchVectorStoreTests.cs:140` skips because
+  `azure-ai-search-simulator` does not implement OData filter expressions, so that store's filter
+  path has no integration coverage — the same coverage-gap-by-simulator-limit shape as
+  Pinecone's sparse-write skip at `PineconeVectorStoreTests.cs:359`, which *is* recorded
+  (Milestone 2's "Not in scope", by decision 2026-07-26). This entry is the recording; the gap
+  is a simulator limitation, not a defect.
+  → **Milestone 4, with the never-run live suites** — "has the filter path ever run against the
+  real service" is the same release-readiness question, answered the same way.
+- **Four debts recorded somewhere and scheduled nowhere** (collected by the 2026-08-02 audit —
+  each lives in a completed phase's entry, a design doc or features.md, all outside this list,
+  all violating its one rule: record with origin, then schedule or re-justify): five connectors'
+  narrowed API field selections (Phase 2.2's completion note, itemised with line numbers in
+  `docs/plans/2026-07-26-connector-metadata-design.md`); provider-specific webhook payload
+  parsers for GitHub/Notion/Slack (`features.md:452`, "remain deferred", with
+  `IWebhookPayloadParser` named as the seam); cron/NCrontab polling schedules
+  (`features.md:457`, "deferred", interval-only today); and Pinecone live sparse-write
+  verification (Milestone 2's "Not in scope" — a documented coverage gap by decision,
+  2026-07-26). None is urgent, which is exactly how each stayed where it was.
+  → **Milestone 4 as a deadline**: the Pinecone verification joins the never-run live suites
+  (same "has this ever met the real service" question); the other three are feature work and get
+  a schedule-or-decline decision at Milestone 4 scoping — declined is a legitimate outcome, but
+  it has to be written down here, not implied by a closed phase's margins.
+- **Three debts routed "→ Milestone 4, with the release-readiness work" have no owning phase
+  among 4.1–4.6** (found by the 2026-08-02 audit, reading this list against Milestone 4's phase
+  list): `docs.yml`/`renovate.json`/`.commitlintrc.yml`, the two never-run live suites, and
+  TREC-COVID/EnronQA all name the milestone as their destination, and no listed phase's goal
+  covers publishing docs, dependency automation, exercising live services or adding BEIR
+  datasets. Milestone-as-deadline satisfies the letter of this list's rule; the phase list gives
+  the work nowhere to land, which is how a deadline gets missed by everyone honouring it.
+  → **Milestone 4's scoping session** — when that milestone starts, these entries get phases (or
+  slots in existing ones) or get re-justified; recorded now so scoping starts from this line
+  instead of rediscovering it.
 
 ### Closed
 
@@ -521,8 +656,8 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Goal:** Close the evaluation-tooling gap and harden quality: RAGAS metrics, dataset tooling, A/B testing, pipeline debugging, and CI coverage for the Docker-dependent suites.
 **Started:** 2026-07-27
 **Definition of Done:**
-- [ ] All planned phases complete
-- [ ] No feature marked done in features.md lacks tests and docs — detail sections, summary matrix, and code agree
+- [ ] All planned phases complete (14 of 16 as of 2026-08-02; 3.8 and 3.14 pending)
+- [ ] No feature marked done in features.md lacks tests and docs — detail sections, summary matrix, and code agree — **failing as of the 2026-08-02 audit**: the OTel detail section (`features.md:666-676`) claims a package that does not exist; see the follow-up-debts list
 - [ ] Integration/vector-store suites run in CI (Dockerized)
 - [ ] All tests passing
 
