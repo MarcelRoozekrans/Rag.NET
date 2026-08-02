@@ -1,7 +1,7 @@
 # Milestone 3: Quality Hardening & Evaluation
 
-**Status:** active — 14 of 16 phases complete; Phase 3.8 (A/B Shadow Mode) and Phase 3.14
-(Library Comparison at Defaults) pending
+**Status:** active — 15 of 16 phases complete; only Phase 3.14 (Library Comparison at Defaults)
+pending
 **Started:** 2026-07-27
 
 ## Goal
@@ -327,10 +327,41 @@ Assume nothing works until a test says so *and the test is right*.
    verified to fail under the mutation; the suite is now **1,342**. The shipped code never
    dropped anything — across 500 generated shapes and 20,000 randomized inputs every uncovered
    character was whitespace or `.` — a missing test, not a shipped bug.
-16. Phase 3.8 — A/B Shadow Mode [pending] — the production half of the A/B framework, deferred out
-   of 3.3. Production traffic has no ground truth, so only the reference-free metrics apply; it
-   also doubles spend per request and must never let a secondary failure reach a caller the
-   primary already served.
+16. Phase 3.8 — A/B Shadow Mode [complete — 2026-08-02] — the production half of the A/B framework,
+   deferred out of 3.3 for four named failure modes, each now closed structurally.
+   **Shipped:** `ShadowRagPipeline` wraps a live `IRagPipeline` via `UseShadow<TSecondary>` — the
+   caller is served the primary's completed answer **before** anything shadow-related is scheduled,
+   a bounded `DropWrite` queue that never blocks the enqueuer hands the work to a background
+   consumer that runs the secondary and persists the pair, and `ShadowReplay.From` turns stored
+   captures into `RagAbTester.CompareAsync`'s input. All in `src/Rag.NET.Evaluation/Shadow/`; the
+   core package gains no Evaluation dependency.
+   **The four failure modes:** *no ground truth* became the argument for capture over inline
+   scoring — captures store no reference deliberately, and references supplied at replay time
+   unlock all four RAGAS metrics where inline scoring is forever limited to two; *doubled spend*
+   is off by default (`SampleRate` 0.0, out-of-range refused rather than clamped) with the
+   secondary's spend recorded per capture over a dedicated ledger and the primary's honestly
+   absent — it serves concurrent traffic on a shared ledger, so no per-request figure exists that
+   would not be fabricated; *fire-and-forget loss* is counted, never silent — shutdown drains
+   within a bounded timeout and `DroppedCount` plus `AbandonedCount` is the entire gap between
+   the configured sample rate and the store; and *the secondary cannot break the primary*,
+   verified by running the named wrong implementation (`try/catch` around an awaited secondary)
+   against the suite: **5 of 12 decorator tests fail**, so the tests pin the structure, not just
+   the exception path.
+   **Four things the plan and design got wrong, recorded rather than absorbed:** the plan was
+   missing the replay bridge entirely — the design's whole case for capturing is "score it
+   offline with 3.3's harness" and nothing converted captures into its input; found by Task 1,
+   added as Task 6b. Design §2's "per-variant spend is already solved" oversells —
+   `RagAbTester.SpendAsync` measures a whole sequential run, which transfers to the consumer but
+   not to a primary on a shared concurrent ledger. `BackgroundService.StartAsync` schedules
+   `ExecuteAsync` deferred on the stopping token, so a fast stop can cancel it before it ever
+   ran — measured at **1,921 of 2,000** immediate start→stop cycles — meaning a drain living only
+   in `ExecuteAsync` loses everything silently even when it correctly avoids the stopping token;
+   the drain lives in `StopAsync`. And `IRagPipeline` has a fifth member the plan's delegation
+   list omitted: `AskStreamingAsync`, delegated and deliberately not shadowed.
+   Captures hold production text **verbatim** by default; the sanitiser seam defaults to none and
+   fails safe, and retention, encryption and deletion are named as the store implementer's.
+   Documented in `docs/guide/shadow-mode.md`; features.md's A/B row updated in place, no new
+   `KnownFalseClaims` entry.
 
 ## Explicitly not in scope
 
