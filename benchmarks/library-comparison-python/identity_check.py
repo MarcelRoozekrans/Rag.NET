@@ -16,7 +16,11 @@ thousand times the cost.
 Usage::
 
     uv run python identity_check.py --write-battery <dir>   # emit <name>.input.txt files
-    (embed each .input.txt with the .NET dump tool into <name>.txt in the same dir)
+    # the .NET side (from the repository root): embeds each .input.txt with the exact
+    # generator behind every published figure and writes <name>.txt beside it --
+    #   RAGNET_IDENTITY_BATTERY_DIR=<dir> dotnet test \
+    #     tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
+    #     --filter "DisplayName~DumpsEachBatteryInputsVector"
     uv run python identity_check.py <dir>                   # compare, one line per entry
 
 Both sides read the text from the same ``<name>.input.txt`` bytes, so no shell quoting can make

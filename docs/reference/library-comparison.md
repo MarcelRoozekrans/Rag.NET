@@ -48,7 +48,7 @@ document wherever the library itself does not chunk):
 | Entrant | Version | SciFact | ArguAna |
 |---|---|---:|---:|
 | **Rag.NET** (control) | this repository | 0.64593 | 0.50432 |
-| Semantic Kernel | 1.78.0 (InMemory connector 1.74.0-preview, MEVD 10.1.0) | 0.64593 | 0.50306 |
+| Semantic Kernel | 1.78.0 (InMemory connector 1.74.0-preview, MEVD 10.1.0) | 0.64593 | 0.50306–0.50399 |
 | LangChain | langchain-core 1.5.3, text-splitters 1.1.2 | **0.64613** | **0.50450** |
 | LlamaIndex | llama-index-core 0.14.23 | 0.64508 | **0.50450** |
 | Haystack | haystack-ai 3.0.0 | 0.62757 | 0.49715 |
@@ -56,6 +56,12 @@ document wherever the library itself does not chunk):
 **LangChain scores highest on SciFact, and LangChain and LlamaIndex tie highest on ArguAna.**
 Rag.NET's control row is not the top of either column, and this table publishes that plainly —
 though the next section says why none of the non-Haystack differences supports a ranking at all.
+
+**Semantic Kernel's ArguAna cell is a range because it is the one figure in the table that is not
+reproducible run to run on one machine** — three runs measured 0.50306, 0.50321 and 0.50399, and
+[below](#the-honest-headline-defaults-barely-matter-here) explains why that is a finding about SK's
+defaults on this corpus, not a measurement error. Every other cell reproduces to five decimals on
+the measuring machine.
 
 FiQA is **unrun for every entrant** — recorded as NEVER RUN in `BeirReproduction` and
 `BeirRunBudget` with a derived cost of roughly an hour per entrant (the corpus embedding dominates;
@@ -83,9 +89,26 @@ LangChain's 4000-character and LlamaIndex's 1024-token defaults leave nearly eve
 and ArguAna argument as a single unit — a handful of documents split at all. At that point four of
 the five rows are embedding nearly identical text through the same model, and the residue is
 tie-ordering: Semantic Kernel's ArguAna row retrieves **the same documents** as the control
-(Recall@10 identical at 0.79161) and differs only in how near-ties order (nDCG −0.00126, MRR
-−0.00176), because `DocumentRanking` breaks exact ties by ordinal id and SK's connector keeps its
-own order.
+(Recall@10 identical at 0.79161 in every run) and differs only in how exact ties order.
+
+**That row is also the table's most interesting single finding: at its defaults on this corpus,
+Semantic Kernel's figure is not reproducible run to run on one machine.** Three runs measured
+nDCG@10 0.50306, 0.50321 and 0.50399 (MRR@10 0.41339, 0.41361, 0.41471) with Recall@10 at 0.79161
+in all three — identical document sets, only tie ordering moving between runs. ArguAna makes it
+visible because 1,298 of its 1,406 queries are byte-identical to their own corpus document, so
+exactly-equal cosine scores are everywhere, and SK's InMemory connector does not order exact ties
+the same way across processes. The entrant deliberately applies no tie-break of its own — re-sorting
+SK's output would stop measuring Semantic Kernel and start measuring our re-sort — so the
+nondeterminism is a true property of the library at its defaults, published as the observed spread
+rather than hidden behind one run's figure (all three are pinned in `BeirReproduction`). The
+SK−control delta is therefore not a fixed quantity: across the three runs it is −0.00126, −0.00111
+and −0.00033 — within the row's own run-to-run spread, and tie-ordering rather than a retrieval
+difference either way. The control does not move because `DocumentRanking` breaks exact ties by
+ordinal document id; the Python rows do not move because their libraries' orderings are
+deterministic functions of insertion order (LangChain sorts with numpy's `argsort` over the store's
+fixed order, LlamaIndex's top-k heap breaks exact-score ties by node id, Haystack's stable sort
+preserves store order) and the protocol's chunk-to-document pooling then applies the control's
+ordinal tie-break to the pooled scores (`doc_ranking.top_documents`).
 
 **Haystack is the only entrant whose default actually chunks these corpora — 200 words, no overlap,
 1.6×–1.3× units per document — and the only one measurably lower** (−0.018 on SciFact, −0.007 on
@@ -94,8 +117,9 @@ ArguAna against the control). That is consistent with what
 measured about chunking these corpora with Rag.NET's own defaults, and it is a property of the
 default meeting these documents, not a defect in Haystack.
 
-**No ranking among the other four is supported.** Their spreads — 0.00105 on SciFact, 0.00144 on
-ArguAna — are an order of magnitude smaller than the deltas Phases 3.12–3.16 measured between
+**No ranking among the other four is supported.** Their spreads — 0.00105 on SciFact, at most
+0.00144 on ArguAna (taking SK's lowest observed run) — are an order of magnitude smaller than a
+single row's run-to-run movement above, and than the deltas Phases 3.12–3.16 measured between
 *protocols* on the very same corpora (+0.031, −0.029, −0.015), and smaller than what a handful of
 near-ties resolving differently on another CPU can move
 ([`BeirReproduction`'s ±0.005 reasoning](./retrieval-quality.md#running-it-yourself)). Those four
@@ -208,7 +232,12 @@ derived or third-party data and never are.
   ```bash
   cd benchmarks/library-comparison-python
   uv sync
-  uv run python identity_check.py     # prove the embedder first; a diff invalidates the stage
+  # Prove the embedder first; a diff invalidates the stage. The battery has two halves:
+  uv run python identity_check.py --write-battery "$RAGNET_BEIR_CACHE/identity-battery"
+  RAGNET_IDENTITY_BATTERY_DIR="$RAGNET_BEIR_CACHE/identity-battery" \
+    dotnet test ../../tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
+    --filter "DisplayName~DumpsEachBatteryInputsVector"   # the .NET half: dumps <name>.txt
+  uv run python identity_check.py "$RAGNET_BEIR_CACHE/identity-battery"   # all six must be OK
   uv run python run_entrant.py scifact langchain   # then arguana, llamaindex, haystack…
   ```
 

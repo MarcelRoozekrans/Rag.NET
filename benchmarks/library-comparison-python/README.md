@@ -25,7 +25,12 @@ package), plus the same environment variables the .NET BEIR measurements take:
 
 ```
 uv sync
-uv run python identity_check.py [known-vector-dotnet.txt]   # prove the embedder first
+uv run python identity_check.py --write-battery %RAGNET_BEIR_CACHE%\identity-battery
+rem the .NET half of the battery, from the repository root:
+rem   set RAGNET_IDENTITY_BATTERY_DIR=%RAGNET_BEIR_CACHE%\identity-battery
+rem   dotnet test tests\Rag.NET.Benchmarks.Quality.IntegrationTests ^
+rem     --filter "DisplayName~DumpsEachBatteryInputsVector"
+uv run python identity_check.py %RAGNET_BEIR_CACHE%\identity-battery   # all six must be OK
 uv run python run_entrant.py scifact langchain              # then produce run files
 uv run python run_entrant.py arguana llamaindex             # etc.
 ```
@@ -38,9 +43,13 @@ current working directory — and `.venv/` lives under this directory, so from h
 own dependencies.
 
 `identity_check.py` must pass before any entrant row is trusted: it compares the Python-side
-embedder against vectors `OnnxEmbeddingGenerator` itself produced (a known-string dump, plus
-every SciFact/ArguAna corpus and judged-query text via the .NET embedding cache). If the vectors
-differ, every Python row is measuring a different model and the stage is invalid.
+embedder against vectors `OnnxEmbeddingGenerator` itself produced, over a six-string battery
+chosen to cover every step where the two pipelines could diverge (its docstring says why a
+corpus-wide sweep would only re-demonstrate the same equality at a thousand times the cost). The
+.NET half of the battery is `IdentityBatteryDumpTests` in
+`tests/Rag.NET.Benchmarks.Quality.IntegrationTests` — opt-in via `RAGNET_IDENTITY_BATTERY_DIR`,
+as commented in the block above. If the vectors differ, every Python row is measuring a different
+model and the stage is invalid.
 
 Nothing in `RAGNET_BEIR_CACHE` is ever committed: corpora, models, vectors and run files are all
 derived or third-party data.

@@ -147,6 +147,18 @@ RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.Integration
   --filter "DisplayName~BeirRealChunkingTests&DisplayName~arguana"
 ```
 
+One more opt-in gate lives in the same project and costs seconds, not hours:
+`RAGNET_IDENTITY_BATTERY_DIR` points `IdentityBatteryDumpTests` at the directory
+`identity_check.py --write-battery` filled with the library comparison's embedder-identity battery
+inputs, and the fact dumps the .NET-side vector for each one (the full procedure is in
+[Library Comparison](./library-comparison.md#reproducing-it)):
+
+```bash
+RAGNET_IDENTITY_BATTERY_DIR="$RAGNET_BEIR_CACHE/identity-battery" \
+  dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
+  --filter "DisplayName~DumpsEachBatteryInputsVector"
+```
+
 The split keeps the *parity* number under nightly regression guard on two datasets, which is the
 number the milestone exists to protect and the only one that can be checked against a published
 figure at all. **What it gives up is stated rather than buried:** no chunk-to-document max-pooling

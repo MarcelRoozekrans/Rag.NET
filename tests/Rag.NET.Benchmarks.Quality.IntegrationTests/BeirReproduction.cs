@@ -23,13 +23,23 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// protocol could not, since no published figure exists for it at all.
 /// </para>
 /// <para>
-/// <b>Why it is not an exact match.</b> The runs are deterministic on one machine — the same model
-/// over the same corpus produces the same vectors, in-memory storage is pinned for that reason, and
-/// <see cref="DocumentRanking"/> breaks score ties by ordinal document id so even equal scores order
-/// repeatably. Across machines they are not: ONNX Runtime dispatches its kernels on the available
-/// instruction set, so a vector can differ in its last bits and a near-tie can order the other way.
-/// A test that demanded the fifth decimal on every runner would eventually go red for a reason
-/// nobody could act on, and the usual response to that is to delete it.
+/// <b>Why it is not an exact match.</b> On one machine, a run is deterministic wherever the
+/// ranking's tie order is pinned: the same model over the same corpus produces the same vectors,
+/// in-memory storage is pinned for that reason, <see cref="DocumentRanking"/> breaks score ties by
+/// ordinal document id, and the Python entrants' pooling applies the same ordinal rule
+/// (<c>doc_ranking.top_documents</c>) over libraries whose own orderings are deterministic
+/// functions of insertion order. The exception is <see cref="BeirProtocol.SemanticKernel"/>, by
+/// design: its entrant keeps SK's returned order untouched — a tie-break of ours would measure our
+/// re-sort instead of Semantic Kernel — and SK's InMemory connector does not order exact ties
+/// repeatably across processes. On ArguAna, where 1,298 of 1,406 queries are byte-identical to
+/// their own corpus document and exactly-equal cosine scores abound, three runs on the measuring
+/// machine gave nDCG@10 0.50306, 0.50321 and 0.50399 with Recall@10 identical at 0.79161 — the
+/// same documents every run, only exact-tie order moving — so that entry records the observed
+/// spread rather than a single figure presented as exact. Across machines nothing is exact for any
+/// protocol: ONNX Runtime dispatches its kernels on the available instruction set, so a vector can
+/// differ in its last bits and a near-tie can order the other way. A test that demanded the fifth
+/// decimal on every runner would eventually go red for a reason nobody could act on, and the usual
+/// response to that is to delete it.
 /// </para>
 /// </summary>
 public static class BeirReproduction
@@ -78,11 +88,14 @@ public static class BeirReproduction
     /// case is in that state today; the next dataset's legs will start there.
     /// </para>
     /// <para>
-    /// <b>More than one figure per pair is allowed, and is the answer to a different machine.</b>
-    /// If a hosted runner reproduces something legitimately outside <see cref="Tolerance"/> of every
-    /// figure here, the fix is another entry naming that machine — not a wider window. Widening
-    /// costs every dataset its resolution to settle one runner; a second figure costs nothing and
-    /// says plainly that two machines disagree.
+    /// <b>More than one figure per pair is allowed, and is the answer to a different machine —
+    /// or to a protocol that is not deterministic even on one.</b> If a hosted runner reproduces
+    /// something legitimately outside <see cref="Tolerance"/> of every figure here, the fix is
+    /// another entry naming that machine — not a wider window. Widening costs every dataset its
+    /// resolution to settle one runner; a second figure costs nothing and says plainly that two
+    /// machines disagree. The SemanticKernel ArguAna entry uses the same mechanism for a different
+    /// reason: three figures from <i>one</i> machine, because that protocol's tie ordering does not
+    /// repeat across processes and the spread is the honest record.
     /// </para>
     /// </remarks>
     private static readonly Reproduction[] Reproductions =
@@ -275,19 +288,24 @@ public static class BeirReproduction
         new(
             "arguana",
             BeirProtocol.SemanticKernel,
-            [0.50306],
+            [0.50306, 0.50321, 0.50399],
             "The library-comparison Semantic Kernel row (SK 1.78.0, InMemory connector " +
             "1.74.0-preview, MEVD 10.1.0): unchunked documents embedded and searched through " +
             "SK's own paths with the pinned embedder, self-exclusion applied on the writer's " +
             "side of the boundary (the written file held zero query-id = document-id lines " +
-            "over all 14,060), scored from a read-back TREC run file. Recall@10 0.79161 — " +
-            "IDENTICAL to the control's, while nDCG sits 0.00126 below its 0.50432 and MRR@10 " +
-            "0.41339 below its 0.41515: the same documents reach the top 10 and only their " +
-            "order differs, which is tie- and near-tie ordering — DocumentRanking breaks exact " +
-            "ties by ordinal id, the connector keeps its own order over " +
-            "TensorPrimitives.CosineSimilarity — not a retrieval difference. 1,406 queries " +
-            "evaluated. Measured 2026-08-02 (Phase 3.14 Task 4), Windows 11, .NET 10, CPU " +
-            "ONNX Runtime."),
+            "over all 14,060), scored from a read-back TREC run file. THREE FIGURES FROM ONE " +
+            "MACHINE, not three machines: this case is not deterministic run to run, because " +
+            "the entrant deliberately keeps SK's returned order (re-sorting would measure our " +
+            "tie-break, not SK), the connector does not order exactly-equal cosine scores " +
+            "repeatably across processes, and ArguAna is exact-tie-heavy — 1,298 of 1,406 " +
+            "queries are byte-identical to their own corpus document. Three runs measured " +
+            "2026-08-02, Windows 11, .NET 10, CPU ONNX Runtime (the Phase 3.14 Task 4 run, " +
+            "the run file that session left in the cache, and the whole-phase reviewer's " +
+            "fresh run): nDCG@10 0.50306 / 0.50321 / 0.50399, MRR@10 0.41339 / 0.41361 / " +
+            "0.41471 — and Recall@10 0.79161 in ALL THREE, IDENTICAL to the control's: the " +
+            "same documents reach the top 10 every run and only exact-tie order moves, " +
+            "0.00033-0.00126 of nDCG below the control's 0.50432, not a retrieval " +
+            "difference. 1,406 queries evaluated."),
         new(
             "scifact",
             BeirProtocol.LangChain,
@@ -508,9 +526,11 @@ public static class BeirReproduction
     /// <param name="Dataset">The BEIR dataset name.</param>
     /// <param name="Protocol">The protocol measured.</param>
     /// <param name="NdcgAt10">
-    /// Every nDCG@10 this case has legitimately reported, one per machine that has run it. Empty
-    /// means the case has never been run to completion, which <see cref="AssertReproduces"/> treats
-    /// as "print it and check nothing" rather than as a failure.
+    /// Every nDCG@10 this case has legitimately reported — usually one per machine that has run
+    /// it, but for a case whose tie ordering is not deterministic even on one machine (the
+    /// SemanticKernel ArguAna entry) one per observed run, recording the spread. Empty means the
+    /// case has never been run to completion, which <see cref="AssertReproduces"/> treats as
+    /// "print it and check nothing" rather than as a failure.
     /// </param>
     /// <param name="Provenance">
     /// Where and when the figures came from, in prose. Not decoration: a reproduction check whose
