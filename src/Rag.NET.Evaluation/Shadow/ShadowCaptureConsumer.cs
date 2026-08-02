@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Rag.NET.Models;
 
 namespace Rag.NET.Evaluation.Shadow;
 
@@ -178,10 +179,17 @@ public sealed class ShadowCaptureConsumer : BackgroundService
     /// The secondary run itself — here, on the consumer, and never on the request path. A
     /// secondary that throws becomes a <see cref="ShadowVariantFailure"/> inside a persisted
     /// pair: a result for the offline comparison, because dropping failed secondaries would bias
-    /// it toward whatever the secondary handles well.
+    /// it toward whatever the secondary handles well. When a
+    /// <see cref="ShadowCaptureConsumerOptions.SecondaryCostLedger"/> is configured, the run's
+    /// spend is measured around it — before/after day-window readings, honest because this
+    /// consumer runs secondaries one at a time — and recorded even for a run that threw, which
+    /// can have cost money before it failed.
     /// </summary>
     private async Task<ShadowCapture> RunSecondaryAsync(PendingShadowCapture pending)
     {
+        // Safe outside the try: the spend read never throws. If the drain deadline has already
+        // expired, it returns absent and the run below is what observes the deadline.
+        var spendBefore = await ReadSecondarySpendAsync().ConfigureAwait(false);
         var started = Stopwatch.GetTimestamp();
         try
         {
@@ -191,18 +199,24 @@ public sealed class ShadowCaptureConsumer : BackgroundService
                 .AskAsync(pending.Question, pending.Options, _drainDeadline.Token)
                 .WaitAsync(_drainDeadline.Token).ConfigureAwait(false);
 
+            var latency = Stopwatch.GetElapsedTime(started);
+            var spend = SpendDelta(spendBefore, await ReadSecondarySpendAsync().ConfigureAwait(false));
+
             if (response is null)
             {
                 return pending.ToCapture(Failed(
                     pending.SecondaryVariantName,
-                    new ShadowVariantFailure(pending.SecondaryVariantName, "The pipeline returned no response.")));
+                    new ShadowVariantFailure(pending.SecondaryVariantName, "The pipeline returned no response."))
+                    with
+                { Spend = spend });
             }
 
             return pending.ToCapture(new ShadowVariantCapture(
                 pending.SecondaryVariantName,
                 response.Answer,
                 ShadowContextTexts.From(response.Sources),
-                Stopwatch.GetElapsedTime(started)));
+                latency,
+                spend));
         }
         catch (OperationCanceledException) when (_drainDeadline.IsCancellationRequested)
         {
@@ -215,9 +229,50 @@ public sealed class ShadowCaptureConsumer : BackgroundService
         catch (Exception exception)
         {
             ShadowLog.SecondaryRunFailed(_logger, exception);
+            var spend = SpendDelta(spendBefore, await ReadSecondarySpendAsync().ConfigureAwait(false));
             return pending.ToCapture(Failed(
                 pending.SecondaryVariantName,
-                ShadowVariantFailure.FromException(pending.SecondaryVariantName, exception)));
+                ShadowVariantFailure.FromException(pending.SecondaryVariantName, exception))
+                with
+            { Spend = spend });
+        }
+
+        // The AbVariant rollover rule, applied per capture: a run that crosses UTC midnight
+        // empties the day bucket between the readings, so a shrinking reading is dropped rather
+        // than recorded — and absent beats zero, because a zero would claim the run was free.
+        // A local function because the analyzers disagree about passing Nullable<decimal> to a
+        // private method (EPS05 wants `in`, RCS1242 forbids it); locals are exempt, the same
+        // shape RagAbTester's spend recording uses.
+        static decimal? SpendDelta(decimal? before, decimal? after) =>
+            before is { } first && after is { } second && second >= first ? second - first : null;
+    }
+
+    /// <summary>
+    /// One day-window reading of the dedicated secondary ledger, or absent — when no ledger is
+    /// configured, and when the configured one cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// Never throws, including on cancellation: a spend reading is a best-effort figure and is
+    /// never worth failing or abandoning the capture over. The run and the save observe the
+    /// drain deadline themselves, so shutdown still cannot hang; the <c>WaitAsync</c> here
+    /// bounds the read against a ledger that ignores its token, mirroring both.
+    /// </remarks>
+    private async Task<decimal?> ReadSecondarySpendAsync()
+    {
+        if (_options.SecondaryCostLedger is not { } ledger)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await ledger.GetSpendAsync(CostWindow.Day, _drainDeadline.Token)
+                .WaitAsync(_drainDeadline.Token).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            ShadowLog.SecondarySpendReadFailed(_logger, exception);
+            return null;
         }
     }
 

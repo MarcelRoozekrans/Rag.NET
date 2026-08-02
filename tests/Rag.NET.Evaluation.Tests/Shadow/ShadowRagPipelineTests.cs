@@ -55,7 +55,7 @@ public sealed class ShadowRagPipelineTests
         var callerOptions = new RagOptions();
         var capturedAt = new DateTimeOffset(2026, 8, 2, 12, 0, 0, TimeSpan.Zero);
         var shadowed = new ShadowRagPipeline(
-            PrimaryAnswering(), secondary, queue, new ShadowPipelineOptions(),
+            PrimaryAnswering(), secondary, queue, new ShadowPipelineOptions { SampleRate = 1.0 },
             new FixedTimeProvider(capturedAt));
 
         await shadowed.AskAsync("q", callerOptions, TestContext.Current.CancellationToken);
@@ -245,11 +245,16 @@ public sealed class ShadowRagPipelineTests
     private static ShadowCaptureQueue NewQueue(int capacity = 8) =>
         new(new ShadowCaptureQueueOptions { Capacity = capacity });
 
+    /// <summary>
+    /// Rate 1 — the isolation-contract tests are about what happens when a request IS shadowed,
+    /// and sampling (including the off-by-default rate 0) has its own suite in
+    /// <see cref="ShadowSamplingTests"/>.
+    /// </summary>
     private static ShadowRagPipeline NewShadowed(
         IRagPipeline primary,
         IRagPipeline secondary,
         ShadowCaptureQueue queue) =>
-        new(primary, secondary, queue, new ShadowPipelineOptions());
+        new(primary, secondary, queue, new ShadowPipelineOptions { SampleRate = 1.0 });
 
     /// <summary>
     /// The drain timeout mirrors the consumer tests: generous enough that a healthy drain never

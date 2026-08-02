@@ -18,6 +18,9 @@ internal static partial class ShadowLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "The shadowed secondary pipeline failed; the failure is recorded in the captured pair as a result, and the caller's primary response was never at risk")]
     internal static partial void SecondaryRunFailed(ILogger logger, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Reading the secondary cost ledger failed; this capture's spend is recorded as absent rather than estimated, and the capture itself is unaffected")]
+    internal static partial void SecondarySpendReadFailed(ILogger logger, Exception exception);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Scheduling a shadow capture failed; the caller's response was already served and is unaffected, and this sample is lost")]
     internal static partial void ShadowSchedulingFailed(ILogger logger, Exception exception);
 }

@@ -31,14 +31,21 @@ public sealed class ShadowRagPipeline : IRagPipeline
     private readonly ShadowPipelineOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger _logger;
+    private readonly Func<double> _sampleSource;
 
     /// <summary>Wraps the primary pipeline the caller is served by.</summary>
     /// <param name="primary">The pipeline whose responses the caller gets, always.</param>
     /// <param name="secondary">The pipeline shadowed out-of-band; never run on the request path.</param>
     /// <param name="queue">Where pending captures are handed to the background consumer.</param>
-    /// <param name="options">The variant labels; validated non-blank where they are set.</param>
+    /// <param name="options">The sample rate and variant labels; validated where they are set.</param>
     /// <param name="timeProvider">Clock for latency and the capture timestamp; defaults to the system clock.</param>
     /// <param name="logger">Optional; a scheduling failure — the caller never sees one — is logged here.</param>
+    /// <param name="sampleSource">
+    /// The randomness behind sampling: a draw in [0, 1), compared against
+    /// <see cref="ShadowPipelineOptions.SampleRate"/>. Defaults to <see cref="Random.Shared"/>.
+    /// Injected so tests can assert sampling deterministically; rates 0 and 1 never consult it
+    /// at all, so those two cases are deterministic even under the default source.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any of the required arguments is null.</exception>
     /// <exception cref="ArgumentException">
     /// The two variant names are identical: every capture would be unscoreable, refused here
@@ -50,7 +57,8 @@ public sealed class ShadowRagPipeline : IRagPipeline
         ShadowCaptureQueue queue,
         ShadowPipelineOptions options,
         TimeProvider? timeProvider = null,
-        ILogger<ShadowRagPipeline>? logger = null)
+        ILogger<ShadowRagPipeline>? logger = null,
+        Func<double>? sampleSource = null)
     {
         ArgumentNullException.ThrowIfNull(primary);
         ArgumentNullException.ThrowIfNull(secondary);
@@ -71,6 +79,7 @@ public sealed class ShadowRagPipeline : IRagPipeline
         _options = options;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _logger = logger ?? NullLogger<ShadowRagPipeline>.Instance;
+        _sampleSource = sampleSource ?? Random.Shared.NextDouble;
     }
 
     /// <inheritdoc/>
@@ -79,19 +88,44 @@ public sealed class ShadowRagPipeline : IRagPipeline
     /// for the consumer — synchronously, and inside a catch, so a caller who has been served can
     /// no longer be failed; the response is returned. A primary that throws still throws:
     /// shadowing must not swallow genuine failures, and with no served answer there is nothing
-    /// to pair a secondary against.
+    /// to pair a secondary against. Whether the request is shadowed at all is decided up front
+    /// by <see cref="ShouldSample"/>; an unsampled request is a plain pass-through.
     /// </remarks>
     public async Task<RagResponse> AskAsync(
         string query,
         RagOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        if (!ShouldSample())
+        {
+            return await _primary.AskAsync(query, options, cancellationToken).ConfigureAwait(false);
+        }
+
         var started = _timeProvider.GetTimestamp();
         var response = await _primary.AskAsync(query, options, cancellationToken).ConfigureAwait(false);
 
         await ScheduleShadowAsync(query, options, response, started).ConfigureAwait(false);
 
         return response;
+    }
+
+    /// <summary>Decides whether this request is shadowed, before the primary runs.</summary>
+    /// <remarks>
+    /// The extremes never consult the source: rate 0 — the default — takes nothing, so a
+    /// registered-but-not-enabled shadow costs no draw per request, and rate 1 takes everything,
+    /// so a custom source returning exactly 1.0 cannot make "shadow everything" skip requests.
+    /// Between them a draw strictly below the rate is sampled — with a half-open [0, 1) source
+    /// the probability of sampling is then exactly the rate.
+    /// </remarks>
+    private bool ShouldSample()
+    {
+        var rate = _options.SampleRate;
+        if (rate <= 0.0)
+        {
+            return false;
+        }
+
+        return rate >= 1.0 || _sampleSource() < rate;
     }
 
     /// <summary>
