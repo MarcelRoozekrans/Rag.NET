@@ -168,6 +168,25 @@ Run captures through an optional sanitiser seam. **Do not take a dependency from
 
 ---
 
+## Task 6b: the replay bridge — added after Task 1 found the plan incomplete
+
+**Files:**
+- Create: the adapter turning stored captures into `RagAbTester.CompareAsync` input
+- Create: tests
+
+**This task exists because the plan was wrong.** Task 1 established that the capture record satisfies everything `CompareAsync` consumes — but nothing in the phase *converts* stored captures into that input. The design's entire argument for capturing rather than scoring is "score it offline with the harness Phase 3.3 already built"; without a bridge, that means a user hand-writing ~40 lines of replay pipeline, and the promise is not kept.
+
+Build the adapter: stored captures in, `(AbVariant a, AbVariant b, IReadOnlyList<EvaluationSample> samples)` out, with each variant's pipeline replaying its captured answer and context texts.
+
+Two properties Task 1 already identified, which the adapter must not paper over:
+
+- **Replayed samples have an empty `ReferenceAnswer`**, so only the two reference-free metrics run. If a caller supplies reference answers, all four must work — that is the payoff capture buys over inline scoring, so **prove it with a test that supplies references and runs all four**.
+- **`CompareAsync` measures latency and spend of the live run**, which for a replay is meaningless. The captured `Latency` and `Spend` are the real figures. Make sure a reader of the report cannot mistake replay timings for production ones.
+
+**Commit:** `feat(evaluation): replay captured pairs into the offline scorer`
+
+---
+
 ## Task 7: documentation
 
 **Files:**
