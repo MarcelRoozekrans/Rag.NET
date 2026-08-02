@@ -13,3 +13,6 @@ site/
 # against GitHub's hard 100 MB per-file limit, and chunks.json 73 MB. They are regenerable, so
 # nothing was lost — but the rewrite touched 589 commits, which is a bad afternoon to repeat.
 .lucent/
+
+# Test result output (--logger trx is the standing default for Benchmarks.Quality.Tests)
+TestResults/
