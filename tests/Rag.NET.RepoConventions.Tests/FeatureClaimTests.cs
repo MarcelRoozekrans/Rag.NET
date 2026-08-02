@@ -14,10 +14,11 @@ namespace Rag.NET.RepoConventions.Tests;
 /// its future package is legitimate roadmap prose, and the live example — <c>Rag.NET.Cli</c>,
 /// Phase 4.6's deliverable — carries no status line at all.
 /// <para>
-/// Scope, deliberately narrow: only sections whose <c>**Package:**</c> line sits immediately
-/// after the Done status line are parsed — 11 of the 54 Done sections today. The other 43 put
-/// the package line at the top of the section, under the heading; widening the parse to those is
-/// Task 2 of Phase 4.0, which is allowed to conclude the widening is not worth it.
+/// A claim is associated with its section structurally: a section runs from one heading to the
+/// next, and its <c>**Package:**</c> / <c>**Packages:**</c> lines count wherever they sit in
+/// it — under the heading, adjacent to the status line, anywhere between. The SaaS connector
+/// section names its packages in tables instead, so table rows whose first cell is a package
+/// name count too. All 54 Done statuses sit in sections the parse covers today.
 /// </para>
 /// </remarks>
 public sealed partial class FeatureClaimTests
@@ -25,13 +26,14 @@ public sealed partial class FeatureClaimTests
     private const string FeaturesFileRelativePath = "docs/reference/features.md";
     private const string DoneStatusMarker = "**Status:** ✅ Done";
     private const string PackageMarker = "**Package:**";
+    private const string PackagesMarker = "**Packages:**";
 
     /// <summary>
-    /// There are 11 Done sections with an adjacent package line today, naming 12 packages
-    /// between them. Far fewer means the parse lost the file's shape and is asserting over
-    /// nothing — which would pass, silently, forever.
+    /// The 54 Done sections name 73 packages between them today — package lines and the SaaS
+    /// connector tables combined. Far fewer means the parse lost the file's shape and is
+    /// asserting over nothing — which would pass, silently, forever.
     /// </summary>
-    private const int FewestPlausibleClaims = 10;
+    private const int FewestPlausibleClaims = 70;
 
     /// <summary>
     /// Done claims known to be false, recorded so the suite stays green while the findings stay
@@ -55,7 +57,42 @@ public sealed partial class FeatureClaimTests
             ["Rag.NET.Telemetry"] =
                 "features.md line 667 marks the OpenTelemetry section Done, but the package was " +
                 "never built and the described API surface does not exist anywhere.",
+
+            // 'C# Semantic Chunking (Roslyn)', features.md line 66. A wrong name, not a false
+            // claim: the feature is real and lives in src/Rag.NET.Chunking.CSharp —
+            // CSharpChunkingStrategy and CSharpChunkingOptions, the exact types the section
+            // describes, with the Microsoft.CodeAnalysis.CSharp reference — but the section
+            // names Rag.NET.Parsers.CSharp, which was never a directory under src/. Found by
+            // Phase 4.0 Task 2's parse widening (the package line sits under the heading, six
+            // lines before the status line, so Task 1's adjacency-only parse never read it);
+            // correcting the section is a later Milestone 4 phase's work.
+            ["Rag.NET.Parsers.CSharp"] =
+                "features.md line 66 marks the C# Semantic Chunking section Done under the " +
+                "package name Rag.NET.Parsers.CSharp, but the code lives in " +
+                "src/Rag.NET.Chunking.CSharp — the documented package name is wrong.",
         };
+
+    /// <summary>
+    /// Pins every shape a package claim takes in features.md, one live example per shape. Losing
+    /// a shape narrows the parse silently — the existence test would still pass, over fewer
+    /// claims — so each shape is held by name here instead.
+    /// </summary>
+    /// <param name="package">A package that a Done section names in the given shape.</param>
+    /// <param name="shape">Where in its section the claim sits, for the failure message.</param>
+    [Theory]
+    [InlineData("Rag.NET.Chunking.Templates", "a **Package:** line immediately after the Done status line")]
+    [InlineData("Rag.NET.Chunking.Semantic", "a **Package:** line under the heading, the Done status at the section's end")]
+    [InlineData("Rag.NET.Ingestion.AzureServiceBus", "a **Packages:** (plural) line naming several packages")]
+    [InlineData("Rag.NET.DataProviders.Zendesk", "a package-table row under a Done group heading")]
+    public void TheParseSeesEveryShapeAPackageClaimTakes(string package, string shape)
+    {
+        Assert.True(
+            AnyClaimNames(ParseClaims(), package),
+            $"No parsed claim names '{package}', which a Done section in " +
+            $"{FeaturesFileRelativePath} claims via {shape}. That shape has stopped being " +
+            "parsed, so every claim written that way is now unguarded — widen the parse back " +
+            "rather than updating this example.");
+    }
 
     [Fact]
     public void TheScanFindsTheDoneSectionsThatNameAPackage()
@@ -113,9 +150,9 @@ public sealed partial class FeatureClaimTests
 
             Assert.True(
                 AnyClaimNames(claims, package),
-                $"No Done section in {FeaturesFileRelativePath} names '{package}' adjacent to " +
-                $"its status line any more, so its entry in {nameof(KnownFalseClaims)} is " +
-                $"stale. Delete the entry. It was recorded because: {reason}");
+                $"No Done section in {FeaturesFileRelativePath} names '{package}' any more, " +
+                $"so its entry in {nameof(KnownFalseClaims)} is stale. Delete the entry. " +
+                $"It was recorded because: {reason}");
         }
     }
 
@@ -133,9 +170,10 @@ public sealed partial class FeatureClaimTests
     }
 
     /// <summary>
-    /// Parses every package claim a Done section makes: for each <c>**Status:** ✅ Done</c>
-    /// line immediately followed by a <c>**Package:**</c> line, one claim per package name on
-    /// that line.
+    /// Parses every package claim a Done section makes. A section runs from one <c>##</c> or
+    /// <c>###</c> heading to the next; a section any of whose lines starts with
+    /// <c>**Status:** ✅ Done</c> claims every package its <c>**Package:**</c> /
+    /// <c>**Packages:**</c> lines and package-table rows name, wherever in the section they sit.
     /// </summary>
     /// <returns>The claims, in file order.</returns>
     private static IReadOnlyList<FeatureClaim> ParseClaims()
@@ -144,35 +182,98 @@ public sealed partial class FeatureClaimTests
         var lines = File.ReadAllLines(path);
         var claims = new List<FeatureClaim>();
         var heading = "(before the first heading)";
+        var sectionStart = 0;
+        var index = 0;
 
-        for (var index = 0; index < lines.Length - 1; index++)
+        foreach (var line in lines)
         {
-            var line = lines[index];
-
-            if (line.StartsWith("### ", StringComparison.Ordinal))
+            if (IsSectionHeading(line))
             {
-                heading = line[4..].Trim();
-                continue;
+                AddSectionClaims(claims, lines, sectionStart, index, heading);
+                heading = line.TrimStart('#').Trim();
+                sectionStart = index + 1;
             }
 
-            // StartsWith, not Equals: several Done lines carry trailing prose ("✅ Done — all
-            // three triggers delivered…") and are no less Done for it.
-            if (!line.StartsWith(DoneStatusMarker, StringComparison.Ordinal))
-            {
-                continue;
-            }
+            index++;
+        }
 
-            var next = lines[index + 1];
-            if (next.StartsWith(PackageMarker, StringComparison.Ordinal))
+        AddSectionClaims(claims, lines, sectionStart, lines.Length, heading);
+        return claims;
+    }
+
+    /// <summary>
+    /// A section boundary is a <c>##</c> or <c>###</c> heading — deliberately not <c>####</c>.
+    /// The SaaS connector groups are <c>####</c> subsections whose Done statuses and package
+    /// tables belong to the one parent section, and splitting there would orphan the tables
+    /// from the section that claims them.
+    /// </summary>
+    /// <param name="line">The line to classify.</param>
+    /// <returns>Whether <paramref name="line"/> starts a new section.</returns>
+    private static bool IsSectionHeading(string line) =>
+        line.StartsWith("## ", StringComparison.Ordinal) ||
+        line.StartsWith("### ", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Adds one claim per package named by the section spanning
+    /// [<paramref name="start"/>, <paramref name="end"/>), if any of its lines marks it Done.
+    /// </summary>
+    /// <param name="claims">The list to add to.</param>
+    /// <param name="lines">All lines of features.md.</param>
+    /// <param name="start">The first line index of the section, inclusive.</param>
+    /// <param name="end">The line index the section ends before, exclusive.</param>
+    /// <param name="heading">The section's heading text, for failure messages.</param>
+    private static void AddSectionClaims(List<FeatureClaim> claims, string[] lines, int start, int end, string heading)
+    {
+        if (!SectionIsDone(lines, start, end))
+        {
+            return;
+        }
+
+        var lineNumber = start;
+
+        foreach (ref readonly var line in lines.AsSpan(start, end - start))
+        {
+            lineNumber++;
+
+            if (line.StartsWith(PackageMarker, StringComparison.Ordinal) ||
+                line.StartsWith(PackagesMarker, StringComparison.Ordinal))
             {
-                foreach (Match match in PackageName().Matches(next))
+                foreach (Match match in PackageName().Matches(line))
                 {
-                    claims.Add(new FeatureClaim(heading, match.Groups["package"].Value, index + 2));
+                    claims.Add(new FeatureClaim(heading, match.Groups["package"].Value, lineNumber));
                 }
+
+                continue;
+            }
+
+            var row = PackageTableRow().Match(line);
+            if (row.Success)
+            {
+                claims.Add(new FeatureClaim(heading, row.Groups["package"].Value, lineNumber));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Tells whether any line of the section marks it Done. StartsWith, not Equals: several
+    /// Done lines carry trailing prose ("✅ Done — all three triggers delivered…") and are no
+    /// less Done for it.
+    /// </summary>
+    /// <param name="lines">All lines of features.md.</param>
+    /// <param name="start">The first line index of the section, inclusive.</param>
+    /// <param name="end">The line index the section ends before, exclusive.</param>
+    /// <returns>Whether the section is marked Done.</returns>
+    private static bool SectionIsDone(string[] lines, int start, int end)
+    {
+        foreach (ref readonly var line in lines.AsSpan(start, end - start))
+        {
+            if (line.StartsWith(DoneStatusMarker, StringComparison.Ordinal))
+            {
+                return true;
             }
         }
 
-        return claims;
+        return false;
     }
 
     /// <summary>Matches one backticked package name on a <c>**Package:**</c> line.</summary>
@@ -181,10 +282,26 @@ public sealed partial class FeatureClaimTests
     /// type names (<c>`PersistentConversationMemory`</c>) and carry qualifiers ("(core)",
     /// "(dotnet tool)"), none of which are directories under <c>src/</c>. A line naming several
     /// packages ("`Rag.NET` (core) + `Rag.NET.DataProviders.GitHub`") yields one claim each.
+    /// The SaaS section's own package line says <c>`Rag.NET.DataProviders.*`</c> — the
+    /// <c>*</c> keeps it from matching, which is right: the concrete names live in the tables,
+    /// and <see cref="PackageTableRow"/> claims those.
     /// </remarks>
     /// <returns>The compiled matcher.</returns>
     [GeneratedRegex(@"`(?<package>Rag\.NET[\w.]*)`", RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking)]
     private static partial Regex PackageName();
+
+    /// <summary>
+    /// Matches a Markdown table row whose first cell is exactly one backticked package name —
+    /// the shape of the SaaS connector tables, whose header row literally reads "Package".
+    /// </summary>
+    /// <remarks>
+    /// First cell only, and only in Done sections: the other tables in Done sections (option
+    /// tables, benchmark tables, the bomb-cap table) never put a <c>Rag.NET</c> name in their
+    /// first cell, and dependency mentions in later cells are not claims.
+    /// </remarks>
+    /// <returns>The compiled matcher.</returns>
+    [GeneratedRegex(@"^\|\s*`(?<package>Rag\.NET[\w.]*)`\s*\|", RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking)]
+    private static partial Regex PackageTableRow();
 
     /// <summary>
     /// One package claim: the section <paramref name="Heading"/> that is marked Done, the
