@@ -297,3 +297,181 @@ publishes the forced change.
 6. **No source-vs-documentation disagreement was found** for the values above beyond finding 4;
    where documentation was vaguer than source (KM's docs describe partitioning without the
    embedder guard), source was used and cited.
+
+---
+
+# Stage 2 — the Python libraries
+
+**Date read: 2026-08-02, before any Python entrant was written**, under the same rule as the
+sections above: the entrants are written to match this page, not the other way round. Every value
+below was read from the **installed source at the pinned version** (paths are relative to the
+package root inside the locked environment), not from documentation.
+
+## Pinned versions
+
+The environment is `benchmarks/library-comparison-python` — a `uv` project whose `uv.lock` is
+committed, resolved for **CPython 3.14.5** (all three libraries install and import on 3.14; no
+older interpreter was needed).
+
+| Package | Version pinned | Role |
+|---|---|---|
+| `langchain-core` | **1.5.3** | LangChain's store/retrieval/`Embeddings` seam |
+| `langchain-text-splitters` | **1.1.2** | LangChain's chunker |
+| `llama-index-core` | **0.14.23** | LlamaIndex end-to-end (splitter, store, retriever) |
+| `haystack-ai` | **3.0.0** | Haystack end-to-end (splitter, store, retriever) |
+| `onnxruntime` | **1.28.0** | runs the pinned ONNX export |
+| `tokenizers` | **0.23.1** | WordPiece over the pinned `vocab.txt` |
+| `numpy` | **2.5.1** | pooling arithmetic |
+| (scratch only, for citation) `langchain-openai` 1.4.1, `llama-index-embeddings-openai` 0.6.0 | not in the lockfile | read only to record each library's default embedder model id |
+
+## The matched element, on the Python side
+
+The .NET entrants hand the actual `OnnxEmbeddingGenerator` instance to their library, so identity
+is guaranteed by construction. A Python entrant cannot hold a .NET object, so the harness runs
+**the same pinned ONNX file** (`RAGNET_ONNX_EMBED_MODEL`, revision and SHA-256 pinned in
+`nightly.yml`) through onnxruntime, replicating `OnnxEmbeddingGenerator`'s pipeline step for step
+(`benchmarks/library-comparison-python/pinned_embedder.py`: the `\n\r\t` → space substitution,
+WordPiece over the same `vocab.txt`, `[CLS]…[SEP]` truncation at 256, mean pooling excluding
+padding, L2 normalisation) — deliberately **not** `sentence-transformers`, which would download
+its own copy of the model at its own revision through its own tokenizer stack: a second model to
+verify, for no gain.
+
+Identity is then proven by measurement (`identity_check.py`), not asserted: a battery of six
+known strings — plain prose, punctuation, accented text, CJK, embedded `\n\r\t` whitespace, and
+a text long enough to truncate at 256 tokens — each embedded by `OnnxEmbeddingGenerator`
+directly on the .NET side and by the Python pipeline here. **All six matched bitwise: 384/384
+floats equal, max |diff| = 0.0** (measured 2026-08-02, Windows 11, onnxruntime 1.28.0 vs the
+.NET CPU ONNX Runtime).
+
+**One real divergence was found by this check and fixed before any entrant ran, and it is a
+finding in its own right:** HF `tokenizers`' `BertNormalizer` with its `strip_accents=None`
+default strips accents when lowercasing — reference-BERT behaviour for uncased models — but
+`Microsoft.ML.Tokenizers`' `BertTokenizer` at default `BertOptions`, the pipeline behind every
+published figure in this repository, does **not** strip accents (WordPiece then maps `müllerian`
+to `[UNK]` where HF finds `mull`-pieces). On `"anti-Müllerian hormone. It’s café naïveté."` the
+two produced vectors 0.166 apart (max-abs, unit vectors). The Python harness pins
+`strip_accents=False` to match the .NET ground truth; after the fix the accented battery entry
+is bitwise-equal. Anyone comparing this repository's BEIR figures against Python-stack numbers
+for the same model should know the two ecosystems' *tokenizers* disagree on accented text at
+their defaults.
+
+The Python harness caches its vectors under a **different directory and identity salt**
+(`embeddings-python`, identity suffixed `python-onnxruntime`) so no Python-written vector can
+ever satisfy a .NET cache lookup — two pipelines proven equivalent are still two pipelines.
+
+The protocol parameters are Stage 1's, verbatim: retrieval depth 10 (the metric's cutoff) plus
+the over-shoot rule (`BeirHarness.RetrieveAsync`), chunk-to-document **max-pooling on the
+writer's side** by `DocumentRanking.TopDocuments`' exact rule (max, dedupe, then cut; ties by
+ordinal id), self-exclusion before pooling, judged queries only.
+
+## The defaults table
+
+| | **LangChain** (core 1.5.3) | **LlamaIndex** (core 0.14.23) | **Haystack** (3.0.0) |
+|---|---|---|---|
+| Default chunker | `RecursiveCharacterTextSplitter` | `SentenceSplitter` (via `Settings.node_parser`) | `DocumentSplitter` |
+| Chunk size | 4000 **characters** | 1024 **tokens** (cl100k_base) | 200 **words** |
+| Overlap | 200 characters | 200 tokens | 0 |
+| Default top-k | 4 | **2** | 10 |
+| Retrieval mode | dense, cosine (`InMemoryVectorStore`) | dense, cosine (`SimpleVectorStore`) | dense, **dot product** (`InMemoryDocumentStore` default) |
+| Reranks by default | no | no | no |
+| Default embedder | **none in core**; companion `langchain-openai` defaults to `text-embedding-ada-002` | `OpenAIEmbedding()` = `text-embedding-ada-002` — **raises without an API key** | **none in 3.0.0 core**; the OpenAI embedders default to `text-embedding-ada-002` |
+| Default vector store | **none**; `InMemoryVectorStore` is core's only in-process store | `SimpleVectorStore` (in-memory) — a real default | **none auto-registered**; `InMemoryDocumentStore` is the in-process store |
+
+## LangChain, langchain-core 1.5.3 + langchain-text-splitters 1.1.2
+
+- **Chunker:** `RecursiveCharacterTextSplitter()` — `chunk_size = 4000`, `chunk_overlap = 200`,
+  `length_function = len` (characters), from the `TextSplitter.__init__` signature
+  (`langchain_text_splitters/base.py`); separators `["\n\n", "\n", " ", ""]`,
+  `keep_separator = True` (`langchain_text_splitters/character.py`,
+  `RecursiveCharacterTextSplitter.__init__`). LangChain ships no ingestion *pipeline*; the
+  splitter package is its chunking offer, and these are that class's own defaults.
+- **Top-k: 4** — `k: int = 4` on `similarity_search`, `similarity_search_with_score` and
+  siblings (`langchain_core/vectorstores/in_memory.py`, and the same default on the base
+  `VectorStore`); `as_retriever()` defaults to `search_type = "similarity"` with empty
+  `search_kwargs`, which lands on the same `k = 4`.
+- **Retrieval mode: dense, cosine.** `InMemoryVectorStore`'s docstring: "computes cosine
+  similarity for search using numpy"; `_cosine_similarity` is imported at the top of
+  `langchain_core/vectorstores/in_memory.py`. No reranker in the path.
+- **Embedder: no default** — `Embeddings` is abstract in core. The natural companion package's
+  default is `OpenAIEmbeddings(model="text-embedding-ada-002")`
+  (`langchain_openai/embeddings/base.py`, langchain-openai 1.4.1, read from a scratch install).
+- **Store: no default**; `InMemoryVectorStore` is langchain-core's only in-process store and is
+  what the entrant uses — the analogue of the forced choice every entrant gets.
+
+## LlamaIndex, llama-index-core 0.14.23
+
+- **Chunker:** `Settings.node_parser` lazily defaults to `SentenceSplitter()`
+  (`llama_index/core/settings.py`, `node_parser` property), whose own defaults are
+  `chunk_size = DEFAULT_CHUNK_SIZE = 1024` tokens (`llama_index/core/constants.py`) and
+  `chunk_overlap = SENTENCE_CHUNK_OVERLAP = 200`
+  (`llama_index/core/node_parser/text/sentence.py`). Note the constant next to it,
+  `DEFAULT_CHUNK_OVERLAP = 20`, is **not** what `SentenceSplitter` uses — the same
+  source-vs-source trap as Kernel Memory's 1024/0, recorded so nobody "corrects" 200 to 20.
+  Tokens are counted by the default tokenizer: tiktoken's encoding for `gpt-3.5-turbo`
+  (cl100k_base), loaded from the cache bundled with the package (`llama_index/core/utils.py`,
+  `get_tokenizer`).
+- **Top-k: 2** — `similarity_top_k = DEFAULT_SIMILARITY_TOP_K = 2`
+  (`llama_index/core/constants.py`;
+  `llama_index/core/indices/vector_store/retrievers/retriever.py`). The sharpest default in
+  either stage's table: at its own default LlamaIndex would answer nDCG@10 with a 2-deep
+  ranking. Recorded as a library fact; the run retrieves at the protocol depth.
+- **Retrieval mode: dense, cosine.** `VectorStoreIndex.from_documents` defaults its storage to
+  `SimpleVectorStore` (`llama_index/core/storage/storage_context.py`), which scores with
+  `SimilarityMode.DEFAULT = "cosine"` (`llama_index/core/base/embeddings/base.py`;
+  `llama_index/core/indices/query/embedding_utils.py`, `get_top_k_embeddings`). No reranker in
+  the path.
+- **Embedder:** `resolve_embed_model("default")` imports `llama_index.embeddings.openai` and
+  constructs `OpenAIEmbedding()` — model `text-embedding-ada-002`
+  (`llama_index/core/embeddings/utils.py`; llama-index-embeddings-openai 0.6.0, read from a
+  scratch install) — and **validates the OpenAI API key at resolution time**, so at its true
+  default LlamaIndex refuses to run offline. The pinned embedder enters through the public
+  `BaseEmbedding` seam via `Settings.embed_model`.
+- **What gets embedded** is LlamaIndex's own default composition:
+  `node.get_content(metadata_mode=EMBED)`; the entrant attaches no metadata, so that is the
+  chunk text.
+
+## Haystack, haystack-ai 3.0.0
+
+- **Chunker:** `DocumentSplitter()` — `split_by = "word"`, `split_length = 200`,
+  `split_overlap = 0`, `split_threshold = 0`
+  (`haystack/components/preprocessors/document_splitter.py`, `__init__` signature); "word"
+  means splitting on single spaces (`_CHARACTER_SPLIT_BY_MAPPING = {..., "word": " ", ...}`,
+  same file).
+- **Top-k: 10** — `InMemoryEmbeddingRetriever.__init__`, `top_k: int = 10`, `scale_score =
+  False` (`haystack/components/retrievers/in_memory/embedding_retriever.py`). The only default
+  top-k in either stage's table that equals the metric's cutoff.
+- **Retrieval mode: dense, dot product** — `InMemoryDocumentStore.__init__`,
+  `embedding_similarity_function: Literal["dot_product", "cosine"] = "dot_product"`
+  (`haystack/document_stores/in_memory/document_store.py`). **The one library whose default
+  similarity is not cosine.** The pinned embedder L2-normalises, so dot product and cosine
+  coincide numerically for these rows; the default is still used as found, and a reader
+  comparing Haystack on un-normalised embedders should know the row would then measure the
+  similarity function too. No reranker in the path.
+- **Embedder: none in core.** haystack-ai 3.0.0 ships OpenAI, Azure and mock embedders only —
+  the sentence-transformers embedders of the 2.x era (whose default model was
+  `all-MiniLM-L6-v2`) are no longer in the core package
+  (`haystack/components/embedders/` holds `openai_*`, `azure_*`, `mock_*`);
+  `OpenAIDocumentEmbedder(model="text-embedding-ada-002")`
+  (`openai_document_embedder.py`) is the closest thing to a default. The pinned embedder fills
+  `Document.embedding` exactly where an embedder component would, and the query vector goes to
+  `InMemoryEmbeddingRetriever.run(query_embedding=...)`.
+
+## Findings this section exists to record
+
+1. **All three Python libraries default their embeddings to OpenAI's `text-embedding-ada-002`**
+   (LlamaIndex hard enough to validate the API key at resolution), so *none of the three runs
+   offline at its true defaults*. The pinned local embedder is the same forced substitution
+   every entrant in Stage 1 got.
+2. **LlamaIndex's default `similarity_top_k = 2`** would leave eight of nDCG@10's ten ranks
+   empty at the library's own default depth — the strongest justification in either stage for
+   the protocol rule that retrieval depth belongs to the measurement.
+3. **Haystack 3.0.0's default similarity is dot product, not cosine** — invisible in this
+   comparison (unit-length vectors) but a real difference a reader generalising the table should
+   know about, and the row uses the default as found.
+4. **Haystack's 2.x-era default embedder was the pinned model itself** (`all-MiniLM-L6-v2` via
+   sentence-transformers); 3.0.0 removed those embedders from core. Recorded because a reader
+   who remembers 2.x would otherwise think the Haystack row ran at its old default embedder by
+   coincidence.
+5. **A source-vs-source disagreement**: `llama_index.core.constants.DEFAULT_CHUNK_OVERLAP = 20`
+   beside the `SentenceSplitter`'s actual `SENTENCE_CHUNK_OVERLAP = 200` — the effective
+   ingestion default is 1024/200.
