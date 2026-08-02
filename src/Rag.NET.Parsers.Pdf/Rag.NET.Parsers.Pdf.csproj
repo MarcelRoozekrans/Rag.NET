@@ -4,6 +4,10 @@
     <RootNamespace>Rag.NET.Parsers.Pdf</RootNamespace>
     <PackageId>Rag.NET.Parsers.Pdf</PackageId>
     <Description>PDF document parser for Rag.NET</Description>
+    <!-- `unit` speaks for the PdfPig text path only: the Tesseract OCR engine below sits behind
+         ENABLE_OCR, which no build defines, so the OCR half is compiled out of every build and
+         verified by nothing — see the ENABLE_OCR entry in TestGateTests.KnownUnsatisfiableSymbols
+         and its owning debt row. -->
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 

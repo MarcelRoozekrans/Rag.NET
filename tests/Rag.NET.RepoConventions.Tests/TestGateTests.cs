@@ -43,9 +43,11 @@ public sealed partial class TestGateTests
     private const string LocalProcedureRelativePath = "docs/reference/ci.md";
 
     /// <summary>
-    /// There are 25 <c>Assert.SkipWhen</c>/<c>Assert.SkipUnless</c> call sites today. Far fewer
-    /// means the scan lost the tree and is asserting over nothing — which would pass, silently,
-    /// forever.
+    /// There are 26 <c>Assert.SkipWhen</c>/<c>Assert.SkipUnless</c> call sites today — the 26th
+    /// is Phase 4.0's own <c>VerifiedBy</c> release gate in
+    /// <see cref="PackageVerificationTests.NoPackageIsVerifiedByNothing"/>, added after this
+    /// guard was written. Far fewer means the scan lost the tree and is asserting over
+    /// nothing — which would pass, silently, forever.
     /// </summary>
     private const int FewestPlausibleSkipGateCalls = 20;
 
