@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -6,10 +7,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Rag.NET.Evaluation.Shadow;
 
 /// <summary>
-/// The background consumer: dequeues captured pairs and persists them to the
-/// <see cref="IShadowCaptureStore"/>, off the request path. On shutdown it stops accepting,
-/// drains what is already queued within <see cref="ShadowCaptureConsumerOptions.DrainTimeout"/>,
-/// and reports how many captures were still unpersisted when the deadline expired.
+/// The background consumer: dequeues pending shadow work, <b>runs the secondary pipeline</b> —
+/// here, never on the request path — and persists the finished pair to the
+/// <see cref="IShadowCaptureStore"/>. On shutdown it stops accepting, drains what is already
+/// queued within <see cref="ShadowCaptureConsumerOptions.DrainTimeout"/>, and reports how many
+/// captures were still unpersisted when the deadline expired.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -24,9 +26,9 @@ namespace Rag.NET.Evaluation.Shadow;
 /// grace period runs out.
 /// </para>
 /// <para>
-/// <b>Loss is reported, never silent.</b> A capture the queue accepted but that was never
-/// persisted — still buffered at the deadline, or dequeued and mid-save when it expired — is
-/// counted in <see cref="AbandonedCount"/> and logged once at shutdown. Without that number the
+/// <b>Loss is reported, never silent.</b> An item the queue accepted but that was never
+/// persisted — still buffered at the deadline, or dequeued and mid-secondary-run or mid-save
+/// when it expired — is counted in <see cref="AbandonedCount"/> and logged once at shutdown. Without that number the
 /// real capture rate sits quietly below the configured sample rate, and every offline comparison
 /// rests on a denominator nobody can reconstruct.
 /// </para>
@@ -72,8 +74,8 @@ public sealed class ShadowCaptureConsumer : BackgroundService
 
     /// <summary>
     /// How many accepted captures were never persisted because the shutdown drain deadline
-    /// expired: those still queued, plus the one mid-save when the deadline hit. Zero until
-    /// <see cref="StopAsync"/> has run; exact afterwards.
+    /// expired: those still queued, plus the one mid-secondary-run or mid-save when the deadline
+    /// hit. Zero until <see cref="StopAsync"/> has run; exact afterwards.
     /// </summary>
     /// <remarks>
     /// The shutdown counterpart of <see cref="ShadowCaptureQueue.DroppedCount"/>: together they
@@ -101,9 +103,9 @@ public sealed class ShadowCaptureConsumer : BackgroundService
     {
         try
         {
-            await foreach (var capture in _queue.DequeueAllAsync(_drainDeadline.Token).ConfigureAwait(false))
+            await foreach (var pending in _queue.DequeueAllAsync(_drainDeadline.Token).ConfigureAwait(false))
             {
-                await PersistAsync(capture).ConfigureAwait(false);
+                await ProcessAsync(pending).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (_drainDeadline.IsCancellationRequested)
@@ -147,9 +149,9 @@ public sealed class ShadowCaptureConsumer : BackgroundService
     {
         try
         {
-            while (_queue.TryDequeue(out var capture))
+            while (_queue.TryDequeue(out var pending))
             {
-                await PersistAsync(capture).ConfigureAwait(false);
+                await ProcessAsync(pending).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (_drainDeadline.IsCancellationRequested)
@@ -164,6 +166,63 @@ public sealed class ShadowCaptureConsumer : BackgroundService
         _drainDeadline.Dispose();
         base.Dispose();
     }
+
+    /// <summary>Runs the secondary the pending item still owes, then persists the finished pair.</summary>
+    private async Task ProcessAsync(PendingShadowCapture pending)
+    {
+        var capture = await RunSecondaryAsync(pending).ConfigureAwait(false);
+        await PersistAsync(capture).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The secondary run itself — here, on the consumer, and never on the request path. A
+    /// secondary that throws becomes a <see cref="ShadowVariantFailure"/> inside a persisted
+    /// pair: a result for the offline comparison, because dropping failed secondaries would bias
+    /// it toward whatever the secondary handles well.
+    /// </summary>
+    private async Task<ShadowCapture> RunSecondaryAsync(PendingShadowCapture pending)
+    {
+        var started = Stopwatch.GetTimestamp();
+        try
+        {
+            // WaitAsync bounds the run even against a pipeline that ignores its token: a drain
+            // without a working timeout hangs host shutdown, which is never acceptable.
+            var response = await pending.SecondaryPipeline
+                .AskAsync(pending.Question, pending.Options, _drainDeadline.Token)
+                .WaitAsync(_drainDeadline.Token).ConfigureAwait(false);
+
+            if (response is null)
+            {
+                return pending.ToCapture(Failed(
+                    pending.SecondaryVariantName,
+                    new ShadowVariantFailure(pending.SecondaryVariantName, "The pipeline returned no response.")));
+            }
+
+            return pending.ToCapture(new ShadowVariantCapture(
+                pending.SecondaryVariantName,
+                response.Answer,
+                ShadowContextTexts.From(response.Sources),
+                Stopwatch.GetElapsedTime(started)));
+        }
+        catch (OperationCanceledException) when (_drainDeadline.IsCancellationRequested)
+        {
+            // Dequeued but never completed: the drain deadline expired mid-run. Counted with the
+            // still-queued remainder — the pair does not exist yet, so there is nothing to record
+            // as a failure — then rethrown to end the drain.
+            Interlocked.Increment(ref _abandonedInFlight);
+            throw;
+        }
+        catch (Exception exception)
+        {
+            ShadowLog.SecondaryRunFailed(_logger, exception);
+            return pending.ToCapture(Failed(
+                pending.SecondaryVariantName,
+                ShadowVariantFailure.FromException(pending.SecondaryVariantName, exception)));
+        }
+    }
+
+    private static ShadowVariantCapture Failed(string variantName, ShadowVariantFailure failure) =>
+        new(variantName, Answer: null, ContextTexts: [], Failure: failure);
 
     private async Task PersistAsync(ShadowCapture capture)
     {

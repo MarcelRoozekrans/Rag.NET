@@ -14,4 +14,10 @@ internal static partial class ShadowLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Shutdown drain incomplete: {AbandonedCount} shadow capture(s) were still unpersisted when the {DrainTimeout} drain deadline expired; the real capture rate is below the configured sample rate by exactly this amount")]
     internal static partial void CapturesAbandonedAtShutdown(ILogger logger, long abandonedCount, TimeSpan drainTimeout);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The shadowed secondary pipeline failed; the failure is recorded in the captured pair as a result, and the caller's primary response was never at risk")]
+    internal static partial void SecondaryRunFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Scheduling a shadow capture failed; the caller's response was already served and is unaffected, and this sample is lost")]
+    internal static partial void ShadowSchedulingFailed(ILogger logger, Exception exception);
 }

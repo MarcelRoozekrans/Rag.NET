@@ -16,12 +16,12 @@ public sealed class ShadowCaptureQueueTests
     public async Task EnqueueAsync_OnAFullQueue_IsAlreadyCompleteWhenItReturns()
     {
         var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 1 });
-        await queue.EnqueueAsync(Capture("q1"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("q1"), TestContext.Current.CancellationToken);
 
         // Nothing ever reads from this queue, so an enqueue that waited for space could never
         // finish. Asserting the task is already complete at the call site — rather than awaiting
         // it, which would prove only that it completes eventually — is what pins non-blocking.
-        var enqueue = queue.EnqueueAsync(Capture("q2"), TestContext.Current.CancellationToken);
+        var enqueue = queue.EnqueueAsync(Pending("q2"), TestContext.Current.CancellationToken);
 
         Assert.True(enqueue.IsCompletedSuccessfully);
         await enqueue;
@@ -31,14 +31,14 @@ public sealed class ShadowCaptureQueueTests
     public async Task EnqueueAsync_OnAFullQueue_CountsEveryDrop()
     {
         var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 2 });
-        await queue.EnqueueAsync(Capture("kept-1"), TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(Capture("kept-2"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("kept-1"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("kept-2"), TestContext.Current.CancellationToken);
 
         for (var i = 0; i < 3; i++)
         {
             // The completion guard keeps this test hang-proof: under a blocking queue the await
             // below would never return, so the guard fails fast instead of deadlocking the suite.
-            var overflow = queue.EnqueueAsync(Capture($"dropped-{i}"), TestContext.Current.CancellationToken);
+            var overflow = queue.EnqueueAsync(Pending($"dropped-{i}"), TestContext.Current.CancellationToken);
             Assert.True(overflow.IsCompletedSuccessfully);
             await overflow;
         }
@@ -50,10 +50,10 @@ public sealed class ShadowCaptureQueueTests
     public async Task EnqueueAsync_OnAFullQueue_DropsTheIncomingCaptureAndKeepsTheQueued()
     {
         var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 2 });
-        await queue.EnqueueAsync(Capture("kept-1"), TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(Capture("kept-2"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("kept-1"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("kept-2"), TestContext.Current.CancellationToken);
 
-        var overflow = queue.EnqueueAsync(Capture("dropped"), TestContext.Current.CancellationToken);
+        var overflow = queue.EnqueueAsync(Pending("dropped"), TestContext.Current.CancellationToken);
         Assert.True(overflow.IsCompletedSuccessfully);
         await overflow;
 
@@ -68,9 +68,9 @@ public sealed class ShadowCaptureQueueTests
     public async Task EnqueueAsync_ThenDequeueAllAsync_RoundTripsInOrderWithoutDrops()
     {
         var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 8 });
-        await queue.EnqueueAsync(Capture("q1"), TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(Capture("q2"), TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(Capture("q3"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("q1"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("q2"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("q3"), TestContext.Current.CancellationToken);
 
         var read = await ReadAsync(queue, 3, TestContext.Current.CancellationToken);
 
@@ -107,7 +107,7 @@ public sealed class ShadowCaptureQueueTests
 
         // Refused-after-Complete must stay non-blocking and must be counted: an uncounted
         // refusal at shutdown would be the same silent loss as an uncounted overflow drop.
-        var enqueue = queue.EnqueueAsync(Capture("late"), TestContext.Current.CancellationToken);
+        var enqueue = queue.EnqueueAsync(Pending("late"), TestContext.Current.CancellationToken);
         Assert.True(enqueue.IsCompletedSuccessfully);
         await enqueue;
 
@@ -118,8 +118,8 @@ public sealed class ShadowCaptureQueueTests
     public async Task Complete_DequeueAllAsyncEndsAfterDrainingTheBuffer()
     {
         var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 4 });
-        await queue.EnqueueAsync(Capture("q1"), TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(Capture("q2"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("q1"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("q2"), TestContext.Current.CancellationToken);
         queue.Complete();
 
         // Enumerated to natural completion, no break: the loop ending at all is the assertion
@@ -139,8 +139,8 @@ public sealed class ShadowCaptureQueueTests
         var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 4 });
         Assert.Equal(0, queue.PendingCount);
 
-        await queue.EnqueueAsync(Capture("q1"), TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(Capture("q2"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("q1"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("q2"), TestContext.Current.CancellationToken);
         Assert.Equal(2, queue.PendingCount);
 
         await ReadAsync(queue, 2, TestContext.Current.CancellationToken);
@@ -153,7 +153,7 @@ public sealed class ShadowCaptureQueueTests
         var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 4 });
         Assert.False(queue.TryDequeue(out _));
 
-        await queue.EnqueueAsync(Capture("q1"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Pending("q1"), TestContext.Current.CancellationToken);
 
         Assert.True(queue.TryDequeue(out var capture));
         Assert.Equal("q1", capture.Question);
@@ -168,7 +168,7 @@ public sealed class ShadowCaptureQueueTests
         await cts.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
-            () => queue.EnqueueAsync(Capture("q"), cts.Token).AsTask());
+            () => queue.EnqueueAsync(Pending("q"), cts.Token).AsTask());
         Assert.Equal(0, queue.DroppedCount);
     }
 
@@ -187,9 +187,9 @@ public sealed class ShadowCaptureQueueTests
         CancellationToken cancellationToken)
     {
         var questions = new List<string>(count);
-        await foreach (var capture in queue.DequeueAllAsync(cancellationToken))
+        await foreach (var pending in queue.DequeueAllAsync(cancellationToken))
         {
-            questions.Add(capture.Question);
+            questions.Add(pending.Question);
             if (questions.Count == count)
             {
                 break;
@@ -199,9 +199,13 @@ public sealed class ShadowCaptureQueueTests
         return questions;
     }
 
-    private static ShadowCapture Capture(string question) => new(
+    // Pending work rather than a completed pair: the queue sits before the secondary runs, so a
+    // drop loses a sample that never cost secondary money — see PendingShadowCapture.
+    private static PendingShadowCapture Pending(string question) => new(
         question,
-        new ShadowVariantCapture("primary", Answer: "a", ContextTexts: ["c"]),
-        new ShadowVariantCapture("shadow", Answer: "b", ContextTexts: ["d"]),
+        Options: null,
+        new ShadowVariantCapture("primary", Answer: "a", ContextTexts: ["c"], Latency: TimeSpan.FromMilliseconds(1)),
+        new ScriptedRagPipeline(),
+        "shadow",
         new DateTimeOffset(2026, 8, 2, 12, 0, 0, TimeSpan.Zero));
 }
