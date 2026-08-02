@@ -1,0 +1,26 @@
+
+# Phase 3.14 Stage 2: the Python RAG libraries at their own defaults, each emitting a TREC run
+# file and NOTHING else -- no Python code computes a metric. Every run file is scored by the one
+# IrMetrics behind this repository's published BEIR figures, through TrecRunFile.Read, which is
+# what keeps a comparison between a .NET library and three Python libraries from quietly becoming
+# a comparison between two evaluation stacks.
+#
+# Every dependency is pinned exactly, and uv.lock is committed, so an outsider re-running an
+# entrant resolves the same bytes. The versions are the latest stable on PyPI at 2026-08-02, the
+# same day docs/reference/library-comparison-defaults.md read their defaults -- each library's
+# defaults section cites source files AT these versions, so a version drift here would silently
+# invalidate those citations.
+[project]
+name = "library-comparison"
+version = "0.1.0"
+description = "Rag.NET library comparison, Stage 2: Python entrants that emit TREC run files"
+requires-python = "==3.14.*"
+dependencies = [
+    "haystack-ai==3.0.0",
+    "langchain-core==1.5.3",
+    "langchain-text-splitters==1.1.2",
+    "llama-index-core==0.14.23",
+    "numpy==2.5.1",
+    "onnxruntime==1.28.0",
+    "tokenizers==0.23.1",
+]
