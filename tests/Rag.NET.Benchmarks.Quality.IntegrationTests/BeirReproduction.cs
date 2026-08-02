@@ -217,6 +217,38 @@ public static class BeirReproduction
             "Measured in Phase 3.15 (2026-08-01/02), Windows 11, .NET 10, CPU ONNX Runtime, " +
             "after commit a912187's WordPiece fix. The pre-fix run measured 0.41806 — history, " +
             "not a figure to reproduce."),
+        new(
+            "scifact",
+            BeirProtocol.Comparison,
+            [0.64593],
+            "The library-comparison control row: the parity rankings written to a TREC run file, " +
+            "read back, and scored from the read-back — and it reproduced the parity figure " +
+            "EXACTLY, as determinism on one machine says it must: same rankings in, same " +
+            "rankings off the disk, same metric. Recall@10 0.78667, MRR@10 0.60483, 300 queries " +
+            "evaluated. Measured 2026-08-02 (Phase 3.14 Task 2), Windows 11, .NET 10, CPU ONNX " +
+            "Runtime. The control also asserts against the parity entry, which is the acceptance " +
+            "gate; this entry is the row's own pin."),
+        new(
+            "fiqa",
+            BeirProtocol.Comparison,
+            [],
+            "The library-comparison control row: the parity rankings written to a TREC run file, " +
+            "read back, and scored from the read-back. NEVER RUN — gated with FiQA's parity leg " +
+            "behind RAGNET_BEIR_LONG_RUNS, whose cold price is 1 h 11 m. The acceptance gate — " +
+            "that it reproduce parity's 0.37086 — is asserted by BeirComparisonControlTests " +
+            "against the parity entry the day somebody pays for the run, so this empty entry " +
+            "does not weaken the gate; when that run completes, its figure belongs here."),
+        new(
+            "arguana",
+            BeirProtocol.Comparison,
+            [0.50432],
+            "The library-comparison control row: the parity rankings written to a TREC run file, " +
+            "read back, and scored from the read-back — and it reproduced the parity figure " +
+            "EXACTLY, with the self-exclusion applied on the writer's side of the boundary, " +
+            "before the file: the run file already holds the post-exclusion top 10, which is " +
+            "what makes it scoreable by an outsider's trec_eval with no knowledge of query ids. " +
+            "Recall@10 0.79161, MRR@10 0.41515, 1,406 queries evaluated. Measured 2026-08-02 " +
+            "(Phase 3.14 Task 2), Windows 11, .NET 10, CPU ONNX Runtime."),
     ];
 
     /// <summary>

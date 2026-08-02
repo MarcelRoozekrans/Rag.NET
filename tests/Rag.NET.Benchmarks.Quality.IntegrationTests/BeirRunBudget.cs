@@ -189,6 +189,39 @@ public static class BeirRunBudget
             "WordPiece fix; the pre-fix run measured ~1 h 32 m over the same 1,406 judged " +
             "queries. ArguAna is the expensive reranker cell because it judges every query — " +
             "14,060 cross-encoder pairs against FiQA's 6,480 and SciFact's 3,000."),
+        new(
+            "scifact",
+            BeirProtocol.Comparison,
+            FitsTheNightly: false,
+            "56 s with the parity leg's vectors warm in the embedding cache (12 s on an " +
+            "immediate re-run), measured 2026-08-02 (Phase 3.14 Task 2); cold it pays the " +
+            "parity leg's ~5 min embedding price first (that part DERIVED for this pair). " +
+            "Opt-in even though it is cheap warm: " +
+            "the nightly's cache is cold and xUnit runs test classes in parallel, so this case " +
+            "beside BeirParityTests would race it for the same fresh cache and could pay the " +
+            "corpus embedding twice — for a figure the parity case re-measures the same night " +
+            "anyway. What is exclusively this case's — the run-file boundary's format and " +
+            "ordering — is pinned in ci.yml's fast tier by TrecRunFileTests at no model cost."),
+        new(
+            "fiqa",
+            BeirProtocol.Comparison,
+            FitsTheNightly: false,
+            "NEVER RUN to completion — no wall-clock figure is recorded for this pair, and " +
+            "nothing below is a measurement of it. The retrieval work is exactly FiQA's parity " +
+            "leg's, whose cold price was measured 2026-07-31 at 1 h 11 m, so cold this pair is " +
+            "DERIVED to cost the same; warm it should cost minutes like the other two control " +
+            "legs. Phase 3.14 Task 2 ran SciFact's and ArguAna's legs and deliberately not this " +
+            "one, for the same budget reason FiQA's parity case is opt-in."),
+        new(
+            "arguana",
+            BeirProtocol.Comparison,
+            FitsTheNightly: false,
+            "2 m 10 s with the parity leg's vectors warm in the embedding cache, measured " +
+            "2026-08-02 (Phase 3.14 Task 2); cold it pays the parity leg's ~4 min embedding " +
+            "price first (that part DERIVED for this pair). Opt-in for SciFact's reason: the " +
+            "nightly's cache is cold, this case would race BeirParityTests for it, and the " +
+            "boundary it uniquely exercises is already pinned in the fast tier by " +
+            "TrecRunFileTests."),
     ];
 
     /// <summary>
@@ -312,6 +345,8 @@ public static class BeirRunBudget
             "+HYDE ablation cell (parity corpus, searched with the cached hypotheticals' mean vector)",
         BeirProtocol.Reranked =>
             "+RERANKER ablation cell (parity corpus, dense top-k rescored by the cross-encoder)",
+        BeirProtocol.Comparison =>
+            "COMPARISON CONTROL (parity corpus, scored from a TREC run file read back from disk)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -335,6 +370,7 @@ public static class BeirRunBudget
             BeirProtocol.HybridBm25 => "UnderBm25HybridRrf",
             BeirProtocol.Hyde => "UnderCachedHyde",
             BeirProtocol.Reranked => "UnderCrossEncoderRerank",
+            BeirProtocol.Comparison => nameof(BeirComparisonControlTests),
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 

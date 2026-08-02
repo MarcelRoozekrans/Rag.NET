@@ -52,4 +52,14 @@ public enum BeirProtocol
     /// <see cref="BeirAblationTests.NdcgAt10_UnderCrossEncoderRerank_MeasuresWithRerankerProvablyReordering"/>.
     /// </summary>
     Reranked,
+
+    /// <summary>
+    /// The library comparison's control row (Phase 3.14): the parity corpus retrieved exactly as
+    /// <see cref="Parity"/> retrieves it, but scored from a TREC run file written to disk and read
+    /// back — the boundary every comparison entrant crosses — rather than from the rankings in
+    /// memory. Same retrieval work as <see cref="Parity"/>, so the same cold cost; what it
+    /// measures is the boundary itself, on a row whose answer is already published. Measured by
+    /// <see cref="BeirComparisonControlTests"/>.
+    /// </summary>
+    Comparison,
 }
