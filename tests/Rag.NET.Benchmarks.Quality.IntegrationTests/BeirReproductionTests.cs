@@ -12,8 +12,9 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <b>Deliberately not gated on provisioning</b>, for the reason <see cref="BeirRunBudgetTests"/>
 /// gives about the budget table and one more that is specific to this one: the measurements that
 /// exercise <see cref="BeirReproduction.AssertReproduces"/> for real cost between 50 seconds and
-/// nine hours and four of the six are opt-in, so a defect in the check would be found by almost
-/// nothing. Everything here needs no model, no corpus and no environment.
+/// over an hour and all but the nightly's two parity datasets are opt-in, so a defect in the
+/// check would be found by almost nothing. Everything here needs no model, no corpus and no
+/// environment.
 /// </para>
 /// <para>
 /// It also means the mechanism is tested where the measurements are not: that a drift fails, that a
@@ -30,16 +31,20 @@ public sealed class BeirReproductionTests
     }
 
     [Fact]
-    public void EveryDescribedDatasetHasARecordedReproductionUnderBothProtocols()
+    public void EveryDescribedDatasetHasARecordedReproductionUnderEveryProtocol()
     {
         // BeirReproduction.Find throws on a pair it holds nothing for, which is what stops a fourth
         // dataset from joining the suite pinned by nothing but a ±0.02 published band. That throw
-        // only fires when the case runs, and four of the six cases are gated behind
-        // RAGNET_BEIR_LONG_RUNS — so it is provoked here, where nothing is gated.
+        // only fires when the case runs, and most cases are gated behind RAGNET_BEIR_LONG_RUNS —
+        // so it is provoked here, where nothing is gated. Every protocol, not just the two
+        // chunking legs: since Phase 3.15 pinned the ablation cells, a fourth dataset owes those
+        // three figures too (or an entry recording that nobody has run them).
         foreach (var descriptor in BeirDatasetDescriptor.All)
         {
-            BeirReproduction.RequireRecordedCase(descriptor.Name, BeirProtocol.Parity);
-            BeirReproduction.RequireRecordedCase(descriptor.Name, BeirProtocol.Real);
+            foreach (var protocol in Enum.GetValues<BeirProtocol>())
+            {
+                BeirReproduction.RequireRecordedCase(descriptor.Name, protocol);
+            }
         }
     }
 
@@ -71,12 +76,40 @@ public sealed class BeirReproductionTests
     }
 
     [Fact]
-    public void ACaseNobodyHasRunToCompletionChecksNothingAndPrintsWhatItSaw()
+    public void TheFormerlyUnrunFiqaRealCaseNowAssertsLikeEveryOtherCase()
     {
-        // FiQA's real leg is estimated at 8-9 hours and has never finished. Failing that run for
-        // not matching a figure nobody could have recorded would be a test that punishes the person
-        // who finally paid for it; it prints instead, naming what to write down.
-        BeirReproduction.AssertReproduces("fiqa", BeirProtocol.Real, 0.12345, _output);
+        // Until Phase 3.15 this case held an empty figure list and AssertReproduces printed what
+        // the run saw instead of asserting — the state a case sits in while nobody has paid for
+        // it, and the state the next dataset's legs will start in. FiQA's real leg was measured
+        // on 2026-08-02 (0.35569), so a drift the empty entry would have waved through now fails
+        // like any other case.
+        var exception = Assert.ThrowsAny<XunitException>(
+            () => BeirReproduction.AssertReproduces(
+                "fiqa", BeirProtocol.Real, 0.35569 - 0.01, _output));
+
+        Assert.Contains("THIS IS NOT A PARITY FAILURE", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("fiqa", BeirProtocol.Real, 0.35569)]
+    [InlineData("scifact", BeirProtocol.HybridBm25, 0.69913)]
+    [InlineData("scifact", BeirProtocol.Hyde, 0.70001)]
+    [InlineData("scifact", BeirProtocol.Reranked, 0.68442)]
+    [InlineData("fiqa", BeirProtocol.HybridBm25, 0.35665)]
+    [InlineData("fiqa", BeirProtocol.Hyde, 0.36543)]
+    [InlineData("fiqa", BeirProtocol.Reranked, 0.38458)]
+    [InlineData("arguana", BeirProtocol.HybridBm25, 0.51173)]
+    [InlineData("arguana", BeirProtocol.Hyde, 0.50293)]
+    [InlineData("arguana", BeirProtocol.Reranked, 0.47917)]
+    public void TheFiguresThePagePublishesAreTheFiguresTheTableHolds(
+        string datasetName, BeirProtocol protocol, double published)
+    {
+        // The nine ablation cells and FiQA's real leg run only behind RAGNET_BEIR_LONG_RUNS, so a
+        // mutated table entry would be caught by nothing until somebody paid for the run. These
+        // are the figures docs/reference/retrieval-quality.md publishes, restated so the fast
+        // tier fails when either copy moves without the other — the same double entry the parity
+        // theories above give SciFact's 0.64593.
+        BeirReproduction.AssertReproduces(datasetName, protocol, published, _output);
     }
 
     [Fact]

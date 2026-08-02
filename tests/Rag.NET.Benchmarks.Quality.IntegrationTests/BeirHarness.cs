@@ -10,8 +10,9 @@ using Xunit;
 namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 
 /// <summary>
-/// The embed → store → retrieve → score path both protocols run through, shared so that the only
-/// difference between them is the one the phase is about: <b>what text units get indexed</b>.
+/// The embed → store → retrieve → score path every measurement runs through, shared so that runs
+/// differ only in the axes measurements are about: <b>what text units get indexed</b> (the parity
+/// and real protocols) and <b>how retrieval happens</b> (the <see cref="AblationRow"/>s).
 /// <para>
 /// Every component is the library's own — <see cref="OnnxEmbeddingGenerator"/> embeds,
 /// <see cref="InMemoryVectorStore"/> stores and scores cosine, <see cref="DocumentRanking"/>
@@ -36,6 +37,19 @@ public static class BeirHarness
         "Set RAGNET_ONNX_EMBED_MODEL and RAGNET_ONNX_EMBED_VOCAB to an existing all-MiniLM-L6-v2 " +
         "ONNX export (token-level output) and its WordPiece vocab.txt, and RAGNET_BEIR_CACHE to a " +
         "writable directory for the dataset downloads, to run the BEIR measurements.";
+
+    /// <summary>The message a run without the cross-encoder skips with.</summary>
+    /// <remarks>
+    /// The reranker's variables follow the embedder's convention —
+    /// <c>RAGNET_ONNX_EMBED_MODEL</c>/<c>RAGNET_ONNX_EMBED_VOCAB</c> begat
+    /// <c>RAGNET_ONNX_RERANK_MODEL</c>/<c>RAGNET_ONNX_RERANK_VOCAB</c> — and both are provisioned
+    /// by the same pinned-revision, SHA-256-verified steps in <c>nightly.yml</c>, where the pins
+    /// and their sources are recorded.
+    /// </remarks>
+    public const string RerankerSkipReason =
+        "Set RAGNET_ONNX_RERANK_MODEL and RAGNET_ONNX_RERANK_VOCAB to an existing " +
+        "cross-encoder/ms-marco-MiniLM-L6-v2 ONNX export and its WordPiece vocab.txt to run the " +
+        "reranked ablation cell.";
 
     /// <summary>
     /// What the embedding cache's keys are salted with.
@@ -87,6 +101,23 @@ public static class BeirHarness
         cacheDirectory = BeirDatasetCache.ResolveCacheDirectoryFromEnvironment() ?? string.Empty;
 
         return File.Exists(modelPath) && File.Exists(vocabPath) && cacheDirectory.Length > 0;
+    }
+
+    /// <summary>Reports whether the cross-encoder the reranked row rescores with is present.</summary>
+    /// <param name="modelPath">Receives <c>RAGNET_ONNX_RERANK_MODEL</c>.</param>
+    /// <param name="vocabPath">Receives <c>RAGNET_ONNX_RERANK_VOCAB</c>.</param>
+    /// <returns><see langword="true"/> when the reranked cell can run.</returns>
+    /// <remarks>
+    /// Separate from <see cref="IsProvisioned"/> rather than folded into it, because folding it in
+    /// would make every dense, hybrid and HyDE measurement skip on a machine that has the embedder
+    /// but not the cross-encoder — three rows held hostage to a model only the fourth one reads.
+    /// </remarks>
+    public static bool IsRerankerProvisioned(out string modelPath, out string vocabPath)
+    {
+        modelPath = Environment.GetEnvironmentVariable("RAGNET_ONNX_RERANK_MODEL") ?? string.Empty;
+        vocabPath = Environment.GetEnvironmentVariable("RAGNET_ONNX_RERANK_VOCAB") ?? string.Empty;
+
+        return File.Exists(modelPath) && File.Exists(vocabPath);
     }
 
     /// <summary>
@@ -176,12 +207,18 @@ public static class BeirHarness
     }
 
     /// <summary>
-    /// Embeds and indexes <paramref name="units"/>, retrieves for every query, and scores the run.
+    /// Embeds and indexes <paramref name="units"/>, retrieves for every <b>judged</b> query with
+    /// <paramref name="row"/>, and scores the run.
     /// </summary>
     /// <param name="descriptor">The dataset, for its retrieval protocol.</param>
     /// <param name="dataset">The loaded corpus, queries and qrels.</param>
     /// <param name="units">
-    /// What to index. The <b>only</b> thing that differs between the parity and real runs.
+    /// What to index. What differs between the parity and real <b>protocols</b>; indexing stays out
+    /// of the row so every row of a dataset queries one index.
+    /// </param>
+    /// <param name="row">
+    /// How to retrieve. What differs between the ablation table's <b>rows</b>;
+    /// <see cref="AblationRow.Dense"/> is what this method always did.
     /// </param>
     /// <param name="generator">The embedder.</param>
     /// <param name="embeddings">The vector cache; every embed call goes through it.</param>
@@ -191,6 +228,7 @@ public static class BeirHarness
         BeirDatasetDescriptor descriptor,
         BeirDataset dataset,
         IReadOnlyList<TextChunk> units,
+        AblationRow row,
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         CancellationToken cancellationToken)
@@ -198,6 +236,7 @@ public static class BeirHarness
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(dataset);
         ArgumentNullException.ThrowIfNull(units);
+        ArgumentNullException.ThrowIfNull(row);
         ArgumentNullException.ThrowIfNull(embeddings);
 
         var startedAt = Stopwatch.GetTimestamp();
@@ -208,7 +247,8 @@ public static class BeirHarness
         using var store = new InMemoryVectorStore();
         await IndexAsync(generator, embeddings, store, units, cancellationToken);
         var (runs, pooledQueries) = await RetrieveAsync(
-            generator, embeddings, store, dataset.Queries, descriptor, maxPerDocument, cancellationToken);
+            row, generator, embeddings, store, JudgedQueries(dataset), descriptor, maxPerDocument,
+            cancellationToken);
 
         return new BeirRunResult(
             IrMetrics.Evaluate(runs, dataset.Qrels, Cutoff),
@@ -220,6 +260,42 @@ public static class BeirHarness
             Stopwatch.GetElapsedTime(startedAt),
             embeddings.Hits - hitsBefore,
             embeddings.Misses - missesBefore);
+    }
+
+    /// <summary>
+    /// The queries a run retrieves for: exactly those <c>qrels</c> judges, in <c>queries.jsonl</c>
+    /// order.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Unjudged queries are excluded because they cannot be scored, not as an optimisation.</b>
+    /// <see cref="IrMetrics.Evaluate"/> iterates the qrels — an unjudged query's ranking never
+    /// enters any mean no matter what is retrieved for it — so retrieving for the 809 of SciFact's
+    /// 1,109 queries the test split does not judge computed rankings that were thrown away, and it
+    /// billed every per-query resource for them: wall clock, query embeddings, and one cached
+    /// hypothetical per hypothesis on the HyDE row, whose refuse-on-miss cache rightly failed on
+    /// queries the generation tool never paid for. The metrics are unchanged by construction;
+    /// the run's counters (<see cref="BeirRunResult.PooledQueryCount"/>, cache traffic, elapsed)
+    /// now describe the judged set only.
+    /// </para>
+    /// <para>
+    /// This is not qrels reaching the ranker. Only <i>membership</i> of the judged set is read
+    /// here — which documents are relevant, and how relevant, stays invisible to retrieval, so the
+    /// leak the parity band's upper edge watches for cannot enter through this filter.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<BeirQuery> JudgedQueries(BeirDataset dataset)
+    {
+        var judged = new List<BeirQuery>(dataset.JudgedQueryCount);
+        for (var i = 0; i < dataset.Queries.Count; i++)
+        {
+            if (dataset.Qrels.ContainsKey(dataset.Queries[i].Id))
+            {
+                judged.Add(dataset.Queries[i]);
+            }
+        }
+
+        return judged;
     }
 
     /// <summary>Counts documents whose <c>title</c> is present and non-empty.</summary>
@@ -309,14 +385,21 @@ public static class BeirHarness
     }
 
     /// <summary>
-    /// Retrieves for every query and aggregates each result list to a document ranking.
+    /// Retrieves for each of <paramref name="queries"/> with the row and aggregates each result
+    /// list to a document ranking.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Every</b> query in <c>queries.jsonl</c>, not only the judged ones. The ranker never sees
-    /// qrels — which is what "materially above the band means a leak" is about — and
-    /// <see cref="IrMetrics.Evaluate"/> is the single place the exclusion rule is applied, reporting
-    /// the unjudged ones as <see cref="IrEvaluation.ExcludedQueryCount"/>.
+    /// The judged queries only — <see cref="JudgedQueries"/> says why, and why that is not qrels
+    /// reaching the ranker. <see cref="IrMetrics.Evaluate"/> remains the single place the scoring
+    /// exclusion rule is applied: a judged query with no positive judgement is still excluded
+    /// there, reported as <see cref="IrEvaluation.ExcludedQueryCount"/>.
+    /// </para>
+    /// <para>
+    /// The retrieval itself is the row's; everything downstream of the hit list is not. Pooling,
+    /// the self-exclusion and <see cref="BeirRunResult.PooledQueryCount"/> stay here so that every
+    /// row's hits are aggregated by the same code — a row that pooled its own way would make the
+    /// table compare aggregations rather than retrieval strategies.
     /// </para>
     /// <para>
     /// <c>TopK</c> over-shoots the cutoff by <paramref name="maxUnitsPerDocument"/>, and by one more
@@ -332,6 +415,7 @@ public static class BeirHarness
     /// </remarks>
     private static async Task<(IReadOnlyDictionary<string, IReadOnlyList<string>> Runs, int PooledQueries)>
         RetrieveAsync(
+            AblationRow row,
             OnnxEmbeddingGenerator generator,
             EmbeddingCache embeddings,
             InMemoryVectorStore store,
@@ -348,37 +432,26 @@ public static class BeirHarness
         };
 
         var pooledQueries = 0;
-        for (var start = 0; start < queries.Count; start += SlabSize)
+        for (var i = 0; i < queries.Count; i++)
         {
-            var end = Math.Min(start + SlabSize, queries.Count);
-            var texts = new string[end - start];
-            for (var i = start; i < end; i++)
+            var hits = await row.RetrieveAsync(
+                queries[i], generator, embeddings, store, options, cancellationToken);
+
+            // The same excluded id goes to both, and it has to. DocumentRanking drops the
+            // excluded document's chunks BEFORE it pools, so a query whose only repeated
+            // document is its own — every ArguAna query whose argument was chunked, for
+            // instance — would otherwise be counted as pooled on a ranking that pooling never
+            // touched. PooledQueryCount is documented as "queries on which max-pooling had
+            // anything to do at all"; measuring it on the pre-exclusion list measures a
+            // different sentence.
+            var excludedDocumentId = excludesSelf ? queries[i].Id : null;
+            if (HasRepeatedDocument(hits, excludedDocumentId))
             {
-                texts[i - start] = queries[i].Text;
+                pooledQueries++;
             }
 
-            var vectors = await EmbedAsync(generator, embeddings, texts, cancellationToken);
-            for (var i = start; i < end; i++)
-            {
-                var results = await store.SearchAsync(vectors[i - start], options, cancellationToken);
-                var hits = ToChunkHits(results);
-
-                // The same excluded id goes to both, and it has to. DocumentRanking drops the
-                // excluded document's chunks BEFORE it pools, so a query whose only repeated
-                // document is its own — every ArguAna query whose argument was chunked, for
-                // instance — would otherwise be counted as pooled on a ranking that pooling never
-                // touched. PooledQueryCount is documented as "queries on which max-pooling had
-                // anything to do at all"; measuring it on the pre-exclusion list measures a
-                // different sentence.
-                var excludedDocumentId = excludesSelf ? queries[i].Id : null;
-                if (HasRepeatedDocument(hits, excludedDocumentId))
-                {
-                    pooledQueries++;
-                }
-
-                runs[queries[i].Id] = DocumentRanking.TopDocumentIds(
-                    hits, Cutoff, excludedDocumentId);
-            }
+            runs[queries[i].Id] = DocumentRanking.TopDocumentIds(
+                hits, Cutoff, excludedDocumentId);
         }
 
         return (runs, pooledQueries);
@@ -392,7 +465,7 @@ public static class BeirHarness
     /// Pooling or normalising again here is the regression to watch for: it would not throw, it would
     /// quietly move the number.
     /// </remarks>
-    private static Task<IReadOnlyList<float[]>> EmbedAsync(
+    internal static Task<IReadOnlyList<float[]>> EmbedAsync(
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         IReadOnlyList<string> texts,
@@ -411,28 +484,6 @@ public static class BeirHarness
                 return vectors;
             },
             cancellationToken);
-
-    /// <summary>
-    /// Projects search results onto <see cref="ChunkHit"/>, carrying the <b>parent document</b> id.
-    /// </summary>
-    /// <remarks>
-    /// A chunk id reaching <see cref="IrMetrics"/> does not throw — it simply never matches a qrels
-    /// entry and scores every query zero, so the mapping is made explicitly here rather than assumed.
-    /// </remarks>
-    private static IReadOnlyList<ChunkHit> ToChunkHits(IReadOnlyList<SearchResult> results)
-    {
-        var hits = new ChunkHit[results.Count];
-        for (var i = 0; i < results.Count; i++)
-        {
-            var chunk = results[i].Chunk;
-            hits[i] = new ChunkHit(
-                FormattableString.Invariant($"{chunk.DocumentId.Value}#{chunk.ChunkIndex}"),
-                chunk.DocumentId.Value,
-                results[i].Score);
-        }
-
-        return hits;
-    }
 
     /// <summary>
     /// Reports whether any document that survives the exclusion contributed two or more of these

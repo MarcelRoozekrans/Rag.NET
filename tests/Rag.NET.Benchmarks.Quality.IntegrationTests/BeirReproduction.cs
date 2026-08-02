@@ -71,10 +71,11 @@ public static class BeirReproduction
     /// </para>
     /// <para>
     /// <b>An entry may record that no figure exists</b>, which is a different state from being
-    /// absent and is the state FiQA's real leg is in — never run to completion, at a derived ~1.5–2
-    /// hours. <see cref="AssertReproduces"/> prints what such a run measured and asserts nothing
-    /// about it, because a nine-hour measurement whose only outcome is a failure telling the runner
-    /// to write down what they just watched is a measurement people learn to skip.
+    /// absent — it is the state FiQA's real leg sat in from Phase 3.12 until Phase 3.15 measured it
+    /// on 2026-08-02. <see cref="AssertReproduces"/> prints what such a run measured and asserts
+    /// nothing about it, because an hours-long measurement whose only outcome is a failure telling
+    /// the runner to write down what they just watched is a measurement people learn to skip. No
+    /// case is in that state today; the next dataset's legs will start there.
     /// </para>
     /// <para>
     /// <b>More than one figure per pair is allowed, and is the answer to a different machine.</b>
@@ -98,7 +99,9 @@ public static class BeirReproduction
             BeirProtocol.Real,
             [0.67742],
             "20,155 chunks over 5,183 of 5,183 documents, max 25 from one, pooled on all 1,109 " +
-            "queries. Re-measured 2026-07-31 on the same machine, 643.1 s, after Phase 3.16 taught " +
+            "queries — a count over every query in queries.jsonl; since Phase 3.15 cut retrieval " +
+            "to the judged set, a re-run pools on at most the 300 judged and the nDCG is unchanged " +
+            "by construction. Re-measured 2026-07-31 on the same machine, 643.1 s, after Phase 3.16 taught " +
             "RecursiveChunkingStrategy to pack split parts towards MaxChunkSize — the packing " +
             "lifted this leg from 3.12's 0.65589 (56,707 chunks, max 221) to 0.67742, +0.03148 " +
             "against a parity leg the fix did not move."),
@@ -107,18 +110,21 @@ public static class BeirReproduction
             BeirProtocol.Parity,
             [0.37086],
             "One separator — FiQA titles none of its 57,638 documents. Measured 2026-07-31, 1 h " +
-            "11 m for 64,247 embeddings. GATED: BeirRunBudget keeps this case behind " +
+            "11 m for 64,247 embeddings, retrieving for all 6,648 queries; since Phase 3.15 cut " +
+            "retrieval to the 648 judged, a re-run embeds ~6,000 fewer query texts and the nDCG " +
+            "is unchanged by construction. GATED: BeirRunBudget keeps this case behind " +
             "RAGNET_BEIR_LONG_RUNS, so nothing re-checks this figure unless somebody asks for it."),
         new(
             "fiqa",
             BeirProtocol.Real,
-            [],
-            "NEVER RUN. 121,236 chunks since Phase 3.16's packing chunker (429,850 before it), at " +
-            "a DERIVED ~1.5-2 h: the packed SciFact and ArguAna real legs embedded 35,589 fresh " +
-            "texts in 1,310 s combined (~27/s), and this leg is ~121,236 chunk plus 6,648 query " +
-            "embeddings at that rate, plus the per-query sorting. Deferred to Phase 3.15 rather " +
-            "than dropped. If you are reading this in a test log, the run above it is the first " +
-            "one: record its nDCG@10 here."),
+            [0.35569],
+            "121,236 units over 57,600 of 57,638 documents, max 41 from one — 38 corpus entries " +
+            "have an empty title and an empty text and so yield no chunks, one of them (117276) " +
+            "judged relevant, so this leg indexes 38 fewer documents than parity. Pooled two or " +
+            "more units on all 648 judged queries. First measured 2026-08-02 (Phase 3.15), same " +
+            "machine: real leg 3,587.5 s (59.8 min), whole test 1 h 4 m — the derived ~1.5-2 h " +
+            "estimate it replaces was conservative. Recall@10 0.42235, MRR@10 0.42596; the " +
+            "parity leg in the same run reproduced 0.37086 exactly, so the delta is -0.01517."),
         new(
             "arguana",
             BeirProtocol.Parity,
@@ -134,6 +140,83 @@ public static class BeirReproduction
             "-0.02873 against the unmoved parity leg is still the headline number and is pinned by " +
             "pinning both legs — packing recovered about 63% of 3.12's -0.07839 (0.42594, 82,618 " +
             "chunks, max 285), which is what design §6 predicted if fragmentation was the cause."),
+        new(
+            "scifact",
+            BeirProtocol.HybridBm25,
+            [0.69913],
+            "Parity corpus, dense fused with InMemoryBm25Index via RRF — this repository's own " +
+            "reproduction, comparable to the dense anchor and to no published BM25 or hybrid " +
+            "figure. Recall@10 0.83933, MRR@10 0.65676. Measured in Phase 3.15 (2026-08-01/02), " +
+            "Windows 11, .NET 10, CPU ONNX Runtime."),
+        new(
+            "scifact",
+            BeirProtocol.Hyde,
+            [0.70001],
+            "Parity corpus searched with the mean of 3 cached gpt-4o-mini@t0.8 hypotheticals — " +
+            "this repository's own reproduction, comparable to nothing published. Recall@10 " +
+            "0.85033, MRR@10 0.65563. Measured in Phase 3.15 (2026-08-01/02), Windows 11, .NET " +
+            "10, CPU ONNX Runtime."),
+        new(
+            "scifact",
+            BeirProtocol.Reranked,
+            [0.68442],
+            "Dense top-k rescored by cross-encoder/ms-marco-MiniLM-L6-v2 — this repository's own " +
+            "reproduction, comparable to nothing published. Recall@10 0.78667, MRR@10 0.65789. " +
+            "Measured in Phase 3.15 (2026-08-01/02), Windows 11, .NET 10, CPU ONNX Runtime, " +
+            "after commit a912187 replaced the whitespace word-lookup tokenizer with WordPiece. " +
+            "The pre-fix run measured 0.56693 — history, not a figure to reproduce: a run " +
+            "landing there again means the tokenizer regressed."),
+        new(
+            "fiqa",
+            BeirProtocol.HybridBm25,
+            [0.35665],
+            "Parity corpus, dense fused with InMemoryBm25Index via RRF — this repository's own " +
+            "reproduction, comparable to the dense anchor and to no published BM25 or hybrid " +
+            "figure. Recall@10 0.43951, MRR@10 0.42914. Measured in Phase 3.15 (2026-08-01/02), " +
+            "Windows 11, .NET 10, CPU ONNX Runtime."),
+        new(
+            "fiqa",
+            BeirProtocol.Hyde,
+            [0.36543],
+            "Parity corpus searched with the mean of 3 cached gpt-4o-mini@t0.8 hypotheticals — " +
+            "this repository's own reproduction, comparable to nothing published. Recall@10 " +
+            "0.44738, MRR@10 0.43124. Measured in Phase 3.15 (2026-08-01/02), Windows 11, .NET " +
+            "10, CPU ONNX Runtime."),
+        new(
+            "fiqa",
+            BeirProtocol.Reranked,
+            [0.38458],
+            "Dense top-k rescored by cross-encoder/ms-marco-MiniLM-L6-v2 — this repository's own " +
+            "reproduction, comparable to nothing published, and the ablation table's only " +
+            "reranker lift. Recall@10 0.44295, MRR@10 0.46744. Measured in Phase 3.15 " +
+            "(2026-08-01/02), Windows 11, .NET 10, CPU ONNX Runtime, after commit a912187's " +
+            "WordPiece fix. The pre-fix run measured 0.34085 — history, not a figure to " +
+            "reproduce."),
+        new(
+            "arguana",
+            BeirProtocol.HybridBm25,
+            [0.51173],
+            "Parity corpus, dense fused with InMemoryBm25Index via RRF — this repository's own " +
+            "reproduction, comparable to the dense anchor and to no published BM25 or hybrid " +
+            "figure. Recall@10 0.80228, MRR@10 0.42141. Measured in Phase 3.15 (2026-08-01/02), " +
+            "Windows 11, .NET 10, CPU ONNX Runtime."),
+        new(
+            "arguana",
+            BeirProtocol.Hyde,
+            [0.50293],
+            "Parity corpus searched with the mean of 3 cached gpt-4o-mini@t0.8 hypotheticals — " +
+            "this repository's own reproduction, comparable to nothing published; the design's " +
+            "negative control, and it held. Recall@10 0.79516, MRR@10 0.41258. Measured in " +
+            "Phase 3.15 (2026-08-01/02), Windows 11, .NET 10, CPU ONNX Runtime."),
+        new(
+            "arguana",
+            BeirProtocol.Reranked,
+            [0.47917],
+            "Dense top-k rescored by cross-encoder/ms-marco-MiniLM-L6-v2 — this repository's own " +
+            "reproduction, comparable to nothing published. Recall@10 0.79374, MRR@10 0.38188. " +
+            "Measured in Phase 3.15 (2026-08-01/02), Windows 11, .NET 10, CPU ONNX Runtime, " +
+            "after commit a912187's WordPiece fix. The pre-fix run measured 0.41806 — history, " +
+            "not a figure to reproduce."),
     ];
 
     /// <summary>

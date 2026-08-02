@@ -7,9 +7,9 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <b>Why there is a budget at all.</b> <c>nightly.yml</c>'s <c>env-gated</c> job has
 /// <c>timeout-minutes: 120</c> and spends part of that restoring, building the whole solution and
 /// running four other <c>&lt;RequiresSecrets&gt;</c> projects before this one starts. Phase 3.12
-/// Task 4 added FiQA, whose parity run measures 1 h 11 m and whose real run has never been run to
-/// completion — then estimated at 8–9 h, since revised to a derived ~1.5–2 h by Phase 3.16's
-/// packing chunker. There is no arrangement of a 120-minute job in which those two
+/// Task 4 added FiQA, whose parity run measures 1 h 11 m and whose real run — estimated at 8–9 h,
+/// revised to a derived ~1.5–2 h by Phase 3.16's packing chunker — measured 1 h 4 m when Phase
+/// 3.15 finally ran it. There is no arrangement of a 120-minute job in which those two
 /// finish, so the job as it stood would have timed out — and <b>a timeout reports nothing about
 /// parity</b>, which is the same silence this workflow was fixed to stop producing.
 /// </para>
@@ -95,12 +95,14 @@ public static class BeirRunBudget
             "fiqa",
             BeirProtocol.Real,
             FitsTheNightly: false,
-            "~1.5-2 h, DERIVED: it has never been run to completion. Phase 3.16's packing chunker " +
-            "cut the real leg from 429,850 chunks (the basis of the old 8-9 h estimate) to " +
-            "121,236 — 2.1x the corpus — and the packed SciFact and ArguAna real legs embedded " +
-            "35,589 fresh texts in 1,310 s combined (~27/s), which prices ~128,000 embeddings at " +
-            "~80 min before InMemoryVectorStore sorts all 121,236 entries per query for 6,648 " +
-            "queries."),
+            "1 h 4 m for the whole test, MEASURED 2026-08-02 (Phase 3.15); the real leg alone was " +
+            "3,587.5 s (59.8 min), with the parity leg's vectors warm from the cache. 121,236 " +
+            "chunk embeddings plus the 648 judged queries' — the only ones retrieved since Phase " +
+            "3.15 — then InMemoryVectorStore sorts all 121,236 entries per query. The derived " +
+            "~1.5-2 h estimate this replaces (~27 embeddings/s, taken from the packed SciFact " +
+            "and ArguAna real legs) was conservative: it overshot the measured hour, and is " +
+            "recorded as having overshot rather than quietly replaced. The 8-9 h figure before " +
+            "it priced the pre-3.16 fragmenting chunker's 429,850 chunks and died with them."),
         new(
             "arguana",
             BeirProtocol.Parity,
@@ -115,6 +117,78 @@ public static class BeirRunBudget
             "chunk vectors fresh) under Phase 3.16's packing chunker, which cut the leg from " +
             "82,618 chunks to 24,003; the pre-3.16 figures were 28 min cold and 461.9 s fully " +
             "warm."),
+        new(
+            "scifact",
+            BeirProtocol.HybridBm25,
+            FitsTheNightly: false,
+            "~1 m 50 s wall clock, measured in Phase 3.15 (2026-08-01/02) on the development " +
+            "machine. Cold from an empty cache the cell pays the parity leg's embedding price " +
+            "first (~5 min — DERIVED for this cell, not separately timed)."),
+        new(
+            "scifact",
+            BeirProtocol.Hyde,
+            FitsTheNightly: false,
+            "~1 m 30 s wall clock, measured in Phase 3.15 (2026-08-01/02); cold adds the parity " +
+            "leg's ~5 min of embedding (DERIVED). The cell also needs the hypothetical cache, " +
+            "which only the generation tool writes and which is never committed — so this cell " +
+            "can never run on a fresh runner at any budget, and an opted-in run without the cache " +
+            "fails through refuse-on-miss rather than skipping."),
+        new(
+            "scifact",
+            BeirProtocol.Reranked,
+            FitsTheNightly: false,
+            "~4 m wall clock, measured in Phase 3.15 (2026-08-01/02) after commit a912187 " +
+            "replaced the whitespace word-lookup tokenizer with WordPiece. The pre-fix run " +
+            "measured ~14 m, but the two figures are not a like-for-like speedup: the pre-fix run " +
+            "also predates the judged-queries cut and reranked all 1,109 queries where the fixed " +
+            "run reranks the 300 judged."),
+        new(
+            "fiqa",
+            BeirProtocol.HybridBm25,
+            FitsTheNightly: false,
+            "~58 m wall clock, measured in Phase 3.15 (2026-08-01/02). Whether the corpus " +
+            "embedding cache was warm for that figure was not recorded alongside it; fully cold " +
+            "the cell also pays FiQA's parity embedding price, measured at 1 h 11 m (that part " +
+            "DERIVED for this cell)."),
+        new(
+            "fiqa",
+            BeirProtocol.Hyde,
+            FitsTheNightly: false,
+            "~1 m 30 s wall clock, measured in Phase 3.15 (2026-08-01/02) with the corpus " +
+            "embeddings warm — cold, the cell pays FiQA's 1 h 11 m parity embedding price first " +
+            "(DERIVED). Needs the hypothetical cache, which only the generation tool writes and " +
+            "which is never committed — so this cell can never run on a fresh runner at any " +
+            "budget, and an opted-in run without the cache fails through refuse-on-miss."),
+        new(
+            "fiqa",
+            BeirProtocol.Reranked,
+            FitsTheNightly: false,
+            "~4 m wall clock, measured in Phase 3.15 (2026-08-01/02) after commit a912187's " +
+            "WordPiece fix, with the corpus embeddings warm — cold, the cell pays FiQA's " +
+            "1 h 11 m parity embedding price first (DERIVED)."),
+        new(
+            "arguana",
+            BeirProtocol.HybridBm25,
+            FitsTheNightly: false,
+            "~2 m wall clock, measured in Phase 3.15 (2026-08-01/02). Cold from an empty cache " +
+            "the cell pays the parity leg's ~4 min embedding price first (DERIVED)."),
+        new(
+            "arguana",
+            BeirProtocol.Hyde,
+            FitsTheNightly: false,
+            "~3 m 49 s wall clock, measured in Phase 3.15 (2026-08-01/02); cold adds the parity " +
+            "leg's ~4 min of embedding (DERIVED). Needs the hypothetical cache, which only the " +
+            "generation tool writes and which is never committed — so this cell can never run on " +
+            "a fresh runner at any budget, and an opted-in run without the cache fails through " +
+            "refuse-on-miss."),
+        new(
+            "arguana",
+            BeirProtocol.Reranked,
+            FitsTheNightly: false,
+            "~28 m wall clock, measured in Phase 3.15 (2026-08-01/02) after commit a912187's " +
+            "WordPiece fix; the pre-fix run measured ~1 h 32 m over the same 1,406 judged " +
+            "queries. ArguAna is the expensive reranker cell because it judges every query — " +
+            "14,060 cross-encoder pairs against FiQA's 6,480 and SciFact's 3,000."),
     ];
 
     /// <summary>
@@ -169,7 +243,10 @@ public static class BeirRunBudget
     /// Presence is not enough on its own: <c>RAGNET_BEIR_LONG_RUNS=0</c> in a workflow reads to
     /// every human as "off", and a gate that turned nine hours of measurement on for it would be a
     /// trap rather than a switch. "0" and "false" are therefore off, and anything else present is
-    /// on.
+    /// on. Private again since Phase 3.15 recorded the ablation cells' measured costs: while those
+    /// entries did not exist, <see cref="BeirAblationTests"/> gated on this directly so an
+    /// unmeasured cell could not default into the nightly through <see cref="IsGatedOff"/>'s table
+    /// lookup throwing — every cell now gates through the table like every other case.
     /// </remarks>
     private static bool IsOptedIn()
     {
@@ -225,9 +302,18 @@ public static class BeirRunBudget
         """;
 
     /// <summary>Names the protocol the way the run's own output does.</summary>
-    private static string Describe(BeirProtocol protocol) => protocol == BeirProtocol.Parity
-        ? "PARITY (one chunk per document, truncated at 256)"
-        : "REAL (RecursiveChunkingStrategy at defaults, max-pooled to documents)";
+    private static string Describe(BeirProtocol protocol) => protocol switch
+    {
+        BeirProtocol.Parity => "PARITY (one chunk per document, truncated at 256)",
+        BeirProtocol.Real => "REAL (RecursiveChunkingStrategy at defaults, max-pooled to documents)",
+        BeirProtocol.HybridBm25 =>
+            "+BM25 HYBRID ablation cell (parity corpus, dense fused with InMemoryBm25Index via RRF)",
+        BeirProtocol.Hyde =>
+            "+HYDE ablation cell (parity corpus, searched with the cached hypotheticals' mean vector)",
+        BeirProtocol.Reranked =>
+            "+RERANKER ablation cell (parity corpus, dense top-k rescored by the cross-encoder)",
+        _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
+    };
 
     /// <summary>
     /// The <c>--filter</c> that selects exactly this case.
@@ -235,15 +321,24 @@ public static class BeirRunBudget
     /// <remarks>
     /// <c>DisplayName</c> on both halves, never <c>FullyQualifiedName</c>: the latter stops at the
     /// method name and carries no theory arguments, so it matches every dataset or none. Both test
-    /// files already document this, having checked it rather than assumed it.
+    /// files already document this, having checked it rather than assumed it. The ablation cells
+    /// live three-to-a-class in <see cref="BeirAblationTests"/>, so their discriminator is a
+    /// fragment of the test <i>method</i> name rather than the class name — the class alone would
+    /// select all three cells and misreport what the quoted cost buys.
     /// </remarks>
     private static string Filter(Cost cost)
     {
-        var testClass = cost.Protocol == BeirProtocol.Parity
-            ? nameof(BeirParityTests)
-            : nameof(BeirRealChunkingTests);
+        var discriminator = cost.Protocol switch
+        {
+            BeirProtocol.Parity => nameof(BeirParityTests),
+            BeirProtocol.Real => nameof(BeirRealChunkingTests),
+            BeirProtocol.HybridBm25 => "UnderBm25HybridRrf",
+            BeirProtocol.Hyde => "UnderCachedHyde",
+            BeirProtocol.Reranked => "UnderCrossEncoderRerank",
+            _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
+        };
 
-        return $"DisplayName~{testClass}&DisplayName~{cost.Dataset}";
+        return $"DisplayName~{discriminator}&DisplayName~{cost.Dataset}";
     }
 
     /// <summary>What one dataset costs under one protocol, and whether the nightly can afford it.</summary>

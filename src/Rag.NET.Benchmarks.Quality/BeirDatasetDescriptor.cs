@@ -127,7 +127,9 @@ public sealed record BeirDatasetDescriptor(
     /// dataset — FiQA included — because that protocol indexes one chunk per document by
     /// construction, and parity is the only protocol any published figure is comparable to. Under
     /// the <i>real</i> protocol it is a no-op on none of them: SciFact's real leg pooled on all
-    /// 1,109 of its queries and ArguAna's on all 1,406. 51.0% is in fact the <i>lowest</i>
+    /// 1,109 of its queries and ArguAna's on all 1,406 — counts taken when the harness retrieved
+    /// for every query in <c>queries.jsonl</c>; it now retrieves only the judged ones, so SciFact's
+    /// counter reads at most 300 on a re-run. 51.0% is in fact the <i>lowest</i>
     /// over-size fraction of the three — SciFact 99.2%, ArguAna 87.3%. What is genuinely FiQA's
     /// alone is the scale it is measured over: 57,638 documents becoming 121,236 chunks under
     /// Phase 3.16's packing chunker, and 429,850 before it.
@@ -158,8 +160,10 @@ public sealed record BeirDatasetDescriptor(
     /// </para>
     /// <para>
     /// <b>Every query is judged</b>, which no other dataset here manages: SciFact evaluates 300 of
-    /// 1,109 and FiQA 648 of 6,648. <see cref="IrEvaluation.ExcludedQueryCount"/> is 0 on this one,
-    /// so a non-zero exclusion count is a loading defect rather than the usual dilution.
+    /// 1,109 and FiQA 648 of 6,648. It is therefore the one dataset on which the harness's
+    /// judged-only retrieval filters nothing out — which is why ArguAna's per-run counters were
+    /// unaffected when that filter was introduced, and why its HyDE cell passed while the others'
+    /// refuse-on-miss caches failed on the first unjudged query.
     /// </para>
     /// <para>
     /// <b>And the queries are in the corpus.</b> 1,298 of the 1,406 query texts are byte-identical to

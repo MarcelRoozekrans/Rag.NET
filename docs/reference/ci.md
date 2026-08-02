@@ -129,7 +129,7 @@ seven of them.
 | FiQA parity | 1 h 11 m | No — opt-in |
 | SciFact real | ~19 min (derived; 5 min 15 s measured **warm**) | No — opt-in |
 | ArguAna real | 28 min | No — opt-in |
-| FiQA real | ~8–9 h, never run to completion | No — opt-in |
+| FiQA real | 1 h 4 m measured (59.8 min real leg, parity vectors warm) | No — opt-in |
 
 The `env-gated` job has `timeout-minutes: 120` and spends part of that restoring, building the whole
 solution and running the four other `RequiresSecrets` projects. FiQA's real leg alone is longer than

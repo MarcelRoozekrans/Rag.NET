@@ -7,6 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- One definition, compiled into each package that feeds BERT token ids to an ONNX model.
+         It cannot live in the shared Rag.NET.Abstractions package: that package references
+         neither Microsoft.ML.Tokenizers nor ONNX Runtime, and must not start. -->
+    <Compile Include="..\Shared\BertWordPieceTokenization.cs" Link="Bert\BertWordPieceTokenization.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
   </ItemGroup>
 

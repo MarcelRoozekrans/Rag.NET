@@ -107,7 +107,8 @@ public sealed class BeirParityTests
         using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
         var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
         var run = await BeirHarness.MeasureAsync(
-            descriptor, dataset, BeirHarness.OneChunkPerDocument(dataset.Documents), generator, embeddings, ct);
+            descriptor, dataset, BeirHarness.OneChunkPerDocument(dataset.Documents), AblationRow.Dense,
+            generator, embeddings, ct);
 
         _output.WriteLine("SEPARATOR=" + (string.Equals(sep, " ", StringComparison.Ordinal) ? "SPACE" : "NEWLINE"));
         _output.WriteLine(Describe(descriptor, run));

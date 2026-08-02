@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- The one-time HyDE hypothetical generation tool. It lives under benchmarks/ so the one
+         LLM-provider package it needs stays out of every shipped project: src/ carries only
+         Microsoft.Extensions.AI.Abstractions, and this tool is the only non-test project in the
+         repository allowed to reference a concrete provider client. It fills the hypothetical
+         cache once; the ablation table then reads that cache forever and never calls an LLM. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Benchmarks.Quality\Rag.NET.Benchmarks.Quality.csproj" />
+    <!-- The OpenAI-compatible IChatClient. OpenRouter is a drop-in behind the same wire protocol,
+         so the well-trodden OpenAI client with its Endpoint overridden is the whole integration. -->
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.*" />
+  </ItemGroup>
+
+</Project>

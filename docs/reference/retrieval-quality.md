@@ -19,10 +19,13 @@ path compute what the published research computes?
 
 ## The measurement
 
-**Three datasets, `all-MiniLM-L6-v2`, dense retrieval.** The parity legs were measured in Phase
+**Three datasets, `all-MiniLM-L6-v2`, dense retrieval** — the anchor every other number on this
+page hangs off; what BM25 hybrid, HyDE and a cross-encoder reranker each do to that anchor is
+measured separately, in [the ablation table](#the-ablation-table). The parity legs were measured in Phase
 3.12 (2026-07-30/31) and verified unmoved after Phase 3.16 changed the chunker; the SciFact and
-ArguAna real legs were re-measured 2026-07-31 under Phase 3.16's packing chunker, which is the
-chunker the numbers below describe. Every number below came out of Rag.NET's own path —
+ArguAna real legs were re-measured 2026-07-31 under Phase 3.16's packing chunker, and FiQA's real
+leg — the one leg that had never run — was measured for the first time by Phase 3.15 (2026-08-02)
+under the same chunker, which is the chunker the numbers below describe. Every number below came out of Rag.NET's own path —
 `OnnxEmbeddingGenerator` embeds, `InMemoryVectorStore` stores and scores cosine, `DocumentRanking`
 aggregates chunks to documents, `IrMetrics` scores. No component was built for the benchmark.
 
@@ -48,17 +51,19 @@ across the boundary.
 | Dataset | parity nDCG@10 | published | delta vs published | real nDCG@10 | delta vs **our** parity |
 |---|---:|---:|---:|---:|---:|
 | **SciFact** | **0.64593** | 0.64508 | +0.00085 | **0.67742** | **+0.03148** |
-| **FiQA** | **0.37086** | 0.36867 | +0.00219 | [not run](#what-fiqas-real-run-would-cost-and-why-it-has-not-run) | — |
+| **FiQA** | **0.37086** | 0.36867 | +0.00219 | **0.35569** | **−0.01517** |
 | **ArguAna** | **0.50432** | 0.50167 | +0.00265 | **0.47559** | **−0.02873** |
 
 **The right-hand column is compared to the left-hand one and to nothing else.** There is no published
 nDCG@10 for "chunked with Rag.NET's defaults and max-pooled", none is invented here, and nothing in
 the literature says what chunking ought to do to nDCG on these corpora — which is why the run exists.
 
-**The two real deltas have opposite signs, and that is still the measurement's most useful
-result:** Rag.NET's default chunking **helps SciFact by +0.0315 and hurts ArguAna by −0.0287**.
-Under the pre-3.16 fragmenting chunker the same two deltas were +0.0100 and −0.0784 — the packing
-fix improved both real numbers while leaving both parity numbers untouched. See
+**All three real deltas now exist, for the first time, and their signs are still the measurement's
+most useful result:** Rag.NET's default chunking **helps SciFact by +0.0315 and hurts ArguAna by
+−0.0287 and FiQA by −0.0152**. Under the pre-3.16 fragmenting chunker SciFact's and ArguAna's
+deltas were +0.0100 and −0.0784 — the packing fix improved both real numbers while leaving both
+parity numbers untouched — and FiQA's real leg has only ever been measured under the fixed chunker.
+See
 [what chunking does, in both directions](#what-chunking-does-to-the-numbers-and-it-goes-both-ways).
 
 **Only the SciFact and ArguAna parity rows are under nightly regression guard.** The others cost more
@@ -81,8 +86,15 @@ The supporting metrics, printed by the same runs:
 | SciFact parity | 0.64593 | 0.78667 | 0.60483 |
 | **SciFact real** | **0.67742** | **0.81322** | **0.63757** |
 | FiQA parity | 0.37086 | not recorded | not recorded |
+| **FiQA real** | **0.35569** | **0.42235** | **0.42596** |
 | ArguAna parity | 0.50432 | 0.79161 | 0.41515 |
 | **ArguAna real** | **0.47559** | **0.77240** | **0.38435** |
+
+FiQA's real-leg figures come with a caveat that belongs beside them, not in a footnote: 38 of
+FiQA's 57,638 corpus entries have an empty title and empty text and so yield no chunks, and one of
+them (`117276`) is judged relevant — the real leg indexes 38 fewer documents than the parity leg,
+so its Recall@10 is computed against a corpus missing a relevant document. See
+[FiQA's real run, measured at last](#fiqas-real-run-measured-at-last).
 
 And the corpora, from the downloaded archives rather than from a paper:
 
@@ -90,14 +102,23 @@ And the corpora, from the downloaded archives rather than from a paper:
 |---|---:|---:|---:|
 | Corpus documents | 5,183 | 57,638 | 8,674 |
 | Queries in `queries.jsonl` | 1,109 | 6,648 | 1,406 |
-| Queries scored (judged, test split) | 300 | 648 | 1,406 |
-| Excluded as unjudged | 809 | 6,000 | 0 |
+| Queries retrieved and scored (judged, test split) | 300 | 648 | 1,406 |
+| Unjudged — never retrieved, cannot be scored | 809 | 6,000 | 0 |
 | Documents carrying a title | 5,183 | 0 | 2,699 |
 | Self-hit excluded (`ignore_identical_ids`) | no | yes | yes |
 | Documents over the 512-character chunk size | 99.2% | 51.0% | 87.3% |
 | Units under real chunking | 20,155 | 121,236 | 24,003 |
 | Most units from one document | 25 | 41 | 16 |
 | Parity elapsed (CPU) | ~355 s | ~1 h 11 m | ~4 min per separator |
+
+**The harness retrieves only for the judged queries** — the row above the unjudged one — because
+`IrMetrics.Evaluate` scores exactly that set and a ranking retrieved for an unjudged query is
+computed and thrown away. Only *membership* of the judged set reaches retrieval, never a judgement's
+content, so this cannot leak relevance into the ranker. The nDCG figures are unchanged by
+construction; what it changes is the **per-run counters and costs**: elapsed time, query embeddings,
+and "queries that pooled" are over the judged set, so figures recorded before this (SciFact real
+"pooled on 1,109 of 1,109", FiQA's parity leg embedding all 6,648 queries) count a superset that a
+re-run no longer retrieves. ArguAna judges every query, so its counters are unaffected.
 
 ### Everything lands above published, by a little
 
@@ -119,26 +140,31 @@ pattern.)
 
 ### What chunking does to the numbers, and it goes both ways
 
-**Chunking helps SciFact and hurts ArguAna, and the two runs are the same code over two corpora.**
-That is the phase's most useful result and it is a stronger one than either delta alone, because a
-single dataset moving in one direction cannot tell you whether you are looking at a property of
-chunking or a property of that dataset.
+**Chunking helps SciFact and hurts ArguAna and FiQA, and the three runs are the same code over
+three corpora.** That is the measurement's most useful result and it is a stronger one than any
+delta alone, because a single dataset moving in one direction cannot tell you whether you are
+looking at a property of chunking or a property of that dataset.
 
-| | SciFact parity | SciFact real | ArguAna parity | ArguAna real |
-|---|---:|---:|---:|---:|
-| nDCG@10 | 0.64593 | **0.67742** | 0.50432 | **0.47559** |
-| Recall@10 | 0.78667 | 0.81322 | 0.79161 | 0.77240 |
-| MRR@10 | 0.60483 | 0.63757 | 0.41515 | 0.38435 |
-| Units indexed | 5,183 | 20,155 | 8,674 | 24,003 |
-| Most units from one document | 1 | 25 | 1 | 16 |
-| **Queries that pooled two or more units of one document** | **0** | **1,109 of 1,109** | **0** | **1,406 of 1,406** |
-| **delta nDCG@10 vs our parity leg** | — | **+0.03148** | — | **−0.02873** |
+| | SciFact parity | SciFact real | FiQA parity | FiQA real | ArguAna parity | ArguAna real |
+|---|---:|---:|---:|---:|---:|---:|
+| nDCG@10 | 0.64593 | **0.67742** | 0.37086 | **0.35569** | 0.50432 | **0.47559** |
+| Recall@10 | 0.78667 | 0.81322 | not recorded | 0.42235 | 0.79161 | 0.77240 |
+| MRR@10 | 0.60483 | 0.63757 | not recorded | 0.42596 | 0.41515 | 0.38435 |
+| Units indexed | 5,183 | 20,155 | 57,638 | 121,236 | 8,674 | 24,003 |
+| Most units from one document | 1 | 25 | 1 | 41 | 1 | 16 |
+| **Queries that pooled two or more units of one document** | **0** | **1,109 of 1,109** | **0** | **648 of 648** | **0** | **1,406 of 1,406** |
+| **delta nDCG@10 vs our parity leg** | — | **+0.03148** | — | **−0.01517** | — | **−0.02873** |
 
 The pooling row is what makes the rest verifiable rather than asserted. Under the parity protocol
-max-pooling had nothing to pool on any query of either dataset; under Rag.NET's chunking it had
-something to pool on **every** query of both. This is the first time chunk-to-document max-pooling
-has been exercised against a corpus at all, rather than against `DocumentRankingTests`' seven-hit
-fixture.
+max-pooling had nothing to pool on any query of any dataset; under Rag.NET's chunking it had
+something to pool on **every** query of all three. FiQA's real leg indexes 121,236 units over
+57,600 of its 57,638 documents — the 38 empty entries yield nothing, and one of them is judged
+relevant ([below](#fiqas-two-protocols-do-not-index-the-same-number-of-documents)).
+
+SciFact's "1,109 of 1,109" was counted when the harness still retrieved for every query in
+`queries.jsonl`. It now retrieves only the 300 judged (see the corpora table above), so a re-run
+reports the pooled count over those 300 — and since every one of the 1,109 pooled, every judged
+one did. ArguAna's 1,406 are all judged, so its row is unchanged.
 
 Read the supporting metrics alongside each delta, because they do not move the same way. On ArguAna,
 Recall and MRR both fall with nDCG — documents are being **missed**, not reordered — though far less
@@ -146,7 +172,10 @@ than under the pre-3.16 fragmenting chunker, which drove Recall@10 down to 0.700
 chunker holds it at 0.77240. On SciFact, Recall (0.78667 → 0.81322) and MRR (0.60483 → 0.63757) are
 both clearly **up**: chunking now finds *more* of the relevant documents and ranks the ones it finds
 higher. Under the fragmenting chunker SciFact's Recall was flat (0.78222) — the packing fix turned
-"the same documents, better ordered" into "more documents, better ordered".
+"the same documents, better ordered" into "more documents, better ordered". On FiQA the parity leg
+recorded no supporting metrics, so there is no per-metric before/after to read — only the nDCG
+delta, plus the caveat that the real leg's Recall@10 (0.42235) is computed against a corpus missing
+one relevant document (the 38 empty entries).
 
 *Why*, as reasoning and not as measurement. The direction tracks whether relevance in the dataset is
 **passage-level** or **document-level**:
@@ -164,48 +193,62 @@ higher. Under the fragmenting chunker SciFact's Recall was flat (0.78222) — th
   document per query. Splitting a counterargument at 512 characters means the unit that best matches
   a whole-argument query is a fragment rather than the argument, and no amount of max-pooling
   recovers a similarity that was never computed against the whole text.
+- **FiQA is document-level too.** Its documents are whole answer posts, and the answer post is the
+  unit of relevance: splitting one at 512 characters leaves fragments whose best match to the
+  question is a piece of the answer rather than the answer. Its delta (−0.01517) is about half of
+  ArguAna's, consistent with its median document being 522 characters — barely over the chunk
+  size, so half its corpus is never split at all.
 
-**That explanation has now survived one experiment, and only one.** Phase 3.12 could not separate
+**That explanation is the standing one, now supported by three corpora — and it was proposed
+before the third existed, so FiQA is consistent with it rather than a test that could have refuted
+it on its own.** Phase 3.12 proposed it when only two real deltas existed and could not separate
 "ArguAna's relevance is document-level" from "the chunker was shredding ArguAna's documents into
 ~9.5 fragments each" — and Phase 3.16's packing fix tested exactly that split: if fragmentation was
 most of the loss, packing the fragments back towards `MaxChunkSize` (9.5× → 2.8×) should recover
 most of it. It did — −0.07839 → −0.02873, about 63% of the loss — which is what the phase's design
-predicted. The remaining −0.0287 is the part packing cannot touch: a whole-argument query still
-scores against 512-character pieces of the counterargument, and no similarity against the whole
-text is ever computed. The experiment that would test *that* residue is the obvious one — vary
-`MaxChunkSize` and watch whether the two deltas move apart.
+predicted. FiQA's real leg, measured after both, lands where the explanation says a document-level
+corpus should: below its parity leg, by less than ArguAna, and it is recorded as consistent with
+the explanation rather than as proof of it. The remaining negative deltas are the part packing
+cannot touch: a whole-document query still scores against 512-character pieces, and no similarity
+against the whole text is ever computed. The experiment that would test *that* residue is the
+obvious one — vary `MaxChunkSize` and watch whether the deltas move apart.
 
-**And do not read either sign as "chunking is better" or "chunking is worse".** Two datasets with
-opposite signs is exactly the evidence that the answer depends on the corpus and the task. What was
-written here before SciFact's real run existed was that the helping case "is FiQA's, and FiQA's real
-run has not been measured" — a speculation where there is now a measurement, and one that guessed the
-wrong dataset.
+**And do not read any sign as "chunking is better" or "chunking is worse".** Three datasets with
+signs split two-to-one is exactly the evidence that the answer depends on the corpus and the task.
+What was written here before SciFact's real run existed was that the helping case "is FiQA's, and
+FiQA's real run has not been measured" — a speculation that guessed the wrong dataset, and one the
+measurement has now settled in the other direction: chunking hurts FiQA by −0.01517.
 
-### What FiQA's real run would cost, and why it has not run
+### FiQA's real run, measured at last
 
-**Deliberately deferred, and much cheaper than it was.** FiQA's real leg is **121,236 chunks**
-since Phase 3.16's packing fix — roughly 2.1× the corpus, down from 429,850 — over 57,600 of its
-57,638 documents (the 38 empty entries yield nothing,
-[below](#fiqas-two-protocols-do-not-index-the-same-number-of-documents)). The old 8–9 hour figure
-was derived from the old chunk count and died with it. The new figure is **derived, not measured**,
-and here is the arithmetic so it can be checked: the packed SciFact and ArguAna real legs embedded
-35,589 fresh texts in a combined 1,310 s of wall clock (~27 embeddings/s, scoring included), and
-FiQA's leg is ~121,236 chunk embeddings plus 6,648 query embeddings — roughly 4,700 s, so call it
-**1.5–2 hours** once `InMemoryVectorStore` has also sorted 121,236 scored entries for each of 6,648
-queries.
+**Deferred out of Phase 3.12, re-based by Phase 3.16's packing fix, and run for the first time by
+Phase 3.15 (2026-08-02).** This run is the measurement — it replaces the derived estimate that
+stood here rather than confirming it:
 
-It is still the run worth having, and that is why it is scheduled rather than dropped — but **it is
-no longer the only thing that can answer "does max-pooling help or hurt"**, and this section used to
-say it was. SciFact's real leg answers it in the affirmative (+0.03148) and ArguAna's in the negative
-(−0.02873), which is a two-sided answer that neither alone could give. What FiQA adds is a *third*
-corpus shape: documents that are long and heterogeneous in their own right, where ArguAna's
-documents are single arguments — and much of its pre-3.16 fan-out was the chunker's now-fixed
-short-part behaviour
-([below](#the-chunker-emitted-every-split-part-as-its-own-chunk-fixed-in-phase-316)) — and
-SciFact's abstracts are uniform.
+- **nDCG@10 = 0.35569**, Recall@10 = 0.42235, MRR@10 = 0.42596. The parity leg in the same run
+  reproduced **0.37086** exactly, so the delta is **−0.01517**.
+- **121,236 units over 57,600 of 57,638 documents**, at most 41 from one document — and **38
+  documents contributed nothing**: 38 of FiQA's corpus entries have an empty title and an empty
+  text, one of them (`117276`) judged relevant, so the real leg indexes 38 fewer documents than
+  the parity leg and its Recall@10 is computed against a corpus missing a relevant document
+  ([below](#fiqas-two-protocols-do-not-index-the-same-number-of-documents)).
+- All **648 judged queries** — the only ones the harness retrieves for — pooled two or more units
+  of one document.
+- The real leg took **3,587.5 s (59.8 min)**; the whole test, both legs off the warm parity-vector
+  cache, **1 h 4 m**.
 
-It lands in **Phase 3.15**, which needs a cached-embeddings artifact for the ablation table anyway
-and is therefore its natural home.
+The derived estimate this replaces said **~1.5–2 hours**, priced from the ~27 embeddings/s the
+packed SciFact and ArguAna real legs observed over ~122,000 embeddings. **The measured cost was
+~1 h 4 m, so the estimate was conservative** — it overshot, and it is recorded here as having
+overshot rather than quietly replaced. The 8–9 hour figure before it priced the pre-3.16
+fragmenting chunker's 429,850 chunks and died with them.
+
+The figure is pinned by `BeirReproduction` at ±0.005 like the other real legs, and `BeirRunBudget`'s
+FiQA real entry now carries the measured cost in place of the derivation. What this section said
+while the run was pending — that FiQA adds a *third* corpus shape rather than the only evidence on
+whether max-pooling helps or hurts — held: see
+[what chunking does](#what-chunking-does-to-the-numbers-and-it-goes-both-ways) for what the third
+delta says.
 
 ### The chunker emitted every split part as its own chunk, fixed in Phase 3.16
 
@@ -239,8 +282,175 @@ rounding detail, and one that would be invisible in an nDCG, because a document 
 indexed looks exactly like a document that was indexed and ranked badly.
 
 It is surfaced as `BeirRunResult.UnindexedDocumentCount` rather than papered over with a placeholder
-chunk. Recorded as a debt against Phase 3.15, where FiQA's real number will be produced and where the
-difference has to be stated alongside it.
+chunk. It was recorded as a debt against Phase 3.15, and the debt is paid: Phase 3.15 produced
+FiQA's real number, and the difference is stated alongside it
+([above](#fiqas-real-run-measured-at-last)).
+
+## The ablation table
+
+**Four rows, three datasets, one protocol, measured by Phase 3.15 (2026-08-01/02).** Every cell
+below is on the **parity** protocol — one chunk per document, truncated at 256 — evaluated over the
+judged queries only, and the dense row *is* the parity run above, not a re-measurement of it. That
+is not a cost decision: the dense row's whole value is that it is validated against a published
+figure, so every delta in the table hangs off something external. Running the ablation on the real
+leg would measure three techniques against an anchor that agrees with nothing published.
+
+The row labels are the runs' own labels, verbatim, because two of them carry load: the BM25 row's
+label is what stops its number being read as a comparison to published BM25 figures, and the
+reranker's label states both truncation lengths so nobody infers that one of them is a mistake.
+Deltas are against the dense anchor; each addition is measured **alone** on top of dense — the rows
+are not cumulative.
+
+| nDCG@10, parity protocol, judged queries only | SciFact | FiQA | ArguAna |
+|---|---:|---:|---:|
+| **dense** (the parity anchor) | 0.64593 | 0.37086 | 0.50432 |
+| `+bm25 hybrid via RRF (incomparable to published BM25: no stemming or stopwords, k1=1.5 b=0.75)` | **0.69913** (+0.0532) | **0.35665** (−0.0142) | **0.51173** (+0.0074) |
+| `+hyde (mean of 3 cached openai/gpt-4o-mini@t0.8 hypotheticals, L2-normalised; no LLM call — reads the frozen generation run)` | **0.70001** (+0.0541) | **0.36543** (−0.0054) | **0.50293** (−0.0014) |
+| `+reranker (cross-encoder/ms-marco-MiniLM-L6-v2 over dense top-k; pairs truncated at 512 tokens, dense embeddings at 256)` | **0.68442** (+0.0385) | **0.38458** (+0.0137) | **0.47917** (−0.0252) |
+
+**Four of the nine cells go down**, and that is the first thing to check before interpreting any of
+them: the design named "a table that only ever goes up" as the signature of a table measuring
+something other than what it claims. This one goes down where going down is the defensible answer.
+
+The supporting metrics, printed by the same runs (dense from the parity runs above; FiQA's parity
+leg did not record them):
+
+| Dataset / row | nDCG@10 | Recall@10 | MRR@10 |
+|---|---:|---:|---:|
+| SciFact dense | 0.64593 | 0.78667 | 0.60483 |
+| SciFact +bm25 hybrid | 0.69913 | 0.83933 | 0.65676 |
+| SciFact +hyde | 0.70001 | 0.85033 | 0.65563 |
+| SciFact +reranker | 0.68442 | 0.78667 | 0.65789 |
+| FiQA dense | 0.37086 | not recorded | not recorded |
+| FiQA +bm25 hybrid | 0.35665 | 0.43951 | 0.42914 |
+| FiQA +hyde | 0.36543 | 0.44738 | 0.43124 |
+| FiQA +reranker | 0.38458 | 0.44295 | 0.46744 |
+| ArguAna dense | 0.50432 | 0.79161 | 0.41515 |
+| ArguAna +bm25 hybrid | 0.51173 | 0.80228 | 0.42141 |
+| ArguAna +hyde | 0.50293 | 0.79516 | 0.41258 |
+| ArguAna +reranker | 0.47917 | 0.79374 | 0.38188 |
+
+**Every row proves its mechanism did something before its number is read**, because a row whose
+machinery silently did nothing is the dense ranking wearing another label — the failure shape this
+milestone keeps finding. The counters from the published runs: HyDE's search vector produced a
+ranking that diverged from dense on **300/300** SciFact, **648/648** FiQA and **1,405/1,406**
+ArguAna queries; the reranker reordered the dense top-k on **648/648** FiQA and **1,406/1,406**
+ArguAna queries, and on **1,108/1,109** in SciFact's pre-fix run — a counter quoted deliberately,
+because that guard passing on a defective run is itself a finding
+([below](#the-reranker-row-was-measured-twice-because-the-first-measurement-found-a-library-defect));
+the BM25 row asserts per dataset that BM25 returned results and that the fused ranking diverged
+from dense.
+
+### Two of the three predictions failed, and are reported as failures
+
+The design stated an expectation for every HyDE cell **before anything was measured**, precisely so
+the table could be found wrong — the standard Phase 3.16 set when it predicted ArguAna's recovery
+and had to be able to report that it had not happened. Two of the three predictions failed:
+
+| Prediction (design §2, pre-measurement) | Measured | Outcome |
+|---|---:|---|
+| **FiQA: clear lift from HyDE** — the positive control | −0.0054 | **FAILED.** No lift. |
+| **ArguAna: no lift, plausibly negative** — the negative control | −0.0014 | **HELD.** |
+| **SciFact: modest lift, smaller than FiQA's** | +0.0541 | **FAILED.** Large, and the largest of the three. |
+
+The design also named its own escape hatch: "FiQA shows no lift" was listed as the outcome that
+would make the table uninterpretable, because a weak model and an unhelpful method are
+indistinguishable in a run that is flat everywhere. **That escape hatch does not apply.** SciFact
+gained +0.0541 from the same model, the same prompt and the same cache, so the model demonstrably
+produces hypotheticals that help. FiQA's flat cell is a measurement, not an artefact.
+
+Why the two predictions failed is a **post-hoc explanation, and it is recorded as post-hoc** — the
+design did not foresee it. The design's reasoning was that HyDE helps where the query–corpus
+vocabulary gap is widest. The numbers suggest a different variable: HyDE helps when the
+*hypothetical* sits closer to the corpus register than the query does. A one-sentence SciFact claim
+expands into abstract-like prose that resembles the corpus; a FiQA question expands into a clean
+LLM answer, while FiQA's actual answers are messy StackExchange posts. **That is a hypothesis to
+test, not a conclusion** — nothing in this run distinguishes it from other explanations of the same
+three numbers.
+
+### The negative control held, and with an observed mechanism
+
+ArguAna's −0.0014 is the expected answer rather than a disappointing one, and there is an observed
+mechanism behind it, not a hand-wave. Recorded during hypothetical generation, independently of the
+measurement: ArguAna's hypotheticals are **compressed restatements of the input argument** — same
+stance, recycling the argument's own statistics (the FAO 18% figure, the 100,000-litres-per-kilogram
+figure). ArguAna asks for the best *counter*argument, so HyDE moves the search vector toward the
+query's own position and away from the target.
+
+### The reranker row was measured twice, because the first measurement found a library defect
+
+**This is the most important finding on this page.** The first reranker measurement gave SciFact
+**0.56693**, FiQA **0.34085**, ArguAna **0.41806** — the cross-encoder harming every dataset. That
+was not what the cross-encoder does; it was what `OnnxReranker.TokenizePair` did. It was not a
+WordPiece tokenizer: it split on whitespace and looked up whole lowercased words in the vocabulary,
+mapping every miss to `[UNK]`. Measured over both corpora in full, **26.59% of SciFact's 1,112,417
+words and 17.62% of FiQA's 7,660,017 words** reached the model as `[UNK]`; through WordPiece the
+same corpora produce 0.01% and 0.10%.
+
+Fixed in commit `a912187`, and the row was re-measured; the re-measured numbers are what the table
+above publishes. The swing, **from tokenization alone**: **+0.117** on SciFact, **+0.061** on
+ArguAna, **+0.044** on FiQA.
+
+Two things are worth stating plainly:
+
+- **No guard could have caught it.** `AssertRerankerReordered` proves the cross-encoder *moved* the
+  ranking — and garbage-but-varying scores reorder every query, which is exactly what it observed:
+  the defective run reordered 1,108 of SciFact's 1,109 queries and passed the guard. The guard
+  added with the fix is of a different kind: a tokenizer round-trip test that fails on the old
+  algorithm.
+- **The out-of-domain prediction was right all along, masked by the defect.** With real tokens
+  reaching the model, FiQA — the dataset most like the reranker's MS MARCO training data — gains
+  (+0.0137, the table's only reranker lift), and ArguAna loses (−0.0252), because the best
+  counterargument is not the passage a relevance model scores highest.
+
+### What the reranker row does not measure
+
+`TopK` equals the evaluation cutoff of 10, so the reranker permutes exactly the ten documents it
+will be scored on and **Recall@10 is frozen by construction** — visible in the numbers: SciFact's
+reranker Recall@10 is 0.78667, identical to dense. A real reranking pipeline retrieves ~100
+candidates and reranks down to 10, which can also change what is *in* the top 10; this row cannot.
+That is a design limitation of what was measured, not a defect — read the row as "what reordering
+the dense top-10 does", never as the best a cross-encoder can do.
+
+### The BM25 row is an internal comparison, and its label is the deliverable
+
+The row is incomparable to any published BM25 figure, for the reason recorded before it was built:
+Anserini — the source of BEIR's published BM25 numbers — applies Porter stemming and an English
+stopword list at `k1=0.9, b=0.4`; `InMemoryBm25Index` lowercases and splits at `k1=1.5, b=0.75`.
+Those are not two settings of one retriever, and tokenisation dominates BM25 scores. That is why
+the incomparability is in the row's own label in the table above, not only in the prose here: a
+`+bm25` row that looked comparable would read as validation of ours against the literature, which
+is worse than no row at all. What the row *is* comparable to is the dense anchor beside it, and
+that internal comparison is the row's whole claim.
+
+### HyDE ran from a frozen cache, and the cache is not in this repository
+
+The hypotheticals were generated once, by the one-time tool in
+`benchmarks/Rag.NET.Benchmarks.Quality.Hypotheticals`: **7,062 generations for the 2,354 judged
+queries** across the three datasets, at the library's own `HypothesisCount = 3`, by
+`openai/gpt-4o-mini` at `HydeOptions.HypothesisTemperature` (0.8) — total cost **$0.66**, zero
+failures. The table run never calls an LLM: the HyDE row reads the frozen generation run from a
+content-addressed cache, and a missing entry is a refusal that names the key, never a silent
+regeneration — a regeneration would blend two generations into one table with nothing saying so.
+The cache identity is `openai/gpt-4o-mini@t0.8`, and the temperature is part of the key
+deliberately: hypotheticals sampled at another temperature are another experiment.
+
+**The cache is never committed.** It derives from BEIR's queries, and this project's standing
+position ([Licences](#licences)) is that nothing downloaded here is redistributed — FiQA's upstream
+restricts commercial use in so many words. Committing LLM text generated *from* those queries would
+quietly reverse that position, so the cache gets the same treatment as the datasets and the model:
+produced locally, cached, never vendored.
+
+### Running the ablation
+
+The cells are `BeirAblationTests`, gated through `BeirRunBudget` behind `RAGNET_BEIR_LONG_RUNS`
+like every case the nightly cannot afford; each skips with its measured cost and the command that
+runs it. Every cell's figure is pinned by `BeirReproduction` at ±0.005 — this machine's own
+reproduction, since no published figure exists for any cell — so an opted-in re-run that drifts
+fails rather than passing on a mechanism guard alone, and the numbers in the table above are
+machine-checked rather than prose. The HyDE cells additionally need the hypothetical cache, which only the generation tool
+produces — an opted-in run without it **fails**, naming the missing key, rather than skipping,
+because a skip would read like a measurement from the summary.
 
 ## What the numbers do not mean
 
@@ -258,9 +468,12 @@ In particular, none of these is:
 - **A claim about any other embedding model.** The numbers belong to `all-MiniLM-L6-v2` at
   `max_seq_length = 256`. Swapping the model swaps every one of them.
 - **A claim about any other configuration.** Cosine over L2-normalised vectors, in-memory storage,
-  top-k = 10, no hybrid search, no HyDE, no reranker; the parity runs at one chunk per document, the
-  real run at `RecursiveChunkingStrategy` and stock `ChunkingOptions`. Changing any of those measures
-  something else.
+  top-k = 10; the parity runs at one chunk per document, the real run at `RecursiveChunkingStrategy`
+  and stock `ChunkingOptions`. The parity and real columns are dense-only — what BM25 hybrid, HyDE
+  and a reranker each do to the dense number is measured in
+  [the ablation table](#the-ablation-table), one addition at a time, under the configurations its
+  row labels state, and never in combination. Changing any of those settings measures something
+  else.
 - **A comparison against another library.** Comparative tables are legitimate work, but only credible
   with genuinely equivalent configuration, and that equivalence is the part such tables are usually
   attacked on. There is none here. → Phase 3.14.
@@ -294,8 +507,10 @@ number alone cannot tell you which one broke:
 5. **Only judged queries are scored.** SciFact ships 1,109 queries and judges 300 in the test split;
    FiQA judges 648 of 6,648. Scoring the rest as zero divides SciFact's mean by roughly 3.7 and
    FiQA's by ten, and reads as catastrophic retrieval failure rather than as a harness bug. ArguAna
-   judges all 1,406 of its queries, so its excluded count must be exactly 0 — a non-zero one there is
-   a loading defect rather than the usual dilution.
+   judges all 1,406 of its queries. The harness now also *retrieves* only for the judged queries —
+   the unjudged ones were retrieved and discarded until Phase 3.15 — which cannot move the mean,
+   for the same reason the exclusion rule exists: nothing retrieved for an unjudged query ever
+   entered it.
 
 **A sixth, added by FiQA and ArguAna: the query's own document is excluded from the ranking.** This
 is MTEB's `ignore_identical_ids` and BEIR's `if corpus_id != query_id`, and it is a property of the
@@ -341,7 +556,8 @@ and all are pinned — just not by 0.64593, 0.37086 or 0.50432.
   **not by any parity number.** A parity run indexes one chunk per document — that is what BEIR's
   published figures embed — and retrieves with `TopK` equal to the cutoff, so ten hits are ten
   distinct documents and max-pooling is a literal no-op. On SciFact both orderings therefore pool the
-  same ten hits and return the same ranking for every one of the 1,109 queries, so nDCG@10 is
+  same ten hits and return the same ranking for every retrieved query (all 1,109 when that
+  mutation run was made; the harness now retrieves only the 300 judged), so nDCG@10 is
   identically **0.64593** either way — checked rather than argued, by mutating `DocumentRanking` to
   cut-then-pool and re-running the whole measurement, which passes unchanged at both separators. What
   guards the order is a fixture where one document contributes four chunks among seven; against that,
@@ -354,8 +570,9 @@ and all are pinned — just not by 0.64593, 0.37086 or 0.50432.
   > because of anything about SciFact's documents, and every dataset is measured under that protocol
   > against its published figure. No parity band will ever guard the aggregation order. What does
   > exercise it is the **real run**, where ArguAna pooled on 1,406 of 1,406 queries and SciFact on
-  > 1,109 of 1,109, both against a parity leg's 0 — and that run has no published reference to be a
-  > band around, by design.
+  > 1,109 of 1,109 (counted before retrieval was cut to the judged set; a SciFact re-run pools on
+  > at most its 300 judged), both against a parity leg's 0 — and that run has no published
+  > reference to be a band around, by design.
 
 - **Recall's denominator is *every* relevant document, never `min(|relevant|, k)`.** Pinned by
   `IrMetricsTests`, not by these numbers. This is the exact opposite of setting 4 above, and that is
@@ -533,27 +750,16 @@ Knowledge", ACL 2018 (ArguAna).
 
 ## Not measured, and why
 
-- **FiQA under real chunking.** Deferred rather than dropped — a **derived** 1.5–2 hours since
-  Phase 3.16's packing fix cut the leg from 429,850 to 121,236 chunks (derived from the ~27
-  embeddings/s the packed SciFact and ArguAna real legs observed, over ~128,000 embeddings), plus
-  121,236 entries sorted per query across 6,648 queries. SciFact's and ArguAna's real legs already
-  answer whether max-pooling helps or hurts, in both directions; FiQA adds a third corpus shape
-  rather than the only evidence. → **Phase 3.15**, which needs a cached-embeddings artifact anyway.
 - **TREC-COVID and EnronQA.** TREC-COVID is the first graded-relevance dataset — `IrMetrics` uses
   `2^rel - 1` and has a graded fixture, but no graded *dataset* has been through it, which deserves its
   own attention. EnronQA is the private-corpus and multi-tenant story. Past FiQA the cost is embedding
   time rather than disk.
-- **The ablation table** — baseline dense → +BM25 hybrid → +HyDE → +reranker. It needs an `IChatClient`
-  for HyDE and a cross-encoder for the reranker, and its BM25 row needs the caveat below resolved
-  first. ArguAna is its negative control: HyDE should *not* help there, and a table that only ever goes
-  up is indistinguishable from a table that cannot go down. → **Phase 3.15**.
-- **BM25, at all.** Everything here is dense-only, and that is not an oversight: `InMemoryBm25Index`
-  lowercases and splits, while Anserini — which produced BEIR's published BM25 figures — applies
-  Porter stemming and an English stopword list, and BEIR runs it at `k1=0.9, b=0.4` where ours
-  hard-codes Lucene's `k1=1.5, b=0.75`. Tokenisation dominates BM25 scores. A `+BM25 hybrid` row
-  published today would be incomparable to any published BM25 reference **while looking like
-  validation of ours**, which is worse than not publishing it. Recorded as a scheduled debt in the
-  roadmap with those numbers, so whoever builds the table knows before they publish it.
+- **BM25 against anything published.** [The ablation table](#the-ablation-table) now carries a
+  `+bm25 hybrid` row, but it is an **internal** comparison against the dense anchor and nothing
+  else, for the reason that kept it out of earlier phases: `InMemoryBm25Index` lowercases and
+  splits at `k1=1.5, b=0.75` while Anserini — which produced BEIR's published BM25 figures — stems
+  and applies stopwords at `k1=0.9, b=0.4`. The debt was resolved by labelling the row incomparable
+  in the table itself, not by making the retrievers comparable.
 - **Comparative tables against other libraries.** A fair one needs a decided framing, not just
   equivalent configuration: matched-configuration comparisons mostly measure how carefully each
   library was configured and converge on near-identical numbers, because every library calls the same

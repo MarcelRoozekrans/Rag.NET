@@ -37,6 +37,13 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// which max-pooling had anything to do at all. Zero here on a chunked run is "the aggregation did
 /// not aggregate", and it is the other half of the finding the plan asks for.
 /// <para>
+/// Counted over the <b>judged</b> queries, which since Phase 3.15 are the only ones retrieved —
+/// unjudged queries cannot be scored, so <see cref="BeirHarness"/> no longer retrieves for them.
+/// Figures recorded before that change counted every query in <c>queries.jsonl</c>: SciFact's real
+/// leg reported 1,109 where a re-run reports at most its 300 judged. ArguAna judges all 1,406 of
+/// its queries, so its counts are unchanged.
+/// </para>
+/// <para>
 /// Counted <b>after</b> the dataset's self-exclusion has been applied, because
 /// <see cref="DocumentRanking.TopDocuments"/> drops the excluded document's chunks before it pools.
 /// A query whose only repeated document is the one being excluded had nothing pooled, and counting
@@ -76,9 +83,9 @@ public sealed record BeirRunResult(
     /// <returns>A multi-line description for the test output.</returns>
     public string Describe() => FormattableString.Invariant($"""
         nDCG@{Evaluation.Cutoff} = {NdcgAt10:F5}, Recall@{Evaluation.Cutoff} = {Evaluation.Recall:F5}, MRR@{Evaluation.Cutoff} = {Evaluation.MeanReciprocalRank:F5}
-        {Evaluation.EvaluatedQueryCount} queries evaluated, {Evaluation.ExcludedQueryCount} excluded as unjudged
+        {Evaluation.EvaluatedQueryCount} queries evaluated, {Evaluation.ExcludedQueryCount} excluded for lacking a positive judgement (only judged queries are retrieved)
         {IndexedChunkCount} units indexed over {IndexedDocumentCount} of {DocumentCount} documents (max {MaxChunksPerDocument} per document, {UnindexedDocumentCount} contributed nothing)
-        {PooledQueryCount} queries retrieved two or more units of one document
+        {PooledQueryCount} judged queries retrieved two or more units of one document
         embedding cache: {CacheHits} hits, {CacheMisses} misses
         elapsed {Elapsed.TotalSeconds:F1} s
         """);

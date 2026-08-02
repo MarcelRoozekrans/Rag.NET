@@ -154,7 +154,8 @@ Assume nothing works until a test says so *and the test is right*.
    parity leg that took 1 h 11 m for 64,247 embeddings — eight to nine hours [re-based by 3.16:
    packing cuts the leg to 121,236 chunks and a derived ~1.5–2 h] → **Phase 3.15**, which
    needs a cached-embeddings artifact anyway and where FiQA adds a third corpus shape rather than the
-   only evidence about pooling.
+   only evidence about pooling. [Measured there, 2026-08-02: nDCG@10 **0.35569** against parity
+   0.37086, delta −0.01517, in 1 h 4 m — the derivation overshot.]
    **Corrected rather than silently rewritten:** the roadmap entry that scheduled this phase said
    FiQA is "the first dataset where max-pooling is not a no-op" and 3.7's said SciFact abstracts are
    "mostly single-chunk". Both are false — 99.2% of SciFact's abstracts exceed the chunk size against
@@ -167,7 +168,8 @@ Assume nothing works until a test says so *and the test is right*.
    parts back towards `MaxChunkSize` (FiQA 429,850 units from 57,638 documents, up to 1,723 from one)
    → **Phase 3.16** [closed there, 2026-07-31 — confirmed, and it was three faults rather than
    one]; and FiQA's 38 empty corpus entries, one judged relevant, which make the real leg
-   index 38 fewer documents than the parity leg → **Phase 3.15**.
+   index 38 fewer documents than the parity leg → **Phase 3.15** [closed there, 2026-08-02 —
+   stated alongside the real number: 57,600 of 57,638 indexed].
    **A third was found and closed inside the phase.** The nightly `run-secrets` job selected the
    whole integration project with no filter under a 120-minute timeout, against cases that now cost
    hours — so it would have failed on a timeout and reported on parity as little as skipping did.
@@ -186,11 +188,72 @@ Assume nothing works until a test says so *and the test is right*.
    configured and converge on rounding errors, because every entrant calls the same embedding model.
    The credible comparison is each library's **defaults**, same corpus and same model, every
    configuration published.
-14. Phase 3.15 — Retrieval Ablation Table [pending] — §4–§5 of the 3.12 design: dense → +BM25 hybrid
-   → +HyDE → +reranker, with each row labelled for what it is. Owns the BM25 comparability debt,
-   because the `+BM25 hybrid` row is where it becomes live; owns FiQA's real run, TREC-COVID and
-   EnronQA. Must be able to show **no** lift where none is expected (HyDE on ArguAna) — a table that
-   only goes up is indistinguishable from one that cannot go down.
+14. Phase 3.15 — Retrieval Ablation Table [complete — 2026-08-02] — §4–§5 of the 3.12 design: dense
+   → +BM25 hybrid → +HyDE → +reranker over SciFact, FiQA and ArguAna on the parity protocol
+   (judged queries only), each row labelled for what it is, plus FiQA's long-deferred real leg.
+   The table had to be able to show **no** lift where none is expected; it did — and it also went
+   *down* where lift was predicted, which turned out to be the phase's headline.
+   **Shipped: all nine ablation cells measured, and every technique helps somewhere and hurts
+   somewhere** — SciFact 0.64593 → **0.69913** (+BM25) → **0.70001** (+HyDE) → **0.68442**
+   (+reranker); FiQA 0.37086 → **0.35665** → **0.36543** → **0.38458**; ArguAna 0.50432 →
+   **0.51173** → **0.50293** → **0.47917**. No row is free lift, which is what makes the table
+   credible rather than promotional.
+   **Two of the design's three pre-committed HyDE predictions failed, and are recorded as
+   failed.** FiQA, the positive control, was flat (−0.0054); SciFact, predicted "modest, smaller
+   than FiQA's", took the largest lift (+0.0541); ArguAna, the negative control, held (−0.0014).
+   The design's escape hatch — "FiQA shows no lift" making the table uninterpretable, since a
+   weak model and an unhelpful method are indistinguishable in a run flat everywhere — did not
+   apply: SciFact gained +0.0541 from the same model, prompt and cache, so FiQA's flat cell is a
+   measurement, not an artefact; the surviving explanation (HyDE helps when the hypothetical
+   sits closer to the corpus register than the query does) is recorded as post-hoc. ArguAna's
+   mechanism was observed during generation, independently of the measurement: its hypotheticals
+   are compressed restatements of the input argument, recycling its own statistics, and ArguAna
+   asks for the best *counter*argument — so HyDE moves the search vector toward the query's own
+   position and away from the target.
+   **Two library defects found and fixed, neither what the phase set out to measure.**
+   `OnnxReranker.TokenizePair` was not a WordPiece tokenizer (`a912187`): it whitespace-split and
+   mapped every whole-word miss to `[UNK]` — **26.59% of SciFact's 1,112,417 words and 17.62% of
+   FiQA's 7,660,017 reached the model as `[UNK]`** (0.01% and 0.10% through WordPiece) — and the
+   first reranker measurement harmed every dataset (SciFact 0.56693, FiQA 0.34085, ArguAna
+   0.41806); the fixed row gains **0.117 / 0.061 / 0.044 from tokenization alone**. Found
+   because the row hurt on FiQA too, the in-domain corpus, and uniform harm reads as a defect
+   rather than a technique. No guard could have caught it — `AssertRerankerReordered` proves the
+   ranking *moved*, and garbage-but-varying scores reorder every query — so the new guard is an
+   offline tokenizer round-trip that fails on the old algorithm; the fix also corrected
+   hardcoded `[UNK]`/`[CLS]`/`[SEP]` ids, a truncation rule that starved long queries, and a
+   `MaxLength ≤ 3` case exceeding its own ceiling, with the shared plumbing in
+   `src/Shared/BertWordPieceTokenization.cs`. And the harness retrieved unjudged queries
+   (`339f3d6`): SciFact retrieved 1,109 to score 300, FiQA 6,648 to score 648 — waste
+   everywhere, and it broke the HyDE row's refuse-on-miss cache on the first unjudged query,
+   with ArguAna concealing it because all 1,406 of its queries are judged. Metrics unchanged by
+   construction and verified: parity reproduced 0.64593 and 0.50432 exactly, and every recorded
+   query counter was restated across nine files.
+   **FiQA's real leg, measured at last:** nDCG@10 **0.35569** against parity 0.37086, delta
+   **−0.01517** — 121,236 units over 57,600 of 57,638 documents, the 38 empty entries (one
+   judged relevant) contributing nothing, stated with the number as 3.12's debt required; all
+   648 judged queries pooled; **1 h 4 m against a derived ~1.5–2 h**, the estimate overshooting
+   and recorded rather than quietly replaced. The three real deltas — SciFact **+0.03148**,
+   ArguAna **−0.02873**, FiQA **−0.01517** — support "the sign tracks whether relevance is
+   passage-level or document-level", now consistent with three corpora rather than newly proven.
+   **Reproducibility:** 7,062 hypotheticals for all 2,354 judged queries at
+   `HypothesisCount = 3`, `openai/gpt-4o-mini` at `HydeOptions.HypothesisTemperature` (0.8),
+   **$0.66**, zero failures; the temperature is in the cache identity
+   (`openai/gpt-4o-mini@t0.8`), the table run never calls an LLM, a cache miss fails naming the
+   key, and the cache is never committed — it derives from BEIR queries and nothing is
+   redistributed. All nine figures plus FiQA's real leg are pinned in `BeirReproduction` at
+   ±0.005 (`899f4b2`), on the fast tier so a mutated figure fails on every push.
+   **The BM25 comparability debt is closed by labelling:** the `+BM25 hybrid` row is published
+   as a Rag.NET-internal comparison with no published reference; 3.7 §2's rejection of a
+   benchmark-only analyzer stands.
+   **Three debts recorded, each with its origin:** the reranker row permutes only the ten
+   documents it is scored on — `TopK` equals the cutoff, so Recall@10 is frozen by construction,
+   visible in SciFact's reranker Recall@10 of 0.78667, identical to dense; **a design flaw in
+   this phase's own plan, not a defect in the code**, and the row understates a cross-encoder →
+   the next re-measure of the table, backstopped by Milestone 4; `docs/reference/ci.md` counts
+   "eleven cases" and does not list the nine ablation cells now gated in `BeirRunBudget` →
+   Milestone 4, with 4.1; and TREC-COVID and EnronQA, deferred again unchanged from 3.12 — the
+   `2^rel − 1` path has still never seen a graded *dataset* → Milestone 4, with the
+   release-readiness work.
 15. Phase 3.16 — Recursive Chunking Short-Part Merge [complete — 2026-07-31] — the "probable
    defect" 3.12 measured, with confirmation required before fixing. **Confirmed, and it was three
    faults rather than one:** the size limit was not consulted before splitting
@@ -221,7 +284,8 @@ Assume nothing works until a test says so *and the test is right*.
    residual is what packing cannot touch — whole-argument queries scored against 512-character
    pieces. FiQA's real-leg cost is revised from an estimated 8–9 h to a **derived** ~1.5–2 h
    (121,236 chunk + 6,648 query embeddings at the ~27 embeddings/s the packed real legs
-   observed) → still 3.15's run.
+   observed) → still 3.15's run [measured there, 2026-08-02: **1 h 4 m** — the derivation
+   overshot].
    **Three debts recorded in the roadmap's follow-up list, each with its origin:**
    `HierarchicalMergerChunkingStrategy` never reads `MaxChunkSize` — the inverse defect, found by
    this phase's audit of the other strategies, and all three templates that delegate to it

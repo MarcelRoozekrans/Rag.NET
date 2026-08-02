@@ -37,9 +37,11 @@ namespace Rag.NET.Benchmarks.Quality;
 /// What is true is narrower, and is a property of the <i>protocol</i> rather than of any corpus: the
 /// order cannot bite at all under the parity protocol, which indexes one chunk per document, and it
 /// bites on every query of both measured datasets under the real one — SciFact pooled on 1,109 of
-/// 1,109 queries and ArguAna on 1,406 of 1,406. A table that is right in the cheap places and wrong
-/// in the expensive ones is still worse than no table; the mistake was in guessing which places were
-/// which without measuring.
+/// 1,109 queries and ArguAna on 1,406 of 1,406, counts taken when the harness still retrieved for
+/// every query in <c>queries.jsonl</c>; it now retrieves only the judged ones, so a SciFact re-run
+/// reports at most its 300 judged while ArguAna, all of whose queries are judged, is unchanged. A
+/// table that is right in the cheap places and wrong in the expensive ones is still worse than no
+/// table; the mistake was in guessing which places were which without measuring.
 /// </para>
 /// </summary>
 public static class DocumentRanking

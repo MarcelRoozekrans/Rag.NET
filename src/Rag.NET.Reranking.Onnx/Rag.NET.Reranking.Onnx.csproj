@@ -7,11 +7,19 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- One definition, compiled into each package that feeds BERT token ids to an ONNX model.
+         Linked rather than referenced: a ProjectReference to Rag.NET.Embeddings.Onnx would make
+         every cross-encoder consumer drag in a dense embedder to get a tokenizer. -->
+    <Compile Include="..\Shared\BertWordPieceTokenization.cs" Link="Bert\BertWordPieceTokenization.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.*" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" Version="0.*" />
   </ItemGroup>
 
   <ItemGroup>
