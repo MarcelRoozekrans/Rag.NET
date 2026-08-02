@@ -49,8 +49,8 @@ public sealed class ShadowCaptureConsumer : BackgroundService
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _drainDeadline = new();
     private readonly ConcurrentQueue<ShadowPersistenceFailure> _failures = new();
-    private long _abandonedInFlight;
     private long _abandoned;
+    private long _shutdownReported;
 
     /// <summary>Creates the consumer over the queue it drains and the store it fills.</summary>
     /// <param name="queue">The queue the request path enqueues captures onto.</param>
@@ -85,7 +85,13 @@ public sealed class ShadowCaptureConsumer : BackgroundService
     /// <summary>
     /// How many accepted captures were never persisted because the shutdown drain deadline
     /// expired: those still queued, plus the one mid-secondary-run or mid-save when the deadline
-    /// hit. Zero until <see cref="StopAsync"/> has run; exact afterwards.
+    /// hit. Each loss is counted the moment it becomes a fact — the in-flight capture when the
+    /// deadline expires on it, the queued remainder when <see cref="StopAsync"/> reports — so a
+    /// <see cref="StopAsync"/> whose caller's token fires before the drain deadline (a host
+    /// shutdown timeout shorter than <see cref="ShadowCaptureConsumerOptions.DrainTimeout"/>)
+    /// still counts the capture its early return left mid-save. Zero until shutdown has cost
+    /// something; exact once <see cref="BackgroundService.ExecuteTask"/> has completed and
+    /// <see cref="StopAsync"/> has run, whichever is later.
     /// </summary>
     /// <remarks>
     /// The shutdown counterpart of <see cref="ShadowCaptureQueue.DroppedCount"/>: together they
@@ -229,10 +235,10 @@ public sealed class ShadowCaptureConsumer : BackgroundService
         }
         catch (OperationCanceledException) when (_drainDeadline.IsCancellationRequested)
         {
-            // Dequeued but never completed: the drain deadline expired mid-run. Counted with the
-            // still-queued remainder — the pair does not exist yet, so there is nothing to record
-            // as a failure — then rethrown to end the drain.
-            Interlocked.Increment(ref _abandonedInFlight);
+            // Dequeued but never completed: the drain deadline expired mid-run. Counted here,
+            // where the loss becomes a fact — the pair does not exist yet, so there is nothing
+            // to record as a failure — then rethrown to end the drain.
+            CountAbandonedInFlight();
             throw;
         }
         catch (Exception exception)
@@ -305,10 +311,10 @@ public sealed class ShadowCaptureConsumer : BackgroundService
         }
         catch (OperationCanceledException) when (_drainDeadline.IsCancellationRequested)
         {
-            // Dequeued but never persisted: the deadline expired mid-save. Counted with the
-            // still-queued remainder rather than as a store failure, then rethrown to end the
-            // read loop — the deadline has passed, so there is nothing left to do but report.
-            Interlocked.Increment(ref _abandonedInFlight);
+            // Dequeued but never persisted: the deadline expired mid-save. Counted here, where
+            // the loss becomes a fact, rather than as a store failure, then rethrown to end the
+            // read loop — the deadline has passed, so there is nothing left to do.
+            CountAbandonedInFlight();
             throw;
         }
         catch (Exception exception)
@@ -340,14 +346,57 @@ public sealed class ShadowCaptureConsumer : BackgroundService
             "than persisted unsanitised.");
     }
 
+    /// <summary>
+    /// Counts one abandonment at the moment the drain deadline declares it: the count, the
+    /// meter and — when the shutdown report has already run without it — the log all move here,
+    /// not at report time. <see cref="BackgroundService.StopAsync"/> is only
+    /// <c>Task.WhenAny(ExecuteTask, cancellation)</c>: a caller token that fires before the
+    /// drain deadline (a host shutdown timeout shorter than the drain timeout) returns it
+    /// without throwing while the save is still in flight, and <see cref="ReportAbandonment"/>
+    /// then runs before this loss exists. Counting only at report time made that capture vanish
+    /// with no counter moving.
+    /// </summary>
+    /// <remarks>
+    /// The report-already-ran check and the report's own total read are both
+    /// <see cref="Interlocked"/> operations — full fences on both sides, so at least one side
+    /// always sees the other: the loss lands either in the report's logged total or in its own
+    /// late log line, never in neither.
+    /// </remarks>
+    private void CountAbandonedInFlight()
+    {
+        Interlocked.Increment(ref _abandoned);
+        ShadowTelemetry.Abandoned.Add(1);
+
+        if (Interlocked.Read(ref _shutdownReported) == 1)
+        {
+            ShadowLog.InFlightCaptureAbandonedAfterShutdownReport(_logger, _options.DrainTimeout);
+        }
+    }
+
+    /// <summary>
+    /// The shutdown report: counts the still-queued remainder — everything the deadline left
+    /// buffered — and logs the total. The in-flight capture is not counted here but at its own
+    /// deadline expiry (<see cref="CountAbandonedInFlight"/>), because when the caller's token
+    /// outruns the drain this report runs while that capture's fate is still undecided — it may
+    /// yet persist in time — and either counting it or ignoring it here would be a guess.
+    /// </summary>
     private void ReportAbandonment()
     {
-        var abandoned = Interlocked.Read(ref _abandonedInFlight) + _queue.PendingCount;
-        Interlocked.Exchange(ref _abandoned, abandoned);
+        if (Interlocked.Exchange(ref _shutdownReported, 1) == 1)
+        {
+            return;
+        }
 
+        var stillQueued = _queue.PendingCount;
+        if (stillQueued > 0)
+        {
+            Interlocked.Add(ref _abandoned, stillQueued);
+            ShadowTelemetry.Abandoned.Add(stillQueued);
+        }
+
+        var abandoned = Interlocked.Read(ref _abandoned);
         if (abandoned > 0)
         {
-            ShadowTelemetry.Abandoned.Add(abandoned);
             ShadowLog.CapturesAbandonedAtShutdown(_logger, abandoned, _options.DrainTimeout);
         }
     }

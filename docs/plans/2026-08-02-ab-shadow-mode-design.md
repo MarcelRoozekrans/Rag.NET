@@ -76,7 +76,13 @@ of traffic compared properly, not a 5% sample of each side compared across diffe
 **Per-variant spend is already solved.** `CostTrackingChatClient` and `CostTrackingEmbeddingGenerator`
 exist and `RagAbTester.SpendAsync` already reports per-variant cost; the shadow records both
 variants' spend into the captured pair, so the doubled cost is visible per request rather than as
-an unexplained rise on a bill.
+an unexplained rise on a bill. [Corrected during implementation: the shadow records only the
+**secondary's** spend. The primary serves concurrent production traffic on a shared ledger, so no
+honest per-request primary figure exists with `ICostLedger`'s read surface — the consumer measures
+the secondary alone, around its one-at-a-time run, against the dedicated
+`ShadowCaptureConsumerOptions.SecondaryCostLedger`. The primary side's `Spend` stays absent,
+deliberately; `docs/guide/shadow-mode.md` ("Primary spend is not measured, deliberately") documents
+the shipped behaviour.]
 
 ## 3. Loss is counted, never silent
 

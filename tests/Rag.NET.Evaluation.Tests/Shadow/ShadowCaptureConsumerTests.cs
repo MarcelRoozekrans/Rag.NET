@@ -1,4 +1,7 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Rag.NET.Abstractions;
 using Rag.NET.Evaluation.Shadow;
 using Rag.NET.Models;
@@ -276,6 +279,61 @@ public sealed class ShadowCaptureConsumerTests
         Assert.Empty(store.SavedQuestions);
     }
 
+    /// <summary>
+    /// The host's shutdown token can outrun the drain deadline: <c>base.StopAsync</c> returns
+    /// without throwing the moment the caller's token fires, while a save is still in flight.
+    /// The shutdown report then runs before the deadline has declared that capture lost — so the
+    /// loss must be counted where the deadline declares it, or one accepted capture vanishes
+    /// with no counter moving: <see cref="ShadowCaptureConsumer.AbandonedCount"/>, the
+    /// <c>ragnet.shadow.abandoned</c> meter and the log must all still see it.
+    /// </summary>
+    [Fact]
+    public async Task StopAsync_AShutdownTokenThatOutrunsTheDrain_StillCountsTheInFlightLoss()
+    {
+        using var abandoned = new MetricCollector<long>(ShadowTelemetry.Meter, "ragnet.shadow.abandoned");
+        var abandonedBefore = Sum(abandoned);
+        var logger = new FakeLogger<ShadowCaptureConsumer>();
+        var queue = NewQueue();
+        var saveStarted = NewSignal();
+        var store = new ScriptedStore((_, cancellationToken) =>
+        {
+            saveStarted.TrySetResult();
+            return Never(cancellationToken);
+        });
+        using var consumer = new ShadowCaptureConsumer(
+            queue,
+            store,
+            // Real rather than zero: the deadline must still be pending when the shutdown
+            // report runs, and expire only afterwards. Generous against a slow machine — the
+            // stop path below is microseconds — and every wait on it is event-driven.
+            new ShadowCaptureConsumerOptions { DrainTimeout = TimeSpan.FromSeconds(2) },
+            sanitiser: null,
+            logger);
+        await consumer.StartAsync(TestContext.Current.CancellationToken);
+
+        await queue.EnqueueAsync(Pending("in-flight"), TestContext.Current.CancellationToken);
+        await saveStarted.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        // A token that has already fired is what a host whose ShutdownTimeout is shorter than
+        // the drain timeout hands StopAsync: the base wait returns immediately, mid-save.
+        using var hostGaveUp = new CancellationTokenSource();
+        await hostGaveUp.CancelAsync();
+        await consumer.StopAsync(hostGaveUp.Token).WaitAsync(TestContext.Current.CancellationToken);
+
+        // ExecuteAsync ends when the drain deadline expires on the hung save: awaiting it is
+        // awaiting the moment the loss becomes a fact, not a sleep.
+        var executeTask = consumer.ExecuteTask;
+        Assert.NotNull(executeTask);
+        await executeTask.WaitAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(store.SavedQuestions);
+        Assert.Equal(1, consumer.AbandonedCount);
+        Assert.Equal(1, Sum(abandoned) - abandonedBefore);
+        Assert.Contains(logger.Collector.GetSnapshot(), record =>
+            record.Level == LogLevel.Warning &&
+            record.Message.Contains("abandoned", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public async Task StopAsync_NothingQueued_ReportsNothingLost()
     {
@@ -351,6 +409,17 @@ public sealed class ShadowCaptureConsumerTests
 
     private static TaskCompletionSource NewSignal() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private static long Sum(MetricCollector<long> collector)
+    {
+        long total = 0;
+        foreach (var measurement in collector.GetMeasurementSnapshot())
+        {
+            total += measurement.Value;
+        }
+
+        return total;
+    }
 
     /// <summary>A save that never completes on its own — only the token can end it.</summary>
     private static Task Never(CancellationToken cancellationToken)
