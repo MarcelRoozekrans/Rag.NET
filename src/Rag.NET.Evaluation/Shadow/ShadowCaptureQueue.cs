@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Threading.Channels;
 
 namespace Rag.NET.Evaluation.Shadow;
@@ -50,7 +51,14 @@ public sealed class ShadowCaptureQueue
     /// </remarks>
     public long DroppedCount => Interlocked.Read(ref _dropped);
 
-    /// <summary>Enqueues one captured pair; if the queue is full, drops it and counts the drop.</summary>
+    /// <summary>How many accepted captures are queued and not yet dequeued.</summary>
+    /// <remarks>
+    /// What shutdown reads to report the remainder: after <see cref="Complete"/>, whatever the
+    /// consumer's drain deadline left here is loss, and loss is reported, never silent.
+    /// </remarks>
+    public int PendingCount => _channel.Reader.Count;
+
+    /// <summary>Enqueues one captured pair; if the queue is full or completed, drops it and counts the drop.</summary>
     /// <param name="capture">The pair to hand to the background consumer.</param>
     /// <param name="cancellationToken">Token observed before the write.</param>
     /// <returns>A task that is already complete unless the token was cancelled.</returns>
@@ -62,11 +70,46 @@ public sealed class ShadowCaptureQueue
     public ValueTask EnqueueAsync(ShadowCapture capture, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(capture);
-        return _channel.Writer.WriteAsync(capture, cancellationToken);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return ValueTask.FromCanceled(cancellationToken);
+        }
+
+        if (!_channel.Writer.TryWrite(capture))
+        {
+            // TryWrite only refuses on a completed channel — a full one accepts the write and
+            // drops it through the counting callback. A capture refused after Complete is as
+            // lost as one dropped on overflow, and an uncounted loss would put the real capture
+            // rate quietly below the configured sample rate, so it is counted the same way.
+            Interlocked.Increment(ref _dropped);
+        }
+
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>Streams captures to the background consumer in arrival order.</summary>
     /// <param name="cancellationToken">Token that stops the stream.</param>
     public IAsyncEnumerable<ShadowCapture> DequeueAllAsync(CancellationToken cancellationToken = default)
         => _channel.Reader.ReadAllAsync(cancellationToken);
+
+    /// <summary>Dequeues one capture if any is queued, without waiting.</summary>
+    /// <param name="capture">The dequeued capture, or null when the queue was empty.</param>
+    /// <returns>Whether a capture was dequeued.</returns>
+    /// <remarks>
+    /// The shutdown drain reads with this rather than <see cref="DequeueAllAsync"/>: the drain
+    /// must also work when the consumer's streaming loop never ran at all, and a non-waiting
+    /// read is what lets it stop the moment the buffer is empty.
+    /// </remarks>
+    public bool TryDequeue([MaybeNullWhen(false)] out ShadowCapture capture)
+        => _channel.Reader.TryRead(out capture);
+
+    /// <summary>Stops accepting: later enqueues become counted drops, and the dequeue stream ends
+    /// once the buffered captures are read.</summary>
+    /// <remarks>
+    /// The first half of the shutdown contract. Completing the writer is what lets the consumer
+    /// drain without a token: <see cref="DequeueAllAsync"/> becomes a finite stream that ends
+    /// exactly when the buffer is empty, instead of an infinite one that must be cancelled — and
+    /// cancelling it is how queued captures get abandoned.
+    /// </remarks>
+    public void Complete() => _channel.Writer.TryComplete();
 }

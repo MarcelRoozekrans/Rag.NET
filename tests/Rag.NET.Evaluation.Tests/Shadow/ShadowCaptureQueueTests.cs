@@ -100,6 +100,79 @@ public sealed class ShadowCaptureQueueTests
     }
 
     [Fact]
+    public async Task Complete_ThenEnqueueAsync_CountsTheRefusedCaptureAsADrop()
+    {
+        var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 4 });
+        queue.Complete();
+
+        // Refused-after-Complete must stay non-blocking and must be counted: an uncounted
+        // refusal at shutdown would be the same silent loss as an uncounted overflow drop.
+        var enqueue = queue.EnqueueAsync(Capture("late"), TestContext.Current.CancellationToken);
+        Assert.True(enqueue.IsCompletedSuccessfully);
+        await enqueue;
+
+        Assert.Equal(1, queue.DroppedCount);
+    }
+
+    [Fact]
+    public async Task Complete_DequeueAllAsyncEndsAfterDrainingTheBuffer()
+    {
+        var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 4 });
+        await queue.EnqueueAsync(Capture("q1"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Capture("q2"), TestContext.Current.CancellationToken);
+        queue.Complete();
+
+        // Enumerated to natural completion, no break: the loop ending at all is the assertion
+        // that Complete turns the stream finite once the buffered captures are drained.
+        var read = new List<string>();
+        await foreach (var capture in queue.DequeueAllAsync(TestContext.Current.CancellationToken))
+        {
+            read.Add(capture.Question);
+        }
+
+        Assert.Equal(["q1", "q2"], read);
+    }
+
+    [Fact]
+    public async Task PendingCount_TracksAcceptedCapturesNotYetDequeued()
+    {
+        var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 4 });
+        Assert.Equal(0, queue.PendingCount);
+
+        await queue.EnqueueAsync(Capture("q1"), TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(Capture("q2"), TestContext.Current.CancellationToken);
+        Assert.Equal(2, queue.PendingCount);
+
+        await ReadAsync(queue, 2, TestContext.Current.CancellationToken);
+        Assert.Equal(0, queue.PendingCount);
+    }
+
+    [Fact]
+    public async Task TryDequeue_ReadsWithoutWaitingAndReportsAnEmptyQueue()
+    {
+        var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 4 });
+        Assert.False(queue.TryDequeue(out _));
+
+        await queue.EnqueueAsync(Capture("q1"), TestContext.Current.CancellationToken);
+
+        Assert.True(queue.TryDequeue(out var capture));
+        Assert.Equal("q1", capture.Question);
+        Assert.False(queue.TryDequeue(out _));
+    }
+
+    [Fact]
+    public async Task EnqueueAsync_PreCancelledToken_IsCanceled()
+    {
+        var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 4 });
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => queue.EnqueueAsync(Capture("q"), cts.Token).AsTask());
+        Assert.Equal(0, queue.DroppedCount);
+    }
+
+    [Fact]
     public async Task EnqueueAsync_NullCapture_Throws()
     {
         var queue = new ShadowCaptureQueue(new ShadowCaptureQueueOptions { Capacity = 1 });
