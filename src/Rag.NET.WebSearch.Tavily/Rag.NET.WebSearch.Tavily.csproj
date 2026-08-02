@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.WebSearch.Tavily</RootNamespace>
     <PackageId>Rag.NET.WebSearch.Tavily</PackageId>
     <Description>Tavily web search provider for Rag.NET CRAG</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">

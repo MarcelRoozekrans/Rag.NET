@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Parsers.Word</RootNamespace>
     <PackageId>Rag.NET.Parsers.Word</PackageId>
     <Description>Word document parser for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

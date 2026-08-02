@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Chunking.Semantic</RootNamespace>
     <PackageId>Rag.NET.Chunking.Semantic</PackageId>
     <Description>Embedding-based semantic chunking strategy for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

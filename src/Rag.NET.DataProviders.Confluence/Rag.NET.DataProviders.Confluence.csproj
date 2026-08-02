@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.Confluence</RootNamespace>
     <PackageId>Rag.NET.DataProviders.Confluence</PackageId>
     <Description>Confluence data provider for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />

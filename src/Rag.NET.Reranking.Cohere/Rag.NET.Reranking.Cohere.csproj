@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Reranking.Cohere</RootNamespace>
     <PackageId>Rag.NET.Reranking.Cohere</PackageId>
     <Description>Cohere Rerank API integration for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

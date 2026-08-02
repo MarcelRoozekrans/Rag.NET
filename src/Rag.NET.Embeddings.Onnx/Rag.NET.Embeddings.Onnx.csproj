@@ -4,6 +4,10 @@
     <RootNamespace>Rag.NET.Embeddings.Onnx</RootNamespace>
     <PackageId>Rag.NET.Embeddings.Onnx</PackageId>
     <Description>ONNX Runtime token-level embeddings for Rag.NET (late chunking)</Description>
+    <!-- unit: tokenisation, pooling and stitching are covered with fixtures on every run;
+         the real-model tests are env-gated local inference (RAGNET_ONNX_EMBED_*) — a local
+         fixture, not a container or a service. -->
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

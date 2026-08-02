@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.Gmail</RootNamespace>
     <PackageId>Rag.NET.DataProviders.Gmail</PackageId>
     <Description>Gmail (IMAP via MailKit) data provider for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />

@@ -3,6 +3,10 @@
     <RootNamespace>Rag.NET.Security.AspNetCore</RootNamespace>
     <PackageId>Rag.NET.Security.AspNetCore</PackageId>
     <Description>ASP.NET Core integration for Rag.NET.Security — binds ICallerContext to ClaimsPrincipal.</Description>
+    <!-- No test project references this package: ClaimsPrincipalCallerContext and the DI
+         extension are exercised nowhere. Honest state, recorded; getting it above none is
+         later Milestone 4 work. -->
+    <VerifiedBy>none</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

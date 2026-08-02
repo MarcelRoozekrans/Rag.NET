@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.SharePoint</RootNamespace>
     <PackageId>Rag.NET.DataProviders.SharePoint</PackageId>
     <Description>SharePoint data provider for Rag.NET via Microsoft Graph</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <!-- One definition, compiled into each Graph connector. It cannot live in the shared

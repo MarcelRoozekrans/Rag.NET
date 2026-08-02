@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Chunking</RootNamespace>
     <PackageId>Rag.NET.Chunking</PackageId>
     <Description>Hierarchical and code-aware chunking strategies for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Parsers.PowerPoint</RootNamespace>
     <PackageId>Rag.NET.Parsers.PowerPoint</PackageId>
     <Description>PowerPoint document parser for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

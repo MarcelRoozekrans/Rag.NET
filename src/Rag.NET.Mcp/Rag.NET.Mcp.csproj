@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.Mcp</RootNamespace>
     <PackageId>Rag.NET.Mcp</PackageId>
     <Description>MCP server tools for Rag.NET pipelines</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

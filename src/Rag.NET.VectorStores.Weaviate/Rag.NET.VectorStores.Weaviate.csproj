@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.VectorStores.Weaviate</RootNamespace>
     <PackageId>Rag.NET.VectorStores.Weaviate</PackageId>
     <Description>Weaviate vector store for Rag.NET</Description>
+    <VerifiedBy>container</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

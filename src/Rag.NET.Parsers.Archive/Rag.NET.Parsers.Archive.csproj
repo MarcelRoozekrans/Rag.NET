@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Parsers.Archive</RootNamespace>
     <PackageId>Rag.NET.Parsers.Archive</PackageId>
     <Description>ZIP archive parser for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

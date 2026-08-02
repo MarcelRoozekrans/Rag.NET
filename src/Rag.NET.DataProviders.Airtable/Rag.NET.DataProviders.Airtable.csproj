@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.Airtable</RootNamespace>
     <PackageId>Rag.NET.DataProviders.Airtable</PackageId>
     <Description>Airtable data provider for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />

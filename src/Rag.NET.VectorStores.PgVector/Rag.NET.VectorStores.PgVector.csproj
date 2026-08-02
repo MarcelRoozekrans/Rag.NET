@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.VectorStores.PgVector</RootNamespace>
     <PackageId>Rag.NET.VectorStores.PgVector</PackageId>
     <Description>PostgreSQL pgvector store for Rag.NET</Description>
+    <VerifiedBy>container</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

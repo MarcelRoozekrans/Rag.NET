@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Abstractions</RootNamespace>
     <PackageId>Rag.NET.Abstractions</PackageId>
     <Description>Interfaces and models for the Rag.NET library</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

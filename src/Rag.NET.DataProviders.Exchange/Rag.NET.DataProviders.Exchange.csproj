@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.Exchange</RootNamespace>
     <PackageId>Rag.NET.DataProviders.Exchange</PackageId>
     <Description>Exchange / Outlook email data provider for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <!-- One definition, compiled into each Graph connector. It cannot live in the shared

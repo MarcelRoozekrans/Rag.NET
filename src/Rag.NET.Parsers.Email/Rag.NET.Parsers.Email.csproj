@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Parsers.Email</RootNamespace>
     <PackageId>Rag.NET.Parsers.Email</PackageId>
     <Description>EML/MSG email parser for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

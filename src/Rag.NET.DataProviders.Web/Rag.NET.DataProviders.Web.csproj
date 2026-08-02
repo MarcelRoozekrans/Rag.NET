@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.DataProviders.Web</RootNamespace>
     <PackageId>Rag.NET.DataProviders.Web</PackageId>
     <Description>Web data providers (crawler, sitemap, RSS) for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

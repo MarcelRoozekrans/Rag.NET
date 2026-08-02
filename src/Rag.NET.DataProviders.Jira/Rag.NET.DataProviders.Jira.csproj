@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.DataProviders.Jira</RootNamespace>
     <PackageId>Rag.NET.DataProviders.Jira</PackageId>
     <Description>Jira data provider for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />

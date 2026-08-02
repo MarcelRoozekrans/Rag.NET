@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Parsers.Epub</RootNamespace>
     <PackageId>Rag.NET.Parsers.Epub</PackageId>
     <Description>EPUB document parser for Rag.NET</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

@@ -5,6 +5,7 @@
     <Description>gRPC service for Rag.NET pipelines</Description>
     <!-- EPS05 is triggered by generated gRPC client stub code (Nullable<T> passed without in-modifier) -->
     <NoWarn>$(NoWarn);EPS05</NoWarn>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

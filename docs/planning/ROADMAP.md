@@ -26,8 +26,10 @@ future reader can tell the difference between "never existed" and "dealt with".
   iterator. A one-line `Activity.Current = activity` before `BuildMessagesAsync` closes it, and
   was deliberately not taken in 3.4 — it mutates ambient state in the answer engine for a
   diagnostics benefit, and that phase spent its one production edit on the `ragnet.query` span.
-  → **Phase 4.4** (OTel wiring, which has to reason about span context across async iterators
-  regardless)
+  → **Phase 4.3** (re-pointed 2026-08-02 by the Milestone 4 replan, design §5, from 4.4: it
+  travels with the `MessageChild` union in 4.3's slot list, and the structured-logging pass works
+  the same streamed answer path. The span-context reasoning that argued for 4.4 still holds — if
+  4.3 leaves it, 4.4 inherits it rather than the milestone at large)
 - **`MessageChild<TMessage>` is a union by convention** (**created by Phase 3.9**, not pre-existing):
   `EmbeddedMessage != null` means "descend", and otherwise `OpenAsync` and `MimeType` must *both* be
   non-null. Nothing enforces that — the only check is a bare `yield break` in
@@ -49,8 +51,9 @@ future reader can tell the difference between "never existed" and "dealt with".
   never fire is how a debt becomes an open note, so it gets a backstop instead: whichever comes
   first.
   → **the next phase that adds an `IMessageAdapter<TMessage>` implementation, and failing that
-  **Milestone 4** as a deadline** (the fix is small and local — a sealed hierarchy or a private
-  constructor with two factory methods — so it needs a slot, not a phase of its own)
+  **Phase 4.3** as the owning slot** (assigned 2026-08-02 by the Milestone 4 replan's §5,
+  replacing the bare milestone-as-deadline; the fix is small and local — a sealed hierarchy or a
+  private constructor with two factory methods — so it needs a slot, not a phase of its own)
 - **No supported way to replace a built-in parser** (found while fixing the Phase 3.11 review's first
   finding): `AddRagNETServices()` registers `TextDocumentParser` and `MarkdownDocumentParser` before
   `configure?.Invoke(builder)` runs, so a user's own `text/plain` parser is always behind them in the
@@ -66,7 +69,10 @@ future reader can tell the difference between "never existed" and "dealt with".
   `AddParser<T>(replaces: typeof(TextDocumentParser))`, or removing the built-in's `ServiceDescriptor`
   and its claim together. Deliberately not designed here — 3.11 was a bug-fix phase and this is API
   surface.
-  → **Milestone 4**, with 4.1, which is when the public API gets scrutinised for packaging anyway.
+  → **Phase 4.2** (re-pointed 2026-08-02 by the Milestone 4 replan, design §5, from "with 4.1":
+  parser *replacement* is API design on the registration path, and §5 groups it with the rest of
+  the connector-and-ingestion API work under 4.2, leaving 4.1 the packaging mechanics this entry
+  originally leaned on).
 - **`HierarchicalMergerChunkingStrategy` never reads `MaxChunkSize`** (found by Phase 3.16's audit
   of the other chunking strategies, design §7 — and it is the **inverse** of the defect that phase
   fixed). Its chunks are one heading subtree each, unbounded above, and `BookChunkingStrategy`,
@@ -115,7 +121,12 @@ future reader can tell the difference between "never existed" and "dealt with".
   landing in the three bare classes and never in the retrying one is itself weak evidence for the
   candidate. The suite figure above is stale too: the project is **129** tests now, not 110 —
   3.15 added the fourth class and more.
-  → **the next occurrence, and failing that Milestone 4 as a deadline** — the same backstop shape
+  → **the next occurrence, and failing that Milestone 4 as a deadline** [backstop re-examined and
+  deliberately kept 2026-08-02, when the replan converted the other milestone-as-deadline arrows
+  to phases: this one hangs off "all test projects passing", which survived the DoD rewrite
+  verbatim, and a deadline hanging off a falsifiable criterion is not the shape the replan
+  removed; note the `MessageChild` backstop referenced below has since become Phase 4.3] — the
+  same backstop shape
   as the `MessageChild` debt above, because "all tests passing" is in that milestone's Definition
   of Done and a suite that has failed once cannot carry that claim uninvestigated.
 - **Two live suites have never actually run against the real thing** (surfaced 2026-07-31, while
@@ -138,8 +149,16 @@ future reader can tell the difference between "never existed" and "dealt with".
   container billing and access terms before revisiting; they change.)
   The cheap half is the OCR one: fixing the `EnableOcr` gate costs nothing but a decision about how
   to compile it in CI. The Azure half needs a resource and a deliberate choice to spend a page.
-  → **Milestone 4**, with the release-readiness work, where "has this ever been exercised against the
-  real service" is a question worth answering before publishing packages.
+  → **split 2026-08-02 by the Milestone 4 replan (§5), after Phase 4.0's `TestGateTests` put all
+  four of these gates on the record as the four (of 28 sites) satisfiable nowhere** — and
+  sharpened the OCR half: `ENABLE_OCR` does not merely skip a test, it **compiles the production
+  Tesseract engine out**, so the shipped PDF parser has no real OCR in any default build. The OCR
+  half (`ENABLE_OCR` + `RAGNET_TESSDATA`, whose only reader sits inside the uncompiled block) →
+  **Phase 4.1**, which owns the `ci.yml` rework and where "a decision about how to compile it in
+  CI" — this entry's own words — belongs. The Azure half (`RAGNET_DOCINTEL_ENDPOINT`/`_KEY`) →
+  **the recorded-responses phase** (design §3), and Milestone 4's new DoD holds both halves either
+  way: "no test gated behind a condition nothing satisfies" fails until these gates are
+  satisfiable or gone.
 - **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
   of scope, scheduled here so they do not stay open notes). All three exist in
   `MarcelRoozekrans/AdoNet.Async` and none exists here:
@@ -151,8 +170,11 @@ future reader can tell the difference between "never existed" and "dealt with".
   - **`.commitlintrc.yml`** — this repository already writes conventional commits by convention;
     nothing enforces it, and release-please in 4.1 will read those messages.
   - **`renovate.json`** — no automated dependency updates at all.
-  → **Milestone 4**, alongside the rest of the release-readiness work. `.commitlintrc.yml` pairs
-  naturally with 4.1, since release-please depends on the commit format holding.
+  → **owners assigned 2026-08-02 by the Milestone 4 replan: `docs.yml` → Phase 4.5** (design §5 —
+  with the sidebar sweep, when the docs get read end to end), **`.commitlintrc.yml` and
+  `renovate.json` → Phase 4.1** (the commitlint pairing this entry already argued, and dependency
+  automation is the same release-plumbing pass; §5 is silent on renovate, so that half is the
+  replan's assignment rather than the design's).
 - **The ablation table's reranker row permutes only the set it is evaluated on** (found in Phase
   3.15 while writing up the table — **a design flaw in that phase's own plan, not a defect in the
   code**, and the entry says so because the two get fixed differently). The plan set the reranker
@@ -202,9 +224,12 @@ future reader can tell the difference between "never existed" and "dealt with".
   `IrMetrics`' own doc comment is wrong and gets corrected when this is picked up. Either way one
   sentence must change, and this paragraph exists so whoever runs TREC-COVID first knows which
   check comes before the run.
-  → **Milestone 4**, with the release-readiness work — the same shape as the two never-run live
-  suites above: "has the graded-relevance path ever been exercised against a real dataset" is a
-  question worth answering before publishing packages.
+  → **stays in Milestone 3's scope** (re-pointed 2026-08-02 by the Milestone 4 replan, design §5,
+  which refuses to smuggle it into 4: run or explicitly declined before Milestone 3 closes, and
+  declined gets written here, not implied). **And a correction to the design's own §5:** it routed
+  the FiQA-qrels check to Phase 4.0 — "one read of the qrels settles it" — but 4.0's plan scoped
+  that phase to its three guards and the read was not performed; the check stays exactly where
+  this entry put it, first thing for whoever runs TREC-COVID.
 - **`docs/reference/features.md` documents an observability package that does not exist — a live
   Definition-of-Done failure** (found by the 2026-08-02 milestone audit; the first failing DoD
   criterion this milestone has recorded, now annotated on the DoD in both planning files). The
@@ -221,7 +246,10 @@ future reader can tell the difference between "never existed" and "dealt with".
   3's DoD criterion that detail sections, matrix and code agree, and nobody had recorded it.
   → **Phase 4.4, or any documentation pass before it** — 4.4 owns the OTel wiring, so the doc
   correction belongs with it or earlier; 4.4 must not start from a detail section that describes
-  the package it has yet to build as already done.
+  the package it has yet to build as already done. **Machine-guarded since Phase 4.0
+  (2026-08-02):** `FeatureClaimTests` carries this claim in its `KnownFalseClaims` allow-list with
+  the evidence above, and a staleness test fails the moment the entry is fixed *or* the claim
+  leaves the docs — so 4.4 can neither forget it nor fix it without the allow-list noticing.
 - **`BuildMetadata` drops `baseMetadata.CreatedAt`, so provider-ingested documents score as brand
   new** (found in Phase 2.2; recorded until now only in
   `docs/plans/2026-07-26-connector-metadata-design.md:237-240`, and surfaced into this list by
@@ -235,9 +263,10 @@ future reader can tell the difference between "never existed" and "dealt with".
   `MetadataBehavior` for `TimeWeightedRetriever`, per its own doc comment. A real behaviour
   defect, not a documentation one: every document ingested through a data provider loses its
   real creation time and time-weighted retrieval ranks it as ingested-now.
-  → **the next phase that touches the data-provider ingestion path, and failing that Milestone 4
-  as a deadline** — the same backstop shape as the `MessageChild` debt, because the fix is one
-  copied property plus a test: a slot, not a phase.
+  → **the next phase that touches the data-provider ingestion path, and failing that Phase 4.2**
+  (owner assigned 2026-08-02 by the Milestone 4 replan's §5, with the options work on that path,
+  replacing the bare milestone-as-deadline) — the same backstop shape as the `MessageChild` debt,
+  because the fix is one copied property plus a test: a slot, not a phase.
 - **The current `nightly.yml` has never executed, and its reranker download feeds nothing**
   (found by the 2026-08-02 audit, reading the workflow against the run history). No nightly has
   run since PR #7 merged; the last run, 2026-08-01, executed the pre-3.15 workflow. So the
@@ -254,7 +283,10 @@ future reader can tell the difference between "never existed" and "dealt with".
   → **Milestone 4, with 4.1** — the phase that reworks `ci.yml` and must reread
   `docs/reference/ci.md` against the workflows anyway is where the decision lands; the first
   genuine run of the current nightly is the verification either way, and is worth having before
-  that phase starts.
+  that phase starts. **Phase 4.0 (2026-08-02) put the gate's status on the record:**
+  `TestGateTests` found `RAGNET_BEIR_LONG_RUNS` satisfiable **only locally** — the fenced command
+  in `docs/reference/ci.md` is the one place anything sets it — so "the download feeds nothing the
+  nightly runs" is now asserted by a test rather than only recorded here; the 4.1 decision stands.
 - **Two near-duplicate RAGAS test suites** (found by the 2026-08-02 audit):
   `tests/Rag.NET.Tests/Evaluation/` (~650 lines) and `tests/Rag.NET.Evaluation.Tests/Ragas/`
   (~1,570 lines) carry near-duplicate test names over the same metrics. Phase 3.1 removed
@@ -274,8 +306,11 @@ future reader can tell the difference between "never existed" and "dealt with".
   completion claim is therefore an inference across a package boundary — the shape this
   milestone has repeatedly found blind, where a behaviour on the far side of a boundary is
   presumed covered until a test has been watched to fail. Not a known defect: an unpinned claim.
-  → **Milestone 4, with 4.4** — the OTel wiring phase reasons about registration order and
-  cross-package instrumentation regardless, and the missing combination test belongs with it.
+  → **Phase 4.3** (re-pointed 2026-08-02 by the Milestone 4 replan, design §5, from 4.4: the
+  decoration records what guards and sanitisers removed, which is logging's subject matter, and
+  4.3's structured-logging pass reasons about the same registration order; the 4.4 argument —
+  OTel wiring reasons about cross-package instrumentation regardless — keeps it honest if 4.3
+  leaves it behind).
 - **A permanent `[Fact(Skip)]` in `AzureAISearchVectorStoreTests` appears in no planning record**
   (found by the 2026-08-02 audit): `AzureAISearchVectorStoreTests.cs:140` skips because
   `azure-ai-search-simulator` does not implement OData filter expressions, so that store's filter
@@ -283,8 +318,13 @@ future reader can tell the difference between "never existed" and "dealt with".
   Pinecone's sparse-write skip at `PineconeVectorStoreTests.cs:359`, which *is* recorded
   (Milestone 2's "Not in scope", by decision 2026-07-26). This entry is the recording; the gap
   is a simulator limitation, not a defect.
-  → **Milestone 4, with the never-run live suites** — "has the filter path ever run against the
-  real service" is the same release-readiness question, answered the same way.
+  → **the recorded-responses phase** (design §3; re-pointed 2026-08-02 from the bare
+  "Milestone 4, with the never-run live suites") — "has the filter path ever run against the real
+  service" is the question that phase exists to answer, and the new DoD's recording criterion
+  holds it. **On the record twice since Phase 4.0 (2026-08-02):** `TestGateTests` lists this skip
+  as one of the two permanent `[Fact(Skip)]`s (with its Pinecone sibling), and the ledger judged
+  the whole package **`VerifiedBy=unit` despite its Docker-tier tests** — a community simulator
+  without OData filters and of unconfirmed fidelity does not earn `container`.
 - **Four debts recorded somewhere and scheduled nowhere** (collected by the 2026-08-02 audit —
   each lives in a completed phase's entry, a design doc or features.md, all outside this list,
   all violating its one rule: record with origin, then schedule or re-justify): five connectors'
@@ -295,22 +335,73 @@ future reader can tell the difference between "never existed" and "dealt with".
   (`features.md:457`, "deferred", interval-only today); and Pinecone live sparse-write
   verification (Milestone 2's "Not in scope" — a documented coverage gap by decision,
   2026-07-26). None is urgent, which is exactly how each stayed where it was.
-  → **Milestone 4 as a deadline**: the Pinecone verification joins the never-run live suites
-  (same "has this ever met the real service" question); the other three are feature work and get
-  a schedule-or-decline decision at Milestone 4 scoping — declined is a legitimate outcome, but
-  it has to be written down here, not implied by a closed phase's margins.
-- **Three debts routed "→ Milestone 4, with the release-readiness work" have no owning phase
-  among 4.1–4.6** (found by the 2026-08-02 audit, reading this list against Milestone 4's phase
-  list): `docs.yml`/`renovate.json`/`.commitlintrc.yml`, the two never-run live suites, and
-  TREC-COVID/EnronQA all name the milestone as their destination, and no listed phase's goal
-  covers publishing docs, dependency automation, exercising live services or adding BEIR
-  datasets. Milestone-as-deadline satisfies the letter of this list's rule; the phase list gives
-  the work nowhere to land, which is how a deadline gets missed by everyone honouring it.
-  → **Milestone 4's scoping session** — when that milestone starts, these entries get phases (or
-  slots in existing ones) or get re-justified; recorded now so scoping starts from this line
-  instead of rediscovering it.
+  → **owners assigned 2026-08-02 by the Milestone 4 replan (§5): the connector field selections,
+  the webhook payload parsers and the cron/NCrontab schedules → Phase 4.2**, with the rest of the
+  connector-path work — schedule-or-decline inside that phase, and declined gets written here, not
+  implied; **the Pinecone live sparse-write verification → the recorded-responses phase** (design
+  §3), where `TestGateTests` already lists its permanent skip and the new DoD's recording
+  criterion holds it.
+- **`features.md` claims `Rag.NET.Parsers.CSharp`, a package that does not exist under that
+  name** (found by Phase 4.0's `FeatureClaimTests`, 2026-08-02 — the second of exactly two false
+  claims in the 54 `✅ Done` sections, and the benign twin of the OTel ghost above): the feature
+  is real and lives at `src/Rag.NET.Chunking.CSharp`; only the claimed package identity is wrong.
+  Held in `KnownFalseClaims` with a staleness test, like the OTel entry, so it can neither be
+  fixed silently nor forgotten loudly.
+  → **Phase 4.1** — the packaging pass reads every package identity anyway, and a wrong published
+  name is exactly what it exists to catch. (The replan's assignment, not design §5's, which
+  predates 4.0 finding this claim.)
+- **Two packages have never been exercised by any test at all** (declared honestly by Phase 4.0's
+  `<VerifiedBy>` ledger, 2026-08-02): `Rag.NET.Mcp.Tool` (a host scaffold no test references) and
+  `Rag.NET.Security.AspNetCore` (two types, zero test references). Both declare `VerifiedBy=none`,
+  which the ledger's release gate — "no package declares `none`" — turns into a v1.0 blocker
+  without failing today's build, because punishing an honest `none` is how a ledger becomes
+  fiction.
+  → **`Rag.NET.Mcp.Tool` → Phase 4.6** (the tooling phase — the same first-tests-for-an-executable
+  shape as the CLI) and **`Rag.NET.Security.AspNetCore` → Phase 4.5** (the samples are the first
+  thing that will host ASP.NET middleware end to end, and its first tests belong with that work).
+  Assignments made at 4.0's close, not in design §5, which predates the ledger's findings; the
+  release gate holds either way.
+- **61 of 71 packages have only ever been exercised against fakes** (measured by Phase 4.0's
+  ledger, 2026-08-02: `unit` 61, `container` 8, `recorded` 0, `live` 0, `none` 2). Not a defect
+  list — the *shape* of the risk: `VerifiedBy=unit` is the state late chunking was in for five
+  phases while inert, and the reranker while sending a quarter of every document to the model as
+  `[UNK]`. Roughly 20 of the 61 talk to services no test can reach — the twelve SaaS connectors,
+  the cloud vector stores, the hosted LLM and reranker providers — and among them sits
+  `Parsers.Pdf.AzureDocumentIntelligence`, judged `unit` rather than `recorded` because its
+  WireMock cassettes were hand-written, never recorded from the live service: a cassette encoding
+  our belief about an API is the shape that let the reranker's smoke test agree with its defect.
+  → **the recorded-responses phase (design §3) for every live-service package**, enforced by the
+  new DoD's recording criterion; every other upgrade — or honest stay-at-`unit` — is recorded per
+  package in its `<VerifiedBy>`, which is what makes this entry shrinkable rather than
+  aspirational. This is the milestone's dominant work, and the replan says so rather than
+  footnoting it.
+- **Two ghost directories from the PgVector rename are on disk and in no solution** (forced onto
+  the record by Phase 4.0's ledger, 2026-08-02, which had to decide whether `src/Rag.NET.PgVector`
+  was a 72nd package: it is not — untracked `bin`/`obj` only, no csproj, an empty leftover of the
+  rename to `VectorStores.PgVector`, with a matching ghost at `tests/Rag.NET.PgVector.Tests`).
+  Every figure that assumed 72 packages was counting it; the count is **71**. Not harmless while
+  they sit there: one of the pair broke a `dotnet run` in Phase 3.16 by making a project name
+  ambiguous — the same two-matches shape that killed the benchmarks re-measure via a leftover
+  agent worktree.
+  → **Phase 4.1** — delete both with the packaging pass, which is when the package inventory is
+  settled for good.
 
 ### Closed
+
+- ~~**Three debts routed "→ Milestone 4, with the release-readiness work" have no owning phase
+  among 4.1–4.6**~~ (found by the 2026-08-02 audit, reading this list against Milestone 4's phase
+  list: milestone-as-deadline satisfies the letter of this list's rule while the phase list gives
+  the work nowhere to land) → **closed 2026-08-02 by the Milestone 4 replan**
+  (`docs/plans/2026-08-02-milestone-4-replan-design.md` §5), which is the scoping session this
+  entry demanded: `docs.yml` → 4.5, `.commitlintrc.yml`/`renovate.json` → 4.1, the never-run live
+  suites split between 4.1 (the OCR compile gate) and the recorded-responses phase (design §3)
+  with the new DoD failing while any gate stays unsatisfiable, and TREC-COVID/EnronQA re-pointed
+  **back into Milestone 3's scope** rather than smuggled into 4. Each destination is written on
+  its own entry above. Every remaining "Milestone 4" arrow in this list now names a phase, a
+  trigger with an owned backstop, or a falsifiable DoD criterion — the two "as a deadline"
+  backstops that survive (the unnamed flake, the reranker-depth re-measure) both hang off DoD
+  criteria rather than off the milestone's goodwill, and the second is already satisfied by
+  labelling with only its optional re-measure outstanding.
 
 - ~~**Our BM25 is not comparable to published BM25**~~ (recorded in the Phase 3.7 design as out of
   scope; re-pointed 2026-07-31 from 3.12 to 3.15 when the ablation table moved with the phases)
@@ -657,7 +748,7 @@ future reader can tell the difference between "never existed" and "dealt with".
 **Started:** 2026-07-27
 **Definition of Done:**
 - [ ] All planned phases complete (14 of 16 as of 2026-08-02; 3.8 and 3.14 pending)
-- [ ] No feature marked done in features.md lacks tests and docs — detail sections, summary matrix, and code agree — **failing as of the 2026-08-02 audit**: the OTel detail section (`features.md:666-676`) claims a package that does not exist; see the follow-up-debts list
+- [ ] No feature marked done in features.md lacks tests and docs — detail sections, summary matrix, and code agree — **failing as of the 2026-08-02 audit**: the OTel detail section (`features.md:666-676`) claims a package that does not exist; see the follow-up-debts list. [Phase 4.0's `FeatureClaimTests` swept all 54 Done claims on 2026-08-02: exactly **two** fail — the OTel ghost and the `Rag.NET.Parsers.CSharp` wrong name — both allow-listed with staleness guards, the other 52 naming code that exists]
 - [ ] Integration/vector-store suites run in CI (Dockerized)
 - [ ] All tests passing
 
@@ -871,7 +962,7 @@ Created by the 3.12 scope split. §4 and §5 of `docs/plans/2026-07-31-beir-expa
 
 **The runs-after-3.16 condition is satisfied** — 3.16 ran and completed 2026-07-31 — so the chunk counts this phase budgets against are the packed ones above, not the ones the short-part defect produced.
 
-**Completed:** 2026-08-02 (**the table, all nine cells measured** — parity protocol, judged queries only, each cell against its dataset's dense anchor: SciFact 0.64593 → +BM25 hybrid **0.69913** (+0.0532) → +HyDE **0.70001** (+0.0541) → +reranker **0.68442** (+0.0385); FiQA 0.37086 → **0.35665** (−0.0142) → **0.36543** (−0.0054) → **0.38458** (+0.0137); ArguAna 0.50432 → **0.51173** (+0.0074) → **0.50293** (−0.0014) → **0.47917** (−0.0252). **Every technique helps somewhere and hurts somewhere.** No row is free lift, which is what makes the table credible rather than promotional — the design's demand that it be able to go down is met on every row, not only the one built for it. **The design committed to per-dataset HyDE predictions before anything was built, and two of the three failed — recorded as failed rather than reframed.** FiQA, the positive control ("clear lift"), was flat: −0.0054. ArguAna, the negative control ("no lift, plausibly negative"), held: −0.0014. SciFact ("modest lift, smaller than FiQA's") gained the most of the three: +0.0541. The design named "FiQA shows no lift" as the outcome that would make the table uninterpretable, because a weak model and an unhelpful method are indistinguishable in a run that is flat everywhere — **that escape hatch did not apply**: SciFact gained +0.0541 from the same model, the same prompt and the same cache, so FiQA's flat cell is a measurement, not an artefact. The explanation that survives — HyDE helps when the hypothetical sits closer to the corpus register than the query does — is recorded **as post-hoc**, because it is one. ArguAna's negative control has an **observed mechanism**, recorded during generation independently of the measurement: its hypotheticals are compressed restatements of the input argument, recycling its own statistics, and ArguAna asks for the best *counter*argument — so HyDE moves the search vector toward the query's own position and away from the target. **Two library defects were found and fixed, and neither is what the phase set out to measure.** First: `OnnxReranker.TokenizePair` was not a WordPiece tokenizer (`a912187`). It whitespace-split and looked up whole lowercased words, mapping every miss to `[UNK]` — measured over both corpora in full, **26.59% of SciFact's 1,112,417 words and 17.62% of FiQA's 7,660,017 reached the model as `[UNK]`**; through WordPiece, 0.01% and 0.10%. The first reranker measurement showed harm everywhere — SciFact 0.56693, FiQA 0.34085, ArguAna 0.41806 — and after the fix the row **gains 0.117 on SciFact, 0.061 on ArguAna and 0.044 on FiQA from tokenization alone**. It was found because the row hurt on FiQA too, the MS MARCO-like corpus where the design predicted a cross-encoder helps, and uniform harm across in-domain and out-of-domain corpora is more consistent with a defect than with a technique. **No guard could have caught it**: `AssertRerankerReordered` proves the cross-encoder *moved* the ranking, and garbage-but-varying scores reorder every query. The new guard is an offline tokenizer round-trip test that fails on the old algorithm. The fix also corrected hardcoded `[UNK]`/`[CLS]`/`[SEP]` ids, a truncation rule that starved long queries, and a `MaxLength ≤ 3` case that exceeded its own ceiling; the shared plumbing lives in `src/Shared/BertWordPieceTokenization.cs`, linked into both ONNX packages. Second: **the harness retrieved unjudged queries** (`339f3d6`). `MeasureAsync` retrieved for every query while `IrMetrics` scores only judged ones — SciFact retrieved 1,109 to score 300, FiQA 6,648 to score 648 — waste everywhere, and it **broke the HyDE row**, whose refuse-on-miss cache failed on the first unjudged query. ArguAna concealed it: all 1,406 of its queries are judged. Metrics unchanged by construction and verified — parity reproduced 0.64593 and 0.50432 exactly — and every recorded query counter was restated across nine files. **FiQA's real leg, deferred out of 3.12 and re-based by 3.16, is measured at last: nDCG@10 0.35569 against parity 0.37086, delta −0.01517** — 121,236 units over **57,600 of 57,638** documents, the 38 empty entries (one judged relevant) contributing nothing, stated here because 3.12's debt required it stated with the number; all 648 judged queries pooled; **1 h 4 m against the derived ~1.5–2 h — the estimate overshot, and that is recorded rather than quietly replaced.** The three real deltas now exist — SciFact **+0.03148**, ArguAna **−0.02873**, FiQA **−0.01517** — and they support the explanation 3.12 proposed and 3.16 tested, that the sign tracks whether relevance is passage-level or document-level: recorded as **consistent with three corpora, not as newly proven**. **The HyDE row is reproducible by construction:** 7,062 hypotheticals for the 2,354 judged queries at `HypothesisCount = 3`, `openai/gpt-4o-mini` at `HydeOptions.HypothesisTemperature` (0.8), **$0.66**, zero failures. The cache identity is `openai/gpt-4o-mini@t0.8` — the temperature is in the key, added after a review found that sampling settings outside the key would silently serve text drawn from another distribution. The table run never calls an LLM; a cache miss fails naming the key. **The cache is never committed** — it derives from BEIR queries, and this project's standing position is that nothing is redistributed. All nine ablation figures and FiQA's real leg are pinned in `BeirReproduction` at ±0.005 (`899f4b2`), with a fast-tier theory so a mutated figure fails on every push rather than only under an opted-in run. **The BM25 comparability debt is closed by labelling**: the `+BM25 hybrid` row is published as a Rag.NET-internal comparison with no published reference, and 3.7 §2's rejection of a benchmark-only analyzer stands — moved to the Closed list, with the FiQA empty-corpus debt the real number now states. **Three debts recorded in the follow-up list, each with its origin:** the reranker row permutes only the ten documents it is evaluated on — `TopK` equals the cutoff, so Recall@10 is frozen by construction, visible in SciFact's reranker Recall@10 of 0.78667, identical to dense; **a design flaw in this phase's own plan, not a defect in the code**, and the row understates what a cross-encoder can do → the next re-measure of the table, backstopped by Milestone 4; `docs/reference/ci.md` still counts "eleven cases" and does not list the nine ablation cells now gated in `BeirRunBudget` → Milestone 4, with 4.1; and TREC-COVID and EnronQA, deferred again unchanged from 3.12 — the `2^rel − 1` path has still never seen a graded *dataset* → Milestone 4, with the release-readiness work.)
+**Completed:** 2026-08-02 (**the table, all nine cells measured** — parity protocol, judged queries only, each cell against its dataset's dense anchor: SciFact 0.64593 → +BM25 hybrid **0.69913** (+0.0532) → +HyDE **0.70001** (+0.0541) → +reranker **0.68442** (+0.0385); FiQA 0.37086 → **0.35665** (−0.0142) → **0.36543** (−0.0054) → **0.38458** (+0.0137); ArguAna 0.50432 → **0.51173** (+0.0074) → **0.50293** (−0.0014) → **0.47917** (−0.0252). **Every technique helps somewhere and hurts somewhere.** No row is free lift, which is what makes the table credible rather than promotional — the design's demand that it be able to go down is met on every row, not only the one built for it. **The design committed to per-dataset HyDE predictions before anything was built, and two of the three failed — recorded as failed rather than reframed.** FiQA, the positive control ("clear lift"), was flat: −0.0054. ArguAna, the negative control ("no lift, plausibly negative"), held: −0.0014. SciFact ("modest lift, smaller than FiQA's") gained the most of the three: +0.0541. The design named "FiQA shows no lift" as the outcome that would make the table uninterpretable, because a weak model and an unhelpful method are indistinguishable in a run that is flat everywhere — **that escape hatch did not apply**: SciFact gained +0.0541 from the same model, the same prompt and the same cache, so FiQA's flat cell is a measurement, not an artefact. The explanation that survives — HyDE helps when the hypothetical sits closer to the corpus register than the query does — is recorded **as post-hoc**, because it is one. ArguAna's negative control has an **observed mechanism**, recorded during generation independently of the measurement: its hypotheticals are compressed restatements of the input argument, recycling its own statistics, and ArguAna asks for the best *counter*argument — so HyDE moves the search vector toward the query's own position and away from the target. **Two library defects were found and fixed, and neither is what the phase set out to measure.** First: `OnnxReranker.TokenizePair` was not a WordPiece tokenizer (`a912187`). It whitespace-split and looked up whole lowercased words, mapping every miss to `[UNK]` — measured over both corpora in full, **26.59% of SciFact's 1,112,417 words and 17.62% of FiQA's 7,660,017 reached the model as `[UNK]`**; through WordPiece, 0.01% and 0.10%. The first reranker measurement showed harm everywhere — SciFact 0.56693, FiQA 0.34085, ArguAna 0.41806 — and after the fix the row **gains 0.117 on SciFact, 0.061 on ArguAna and 0.044 on FiQA from tokenization alone**. It was found because the row hurt on FiQA too, the MS MARCO-like corpus where the design predicted a cross-encoder helps, and uniform harm across in-domain and out-of-domain corpora is more consistent with a defect than with a technique. **No guard could have caught it**: `AssertRerankerReordered` proves the cross-encoder *moved* the ranking, and garbage-but-varying scores reorder every query. The new guard is an offline tokenizer round-trip test that fails on the old algorithm. The fix also corrected hardcoded `[UNK]`/`[CLS]`/`[SEP]` ids, a truncation rule that starved long queries, and a `MaxLength ≤ 3` case that exceeded its own ceiling; the shared plumbing lives in `src/Shared/BertWordPieceTokenization.cs`, linked into both ONNX packages. Second: **the harness retrieved unjudged queries** (`339f3d6`). `MeasureAsync` retrieved for every query while `IrMetrics` scores only judged ones — SciFact retrieved 1,109 to score 300, FiQA 6,648 to score 648 — waste everywhere, and it **broke the HyDE row**, whose refuse-on-miss cache failed on the first unjudged query. ArguAna concealed it: all 1,406 of its queries are judged. Metrics unchanged by construction and verified — parity reproduced 0.64593 and 0.50432 exactly — and every recorded query counter was restated across nine files. **FiQA's real leg, deferred out of 3.12 and re-based by 3.16, is measured at last: nDCG@10 0.35569 against parity 0.37086, delta −0.01517** — 121,236 units over **57,600 of 57,638** documents, the 38 empty entries (one judged relevant) contributing nothing, stated here because 3.12's debt required it stated with the number; all 648 judged queries pooled; **1 h 4 m against the derived ~1.5–2 h — the estimate overshot, and that is recorded rather than quietly replaced.** The three real deltas now exist — SciFact **+0.03148**, ArguAna **−0.02873**, FiQA **−0.01517** — and they support the explanation 3.12 proposed and 3.16 tested, that the sign tracks whether relevance is passage-level or document-level: recorded as **consistent with three corpora, not as newly proven**. **The HyDE row is reproducible by construction:** 7,062 hypotheticals for the 2,354 judged queries at `HypothesisCount = 3`, `openai/gpt-4o-mini` at `HydeOptions.HypothesisTemperature` (0.8), **$0.66**, zero failures. The cache identity is `openai/gpt-4o-mini@t0.8` — the temperature is in the key, added after a review found that sampling settings outside the key would silently serve text drawn from another distribution. The table run never calls an LLM; a cache miss fails naming the key. **The cache is never committed** — it derives from BEIR queries, and this project's standing position is that nothing is redistributed. All nine ablation figures and FiQA's real leg are pinned in `BeirReproduction` at ±0.005 (`899f4b2`), with a fast-tier theory so a mutated figure fails on every push rather than only under an opted-in run. **The BM25 comparability debt is closed by labelling**: the `+BM25 hybrid` row is published as a Rag.NET-internal comparison with no published reference, and 3.7 §2's rejection of a benchmark-only analyzer stands — moved to the Closed list, with the FiQA empty-corpus debt the real number now states. **Three debts recorded in the follow-up list, each with its origin:** the reranker row permutes only the ten documents it is evaluated on — `TopK` equals the cutoff, so Recall@10 is frozen by construction, visible in SciFact's reranker Recall@10 of 0.78667, identical to dense; **a design flaw in this phase's own plan, not a defect in the code**, and the row understates what a cross-encoder can do → the next re-measure of the table, backstopped by Milestone 4; `docs/reference/ci.md` still counts "eleven cases" and does not list the nine ablation cells now gated in `BeirRunBudget` → Milestone 4, with 4.1; and TREC-COVID and EnronQA, deferred again unchanged from 3.12 — the `2^rel − 1` path has still never seen a graded *dataset* → Milestone 4, with the release-readiness work. [**Re-pointed 2026-08-02 by the Milestone 4 replan, design §5: TREC-COVID and EnronQA stay in Milestone 3's scope** — run or explicitly declined before this milestone closes, not smuggled into 4; the FiQA-qrels check recorded on that debt still comes first. See the follow-up-debts list.])
 
 ### Phase 3.16: Recursive Chunking Short-Part Merge [status: complete]
 **Goal:** Stop `RecursiveChunkingStrategy` emitting every split part as its own chunk, so a document of short lines does not become one chunk per line. (Not a features.md row — a probable library defect measured in Phase 3.12 and recorded in the follow-up-debts list at the top of this file, now moved to that list's Closed section.)
@@ -891,14 +982,45 @@ Measured at stock `ChunkingOptions` — 512 characters, 50 of overlap: **FiQA 42
 
 **Completed:** 2026-07-31 (**confirmed a defect — the precondition this entry set — and it was three faults rather than one.** First, the size limit was not consulted before splitting: `SplitRecursively` checked whether text fit within `MaxChunkSize` only on the branch where the current separator was absent, so a 35-character section became 2 chunks against a 512-character limit. Second, split parts were never packed back: every part that fit was emitted as its own chunk, and with no sentence separator present the recursion reached the `" "` separator and emitted **one chunk per word** — 150 words became 150 chunks of 4 characters, which is what settled the "is it deliberate?" question, because nobody deliberately makes word boundaries chunk boundaries. Third, `Split(". ")` destroyed sentence punctuation and nothing put it back. Also fixed: chunk positions had a silent fallback that reported a wrong position as a real one — now an exception, justified by 500 generated-input iterations proving it unreachable. **The existing tests asserted the defect and the docs drew it.** `ChunkAsync_SplitsByParagraphsFirst` asserted 2 chunks for a 35-character input and passed; the chunking guide's flowchart drew "fits in MaxChunkSize? → yes → emit chunk" with no merge step. Code, tests and docs agreed with each other and all three were wrong — the sixth instance of that shape in this milestone. **Chunk counts, re-measured at the same stock options:** SciFact 56,707 → **20,155** units from 5,183 documents (10.9× → **3.9×**, worst single document 221 → 25); FiQA 429,850 → **121,236** from 57,638 (7.5× → **2.1×**, worst 1,723 → 41); ArguAna 82,618 → **24,003** from 8,674 (9.5× → **2.8×**, worst 285 → 16). FiQA's 522-character median against a 512-character chunk size suggested ~2× and produced 7.5×; it now produces **2.1×** — the discrepancy that opened the investigation is closed. **Parity runs unmoved, which was the phase's regression gate:** SciFact 0.64593 and ArguAna 0.50432, both separators, identical to Phase 3.12 to five decimal places. FiQA's parity 0.37086 was not re-run: it is gated, and the parity protocol indexes one chunk per document and never calls the split path. **Both real runs improved in absolute terms:** SciFact 0.65589 → **0.67742** (delta against parity +0.00995 → **+0.03148**; Recall@10 0.81322, MRR@10 0.63757, all 1,109 queries pooled) and ArguAna 0.42594 → **0.47559** (delta −0.07839 → **−0.02873**; Recall@10 0.77240, MRR@10 0.38435, all 1,406 queries pooled). **The design made a falsifiable prediction and it held.** §6 said: if 3.12's explanation was right that ArguAna's −0.0784 came from fragmenting whole counterarguments, packing should shrink the loss substantially — and said explicitly that if ArguAna did *not* improve, 3.12's recorded explanation was wrong and the roadmap must be corrected. ArguAna recovered about **63%** of the loss, so the explanation stands. The signs remain opposite, so "where relevance lives" still holds: the residual is what packing cannot touch — whole-argument queries scored against 512-character pieces. **FiQA's real-leg cost is revised from an estimated 8–9 h to a derived ~1.5–2 h** — 121,236 chunk plus 6,648 query embeddings at the ~27 embeddings/s observed across the two packed real legs — still Phase 3.15's run, not this one's. [**Measured there, 2026-08-02: 1 h 4 m** — the derivation overshot, and 3.15 records that rather than replacing it.] **The audit of the other strategies found the inverse defect**, and per this entry's own not-in-scope rule it is said rather than quietly widened into: `HierarchicalMergerChunkingStrategy` never reads `MaxChunkSize` at all, and `BookChunkingStrategy`, `LegalChunkingStrategy` and `AcademicPaperChunkingStrategy` all delegate to it, so a user setting `MaxChunkSize` on any of those templates gets no effect from it — recorded in the follow-up-debts list → Milestone 4, with 4.1. Two more debts recorded with it: `docs/reference/benchmarks.md`'s Recursive rows predate packing → re-measured immediately after this phase closed, `cfea8e9` — packing made Recursive faster at every size, allocation down at 500 characters and up at 50 KB (closed; full numbers in the Closed list), and a failure in `Rag.NET.Benchmarks.Quality.Tests` — seen once in this phase, 86 clean runs, then **seen a second time during the whole-phase review and again unnamed**, because the run logged summary-only; still not diagnosed, and the open entry's `--logger trx` instruction stands vindicated. **The whole-phase review also found and closed a test gap:** every chunk was proven a substring of the source, but nothing proved the converse — a mutation deleting `SplitParts`' mid-stream flush silently discarded every run of short parts preceding an oversize sibling and all 1,340 core plus 110 quality tests stayed green. `9682967` adds a coverage property — every character not covered by a chunk span at `Overlap = 0` must be whitespace or a `'.'` on a pack boundary — plus a deterministic case, both failing under the mutation; the suite is now **1,342**. The shipped code never dropped anything — a missing test, not a shipped bug.)
 
-## Milestone 4: Release Readiness (v1.0) [status: pending]
-**Goal:** Make Rag.NET shippable — CI, NuGet publishing, first-class configuration, logging, telemetry, and runnable samples.
-**Definition of Done:**
+## Milestone 4: Release Readiness (v1.0) [status: active]
+**Goal:** Make Rag.NET shippable — CI, NuGet publishing, first-class configuration, logging, telemetry, and runnable samples — and prove that what ships works, which the first half of this sentence cannot do on its own: a green build has now been watched to coexist with four live defects.
+**Started:** 2026-08-02
+
+> **Replanned 2026-08-02** (`docs/plans/2026-08-02-milestone-4-replan-design.md`, motivated by the
+> Milestone 3 audit of the same date). Verification is this milestone's dominant cost, not a
+> footnote to it — Phase 4.0 measured **61 of 71 packages at `VerifiedBy=unit`**, exercised only
+> against fakes — and the phase list below will grow a **recorded-responses phase** (design §3)
+> covering the ~20 packages that talk to live services; that phase is referenced by design section
+> rather than number until it is scheduled. v1.0 covers all 71 packages and all 54 Done claims:
+> no preview tier.
+
+**Definition of Done** (rewritten 2026-08-02 by the replan's §6. The previous DoD — all phases
+complete, 0 warnings from a clean restore, non-Docker unit tests passing, CI produces packages,
+tag v1.0 — was **already fully satisfied while four defects were live**: late chunking inert since
+Phase 1.1, the default chunker emitting one chunk per word, `OnnxReranker` sending 26% of every
+document to the model as `[UNK]`, and `features.md` advertising a package that does not exist. Not
+one was found by a test. Every criterion below can be false, and something checks it):
 - [ ] All planned phases complete
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore
-- [ ] All non-Docker unit test projects passing
+- [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0; **failing today, knowingly**: four gates are satisfiable nowhere — see the follow-up-debts list)
+- [ ] **Every one of the 54 `features.md` Done claims names code that exists** (`FeatureClaimTests`, Phase 4.0; **failing today, knowingly**: two claims sit in `KnownFalseClaims` with owners → 4.4 and 4.1)
+- [ ] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0; **failing today, honestly**: `Rag.NET.Mcp.Tool` → 4.6, `Rag.NET.Security.AspNetCore` → 4.5)
+- [ ] **Every package talking to a live service has a scrubbed, dated recording** (the recorded-responses phase, design §3; `recorded` and `live` both stand at 0 of ~20 today)
 - [ ] CI pipeline builds, tests, and produces NuGet packages
 - [ ] Release tagged v1.0
+
+**What these guards do not fix** (design §7, stated so the milestone does not claim more than it
+does): a recording proves one exchange happened once, not that the API still behaves that way; the
+ledger proves a package was exercised, not exercised *well* — `VerifiedBy=unit` on a package with
+one trivial test satisfies its letter; the agreement test checks that named code exists, not that
+it does what the row says; and **none of them would have caught the reranker tokenizer** — that was
+found by a prediction stated in advance and reported honestly when it failed, which is Milestone
+3's transferable practice and is not automatable.
+
+### Phase 4.0: Verification Ledger and Claim Agreement [status: complete]
+**Goal:** Open the milestone with a measurement: three mechanical guards that make the new Definition of Done falsifiable — every `features.md` Done claim must name code that exists, no test may be gated behind a condition nothing satisfies, and every package must declare how it has been verified. Builds no features, ships nothing. (Not a features.md row — the replan's opening phase.)
+**Plan:** `docs/plans/2026-08-02-milestone-4-replan-design.md` + `2026-08-02-phase-4-0-verification-ledger-implementation.md`
+**Completed:** 2026-08-02 (**three guards, all cheap, and the numbers they produced are the phase's output.** **(a) `FeatureClaimTests` (`c235a9b`, `d77036f`) parses `docs/reference/features.md` and checks all 54 sections marked `✅ Done` — 54 of 54, not the ~51 the plan predicted — resolving 73 package claims at a measured false-positive rate of 0 of 73.** The residue the plan expected to need risky identifier-extraction turned out to be structured SaaS-connector tables rather than prose, so none was written. **Two claims are false, and both now live in a `KnownFalseClaims` allow-list with evidence and an owning phase, each held by a staleness test that fails the moment the entry is fixed *or* the claim leaves the docs** — an allow-list nothing re-checks is how a known defect becomes furniture. `Rag.NET.Telemetry` is **genuinely false** — the audit's finding (A), now machine-guarded rather than only recorded: no such package, no `.UseTelemetry()`, no `gen_ai.*` attribute, metric names (`ragnet.retrieve.latency`, `ragnet.answer.tokens`, `ragnet.embed.batch_size`) matching nothing in `src/Rag.NET/Telemetry/RagTelemetry.cs`, where the real instruments are `internal` under different names, and its own matrix row unchecked → Phase 4.4 owns the fix. `Rag.NET.Parsers.CSharp` is a **wrong name, not a ghost**: the feature is real and lives at `src/Rag.NET.Chunking.CSharp` → 4.1, with the packaging pass that reads every package identity anyway. **(b) `TestGateTests` (`c613fe1`) enumerates every gating site — 29 on the phase's final tree: 26 `Assert.SkipWhen`/`SkipUnless` call sites, 2 permanent `[Fact(Skip)]`s and 1 conditional-compilation symbol. (The guard first counted 28 — not its plan's 29, whose 29th was an `Assert.SkipWhen` inside a doc comment — and then guard (c)'s own release gate became the 26th call site, a correction the whole-phase review caught after the count was written down.) It asserts each gate is satisfiable somewhere, reading raw source and never compiled output**, because a compiled-output check is blind to the worst case: an `#if` block that is not compiled reports nothing at all. Prose does not satisfy a gate — only a fenced, runnable command counts — and a `secrets.*` workflow mapping is not accepted as evidence either, because the repository cannot show a secret exists. The distribution: **0 gates satisfiable in `ci.yml`** (by design), **5 only in the nightly**, **1 only locally** (`RAGNET_BEIR_LONG_RUNS`, via the fenced command in `docs/reference/ci.md`), and **4 satisfiable nowhere**: `RAGNET_DOCINTEL_ENDPOINT`/`RAGNET_DOCINTEL_KEY` (secrets never configured anywhere — the Document Intelligence live suite has never run, as its debt entry records), `RAGNET_TESSDATA` (its only reader sits inside an uncompiled block), and `ENABLE_OCR` — which is worse than a test gap: nothing sets `EnableOcr`, and the flag **also compiles the production Tesseract engine out**, so the shipped PDF parser has no real OCR in any default build. Two **permanent** `[Fact(Skip)]`s are now visible with their reasons rather than latent: `PineconeVectorStoreTests` (Pinecone Local rejects sparse-on-dense) and `AzureAISearchVectorStoreTests` (the simulator has no OData filters — the skip the audit found in no planning record). **(c) Every package under `src/` now declares `<VerifiedBy>` (`46b6bd8`, `1b206e4`)** — `unit`, `container`, `recorded`, `live` or `none` — extending the `<RequiresDocker>`/`<RequiresSecrets>` convention `ci.yml` already selects on rather than inventing a parallel one. Two gates, deliberately split: "every package declares a value" hard-fails today; "no package declares `none`" is the **release** gate and does not fail the build, because punishing an honest `none` is how a ledger becomes fiction. **The distribution across 71 packages: `unit` 61, `container` 8, `recorded` 0, `live` 0, `none` 2.** The two `none` are `Rag.NET.Mcp.Tool` (host scaffold, no test references it) and `Rag.NET.Security.AspNetCore` (two types, zero test references). The eight `container` are `Rag.NET` itself, `Rag.NET.Security`, `Rag.NET.Ingestion.AzureServiceBus`, and the PgVector, Qdrant, Chroma, Weaviate and Pinecone stores. Two judgments went against the mechanical answer and are recorded as judgments: **AzureAISearch is `unit`, not `container`, despite having Docker-tier tests** — its container is a community simulator without OData filters and of unconfirmed fidelity — and **`Parsers.Pdf.AzureDocumentIntelligence` is `unit`, not `recorded`**, because its WireMock cassettes were hand-written, never recorded from the live service, and a hand-written cassette verifies the code against *our belief* about the API, the exact shape the reranker defect punished. **The number that should shape the rest of this milestone: 61 of 71 packages have only ever been exercised against fakes** — the state late chunking was in for five phases, now visible in every csproj rather than latent. **The ledger also forced a count correction: there are 71 packages, not 72.** `src/Rag.NET.PgVector` is an empty leftover of the rename to `VectorStores.PgVector` — untracked `bin`/`obj`, no csproj — with a matching ghost at `tests/Rag.NET.PgVector.Tests`; recorded as a debt in the follow-up list, since one of the pair already broke a `dotnet run` in Phase 3.16 by making a project name ambiguous. **One §5 routing did not happen here and is said rather than absorbed:** the design sent the FiQA-qrels check ("one read settles it") to this phase, but the implementation plan scoped 4.0 to the three guards and the read was not performed — it stays with the TREC-COVID debt, first thing for whoever runs that dataset.)
 
 ### Phase 4.1: NuGet Packaging & Publishing [status: pending]
 **Goal:** NuGet packaging, versioning and publishing on top of a pipeline that already builds and tests.

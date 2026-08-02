@@ -4,6 +4,12 @@
     <RootNamespace>Rag.NET.VectorStores.AzureAISearch</RootNamespace>
     <PackageId>Rag.NET.VectorStores.AzureAISearch</PackageId>
     <Description>Azure AI Search vector store for Rag.NET</Description>
+    <!-- unit, not container, deliberately: the Docker-tier suite runs against a community
+         azure-ai-search-simulator, not the real service. It implements no OData filter
+         expressions (the filtered-search test is permanently skipped) and nothing has ever
+         confirmed it behaves like real Azure AI Search. A simulator of unverified fidelity
+         is a fake with a port number. -->
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

@@ -3,6 +3,7 @@
     <RootNamespace>Rag.NET.Api</RootNamespace>
     <PackageId>Rag.NET.Api</PackageId>
     <Description>ASP.NET Core REST API for Rag.NET pipelines</Description>
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

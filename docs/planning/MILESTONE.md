@@ -22,6 +22,14 @@ Completed milestones are archived under `docs/planning/milestones/`.
       exist — no such package, no `UseTelemetry` anywhere in `src/`, no `gen_ai.*` attribute, and
       metric names that match nothing in `src/Rag.NET/Telemetry/RagTelemetry.cs` — while its own
       matrix row (`:1135`) is unchecked. Recorded in the ROADMAP follow-up-debts list → Phase 4.4.
+      **The full sweep this criterion needed ran on 2026-08-02, in Milestone 4's Phase 4.0:**
+      `FeatureClaimTests` checked all 54 `✅ Done` sections against the code — 73 package claims
+      resolved, false-positive rate 0 of 73 — and found exactly **two** failures: this OTel ghost,
+      and `Rag.NET.Parsers.CSharp`, a real feature claimed under a package name that does not
+      exist (it lives at `src/Rag.NET.Chunking.CSharp`) → Phase 4.1. Both sit in a
+      `KnownFalseClaims` allow-list whose staleness tests fail when either is fixed or leaves the
+      docs; the other 52 claims name code that exists. What the sweep does **not** establish: that
+      the named code does what the row says — existence, not behaviour.
 - [ ] Integration/vector-store suites run in CI (Dockerized)
 - [ ] All tests passing; solution builds 0 warnings / 0 errors
 
@@ -259,7 +267,10 @@ Assume nothing works until a test says so *and the test is right*.
    "eleven cases" and does not list the nine ablation cells now gated in `BeirRunBudget` →
    Milestone 4, with 4.1; and TREC-COVID and EnronQA, deferred again unchanged from 3.12 — the
    `2^rel − 1` path has still never seen a graded *dataset* → Milestone 4, with the
-   release-readiness work.
+   release-readiness work. [**Re-pointed 2026-08-02 by the Milestone 4 replan, design §5:
+   TREC-COVID and EnronQA stay in this milestone's scope** — run or explicitly declined before
+   Milestone 3 closes, not smuggled into 4; the FiQA-qrels check recorded on the ROADMAP debt
+   still comes first.]
 15. Phase 3.16 — Recursive Chunking Short-Part Merge [complete — 2026-07-31] — the "probable
    defect" 3.12 measured, with confirmation required before fixing. **Confirmed, and it was three
    faults rather than one:** the size limit was not consulted before splitting
