@@ -62,4 +62,14 @@ public enum BeirProtocol
     /// <see cref="BeirComparisonControlTests"/>.
     /// </summary>
     Comparison,
+
+    /// <summary>
+    /// The library comparison's Semantic Kernel row (Phase 3.14 Task 4): the corpus indexed
+    /// unchunked — one InMemory-connector record per document, which is SK's actual default since
+    /// it ships no ingestion pipeline — embedded and searched through Semantic Kernel's own paths
+    /// with the pinned embedder, and scored from a TREC run file like every entrant. The embedding
+    /// work is the parity corpus's exactly (same texts, same model), so its cold cost is the
+    /// parity leg's. Measured by <see cref="BeirSemanticKernelDefaultsTests"/>.
+    /// </summary>
+    SemanticKernel,
 }

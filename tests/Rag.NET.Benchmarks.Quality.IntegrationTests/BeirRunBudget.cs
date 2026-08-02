@@ -222,6 +222,35 @@ public static class BeirRunBudget
             "nightly's cache is cold, this case would race BeirParityTests for it, and the " +
             "boundary it uniquely exercises is already pinned in the fast tier by " +
             "TrecRunFileTests."),
+        new(
+            "scifact",
+            BeirProtocol.SemanticKernel,
+            FitsTheNightly: false,
+            "2.1 s measurement (3.4 s whole test) with the parity corpus's vectors warm in the " +
+            "embedding cache, measured 2026-08-02 (Phase 3.14 Task 4). The texts SK embeds are " +
+            "exactly the parity corpus's, so cold this pair pays the parity leg's ~5 min " +
+            "embedding price first (that part DERIVED for this pair). Opt-in for the control " +
+            "row's reason: a comparator row racing BeirParityTests for a cold nightly cache " +
+            "would pay the corpus embedding twice."),
+        new(
+            "fiqa",
+            BeirProtocol.SemanticKernel,
+            FitsTheNightly: false,
+            "NEVER RUN to completion — no wall-clock figure is recorded for this pair, and " +
+            "nothing below is a measurement of it. SK embeds exactly the parity corpus's texts " +
+            "(one record per document, same model), so cold this pair is DERIVED to cost FiQA's " +
+            "parity leg's 1 h 11 m; warm it should cost minutes like the other two entrant " +
+            "legs. Phase 3.14 Task 4 ran SciFact's and ArguAna's legs and deliberately not this " +
+            "one, for the same budget reason FiQA's parity case is opt-in."),
+        new(
+            "arguana",
+            BeirProtocol.SemanticKernel,
+            FitsTheNightly: false,
+            "5.7 s measurement (7.1 s whole test) with the parity corpus's vectors warm in the " +
+            "embedding cache, measured 2026-08-02 (Phase 3.14 Task 4); cold it pays the parity " +
+            "leg's ~4 min embedding price first (that part DERIVED for this pair). Opt-in for " +
+            "the control row's reason: a comparator row racing BeirParityTests for a cold " +
+            "nightly cache would pay the corpus embedding twice."),
     ];
 
     /// <summary>
@@ -347,6 +376,9 @@ public static class BeirRunBudget
             "+RERANKER ablation cell (parity corpus, dense top-k rescored by the cross-encoder)",
         BeirProtocol.Comparison =>
             "COMPARISON CONTROL (parity corpus, scored from a TREC run file read back from disk)",
+        BeirProtocol.SemanticKernel =>
+            "SEMANTIC KERNEL entrant (unchunked documents in SK's InMemory connector, pinned " +
+            "embedder, scored from a TREC run file)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -371,6 +403,7 @@ public static class BeirRunBudget
             BeirProtocol.Hyde => "UnderCachedHyde",
             BeirProtocol.Reranked => "UnderCrossEncoderRerank",
             BeirProtocol.Comparison => nameof(BeirComparisonControlTests),
+            BeirProtocol.SemanticKernel => nameof(BeirSemanticKernelDefaultsTests),
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 

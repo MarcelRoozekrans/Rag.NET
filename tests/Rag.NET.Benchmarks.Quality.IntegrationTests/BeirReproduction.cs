@@ -249,6 +249,45 @@ public static class BeirReproduction
             "what makes it scoreable by an outsider's trec_eval with no knowledge of query ids. " +
             "Recall@10 0.79161, MRR@10 0.41515, 1,406 queries evaluated. Measured 2026-08-02 " +
             "(Phase 3.14 Task 2), Windows 11, .NET 10, CPU ONNX Runtime."),
+        new(
+            "scifact",
+            BeirProtocol.SemanticKernel,
+            [0.64593],
+            "The library-comparison Semantic Kernel row (SK 1.78.0, InMemory connector " +
+            "1.74.0-preview, MEVD 10.1.0): unchunked documents embedded and searched through " +
+            "SK's own paths with the pinned embedder, scored from a read-back TREC run file — " +
+            "and it equals the control row's 0.64593 EXACTLY. Not an accident: SK ships no " +
+            "chunker, so its default is one record per document, which is the parity protocol " +
+            "over the same texts, the same vectors and the same cosine — the two rows can " +
+            "differ only in tie-ordering, and SciFact's rankings held no ties that mattered. " +
+            "Recall@10 0.78667, MRR@10 0.60483, 300 queries evaluated. Measured 2026-08-02 " +
+            "(Phase 3.14 Task 4), Windows 11, .NET 10, CPU ONNX Runtime."),
+        new(
+            "fiqa",
+            BeirProtocol.SemanticKernel,
+            [],
+            "The library-comparison Semantic Kernel row (SK 1.78.0, InMemory connector " +
+            "1.74.0-preview, MEVD 10.1.0): unchunked documents embedded and searched through " +
+            "SK's own paths with the pinned embedder, scored from a read-back TREC run file. " +
+            "NEVER RUN — gated with FiQA's parity leg behind RAGNET_BEIR_LONG_RUNS, whose cold " +
+            "price is 1 h 11 m of embedding SK's row would pay identically (same texts, same " +
+            "model); when somebody pays for the run, its figure belongs here."),
+        new(
+            "arguana",
+            BeirProtocol.SemanticKernel,
+            [0.50306],
+            "The library-comparison Semantic Kernel row (SK 1.78.0, InMemory connector " +
+            "1.74.0-preview, MEVD 10.1.0): unchunked documents embedded and searched through " +
+            "SK's own paths with the pinned embedder, self-exclusion applied on the writer's " +
+            "side of the boundary (the written file held zero query-id = document-id lines " +
+            "over all 14,060), scored from a read-back TREC run file. Recall@10 0.79161 — " +
+            "IDENTICAL to the control's, while nDCG sits 0.00126 below its 0.50432 and MRR@10 " +
+            "0.41339 below its 0.41515: the same documents reach the top 10 and only their " +
+            "order differs, which is tie- and near-tie ordering — DocumentRanking breaks exact " +
+            "ties by ordinal id, the connector keeps its own order over " +
+            "TensorPrimitives.CosineSimilarity — not a retrieval difference. 1,406 queries " +
+            "evaluated. Measured 2026-08-02 (Phase 3.14 Task 4), Windows 11, .NET 10, CPU " +
+            "ONNX Runtime."),
     ];
 
     /// <summary>

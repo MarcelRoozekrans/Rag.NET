@@ -332,8 +332,14 @@ public static class BeirHarness
     /// here — which documents are relevant, and how relevant, stays invisible to retrieval, so the
     /// leak the parity band's upper edge watches for cannot enter through this filter.
     /// </para>
+    /// <para>
+    /// Internal rather than private since Phase 3.14 Task 4: the Semantic Kernel entrant retrieves
+    /// through its own library's search path, but <i>which queries a run retrieves for</i> is the
+    /// harness's protocol, and a comparator that filtered its own way could measure a different
+    /// query set than the control.
+    /// </para>
     /// </remarks>
-    private static IReadOnlyList<BeirQuery> JudgedQueries(BeirDataset dataset)
+    internal static IReadOnlyList<BeirQuery> JudgedQueries(BeirDataset dataset)
     {
         var judged = new List<BeirQuery>(dataset.JudgedQueryCount);
         for (var i = 0; i < dataset.Queries.Count; i++)
