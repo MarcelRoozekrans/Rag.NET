@@ -1,6 +1,7 @@
 # Milestone 3: Quality Hardening & Evaluation
 
-**Status:** active
+**Status:** active — 14 of 16 phases complete; Phase 3.8 (A/B Shadow Mode) and Phase 3.14
+(Library Comparison at Defaults) pending
 **Started:** 2026-07-27
 
 ## Goal
@@ -16,6 +17,11 @@ Completed milestones are archived under `docs/planning/milestones/`.
 - [ ] All planned phases complete
 - [ ] No feature marked done in `features.md` lacks tests and docs — the detail sections and the
       summary matrix agree with each other and with the code
+      **Failing as of the 2026-08-02 audit, not merely unfinished:** `features.md:666-676` marks
+      OpenTelemetry Tracing & Metrics `✅ Done` in a package (`Rag.NET.Telemetry`) that does not
+      exist — no such package, no `UseTelemetry` anywhere in `src/`, no `gen_ai.*` attribute, and
+      metric names that match nothing in `src/Rag.NET/Telemetry/RagTelemetry.cs` — while its own
+      matrix row (`:1135`) is unchecked. Recorded in the ROADMAP follow-up-debts list → Phase 4.4.
 - [ ] Integration/vector-store suites run in CI (Dockerized)
 - [ ] All tests passing; solution builds 0 warnings / 0 errors
 
@@ -324,3 +330,4 @@ Assume nothing works until a test says so *and the test is right*.
 
 | Date | Verdict | Gaps |
 |---|---|---|
+| 2026-08-02 | **Every completion claim holds; the drift is in what nothing re-reads.** Two independent read-only audits. All 29 load-bearing claims checked across the 14 completed phases reproduce against code — 29 of 29. All 11 open follow-up debts are still real; none was silently fixed. No closed debt was closed on a false premise — the Phase 3.6 shape does not recur — and no debt quotes a figure invalidated by 3.15 or 3.16: the inline correction chains held. Status corrected to state 14 of 16 phases complete (3.8, 3.14 pending); no DoD box was ticked, so none needed unticking. | Six findings, all recorded 2026-08-02 in the ROADMAP follow-up-debts list unless noted. **(A)** `features.md:666-676` documents an OTel package (`Rag.NET.Telemetry`, `.UseTelemetry()`, `gen_ai.*`, `ragnet.retrieve.latency`) that does not exist while its matrix row `:1135` is unchecked — a **live DoD failure**, annotated on the DoD above → Phase 4.4. **(B)** `BuildMetadata` (`RagPipelineExtensions.cs:322-328`) drops `baseMetadata.CreatedAt`, so `TimeWeightedRetriever` scores provider-ingested documents as brand new — previously recorded only in a closed phase's design doc → new entry with a destination. **(C)** the post-3.15 `nightly.yml` has never executed, and its ~87 MB reranker download feeds no test — every consumer is behind `RAGNET_BEIR_LONG_RUNS`, which the job never sets → new entry; Phase 4.1 decides. **(D)** `IrMetrics.cs:31-32` ("FiQA and TREC-COVID are graded") contradicts the TREC-COVID debt; unverified both ways, settleable by reading FiQA's cached `qrels/test.tsv` → noted on that debt. **(E)** the flake debt's candidate mitigation shipped only in `HypotheticalCacheTests.cs` — the one filesystem test class the debt does not name — and its 110-test figure is stale (129) → noted on that debt. **(F)** smaller: duplicate RAGAS test suites (~650 vs ~1,570 lines); nothing pins the Security→Diagnostics decoration, so 3.4's claim is a cross-package inference; `AzureAISearchVectorStoreTests.cs:140`'s permanent skip was in no planning record (its Pinecone sibling `:359` is); four debts recorded somewhere but scheduled nowhere, now given destinations; three "→ Milestone 4" debts match no phase 4.1–4.6 owns; and the reranker-depth debt's "or labelled" exit is already satisfied by `retrieval-quality.md:406-413` — updated so it does not read as wholly open. | 
