@@ -236,26 +236,28 @@ future reader can tell the difference between "never existed" and "dealt with".
   the FiQA-qrels check to Phase 4.0 — "one read of the qrels settles it" — but 4.0's plan scoped
   that phase to its three guards and the read was not performed; the check stays exactly where
   this entry put it, first thing for whoever runs TREC-COVID.
-- **`docs/reference/features.md` documents an observability package that does not exist — a live
-  Definition-of-Done failure** (found by the 2026-08-02 milestone audit; the first failing DoD
-  criterion this milestone has recorded, now annotated on the DoD in both planning files). The
-  detail section at `features.md:666-676` reads "OpenTelemetry Tracing & Metrics — **Status:**
-  ✅ Done, **Package:** `Rag.NET.Telemetry`", and describes `.UseTelemetry()` registration, GenAI
-  semantic conventions (`gen_ai.system`, `gen_ai.request.model`, …) and metrics named
-  `ragnet.retrieve.latency`, `ragnet.answer.tokens` and `ragnet.embed.batch_size`. **None of it
-  exists.** There is no `Rag.NET.Telemetry` package, no `UseTelemetry` anywhere in `src/`, and no
-  `gen_ai.*` attribute; the real instruments are `internal` in
-  `src/Rag.NET/Telemetry/RagTelemetry.cs` under different names (`ragnet.retrieve.duration`,
-  `ragnet.llm.tokens`). The summary-matrix row at `features.md:1135` is **unchecked** — so the
-  detail section contradicts its own matrix, the exact shape the 2026-07-27 scope correction
-  opened this milestone on, and once again the matrix row is the honest one. This fails Milestone
-  3's DoD criterion that detail sections, matrix and code agree, and nobody had recorded it.
-  → **Phase 4.4, or any documentation pass before it** — 4.4 owns the OTel wiring, so the doc
-  correction belongs with it or earlier; 4.4 must not start from a detail section that describes
-  the package it has yet to build as already done. **Machine-guarded since Phase 4.0
-  (2026-08-02):** `FeatureClaimTests` carries this claim in its `KnownFalseClaims` allow-list with
-  the evidence above, and a staleness test fails the moment the entry is fixed *or* the claim
-  leaves the docs — so 4.4 can neither forget it nor fix it without the allow-list noticing.
+  **Declined for Milestone 3, at its close (2026-08-03)** — the explicit decline the replan's §5
+  required written here rather than implied. The grounds, so the decision is arguable rather than
+  a shrug: neither dataset verifies anything this milestone shipped — three corpora already
+  answer the milestone's questions in both directions (real-vs-parity **+0.03148 / −0.02873 /
+  −0.01517**, and an ablation table where every technique helps somewhere and hurts somewhere) —
+  where TREC-COVID opens a *new* question (the first graded dataset through `2^rel − 1`) and
+  EnronQA a new story (the private corpus). And neither is a close-out task: no descriptor, no
+  `BeirRunBudget` timing, no revision-pinned published reference and no licence determination
+  exists for either — the full checklist every dataset landed so far has needed — against a cost
+  that past FiQA is embedding-time in hours. The graded-path risk stays real and stays stated:
+  `2^rel − 1` is exercised by a hand-computed fixture and no dataset, and
+  `docs/reference/retrieval-quality.md` § "Not measured, and why" labels the gap on the published
+  page. The FiQA-qrels check above was **not** performed at the close and stays first: no warm
+  BEIR cache was reachable from the closing session (`RAGNET_BEIR_CACHE` unset at every scope, no
+  cache directory on disk), and downloading a corpus to settle one doc comment is the wrong trade
+  inside a close that runs no measurements.
+  → **the next phase that re-measures the ablation table** (where the reranker-depth re-measure
+  already sits, and a graded dataset belongs in a re-measured table rather than alone), **and
+  failing that Milestone 4 as a deadline** — hanging, like that debt, off `retrieval-quality.md`
+  shipping as v1.0 documentation: every "Not measured" entry either measured or still honestly
+  labelled. The label exists today, so the deadline's floor is already met; the run is the
+  improvement, not the blocker.
 - **`BuildMetadata` drops `baseMetadata.CreatedAt`, so provider-ingested documents score as brand
   new** (found in Phase 2.2; recorded until now only in
   `docs/plans/2026-07-26-connector-metadata-design.md:237-240`, and surfaced into this list by
@@ -297,30 +299,12 @@ future reader can tell the difference between "never existed" and "dealt with".
   premise of this entry's title is stale, and the run both verified and failed.** The reranker
   provisioning ran end to end — fetch, SHA-256, cache — and, exactly as recorded above, fed no
   test. The env-gated job then **failed**, on a defect the run found rather than a measurement:
-  see the `BeirDatasetCache` race entry below. All four parity cases the job exists to protect
-  **passed** (SciFact and ArguAna, both separators), so the published numbers held on the first
-  genuine run; the 4.1 decision on the reranker download is unchanged.]
-- **`BeirDatasetCache` is not safe against two test classes wanting the same un-downloaded
-  dataset** (found 2026-08-02 at Phase 3.14's close, reading the first genuine run of the
-  post-3.15 nightly — run 30735435427, the run the entry above was waiting for, and its one
-  failure). `BeirRealChunkingTests.Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments("scifact")`
-  threw `IOException: The process cannot access the file '…/beir/scifact.zip.partial' because it
-  is being used by another process` out of `BeirDatasetCache.DownloadAndVerifyAsync`
-  (`src/Rag.NET.Benchmarks.Quality/BeirDatasetCache.cs:186`) — xUnit runs test classes in
-  parallel, that class and `BeirParityTests` both call `EnsureAsync` for SciFact, and on a fresh
-  runner cache both found it missing and raced `File.Create` on the same `.partial` path. The
-  GUID-suffix-then-move pattern that makes `EmbeddingCache`'s writes atomic was never applied to
-  the dataset archive download, and no local run could see it: a developer's
-  `RAGNET_BEIR_CACHE` is warm, so the download path runs once per dataset ever — this is why the
-  defect waited for the nightly's fresh `RUNNER_TEMP/beir` to fire. The failed test is the
-  seconds-cheap unit-count case, not a measurement, and **all four parity measurements in the same
-  job passed** — the failure is a harness concurrency defect, not a retrieval regression, but it
-  keeps the nightly red and it fails Milestone 3's "all tests passing" criterion honestly until
-  fixed. Not the `Rag.NET.Benchmarks.Quality.Tests` flake above: different project, named test,
-  reproducible cause. Fix shape (not pre-taken): a per-dataset download mutex, or the
-  GUID-suffixed `.partial` the embedding cache already uses.
-  → **Milestone 4, with 4.1** — it rides the same nightly rework the entry above already assigns
-  there, and the first green genuine nightly is the verification.
+  see the `BeirDatasetCache` race entry, now in the Closed list. All four parity cases the job
+  exists to protect **passed** (SciFact and ArguAna, both separators), so the published numbers
+  held on the first genuine run; the 4.1 decision on the reranker download is unchanged. **The
+  second genuine run is green**: 30789374909, 2026-08-03, on the branch that fixed the races —
+  `env-gated` passed in 19m01s, still paying for a reranker download nothing in the job consumes,
+  so the 4.1 decision stands with both halves now observed.]
 - **Two near-duplicate RAGAS test suites** (found by the 2026-08-02 audit):
   `tests/Rag.NET.Tests/Evaluation/` (~650 lines) and `tests/Rag.NET.Evaluation.Tests/Ragas/`
   (~1,570 lines) carry near-duplicate test names over the same metrics. Phase 3.1 removed
@@ -375,15 +359,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   implied; **the Pinecone live sparse-write verification → the recorded-responses phase** (design
   §3), where `TestGateTests` already lists its permanent skip and the new DoD's recording
   criterion holds it.
-- **`features.md` claims `Rag.NET.Parsers.CSharp`, a package that does not exist under that
-  name** (found by Phase 4.0's `FeatureClaimTests`, 2026-08-02 — the second of exactly two false
-  claims in the 54 `✅ Done` sections, and the benign twin of the OTel ghost above): the feature
-  is real and lives at `src/Rag.NET.Chunking.CSharp`; only the claimed package identity is wrong.
-  Held in `KnownFalseClaims` with a staleness test, like the OTel entry, so it can neither be
-  fixed silently nor forgotten loudly.
-  → **Phase 4.1** — the packaging pass reads every package identity anyway, and a wrong published
-  name is exactly what it exists to catch. (The replan's assignment, not design §5's, which
-  predates 4.0 finding this claim.)
 - **Two packages have never been exercised by any test at all** (declared honestly by Phase 4.0's
   `<VerifiedBy>` ledger, 2026-08-02): `Rag.NET.Mcp.Tool` (a host scaffold no test references) and
   `Rag.NET.Security.AspNetCore` (two types, zero test references). Both declare `VerifiedBy=none`,
@@ -422,6 +397,63 @@ future reader can tell the difference between "never existed" and "dealt with".
 
 ### Closed
 
+- ~~**`BeirDatasetCache` is not safe against two test classes wanting the same un-downloaded
+  dataset**~~ (found 2026-08-02 at Phase 3.14's close, reading the first genuine run of the
+  post-3.15 nightly — run 30735435427, whose one failure was
+  `BeirRealChunkingTests.Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments("scifact")` throwing
+  `IOException` on `scifact.zip.partial` out of `BeirDatasetCache.DownloadAndVerifyAsync` when it
+  and `BeirParityTests` both cold-started SciFact; routed at the time "→ Milestone 4, with 4.1")
+  → **closed 2026-08-03, in Milestone 3 — the routing was stale: a red nightly failed this
+  milestone's "all tests passing" criterion, so the fix could not wait for 4.1's nightly rework**
+  (`50a80cd`, `335710c`). **Three same-shaped races, not the one recorded.** The download race
+  was as diagnosed — xUnit runs test classes in parallel, both callers found the dataset missing
+  and raced `File.Create` on one shared `.partial` path — and the fix is the GUID-suffixed
+  partial this entry itself named as a candidate, the shape `EmbeddingCache` and
+  `HypotheticalCache` already use; no lock, which would only serialise unrelated downloads.
+  Fixing it exposed two more one step later, which run 30735435427 died too early to reach:
+  **archive publication** — `File.Move(overwrite: true)` cannot replace the shared archive while
+  the rival holds it open for extraction (Windows refuses to replace a file another process has
+  open with `FileShare.Read`), so the archive name is now published last, after extraction, when
+  nobody ever holds it open — and **extraction itself**, where two in-place extractions race the
+  same entry files through exclusive handles: extraction now lands in a GUID-named `.extracting`
+  staging directory renamed into place only when complete, so the dataset directory becomes
+  visible atomically or not at all, the rename's loser accepting the winner's directory (built
+  from an archive verified against the same published MD5, so losing is success) and
+  delete-on-failure preserved on every path out. All three mutation-verified with
+  gate-synchronised tests that make the writers genuinely overlap without a sleep: the download
+  race reproduces the nightly's exact `IOException` with the shared name restored, and the
+  publication collision reproduced **on the test's opening attempt, in 28 ms** — a defect that
+  waited five phases for a cold cache falls in milliseconds once a test controls the
+  interleaving. **Verified where no local run could verify it:** nightly run **30789374909**
+  (2026-08-03), triggered on the fix branch against a fresh `RUNNER_TEMP/beir` — the cold-cache
+  condition a developer's warm `RAGNET_BEIR_CACHE` has hidden since Phase 3.7 — `env-gated`
+  green in 19m01s, `llm` green, every suite passing.
+- ~~**`docs/reference/features.md` documents an observability package that does not exist — a
+  live Definition-of-Done failure**~~ (found by the 2026-08-02 milestone audit — the first
+  failing DoD criterion this milestone recorded: `features.md:666-676` marked OpenTelemetry
+  Tracing & Metrics `✅ Done` in `Rag.NET.Telemetry`, a package never built — no
+  `.UseTelemetry()`, no `gen_ai.*` attribute, metric names matching nothing in
+  `src/Rag.NET/Telemetry/RagTelemetry.cs` — while its own matrix row at `:1135` sat unchecked;
+  held in Phase 4.0's `KnownFalseClaims` with a staleness guard; routed "→ Phase 4.4, or any
+  documentation pass before it") → **closed 2026-08-03 by exactly that earlier documentation
+  pass** (`81163af`, at Milestone 3's close): the section is **withdrawn from Done** and now
+  describes what exists — the core package's internal `RagTelemetry` `ActivitySource`/`Meter`
+  named `Rag.NET`, with its real spans and instruments — and names first-class OTel wiring as
+  Phase 4.4's, so the detail section finally agrees with its own unchecked matrix row, which was
+  the honest one throughout. The `KnownFalseClaims` entry is deleted —
+  `EveryRecordedFalseClaimIsStillFalse` forces exactly that once the claim leaves the docs — and
+  the parse drops to 53 Done sections and 72 package claims, every one verified directly with no
+  exemptions. Phase 4.4 still owns building the wiring; what it no longer inherits is a detail
+  section describing its deliverable as already done.
+- ~~**`features.md` claims `Rag.NET.Parsers.CSharp`, a package that does not exist under that
+  name**~~ (found by Phase 4.0's `FeatureClaimTests`, 2026-08-02 — the second of exactly two
+  false claims in the then-54 `✅ Done` sections, and the benign twin of the OTel ghost above:
+  the feature is real and lives at `src/Rag.NET.Chunking.CSharp`, only the claimed identity was
+  wrong; routed → Phase 4.1) → **closed 2026-08-03 ahead of 4.1** (`81163af`, with the OTel
+  correction): the section — and `docs/guide/chunking.md`, which repeated the wrong name — now
+  says `Rag.NET.Chunking.CSharp`, where `CSharpChunkingStrategy` actually lives; the
+  `KnownFalseClaims` entry is deleted and the claim is guarded directly again. 4.1's packaging
+  pass still reads every package identity; it now starts from a truthful one here.
 - ~~**Three debts routed "→ Milestone 4, with the release-readiness work" have no owning phase
   among 4.1–4.6**~~ (found by the 2026-08-02 audit, reading this list against Milestone 4's phase
   list: milestone-as-deadline satisfies the letter of this list's rule while the phase list gives
@@ -777,14 +809,15 @@ future reader can tell the difference between "never existed" and "dealt with".
 
 **Not in scope:** the CLI reindex command (belongs with the CLI tool in Milestone 4); Pinecone live sparse-write verification (needs a live account — documented as a coverage gap by decision on 2026-07-26).
 
-## Milestone 3: Quality Hardening & Evaluation [status: active]
+## Milestone 3: Quality Hardening & Evaluation [status: complete]
 **Goal:** Close the evaluation-tooling gap and harden quality: RAGAS metrics, dataset tooling, A/B testing, pipeline debugging, and CI coverage for the Docker-dependent suites.
 **Started:** 2026-07-27
-**Definition of Done** (checked criterion by criterion at Phase 3.14's close, 2026-08-02 — see the close assessment in `MILESTONE.md`; **the milestone does not close**):
-- [x] All planned phases complete (all 16 as of 2026-08-02; Phase 3.14 closed last. A phase criterion, not the milestone's close: TREC-COVID/EnronQA's run-or-decline still sits in this milestone's scope, per the Milestone 4 replan §5)
-- [ ] No feature marked done in features.md lacks tests and docs — detail sections, summary matrix, and code agree — **failing as of the 2026-08-02 audit, still failing at 3.14's close**: the OTel detail section (`features.md:666-676`) claims a package that does not exist; see the follow-up-debts list. [Phase 4.0's `FeatureClaimTests` swept all 54 Done claims on 2026-08-02: exactly **two** fail — the OTel ghost (→ Phase 4.4) and the `Rag.NET.Parsers.CSharp` wrong name (→ Phase 4.1) — both allow-listed with staleness guards, the other 52 naming code that exists]
+**Completed:** 2026-08-03
+**Definition of Done** (checked criterion by criterion at Phase 3.14's close, 2026-08-02 — the milestone did not close then, on two failing criteria — and re-checked at the actual close, 2026-08-03; see both assessments in `MILESTONE.md`):
+- [x] All planned phases complete (all 16 as of 2026-08-02; Phase 3.14 closed last. The run-or-decline the Milestone 4 replan §5 kept in this milestone's scope — TREC-COVID/EnronQA — is decided: **explicitly declined at the close, 2026-08-03**, written on its follow-up-debts entry above, not implied)
+- [x] No feature marked done in features.md lacks tests and docs — detail sections, summary matrix, and code agree — **holding as of 2026-08-03** (`81163af`): both false claims Phase 4.0's sweep found are corrected in features.md — the OTel section withdrawn from Done, the C# chunking section renamed to the package that exists — `KnownFalseClaims` is **empty**, and `FeatureClaimTests` verifies all 72 package claims across all 53 Done sections directly, with no exemptions (7 of 7 passing, re-run at the close). [Historical: the 2026-08-02 sweep found exactly **two** false claims in the then-54 Done sections — the OTel ghost and the `Rag.NET.Parsers.CSharp` wrong name — both now in the Closed debts list]
 - [x] Integration/vector-store suites run in CI (Dockerized) — holding as of 2026-08-02: `ci.yml`'s Docker tier partitions the test projects with guards that fail a project landing in no tier, and the latest `main` push run (30760759923, 2026-08-02) is green through it
-- [ ] All tests passing — **failing as of 2026-08-02, narrowly and with the failure named**: the first genuine execution of the post-3.15 `nightly.yml` (run 30735435427, 06:10 UTC) failed on a dataset-download race, not a measurement — see the follow-up-debts list. The solution builds 0 warnings / 0 errors (verified locally 2026-08-02) and push CI on `main` is green
+- [x] All tests passing — **holding as of 2026-08-03**: nightly run **30789374909**, triggered on the fix branch against a cold runner cache — the condition that exposed the dataset-download race and that no warm-cache local run reproduces — is green, `env-gated` (the gating BEIR job) passing in 19m01s after `50a80cd`/`335710c` fixed what turned out to be **three** races, not one (see the Closed debts list). The solution builds 0 warnings / 0 errors (re-verified 2026-08-03) and push CI on `main` is green
 
 > **Correction (2026-07-27).** This milestone was scoped from the unchecked rows in
 > features.md, but that file contradicted itself: RAGAS-Style Metrics and Evaluation Dataset
@@ -1033,8 +1066,9 @@ Measured at stock `ChunkingOptions` — 512 characters, 50 of overlap: **FiQA 42
 > footnote to it — Phase 4.0 measured **61 of 71 packages at `VerifiedBy=unit`**, exercised only
 > against fakes — and the phase list below will grow a **recorded-responses phase** (design §3)
 > covering the ~20 packages that talk to live services; that phase is referenced by design section
-> rather than number until it is scheduled. v1.0 covers all 71 packages and all 54 Done claims:
-> no preview tier.
+> rather than number until it is scheduled. v1.0 covers all 71 packages and all 53 Done claims
+> (54 when this was written; the OTel section was withdrawn from Done at Milestone 3's close,
+> 2026-08-03, `81163af`): no preview tier.
 
 **Definition of Done** (rewritten 2026-08-02 by the replan's §6. The previous DoD — all phases
 complete, 0 warnings from a clean restore, non-Docker unit tests passing, CI produces packages,
@@ -1045,7 +1079,7 @@ one was found by a test. Every criterion below can be false, and something check
 - [ ] All planned phases complete
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore
 - [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0; **failing today, knowingly**: four gates are satisfiable nowhere — see the follow-up-debts list)
-- [ ] **Every one of the 54 `features.md` Done claims names code that exists** (`FeatureClaimTests`, Phase 4.0; **failing today, knowingly**: two claims sit in `KnownFalseClaims` with owners → 4.4 and 4.1)
+- [x] **Every `features.md` Done claim names code that exists** (`FeatureClaimTests`, Phase 4.0; **holding as of 2026-08-03**: both false claims were corrected at Milestone 3's close, `81163af` — `KnownFalseClaims` is empty and all 72 package claims across 53 Done sections are verified directly. Failing knowingly from 4.0's sweep until then, with the two claims allow-listed under owners → 4.4 and 4.1; both closed early instead, in the Closed debts list)
 - [ ] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0; **failing today, honestly**: `Rag.NET.Mcp.Tool` → 4.6, `Rag.NET.Security.AspNetCore` → 4.5)
 - [ ] **Every package talking to a live service has a scrubbed, dated recording** (the recorded-responses phase, design §3; `recorded` and `live` both stand at 0 of ~20 today)
 - [ ] CI pipeline builds, tests, and produces NuGet packages

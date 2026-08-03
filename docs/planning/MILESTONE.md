@@ -1,8 +1,9 @@
 # Milestone 3: Quality Hardening & Evaluation
 
-**Status:** active — all 16 phases complete (Phase 3.14 closed 2026-08-02); **the milestone stays
-open on its Definition of Done** — see the close assessment below
+**Status:** complete — closed 2026-08-03 on the second close assessment below, after the
+2026-08-02 assessment refused to close on two failing criteria and both were fixed with evidence
 **Started:** 2026-07-27
+**Completed:** 2026-08-03
 
 ## Goal
 
@@ -14,35 +15,48 @@ Completed milestones are archived under `docs/planning/milestones/`.
 
 ## Definition of Done
 
-- [x] All planned phases complete (all 16 as of 2026-08-02; Phase 3.14 closed last. This box is a
-      phase criterion and its tick does not close the milestone: TREC-COVID/EnronQA's
-      run-or-decline still sits in this milestone's scope — see the close assessment)
-- [ ] No feature marked done in `features.md` lacks tests and docs — the detail sections and the
+- [x] All planned phases complete (all 16 as of 2026-08-02; Phase 3.14 closed last. The
+      run-or-decline this box's tick was waiting on — TREC-COVID/EnronQA, kept in this
+      milestone's scope by the Milestone 4 replan §5 — is decided: **explicitly declined at the
+      close, 2026-08-03**, written on the ROADMAP debt entry as the replan required, not implied
+      — see the close below)
+- [x] No feature marked done in `features.md` lacks tests and docs — the detail sections and the
       summary matrix agree with each other and with the code
-      **Failing as of the 2026-08-02 audit, not merely unfinished:** `features.md:666-676` marks
-      OpenTelemetry Tracing & Metrics `✅ Done` in a package (`Rag.NET.Telemetry`) that does not
-      exist — no such package, no `UseTelemetry` anywhere in `src/`, no `gen_ai.*` attribute, and
-      metric names that match nothing in `src/Rag.NET/Telemetry/RagTelemetry.cs` — while its own
-      matrix row (`:1135`) is unchecked. Recorded in the ROADMAP follow-up-debts list → Phase 4.4.
-      **The full sweep this criterion needed ran on 2026-08-02, in Milestone 4's Phase 4.0:**
-      `FeatureClaimTests` checked all 54 `✅ Done` sections against the code — 73 package claims
-      resolved, false-positive rate 0 of 73 — and found exactly **two** failures: this OTel ghost,
-      and `Rag.NET.Parsers.CSharp`, a real feature claimed under a package name that does not
-      exist (it lives at `src/Rag.NET.Chunking.CSharp`) → Phase 4.1. Both sit in a
-      `KnownFalseClaims` allow-list whose staleness tests fail when either is fixed or leaves the
-      docs; the other 52 claims name code that exists. What the sweep does **not** establish: that
-      the named code does what the row says — existence, not behaviour.
+      **Holding as of 2026-08-03** (`81163af`; failing from the 2026-08-02 audit until then, and
+      the history stays here because it is the milestone's shape in miniature). The full sweep
+      this criterion needed ran on 2026-08-02, in Milestone 4's Phase 4.0: `FeatureClaimTests`
+      checked all 54 then-`✅ Done` sections against the code — 73 package claims resolved,
+      false-positive rate 0 of 73 — and found exactly **two** failures: the OTel ghost
+      (`features.md:666-676` marked Done in `Rag.NET.Telemetry`, a package never built, against
+      its own unchecked matrix row `:1135`), and `Rag.NET.Parsers.CSharp`, a real feature claimed
+      under a package name that does not exist (it lives at `src/Rag.NET.Chunking.CSharp`).
+      **Both were corrected at the close, ahead of the Phase 4.4/4.1 owners the 2026-08-02
+      assessment assumed they had to wait for**, because the criterion's failure was
+      documentation, not a missing feature: the OTel section is withdrawn from Done and now
+      describes the real internal `RagTelemetry` instruments, naming first-class wiring as
+      4.4's; the C# chunking section (and `docs/guide/chunking.md`, which repeated the wrong
+      name) names the package that exists. `KnownFalseClaims` is **empty** — the staleness guard
+      forces the deletion — and the parse is now 53 Done sections and 72 package claims, all
+      verified directly, `FeatureClaimTests` 7 of 7 re-run at the close. What the sweep still
+      does **not** establish: that the named code does what the row says — existence, not
+      behaviour; that gap is Milestone 4's verification work, and its ledger says so.
 - [x] Integration/vector-store suites run in CI (Dockerized) — holding as of 2026-08-02: `ci.yml`
       partitions the test projects into fast and Docker tiers with guards that fail a project
       landing in neither, and the latest `main` push run (30760759923, 2026-08-02) is green
       through the Docker tier
-- [ ] All tests passing; solution builds 0 warnings / 0 errors — **failing as of 2026-08-02,
-      narrowly and with the failure named**: the first genuine execution of the post-3.15
-      nightly (run 30735435427, 06:10 UTC) failed on the `BeirDatasetCache` download race — a
-      harness concurrency defect the run found, not a measurement; all four parity cases in the
-      same job passed. Recorded in the ROADMAP follow-up-debts list → Milestone 4, with 4.1. The
-      solution builds 0 warnings / 0 errors (verified locally 2026-08-02) and push CI on `main`
-      is green
+- [x] All tests passing; solution builds 0 warnings / 0 errors — **holding as of 2026-08-03**
+      (failing 2026-08-02 on the first genuine execution of the post-3.15 nightly, run
+      30735435427, whose one failure was the `BeirDatasetCache` download race — a harness
+      concurrency defect, not a measurement; all four parity cases in the same job passed). The
+      fix shipped in this milestone rather than riding to 4.1 as first routed, and found
+      **three** same-shaped races, not one — the shared `.partial` download path, archive
+      publication under a rival's open extraction handle, and in-place extraction itself — each
+      fixed by work-under-a-GUID-name-then-rename-into-place and each mutation-verified, the
+      publication collision reproducing on its test's opening attempt (`50a80cd`, `335710c`;
+      the full story is in the ROADMAP's Closed debts). Proof on the condition no local run
+      reproduces: nightly run **30789374909** (2026-08-03), on a cold runner cache, `env-gated`
+      — the gating BEIR job — green in 19m01s. The solution builds 0 warnings / 0 errors from a
+      clean restore (re-verified 2026-08-03) and push CI on `main` is green
 
 ## Scope correction found at milestone start (2026-07-27)
 
@@ -403,7 +417,7 @@ Assume nothing works until a test says so *and the test is right*.
    Documented in `docs/guide/shadow-mode.md`; features.md's A/B row updated in place, no new
    `KnownFalseClaims` entry.
 
-## Close assessment (2026-08-02, at Phase 3.14's close)
+## Close assessment (2026-08-02, at Phase 3.14's close) [superseded by the Close below, 2026-08-03]
 
 Every DoD criterion checked against reality, the way the 2026-08-02 audit checked claims — because
 an honestly open milestone is worth more than a ticked box:
@@ -437,6 +451,64 @@ an honestly open milestone is worth more than a ticked box:
   Milestone 4 replan §5's rule — not smuggled into 4), the FiQA-qrels check first. No phase owns
   this; it sits with whoever closes the milestone, and a decline must be written into the ROADMAP
   debt entry, not implied.
+
+## Close (2026-08-03)
+
+The assessment above stands unedited — it refused to close on two failing criteria and named
+three remaining items. Each is now resolved by evidence, on branch `fix/milestone-3-dod-blockers`,
+not by re-reading the checkboxes:
+
+1. **The two `KnownFalseClaims` entries** (criterion 2) — fixed by `81163af` and the allow-list
+   emptied; the criterion's box above carries the details, and both debts have moved to the
+   ROADMAP's Closed list. One correction to the assessment's own reasoning, recorded rather than
+   absorbed: it said this criterion "cannot become true inside Milestone 3 as currently
+   scheduled" because both owners were Milestone 4 phases. That was wrong — the criterion's
+   failure was documentation drift, and a documentation fix needed neither 4.4's OTel wiring nor
+   4.1's packaging pass; the ROADMAP's own OTel debt entry had said "or any documentation pass
+   before it" all along.
+2. **A green nightly** (criterion 4) — run **30789374909** (2026-08-03), triggered on the fix
+   branch against the cold runner cache that exposed the race and that no warm-cache local run
+   reproduces: `env-gated`, the gating BEIR job, green in 19m01s. The one recorded race turned
+   out to be **three** — download, archive publication, extraction — each fixed by the same
+   work-under-a-unique-name-then-rename shape and each mutation-verified (`50a80cd`, `335710c`);
+   criterion 4's box and the ROADMAP's Closed list carry the numbers.
+3. **TREC-COVID and EnronQA — explicitly declined**, written into the ROADMAP debt entry as the
+   replan required. The short form: neither verifies anything this milestone shipped — three
+   corpora already answer its questions in both directions — and neither is a close-out task: no
+   descriptor, no budget timing, no revision-pinned published reference, no licence
+   determination exists for either. The graded-`2^rel − 1` gap stays stated on the published
+   page's "Not measured, and why"; the run is re-routed to the next ablation-table re-measure
+   with a Milestone 4 backstop; the FiQA-qrels check was **not** performed at the close (no warm
+   BEIR cache was reachable from the closing session) and stays first on that entry.
+
+**What this milestone set out to do, and what it did.** It was scoped as eight phases of
+evaluation tooling and quality hardening — RAGAS metrics, dataset builder, A/B testing offline
+and shadow, pipeline debugging, CI coverage, benchmark harness, email-parser debt — and closed
+at **sixteen**, because each phase discovered the next: the day-one scope correction found the
+evaluators certified-defective by their own tests; 3.5 found a test project in no solution;
+3.6's close was falsified by its own review and became 3.9; 3.9's review found the duplicate
+parser (3.11), whose design found the archive gap (3.10); 3.7's model provisioning turned late
+chunking red for the first time since Phase 1.1 (3.13); 3.12's cost arithmetic found the chunker
+emitting one chunk per word (3.16); 3.15's ablation table found the reranker sending 26% of
+every document to the model as `[UNK]`. What it shipped is the ability to **demonstrate**
+retrieval correctness rather than assert it: three corpora at parity with published figures,
+real-protocol deltas in both directions with a supported explanation, a nine-cell ablation table
+that can go down, a five-library comparison at defaults, and the harness, caches, budget table
+and reproduction pins that re-check every figure on every push.
+
+**The milestone's real lesson, stated where the next milestone will read it: not one of the
+significant defects was found by a passing test.** Late chunking sat inert from Phase 1.1 to 3.7
+and surfaced only when a model was provisioned; the chunker's one-chunk-per-word behaviour
+surfaced because embedding-cost arithmetic did not add up; `OnnxReranker` destroying 26% of
+every document as `[UNK]` surfaced because a stated prediction was contradicted by a row that
+hurt where it should have helped; the nightly races surfaced only when a workflow finally ran on
+a cold cache. Phase 4.0's guards now catch mechanical drift — a claim naming code that does not
+exist, a gate nothing satisfies, a package no test exercises — but nothing automates stating an
+expectation in advance and reporting honestly when reality disagrees. That practice, not any
+artifact, is what this milestone hands to Milestone 4.
+
+Archival to `docs/planning/milestones/` happens when this file is rewritten for the active
+milestone, per house convention.
 
 ## Explicitly not in scope
 
