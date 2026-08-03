@@ -59,6 +59,24 @@ Authors, licence expression, repository URL, project URL, common tags, README an
 
 ---
 
+## Task 1b: the packability defects Task 1 found — added mid-phase
+
+**Task 1 falsified this plan's premise and found three defects. Fix them before Task 3, which needs a clean pack.**
+
+**The premise that was wrong:** this plan and the design both said `dotnet pack` emits `NU5xxx` for missing licence, README, icon and description, so warnings-as-errors makes an incomplete package fail. **It does not.** Missing licence, icon, authors, URLs and tags emit *nothing*; a missing README is a codeless advisory that fails nothing; a missing description silently becomes the literal `"Package Description"`. **Task 3's validation is therefore the only guard, not a second one** — treat it accordingly.
+
+**The counts were also wrong.** "71 packages" conflated three numbers: **71** csproj under `src/`, **69** packable from `src/`, **71** pack attempts per solution pack (because `samples/` and `benchmarks/` pack too), **70** packages produced.
+
+**(a) `Rag.NET.Parsers.Audio` fails to pack** — 50 errors (`NU5100` ×8, `NU5118` ×42). `Whisper.net.Runtime`'s build targets inject native libraries as content, and pack picks them up from both `content\` and `contentFiles\any\net10.0\`, then collides with the runtime package's own per-RID files. The csproj itself is innocuous. **Fix it properly — do not `NoWarn`.** Until this is fixed `dotnet pack` on the solution exits 1.
+
+**(b) `Rag.NET.Mcp.Tool` can never publish.** It sets `PackAsTool=true`, `ToolCommandName` and a `PackageId`, but uses `Microsoft.NET.Sdk.Web`, which defaults `IsPackable=false` — so it emits a codeless "packaging has been disabled" warning and produces nothing. **A project configured as a shippable tool that silently cannot ship is a contract defect**, and this is the phase that inventories the public surface. Note it is also one of the two `VerifiedBy=none` packages, owned by 4.6 — decide whether packability is fixed here or with it, and say which.
+
+**(c) `samples/Rag.NET.Sample` and `benchmarks/Rag.NET.Benchmarks` pack** with placeholder descriptions and inflate any package-count assertion Task 3 writes. Neither is shippable. Set `IsPackable=false`.
+
+**Commit:** one per defect.
+
+---
+
 ## Task 2: per-package descriptions
 
 **Files:** all 71 packable `src/*/*.csproj`
