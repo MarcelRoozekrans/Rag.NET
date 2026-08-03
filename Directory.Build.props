@@ -16,6 +16,25 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <!-- Shared NuGet package metadata. Genuinely identical for every package.
+       Description is deliberately NOT set here: a shared description would make
+       71 packages describe themselves identically — each .csproj owns its own.
+       No PackageIcon: the repository has no icon asset. -->
+  <PropertyGroup>
+    <Authors>Marcel Roozekrans</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/MarcelRoozekrans/Rag.NET</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/MarcelRoozekrans/Rag.NET</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>rag;retrieval-augmented-generation;llm;ai;embeddings;vector-search;chunking;dotnet</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- PackageReadmeFile names the file inside the package; this actually packs it. -->
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Meziantou.Analyzer" Version="3.0.52">
       <PrivateAssets>all</PrivateAssets>
