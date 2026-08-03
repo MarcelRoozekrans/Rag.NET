@@ -3,7 +3,8 @@
   <PropertyGroup>
     <RootNamespace>Rag.NET.Chunking</RootNamespace>
     <PackageId>Rag.NET.Chunking</PackageId>
-    <Description>Hierarchical and code-aware chunking strategies for Rag.NET</Description>
+    <Description>Hierarchical-merge, code-aware, late and proposition chunking strategies for Rag.NET</Description>
+    <PackageTags>$(PackageTags);late-chunking;propositions</PackageTags>
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 

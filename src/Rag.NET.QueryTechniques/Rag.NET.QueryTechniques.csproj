@@ -3,7 +3,8 @@
   <PropertyGroup>
     <RootNamespace>Rag.NET.QueryTechniques</RootNamespace>
     <PackageId>Rag.NET.QueryTechniques</PackageId>
-    <Description>HyDE, multi-query, and self-query techniques for Rag.NET</Description>
+    <Description>HyDE, multi-query expansion and contextual compression query techniques for Rag.NET</Description>
+    <PackageTags>$(PackageTags);hyde;query-expansion;contextual-compression</PackageTags>
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 

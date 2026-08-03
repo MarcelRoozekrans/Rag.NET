@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Reranking.Onnx</RootNamespace>
     <PackageId>Rag.NET.Reranking.Onnx</PackageId>
     <Description>ONNX Runtime cross-encoder reranking for Rag.NET</Description>
+    <PackageTags>$(PackageTags);reranking;cross-encoder;onnx</PackageTags>
     <!-- unit: constructor validation and pair-tokeniser tests with fixtures. Real-model
          inference happens only in the env-gated BEIR long runs — local inference, not a
          container or a service. -->

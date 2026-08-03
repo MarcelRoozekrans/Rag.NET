@@ -3,7 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Rag.NET</RootNamespace>
     <PackageId>Rag.NET</PackageId>
-    <Description>Modular RAG pipeline library for .NET</Description>
+    <Description>Modular RAG pipeline library for .NET — ingestion and retrieval pipeline builders, self-query, corrective RAG and conversation memory</Description>
     <!-- container: the pipeline is exercised against real pgvector in the gating Docker
          tier (Security.IntegrationTests) and against real Ollama plus pgvector in the
          nightly E2E suite, on top of Rag.NET.Tests. -->

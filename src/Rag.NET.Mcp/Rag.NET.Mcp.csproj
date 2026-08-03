@@ -2,7 +2,8 @@
   <PropertyGroup>
     <RootNamespace>Rag.NET.Mcp</RootNamespace>
     <PackageId>Rag.NET.Mcp</PackageId>
-    <Description>MCP server tools for Rag.NET pipelines</Description>
+    <Description>Model Context Protocol server exposing Rag.NET pipelines as MCP tools</Description>
+    <PackageTags>$(PackageTags);mcp;model-context-protocol</PackageTags>
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
