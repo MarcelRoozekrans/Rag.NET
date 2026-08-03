@@ -86,7 +86,7 @@ Five projects contain tests that need credentials or large local assets:
 | `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests` | `RAGNET_DOCINTEL_ENDPOINT`, `RAGNET_DOCINTEL_KEY` | repository secrets |
 | `Rag.NET.Embeddings.Onnx.Tests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Chunking.IntegrationTests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
-| `Rag.NET.Benchmarks.Quality.IntegrationTests` | those two, plus `RAGNET_BEIR_CACHE` and `RAGNET_BEIR_LONG_RUNS` | downloaded, plus a runner temp path; the last is deliberately **never set** — see below |
+| `Rag.NET.Benchmarks.Quality.IntegrationTests` | those two, plus `RAGNET_BEIR_CACHE`, `RAGNET_BEIR_LONG_RUNS` and `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` | downloaded, plus a runner temp path; the last three are deliberately **never supplied by the job** — see below |
 | `Rag.NET.Parsers.Pdf.Tests` | `RAGNET_TESSDATA` | repository secret — **but see below** |
 
 Each of those tests calls `Assert.Skip` when its variable is absent, so the projects are safe
@@ -146,6 +146,32 @@ were off rather than left to infer it from a test count. To run one:
 ```bash
 RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
   --filter "DisplayName~BeirRealChunkingTests&DisplayName~arguana"
+```
+
+**The reranked ablation cells additionally need the cross-encoder, which the nightly deliberately
+does not provision.** It used to: the job fetched, SHA-256-checked and cached the ~87 MB
+`cross-encoder/ms-marco-MiniLM-L6-v2` export on every cold run — and both genuine runs on the
+record showed it feeding nothing, because every reader sits behind `RAGNET_BEIR_LONG_RUNS`, which
+that job never sets. Phase 4.1 removed the provisioning rather than keep paying for an input no
+test consumes; the pins and the digest checks moved here, unchanged. If a checksum fails, do
+**not** edit the checksum to match — check whether upstream republished the revision first:
+
+```bash
+# cross-encoder/ms-marco-MiniLM-L6-v2, pinned (recorded 2026-08-01: the revision is main's
+# targetCommit from the HF API; the model SHA-256 is its Git LFS oid, re-verified locally; the
+# vocab SHA-256 was computed locally — it is byte-identical to all-MiniLM-L6-v2's, expected,
+# since both tokenize with the standard BERT uncased WordPiece vocabulary).
+revision=c5ee24cb16019beea0893ab7796b1df96625c6b8
+dir="$RAGNET_BEIR_CACHE/models/ms-marco-MiniLM-L6-v2"
+mkdir -p "$dir"
+curl -fsSL -o "$dir/model.onnx" "https://huggingface.co/cross-encoder/ms-marco-MiniLM-L6-v2/resolve/$revision/onnx/model.onnx"
+curl -fsSL -o "$dir/vocab.txt"  "https://huggingface.co/cross-encoder/ms-marco-MiniLM-L6-v2/resolve/$revision/vocab.txt"
+echo "5d3e70fd0c9ff14b9b5169a51e957b7a9c74897afd0a35ce4bd318150c1d4d4a  $dir/model.onnx" | sha256sum -c -
+echo "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3  $dir/vocab.txt"  | sha256sum -c -
+
+RAGNET_ONNX_RERANK_MODEL="$dir/model.onnx" RAGNET_ONNX_RERANK_VOCAB="$dir/vocab.txt" \
+RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
+  --filter "DisplayName~UnderCrossEncoderRerank&DisplayName~scifact"
 ```
 
 One more opt-in gate lives in the same project and costs seconds, not hours:

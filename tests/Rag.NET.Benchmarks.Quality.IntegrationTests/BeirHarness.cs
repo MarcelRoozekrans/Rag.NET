@@ -42,9 +42,12 @@ public static class BeirHarness
     /// <remarks>
     /// The reranker's variables follow the embedder's convention —
     /// <c>RAGNET_ONNX_EMBED_MODEL</c>/<c>RAGNET_ONNX_EMBED_VOCAB</c> begat
-    /// <c>RAGNET_ONNX_RERANK_MODEL</c>/<c>RAGNET_ONNX_RERANK_VOCAB</c> — and both are provisioned
-    /// by the same pinned-revision, SHA-256-verified steps in <c>nightly.yml</c>, where the pins
-    /// and their sources are recorded.
+    /// <c>RAGNET_ONNX_RERANK_MODEL</c>/<c>RAGNET_ONNX_RERANK_VOCAB</c> — but only the embedder is
+    /// provisioned by <c>nightly.yml</c>. The reranker is provisioned by the fenced local
+    /// procedure in <c>docs/reference/ci.md</c> (same pinned revision and SHA-256 checks the
+    /// nightly once ran): every reader of these variables sits behind the opt-in
+    /// <c>RAGNET_BEIR_LONG_RUNS</c> gate, so the nightly's download fed nothing it runs, and
+    /// Phase 4.1 removed it.
     /// </remarks>
     public const string RerankerSkipReason =
         "Set RAGNET_ONNX_RERANK_MODEL and RAGNET_ONNX_RERANK_VOCAB to an existing " +
