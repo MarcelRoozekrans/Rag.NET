@@ -144,13 +144,40 @@ public sealed class BeirDatasetCache
             return datasetDirectory;
         }
 
+        if (Directory.Exists(datasetDirectory))
+        {
+            // A half-extracted leftover from an interrupted run. Deleted here, before the download,
+            // so that publication never has to decide between "stale junk to replace" and "another
+            // caller's fresh, complete win to keep": once downloads are running, a dataset directory
+            // that appears is always a rival's complete extraction.
+            Directory.Delete(datasetDirectory, recursive: true);
+        }
+
         _ = Directory.CreateDirectory(_cacheDirectory);
         var archivePath = Path.Combine(_cacheDirectory, dataset.ArchiveFileName);
-        await DownloadAndVerifyAsync(dataset, archivePath, cancellationToken).ConfigureAwait(false);
+        var partialPath =
+            await DownloadAndVerifyAsync(dataset, archivePath, cancellationToken).ConfigureAwait(false);
 
-        // Into the cache root, not into the dataset directory: BEIR archives already carry the
-        // dataset name as their single top-level folder.
-        ZipFile.ExtractToDirectory(archivePath, _cacheDirectory, overwriteFiles: true);
+        try
+        {
+            ExtractIntoPlace(dataset, partialPath, datasetDirectory);
+
+            // Published only now, after extraction — and extraction reads the caller's own partial,
+            // never this shared name — so no caller ever holds the archive open. Two callers
+            // publishing concurrently is a pair of renames onto a closed file: the later one wins
+            // with bytes that verified against the same published MD5. On Windows the same rename
+            // against a file a rival was still extracting from would be an access-denied error.
+            File.Move(partialPath, archivePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(partialPath))
+            {
+                // Extraction or publication failed: keep the delete-on-failure discipline — no
+                // partial left where a later run could treat it as anything.
+                File.Delete(partialPath);
+            }
+        }
 
         if (!IsPresent(dataset))
         {
@@ -163,19 +190,22 @@ public sealed class BeirDatasetCache
         return datasetDirectory;
     }
 
+    /// <summary>
+    /// Downloads the archive to a uniquely named partial file, verifies it, and returns the
+    /// partial's path — still under its unique name, so the caller owns it exclusively.
+    /// </summary>
     /// <remarks>
     /// The partial file's name carries a fresh GUID — the shape <see cref="EmbeddingCache"/> and
     /// <see cref="HypotheticalCache"/> already use — because xUnit runs test classes in parallel,
     /// and on a cold cache two classes wanting the same dataset both reach here. On one shared
     /// <c>.partial</c> path the second <see cref="File.Create(string)"/> throws
     /// <see cref="IOException"/> — nightly run 30735435427 — while a GUID gives each writer its
-    /// own file and asks for no lock, which would only serialise unrelated downloads. When both
-    /// then complete, both <see cref="File.Move(string, string, bool)"/> into place and the later
-    /// move overwrites the earlier with bytes verified against the same published MD5: one writer
-    /// wins, both see a complete archive, and nothing needs to notice it lost. That double move
-    /// is correct, not a defect to fix.
+    /// own file and asks for no lock, which would only serialise unrelated downloads. This is the
+    /// first of two same-shaped races on the cold path: <see cref="ExtractIntoPlace"/> is the
+    /// second, and fixing this one alone only moves the collision one step later. Same cure both
+    /// times — work under a unique name, rename into the shared one.
     /// </remarks>
-    private async Task DownloadAndVerifyAsync(
+    private async Task<string> DownloadAndVerifyAsync(
         BeirDatasetDescriptor dataset, string archivePath, CancellationToken cancellationToken)
     {
         if (_logger is not null)
@@ -221,7 +251,78 @@ public sealed class BeirDatasetCache
             BeirLog.ArchiveVerified(_logger, dataset.Name, writtenLength, actualMd5);
         }
 
-        File.Move(partialPath, archivePath, overwrite: true);
+        return partialPath;
+    }
+
+    /// <summary>
+    /// Extracts a verified archive into the dataset's directory, via a uniquely named staging
+    /// directory that is renamed into place.
+    /// </summary>
+    /// <remarks>
+    /// The download and the extraction are two distinct races with the same shape, and fixing one
+    /// does not fix the other. With the partial-file race fixed, two callers finishing their
+    /// downloads together still collided twice over: publishing the shared archive name while the
+    /// other caller held it open for reading, and extracting entries into the shared dataset
+    /// directory through exclusive file handles. So extraction reads the caller's own verified
+    /// partial — never the shared archive path — and lands in a GUID-named staging directory
+    /// beside the dataset, renamed into place only when complete: the dataset directory becomes
+    /// visible atomically or not at all, and no third caller can observe a half-populated
+    /// extraction. The staging directory is deleted on every path out, keeping the delete-on-failure
+    /// discipline the download already has.
+    /// </remarks>
+    private void ExtractIntoPlace(
+        BeirDatasetDescriptor dataset, string verifiedArchivePath, string datasetDirectory)
+    {
+        var stagingDirectory = datasetDirectory + "." +
+            Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture) + ".extracting";
+
+        try
+        {
+            ZipFile.ExtractToDirectory(verifiedArchivePath, stagingDirectory);
+
+            // BEIR archives carry the dataset name as their single top-level folder. When the
+            // layout has changed and that folder is absent, nothing is published, and the caller's
+            // IsPresent check turns it into the InvalidDataException that names the problem.
+            var stagedDatasetDirectory = Path.Combine(stagingDirectory, dataset.Name);
+            if (Directory.Exists(stagedDatasetDirectory))
+            {
+                PublishExtractedDataset(dataset, stagedDatasetDirectory, datasetDirectory);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(stagingDirectory))
+            {
+                Directory.Delete(stagingDirectory, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>Renames the staged, complete dataset directory into place.</summary>
+    /// <remarks>
+    /// When two callers both finish extracting, the first rename wins and the loser's rename
+    /// throws <see cref="IOException"/> because the destination now exists. Losing is success:
+    /// the winner's directory came from an archive verified against the same published MD5, so
+    /// the loser keeps it, lets its own staging be discarded, and resolves the same directory.
+    /// Do not "fix" the swallowed exception — the filter re-checks <see cref="IsPresent"/>, so a
+    /// rename that failed for any other reason still throws.
+    /// </remarks>
+    private void PublishExtractedDataset(
+        BeirDatasetDescriptor dataset, string stagedDatasetDirectory, string datasetDirectory)
+    {
+        if (IsPresent(dataset))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.Move(stagedDatasetDirectory, datasetDirectory);
+        }
+        catch (IOException) when (IsPresent(dataset))
+        {
+            // Lost a photo finish to a rival whose archive verified against the same MD5.
+        }
     }
 
     /// <summary>
