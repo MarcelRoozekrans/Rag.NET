@@ -52,4 +52,56 @@ public enum BeirProtocol
     /// <see cref="BeirAblationTests.NdcgAt10_UnderCrossEncoderRerank_MeasuresWithRerankerProvablyReordering"/>.
     /// </summary>
     Reranked,
+
+    /// <summary>
+    /// The library comparison's control row (Phase 3.14): the parity corpus retrieved exactly as
+    /// <see cref="Parity"/> retrieves it, but scored from a TREC run file written to disk and read
+    /// back — the boundary every comparison entrant crosses — rather than from the rankings in
+    /// memory. Same retrieval work as <see cref="Parity"/>, so the same cold cost; what it
+    /// measures is the boundary itself, on a row whose answer is already published. Measured by
+    /// <see cref="BeirComparisonControlTests"/>.
+    /// </summary>
+    Comparison,
+
+    /// <summary>
+    /// The library comparison's Semantic Kernel row (Phase 3.14 Task 4): the corpus indexed
+    /// unchunked — one InMemory-connector record per document, which is SK's actual default since
+    /// it ships no ingestion pipeline — embedded and searched through Semantic Kernel's own paths
+    /// with the pinned embedder, and scored from a TREC run file like every entrant. The embedding
+    /// work is the parity corpus's exactly (same texts, same model), so its cold cost is the
+    /// parity leg's. Measured by <see cref="BeirSemanticKernelDefaultsTests"/>.
+    /// </summary>
+    SemanticKernel,
+
+    /// <summary>
+    /// The library comparison's LangChain row (Phase 3.14 Stage 2): the corpus chunked by
+    /// <c>RecursiveCharacterTextSplitter</c> at its defaults (4000 characters, 200 overlap),
+    /// indexed in langchain-core's <c>InMemoryVectorStore</c> (cosine), retrieved through
+    /// LangChain's own search path with the pinned embedder behind its <c>Embeddings</c>
+    /// interface, max-pooled to documents writer-side, and scored from a TREC run file the
+    /// pinned Python harness (<c>benchmarks/library-comparison-python</c>) emitted. Scored by
+    /// <see cref="BeirPythonEntrantsTests"/>; no Python code computes a metric.
+    /// </summary>
+    LangChain,
+
+    /// <summary>
+    /// The library comparison's LlamaIndex row (Phase 3.14 Stage 2): the corpus chunked by
+    /// <c>SentenceSplitter</c> at its defaults (1024 cl100k tokens, 200 overlap), indexed in
+    /// <c>SimpleVectorStore</c> (cosine), retrieved through LlamaIndex's own path with the pinned
+    /// embedder behind <c>Settings.embed_model</c>, max-pooled to documents writer-side, and
+    /// scored from a TREC run file the pinned Python harness emitted. Scored by
+    /// <see cref="BeirPythonEntrantsTests"/>; no Python code computes a metric.
+    /// </summary>
+    LlamaIndex,
+
+    /// <summary>
+    /// The library comparison's Haystack row (Phase 3.14 Stage 2): the corpus chunked by
+    /// <c>DocumentSplitter</c> at its defaults (200 words, 0 overlap), indexed in
+    /// <c>InMemoryDocumentStore</c> under its default <c>dot_product</c> similarity (the pinned
+    /// vectors are unit-length, so dot product and cosine coincide), retrieved through Haystack's
+    /// own <c>InMemoryEmbeddingRetriever</c>, max-pooled to documents writer-side, and scored
+    /// from a TREC run file the pinned Python harness emitted. Scored by
+    /// <see cref="BeirPythonEntrantsTests"/>; no Python code computes a metric.
+    /// </summary>
+    Haystack,
 }

@@ -476,7 +476,9 @@ In particular, none of these is:
   else.
 - **A comparison against another library.** Comparative tables are legitimate work, but only credible
   with genuinely equivalent configuration, and that equivalence is the part such tables are usually
-  attacked on. There is none here. → Phase 3.14.
+  attacked on. There is none here. That table exists now, as its own page with its own protocol —
+  each library at its own defaults, one matched embedder:
+  [Library Comparison at Defaults](./library-comparison.md) (Phase 3.14).
 - **A speed result.** ~355 s for SciFact and ~1 h 11 m for FiQA's parity leg are what an ONNX model
   takes to embed those corpora on a CPU. They are reported so you can budget a nightly run, not as
   performance figures.
@@ -763,4 +765,8 @@ Knowledge", ACL 2018 (ArguAna).
 - **Comparative tables against other libraries.** A fair one needs a decided framing, not just
   equivalent configuration: matched-configuration comparisons mostly measure how carefully each
   library was configured and converge on near-identical numbers, because every library calls the same
-  embedding model. → **Phase 3.14**, on each library's *defaults*.
+  embedding model. → **Measured by Phase 3.14** (2026-08-02), on each library's *defaults*, and no
+  longer on this list: [Library Comparison at Defaults](./library-comparison.md). Its headline —
+  that even the *defaults* converge on near-identical numbers on these corpora, because most
+  default chunk sizes exceed these documents — is this entry's prediction holding one framing
+  further out than it was made.

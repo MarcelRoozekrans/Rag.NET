@@ -113,6 +113,20 @@ public sealed class BeirReproductionTests
     }
 
     [Fact]
+    public void TheControlRowsRecordedFiguresAreTheParityFiguresItReproduced()
+    {
+        // Phase 3.14's control row — the parity rankings scored from a read-back TREC run file —
+        // reproduced both measured parity figures exactly, which is the acceptance gate for the
+        // whole library comparison: the boundary added and removed nothing. Its cases run only
+        // behind RAGNET_BEIR_LONG_RUNS, so a mutated Comparison entry would otherwise be caught
+        // by nothing until somebody paid for a measurement; restated here, the fast tier fails
+        // when either copy moves without the other. FiQA's leg has never been run and its entry
+        // is empty — it is deliberately absent from this double entry rather than invented.
+        BeirReproduction.AssertReproduces("scifact", BeirProtocol.Comparison, 0.64593, _output);
+        BeirReproduction.AssertReproduces("arguana", BeirProtocol.Comparison, 0.50432, _output);
+    }
+
+    [Fact]
     public void AnUndescribedDatasetThrowsRatherThanPassing()
     {
         var exception = Assert.Throws<InvalidOperationException>(

@@ -251,7 +251,7 @@ public static class BeirHarness
             cancellationToken);
 
         return new BeirRunResult(
-            IrMetrics.Evaluate(runs, dataset.Qrels, Cutoff),
+            IrMetrics.Evaluate(ProjectDocumentIds(runs), dataset.Qrels, Cutoff),
             dataset.Documents.Count,
             units.Count,
             distinctDocuments,
@@ -260,6 +260,55 @@ public static class BeirHarness
             Stopwatch.GetElapsedTime(startedAt),
             embeddings.Hits - hitsBefore,
             embeddings.Misses - missesBefore);
+    }
+
+    /// <summary>
+    /// Embeds and indexes <paramref name="units"/>, retrieves for every judged query with
+    /// <paramref name="row"/>, and returns the <b>scored</b> document rankings instead of scoring
+    /// them — the shape <see cref="TrecRunFile.Write"/> takes.
+    /// </summary>
+    /// <param name="descriptor">The dataset, for its retrieval protocol.</param>
+    /// <param name="dataset">The loaded corpus, queries and qrels.</param>
+    /// <param name="units">What to index.</param>
+    /// <param name="row">How to retrieve.</param>
+    /// <param name="generator">The embedder.</param>
+    /// <param name="embeddings">The vector cache; every embed call goes through it.</param>
+    /// <param name="cancellationToken">Cancels the run.</param>
+    /// <returns>Rankings by query id, best first, each document with its pooled score.</returns>
+    /// <remarks>
+    /// Exists for the library comparison's control row (<see cref="BeirComparisonControlTests"/>),
+    /// whose metric must come from a run file read back from disk rather than from these rankings
+    /// — so <see cref="IrMetrics"/> is deliberately not called here. The retrieval is
+    /// <see cref="MeasureAsync"/>'s own: both go through the one <see cref="RetrieveAsync"/>, so
+    /// the rankings this returns are the rankings the parity figures were measured on,
+    /// self-exclusion and tie-breaking included. A control retrieving through a second copy of the
+    /// path would measure the copy.
+    /// </remarks>
+    public static async Task<IReadOnlyDictionary<string, IReadOnlyList<ScoredDocument>>>
+        RetrieveScoredRunsAsync(
+            BeirDatasetDescriptor descriptor,
+            BeirDataset dataset,
+            IReadOnlyList<TextChunk> units,
+            AblationRow row,
+            OnnxEmbeddingGenerator generator,
+            EmbeddingCache embeddings,
+            CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentNullException.ThrowIfNull(dataset);
+        ArgumentNullException.ThrowIfNull(units);
+        ArgumentNullException.ThrowIfNull(row);
+        ArgumentNullException.ThrowIfNull(embeddings);
+
+        var (maxPerDocument, _) = SummariseUnits(units);
+
+        using var store = new InMemoryVectorStore();
+        await IndexAsync(generator, embeddings, store, units, cancellationToken);
+        var (runs, _) = await RetrieveAsync(
+            row, generator, embeddings, store, JudgedQueries(dataset), descriptor, maxPerDocument,
+            cancellationToken);
+
+        return runs;
     }
 
     /// <summary>
@@ -283,8 +332,14 @@ public static class BeirHarness
     /// here — which documents are relevant, and how relevant, stays invisible to retrieval, so the
     /// leak the parity band's upper edge watches for cannot enter through this filter.
     /// </para>
+    /// <para>
+    /// Internal rather than private since Phase 3.14 Task 4: the Semantic Kernel entrant retrieves
+    /// through its own library's search path, but <i>which queries a run retrieves for</i> is the
+    /// harness's protocol, and a comparator that filtered its own way could measure a different
+    /// query set than the control.
+    /// </para>
     /// </remarks>
-    private static IReadOnlyList<BeirQuery> JudgedQueries(BeirDataset dataset)
+    internal static IReadOnlyList<BeirQuery> JudgedQueries(BeirDataset dataset)
     {
         var judged = new List<BeirQuery>(dataset.JudgedQueryCount);
         for (var i = 0; i < dataset.Queries.Count; i++)
@@ -413,7 +468,7 @@ public static class BeirHarness
     /// <c>if corpus_id != query_id</c>, and MTEB exposes it as <c>ignore_identical_ids</c>.
     /// </para>
     /// </remarks>
-    private static async Task<(IReadOnlyDictionary<string, IReadOnlyList<string>> Runs, int PooledQueries)>
+    private static async Task<(IReadOnlyDictionary<string, IReadOnlyList<ScoredDocument>> Runs, int PooledQueries)>
         RetrieveAsync(
             AblationRow row,
             OnnxEmbeddingGenerator generator,
@@ -425,7 +480,8 @@ public static class BeirHarness
             CancellationToken cancellationToken)
     {
         var excludesSelf = descriptor.ExcludesSelfRetrievedDocument;
-        var runs = new Dictionary<string, IReadOnlyList<string>>(queries.Count, StringComparer.Ordinal);
+        var runs = new Dictionary<string, IReadOnlyList<ScoredDocument>>(
+            queries.Count, StringComparer.Ordinal);
         var options = new SearchOptions
         {
             TopK = (Cutoff + (excludesSelf ? 1 : 0)) * maxUnitsPerDocument,
@@ -450,11 +506,35 @@ public static class BeirHarness
                 pooledQueries++;
             }
 
-            runs[queries[i].Id] = DocumentRanking.TopDocumentIds(
+            runs[queries[i].Id] = DocumentRanking.TopDocuments(
                 hits, Cutoff, excludedDocumentId);
         }
 
         return (runs, pooledQueries);
+    }
+
+    /// <summary>
+    /// Projects scored rankings to bare document ids — the shape
+    /// <see cref="IrMetrics.Evaluate"/> consumes. The order is untouched, so this is exactly what
+    /// <see cref="DocumentRanking.TopDocumentIds"/> would have produced from the same hits.
+    /// </summary>
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectDocumentIds(
+        IReadOnlyDictionary<string, IReadOnlyList<ScoredDocument>> runs)
+    {
+        var documentIds = new Dictionary<string, IReadOnlyList<string>>(
+            runs.Count, StringComparer.Ordinal);
+        foreach (var (queryId, documents) in runs)
+        {
+            var ids = new string[documents.Count];
+            for (var i = 0; i < documents.Count; i++)
+            {
+                ids[i] = documents[i].DocumentId;
+            }
+
+            documentIds[queryId] = ids;
+        }
+
+        return documentIds;
     }
 
     /// <summary>Embeds through the cache, so a re-run pays only for texts it has not seen.</summary>

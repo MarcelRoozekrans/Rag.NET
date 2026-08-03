@@ -23,13 +23,23 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// protocol could not, since no published figure exists for it at all.
 /// </para>
 /// <para>
-/// <b>Why it is not an exact match.</b> The runs are deterministic on one machine — the same model
-/// over the same corpus produces the same vectors, in-memory storage is pinned for that reason, and
-/// <see cref="DocumentRanking"/> breaks score ties by ordinal document id so even equal scores order
-/// repeatably. Across machines they are not: ONNX Runtime dispatches its kernels on the available
-/// instruction set, so a vector can differ in its last bits and a near-tie can order the other way.
-/// A test that demanded the fifth decimal on every runner would eventually go red for a reason
-/// nobody could act on, and the usual response to that is to delete it.
+/// <b>Why it is not an exact match.</b> On one machine, a run is deterministic wherever the
+/// ranking's tie order is pinned: the same model over the same corpus produces the same vectors,
+/// in-memory storage is pinned for that reason, <see cref="DocumentRanking"/> breaks score ties by
+/// ordinal document id, and the Python entrants' pooling applies the same ordinal rule
+/// (<c>doc_ranking.top_documents</c>) over libraries whose own orderings are deterministic
+/// functions of insertion order. The exception is <see cref="BeirProtocol.SemanticKernel"/>, by
+/// design: its entrant keeps SK's returned order untouched — a tie-break of ours would measure our
+/// re-sort instead of Semantic Kernel — and SK's InMemory connector does not order exact ties
+/// repeatably across processes. On ArguAna, where 1,298 of 1,406 queries are byte-identical to
+/// their own corpus document and exactly-equal cosine scores abound, three runs on the measuring
+/// machine gave nDCG@10 0.50306, 0.50321 and 0.50399 with Recall@10 identical at 0.79161 — the
+/// same documents every run, only exact-tie order moving — so that entry records the observed
+/// spread rather than a single figure presented as exact. Across machines nothing is exact for any
+/// protocol: ONNX Runtime dispatches its kernels on the available instruction set, so a vector can
+/// differ in its last bits and a near-tie can order the other way. A test that demanded the fifth
+/// decimal on every runner would eventually go red for a reason nobody could act on, and the usual
+/// response to that is to delete it.
 /// </para>
 /// </summary>
 public static class BeirReproduction
@@ -78,11 +88,14 @@ public static class BeirReproduction
     /// case is in that state today; the next dataset's legs will start there.
     /// </para>
     /// <para>
-    /// <b>More than one figure per pair is allowed, and is the answer to a different machine.</b>
-    /// If a hosted runner reproduces something legitimately outside <see cref="Tolerance"/> of every
-    /// figure here, the fix is another entry naming that machine — not a wider window. Widening
-    /// costs every dataset its resolution to settle one runner; a second figure costs nothing and
-    /// says plainly that two machines disagree.
+    /// <b>More than one figure per pair is allowed, and is the answer to a different machine —
+    /// or to a protocol that is not deterministic even on one.</b> If a hosted runner reproduces
+    /// something legitimately outside <see cref="Tolerance"/> of every figure here, the fix is
+    /// another entry naming that machine — not a wider window. Widening costs every dataset its
+    /// resolution to settle one runner; a second figure costs nothing and says plainly that two
+    /// machines disagree. The SemanticKernel ArguAna entry uses the same mechanism for a different
+    /// reason: three figures from <i>one</i> machine, because that protocol's tie ordering does not
+    /// repeat across processes and the spread is the honest record.
     /// </para>
     /// </remarks>
     private static readonly Reproduction[] Reproductions =
@@ -217,6 +230,167 @@ public static class BeirReproduction
             "Measured in Phase 3.15 (2026-08-01/02), Windows 11, .NET 10, CPU ONNX Runtime, " +
             "after commit a912187's WordPiece fix. The pre-fix run measured 0.41806 — history, " +
             "not a figure to reproduce."),
+        new(
+            "scifact",
+            BeirProtocol.Comparison,
+            [0.64593],
+            "The library-comparison control row: the parity rankings written to a TREC run file, " +
+            "read back, and scored from the read-back — and it reproduced the parity figure " +
+            "EXACTLY, as determinism on one machine says it must: same rankings in, same " +
+            "rankings off the disk, same metric. Recall@10 0.78667, MRR@10 0.60483, 300 queries " +
+            "evaluated. Measured 2026-08-02 (Phase 3.14 Task 2), Windows 11, .NET 10, CPU ONNX " +
+            "Runtime. The control also asserts against the parity entry, which is the acceptance " +
+            "gate; this entry is the row's own pin."),
+        new(
+            "fiqa",
+            BeirProtocol.Comparison,
+            [],
+            "The library-comparison control row: the parity rankings written to a TREC run file, " +
+            "read back, and scored from the read-back. NEVER RUN — gated with FiQA's parity leg " +
+            "behind RAGNET_BEIR_LONG_RUNS, whose cold price is 1 h 11 m. The acceptance gate — " +
+            "that it reproduce parity's 0.37086 — is asserted by BeirComparisonControlTests " +
+            "against the parity entry the day somebody pays for the run, so this empty entry " +
+            "does not weaken the gate; when that run completes, its figure belongs here."),
+        new(
+            "arguana",
+            BeirProtocol.Comparison,
+            [0.50432],
+            "The library-comparison control row: the parity rankings written to a TREC run file, " +
+            "read back, and scored from the read-back — and it reproduced the parity figure " +
+            "EXACTLY, with the self-exclusion applied on the writer's side of the boundary, " +
+            "before the file: the run file already holds the post-exclusion top 10, which is " +
+            "what makes it scoreable by an outsider's trec_eval with no knowledge of query ids. " +
+            "Recall@10 0.79161, MRR@10 0.41515, 1,406 queries evaluated. Measured 2026-08-02 " +
+            "(Phase 3.14 Task 2), Windows 11, .NET 10, CPU ONNX Runtime."),
+        new(
+            "scifact",
+            BeirProtocol.SemanticKernel,
+            [0.64593],
+            "The library-comparison Semantic Kernel row (SK 1.78.0, InMemory connector " +
+            "1.74.0-preview, MEVD 10.1.0): unchunked documents embedded and searched through " +
+            "SK's own paths with the pinned embedder, scored from a read-back TREC run file — " +
+            "and it equals the control row's 0.64593 EXACTLY. Not an accident: SK ships no " +
+            "chunker, so its default is one record per document, which is the parity protocol " +
+            "over the same texts, the same vectors and the same cosine — the two rows can " +
+            "differ only in tie-ordering, and SciFact's rankings held no ties that mattered. " +
+            "Recall@10 0.78667, MRR@10 0.60483, 300 queries evaluated. Measured 2026-08-02 " +
+            "(Phase 3.14 Task 4), Windows 11, .NET 10, CPU ONNX Runtime."),
+        new(
+            "fiqa",
+            BeirProtocol.SemanticKernel,
+            [],
+            "The library-comparison Semantic Kernel row (SK 1.78.0, InMemory connector " +
+            "1.74.0-preview, MEVD 10.1.0): unchunked documents embedded and searched through " +
+            "SK's own paths with the pinned embedder, scored from a read-back TREC run file. " +
+            "NEVER RUN — gated with FiQA's parity leg behind RAGNET_BEIR_LONG_RUNS, whose cold " +
+            "price is 1 h 11 m of embedding SK's row would pay identically (same texts, same " +
+            "model); when somebody pays for the run, its figure belongs here."),
+        new(
+            "arguana",
+            BeirProtocol.SemanticKernel,
+            [0.50306, 0.50321, 0.50399],
+            "The library-comparison Semantic Kernel row (SK 1.78.0, InMemory connector " +
+            "1.74.0-preview, MEVD 10.1.0): unchunked documents embedded and searched through " +
+            "SK's own paths with the pinned embedder, self-exclusion applied on the writer's " +
+            "side of the boundary (the written file held zero query-id = document-id lines " +
+            "over all 14,060), scored from a read-back TREC run file. THREE FIGURES FROM ONE " +
+            "MACHINE, not three machines: this case is not deterministic run to run, because " +
+            "the entrant deliberately keeps SK's returned order (re-sorting would measure our " +
+            "tie-break, not SK), the connector does not order exactly-equal cosine scores " +
+            "repeatably across processes, and ArguAna is exact-tie-heavy — 1,298 of 1,406 " +
+            "queries are byte-identical to their own corpus document. Three runs measured " +
+            "2026-08-02, Windows 11, .NET 10, CPU ONNX Runtime (the Phase 3.14 Task 4 run, " +
+            "the run file that session left in the cache, and the whole-phase reviewer's " +
+            "fresh run): nDCG@10 0.50306 / 0.50321 / 0.50399, MRR@10 0.41339 / 0.41361 / " +
+            "0.41471 — and Recall@10 0.79161 in ALL THREE, IDENTICAL to the control's: the " +
+            "same documents reach the top 10 every run and only exact-tie order moves, " +
+            "0.00033-0.00126 of nDCG below the control's 0.50432, not a retrieval " +
+            "difference. 1,406 queries evaluated."),
+        new(
+            "scifact",
+            BeirProtocol.LangChain,
+            [0.64613],
+            "The library-comparison LangChain row (langchain-core 1.5.3, " +
+            "langchain-text-splitters 1.1.2, Python 3.14.5, onnxruntime 1.28.0): " +
+            "RecursiveCharacterTextSplitter at its defaults (4000 characters, 200 overlap), " +
+            "InMemoryVectorStore cosine, pinned all-MiniLM-L6-v2 behind LangChain's Embeddings " +
+            "interface, max-pooled to documents writer-side and scored from the read-back TREC " +
+            "run file. Measured 2026-08-02 (Phase 3.14 Stage 2), Windows 11, CPU ONNX Runtime; " +
+            "the Python-side embedder was verified against OnnxEmbeddingGenerator on a " +
+            "six-string battery, all bitwise-equal (identity_check.py), before any Python " +
+            "figure was trusted."),
+        new(
+            "fiqa",
+            BeirProtocol.LangChain,
+            [],
+            "The library-comparison LangChain row. NEVER RUN — producing the run file embeds " +
+            "FiQA's chunked corpus through the Python-side pinned embedder, derived to cost " +
+            "roughly an hour (FiQA's .NET parity leg measured 1 h 11 m for comparable " +
+            "embedding work); Phase 3.14 Stage 2 ran SciFact and ArguAna and deliberately not " +
+            "FiQA. When somebody pays for the run, its figure belongs here."),
+        new(
+            "arguana",
+            BeirProtocol.LangChain,
+            [0.50450],
+            "The library-comparison LangChain row (langchain-core 1.5.3, " +
+            "langchain-text-splitters 1.1.2, Python 3.14.5, onnxruntime 1.28.0), self-exclusion " +
+            "applied on the writer's side of the boundary (the written file held zero " +
+            "query-id = document-id lines). Measured 2026-08-02 (Phase 3.14 Stage 2), Windows " +
+            "11, CPU ONNX Runtime."),
+        new(
+            "scifact",
+            BeirProtocol.LlamaIndex,
+            [0.64508],
+            "The library-comparison LlamaIndex row (llama-index-core 0.14.23, Python 3.14.5, " +
+            "onnxruntime 1.28.0): SentenceSplitter at its defaults (1024 cl100k tokens, 200 " +
+            "overlap), SimpleVectorStore cosine, pinned all-MiniLM-L6-v2 behind " +
+            "Settings.embed_model, max-pooled to documents writer-side and scored from the " +
+            "read-back TREC run file. Measured 2026-08-02 (Phase 3.14 Stage 2), Windows 11, " +
+            "CPU ONNX Runtime."),
+        new(
+            "fiqa",
+            BeirProtocol.LlamaIndex,
+            [],
+            "The library-comparison LlamaIndex row. NEVER RUN — FiQA's Python-side embedding " +
+            "cost is derived at roughly an hour per entrant; Phase 3.14 Stage 2 ran SciFact " +
+            "and ArguAna and deliberately not FiQA. When somebody pays for the run, its " +
+            "figure belongs here."),
+        new(
+            "arguana",
+            BeirProtocol.LlamaIndex,
+            [0.50450],
+            "The library-comparison LlamaIndex row (llama-index-core 0.14.23, Python 3.14.5, " +
+            "onnxruntime 1.28.0), self-exclusion applied on the writer's side of the boundary " +
+            "(the written file held zero query-id = document-id lines). Measured 2026-08-02 " +
+            "(Phase 3.14 Stage 2), Windows 11, CPU ONNX Runtime."),
+        new(
+            "scifact",
+            BeirProtocol.Haystack,
+            [0.62757],
+            "The library-comparison Haystack row (haystack-ai 3.0.0, Python 3.14.5, " +
+            "onnxruntime 1.28.0): DocumentSplitter at its defaults (200 words, 0 overlap), " +
+            "InMemoryDocumentStore under its default dot_product similarity (the pinned " +
+            "vectors are unit-length, so dot product and cosine coincide), pinned " +
+            "all-MiniLM-L6-v2 filling Document.embedding, max-pooled to documents writer-side " +
+            "and scored from the read-back TREC run file. Measured 2026-08-02 (Phase 3.14 " +
+            "Stage 2), Windows 11, CPU ONNX Runtime."),
+        new(
+            "fiqa",
+            BeirProtocol.Haystack,
+            [],
+            "The library-comparison Haystack row. NEVER RUN — FiQA's Python-side embedding " +
+            "cost is derived at roughly an hour per entrant, likely more for Haystack, whose " +
+            "200-word default produces the most chunks of the three; Phase 3.14 Stage 2 ran " +
+            "SciFact and ArguAna and deliberately not FiQA. When somebody pays for the run, " +
+            "its figure belongs here."),
+        new(
+            "arguana",
+            BeirProtocol.Haystack,
+            [0.49715],
+            "The library-comparison Haystack row (haystack-ai 3.0.0, Python 3.14.5, " +
+            "onnxruntime 1.28.0), self-exclusion applied on the writer's side of the boundary " +
+            "(the written file held zero query-id = document-id lines). Measured 2026-08-02 " +
+            "(Phase 3.14 Stage 2), Windows 11, CPU ONNX Runtime."),
     ];
 
     /// <summary>
@@ -352,9 +526,11 @@ public static class BeirReproduction
     /// <param name="Dataset">The BEIR dataset name.</param>
     /// <param name="Protocol">The protocol measured.</param>
     /// <param name="NdcgAt10">
-    /// Every nDCG@10 this case has legitimately reported, one per machine that has run it. Empty
-    /// means the case has never been run to completion, which <see cref="AssertReproduces"/> treats
-    /// as "print it and check nothing" rather than as a failure.
+    /// Every nDCG@10 this case has legitimately reported — usually one per machine that has run
+    /// it, but for a case whose tie ordering is not deterministic even on one machine (the
+    /// SemanticKernel ArguAna entry) one per observed run, recording the spread. Empty means the
+    /// case has never been run to completion, which <see cref="AssertReproduces"/> treats as
+    /// "print it and check nothing" rather than as a failure.
     /// </param>
     /// <param name="Provenance">
     /// Where and when the figures came from, in prose. Not decoration: a reproduction check whose

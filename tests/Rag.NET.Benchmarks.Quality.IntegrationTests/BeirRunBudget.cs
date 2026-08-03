@@ -189,6 +189,153 @@ public static class BeirRunBudget
             "WordPiece fix; the pre-fix run measured ~1 h 32 m over the same 1,406 judged " +
             "queries. ArguAna is the expensive reranker cell because it judges every query — " +
             "14,060 cross-encoder pairs against FiQA's 6,480 and SciFact's 3,000."),
+        new(
+            "scifact",
+            BeirProtocol.Comparison,
+            FitsTheNightly: false,
+            "56 s with the parity leg's vectors warm in the embedding cache (12 s on an " +
+            "immediate re-run), measured 2026-08-02 (Phase 3.14 Task 2); cold it pays the " +
+            "parity leg's ~5 min embedding price first (that part DERIVED for this pair). " +
+            "Opt-in even though it is cheap warm: " +
+            "the nightly's cache is cold and xUnit runs test classes in parallel, so this case " +
+            "beside BeirParityTests would race it for the same fresh cache and could pay the " +
+            "corpus embedding twice — for a figure the parity case re-measures the same night " +
+            "anyway. What is exclusively this case's — the run-file boundary's format and " +
+            "ordering — is pinned in ci.yml's fast tier by TrecRunFileTests at no model cost."),
+        new(
+            "fiqa",
+            BeirProtocol.Comparison,
+            FitsTheNightly: false,
+            "NEVER RUN to completion — no wall-clock figure is recorded for this pair, and " +
+            "nothing below is a measurement of it. The retrieval work is exactly FiQA's parity " +
+            "leg's, whose cold price was measured 2026-07-31 at 1 h 11 m, so cold this pair is " +
+            "DERIVED to cost the same; warm it should cost minutes like the other two control " +
+            "legs. Phase 3.14 Task 2 ran SciFact's and ArguAna's legs and deliberately not this " +
+            "one, for the same budget reason FiQA's parity case is opt-in."),
+        new(
+            "arguana",
+            BeirProtocol.Comparison,
+            FitsTheNightly: false,
+            "2 m 10 s with the parity leg's vectors warm in the embedding cache, measured " +
+            "2026-08-02 (Phase 3.14 Task 2); cold it pays the parity leg's ~4 min embedding " +
+            "price first (that part DERIVED for this pair). Opt-in for SciFact's reason: the " +
+            "nightly's cache is cold, this case would race BeirParityTests for it, and the " +
+            "boundary it uniquely exercises is already pinned in the fast tier by " +
+            "TrecRunFileTests."),
+        new(
+            "scifact",
+            BeirProtocol.SemanticKernel,
+            FitsTheNightly: false,
+            "2.1 s measurement (3.4 s whole test) with the parity corpus's vectors warm in the " +
+            "embedding cache, measured 2026-08-02 (Phase 3.14 Task 4). The texts SK embeds are " +
+            "exactly the parity corpus's, so cold this pair pays the parity leg's ~5 min " +
+            "embedding price first (that part DERIVED for this pair). Opt-in for the control " +
+            "row's reason: a comparator row racing BeirParityTests for a cold nightly cache " +
+            "would pay the corpus embedding twice."),
+        new(
+            "fiqa",
+            BeirProtocol.SemanticKernel,
+            FitsTheNightly: false,
+            "NEVER RUN to completion — no wall-clock figure is recorded for this pair, and " +
+            "nothing below is a measurement of it. SK embeds exactly the parity corpus's texts " +
+            "(one record per document, same model), so cold this pair is DERIVED to cost FiQA's " +
+            "parity leg's 1 h 11 m; warm it should cost minutes like the other two entrant " +
+            "legs. Phase 3.14 Task 4 ran SciFact's and ArguAna's legs and deliberately not this " +
+            "one, for the same budget reason FiQA's parity case is opt-in."),
+        new(
+            "arguana",
+            BeirProtocol.SemanticKernel,
+            FitsTheNightly: false,
+            "5.7 s measurement (7.1 s whole test) with the parity corpus's vectors warm in the " +
+            "embedding cache, measured 2026-08-02 (Phase 3.14 Task 4); cold it pays the parity " +
+            "leg's ~4 min embedding price first (that part DERIVED for this pair). Opt-in for " +
+            "the control row's reason: a comparator row racing BeirParityTests for a cold " +
+            "nightly cache would pay the corpus embedding twice."),
+        new(
+            "scifact",
+            BeirProtocol.LangChain,
+            FitsTheNightly: false,
+            "Scoring the read-back run file costs seconds; producing the file is the cost, " +
+            "measured 2026-08-02: 121.7 s for the LangChain SciFact run (5,205 units over " +
+            "5,183 documents; the Python-side vector cache was partly warm from the identity " +
+            "work — a fully cold run pays roughly the corpus's ~4 min of embedding). Opt-in " +
+            "because the run file " +
+            "comes from the pinned Python harness (benchmarks/library-comparison-python), " +
+            "which the nightly does not run — an opted-in case without the file FAILS " +
+            "(refuse-on-miss, the Hyde cell's rule) rather than skipping."),
+        new(
+            "fiqa",
+            BeirProtocol.LangChain,
+            FitsTheNightly: false,
+            "NEVER RUN — no wall-clock figure is recorded, and nothing below is a measurement " +
+            "of it. The dominant cost is embedding FiQA's 57,638 documents' chunks through the " +
+            "Python-side pinned embedder, DERIVED from FiQA's .NET parity leg (1 h 11 m for " +
+            "64,247 embeddings) to be roughly an hour per Python entrant. Phase 3.14 Stage 2 " +
+            "ran SciFact and ArguAna and deliberately not FiQA, per the plan's budget rule."),
+        new(
+            "arguana",
+            BeirProtocol.LangChain,
+            FitsTheNightly: false,
+            "Scoring the read-back run file costs seconds; producing the file is the cost, " +
+            "measured 2026-08-02: 695.9 s for the LangChain ArguAna run, the Python-side " +
+            "vector cache effectively cold (8,699 units over 8,674 documents plus 1,406 " +
+            "judged queries, 9,997 embedded fresh). Opt-in for the SciFact " +
+            "entry's reason; an opted-in case without the file FAILS rather than skipping."),
+        new(
+            "scifact",
+            BeirProtocol.LlamaIndex,
+            FitsTheNightly: false,
+            "Scoring the read-back run file costs seconds; producing the file is the cost, " +
+            "measured 2026-08-02: 45.2 s for the LlamaIndex SciFact run (5,196 units over " +
+            "5,183 documents; nearly every chunk text coincided with the LangChain run's, so " +
+            "the Python-side vector cache served 5,469 of 5,496 texts — cold, this pays the " +
+            "corpus embedding like the others). Opt-in for " +
+            "the LangChain entry's reason; no file, opted-in = FAIL."),
+        new(
+            "fiqa",
+            BeirProtocol.LlamaIndex,
+            FitsTheNightly: false,
+            "NEVER RUN — no wall-clock figure is recorded, and nothing below is a measurement " +
+            "of it. DERIVED to cost roughly an hour like the other Python entrants on FiQA " +
+            "(the corpus embedding dominates). Phase 3.14 Stage 2 ran SciFact and ArguAna and " +
+            "deliberately not FiQA, per the plan's budget rule."),
+        new(
+            "arguana",
+            BeirProtocol.LlamaIndex,
+            FitsTheNightly: false,
+            "Scoring the read-back run file costs seconds; producing the file is the cost, " +
+            "measured 2026-08-02: 263.1 s for the LlamaIndex ArguAna run (8,679 units; " +
+            "nearly every chunk text coincided with the LangChain run's, so the Python-side " +
+            "cache served 10,055 of 10,085 texts — cold it pays the LangChain entry's " +
+            "embedding price). Opt-in for the " +
+            "LangChain entry's reason; no file, opted-in = FAIL."),
+        new(
+            "scifact",
+            BeirProtocol.Haystack,
+            FitsTheNightly: false,
+            "Scoring the read-back run file costs seconds; producing the file is the cost, " +
+            "measured 2026-08-02: 250.8 s for the Haystack SciFact run — its 200-word " +
+            "splitter produced the most units of the three Python entrants (8,042 over 5,183 " +
+            "documents, max 8 from one), 5,550 embedded fresh. Opt-in for the LangChain " +
+            "entry's reason; no " +
+            "file, opted-in = FAIL."),
+        new(
+            "fiqa",
+            BeirProtocol.Haystack,
+            FitsTheNightly: false,
+            "NEVER RUN — no wall-clock figure is recorded, and nothing below is a measurement " +
+            "of it. DERIVED to cost roughly an hour like the other Python entrants on FiQA " +
+            "(the corpus embedding dominates), likely more: Haystack's 200-word default " +
+            "produces the most chunks of the three. Phase 3.14 Stage 2 ran SciFact and " +
+            "ArguAna and deliberately not FiQA, per the plan's budget rule."),
+        new(
+            "arguana",
+            BeirProtocol.Haystack,
+            FitsTheNightly: false,
+            "Scoring the read-back run file costs seconds; producing the file is the cost, " +
+            "measured 2026-08-02: 404.7 s for the Haystack ArguAna run (11,342 units over " +
+            "8,674 documents, max 6 from one, 5,094 embedded fresh). Opt-in for the " +
+            "LangChain entry's reason; no file, opted-in = FAIL."),
     ];
 
     /// <summary>
@@ -312,6 +459,20 @@ public static class BeirRunBudget
             "+HYDE ablation cell (parity corpus, searched with the cached hypotheticals' mean vector)",
         BeirProtocol.Reranked =>
             "+RERANKER ablation cell (parity corpus, dense top-k rescored by the cross-encoder)",
+        BeirProtocol.Comparison =>
+            "COMPARISON CONTROL (parity corpus, scored from a TREC run file read back from disk)",
+        BeirProtocol.SemanticKernel =>
+            "SEMANTIC KERNEL entrant (unchunked documents in SK's InMemory connector, pinned " +
+            "embedder, scored from a TREC run file)",
+        BeirProtocol.LangChain =>
+            "LANGCHAIN entrant (RecursiveCharacterTextSplitter defaults, InMemoryVectorStore " +
+            "cosine, pinned embedder, scored from the Python harness's TREC run file)",
+        BeirProtocol.LlamaIndex =>
+            "LLAMAINDEX entrant (SentenceSplitter defaults, SimpleVectorStore cosine, pinned " +
+            "embedder, scored from the Python harness's TREC run file)",
+        BeirProtocol.Haystack =>
+            "HAYSTACK entrant (DocumentSplitter defaults, InMemoryDocumentStore dot_product, " +
+            "pinned embedder, scored from the Python harness's TREC run file)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -335,6 +496,11 @@ public static class BeirRunBudget
             BeirProtocol.HybridBm25 => "UnderBm25HybridRrf",
             BeirProtocol.Hyde => "UnderCachedHyde",
             BeirProtocol.Reranked => "UnderCrossEncoderRerank",
+            BeirProtocol.Comparison => nameof(BeirComparisonControlTests),
+            BeirProtocol.SemanticKernel => nameof(BeirSemanticKernelDefaultsTests),
+            BeirProtocol.LangChain => "ThroughLangChain",
+            BeirProtocol.LlamaIndex => "ThroughLlamaIndex",
+            BeirProtocol.Haystack => "ThroughHaystack",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 

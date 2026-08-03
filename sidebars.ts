@@ -28,6 +28,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'reference/benchmarks',
         'reference/retrieval-quality',
+        'reference/library-comparison',
         'reference/ci',
         'reference/features',
       ],
