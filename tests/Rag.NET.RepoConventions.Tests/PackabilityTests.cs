@@ -53,6 +53,40 @@ public sealed class PackabilityTests
         }
     }
 
+    [Fact]
+    public void NoProjectOutsideSrcIsPackable()
+    {
+        // src/ is the shippable set; everything else is not. The SDK's IsPackable default is
+        // true, so a sample or benchmark that stays silent packs on every solution pack with a
+        // placeholder description and inflates every package-count assertion the pipeline
+        // makes — which is exactly what samples/Rag.NET.Sample and benchmarks/Rag.NET.Benchmarks
+        // were doing when Task 1 measured 71 pack attempts against 69 shippable projects.
+        // Explicit declaration is demanded (not merely an unpacked outcome) so the decision is
+        // visible in the file a reviewer sees, the same convention every tests/ project and
+        // benchmarks/Rag.NET.Benchmarks.Quality.Hypotheticals already follow.
+        var projects = new List<(string RelativePath, XDocument Document)>();
+        foreach (var root in (string[])["tests", "samples", "benchmarks"])
+        {
+            projects.AddRange(LoadProjects(root));
+        }
+
+        Assert.True(
+            projects.Count >= FewestPlausibleSourceProjects,
+            $"Found only {projects.Count} projects outside src/, expected at least " +
+            $"{FewestPlausibleSourceProjects}. A guard that scans nothing passes for the " +
+            "wrong reason, so this fails instead.");
+
+        foreach (var (relativePath, document) in projects)
+        {
+            Assert.True(
+                DeclaresValue(document, "IsPackable", "false"),
+                $"{relativePath} does not declare <IsPackable>false</IsPackable>. Projects " +
+                "outside src/ are not shippable, and the SDK default packs them into every " +
+                "solution pack — with a placeholder description, inflating every package-count " +
+                "assertion. Declare it explicitly; a Test.Sdk default is not a declaration.");
+        }
+    }
+
     /// <summary>Loads every <c>{root}/*/*.csproj</c> with its repository-relative path.</summary>
     /// <param name="root">The top-level directory to scan, for example <c>src</c>.</param>
     /// <returns>The projects in directory order — the same shape the sibling guards scan.</returns>
