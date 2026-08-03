@@ -39,7 +39,9 @@ anywhere in `ci.yml` — **and, for both tiers, that a merge is mechanically blo
 `build-test (windows-latest)`, as status checks on the default branch, and the Docker tier runs
 inside the Ubuntu leg, so both tiers block. Two honest limits: repository admins can always
 bypass the ruleset, and the other checks in `ci.yml` — `pack-validate` and `commitlint` — run
-and fail loudly but are **not yet in the required set**; they are the ones to add.
+and fail loudly but are **not yet in the required set**; they are the ones to add. Adding them
+is scheduled work, on Phase 6.3's checklist in the ROADMAP — before the release dispatches, the
+only guard on the packaging surface must be able to block a merge.
 
 The LLM tier is one project, `Rag.NET.E2ETests`. It pulls `nomic-embed-text` and `llama3.2:1b`, and
 its assertions are text a model wrote — Phase 2.1 measured one such assertion failing roughly **1 run

@@ -222,7 +222,7 @@ jobs:
   # BRANCH PROTECTION: like pack-validate, this check is not in the required set — the "Main"
   # ruleset requires only the two build-test legs (measured 2026-08-03). It runs on every pull
   # request and fails loudly, but nothing mechanically blocks a merge on it until it is added to
-  # the required checks.
+  # the required checks — scheduled, with pack-validate, on Phase 6.3's checklist in the ROADMAP.
   commitlint:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -264,7 +264,7 @@ jobs:
   # checks — the "Main" ruleset requires "build-test (ubuntu-latest)" and "build-test
   # (windows-latest)" only (measured 2026-08-03). Until it is added there, this job can go red
   # without blocking a merge, which is exactly the non-gating-check failure this repository has
-  # already documented. Add it to the required checks.
+  # already documented. Adding it is scheduled: Phase 6.3's checklist in the ROADMAP.
   pack-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30

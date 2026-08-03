@@ -1256,8 +1256,12 @@ change**, so 6.3's mechanism is proven before 6.3 needs it. A trap, measured and
 pack and reads the nuspec, so a dropped `-p:Version` ships no silent 1.0.0. Commitlint was
 measured against all **1,506** commits before being allowed to fail anything: stock
 config-conventional rejects 184, the tuned rules still reject 70, none newer than 2026-07-29 —
-so the job lints only a PR's base-to-head range. All **eight routed debts closed** — each moved
-to the Closed list above with what was found, none silently dropped.
+so the job lints only a PR's base-to-head range. All **eight routed debts closed**, none
+silently dropped — **five moved whole to the Closed list above** with what was found, and the
+other three (the `ENABLE_OCR`/`RAGNET_TESSDATA` OCR half, `.commitlintrc.yml`,
+`renovate.json`) **closed by dated bracket-annotation on open-list entries that deliberately
+stay open for their other halves**: the Azure `RAGNET_DOCINTEL_*` live run (→ Phase 6.1) and
+`docs.yml` (→ Phase 4.5).
 **Residuals, named rather than implied:** (1) a local feed is not nuget.org — authentication,
 API-key scoping, package-ID availability (none of the 70 IDs is reserved), the service's own
 validation, the real 409-skip and `.snupkg` delivery are exercised for real exactly once, at 6.3
@@ -1270,7 +1274,8 @@ packed as `0.1.0-nuget-packaging.1` — only `main`'s `preview.N` counts up, whi
 6.3 depends on; (5) the DOCINTEL gates are satisfiable, not exercised (their entry above); and
 (6) **none of this phase's workflow changes has had a genuine GitHub Actions run** — the branch
 is unpushed, `pack-validate` and `commitlint` are new check names outside the required
-branch-protection set, and this repository's record (the post-3.15 nightly failed on its first
+branch-protection set (adding them is scheduled, on Phase 6.3's checklist — routed there
+2026-08-03), and this repository's record (the post-3.15 nightly failed on its first
 real run) says the first PR run is the verification, not the local rehearsal.
 **Not done, recorded rather than absorbed:** the XML-documentation blocker in the blockquote
 below was not taken up — `GenerateDocumentationFile` is still set nowhere, so the 70 packages
@@ -1654,3 +1659,15 @@ by something.
 > listed in `docs/reference/ci.md` § "What the rehearsal cannot prove — the 6.3 residual",
 > alongside the other first-executions this phase owns: both `release-please` dispatches, which
 > 4.1 could not rehearse because their only observable effects *are* the release.
+
+**Checklist** (the phase's work beyond the tag itself):
+- [ ] **Add `pack-validate` and `commitlint` to the `Main` ruleset's required checks** (routed
+      here 2026-08-03 at Phase 4.1's close — until now recorded in that phase's residual (6),
+      in `ci.yml`'s BRANCH PROTECTION comments and in `docs/reference/ci.md`, but owned by no
+      phase, which violates this repository's record-then-schedule rule). Both checks run on
+      every pull request and fail loudly, but the ruleset requires only the two `build-test`
+      legs — so `pack-validate`, the only guard on the whole packaging surface, can go red
+      without blocking a merge: the exact non-gating-check failure this repository has already
+      documented. Do it before either release dispatch, and verify it the way the `build-test`
+      checks were verified on 2026-08-03 — by reading the ruleset back through the GitHub API,
+      not by trusting the settings page.

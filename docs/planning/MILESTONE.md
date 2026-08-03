@@ -86,7 +86,9 @@ agree.
    `GitVersion.yml`); release-please is gated dispatch-only and genuinely unexercisable before
    6.3; commitlint lints PR ranges only (measured against all 1,506 commits: stock rules reject
    184, tuned rules 70, none newer than 2026-07-29); renovate is inert until the app is enabled.
-   All eight routed debts closed — see the ROADMAP's Closed list. Residuals recorded on the
+   All eight routed debts closed — five moved whole to the ROADMAP's Closed list, three closed
+   by annotation on entries held open for their other halves (the Azure `RAGNET_DOCINTEL_*`
+   live run → 6.1, `docs.yml` → 4.5). Residuals recorded on the
    phase entry: the 6.3 push residual, the never-run workflow changes, the DOCINTEL
    satisfiable-but-never-run gap, feature-branch prerelease numbering, and the XML-documentation
    blocker this phase did **not** take up (recorded as a new debt, not absorbed).
