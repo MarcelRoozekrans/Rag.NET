@@ -137,7 +137,8 @@ public sealed class EmbeddingCache
         if (missingTexts.Count > 0)
         {
             var embedded = await embedAsync(missingTexts, cancellationToken).ConfigureAwait(false);
-            Store(embedded, missingTexts, missingKeys, slotsByKey, results);
+            await StoreAsync(embedded, missingTexts, missingKeys, slotsByKey, results, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         if (_logger is not null)
@@ -176,12 +177,13 @@ public sealed class EmbeddingCache
     }
 
     /// <summary>Writes each newly embedded vector to disk and into its result slots.</summary>
-    private void Store(
+    private async Task StoreAsync(
         IReadOnlyList<float[]> embedded,
         List<string> missingTexts,
         List<string> missingKeys,
         Dictionary<string, List<int>> slotsByKey,
-        float[][] results)
+        float[][] results,
+        CancellationToken cancellationToken)
     {
         if (embedded is null || embedded.Count != missingTexts.Count)
         {
@@ -203,7 +205,7 @@ public sealed class EmbeddingCache
                     "the corpus never had.");
             }
 
-            Write(missingKeys[i], vector);
+            await WriteAsync(missingKeys[i], vector, cancellationToken).ConfigureAwait(false);
             foreach (ref readonly var slot in CollectionsMarshal.AsSpan(slotsByKey[missingKeys[i]]))
             {
                 results[slot] = vector;
@@ -319,9 +321,12 @@ public sealed class EmbeddingCache
     /// <remarks>
     /// The move is what keeps an interrupted run from leaving a half-written entry where the next
     /// run would read it. <see cref="TryRead"/> refuses truncated files anyway — the two together
-    /// are belt and braces, and the belt is cheap.
+    /// are belt and braces, and the belt is cheap. The move goes through
+    /// <see cref="PublishRename"/> because on Windows an on-access scanner briefly holding the
+    /// just-written partial — or a just-written destination being replaced — denies the rename;
+    /// the measurements are on that class.
     /// </remarks>
-    private void Write(string key, float[] vector)
+    private async Task WriteAsync(string key, float[] vector, CancellationToken cancellationToken)
     {
         var path = PathFor(key);
         _ = Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -338,6 +343,6 @@ public sealed class EmbeddingCache
 
         var partialPath = path + "." + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture) + ".partial";
         File.WriteAllBytes(partialPath, bytes);
-        File.Move(partialPath, path, overwrite: true);
+        await PublishRename.ReplaceFileAsync(partialPath, path, cancellationToken).ConfigureAwait(false);
     }
 }
