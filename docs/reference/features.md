@@ -63,7 +63,7 @@ Language-specific separator hierarchies for Python, JS/TS, Java, Go, Ruby, Rust,
 ---
 
 ### C# Semantic Chunking (Roslyn)
-**Package:** `Rag.NET.Parsers.CSharp`
+**Package:** `Rag.NET.Chunking.CSharp`
 
 Split C# source files into semantically meaningful chunks using Roslyn. Each chunk maps to a single code construct — class, method, interface, enum, delegate, constructor, etc. — and carries: kind, namespace, parent type, identifier name, XML doc summary, source text, and a dependency list (parameter types, base types, property types) for graph-aware retrieval. `CSharpChunkingOptions` controls whether member bodies, private members, and internal members are included.
 
@@ -664,18 +664,20 @@ Mitigation layers to consider:
 ## Observability
 
 ### OpenTelemetry Tracing & Metrics
-**Status:** ✅ Done
-**Package:** `Rag.NET.Telemetry`
+**Status:** ⏳ Planned — Phase 4.4. Core instrumentation exists today; first-class OTel wiring does not.
+**Package:** `Rag.NET` (core)
 
-Instrument the full pipeline with OpenTelemetry `ActivitySource` spans and `Meter` metrics:
+What exists today is the core package's built-in instrumentation: `RagTelemetry`, an `internal static` class holding one `ActivitySource` and one `Meter`, both named `Rag.NET`. It is always active and zero-overhead when no listener is attached — subscribers opt in with `.AddSource("Rag.NET")` / `.AddMeter("Rag.NET")` on their own OpenTelemetry SDK setup; there is no registration call on the `RagBuilder`.
 
-- **Spans:** `ragnet.ingest`, `ragnet.chunk`, `ragnet.embed`, `ragnet.store`, `ragnet.retrieve`, `ragnet.rerank`, `ragnet.answer` — each with standard attributes (`document_id`, `chunk_count`, `vector_store`, `model`)
-- **Metrics:** `ragnet.ingest.duration`, `ragnet.retrieve.latency`, `ragnet.chunks.retrieved` (histogram), `ragnet.answer.tokens` (counter), `ragnet.embed.batch_size`
-- **Semantic Conventions:** follow OpenTelemetry GenAI semantic conventions (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, etc.)
+- **Spans:** `ragnet.query`, `ragnet.ingest`, `ragnet.parse`, `ragnet.chunk`, `ragnet.embed`, `ragnet.store`, `ragnet.retrieve`, `ragnet.ask`
+- **Histograms (ms):** `ragnet.ingest.duration`, `ragnet.embed.duration`, `ragnet.retrieve.duration`, `ragnet.ask.duration`, `ragnet.ratelimit.wait.duration`
+- **Counters:** `ragnet.chunks.stored`, `ragnet.chunks.retrieved`, `ragnet.ingest.errors`, `ragnet.retrieve.errors`, `ragnet.llm.tokens`, `ragnet.llm.cost`
 
-Registration via `.UseTelemetry()` on the `RagBuilder` — zero overhead when no listener is attached.
+Span attributes, nesting, and exporter examples are documented in [OpenTelemetry Integration](opentelemetry.md).
 
-**Why:** Production RAG systems need latency breakdowns to answer "is it slow at retrieval or at generation?" and cost visibility via token counters. Currently there is no way to observe what the pipeline is doing without custom logging.
+What this feature adds — and what Phase 4.4 delivers — is first-class OTel wiring on top of that: exporter guidance, resource attributes, sample dashboards, and OpenTelemetry GenAI semantic conventions (`gen_ai.system`, `gen_ai.request.model`, `gen_ai.usage.input_tokens`, etc.). None of that is built, which is why this feature's matrix row below is unchecked.
+
+**Why:** Production RAG systems need latency breakdowns to answer "is it slow at retrieval or at generation?" and cost visibility via token counters. The raw spans and instruments exist; the packaged wiring and GenAI conventions do not yet.
 
 ---
 
