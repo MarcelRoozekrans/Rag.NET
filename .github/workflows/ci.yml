@@ -27,9 +27,31 @@ permissions:
 
 jobs:
   build-test:
-    # Linux on purpose, not by default. The Docker tier below needs a Linux Docker daemon;
-    # ubuntu-latest has one and the Windows runners do not, so Testcontainers cannot work there.
-    runs-on: ubuntu-latest
+    # Two operating systems on purpose. Milestone 3 was closed on "all test projects passing" while
+    # Rag.NET.Benchmarks.Quality.Tests was failing on Windows — every job here ran on ubuntu-latest,
+    # so CI could not see it, and the primary development machine is Windows. The defect was not
+    # exotic: NTFS refuses to rename a directory while any handle is open beneath it, an on-access
+    # scanner holds one on just-written files, and three classes publish by rename — the safe-write
+    # idiom this repository uses deliberately. POSIX rename() has no such restriction, so Linux will
+    # never report that class of bug. The failing tests were fast-tier, which is why this matrix
+    # would have caught it on the push that introduced it.
+    #
+    # The Docker tier below stays Linux-only and is skipped on Windows by an `if:` on its own step.
+    # Testcontainers uses Linux images, which Windows runners can host only under nested
+    # virtualisation — slow and flaky enough to turn a gating job into noise, and a gate that fails
+    # for reasons unrelated to the change teaches people to re-run it.
+    #
+    # BRANCH PROTECTION: matrixing produces one check per OS ("build-test (ubuntu-latest)" and
+    # "build-test (windows-latest)"), so the single pre-matrix required check no longer matches.
+    # Both must be required, or gating silently drops to zero.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Both legs always run to completion. fail-fast would cancel the Windows leg the moment Linux
+      # went red, which is precisely backwards: the whole reason this matrix exists is that the two
+      # platforms fail for different reasons, and cancelling hides the one nothing else covers.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     # Generous for a run measured in minutes, and far below the 360-minute default. A Testcontainers
     # image pull that hangs otherwise burns six hours of runner time before anyone is told.
     timeout-minutes: 45
@@ -91,6 +113,7 @@ jobs:
       # count is prose and drifts — it said "three" at four projects and again at five — so the
       # `secrets=` line the step below prints is the number to trust, not this sentence.
       - name: Verify the tiers partition every test project
+        shell: bash
         run: |
           all=$(grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj | wc -l)
           docker=$(grep -l '<RequiresDocker>true</RequiresDocker>' tests/*/*.csproj | wc -l)
@@ -120,6 +143,7 @@ jobs:
       # and was rejected: it pays a rebuild per project across 64 of them, and it repairs the
       # symptom by making the missing build happen silently instead of reporting it.
       - name: Test (fast tier)
+        shell: bash
         run: |
           projects=$(grep -l 'Microsoft.NET.Test.Sdk' tests/*/*.csproj \
             | xargs -r grep -L '<RequiresDocker>true</RequiresDocker>')
@@ -146,6 +170,9 @@ jobs:
       # output, so it runs in nightly.yml instead. No continue-on-error anywhere in this job: the
       # entire point of these tiers is that they gate.
       - name: Test (Docker tier)
+        # Linux-only: Testcontainers uses Linux images. See the job-level comment.
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
         run: |
           projects=$(grep -l '<RequiresDocker>true</RequiresDocker>' tests/*/*.csproj \
             | xargs -r grep -L '<RequiresLlm>true</RequiresLlm>')
