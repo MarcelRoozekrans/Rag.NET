@@ -87,7 +87,7 @@ Five projects contain tests that need credentials or large local assets:
 | `Rag.NET.Embeddings.Onnx.Tests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Chunking.IntegrationTests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Benchmarks.Quality.IntegrationTests` | those two, plus `RAGNET_BEIR_CACHE`, `RAGNET_BEIR_LONG_RUNS` and `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` | downloaded, plus a runner temp path; the last three are deliberately **never supplied by the job** — see below |
-| `Rag.NET.Parsers.Pdf.Tests` | `RAGNET_TESSDATA` | repository secret — **but see below** |
+| `Rag.NET.Parsers.Pdf.Tests` | `RAGNET_TESSDATA` | repository secret in the nightly (where it reaches nothing — see below); supplied locally by the fenced OCR procedure below |
 
 Each of those tests calls `Assert.Skip` when its variable is absent, so the projects are safe
 anywhere and skip on a normal developer machine. They declare
@@ -104,11 +104,26 @@ caches it between runs, and points all three variables at runner paths — and *
 are not there afterwards, because there is no fork-safety argument for skipping a test whose input
 the job could have fetched.
 
-**`RAGNET_TESSDATA` still reaches nothing, and that is recorded rather than fixed.** Its only reader
-is inside `#if ENABLE_OCR`, and no workflow builds with `/p:EnableOcr=true`, so the test is not in
-the compiled assembly at all — `dotnet test --list-tests` on that project lists 51 tests and none of
-them is it. The secret is harmless and is still supplied; it will start meaning something when
-someone adds the OCR build flag and Tesseract's native binaries to the job.
+**`RAGNET_TESSDATA` reaches nothing in CI, and that is now a decision with a runnable procedure
+rather than an open defect.** Its only reader, the real-Tesseract OCR test, is inside
+`#if ENABLE_OCR`, which no workflow build defines — deliberately: the published
+`Rag.NET.Parsers.Pdf` package compiles the Tesseract engine out so consumers do not carry its
+native payload (Azure Document Intelligence is the packaged OCR engine), and CI builds what it
+ships. The gated test is compiled and run **locally** by the procedure below, which was executed
+green on 2026-08-03 — the test's first run anywhere:
+
+```bash
+# Compile the OCR flavour (every default build compiles Tesseract out) and run the gated test.
+dotnet build tests/Rag.NET.Parsers.Pdf.Tests -c Release -p:EnableOcr=true
+mkdir -p tessdata && curl -fsSL -o tessdata/eng.traineddata \
+  https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata
+RAGNET_TESSDATA="$PWD/tessdata" dotnet test tests/Rag.NET.Parsers.Pdf.Tests --no-build -c Release \
+  --filter "FullyQualifiedName~OcrFallback_RealTesseract"
+```
+
+The nightly still supplies the secret; it is harmless there and starts mattering only if someone
+adds the OCR build flag and Tesseract's native binaries to that job — which the packaging
+decision above argues against rather than toward.
 
 **This is an overlay, not a fourth tier.** All five are fast-tier projects: they run in `ci.yml` on
 every push (skipping the gated tests) *and* in `nightly.yml` with the values supplied. A project is

@@ -235,7 +235,7 @@ different shapes, costs and limitations:
 | Package | `Rag.NET.Parsers.Pdf` | `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` |
 | Unit of work | One embedded image at a time | The whole PDF — one call per document |
 | Runs | In process, local native library | Azure cloud service |
-| Compile gate | `<EnableOcr>true</EnableOcr>` required | **None** |
+| Compile gate | `-p:EnableOcr=true`, **source builds of this repository only** — the published package compiles the engine out | **None** |
 | Opt-in | `UseOcrFallback = true` | Registering the engine |
 | Cost | Free | Paid, **per page of the submitted document** |
 | Concurrency | Serialized (Tesseract is not thread-safe) | Unserialized — it is a network client |
@@ -258,18 +258,26 @@ When `UseOcrFallback` is enabled and a page falls below `OcrMinCharacters`, the 
 that page's embedded images (largest display area first) and runs Tesseract over each until one
 yields text.
 
-Tesseract is **off by default** and compile-gated (the same pattern as `Rag.NET.Parsers.Vision`):
+Tesseract is **off by default**, compile-gated (the same pattern as `Rag.NET.Parsers.Vision`) —
+and the gate is a property of **this repository's build, not yours**. The published
+`Rag.NET.Parsers.Pdf` package is compiled without the Tesseract engine, deliberately, so
+consumers do not carry its native payload; setting `EnableOcr` in a consuming project has no
+effect on the already-compiled package assembly. To get the per-image Tesseract path you must
+build `Rag.NET.Parsers.Pdf` **from source**:
 
-1. Add `<EnableOcr>true</EnableOcr>` to your project file — this defines `ENABLE_OCR` and
-   pulls in the `Tesseract` package for `Rag.NET.Parsers.Pdf`.
+1. Build this repository (or your vendored copy of it) with `dotnet build -p:EnableOcr=true` —
+   this defines `ENABLE_OCR` and pulls in the `Tesseract` package for `Rag.NET.Parsers.Pdf`,
+   and reference that build instead of the NuGet package.
 2. Provide a tessdata directory (e.g. download `eng.traineddata` from
    [tessdata](https://github.com/tesseract-ocr/tessdata)) and point `TessDataPath` at it.
 3. Set `OcrLanguage` to the language code matching your traineddata (default `eng`).
 4. Set `UseOcrFallback = true`.
 
-Enabling `UseOcrFallback` without compiling the gate throws an instructive
-`InvalidOperationException` at parser construction — misconfiguration fails fast, not at the
-first scanned page.
+Enabling `UseOcrFallback` against a build without the gate — which includes the published
+package, always — throws an instructive `InvalidOperationException` at parser construction that
+points at Azure Document Intelligence below: misconfiguration fails fast, not at the first
+scanned page. If you consume Rag.NET as packages and need OCR, Azure Document Intelligence is
+the supported engine.
 
 #### Azure Document Intelligence: the whole-document engine
 

@@ -185,11 +185,13 @@ jobs:
       # are not credentials and a secret cannot conjure either onto a fresh runner.
       #
       # RAGNET_TESSDATA is kept, and is honestly labelled: it is the one value here that still
-      # reaches nothing. Its only reader, PdfOcrFallbackTests.OcrFallback_RealTesseract_*, is inside
-      # `#if ENABLE_OCR`, and no workflow builds with /p:EnableOcr=true — so the test is not in the
-      # compiled assembly at all, let alone skipped. `dotnet test --list-tests` on that project
-      # lists 51 tests and none of them is it. Supplying the secret changes nothing until someone
-      # adds the OCR build flag and Tesseract's native binaries to this job.
+      # reaches nothing IN THIS JOB. Its only reader, PdfOcrFallbackTests.OcrFallback_RealTesseract_*,
+      # is inside `#if ENABLE_OCR`, and no workflow builds with -p:EnableOcr=true — deliberately,
+      # since Phase 4.1: the published package compiles the Tesseract engine out, CI builds what it
+      # ships, and the gated test is compiled and run by the fenced local procedure in
+      # docs/reference/ci.md (executed green 2026-08-03). Supplying the secret here changes nothing
+      # unless someone adds the OCR build flag and Tesseract's native binaries to this job, which
+      # that decision argues against.
       RAGNET_TESSDATA: ${{ secrets.RAGNET_TESSDATA }}
       RAGNET_DOCINTEL_ENDPOINT: ${{ secrets.RAGNET_DOCINTEL_ENDPOINT }}
       RAGNET_DOCINTEL_KEY: ${{ secrets.RAGNET_DOCINTEL_KEY }}

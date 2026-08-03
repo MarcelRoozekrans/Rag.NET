@@ -4,10 +4,12 @@
     <RootNamespace>Rag.NET.Parsers.Pdf</RootNamespace>
     <PackageId>Rag.NET.Parsers.Pdf</PackageId>
     <Description>PDF document parser for Rag.NET</Description>
-    <!-- `unit` speaks for the PdfPig text path only: the Tesseract OCR engine below sits behind
-         ENABLE_OCR, which no build defines, so the OCR half is compiled out of every build and
-         verified by nothing — see the ENABLE_OCR entry in TestGateTests.KnownUnsatisfiableSymbols
-         and its owning debt row. -->
+    <!-- `unit` speaks for the PdfPig text path. The Tesseract OCR engine below sits behind
+         ENABLE_OCR, which no default build defines — deliberately: the published package
+         compiles the engine out so consumers do not carry Tesseract's native payload (Phase
+         4.1's recorded decision; Azure Document Intelligence is the packaged OCR engine). The
+         OCR half is verified by the fenced -p:EnableOcr=true procedure in
+         docs/reference/ci.md, first executed green 2026-08-03. -->
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 

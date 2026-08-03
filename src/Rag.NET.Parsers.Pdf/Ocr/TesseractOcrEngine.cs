@@ -37,9 +37,15 @@ internal sealed class TesseractOcrEngine : IPdfOcrEngine, IDisposable
 internal sealed class TesseractOcrEngine : IPdfOcrEngine
 {
     private const string GateMessage =
-        "OCR support requires the Tesseract package. Add <EnableOcr>true</EnableOcr> to your " +
-        "project file to enable it, and provide a tessdata directory with the configured " +
-        "language data (see PdfParserOptions.TessDataPath and PdfParserOptions.OcrLanguage).";
+        "This build of Rag.NET.Parsers.Pdf was compiled without the Tesseract engine — the " +
+        "published package always is, deliberately, so consumers do not carry Tesseract's " +
+        "native payload — so UseOcrFallback has nothing to run. Per-image OCR exists only in " +
+        "a source build of this repository compiled with -p:EnableOcr=true (the " +
+        "<EnableOcr>true</EnableOcr> MSBuild property), plus a tessdata directory with the " +
+        "configured language data (see PdfParserOptions.TessDataPath and " +
+        "PdfParserOptions.OcrLanguage). Against the published package, use " +
+        "Rag.NET.Parsers.Pdf.AzureDocumentIntelligence's UseAzureDocumentIntelligenceOcr " +
+        "instead — it has no compile gate.";
 
     public TesseractOcrEngine(PdfParserOptions options)
     {
