@@ -472,6 +472,24 @@ not by re-reading the checkboxes:
    out to be **three** — download, archive publication, extraction — each fixed by the same
    work-under-a-unique-name-then-rename shape and each mutation-verified (`50a80cd`, `335710c`);
    criterion 4's box and the ROADMAP's Closed list carry the numbers.
+
+   > **Correction, 2026-08-03, recorded rather than absorbed.** Criterion 4 was ticked on that
+   > green nightly while `Rag.NET.Benchmarks.Quality.Tests` was **failing on Windows** — 1–2
+   > failures in every one of four consecutive local runs, found minutes after the milestone
+   > closed. **The nightly runs on Linux, and could not see it.** The cause was not the race
+   > fixes: on Windows, NTFS refuses to rename a directory while any handle is open beneath it,
+   > and Defender's on-access scan holds one on just-written files — proven with a standalone
+   > repro (up to 71/200 iterations denied; exclusive-open probes microseconds later found
+   > nothing held, so no leaked handle of ours). The **same hazard hit `EmbeddingCache.Write`**,
+   > code the race fixes never touched, so `main` was red at more than one site and had been
+   > latent. Fixed in `55978b6` by a bounded retry at every publish-by-rename site, verified by
+   > eight consecutive green runs by the implementer and five more independently.
+   >
+   > **The lesson is about the criterion, not the bug.** "All test projects passing" was read as
+   > "CI is green", and CI is one operating system. A green Linux nightly is not evidence about
+   > Windows, and this milestone's own record now says so — the milestone stays closed, because
+   > every criterion is met on evidence today, but it was closed a few minutes early on a
+   > platform nobody had checked.
 3. **TREC-COVID and EnronQA — explicitly declined**, written into the ROADMAP debt entry as the
    replan required. The short form: neither verifies anything this milestone shipped — three
    corpora already answer its questions in both directions — and neither is a close-out task: no
