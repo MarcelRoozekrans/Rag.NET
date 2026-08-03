@@ -39,7 +39,10 @@ Completed milestones are archived under `docs/planning/milestones/`.
       forces the deletion — and the parse is now 53 Done sections and 72 package claims, all
       verified directly, `FeatureClaimTests` 7 of 7 re-run at the close. What the sweep still
       does **not** establish: that the named code does what the row says — existence, not
-      behaviour; that gap is Milestone 4's verification work, and its ledger says so.
+      behaviour; that gap is Milestone 4's verification work, and its ledger says so. [Since
+      split, 2026-08-03: the ledger and its gates stay Milestone 4's; the
+      exercised-beyond-fakes work the ledger points at — recorded responses and the unit-only
+      floor — is **Milestone 6's**, created when v1.0 was postponed until after hardening.]
 - [x] Integration/vector-store suites run in CI (Dockerized) — holding as of 2026-08-02: `ci.yml`
       partitions the test projects into fast and Docker tiers with guards that fail a project
       landing in neither, and the latest `main` push run (30760759923, 2026-08-02) is green
@@ -317,7 +320,9 @@ Assume nothing works until a test says so *and the test is right*.
    documents it is scored on — `TopK` equals the cutoff, so Recall@10 is frozen by construction,
    visible in SciFact's reranker Recall@10 of 0.78667, identical to dense; **a design flaw in
    this phase's own plan, not a defect in the code**, and the row understates a cross-encoder →
-   the next re-measure of the table, backstopped by Milestone 4; `docs/reference/ci.md` counts
+   the next re-measure of the table, backstopped by Milestone 4 [re-based to Milestone 6,
+   2026-08-03, at the v1.0 postponement — the deadline's basis is the v1.0 docs, which ship
+   with the tag, and the tag moved there]; `docs/reference/ci.md` counts
    "eleven cases" and does not list the nine ablation cells now gated in `BeirRunBudget` →
    Milestone 4, with 4.1; and TREC-COVID and EnronQA, deferred again unchanged from 3.12 — the
    `2^rel − 1` path has still never seen a graded *dataset* → Milestone 4, with the
