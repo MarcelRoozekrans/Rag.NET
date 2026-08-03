@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
@@ -160,6 +161,135 @@ public sealed class BeirDatasetCacheTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureAsync_TwoCallersColdStartingTheSameDataset_BothComplete()
+    {
+        // The nightly's cold-cache failure (run 30735435427): xUnit runs test classes in parallel,
+        // so two suites can find the same dataset missing and download it at once. Each handler
+        // below gates its body behind a TaskCompletionSource that is signalled only once its caller
+        // is inside the copy — that is, holding an open partial file — so the two writers genuinely
+        // overlap before a single body byte flows. No sleeps, no hoping.
+        var archive = BuildArchive();
+        var published = Md5Of(archive);
+        var firstHandler = new GatedArchiveHandler(archive);
+        var secondHandler = new GatedArchiveHandler(archive);
+        var firstCache = new BeirDatasetCache(_cacheDirectory, new HttpClient(firstHandler));
+        var secondCache = new BeirDatasetCache(_cacheDirectory, new HttpClient(secondHandler));
+
+        var first = firstCache.EnsureAsync(Descriptor(published), TestContext.Current.CancellationToken);
+        var second = secondCache.EnsureAsync(Descriptor(published), TestContext.Current.CancellationToken);
+
+        // Both writers hold an open partial file — or one has already faulted trying to, which the
+        // final await surfaces. Either way this cannot hang, and it cannot proceed early.
+        _ = await Task.WhenAny(
+            Task.WhenAll(firstHandler.ArchiveBody.Started, secondHandler.ArchiveBody.Started),
+            first,
+            second);
+
+        // Released one at a time, so only the downloads overlap: concurrent extraction of the same
+        // archive is a separate hazard, and overlapping it here would make this test flaky about
+        // something it does not pin. The second caller still runs its full verify-and-move after
+        // the first has finished — the "both complete, one move wins" case.
+        firstHandler.ArchiveBody.Release();
+        _ = await Task.WhenAny(first, second);
+        secondHandler.ArchiveBody.Release();
+
+        var directories = await Task.WhenAll(first, second);
+
+        var expected = Path.Combine(_cacheDirectory, "tiny");
+        Assert.All(directories, directory => Assert.Equal(expected, directory, StringComparer.Ordinal));
+        Assert.Empty(Directory.GetFiles(_cacheDirectory, "*.partial"));
+        Assert.Single(BeirLoader.Load(expected).Documents);
+    }
+
+    [Fact]
+    public async Task EnsureAsync_TwoCallersRacingThroughExtraction_BothComplete()
+    {
+        // The second half of the cold-cache hazard, distinct from the partial-file race above:
+        // with the downloads no longer colliding, two callers finishing near-simultaneously still
+        // raced the shared archive name (a File.Move cannot replace a file the other caller holds
+        // open for extraction) and the shared dataset directory (zip entries extract through
+        // exclusive handles). There is no seam inside extraction to gate on, so each attempt is
+        // instead gate-synchronised to release both callers in the same instant, the corpus is
+        // padded so the exclusive handles stay open for a wide window, and the attempt is
+        // repeated; one collision in any attempt fails the test.
+        var archive = BuildArchive(corpusPadding: new string('a', 2 * 1024 * 1024));
+
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            var cacheDirectory = Path.Combine(
+                _cacheDirectory, attempt.ToString(CultureInfo.InvariantCulture));
+
+            var directory = await ColdStartTwoCallersAsync(archive, cacheDirectory);
+
+            Assert.Equal(Path.Combine(cacheDirectory, "tiny"), directory, StringComparer.Ordinal);
+            Assert.Empty(Directory.GetFiles(cacheDirectory, "*.partial"));
+            Assert.Empty(Directory.GetDirectories(cacheDirectory, "*.extracting"));
+            Assert.Single(BeirLoader.Load(directory).Documents);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureAsync_ADatasetCompletedByAnotherCallerMidDownload_IsLeftAloneNotReExtracted()
+    {
+        // The loser's rule, pinned deterministically: a caller that finds the dataset already
+        // complete when its own extraction lands must accept the winner's directory, not replace
+        // it. The winner here is simulated by the test while the caller is parked mid-download;
+        // the pre-placed corpus differs from the downloaded one so that clobbering is observable.
+        var handler = new GatedArchiveHandler(BuildArchive(corpusPadding: "downloaded-not-preplaced"));
+        var cache = new BeirDatasetCache(_cacheDirectory, new HttpClient(handler));
+        var descriptor = Descriptor(Md5Of(BuildArchive(corpusPadding: "downloaded-not-preplaced")));
+
+        var ensure = cache.EnsureAsync(descriptor, TestContext.Current.CancellationToken);
+        _ = await Task.WhenAny(handler.ArchiveBody.Started, ensure);
+
+        // The caller holds an open partial; a rival now completes the same dataset.
+        var directory = Path.Combine(_cacheDirectory, "tiny");
+        _ = Directory.CreateDirectory(Path.Combine(directory, "qrels"));
+        File.WriteAllText(Path.Combine(directory, "corpus.jsonl"), CorpusJsonl);
+        File.WriteAllText(Path.Combine(directory, "queries.jsonl"), QueriesJsonl);
+        File.WriteAllText(Path.Combine(directory, "qrels", "test.tsv"), QrelsTsv);
+
+        handler.ArchiveBody.Release();
+        var resolved = await ensure;
+
+        Assert.Equal(directory, resolved, StringComparer.Ordinal);
+        Assert.Equal(CorpusJsonl, File.ReadAllText(Path.Combine(directory, "corpus.jsonl")), StringComparer.Ordinal);
+        Assert.Empty(Directory.GetDirectories(_cacheDirectory, "*.extracting"));
+    }
+
+    /// <summary>
+    /// Cold-starts two caches over one directory, holds both until each provably has an open
+    /// partial file, then releases them in the same instant so everything after the download —
+    /// verification, archive publication, extraction — genuinely overlaps. No sleeps: the gates
+    /// are <see cref="TaskCompletionSource"/>s, and a caller that faults early completes the
+    /// <see cref="Task.WhenAny(Task[])"/> instead of hanging it.
+    /// </summary>
+    /// <returns>The directory both callers resolved, asserted identical.</returns>
+    private static async Task<string> ColdStartTwoCallersAsync(byte[] archive, string cacheDirectory)
+    {
+        var published = Md5Of(archive);
+        var firstHandler = new GatedArchiveHandler(archive);
+        var secondHandler = new GatedArchiveHandler(archive);
+
+        var first = new BeirDatasetCache(cacheDirectory, new HttpClient(firstHandler))
+            .EnsureAsync(Descriptor(published), TestContext.Current.CancellationToken);
+        var second = new BeirDatasetCache(cacheDirectory, new HttpClient(secondHandler))
+            .EnsureAsync(Descriptor(published), TestContext.Current.CancellationToken);
+
+        _ = await Task.WhenAny(
+            Task.WhenAll(firstHandler.ArchiveBody.Started, secondHandler.ArchiveBody.Started),
+            first,
+            second);
+
+        firstHandler.ArchiveBody.Release();
+        secondHandler.ArchiveBody.Release();
+
+        var directories = await Task.WhenAll(first, second);
+        Assert.Equal(directories[0], directories[1], StringComparer.Ordinal);
+        return directories[0];
+    }
+
+    [Fact]
     public void DirectoryFor_PutsEachDatasetInItsOwnSubdirectory()
     {
         var cache = new BeirDatasetCache(_cacheDirectory, new HttpClient(new ExplodingHandler()));
@@ -191,13 +321,21 @@ public sealed class BeirDatasetCacheTests : IDisposable
     /// A zip in BEIR's layout: one top-level folder named after the dataset, holding
     /// <c>corpus.jsonl</c>, <c>queries.jsonl</c> and <c>qrels/test.tsv</c>.
     /// </summary>
-    private static byte[] BuildArchive()
+    /// <param name="corpusPadding">
+    /// Optional filler for the document's text. The concurrency test pads the corpus so that
+    /// extracting it holds an exclusive file handle for a window wide enough to collide in.
+    /// </param>
+    private static byte[] BuildArchive(string corpusPadding = "")
     {
+        var corpus = corpusPadding.Length == 0
+            ? CorpusJsonl
+            : CorpusJsonl.Replace("Body.", corpusPadding, StringComparison.Ordinal);
+
         using var buffer = new MemoryStream();
 
         using (var archive = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
         {
-            AddEntry(archive, "tiny/corpus.jsonl", CorpusJsonl);
+            AddEntry(archive, "tiny/corpus.jsonl", corpus);
             AddEntry(archive, "tiny/queries.jsonl", QueriesJsonl);
             AddEntry(archive, "tiny/qrels/test.tsv", QrelsTsv);
         }
@@ -224,6 +362,68 @@ public sealed class BeirDatasetCacheTests : IDisposable
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }
+    }
+
+    /// <summary>
+    /// Serves one archive whose body does not flow until <see cref="GatedStream.Release"/>, so the
+    /// test controls exactly when its caller's download completes.
+    /// </summary>
+    private sealed class GatedArchiveHandler(byte[] body) : HttpMessageHandler
+    {
+        public GatedStream ArchiveBody { get; } = new(body);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var content = new StreamContent(ArchiveBody);
+            content.Headers.ContentLength = ArchiveBody.Length;
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    /// <summary>
+    /// A response body that reports when its consumer starts copying — by then the consumer has
+    /// already created and holds open its partial file — and serves no bytes until released.
+    /// </summary>
+    private sealed class GatedStream(byte[] body) : Stream
+    {
+        private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _position;
+
+        /// <summary>Completes on the first read: the consumer is copying into its partial file.</summary>
+        public Task Started => _started.Task;
+
+        /// <summary>Lets the body flow, so the consumer can finish its download.</summary>
+        public void Release() => _release.TrySetResult();
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => body.Length;
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            _started.TrySetResult();
+            await _release.Task.WaitAsync(cancellationToken);
+
+            var count = Math.Min(buffer.Length, body.Length - _position);
+            body.AsMemory(_position, count).CopyTo(buffer);
+            _position += count;
+            return count;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     /// <summary>Fails any request, so "this path does not use the network" is asserted, not assumed.</summary>

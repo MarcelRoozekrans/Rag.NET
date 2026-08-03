@@ -18,7 +18,7 @@ namespace Rag.NET.RepoConventions.Tests;
 /// next, and its <c>**Package:**</c> / <c>**Packages:**</c> lines count wherever they sit in
 /// it — under the heading, adjacent to the status line, anywhere between. The SaaS connector
 /// section names its packages in tables instead, so table rows whose first cell is a package
-/// name count too. All 54 Done statuses sit in sections the parse covers today.
+/// name count too. All 53 Done statuses sit in sections the parse covers today.
 /// </para>
 /// </remarks>
 public sealed partial class FeatureClaimTests
@@ -29,7 +29,7 @@ public sealed partial class FeatureClaimTests
     private const string PackagesMarker = "**Packages:**";
 
     /// <summary>
-    /// The 54 Done sections name 73 packages between them today — package lines and the SaaS
+    /// The 53 Done sections name 72 packages between them today — package lines and the SaaS
     /// connector tables combined. Far fewer means the parse lost the file's shape and is
     /// asserting over nothing — which would pass, silently, forever.
     /// </summary>
@@ -38,39 +38,16 @@ public sealed partial class FeatureClaimTests
     /// <summary>
     /// Done claims known to be false, recorded so the suite stays green while the findings stay
     /// visible in source. Every entry is a defect in features.md, not in this test: the section
-    /// says Done and the package does not exist. Correcting the documentation is later
-    /// Milestone 4 work; this list is Phase 4.0's record of what its guard found, and
+    /// says Done and the package does not exist.
     /// <see cref="EveryRecordedFalseClaimIsStillFalse"/> fails the moment an entry goes stale,
-    /// so an entry cannot outlive the defect it records.
+    /// so an entry cannot outlive the defect it records. Phase 4.0's guard found two —
+    /// <c>Rag.NET.Parsers.CSharp</c> (a real feature under a wrong name; the code lives in
+    /// <c>src/Rag.NET.Chunking.CSharp</c>) and <c>Rag.NET.Telemetry</c> (a package that was
+    /// never built, in a section whose own matrix row was unchecked) — and both were corrected
+    /// in features.md as Milestone 4 documentation work, so the list is empty today.
     /// </summary>
     private static readonly Dictionary<string, string> KnownFalseClaims =
-        new(StringComparer.Ordinal)
-        {
-            // 'OpenTelemetry Tracing & Metrics', features.md line 667. Genuinely false, not a
-            // wrong name: the section describes `.UseTelemetry()`, gen_ai.* semantic conventions
-            // and metrics named ragnet.retrieve.latency / ragnet.answer.tokens /
-            // ragnet.embed.batch_size, none of which were ever built. The real instruments live
-            // in src/Rag.NET/Telemetry/RagTelemetry.cs — internal, in the core package, under
-            // different names (ragnet.retrieve.duration, ragnet.llm.tokens, …) — and the
-            // section's own feature-matrix row (~line 1135) is unchecked. Found by Phase 4.0;
-            // correcting the section is a later Milestone 4 phase's work.
-            ["Rag.NET.Telemetry"] =
-                "features.md line 667 marks the OpenTelemetry section Done, but the package was " +
-                "never built and the described API surface does not exist anywhere.",
-
-            // 'C# Semantic Chunking (Roslyn)', features.md line 66. A wrong name, not a false
-            // claim: the feature is real and lives in src/Rag.NET.Chunking.CSharp —
-            // CSharpChunkingStrategy and CSharpChunkingOptions, the exact types the section
-            // describes, with the Microsoft.CodeAnalysis.CSharp reference — but the section
-            // names Rag.NET.Parsers.CSharp, which was never a directory under src/. Found by
-            // Phase 4.0 Task 2's parse widening (the package line sits under the heading, six
-            // lines before the status line, so Task 1's adjacency-only parse never read it);
-            // correcting the section is a later Milestone 4 phase's work.
-            ["Rag.NET.Parsers.CSharp"] =
-                "features.md line 66 marks the C# Semantic Chunking section Done under the " +
-                "package name Rag.NET.Parsers.CSharp, but the code lives in " +
-                "src/Rag.NET.Chunking.CSharp — the documented package name is wrong.",
-        };
+        new(StringComparer.Ordinal);
 
     /// <summary>
     /// Pins every shape a package claim takes in features.md, one live example per shape. Losing

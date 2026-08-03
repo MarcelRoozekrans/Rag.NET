@@ -356,4 +356,4 @@ Unknown extensions fall back to generic code separators (`\n\n` → `\n` → spa
 **Caveats:**
 - Uses heuristic string matching — it is not a parser. A `\ndef ` separator will split at any string starting with that pattern, including comments or strings containing `def `.
 - Overlap is typically 0 for code. Set `ChunkingOptions.Overlap = 0` explicitly (default is 50 characters).
-- For C# specifically, the Roslyn-based chunker (`Rag.NET.Parsers.CSharp`) produces semantically richer chunks with namespace, type, and member metadata.
+- For C# specifically, the Roslyn-based chunker (`Rag.NET.Chunking.CSharp`) produces semantically richer chunks with namespace, type, and member metadata.
