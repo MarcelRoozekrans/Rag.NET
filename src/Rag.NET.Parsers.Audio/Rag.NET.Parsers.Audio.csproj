@@ -10,7 +10,27 @@
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
     <PackageReference Include="Whisper.net" Version="1.*" />
-    <PackageReference Include="Whisper.net.Runtime" Version="1.*" />
+    <!-- PrivateAssets narrowed from the default (contentfiles;analyzers;build) to analyzers so
+         the runtime's `build` assets flow to consumers of this package: Whisper.net.Runtime
+         delivers its native libraries through build-folder targets, not runtimes/, so a consumer
+         that cannot import those targets restores the dependency and still gets no natives. -->
+    <PackageReference Include="Whisper.net.Runtime" Version="1.*" PrivateAssets="analyzers" />
   </ItemGroup>
+
+  <!-- Whisper.net.Runtime's build targets (and those of its Whisper.net.Runtime.Metal
+       dependency) inject native libraries as None items carrying Pack=true /
+       PackageCopyToOutput=true — metadata meant for Whisper.net's own packaging pipeline, which
+       every consumer that packs inherits. Left in, pack embeds every per-RID native under
+       content\ and contentFiles\ (NU5100) and then collides with the runtime package's own
+       files (NU5118). The natives are the runtime packages' content, delivered to consumers by
+       the dependency declared above; this package must not embed a copy. The wildcard covers
+       the whole Whisper.net.Runtime* family so a new runtime flavour cannot reintroduce the
+       leak. Removing the items here runs after build, so local builds still copy natives to
+       the output. -->
+  <Target Name="RemoveWhisperRuntimeNativesFromPackage" BeforeTargets="_GetPackageFiles">
+    <ItemGroup>
+      <None Remove="$(NuGetPackageRoot)whisper.net.runtime*\**" />
+    </ItemGroup>
+  </Target>
 
 </Project>
