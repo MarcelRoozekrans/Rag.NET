@@ -160,6 +160,47 @@ public sealed class BeirDatasetCacheTests : IDisposable
     }
 
     [Fact]
+    public async Task EnsureAsync_TwoCallersColdStartingTheSameDataset_BothComplete()
+    {
+        // The nightly's cold-cache failure (run 30735435427): xUnit runs test classes in parallel,
+        // so two suites can find the same dataset missing and download it at once. Each handler
+        // below gates its body behind a TaskCompletionSource that is signalled only once its caller
+        // is inside the copy — that is, holding an open partial file — so the two writers genuinely
+        // overlap before a single body byte flows. No sleeps, no hoping.
+        var archive = BuildArchive();
+        var published = Md5Of(archive);
+        var firstHandler = new GatedArchiveHandler(archive);
+        var secondHandler = new GatedArchiveHandler(archive);
+        var firstCache = new BeirDatasetCache(_cacheDirectory, new HttpClient(firstHandler));
+        var secondCache = new BeirDatasetCache(_cacheDirectory, new HttpClient(secondHandler));
+
+        var first = firstCache.EnsureAsync(Descriptor(published), TestContext.Current.CancellationToken);
+        var second = secondCache.EnsureAsync(Descriptor(published), TestContext.Current.CancellationToken);
+
+        // Both writers hold an open partial file — or one has already faulted trying to, which the
+        // final await surfaces. Either way this cannot hang, and it cannot proceed early.
+        _ = await Task.WhenAny(
+            Task.WhenAll(firstHandler.ArchiveBody.Started, secondHandler.ArchiveBody.Started),
+            first,
+            second);
+
+        // Released one at a time, so only the downloads overlap: concurrent extraction of the same
+        // archive is a separate hazard, and overlapping it here would make this test flaky about
+        // something it does not pin. The second caller still runs its full verify-and-move after
+        // the first has finished — the "both complete, one move wins" case.
+        firstHandler.ArchiveBody.Release();
+        _ = await Task.WhenAny(first, second);
+        secondHandler.ArchiveBody.Release();
+
+        var directories = await Task.WhenAll(first, second);
+
+        var expected = Path.Combine(_cacheDirectory, "tiny");
+        Assert.All(directories, directory => Assert.Equal(expected, directory, StringComparer.Ordinal));
+        Assert.Empty(Directory.GetFiles(_cacheDirectory, "*.partial"));
+        Assert.Single(BeirLoader.Load(expected).Documents);
+    }
+
+    [Fact]
     public void DirectoryFor_PutsEachDatasetInItsOwnSubdirectory()
     {
         var cache = new BeirDatasetCache(_cacheDirectory, new HttpClient(new ExplodingHandler()));
@@ -224,6 +265,68 @@ public sealed class BeirDatasetCacheTests : IDisposable
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
         }
+    }
+
+    /// <summary>
+    /// Serves one archive whose body does not flow until <see cref="GatedStream.Release"/>, so the
+    /// test controls exactly when its caller's download completes.
+    /// </summary>
+    private sealed class GatedArchiveHandler(byte[] body) : HttpMessageHandler
+    {
+        public GatedStream ArchiveBody { get; } = new(body);
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var content = new StreamContent(ArchiveBody);
+            content.Headers.ContentLength = ArchiveBody.Length;
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
+    }
+
+    /// <summary>
+    /// A response body that reports when its consumer starts copying — by then the consumer has
+    /// already created and holds open its partial file — and serves no bytes until released.
+    /// </summary>
+    private sealed class GatedStream(byte[] body) : Stream
+    {
+        private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _position;
+
+        /// <summary>Completes on the first read: the consumer is copying into its partial file.</summary>
+        public Task Started => _started.Task;
+
+        /// <summary>Lets the body flow, so the consumer can finish its download.</summary>
+        public void Release() => _release.TrySetResult();
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => body.Length;
+        public override long Position { get => _position; set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            _started.TrySetResult();
+            await _release.Task.WaitAsync(cancellationToken);
+
+            var count = Math.Min(buffer.Length, body.Length - _position);
+            body.AsMemory(_position, count).CopyTo(buffer);
+            _position += count;
+            return count;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     /// <summary>Fails any request, so "this path does not use the network" is asserted, not assumed.</summary>

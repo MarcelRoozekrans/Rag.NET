@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
@@ -17,8 +18,9 @@ namespace Rag.NET.Benchmarks.Quality;
 /// What arrives is verified before it is trusted, against the MD5 BEIR publishes beside each
 /// archive. A truncated or redirected download must fail here and say so: unverified, it extracts
 /// to a short corpus, which scores badly, which looks exactly like a retrieval defect — the most
-/// expensive possible way to discover a network problem. The download lands on a
-/// <c>.partial</c> file that is deleted on any verification failure, so a bad fetch can never be
+/// expensive possible way to discover a network problem. The download lands on a uniquely named
+/// <c>.partial</c> file — one per writer, so parallel test classes cold-starting the same dataset
+/// never collide — that is deleted on any verification failure, so a bad fetch can never be
 /// mistaken for a cached one on the next run.
 /// </para>
 /// </summary>
@@ -161,6 +163,18 @@ public sealed class BeirDatasetCache
         return datasetDirectory;
     }
 
+    /// <remarks>
+    /// The partial file's name carries a fresh GUID — the shape <see cref="EmbeddingCache"/> and
+    /// <see cref="HypotheticalCache"/> already use — because xUnit runs test classes in parallel,
+    /// and on a cold cache two classes wanting the same dataset both reach here. On one shared
+    /// <c>.partial</c> path the second <see cref="File.Create(string)"/> throws
+    /// <see cref="IOException"/> — nightly run 30735435427 — while a GUID gives each writer its
+    /// own file and asks for no lock, which would only serialise unrelated downloads. When both
+    /// then complete, both <see cref="File.Move(string, string, bool)"/> into place and the later
+    /// move overwrites the earlier with bytes verified against the same published MD5: one writer
+    /// wins, both see a complete archive, and nothing needs to notice it lost. That double move
+    /// is correct, not a defect to fix.
+    /// </remarks>
     private async Task DownloadAndVerifyAsync(
         BeirDatasetDescriptor dataset, string archivePath, CancellationToken cancellationToken)
     {
@@ -169,7 +183,8 @@ public sealed class BeirDatasetCache
             BeirLog.DownloadingDataset(_logger, dataset.Name, dataset.ArchiveUrl, _cacheDirectory);
         }
 
-        var partialPath = archivePath + ".partial";
+        var partialPath =
+            archivePath + "." + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture) + ".partial";
         long declaredLength;
         long writtenLength;
 
