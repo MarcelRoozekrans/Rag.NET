@@ -1,0 +1,52 @@
+name: Release Please
+
+# The release half of the versioning design (the derivation half is GitVersion — see
+# GitVersion.yml): release-please reads the conventional commits since the last release,
+# opens a pull request proposing the version they imply, and — when that PR is merged and
+# this workflow is dispatched again — creates the GitHub release and the vX.Y.Z tag.
+# That tag is what flips GitVersion from prerelease (0.1.0-preview.N) to stable: on the
+# tagged commit it returns the tag's version, and publish-nuget packs and pushes exactly
+# that. The user merges the release PR, as every PR here — this workflow only proposes.
+#
+# THE GATE, recorded to the standard TestGateTests holds every other gate in this repository
+# to — named, condition stated, satisfiable by a documented procedure:
+#   NAME: release-please.
+#   CONDITION: a manual workflow_dispatch on main. No push trigger, deliberately: Phase 6.3
+#     decides the release version, and a workflow that opened a release PR on every push to
+#     main would be proposing a release nobody asked for, months early.
+#   SATISFIED BY: the fenced procedure in docs/reference/ci.md ("The gated release"),
+#     runnable by any maintainer; Phase 6.3 executes it.
+#
+# NEVER EXECUTED, stated rather than hidden: unlike the nuget.org push — whose pack and push
+# commands run against a local feed on every push to main — nothing in this workflow can run
+# before 6.3, because its only observable effects (a release PR, a tag, a GitHub release)
+# are the release itself. It is the one genuinely unexercised path this phase ships, and it
+# is pinned instead of rehearsed: WorkflowWiringTests fails a gating push the moment this
+# file's trigger, its ref condition, its action, or its documented procedure drifts. The
+# residual — the action's first real execution is release day — is recorded in
+# docs/reference/ci.md alongside the push residual it shares a date with.
+on:
+  workflow_dispatch:
+
+# release-please writes: the release PR (contents for the branch, pull-requests for the PR)
+# and, on the dispatch after that PR merges, the tag and the GitHub release.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # release-type simple: the release PR maintains CHANGELOG.md and a version.txt, and
+      # nothing in the build consumes either — GitVersion derives the build's version from
+      # the tag this workflow creates, not from a file. For the first release ever,
+      # release-please defaults to proposing 1.0.0; if 6.3 decides otherwise, a
+      # `Release-As: x.y.z` footer on an empty commit overrides it — the procedure in
+      # docs/reference/ci.md records both.
+      - name: Create or update the release pull request
+        uses: googleapis/release-please-action@v4
+        with:
+          release-type: simple

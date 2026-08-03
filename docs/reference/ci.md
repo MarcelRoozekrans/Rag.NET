@@ -250,11 +250,12 @@ selection with a hardcoded list passed it. A guard that a comment can satisfy is
 ## Packing, the rehearsed push, and the one that is gated
 
 `ci.yml` has a second gating job besides the test matrix: `pack-validate`, on `ubuntu-latest`.
-Every run it packs the 70 shippable packages (`dotnet pack Rag.NET.slnx -c Release -o
-artifacts/packages` — 70 `.nupkg` plus 70 `.snupkg`), validates them with
-`tests/Rag.NET.PackageValidation.Tests` — the only guard there is, because `dotnet pack` enforces
-almost none of its own metadata — and then **pushes every package to a local directory feed,
-twice, asserting per file that each one arrived**.
+Every run it derives the version from git history (see [Versioning](#versioning-gitversion-and-the-release-tooling)
+below), packs the 70 shippable packages with it (`dotnet pack Rag.NET.slnx -c Release -o
+artifacts/packages -p:Version="$PACKAGE_VERSION"` — 70 `.nupkg` plus 70 `.snupkg`), validates
+them with `tests/Rag.NET.PackageValidation.Tests` — the only guard there is, because `dotnet
+pack` enforces almost none of its own metadata — and then **pushes every package to a local
+directory feed, twice, asserting per file that each one arrived**.
 
 The rehearsal exists because the push to nuget.org cannot run before Phase 6.3, and this
 repository keeps finding defects in exactly such never-run paths: the rewritten `nightly.yml`
@@ -317,6 +318,87 @@ the real 409-and-skip behaviour of `--skip-duplicate`, and `.snupkg` symbol deli
 nuget.org rides automatically on each `.nupkg` push and cannot be rehearsed against a directory
 feed at all. This gap is the argument the rejected alternative — publish prereleases now — was
 making, and it does not vanish because that alternative was not chosen.
+
+## Versioning: GitVersion and the release tooling
+
+Until Phase 4.1 every package packed as **1.0.0** — the SDK default, chosen by nobody. The
+version is now **derived from git history by GitVersion**, the house convention
+(`MarcelRoozekrans/AdoNet.Async`): `GitVersion.yml` is the configuration, the tool is pinned in
+`.config/dotnet-tools.json`, and the output is parsed with `jq`. Both packing jobs consume it —
+a derive step runs `dotnet dotnet-gitversion /output json | jq -r '.SemVer'`, fails loudly when
+the result is not a version (because `-p:Version=` with an empty value packs 1.0.0 again,
+silently), and hands it to the pack command.
+
+The repository has **no tags yet, deliberately** — Phase 6.3 decides the release version — so
+every derived version is a **prerelease**: `0.1.0-preview.N` on `main`, with N incrementing per
+commit, and `0.1.0-<branch>.N` on a branch. Measured on 2026-08-03: `main` derived
+`0.1.0-preview.1495`, and in a throwaway clone a `v1.0.0` tag on HEAD derived a stable `1.0.0`
+with **no configuration change** — the mechanism release day depends on, verified before release
+day. Two guards keep the wiring from rotting into decoration: `WorkflowWiringTests` pins the
+derive and pack command text in both packing jobs, and
+`EveryPackageCarriesTheVersionGitVersionDerives` re-derives the version after every pack and
+reads what the produced packages actually say — so a deleted derive step, a dropped `-p:Version`
+flag and a stale `GitVersion.yml` all fail a gating job instead of quietly shipping 1.0.0.
+
+### Conventional commits, enforced mechanically
+
+release-please derives release versions from commit messages, so a malformed commit is not a
+style nit — it is input the release tooling cannot read. The `commitlint` job lints **only the
+commits a pull request adds**, against `.commitlintrc.yml`: stock
+`@commitlint/config-conventional` with three deviations, each measured against the full history
+on 2026-08-03 rather than guessed. `bench` is a permitted type (19 historical commits use it,
+and benchmark work recurs here); `subject-case` is off (83 historical commits start the subject
+with a proper noun — `LangChain`, `SciFact`, `Milestone` — which the rule cannot tell from
+shouting); `body-max-line-length` is off (bodies quote error messages and command lines
+verbatim).
+
+**Existing history is deliberately not linted.** Stock config-conventional fails 184 of the
+1,506 commits; even the tuned rules fail 70 — 44 headers over 100 characters (none after
+2026-07-26), 24 typeless subjects from the pre-convention era (none after 2026-07-29), and 2
+one-off types. Turning a gating check permanently red for commits nobody can amend teaches
+people to ignore it, so the start point is the commit that introduced `.commitlintrc.yml`, and
+the job lints the pull request's base-to-head range only.
+
+### The gated release
+
+The `release-please.yml` workflow is fully wired and, unlike the push, **cannot be rehearsed**:
+its only observable effects — a release pull request, a `vX.Y.Z` tag, a GitHub release — are
+the release itself. It is the one genuinely unexercised path Phase 4.1 ships, recorded to the
+same standard as the push gate rather than left unstated:
+
+| | |
+|---|---|
+| **Name** | `release-please`, the workflow in `.github/workflows/release-please.yml` |
+| **Condition** | a manual `workflow_dispatch` on `main` — no push trigger, so nothing proposes a release before 6.3 asks for one |
+| **Satisfied by** | the procedure below, runnable by any maintainer; Phase 6.3 executes it |
+
+```bash
+# The release PR: release-please reads the conventional commits since the last release and
+# opens a PR proposing the version they imply. The user merges it, like every PR here.
+gh workflow run release-please.yml --ref main
+# After that PR merges, dispatch again: release-please sees the merged release PR and creates
+# the GitHub release and the vX.Y.Z tag — the tag GitVersion derives the stable version from.
+gh workflow run release-please.yml --ref main
+# First release ever: release-please proposes 1.0.0 by default. If 6.3 decides otherwise,
+# override before the first dispatch with an empty commit carrying a Release-As footer:
+git commit --allow-empty -m "chore: set the release version" -m "Release-As: 0.9.0"
+```
+
+Then the release itself is the publish procedure above, dispatched on the tagged commit — where
+GitVersion returns the tag's stable version and `publish-nuget` packs and pushes exactly that.
+
+**The residual, stated:** the action's first real execution is release day. What holds it until
+then is `WorkflowWiringTests`, which pins the dispatch-only trigger, the `main`-ref condition,
+the action reference and this fenced procedure — the same properties every other gate in this
+repository is held to: named, condition stated, satisfiable by a documented procedure.
+
+### Renovate
+
+`renovate.json` is `config:recommended` plus forced semantic commits (so its PRs pass the
+commitlint gate) and a `dependencies` label. It was validated with `renovate-config-validator`
+on 2026-08-03. **It is inert until the Renovate GitHub App is enabled on the repository** —
+Renovate is a hosted service reading this file, not a workflow this repository runs, so no job
+here can exercise it; recorded rather than assumed working.
 
 ## Running the tiers locally
 

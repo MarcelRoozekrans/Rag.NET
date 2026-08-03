@@ -31,14 +31,115 @@ public sealed class WorkflowWiringTests
 
         var commands = ReadWorkflowCommands(workflow);
 
-        Assert.Contains(
-            "dotnet pack Rag.NET.slnx -c Release -o artifacts/packages",
-            commands,
-            StringComparison.Ordinal);
+        // Twice, not once: pack-validate packs what it validates, and publish-nuget packs what
+        // it pushes with a character-identical command — the whole point being that the release
+        // packs with a command that has run green on every push. The -p:Version is part of the
+        // pinned text because dropping it is silent: pack falls back to the SDK default 1.0.0
+        // and exits 0.
+        Assert.Equal(
+            2,
+            CountOf(commands, PinnedPackCommand));
 
         Assert.Contains(
             "dotnet test tests/Rag.NET.PackageValidation.Tests -c Release",
             commands,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheWorkflowDerivesTheVersionThePackagesPack()
+    {
+        // A GitVersion.yml no build step consumes is decoration. This pins the consumption:
+        // both packing jobs restore the pinned tool, derive the version, and hand it to the
+        // pinned pack command — so the moment someone deletes the derive step or the -p:Version
+        // flag, a gating job goes red instead of every package silently reverting to the SDK
+        // default 1.0.0. EveryPackageCarriesTheVersionGitVersionDerives closes the loop from
+        // the other side, by re-deriving after the pack and reading the produced packages.
+        var commands = ReadWorkflowCommands(Path.Combine(
+            ProducedPackageTests.FindRepositoryRoot(), ".github", "workflows", "ci.yml"));
+
+        // The derive command, in both packing jobs: the local tool (pinned by
+        // .config/dotnet-tools.json), JSON output, jq — the house convention.
+        Assert.Equal(
+            2,
+            CountOf(commands, "version=$(dotnet dotnet-gitversion /output json | jq -r '.SemVer')"));
+
+        // The guard that makes an empty derivation loud. `-p:Version=` with an empty value
+        // packs 1.0.0 without a word, which is the exact silence the derive step exists to end.
+        Assert.Equal(
+            2,
+            CountOf(commands, "if ! [[ \"$version\" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+ ]]; then"));
+    }
+
+    [Fact]
+    public void TheCommitConventionIsEnforcedOnEveryPullRequest()
+    {
+        // .commitlintrc.yml with no workflow running it is decoration — the same shape as a
+        // GitVersion.yml nothing consumes. release-please derives release versions from commit
+        // messages, so the linting is load-bearing, and it must run where commits are
+        // introduced: on the pull request, over exactly the commits the PR adds. History stays
+        // unlinted deliberately (70 of 1,506 commits fail, none after 2026-07-29 — measured
+        // 2026-08-03); the start point is the commit that introduced the config.
+        var root = ProducedPackageTests.FindRepositoryRoot();
+
+        Assert.True(
+            File.Exists(Path.Combine(root, ".commitlintrc.yml")),
+            "'.commitlintrc.yml' does not exist at the repository root, so the commitlint job " +
+            "lints against nothing but defaults — including rules this repository measured and " +
+            "deliberately turned off.");
+
+        var commands = ReadWorkflowCommands(Path.Combine(root, ".github", "workflows", "ci.yml"));
+
+        Assert.Contains(
+            "commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}",
+            commands,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheReleaseWorkflowIsGatedAndItsGateIsWrittenDown()
+    {
+        // release-please is the one genuinely unexercised path Phase 4.1 ships: its only
+        // observable effects — a release PR, a tag, a GitHub release — ARE the release, so
+        // unlike the push there is no local-feed rehearsal to run on every push. What this
+        // repository's history demands for such a path (nightly.yml failing on its first-ever
+        // run; the OCR test that is not skipped but not compiled) is that the gate be named,
+        // its condition stated, its procedure documented — and pinned, so it cannot drift or
+        // be deleted while looking wired.
+        var root = ProducedPackageTests.FindRepositoryRoot();
+        var workflow = Path.Combine(root, ".github", "workflows", "release-please.yml");
+
+        Assert.True(
+            File.Exists(workflow),
+            $"'{workflow}' does not exist. Without it nothing creates the release PR or the " +
+            "vX.Y.Z tag that flips GitVersion from prerelease to stable, and Phase 6.3's " +
+            "documented procedure dispatches a workflow that is not there.");
+
+        var commands = ReadWorkflowCommands(workflow);
+
+        // The condition: manual dispatch only, on main. A push trigger would open a release PR
+        // on every merge, months before 6.3 decides the version.
+        Assert.Contains("on: workflow_dispatch:", commands, StringComparison.Ordinal);
+        Assert.DoesNotContain("push:", commands, StringComparison.Ordinal);
+        Assert.DoesNotContain("pull_request:", commands, StringComparison.Ordinal);
+        Assert.DoesNotContain("schedule:", commands, StringComparison.Ordinal);
+        Assert.Contains(
+            "if: github.ref == 'refs/heads/main'",
+            commands,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "uses: googleapis/release-please-action",
+            commands,
+            StringComparison.Ordinal);
+
+        // The documented procedure that satisfies the gate — fenced, because a runnable
+        // command is a procedure and a sentence mentioning one is not.
+        var documented = ReadFencedCommands(Path.Combine(root, "docs", "reference", "ci.md"));
+
+        Assert.Contains(
+            "gh workflow run release-please.yml --ref main",
+            documented,
             StringComparison.Ordinal);
     }
 
@@ -112,6 +213,36 @@ public sealed class WorkflowWiringTests
             "gh workflow run ci.yml --ref main -f publish_to_nuget=true",
             documented,
             StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The pack command both packing jobs run, character-identically: pack-validate packs what
+    /// it validates and publish-nuget packs what it pushes, so the release day command is the
+    /// one that has run green on every push. <c>-p:Version</c> is part of the pin because its
+    /// absence is silent — pack falls back to the SDK default 1.0.0 and exits 0.
+    /// </summary>
+    private const string PinnedPackCommand =
+        "dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version=\"$PACKAGE_VERSION\"";
+
+    /// <summary>
+    /// Counts non-overlapping occurrences of <paramref name="needle"/>, because some pins must
+    /// hold in two jobs at once and <c>Assert.Contains</c> is satisfied by one.
+    /// </summary>
+    /// <param name="haystack">The normalized workflow text.</param>
+    /// <param name="needle">The exact command text to count.</param>
+    /// <returns>The number of occurrences.</returns>
+    private static int CountOf(string haystack, string needle)
+    {
+        var count = 0;
+
+        for (var index = haystack.IndexOf(needle, StringComparison.Ordinal);
+             index >= 0;
+             index = haystack.IndexOf(needle, index + needle.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
     }
 
     /// <summary>

@@ -1,0 +1,28 @@
+# Derives every package version from git history — the house convention
+# (MarcelRoozekrans/AdoNet.Async): GitVersion as a dotnet local tool (.config/dotnet-tools.json),
+# this file as its configuration, output parsed with jq in ci.yml, release-please for the release
+# itself. Before this file every package packed as 1.0.0, the SDK default nobody chose.
+#
+# The repository has no tags yet, deliberately: Phase 6.3 decides the release version and cuts
+# the first tag (via release-please — see .github/workflows/release-please.yml). Until that tag
+# exists, next-version below is the base, and every version GitVersion produces is a PRERELEASE:
+# 0.1.0-preview.N on main, 0.1.0-<branch>.N on branches. That is Milestone 4 and 5's requirement
+# stated as configuration — nothing publishes, but the pack step must produce a coherent version
+# or it is not rehearsing anything. The day release-please tags vX.Y.Z, GitVersion returns that
+# stable version on the tagged commit and this file needs no change.
+workflow: GitHubFlow/v1
+
+# The fallback base while no tag exists. 0.x on purpose: a 1.0.0-anything version would claim a
+# decision that belongs to 6.3.
+next-version: 0.1.0
+
+branches:
+  main:
+    # GitHubFlow's default for main is an empty label — stable versions. Milestones 4 and 5
+    # must produce prereleases, so main is labelled until 6.3 tags.
+    label: preview
+    # ContinuousDelivery gives one prerelease number per commit: 0.1.0-preview.N, N monotonic.
+    # NOT ContinuousDeployment, which in GitVersion 6 means "every commit deploys" and
+    # therefore STRIPS the label — measured on this repository: main derived a stable 0.1.0,
+    # exactly the shape Milestone 4 must not produce.
+    mode: ContinuousDelivery

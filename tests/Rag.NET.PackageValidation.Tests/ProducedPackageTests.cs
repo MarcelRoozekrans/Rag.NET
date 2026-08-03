@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO.Compression;
 using System.Xml.Linq;
 using Xunit;
@@ -183,6 +184,35 @@ public sealed class ProducedPackageTests
     }
 
     [Fact]
+    public void EveryPackageCarriesTheVersionGitVersionDerives()
+    {
+        // The version is derived by GitVersion (GitVersion.yml, the pinned local tool) and
+        // handed to pack as -p:Version — see ci.yml's derive steps. Every failure mode of that
+        // wiring is silent: no GitVersion.yml, no derive step, no -p:Version flag, an empty
+        // value — each packs the SDK default 1.0.0 and exits 0. So this test re-derives the
+        // version here, after the pack, and reads what the packages actually say. Asserting
+        // "not 1.0.0" instead was considered and rejected: the day a tag makes 1.0.0 the real
+        // derived version, that assertion fails the release itself.
+        var packages = DiscoverPackages();
+        var derived = DeriveVersionFromGitHistory();
+
+        foreach (var package in packages)
+        {
+            var version = ReadNuspecElement(package, "version");
+
+            Assert.True(
+                string.Equals(version, derived, StringComparison.Ordinal),
+                $"{Path.GetFileName(package)} carries version '{version}' but GitVersion " +
+                $"derives '{derived}' for this commit. Either the pack ran without " +
+                "-p:Version (the SDK default 1.0.0 is silent), or the packages were packed on " +
+                "a different commit than this test is checking. Repack with: dotnet pack " +
+                "Rag.NET.slnx -c Release -o artifacts/packages -p:Version=\"$(dotnet " +
+                "dotnet-gitversion /output json /showvariable SemVer)\" (after `dotnet tool " +
+                "restore`).");
+        }
+    }
+
+    [Fact]
     public void NoPackageIsEmpty()
     {
         // A .nupkg with neither lib/ nor tools/ is metadata wrapped around nothing — the shape a
@@ -211,8 +241,9 @@ public sealed class ProducedPackageTests
         Assert.SkipWhen(
             !Directory.Exists(directory),
             $"'{directory}' does not exist: nothing has packed. Produce it with " +
-            "`dotnet pack Rag.NET.slnx -c Release -o artifacts/packages` — ci.yml's " +
-            "pack-validate job does exactly that before running this project, and " +
+            "`dotnet tool restore && dotnet pack Rag.NET.slnx -c Release -o artifacts/packages " +
+            "-p:Version=\"$(dotnet dotnet-gitversion /output json /showvariable SemVer)\"` — " +
+            "ci.yml's pack-validate job does exactly that before running this project, and " +
             "WorkflowWiringTests pins that wiring so this skip cannot rot silently.");
 
         var packages = new List<string>();
@@ -226,6 +257,50 @@ public sealed class ProducedPackageTests
 
         packages.Sort(StringComparer.Ordinal);
         return packages;
+    }
+
+    /// <summary>
+    /// Runs the pinned GitVersion tool against the repository and returns the SemVer it
+    /// derives — the same command ci.yml's derive steps run, so the comparison in
+    /// <see cref="EveryPackageCarriesTheVersionGitVersionDerives"/> is against the wiring's
+    /// own source of truth rather than a copy of its rules.
+    /// </summary>
+    /// <returns>The derived semantic version, for example <c>0.1.0-preview.1496</c>.</returns>
+    private static string DeriveVersionFromGitHistory()
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            WorkingDirectory = FindRepositoryRoot(),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        startInfo.ArgumentList.Add("dotnet-gitversion");
+        startInfo.ArgumentList.Add("/output");
+        startInfo.ArgumentList.Add("json");
+        startInfo.ArgumentList.Add("/showvariable");
+        startInfo.ArgumentList.Add("SemVer");
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Process.Start returned null for dotnet.");
+
+        var output = process.StandardOutput.ReadToEnd().Trim();
+        var error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        Assert.True(
+            process.ExitCode == 0,
+            $"`dotnet dotnet-gitversion` exited {process.ExitCode}: {error}. The tool is " +
+            "pinned in .config/dotnet-tools.json; run `dotnet tool restore` first. Without a " +
+            "derivable version there is nothing to hold the packed version against.");
+
+        Assert.False(
+            string.IsNullOrEmpty(output),
+            "GitVersion exited 0 but printed no version — nothing to hold the packed version " +
+            "against.");
+
+        return output;
     }
 
     private static string? ReadNuspecElement(string packagePath, string localName)

@@ -1,0 +1,49 @@
+# Conventional commits, enforced mechanically. release-please derives release versions from
+# these messages, so a malformed type is not a style nit — it is a commit the release
+# tooling cannot read. Base rules are @commitlint/config-conventional; the three deviations
+# below are each measured against this repository's real history, not guessed.
+#
+# Measured 2026-08-03 over all 1,506 commits: stock config-conventional fails 184 of them.
+# With the deviations below, 70 still fail — 44 headers over 100 characters (none after
+# 2026-07-26), 24 typeless subjects from the pre-convention era (none after 2026-07-29),
+# and 2 one-off types (`plan:`, `design:`). So CI lints only the commits a pull request
+# adds — see the commitlint job in ci.yml — never the existing history. The start point is
+# this file's own commit, chosen deliberately rather than turning a gating check red on
+# arrival.
+extends:
+  - "@commitlint/config-conventional"
+
+rules:
+  # The default set plus `bench`: 19 historical `bench:`/`bench(scope):` commits, and
+  # benchmark work is a real recurring category here — a legitimate type, not a typo.
+  type-enum:
+    - 2
+    - always
+    - - bench
+      - build
+      - chore
+      - ci
+      - docs
+      - feat
+      - fix
+      - perf
+      - refactor
+      - revert
+      - style
+      - test
+  # config-conventional forbids sentence-case/start-case/pascal-case subjects, which rejects
+  # any subject that starts with a proper noun — and starting with one is normal house style:
+  # 83 historical commits fail this rule, including current-era subjects like
+  # "test(quality): LangChain, LlamaIndex and Haystack at their defaults". Off, because the
+  # rule cannot tell "SciFact" from shouting.
+  subject-case:
+    - 0
+    - never
+    - []
+  # config-conventional caps body lines at 100 characters. Bodies here quote error messages,
+  # command lines and URLs verbatim, and 19 historical commits carry a longer line; wrapping
+  # quoted material to satisfy a linter makes the body worse. The header cap stays at 100.
+  body-max-line-length:
+    - 0
+    - always
+    - 100

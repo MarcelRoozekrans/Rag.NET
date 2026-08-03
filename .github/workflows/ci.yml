@@ -203,6 +203,46 @@ jobs:
             exit 1
           fi
 
+  # Conventional commits, enforced mechanically — release-please derives release versions from
+  # commit messages (see release-please.yml), so a malformed type is a commit the release
+  # tooling cannot read, not a style nit. The rules live in .commitlintrc.yml, each deviation
+  # from stock config-conventional measured against this repository's history.
+  #
+  # Lints ONLY the commits a pull request adds, never the existing history: measured
+  # 2026-08-03, 70 of the 1,506 existing commits fail even the tuned rules (none newer than
+  # 2026-07-29 — the pre-convention era plus long headers), and linting them would turn a
+  # gating check permanently red for commits nobody can amend. The start point is the commit
+  # that introduced .commitlintrc.yml, chosen deliberately. Pull-request events only, because
+  # that is where commits are introduced in this repository's flow — a push to main is a merge
+  # of commits this job already linted, plus a merge commit commitlint ignores by default.
+  # WorkflowWiringTests pins this wiring; change it only together with the tests.
+  #
+  # BRANCH PROTECTION: like pack-validate, this check is not in the required set — no branch
+  # protection rules exist yet. It runs on every pull request and fails loudly, but nothing
+  # mechanically blocks a merge on it until it is added to the required checks.
+  commitlint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The full history, so the PR's base and head commits are both present to lint between.
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      # Versions pinned to what was measured against the full history on 2026-08-03; the two
+      # packages version independently (cli 21.2.1, config 21.2.0), which is why the pins differ.
+      - name: Lint the commits this pull request adds
+        run: >
+          npx --yes --package @commitlint/cli@21.2.1 --package @commitlint/config-conventional@21.2.0
+          commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+
   # Packs every package the solution ships and validates what was actually produced. Its own job,
   # on one OS, deliberately: a .nupkg is platform-independent, so packing inside the build-test
   # matrix would produce the same 70 packages twice and validate them twice, doubling minutes for
@@ -228,6 +268,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # GitVersion derives the version from history and refuses a shallow clone — the
+          # default fetch-depth of 1 fails the derive step below, loudly.
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
@@ -241,11 +285,35 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
           restore-keys: ${{ runner.os }}-nuget-
 
+      # The version every package packs with, derived from history by GitVersion
+      # (GitVersion.yml; the tool is pinned in .config/dotnet-tools.json, output parsed with
+      # jq — the house convention). Before this step every package packed as 1.0.0, the SDK
+      # default nobody chose. Until Phase 6.3 cuts the first tag via release-please, every
+      # derived version is a prerelease — 0.1.0-preview.N on main — because Milestones 4 and 5
+      # publish nothing and must not produce a version that claims otherwise.
+      #
+      # The regex guard is load-bearing: `-p:Version=` with an empty value silently packs
+      # 1.0.0 again, which is exactly the inert-path shape this phase exists to kill —
+      # EveryPackageCarriesTheVersionGitVersionDerives in Rag.NET.PackageValidation.Tests
+      # re-derives the version after packing and fails the job on any mismatch, and
+      # WorkflowWiringTests pins this command text; change either only together with the tests.
+      - name: Derive the package version
+        shell: bash
+        run: |
+          dotnet tool restore
+          version=$(dotnet dotnet-gitversion /output json | jq -r '.SemVer')
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::GitVersion produced '$version', which is not a version. Packing would fall back to the SDK default 1.0.0 without a word — failing here instead."
+            exit 1
+          fi
+          echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
+          echo "packing as $version"
+
       # Builds as it packs — no --no-build, because nothing has built in this job yet. The output
       # directory is the path ProducedPackageTests reads, and WorkflowWiringTests pins this exact
       # command text; change either only together with the tests.
       - name: Pack
-        run: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages
+        run: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
 
       # Fails the job on any defective package — count, licence, README-in-package, description,
       # repository commit, symbols, emptiness. Validation must fail the build, not warn: a warning
@@ -361,16 +429,36 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # GitVersion derives the version from history and refuses a shallow clone.
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
+      # Character-identical to pack-validate's derive step, for the same reason as the pack
+      # step below: the version 6.3 publishes must be derived by a command that has run green
+      # on every push since Phase 4.1. On the release commit — tagged vX.Y.Z by release-please,
+      # see release-please.yml — GitVersion returns the tag's stable version; on every dispatch
+      # before that it returns a prerelease, which nuget.org would list as such.
+      - name: Derive the package version
+        shell: bash
+        run: |
+          dotnet tool restore
+          version=$(dotnet dotnet-gitversion /output json | jq -r '.SemVer')
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::GitVersion produced '$version', which is not a version. Packing would fall back to the SDK default 1.0.0 without a word — failing here instead."
+            exit 1
+          fi
+          echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
+          echo "packing as $version"
+
       # Character-identical to pack-validate's pack step, so the packages pushed are packed by a
       # command that has run green on every push since Phase 4.1.
       - name: Pack
-        run: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages
+        run: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages -p:Version="$PACKAGE_VERSION"
 
       # The .snupkg files are not pushed separately: nuget.org receives them automatically
       # alongside each .nupkg when they sit in the same directory, which pack guarantees and
