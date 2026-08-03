@@ -243,3 +243,75 @@ jobs:
       # nobody reads is the shape this project keeps finding.
       - name: Validate the produced packages
         run: dotnet test tests/Rag.NET.PackageValidation.Tests -c Release --verbosity normal
+
+      # Rehearses the push against a local directory feed, so the command Phase 6.3 runs for real
+      # has been executed on every push since 4.1 — design §1's rule: everything except the
+      # credential and the endpoint runs every time. Every claim below was measured on 2026-08-03
+      # and is pinned by an assertion, because a push that silently no-ops looks identical to one
+      # that worked:
+      #
+      #   - The quoted glob is expanded by NuGet itself, with the platform-native separator —
+      #     forward slashes match on the Linux runner and nothing else runs this job. A directory
+      #     feed delivers flat: one file per package, same name, no hierarchy.
+      #   - --skip-duplicate is the deliberate duplicate policy for 6.3: nuget.org never forgets
+      #     a published version, so a push that dies partway (40 of 70 delivered) must be
+      #     re-runnable, and without the flag the rerun fails on the first already-published
+      #     package. The flag makes the push idempotent, which is the only retry-safe shape
+      #     against an append-only feed. A directory feed cannot exercise the skip itself — the
+      #     CLI warns "The option to skip duplicates is not currently supported for this type of
+      #     push" (expected in this log, once per package) and overwrites instead of 409ing —
+      #     so what is proven here is that the exact 6.3 command line parses and delivers; the
+      #     409-skip is part of the recorded residual in docs/reference/ci.md.
+      #   - A .snupkg push to a directory feed is a complete silent no-op: exit 0, no output,
+      #     nothing delivered — measured with an exact filename and with the glob. It is
+      #     attempted anyway and asserted to deliver nothing, so the day NuGet starts delivering
+      #     symbol packages to directory feeds this step fails and the rehearsal widens to
+      #     assert their arrival. Symbol delivery to nuget.org rides on the .nupkg push
+      #     automatically (--no-symbols exists to turn that off) and cannot be rehearsed against
+      #     a directory; it is exercised for real exactly once, at 6.3.
+      #
+      # WorkflowWiringTests pins both push commands; change them only together with the tests.
+      - name: Push every package to a local feed
+        shell: bash
+        run: |
+          shopt -s nullglob
+          feed="$RUNNER_TEMP/local-feed"
+          mkdir -p "$feed"
+          packages=(artifacts/packages/*.nupkg)
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "::error::artifacts/packages contains no .nupkg, so the push would rehearse nothing while exiting 0. The pack output directory and this step's glob have drifted apart."
+            exit 1
+          fi
+          dotnet nuget push "artifacts/packages/*.nupkg" --source "$feed" --skip-duplicate
+          dotnet nuget push "artifacts/packages/*.snupkg" --source "$feed" --skip-duplicate
+          for package in "${packages[@]}"; do
+            if [ ! -f "$feed/$(basename "$package")" ]; then
+              echo "::error::$(basename "$package") was pushed and did not arrive in the local feed — the push no-opped silently, which is exactly the failure this step exists to surface."
+              exit 1
+            fi
+          done
+          snupkg_arrived=$(find "$feed" -name '*.snupkg' -type f | wc -l)
+          if [ "$snupkg_arrived" -ne 0 ]; then
+            echo "::error::$snupkg_arrived .snupkg files arrived in the local feed. When this was written a directory feed silently dropped symbol packages; NuGet now delivers them, so widen this rehearsal to assert their arrival instead of their absence."
+            exit 1
+          fi
+          echo "${#packages[@]} packages pushed and verified present in the local feed"
+
+      # The same push a second time — the rerun shape 6.3 hits if a push dies partway, because
+      # nuget.org never forgets a published version. Against a directory feed a duplicate is a
+      # silent overwrite, not a 409, so this proves something deliberately narrow: re-running the
+      # exact push command exits 0 and leaves the feed with the same packages rather than failing
+      # or accumulating. The skip that --skip-duplicate buys against a real 409 is in the
+      # recorded residual — a directory feed cannot produce a 409 to skip.
+      - name: Push the same packages a second time
+        shell: bash
+        run: |
+          feed="$RUNNER_TEMP/local-feed"
+          before=$(find "$feed" -type f | wc -l)
+          dotnet nuget push "artifacts/packages/*.nupkg" --source "$feed" --skip-duplicate
+          after=$(find "$feed" -type f | wc -l)
+          if [ "$before" -ne "$after" ]; then
+            echo "::error::The duplicate push changed the feed from $before to $after files. A repeated push must be idempotent — if it is not, a 6.3 retry after a partial failure does something other than complete the release."
+            exit 1
+          fi
+          echo "duplicate push exited 0 and left the feed unchanged at $after files"

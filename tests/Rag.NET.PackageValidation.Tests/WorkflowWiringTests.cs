@@ -42,6 +42,36 @@ public sealed class WorkflowWiringTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TheWorkflowRehearsesThePushAgainstALocalFeed()
+    {
+        // The push to nuget.org cannot run before Phase 6.3, which makes it exactly the inert
+        // path this repository keeps finding defects in — so ci.yml pushes every produced
+        // package to a local directory feed on every run, twice, and asserts arrival. This test
+        // is what stops that rehearsal from being deleted while the real push stays gated: lose
+        // the rehearsal and the first execution of `dotnet nuget push` is the release itself.
+        var commands = ReadWorkflowCommands(Path.Combine(
+            ProducedPackageTests.FindRepositoryRoot(), ".github", "workflows", "ci.yml"));
+
+        // The exact command 6.3 runs, minus credential and endpoint: the quoted glob NuGet
+        // expands itself, and --skip-duplicate, the deliberate duplicate policy — nuget.org
+        // never forgets a version, so a partial push must be re-runnable without failing on
+        // what already arrived.
+        Assert.Contains(
+            "dotnet nuget push \"artifacts/packages/*.nupkg\" --source \"$feed\" --skip-duplicate",
+            commands,
+            StringComparison.Ordinal);
+
+        // The .snupkg push is a measured silent no-op against a directory feed (exit 0, nothing
+        // delivered, 2026-08-03); the workflow attempts it and asserts non-arrival so the day
+        // NuGet changes that, the run fails and the rehearsal widens. This pin keeps the attempt
+        // itself from being removed as "does nothing anyway" — doing nothing loudly is its job.
+        Assert.Contains(
+            "dotnet nuget push \"artifacts/packages/*.snupkg\" --source \"$feed\" --skip-duplicate",
+            commands,
+            StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Reads a workflow file as the commands it will run: comment lines removed, shell line
     /// continuations joined, runs of whitespace collapsed to one space. Duplicated from
