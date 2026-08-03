@@ -44,6 +44,57 @@ public sealed class WorkflowWiringTests
             "dotnet test tests/Rag.NET.PackageValidation.Tests -c Release",
             commands,
             StringComparison.Ordinal);
+
+        // Order is part of the wiring, and Contains is order-blind — moving the validate step
+        // above Pack left every assertion here green (proven by mutation, 2026-08-03) while in
+        // CI the validation would run before artifacts/packages exists: every package check
+        // skips, and the job passes having validated nothing.
+        Assert.True(
+            commands.IndexOf(PinnedPackCommand, StringComparison.Ordinal)
+                < commands.IndexOf(
+                    "dotnet test tests/Rag.NET.PackageValidation.Tests",
+                    StringComparison.Ordinal),
+            "ci.yml runs the package validation before the pack command. The validation reads " +
+            "artifacts/packages, which only the pack step creates — in this order every " +
+            "package check skips on a missing directory and the job is green having " +
+            "validated nothing.");
+    }
+
+    [Fact]
+    public void ThePackValidateJobRunsUnconditionally()
+    {
+        // publish-nuget's `if:` is pinned verbatim below because that job must be gated;
+        // pack-validate must have no `if:` at all, and only this test says so. An `if: false`
+        // under the job key left every other pin in this class green (proven by mutation,
+        // 2026-08-03) — the commands are still in the file — while CI never packs, never
+        // validates, never rehearses the push, and ProducedPackageTests skips everywhere
+        // because artifacts/packages is never created: the exact permanent green this class
+        // exists to prevent.
+        var commands = ReadWorkflowCommands(Path.Combine(
+            ProducedPackageTests.FindRepositoryRoot(), ".github", "workflows", "ci.yml"));
+
+        var jobStart = commands.IndexOf(
+            "pack-validate: runs-on: ubuntu-latest",
+            StringComparison.Ordinal);
+
+        Assert.True(
+            jobStart >= 0,
+            "'pack-validate:' is not immediately followed by 'runs-on: ubuntu-latest' in " +
+            "ci.yml. Either the job is gone, or something — an `if:` gate, say — now sits " +
+            "between the job key and runs-on. A conditional pack-validate is a skip gate " +
+            "nothing pins: every command this class asserts on stays in the file while none " +
+            "of it ever runs.");
+
+        var jobEnd = commands.IndexOf("publish-nuget:", jobStart, StringComparison.Ordinal);
+
+        Assert.True(
+            jobEnd > jobStart,
+            "The publish-nuget job no longer follows pack-validate in ci.yml, so this test " +
+            "cannot delimit the pack-validate job to prove it carries no condition.");
+
+        // Bash conditionals in the job's scripts are `if [`/`if !`, never `if:` — so this
+        // catches a YAML condition anywhere in the job, at the job level or on a step.
+        Assert.DoesNotContain("if:", commands[jobStart..jobEnd], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -157,11 +208,15 @@ public sealed class WorkflowWiringTests
         // The exact command 6.3 runs, minus credential and endpoint: the quoted glob NuGet
         // expands itself, and --skip-duplicate, the deliberate duplicate policy — nuget.org
         // never forgets a version, so a partial push must be re-runnable without failing on
-        // what already arrived.
-        Assert.Contains(
-            "dotnet nuget push \"artifacts/packages/*.nupkg\" --source \"$feed\" --skip-duplicate",
-            commands,
-            StringComparison.Ordinal);
+        // what already arrived. Twice, not once: the arrival rehearsal and the duplicate-push
+        // rehearsal run the identical command, and Contains was satisfied by either alone —
+        // emptying the first push left this pin green on the second (proven by mutation,
+        // 2026-08-03).
+        Assert.Equal(
+            2,
+            CountOf(
+                commands,
+                "dotnet nuget push \"artifacts/packages/*.nupkg\" --source \"$feed\" --skip-duplicate"));
 
         // The .snupkg push is a measured silent no-op against a directory feed (exit 0, nothing
         // delivered, 2026-08-03); the workflow attempts it and asserts non-arrival so the day
@@ -169,6 +224,23 @@ public sealed class WorkflowWiringTests
         // itself from being removed as "does nothing anyway" — doing nothing loudly is its job.
         Assert.Contains(
             "dotnet nuget push \"artifacts/packages/*.snupkg\" --source \"$feed\" --skip-duplicate",
+            commands,
+            StringComparison.Ordinal);
+
+        // The rehearsal's teeth, pinned as the check commands rather than their error prose:
+        // a push that no-ops silently exits 0, so only reading the feed back proves delivery.
+        // The per-file arrival test, the .snupkg count, and the count's comparison — the error
+        // messages stay unpinned deliberately, because the checks are what run.
+        Assert.Contains(
+            "if [ ! -f \"$feed/$(basename \"$package\")\" ]; then",
+            commands,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "snupkg_arrived=$(find \"$feed\" -name '*.snupkg' -type f | wc -l)",
+            commands,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if [ \"$snupkg_arrived\" -ne 0 ]; then",
             commands,
             StringComparison.Ordinal);
     }
