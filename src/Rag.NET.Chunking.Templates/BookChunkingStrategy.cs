@@ -7,6 +7,16 @@ using System.Text.RegularExpressions;
 
 namespace Rag.NET.Chunking.Templates;
 
+/// <summary>
+/// Book-shaped chunking: front-matter filtering (table of contents, index, foreword) over
+/// <see cref="HierarchicalMergerChunkingStrategy"/>, with chapter metadata on every chunk.
+/// </summary>
+/// <remarks>
+/// Delegates to <see cref="HierarchicalMergerChunkingStrategy"/>, which deliberately ignores
+/// <see cref="ChunkingOptions"/> — a chunk is one heading subtree, unbounded above, and
+/// <see cref="ChunkingOptions.MaxChunkSize"/>/<see cref="ChunkingOptions.Overlap"/> have no
+/// effect here. See that strategy's remarks for the reasoning and for how to bound chunk size.
+/// </remarks>
 public sealed class BookChunkingStrategy : IDocumentChunkingStrategy, IChunkingStrategy
 {
     private static readonly Regex PageNumberLine =

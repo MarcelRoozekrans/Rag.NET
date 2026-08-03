@@ -38,11 +38,11 @@ The default strategy when nothing is configured is `RecursiveChunkingStrategy` w
 
 | | `FixedSizeChunkingStrategy` | `RecursiveChunkingStrategy` | `TokenAwareChunkingStrategy` | `SemanticChunkingStrategy` | `HierarchicalMergerChunkingStrategy` | `CodeChunkingStrategy` | `PropositionChunkingStrategy` | `LateChunkingStrategy` |
 |---|---|---|---|---|---|---|---|---|
-| Unit | Characters | Characters | Tokens | Characters (min/max) | Characters (max) | Characters | Propositions (LLM) | Tokens |
+| Unit | Characters | Characters | Tokens | Characters (min/max) | Heading subtrees (unbounded) | Characters | Propositions (LLM) | Tokens |
 | Split logic | Hard cut at word boundary | Hierarchical separators | Tiktoken encode → slice → decode | Embedding cosine similarity breakpoints | Heading subtree merge | Language-specific (class/func/method) | LLM decomposes passages into atomic claims | Embed full text, then window token vectors |
 | Overlap | Trailing characters prepended | Trailing characters prepended | Token-level sliding window | None | None | Optional | None (passages partition) | Token-level sliding window |
 | Heading awareness | No | No | No | No (sentence-level) | Yes | No | No | No |
-| Respects token limits | No | No | Yes | Approximate (min/max chars) | Approximate (max chars) | No | Yes (passage budget) | Yes |
+| Respects token limits | No | No | Yes | Approximate (min/max chars) | **No — `MaxChunkSize` is ignored** | No | Yes (passage budget) | Yes |
 | Chunking overhead (50 KB) | ~14 µs | ~39 µs | ~853 µs | Embedding-latency-bound | not measured | not measured | LLM-latency-bound (1 call/passage) | Token-embedding-latency-bound |
 | Best for | Homogeneous text, simple pipelines | General prose, markdown, mixed content | Code, URLs, dense technical text | Coherent meaning boundaries, QA systems | Structured documents with headings | Code files (Python, JS/TS, Go, Rust, C#, …) | Precise factoid retrieval | Context-aware chunk embeddings |
 
@@ -285,6 +285,17 @@ services.AddRagNet(rag => rag.UseHierarchicalMerging());
 ```
 
 See `HierarchicalMergerOptions` for depth and regex pattern configuration.
+
+**`ChunkingOptions` is deliberately ignored — chunks are unbounded above.** A chunk here is one
+heading subtree, a semantic unit whose size the document decides, so setting
+`ChunkingOptions.MaxChunkSize` or `Overlap` alongside this strategy changes nothing; truncating a
+subtree at a character count would defeat the strategy's purpose, and overlap has no meaning
+between disjoint subtrees. The same holds for the domain templates that delegate to it —
+`BookChunkingStrategy`, `LegalChunkingStrategy` and `AcademicPaperChunkingStrategy`
+(`Rag.NET.Chunking.Templates`). A document whose top-level section runs long produces a chunk
+exactly that long. To bound chunk size on top of the heading structure, add
+`UseSemanticRefinement()` (below), which sub-splits oversized chunks after this strategy has
+shaped them.
 
 ## Chunk refinement (`IChunkRefinementStrategy`)
 
