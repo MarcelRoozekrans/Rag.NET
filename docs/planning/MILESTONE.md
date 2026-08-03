@@ -498,6 +498,12 @@ not by re-reading the checkboxes:
    page's "Not measured, and why"; the run is re-routed to the next ablation-table re-measure
    with a Milestone 4 backstop; the FiQA-qrels check was **not** performed at the close (no warm
    BEIR cache was reachable from the closing session) and stays first on that entry.
+   [**Re-routed again, 2026-08-03, hours after this close:** the Milestone-4-as-deadline
+   backstop is replaced by a real destination — **Milestone 5 "Evaluation Depth", Phase 5.3**
+   (`[status: pending]`; Milestone 4 stays active), where TREC-COVID and EnronQA land together
+   with NFCorpus under the full per-dataset checklist this close said neither had. The ROADMAP
+   debt entry carries the re-point; the FiQA-qrels check still comes first, now written into
+   5.3's own entry.]
 
 **What this milestone set out to do, and what it did.** It was scoped as eight phases of
 evaluation tooling and quality hardening — RAGAS metrics, dataset builder, A/B testing offline
