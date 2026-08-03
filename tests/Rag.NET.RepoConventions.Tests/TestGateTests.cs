@@ -65,28 +65,18 @@ public sealed partial class TestGateTests
     private static readonly Dictionary<string, string> KnownUnsatisfiableVariables =
         new(StringComparer.Ordinal)
         {
-            // AzureDocumentIntelligenceLiveTests. nightly.yml maps both variables from repository
-            // secrets that have never been configured — every nightly presence report to date
-            // prints them unset — and no local procedure can conjure them, because satisfying
-            // them takes a live Azure Document Intelligence resource billed per page. The live
-            // test has therefore never run anywhere; its offline coverage is WireMock cassettes,
-            // and nothing has ever confirmed those describe the real service. Found by the
-            // Milestone 3 audit, recorded by Phase 4.0; resolution belongs to Milestone 4's
-            // recorded-responses/release-readiness work (replan design §3 and §5's debt row
-            // "Two never-run live suites").
-            ["RAGNET_DOCINTEL_ENDPOINT"] =
-                "nightly.yml only maps it from a repository secret that has never been " +
-                "configured (unset in every nightly presence report to date), so " +
-                "AzureDocumentIntelligenceLiveTests has never run anywhere.",
-            ["RAGNET_DOCINTEL_KEY"] =
-                "the other half of the Document Intelligence credential pair; same state and " +
-                "same owner as RAGNET_DOCINTEL_ENDPOINT.",
-
-            // RAGNET_TESSDATA left this ledger on 2026-08-03 (Phase 4.1): docs/reference/ci.md
-            // now carries a fenced procedure that builds with -p:EnableOcr=true, provisions
-            // tessdata and sets the variable, and that procedure was executed green — the
-            // real-Tesseract test's first run anywhere. The satisfiability guard covers the
-            // gate again.
+            // RAGNET_DOCINTEL_ENDPOINT and RAGNET_DOCINTEL_KEY left this ledger on 2026-08-03
+            // (Phase 4.1): docs/reference/ci.md now carries a fenced procedure that provisions
+            // an Azure Document Intelligence resource (the F0 free tier makes it costless) and
+            // sets both variables for the live suite, so the gate is satisfiable by any
+            // maintainer. The page also still says plainly that the suite has never run and
+            // that its recorded-responses replacement is Phase 6.1's work — satisfiable and
+            // exercised are different claims, and only the first is made.
+            //
+            // RAGNET_TESSDATA left this ledger the same day: docs/reference/ci.md carries a
+            // fenced procedure that builds with -p:EnableOcr=true, provisions tessdata and
+            // sets the variable, and that procedure was executed green — the real-Tesseract
+            // test's first run anywhere. The satisfiability guard covers all three gates again.
         };
 
     /// <summary>

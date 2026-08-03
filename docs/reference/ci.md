@@ -83,7 +83,7 @@ Five projects contain tests that need credentials or large local assets:
 
 | Project | Reads | Where the value comes from |
 |---|---|---|
-| `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests` | `RAGNET_DOCINTEL_ENDPOINT`, `RAGNET_DOCINTEL_KEY` | repository secrets |
+| `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests` | `RAGNET_DOCINTEL_ENDPOINT`, `RAGNET_DOCINTEL_KEY` | repository secrets, never yet configured; provisionable by the fenced procedure below |
 | `Rag.NET.Embeddings.Onnx.Tests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Chunking.IntegrationTests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Benchmarks.Quality.IntegrationTests` | those two, plus `RAGNET_BEIR_CACHE`, `RAGNET_BEIR_LONG_RUNS` and `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` | downloaded, plus a runner temp path; the last three are deliberately **never supplied by the job** — see below |
@@ -124,6 +124,35 @@ RAGNET_TESSDATA="$PWD/tessdata" dotnet test tests/Rag.NET.Parsers.Pdf.Tests --no
 The nightly still supplies the secret; it is harmless there and starts mattering only if someone
 adds the OCR build flag and Tesseract's native binaries to that job — which the packaging
 decision above argues against rather than toward.
+
+**The Document Intelligence live suite is satisfiable by the procedure below — and has still
+never run.** Both facts matter, so both are stated. `RAGNET_DOCINTEL_ENDPOINT` and
+`RAGNET_DOCINTEL_KEY` are mapped from repository secrets that have never been configured, so
+`AzureDocumentIntelligenceLiveTests` has skipped on every run to date; its offline coverage is
+hand-written WireMock cassettes that nothing has confirmed against the real service, and the
+recorded-responses work that fixes *that* is Phase 6.1. What is no longer true is that the gate is
+satisfiable nowhere: any maintainer with an Azure subscription can run the suite — the **F0 free
+tier (500 pages/month) exists**, so satisfying the gate does not even require spend, though a paid
+tier bills per page and the suite submits real documents. The procedure, not yet executed by
+anyone:
+
+```bash
+# Once: an Azure Document Intelligence resource (the resource kind is still FormRecognizer).
+az cognitiveservices account create --name <name> --resource-group <rg> \
+  --kind FormRecognizer --sku F0 --location westeurope --yes
+endpoint=$(az cognitiveservices account show --name <name> --resource-group <rg> \
+  --query properties.endpoint -o tsv)
+key=$(az cognitiveservices account keys list --name <name> --resource-group <rg> \
+  --query key1 -o tsv)
+
+# The live suite: skips without the variables, runs and submits real pages with them.
+RAGNET_DOCINTEL_ENDPOINT="$endpoint" RAGNET_DOCINTEL_KEY="$key" \
+  dotnet test tests/Rag.NET.Parsers.Pdf.AzureDocumentIntelligence.Tests --no-build -c Release
+
+# Nightly coverage rides on the same two values as repository secrets:
+gh secret set RAGNET_DOCINTEL_ENDPOINT --body "$endpoint"
+gh secret set RAGNET_DOCINTEL_KEY --body "$key"
+```
 
 **This is an overlay, not a fourth tier.** All five are fast-tier projects: they run in `ci.yml` on
 every push (skipping the gated tests) *and* in `nightly.yml` with the values supplied. A project is
