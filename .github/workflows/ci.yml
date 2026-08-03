@@ -11,6 +11,15 @@ on:
   # not be started at all, by any means, until this trigger existed. It is also what you want for a
   # re-run after a flake or a runner outage, neither of which should require an empty commit.
   workflow_dispatch:
+    inputs:
+      # Half of the publish-nuget gate; the other half is the NUGET_API_KEY secret. Underscores,
+      # not hyphens, so the job's `if:` dereferences it without leaning on expression-syntax
+      # subtleties nothing exercises before release day. Defaulting false keeps every ordinary
+      # dispatch — the re-run-after-a-flake case above — exactly what it was.
+      publish_to_nuget:
+        description: "Push the packed packages to nuget.org — Phase 6.3's release procedure; see docs/reference/ci.md"
+        type: boolean
+        default: false
 
 # Deliberate divergence from the house ci.yml (MarcelRoozekrans/AdoNet.Async), earned by scale:
 # that repository is a library with 40 tests, this one has 64 test projects and a Docker tier.
@@ -315,3 +324,70 @@ jobs:
             exit 1
           fi
           echo "duplicate push exited 0 and left the feed unchanged at $after files"
+
+  # The one step the pipeline cannot exercise before Phase 6.3: the real push to nuget.org.
+  # Everything about it except the credential and the endpoint already runs on every push —
+  # the pack command is character-identical to pack-validate's, and the push command's shape
+  # (the quoted glob, --skip-duplicate) is rehearsed twice against a local feed in the same
+  # workflow. This job repacks rather than transferring pack-validate's output through an
+  # artifact, deliberately: upload/download wiring used only here would itself first run on
+  # release day, which is the inert-path shape this phase exists to kill. No NuGet cache step
+  # either, for the same reason — this job carries the fewest steps that can release.
+  #
+  # THE GATE, recorded to the standard TestGateTests holds every other gate in this repository
+  # to — named, condition stated, satisfiable by a documented procedure:
+  #   NAME: publish-nuget.
+  #   CONDITION: a manual workflow_dispatch on main with publish_to_nuget=true, plus the
+  #     NUGET_API_KEY repository secret — a missing key fails loudly below instead of 401ing.
+  #   SATISFIED BY: the fenced procedure in docs/reference/ci.md ("The gated nuget.org push"),
+  #     runnable by any maintainer; Phase 6.3 executes it.
+  # TestGateTests scans test gates — RAGNET_* variables, #if symbols, skip attributes — not
+  # workflow `if:` conditions, so this gate sits outside that guard. It is pinned instead by
+  # WorkflowWiringTests in the gating fast tier: the condition, the endpoint, the command text
+  # and the documented procedure all fail a push the moment they drift.
+  #
+  # RESIDUAL, recorded rather than papered over (docs/reference/ci.md states it in full): a
+  # local feed is not nuget.org. Authentication, API-key scoping, package-ID availability, the
+  # service's own validation, the real 409-skip and .snupkg symbol delivery are exercised for
+  # real exactly once, at 6.3.
+  publish-nuget:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_to_nuget && github.ref == 'refs/heads/main'
+    # Both gating jobs must be green on this exact commit before anything reaches nuget.org: the
+    # full test matrix, and the validation that packs and rehearses the push. A dispatch with the
+    # input set runs them all; this job refuses to start until they pass.
+    needs: [build-test, pack-validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # Character-identical to pack-validate's pack step, so the packages pushed are packed by a
+      # command that has run green on every push since Phase 4.1.
+      - name: Pack
+        run: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages
+
+      # The .snupkg files are not pushed separately: nuget.org receives them automatically
+      # alongside each .nupkg when they sit in the same directory, which pack guarantees and
+      # ProducedPackageTests asserts (--no-symbols is the flag that would turn that off, and it
+      # is deliberately absent). --skip-duplicate is the duplicate policy chosen and rehearsed in
+      # pack-validate: nuget.org never forgets a published version, so a push that dies partway
+      # must be re-runnable, and without the flag the retry fails on whatever already arrived.
+      - name: Push every package to nuget.org
+        shell: bash
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "::error::NUGET_API_KEY is not configured, so this push cannot authenticate. The gate's procedure in docs/reference/ci.md provisions it: gh secret set NUGET_API_KEY."
+            exit 1
+          fi
+          dotnet nuget push "artifacts/packages/*.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "$NUGET_API_KEY" \
+            --skip-duplicate

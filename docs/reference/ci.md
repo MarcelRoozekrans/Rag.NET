@@ -29,7 +29,8 @@ stores, the Service Bus ingestion tests, and the integration suites that use `Pg
 `QdrantFixture`. Both gate, because both are deterministic and `ubuntu-latest` has a Docker daemon.
 
 Docker suites are **Linux-only**. The Windows runners have no Linux Docker daemon, so Testcontainers
-cannot work there; that is why `ci.yml` is not a matrix.
+cannot work there; `ci.yml`'s `build-test` job is an OS matrix (`ubuntu-latest` and
+`windows-latest`) since Phase 4.0, and the Docker tier runs only on the Linux leg.
 
 **"Gates" in that table means the failure is real and fails the run** — no `continue-on-error`
 anywhere in `ci.yml`. It does not yet mean a merge is mechanically blocked: this repository has no
@@ -245,6 +246,77 @@ Those assertions name the selection pipelines verbatim, and they read the workfl
 lines stripped first. The earlier version asserted only that the string `RequiresDocker` appeared
 somewhere in `ci.yml` — where it appears four times in prose — so replacing the entire tier
 selection with a hardcoded list passed it. A guard that a comment can satisfy is not a guard.
+
+## Packing, the rehearsed push, and the one that is gated
+
+`ci.yml` has a second gating job besides the test matrix: `pack-validate`, on `ubuntu-latest`.
+Every run it packs the 70 shippable packages (`dotnet pack Rag.NET.slnx -c Release -o
+artifacts/packages` — 70 `.nupkg` plus 70 `.snupkg`), validates them with
+`tests/Rag.NET.PackageValidation.Tests` — the only guard there is, because `dotnet pack` enforces
+almost none of its own metadata — and then **pushes every package to a local directory feed,
+twice, asserting per file that each one arrived**.
+
+The rehearsal exists because the push to nuget.org cannot run before Phase 6.3, and this
+repository keeps finding defects in exactly such never-run paths: the rewritten `nightly.yml`
+failed on its first-ever execution, the OCR test is not skipped but not compiled, and three
+env-gated guards were green by skipping. So everything except the credential and the endpoint
+runs on every push — the command, its arguments, the glob that selects the packages, and what a
+rerun does.
+
+Three things the rehearsal measured (2026-08-03), each pinned by a workflow assertion:
+
+- a directory feed delivers flat, one file per package, and the glob push delivers all of them;
+- duplicates against a directory feed are **silently overwritten** — it cannot produce the 409
+  that `--skip-duplicate` exists to tolerate, and the CLI warns the flag is unsupported for this
+  push type — so the second push proves a rerun is harmless, not that the skip works;
+- a `.snupkg` push to a directory feed is a **complete silent no-op**: exit 0, no output,
+  nothing delivered. The workflow attempts it anyway and asserts non-arrival, so the day NuGet
+  changes that behaviour the run fails and the rehearsal widens to cover symbol packages.
+
+`--skip-duplicate` is the deliberate duplicate policy for the real push: nuget.org never forgets
+a published version, so a push that dies partway through 70 packages must be re-runnable, and
+without the flag the retry fails on the first package that already arrived. Idempotent is the
+only retry-safe shape against an append-only feed.
+
+### The gated nuget.org push
+
+The `publish-nuget` job in `ci.yml` is fully wired and runs nowhere before Phase 6.3. The gate,
+recorded to the standard `TestGateTests` holds every other gate in this repository to:
+
+| | |
+|---|---|
+| **Name** | `publish-nuget`, a job in `ci.yml` |
+| **Condition** | a manual `workflow_dispatch` on `main` with `publish_to_nuget=true`, plus the `NUGET_API_KEY` repository secret — the job fails loudly on a missing key rather than 401ing |
+| **Satisfied by** | the procedure below, runnable by any maintainer with admin on the repository; Phase 6.3 executes it |
+
+```bash
+# Once: an API key minted on nuget.org, scoped to pushing new packages and package versions.
+gh secret set NUGET_API_KEY
+# The release: dispatch CI on main with the publish input. The full test matrix and
+# pack-validate run first on that same commit, and publish-nuget refuses to start until
+# both are green.
+gh workflow run ci.yml --ref main -f publish_to_nuget=true
+```
+
+**`TestGateTests` does not cover this gate, and that is stated rather than assumed away.** That
+guard scans *test* gates — `RAGNET_*` environment variables, `#if` symbols, skip attributes —
+and knows nothing of workflow `if:` conditions, so a workflow gate sits outside it. Extending
+its scanner to workflows was considered and declined: there is exactly one workflow gate, and a
+general workflow-gate scanner built for one instance is speculation of the kind this repository
+keeps deleting. What holds this gate instead is `WorkflowWiringTests` in the gating fast tier,
+which pins the job's condition, the endpoint, the push command text and this page's fenced
+procedure — the same properties `TestGateTests` demands: named, condition stated, satisfiable by
+a documented procedure, and guarded so it cannot be deleted or drift silently.
+
+### What the rehearsal cannot prove — the 6.3 residual
+
+Pushing to a local feed is not pushing to nuget.org. **Exercised for real exactly once, on
+release day:** authentication, API-key scoping, package-ID availability (none of the 70 IDs is
+reserved until then — an exposure the design accepts and records), the service's own validation,
+the real 409-and-skip behaviour of `--skip-duplicate`, and `.snupkg` symbol delivery — which at
+nuget.org rides automatically on each `.nupkg` push and cannot be rehearsed against a directory
+feed at all. This gap is the argument the rejected alternative — publish prereleases now — was
+making, and it does not vanish because that alternative was not chosen.
 
 ## Running the tiers locally
 
