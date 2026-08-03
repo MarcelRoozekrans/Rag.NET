@@ -252,12 +252,20 @@ future reader can tell the difference between "never existed" and "dealt with".
   BEIR cache was reachable from the closing session (`RAGNET_BEIR_CACHE` unset at every scope, no
   cache directory on disk), and downloading a corpus to settle one doc comment is the wrong trade
   inside a close that runs no measurements.
-  → **the next phase that re-measures the ablation table** (where the reranker-depth re-measure
+  → ~~**the next phase that re-measures the ablation table** (where the reranker-depth re-measure
   already sits, and a graded dataset belongs in a re-measured table rather than alone), **and
   failing that Milestone 4 as a deadline** — hanging, like that debt, off `retrieval-quality.md`
   shipping as v1.0 documentation: every "Not measured" entry either measured or still honestly
   labelled. The label exists today, so the deadline's floor is already met; the run is the
-  improvement, not the blocker.
+  improvement, not the blocker.~~
+  → **Milestone 5, Phase 5.3** (re-pointed 2026-08-03, hours after the backstop above was
+  written, when Milestone 5 was scheduled — replacing the milestone-as-deadline with a real
+  destination, which is the reason that milestone exists rather than a longer version of this
+  list). The deadline's floor was already met by the label, so riding it to v1.0 would have
+  shipped the graded path fixture-only forever; 5.3 is the run, alongside NFCorpus, and
+  Milestone 5's own DoD fails while `2^rel − 1` has scored no real dataset. **The FiQA-qrels
+  check recorded above is unchanged and stays first** — it is written into 5.3's entry, not just
+  here.
 - **`BuildMetadata` drops `baseMetadata.CreatedAt`, so provider-ingested documents score as brand
   new** (found in Phase 2.2; recorded until now only in
   `docs/plans/2026-07-26-connector-metadata-design.md:237-240`, and surfaced into this list by
@@ -1165,3 +1173,181 @@ found by a prediction stated in advance and reported honestly when it failed, wh
 ### Phase 4.6: Rag.NET CLI Tool [status: pending]
 **Goal:** `dotnet tool` for ingest/query/evaluate against a configured pipeline.
 **Backlog items:** Rag.NET CLI Tool
+
+## Milestone 5: Evaluation Depth [status: pending]
+**Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:
+what each library **costs** rather than what it scores, multi-hop retrieval, graded relevance and
+the datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` does not compute.
+Milestone 4 remains the active milestone and its phases are unchanged; nothing here starts before
+its work needs to yield.
+
+**Definition of Done** (written in the falsifiable style Phase 4.0 established for Milestone 4 —
+every criterion below can be false, and something checks it — not the older "all phases complete"
+shape, though that box is still here doing its share):
+- [ ] Phases 5.1–5.4 complete (5.5 deliberately schedules nothing and is outside this box by
+      design — see its entry)
+- [ ] **No cross-ecosystem latency figure is published without the confound statement beside
+      it**: the results page states the mechanism that made in-process .NET and subprocess Python
+      rows comparable, or publishes them per-ecosystem labelled non-comparable. A latency number
+      on a page without that statement fails this criterion; the check is reading the page — the
+      same check that held the `+BM25 hybrid` row to its label.
+- [ ] **`IrMetrics`' graded gain has scored a real dataset**: at least one dataset whose qrels
+      carry a grade above 1 has been through `Evaluate`, and the FiQA-qrels contradiction
+      (`IrMetrics.cs:31-32` against the TREC-COVID debt entry) is settled by reading the cached
+      `qrels/test.tsv`, with the losing sentence corrected. Fixture-only exercise of `2^rel − 1`
+      fails this criterion, exactly as it has since Phase 3.7.
+- [ ] **Every dataset this milestone lands carries the full Milestone 3 per-dataset checklist**
+      — descriptor, `BeirRunBudget` timing (the budget table throws on an untimed dataset, so
+      that half checks itself), a revision-pinned published reference where one exists, a licence
+      determination from upstream rather than a mirror, and every published figure pinned in
+      `BeirReproduction` at ±0.005 on the fast tier. A figure re-checked by nothing fails this
+      criterion — Milestone 3's close declined TREC-COVID and EnronQA precisely because none of
+      this existed for them, so landing them without it would repeat the decline's grounds as
+      defects.
+- [ ] All test projects passing; solution builds 0 warnings / 0 errors from a clean restore
+
+> **Where this milestone comes from (2026-08-03).** An external handover document ("RAG.net —
+> Evaluation & Benchmarking Handover") proposed an evaluation programme. **Most of it Milestone 3
+> had already delivered**, and the remainder was assessed against the repository on 2026-08-03;
+> this milestone captures only what is genuinely open, plus the corrections a future reader of
+> that document needs so nobody re-derives the assessment. Already delivered, and **not
+> re-scheduled here**: BEIR parity (SciFact 0.64593, FiQA 0.37086, ArguAna 0.50432 — all within
+> 0.003 of MTEB's published figures, pinned in `BeirReproduction` at ±0.005); the four-row
+> ablation table across three datasets; native IR metrics with no `pytrec_eval` dependency; the
+> qrels parser; metric validation against published figures; frozen dataset versions and recorded
+> configuration; a pinned LLM judge with prompt-versioned cached judgments; results as committed
+> markdown.
+
+> **Three corrections to that handover, recorded rather than silently dropped — each verified
+> against the tree on 2026-08-03, so the next person reading it beside this roadmap starts from
+> the assessment instead of re-deriving it.**
+>
+> **1. It asserts three components exist. None does, and none is planned anywhere:**
+> - **LanceDB** — no `src/*LanceDB*`, and no match for the string anywhere in the repository.
+>   The vector stores are Qdrant, Weaviate, PgVector, Chroma, Pinecone and AzureAISearch.
+> - **Ollama embeddings** — the only embedding package is `Rag.NET.Embeddings.Onnx`. Ollama
+>   appears as a Testcontainers fixture (`tests/Rag.NET.Testing/OllamaFixture.cs`, consumed by
+>   `Rag.NET.E2ETests`) and as an `IChatClient` example in the docs — never as an embedding
+>   generator.
+> - **OpenRouter routing** — the only `src/` match is
+>   `Rag.NET.Benchmarks.Quality/HypotheticalModelIdentity.cs`, added by Phase 3.15 as the HyDE
+>   cache identity for the hypotheticals generation tool; OpenRouter otherwise appears as the
+>   optional test chat-client backend in `Rag.NET.Testing`. A consumer of OpenRouter's endpoint
+>   in two test-adjacent places, not a routing feature.
+>
+> **Assessed and neither built nor planned — and deliberately not scheduled here**: nobody has
+> asked for them. They were asserted, not requested, and scheduling a component because a
+> document claimed it already exists would be backwards.
+>
+> **2. One of its validation criteria is measured false, and using it would fail a correct
+> implementation.** The handover states HyDE should help on FiQA and hurt on ArguAna. Phase 3.15
+> measured the opposite half-and-half: ArguAna **−0.0014** (correct — the negative control held),
+> but FiQA **−0.0054** — **no lift on the named positive control** — while **SciFact took the
+> large gain at +0.0541**, which nobody, the handover included, predicted. This matters beyond
+> bookkeeping: anyone validating a HyDE implementation against "expect + on FiQA" would conclude
+> a *correct* implementation is broken. The measured nine-cell table in
+> `docs/reference/retrieval-quality.md` is the acceptance criterion now, not the handover's
+> prediction.
+>
+> **3. Its "no Python dependencies anywhere" constraint holds for the library, not for the
+> harness — and it treats that constraint as load-bearing for the pitch, so the distinction must
+> be precise.** Phase 3.14 committed `benchmarks/library-comparison-python/` with a `uv.lock`
+> and LangChain/LlamaIndex/Haystack entrants — approved deliberately when the comparison scope
+> was chosen. **No shipped package has a Python dependency**, so the claim survives for
+> everything a user installs; the harness half does not, and repeating the constraint
+> unqualified would be false.
+
+### Phase 5.1: Library Performance Comparison [status: pending]
+**Goal:** Compare **cost** across the Phase 3.14 comparators — indexing throughput (docs/sec),
+query latency p50/p99, allocations per query, Native AOT startup time, RSS. (Not a features.md
+row — the only item the handover proposes that Phase 3.14 did not touch; it calls this table
+"the one nobody else has".)
+
+3.14 compared retrieval *quality* at defaults and published five rows nobody can attack on
+configuration; nobody has published what those five stacks **cost**. The comparators are the ones
+3.14 already wired — Semantic Kernel in-process, and the pinned Python harness for LangChain,
+LlamaIndex and Haystack — and **3.14's infrastructure is reusable**: the TREC run-file boundary,
+`BeirRunBudget`, the pinned embedder at its pinned revision and
+`docs/reference/library-comparison-defaults.md` all exist, so this phase is measurement rather
+than infrastructure.
+
+**The known hazard, recorded before any number exists: mixing in-process .NET and subprocess
+Python measurement is a latency confound.** Process boundaries, interpreter startup and
+serialization land in the Python rows and nothing in the .NET rows pays them. 3.14's design
+deliberately **withheld** cross-ecosystem latency for exactly that reason — so this phase must
+state how it handles what 3.14 refused to publish, before publishing rather than after: either a
+mechanism that genuinely removes the boundary from the measurement (each ecosystem timed
+in-process on its own side of the run-file boundary, the boundary excluded), or per-ecosystem
+tables labelled non-comparable, the way the `+BM25 hybrid` row is labelled internal. Publishing
+quietly what 3.14 refused to publish is the failure mode; the DoD's confound criterion holds it.
+
+### Phase 5.2: Multi-Hop Retrieval [status: pending]
+**Goal:** Measure multi-hop retrieval — HotpotQA, MuSiQue, 2WikiMultiHopQA, MultiHop-RAG. (Not a
+features.md row — evaluation depth past single-hop BEIR.)
+
+The handover's argument, kept because it is worth keeping: **multi-hop is where reranking and
+query decomposition show measurable lift** — the single-hop ablation table showed the reranker
+*hurting* two of three corpora, part of which is the depth protocol its own debt records — and it
+is the natural home for GraphRAG. One correction while keeping it: the handover puts GraphRAG "on
+the backlog", but `Rag.NET.GraphRag` shipped long ago and is `✅ Done` in features.md — what is
+genuinely open is that **no benchmark has ever measured it**, and multi-hop is where it would
+earn or lose its keep. **MuSiQue is described as the hardest and least gameable of the four**,
+which is what makes it the one to trust when the numbers disagree.
+
+Every dataset lands under the Milestone 3 checklist the DoD names — descriptor, budget timing,
+published reference where one exists, licence from upstream, reproduction pin.
+
+### Phase 5.3: Deferred Datasets — NFCorpus, TREC-COVID, EnronQA [status: pending]
+**Goal:** Land the three datasets the evaluation programme still lacks, together: the small hard
+one, the graded one, the private-corpus one. (Not a features.md row — **this phase is the real
+destination the TREC-COVID/EnronQA debt entry has waited for since 3.12**; its
+Milestone-4-as-deadline backstop is replaced by this phase, which is the reason this milestone
+exists rather than a debts list.)
+
+- **NFCorpus** (~3.6k documents, medical jargon) — **new**: never considered by any phase before
+  the handover proposed it. Its stated value is punishing weak embedding models — small enough
+  to run in minutes, hard enough to separate models the easy corpora cannot.
+- **TREC-COVID** (~171k documents) — **explicitly declined at Milestone 3's close (2026-08-03)**
+  with recorded grounds, and it remains the first graded-relevance dataset: `IrMetrics`' `2^rel
+  − 1` path has a hand-computed graded fixture and has never seen a graded dataset. **The
+  FiQA-qrels check comes first**, exactly as the debt entry orders: read the cached
+  `qrels/test.tsv` — if any grade exceeds 1, the graded path has been exercised by three phases
+  of FiQA runs and the debt's premise falls; if none does, `IrMetrics.cs:31-32`'s "FiQA and
+  TREC-COVID are graded" is wrong and gets corrected. Either way one sentence changes before the
+  run.
+- **EnronQA** — also declined at that close. The handover's case, recorded accurately so it does
+  not have to be re-argued: **103,638 cleaned emails, 528,304 QA pairs, 150 inboxes, CC BY 4.0,
+  published BM25 and ColBERTv2 baselines** (paper: arXiv 2505.00263) — and the genuinely
+  distinctive part, **per-inbox structure that doubles as a multi-tenant collection-isolation
+  test**, which no BEIR dataset offers. Its anti-contamination argument is also worth keeping: a
+  model cannot have memorised someone's inbox, unlike NaturalQuestions or TriviaQA.
+
+Each arrives under the full Milestone 3 per-dataset checklist — descriptor, `BeirRunBudget`
+timing, revision-pinned published reference where one exists, licence determination from
+upstream, `BeirReproduction` pin — which is precisely the list Milestone 3's close said none of
+them had, and declined them over.
+
+### Phase 5.4: Precision@k and MAP [status: pending]
+**Goal:** Add `Precision@k` and `MAP` to `IrMetrics`. (Not a features.md row — two missing IR
+metrics.)
+
+Verified against the source on 2026-08-03 rather than taken from the handover: `IrMetrics`'
+public surface is exactly `NormalizedDiscountedCumulativeGain`, `Recall`, `ReciprocalRank` and
+`Evaluate` — no precision, no MAP. Small — two methods plus hand-computed pinned values per
+`IrMetricsTests`' convention, and MAP's judged-query exclusion rule must match `Evaluate`'s,
+which is where the one subtlety lives. It belongs with whichever phase first needs to compare
+against a published figure stated in either metric — 5.3's EnronQA baselines or 5.2's multi-hop
+suites are the plausible triggers — but it is recorded as a phase anyway so the work has an
+owner, rather than becoming a slot nobody owns: this list's own history says an unowned small
+task is how a debt turns into an open note.
+
+### Phase 5.5: Tier 3 Suites [status: recorded — deliberately not scheduled]
+**Candidates, with the handover's reasoning kept:** CRAG (Meta, KDD Cup 2024 — the handover's
+pick for the most credible single headline number a RAG library can publish), RAGBench,
+LegalBench-RAG, FinanceBench, T²-RAGBench.
+
+**None is scheduled until 5.1–5.3 land — a milestone that lists everything schedules nothing.**
+This entry exists so the candidates and the reasoning survive without being dressed up as
+commitments; whichever is picked up first gets a real phase entry with a scope and a number, the
+way every scheduled phase on this roadmap has, and the DoD's first box deliberately excludes
+this one.
