@@ -33,9 +33,13 @@ cannot work there; `ci.yml`'s `build-test` job is an OS matrix (`ubuntu-latest` 
 `windows-latest`) since Phase 4.0, and the Docker tier runs only on the Linux leg.
 
 **"Gates" in that table means the failure is real and fails the run** — no `continue-on-error`
-anywhere in `ci.yml`. It does not yet mean a merge is mechanically blocked: this repository has no
-branch protection rules, so no check is required. Both tiers are the ones to require when it is set
-up.
+anywhere in `ci.yml` — **and, for both tiers, that a merge is mechanically blocked** (measured
+2026-08-03, correcting this page, which said no branch protection existed): the repository's
+**`Main` ruleset** requires both matrix legs, `build-test (ubuntu-latest)` and
+`build-test (windows-latest)`, as status checks on the default branch, and the Docker tier runs
+inside the Ubuntu leg, so both tiers block. Two honest limits: repository admins can always
+bypass the ruleset, and the other checks in `ci.yml` — `pack-validate` and `commitlint` — run
+and fail loudly but are **not yet in the required set**; they are the ones to add.
 
 The LLM tier is one project, `Rag.NET.E2ETests`. It pulls `nomic-embed-text` and `llama3.2:1b`, and
 its assertions are text a model wrote — Phase 2.1 measured one such assertion failing roughly **1 run
@@ -51,12 +55,12 @@ reasons:
 | Label | Runs | Blocks the merge? |
 |---|---|---|
 | **`run-llm`** | the Ollama end-to-end suite — pulls ~2 GB of models | **No**, never, by design |
-| **`run-secrets`** | the env-gated suites — Document Intelligence, ONNX embedding and late chunking, and the SciFact and ArguAna retrieval-quality parity runs | **Not yet** — it fails loudly, but no branch protection exists to block on |
+| **`run-secrets`** | the env-gated suites — Document Intelligence, ONNX embedding and late chunking, and the SciFact and ArguAna retrieval-quality parity runs | **Not yet** — it fails loudly, but it is not in the `Main` ruleset's required checks |
 
 On `run-secrets`: the job *gates* in the sense that a failure is a real failure and is reported as
-one — no `continue-on-error` anywhere in it. It does not *block* anything today, because this
-repository has no branch protection rules configured, so no check is required for a merge. When that
-is set up, this is the nightly job to require; the `llm` one never is.
+one — no `continue-on-error` anywhere in it. It does not *block* anything today: the `Main`
+ruleset requires only the two `build-test` legs, and this job is not among them. If it is ever
+added, this is the nightly job to require; the `llm` one never is.
 
 Use `run-llm` when you have changed the answer engine or a retrieval path and want to see the
 end-to-end result before merging. Use `run-secrets` when you have touched PDF OCR, Document
@@ -160,21 +164,37 @@ in one tier and may appear in more than one workflow.
 
 ## What the nightly actually measures, and what it does not
 
-`Rag.NET.Benchmarks.Quality.IntegrationTests` describes **three** BEIR datasets — SciFact, FiQA and
-ArguAna — under **two** protocols: *parity* (one chunk per document, truncated at 256 tokens, the
-only protocol comparable to a published figure) and *real* (Rag.NET's own chunking, max-pooled back
-to documents, compared only to our own parity run). That is eleven cases, and the nightly runs
-seven of them.
+`Rag.NET.Benchmarks.Quality.IntegrationTests` describes **three** BEIR datasets — SciFact, FiQA
+and ArguAna — under **ten** protocols. Two are measurements of Rag.NET against a published
+figure or against itself: *parity* (one chunk per document, truncated at 256 tokens, the only
+protocol comparable to a published figure) and *real* (Rag.NET's own chunking, max-pooled back
+to documents, compared only to our own parity run). Three are the **ablation cells** Phase 3.14
+added and Phase 3.15 measured — *+BM25 hybrid*, *+HyDE* and *+reranker*, each a variation on the
+parity corpus. Five belong to the [library comparison](./library-comparison.md): the
+run-file *comparison control* and the *Semantic Kernel*, *LangChain*, *LlamaIndex* and
+*Haystack* entrant rows. Counting parity per separator leg the way this table always has, that
+is **35 cases** — this page said "eleven" until 2026-08-03, a count from before the ablation
+and comparison rows existed — and the nightly still runs **seven** of them.
 
-| Case | Cold cost | In the nightly? |
+| Case | Cost when last timed | In the nightly? |
 |---|---|---|
-| SciFact parity, both separators | ~5 min each | **Yes** |
-| ArguAna parity, both separators | ~4 min each | **Yes** |
+| SciFact parity, both separators | ~5 min each, cold | **Yes** |
+| ArguAna parity, both separators | ~4 min each cold, 50 s warm | **Yes** |
 | Chunk-shape checks, all three datasets | ~1.5 s for all three | **Yes** — no model needed |
-| FiQA parity | 1 h 11 m | No — opt-in |
-| SciFact real | ~19 min (derived; 5 min 15 s measured **warm**) | No — opt-in |
-| ArguAna real | 28 min | No — opt-in |
+| FiQA parity | 1 h 11 m, one separator (FiQA has no titles) | No — opt-in |
+| SciFact real | 10 m 43 s measured 2026-07-31, parity vectors warm; fully cold is derived, untimed | No — opt-in |
+| ArguAna real | 11 m 7 s measured 2026-07-31, parity vectors warm (28 min cold pre-3.16) | No — opt-in |
 | FiQA real | 1 h 4 m measured (59.8 min real leg, parity vectors warm) | No — opt-in |
+| +BM25 hybrid cells (×3) | SciFact ~1 m 50 s, ArguAna ~2 m, FiQA ~58 m — warm; cold adds the parity embedding price | No — opt-in |
+| +HyDE cells (×3) | ~1 m 30 s – ~3 m 49 s warm; needs the generated hypothetical cache, which no fresh runner can have | No — opt-in |
+| +reranker cells (×3) | SciFact ~4 m, FiQA ~4 m warm, ArguAna ~28 m; needs the locally provisioned cross-encoder (below) | No — opt-in |
+| Comparison controls (×3) | seconds-to-minutes warm; FiQA's never run | No — opt-in |
+| Semantic Kernel entrants (×3) | seconds warm; FiQA's never run | No — opt-in |
+| LangChain / LlamaIndex / Haystack entrants (×9) | minutes each producing the Python run file; FiQA's never run | No — opt-in, and they need the pinned Python harness's run files |
+
+`BeirRunBudget` is the authority on every figure — it records each dataset × protocol pair's
+measured (or honestly derived) cost and **throws on a pair nobody has timed**, so the code's own
+inventory cannot drift the way this page's did.
 
 The `env-gated` job has `timeout-minutes: 120` and spends part of that restoring, building the whole
 solution and running the four other `RequiresSecrets` projects. FiQA's real leg alone is longer than

@@ -52,7 +52,9 @@ jobs:
     #
     # BRANCH PROTECTION: matrixing produces one check per OS ("build-test (ubuntu-latest)" and
     # "build-test (windows-latest)"), so the single pre-matrix required check no longer matches.
-    # Both must be required, or gating silently drops to zero.
+    # Both must be required, or gating silently drops to zero — and both ARE: the repository's
+    # "Main" ruleset requires exactly these two checks on the default branch (measured
+    # 2026-08-03; admins can bypass).
     runs-on: ${{ matrix.os }}
     strategy:
       # Both legs always run to completion. fail-fast would cancel the Windows leg the moment Linux
@@ -217,9 +219,10 @@ jobs:
   # of commits this job already linted, plus a merge commit commitlint ignores by default.
   # WorkflowWiringTests pins this wiring; change it only together with the tests.
   #
-  # BRANCH PROTECTION: like pack-validate, this check is not in the required set — no branch
-  # protection rules exist yet. It runs on every pull request and fails loudly, but nothing
-  # mechanically blocks a merge on it until it is added to the required checks.
+  # BRANCH PROTECTION: like pack-validate, this check is not in the required set — the "Main"
+  # ruleset requires only the two build-test legs (measured 2026-08-03). It runs on every pull
+  # request and fails loudly, but nothing mechanically blocks a merge on it until it is added to
+  # the required checks.
   commitlint:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -258,10 +261,10 @@ jobs:
   # its validate step.
   #
   # BRANCH PROTECTION: this check is named "pack-validate" and is NOT currently in the required
-  # checks — branch protection requires "build-test (ubuntu-latest)" and "build-test
-  # (windows-latest)" only. Until it is added there, this job can go red without blocking a merge,
-  # which is exactly the non-gating-check failure this repository has already documented. Add it to
-  # the required checks.
+  # checks — the "Main" ruleset requires "build-test (ubuntu-latest)" and "build-test
+  # (windows-latest)" only (measured 2026-08-03). Until it is added there, this job can go red
+  # without blocking a merge, which is exactly the non-gating-check failure this repository has
+  # already documented. Add it to the required checks.
   pack-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
