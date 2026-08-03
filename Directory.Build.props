@@ -28,6 +28,11 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>rag;retrieval-augmented-generation;llm;ai;embeddings;vector-search;chunking;dotnet</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- Symbol packages, one .snupkg beside every .nupkg. dotnet pack says nothing when these are
+         absent — the symbol package simply never exists — so the guard is
+         tests/Rag.NET.PackageValidation.Tests, not the SDK. -->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>

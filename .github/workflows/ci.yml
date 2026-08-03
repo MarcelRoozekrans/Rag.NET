@@ -193,3 +193,53 @@ jobs:
             echo "::error::Failed test projects:$failed"
             exit 1
           fi
+
+  # Packs every package the solution ships and validates what was actually produced. Its own job,
+  # on one OS, deliberately: a .nupkg is platform-independent, so packing inside the build-test
+  # matrix would produce the same 70 packages twice and validate them twice, doubling minutes for
+  # zero coverage. ubuntu-latest because it is the cheaper, faster leg.
+  #
+  # The validation is tests/Rag.NET.PackageValidation.Tests, and it is the only guard there is:
+  # Phase 4.1's Task 1 measured that dotnet pack enforces none of its metadata — a missing licence,
+  # authors, URLs or tags emits nothing, a missing README is a codeless advisory, and a missing
+  # description silently ships as the literal string "Package Description". Those tests skip when
+  # artifacts/packages does not exist (the matrix legs, a fresh checkout); WorkflowWiringTests in
+  # the same project runs unconditionally in the fast tier and pins the two commands below, so the
+  # skip cannot rot into permanent green if someone renames this job's output directory or deletes
+  # its validate step.
+  #
+  # BRANCH PROTECTION: this check is named "pack-validate" and is NOT currently in the required
+  # checks — branch protection requires "build-test (ubuntu-latest)" and "build-test
+  # (windows-latest)" only. Until it is added there, this job can go red without blocking a merge,
+  # which is exactly the non-gating-check failure this repository has already documented. Add it to
+  # the required checks.
+  pack-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      # Builds as it packs — no --no-build, because nothing has built in this job yet. The output
+      # directory is the path ProducedPackageTests reads, and WorkflowWiringTests pins this exact
+      # command text; change either only together with the tests.
+      - name: Pack
+        run: dotnet pack Rag.NET.slnx -c Release -o artifacts/packages
+
+      # Fails the job on any defective package — count, licence, README-in-package, description,
+      # repository commit, symbols, emptiness. Validation must fail the build, not warn: a warning
+      # nobody reads is the shape this project keeps finding.
+      - name: Validate the produced packages
+        run: dotnet test tests/Rag.NET.PackageValidation.Tests -c Release --verbosity normal
