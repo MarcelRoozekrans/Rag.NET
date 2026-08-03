@@ -183,7 +183,7 @@ public sealed class HypotheticalCache
                 "hand, rather than cached.");
         }
 
-        Write(key, text);
+        await WriteAsync(key, text, cancellationToken).ConfigureAwait(false);
         return text;
     }
 
@@ -320,9 +320,11 @@ public sealed class HypotheticalCache
     /// The move is what keeps the interrupted generation run — and it will be interrupted, it is
     /// 7,062 calls — from leaving a half-written entry where the next run would read it.
     /// <see cref="TryRead"/> refuses truncated files anyway; the two together are belt and braces,
-    /// and the belt is cheap.
+    /// and the belt is cheap. The move goes through <see cref="PublishRename"/> because on Windows
+    /// an on-access scanner briefly holding the just-written partial — or a just-written
+    /// destination being replaced — denies the rename; the measurements are on that class.
     /// </remarks>
-    private void Write(string key, string text)
+    private async Task WriteAsync(string key, string text, CancellationToken cancellationToken)
     {
         var path = PathFor(key);
         _ = Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -338,6 +340,6 @@ public sealed class HypotheticalCache
 
         var partialPath = path + "." + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture) + ".partial";
         File.WriteAllBytes(partialPath, bytes);
-        File.Move(partialPath, path, overwrite: true);
+        await PublishRename.ReplaceFileAsync(partialPath, path, cancellationToken).ConfigureAwait(false);
     }
 }
