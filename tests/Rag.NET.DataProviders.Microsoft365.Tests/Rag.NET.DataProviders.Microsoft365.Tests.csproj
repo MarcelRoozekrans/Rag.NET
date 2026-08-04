@@ -3,7 +3,7 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.SharePoint\Rag.NET.DataProviders.SharePoint.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Microsoft365\Rag.NET.DataProviders.Microsoft365.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.*">

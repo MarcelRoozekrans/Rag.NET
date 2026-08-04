@@ -22,12 +22,12 @@
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Office\Rag.NET.Parsers.Office.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Microsoft365\Rag.NET.DataProviders.Microsoft365.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Confluence\Rag.NET.DataProviders.Confluence.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Jira\Rag.NET.DataProviders.Jira.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Notion\Rag.NET.DataProviders.Notion.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Asana\Rag.NET.DataProviders.Asana.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Slack\Rag.NET.DataProviders.Slack.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.MicrosoftTeams\Rag.NET.DataProviders.MicrosoftTeams.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Gmail\Rag.NET.DataProviders.Gmail.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.GitLab\Rag.NET.DataProviders.GitLab.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Bitbucket\Rag.NET.DataProviders.Bitbucket.csproj" />

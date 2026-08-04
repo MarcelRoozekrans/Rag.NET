@@ -399,8 +399,8 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 | Package | SDK | Delta sync |
 |---|---|---|
 | `Rag.NET.DataProviders.AzureBlob` | `Azure.Storage.Blobs` | ETag / `LastModified` watermark |
-| `Rag.NET.DataProviders.SharePoint` | Microsoft Graph SDK | `deltaLink` token |
-| `Rag.NET.DataProviders.OneDrive` | Microsoft Graph SDK | `deltaLink` token |
+| `Rag.NET.DataProviders.Microsoft365` | Microsoft Graph SDK (SharePoint connector) | `deltaLink` token |
+| `Rag.NET.DataProviders.Microsoft365` | Microsoft Graph SDK (OneDrive connector) | `deltaLink` token |
 | `Rag.NET.DataProviders.GoogleDrive` | `Google.Apis.Drive.v3` | `pageToken` change stream |
 | `Rag.NET.DataProviders.Dropbox` | `Dropbox.Api` | cursor-based delta |
 | `Rag.NET.DataProviders.Box` | `Box.V2` | events cursor |
@@ -424,7 +424,7 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 | Package | SDK | Delta sync |
 |---|---|---|
 | `Rag.NET.DataProviders.Slack` | Slack Web API | cursor + `oldest` timestamp |
-| `Rag.NET.DataProviders.MicrosoftTeams` | Microsoft Graph SDK | `deltaLink` token |
+| `Rag.NET.DataProviders.Microsoft365` | Microsoft Graph SDK (Teams connector) | `deltaLink` token |
 | `Rag.NET.DataProviders.Gmail` | MailKit (IMAP) | UID watermark |
 
 #### Group 4 — Source Control
@@ -462,7 +462,7 @@ Producers push `IngestionJob`s (byte payload + metadata) onto a bounded `IIngest
 ---
 
 ### Email Connectors (Outlook / Exchange)
-**Package:** `Rag.NET.DataProviders.Exchange`
+**Package:** `Rag.NET.DataProviders.Microsoft365` (Exchange connector)
 
 Ingest emails and attachments from Outlook/Exchange via Microsoft Graph (`/users/{mailbox}/mailFolders/{folder}/messages`, app-only auth). Emits raw RFC 822 `.eml` entries (Graph `$value`), so a registered `AddEmailParser()` parses subject/body and delegates attachment parsing to the existing parsers (PDF/Word/text/…). Supports folder filtering, a `receivedDateTime` watermark (`GetDeltaToken()`), and `MaxResults` capping. Complements the existing Gmail connector.
 

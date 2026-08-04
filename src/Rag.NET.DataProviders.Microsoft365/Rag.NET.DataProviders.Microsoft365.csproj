@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <RootNamespace>Rag.NET.DataProviders.Exchange</RootNamespace>
-    <PackageId>Rag.NET.DataProviders.Exchange</PackageId>
-    <Description>Exchange / Outlook email data provider for Rag.NET</Description>
+    <RootNamespace>Rag.NET.DataProviders.Microsoft365</RootNamespace>
+    <PackageId>Rag.NET.DataProviders.Microsoft365</PackageId>
+    <Description>Microsoft 365 data providers for Rag.NET: Exchange / Outlook mail, Microsoft Teams, OneDrive and SharePoint via Microsoft Graph</Description>
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
@@ -23,7 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>Rag.NET.DataProviders.Exchange.Tests</_Parameter1>
+      <_Parameter1>Rag.NET.DataProviders.Microsoft365.Tests</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 </Project>
