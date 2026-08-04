@@ -97,6 +97,29 @@ public class TimeWeightedRetrieverTests
         Assert.Equal(0.75, result.Value[0].Score);
     }
 
+    /// <summary>
+    /// Pins the property the whole time-weighting design rests on: a chunk with neither
+    /// <c>created_at</c> nor any fallback key must score <b>exactly</b> its base score — decay
+    /// 1.0, no boost, no penalty. This is currently incidental (falling out of
+    /// <c>ComputeDecay</c> returning 1.0 for a null timestamp); nothing else in this suite pins
+    /// it directly, so a future change to that method could silently re-break it.
+    /// <c>FallbackMetadataKeys</c> is set explicitly (rather than relying on the type's default)
+    /// so this test's meaning does not drift if the default list changes later.
+    /// </summary>
+    [Fact]
+    public async Task AbsentTimestampAndNoFallbackMatch_ScoresExactlyBaseScore()
+    {
+        var ct    = TestContext.Current.CancellationToken;
+        var chunk = MakeChunk(); // no created_at metadata, no other timestamp-shaped metadata
+        const double baseScore = 0.4217;
+        var inner = MockInner([new SearchResult { Chunk = chunk, Score = baseScore }]);
+
+        var sut    = new TimeWeightedRetriever(inner, new TimeWeightedOptions { FallbackMetadataKeys = [] });
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.Equal(baseScore, result.Value[0].Score);
+    }
+
     [Fact]
     public async Task InvalidTimestamp_TreatedAsNoTimestamp()
     {
