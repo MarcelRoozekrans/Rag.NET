@@ -18,7 +18,7 @@
 
   <!-- Shared NuGet package metadata. Genuinely identical for every package.
        Description is deliberately NOT set here: a shared description would make
-       71 packages describe themselves identically — each .csproj owns its own.
+       66 packages describe themselves identically — each .csproj owns its own.
        No PackageIcon: the repository has no icon asset. -->
   <PropertyGroup>
     <Authors>Marcel Roozekrans</Authors>
