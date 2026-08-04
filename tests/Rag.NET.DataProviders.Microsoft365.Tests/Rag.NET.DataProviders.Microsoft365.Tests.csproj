@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Microsoft365\Rag.NET.DataProviders.Microsoft365.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="xunit.v3" Version="2.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NSubstitute" Version="5.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Shared connector-metadata contract check. Linked rather than referenced: there is no
+         shared unit-test library, and a project reference to another test project would drag
+         its whole assembly along. Same pattern as src/Shared/GraphErrorMapping.cs. -->
+    <Compile Include="..\Rag.NET.DataProviders.Tests\MetadataContract.cs" Link="MetadataContract.cs" />
+  </ItemGroup>
+</Project>

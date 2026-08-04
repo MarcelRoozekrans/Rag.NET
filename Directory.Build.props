@@ -18,7 +18,7 @@
 
   <!-- Shared NuGet package metadata. Genuinely identical for every package.
        Description is deliberately NOT set here: a shared description would make
-       71 packages describe themselves identically — each .csproj owns its own.
+       66 packages describe themselves identically — each .csproj owns its own.
        No PackageIcon: the repository has no icon asset. -->
   <PropertyGroup>
     <Authors>Marcel Roozekrans</Authors>
@@ -36,8 +36,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- PackageReadmeFile names the file inside the package; this actually packs it. -->
-    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+    <!-- PackageReadmeFile names the file inside the package; this packs each project's OWN
+         README.md, sitting beside its .csproj. The repo-wide root README.md is deliberately
+         not a fallback: a packable project without its own README fails pack (NU5039)
+         instead of silently showing every nuget.org visitor the whole project —
+         tests/Rag.NET.PackageValidation.Tests/PackageReadmeTests.cs guards what ships. -->
+    <None Include="$(MSBuildProjectDirectory)\README.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>

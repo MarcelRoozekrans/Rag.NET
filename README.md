@@ -21,6 +21,9 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 
 ## Packages
 
+Not sure what to install? [Choosing packages](docs/guide/choosing-packages.md) walks
+through the two or three decisions and what arrives transitively. A selection:
+
 | Package | Description |
 |---------|-------------|
 | `Rag.NET` | Core pipeline, abstractions, text/markdown/CSV/JSON parsers, recursive chunking |
@@ -33,9 +36,7 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 | `Rag.NET.Parsers.Pdf` | PDF document parser |
 | `Rag.NET.Parsers.Pdf.AzureDocumentIntelligence` | Whole-document OCR for the PDF parser via Azure Document Intelligence (paid, per page) |
 | `Rag.NET.Parsers.Html` | HTML document parser (AngleSharp) |
-| `Rag.NET.Parsers.Word` | Word (.docx) document parser (OpenXml) |
-| `Rag.NET.Parsers.Excel` | Excel (.xlsx) document parser (OpenXml) |
-| `Rag.NET.Parsers.PowerPoint` | PowerPoint (.pptx) document parser (OpenXml) |
+| `Rag.NET.Parsers.Office` | Word, Excel and PowerPoint document parsers (OpenXml) |
 | `Rag.NET.Evaluation` | Answer quality evaluation via embedding cosine similarity |
 | `Rag.NET.Reranking.Onnx` | ONNX Runtime cross-encoder reranking |
 | `Rag.NET.Mediator` | ZeroAlloc.Mediator integration — dispatch ingest/retrieve/delete via `IMediator` |
@@ -44,7 +45,7 @@ A modular RAG (Retrieval-Augmented Generation) pipeline library for .NET. Built 
 | [Rag.NET.DataProviders.Notion](src/Rag.NET.DataProviders.Notion) | Notion pages and blocks via REST API |
 | [Rag.NET.DataProviders.Asana](src/Rag.NET.DataProviders.Asana) | Asana tasks and subtasks via REST API |
 | [Rag.NET.DataProviders.Slack](src/Rag.NET.DataProviders.Slack) | Slack channel messages via REST API |
-| [Rag.NET.DataProviders.MicrosoftTeams](src/Rag.NET.DataProviders.MicrosoftTeams) | Teams channel messages via Microsoft Graph |
+| [Rag.NET.DataProviders.Microsoft365](src/Rag.NET.DataProviders.Microsoft365) | SharePoint, OneDrive, Teams and Exchange mail via Microsoft Graph |
 | [Rag.NET.DataProviders.Gmail](src/Rag.NET.DataProviders.Gmail) | Gmail messages via IMAP (MailKit) |
 | [Rag.NET.DataProviders.GitLab](src/Rag.NET.DataProviders.GitLab) | GitLab repository files via NGitLab |
 | [Rag.NET.DataProviders.Bitbucket](src/Rag.NET.DataProviders.Bitbucket) | Bitbucket repository files via REST API |

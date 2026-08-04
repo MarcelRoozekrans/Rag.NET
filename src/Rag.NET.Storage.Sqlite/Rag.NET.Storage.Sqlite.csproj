@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Storage.Sqlite</RootNamespace>
+    <PackageId>Rag.NET.Storage.Sqlite</PackageId>
+    <Description>SQLite-backed storage for Rag.NET: BM25 and parent-chunk persistence, the document sidecar, the content-hash record manager, the embedding-version store, and the persistent cost ledger</Description>
+    <!-- unit: every store is exercised against real SQLite database files in-process by
+         Rag.NET.Storage.Sqlite.Tests — SQLite is embedded, so no container is involved. -->
+    <VerifiedBy>unit</VerifiedBy>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Storage.Sqlite.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <!-- The SQLite stores wrap core's in-memory implementations (SqliteBm25Index wraps
+         InMemoryBm25Index, SqliteParentChunkStore wraps InMemoryParentChunkStore) and the
+         builder extensions register against core's RagBuilder surface, so this satellite
+         references core — the direction that matters is that core never references this. -->
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <!-- Lifts transitive SQLitePCLRaw.lib.e_sqlite3 above 2.1.11 (GHSA-2m69-gcr7-jv3q). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+  </ItemGroup>
+
+</Project>

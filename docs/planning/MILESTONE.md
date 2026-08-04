@@ -34,7 +34,8 @@ four defects were live, so every criterion below can be false and something chec
 Milestone 6's DoD. The ROADMAP's Milestone 4 section is the authoritative copy; the two must
 agree.
 
-- [ ] All planned phases complete (2 of 7 as of 2026-08-03: 4.0, 4.1)
+- [ ] All planned phases complete (3 of 8 as of 2026-08-04: 4.0, 4.1, 4.7 — the phase list
+      grew Phase 4.7, created and completed 2026-08-04)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore (true on every phase close
       so far, most recently 2026-08-03; the box is ticked at the milestone's close, from a clean
       restore on that day's tree)
@@ -54,8 +55,10 @@ agree.
 - [ ] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0; **failing
       today, honestly**: `Rag.NET.Mcp.Tool` → 4.6, `Rag.NET.Security.AspNetCore` → 4.5)
 - [ ] CI pipeline builds, tests, and produces NuGet packages (the build-and-test half has been
-      green since Phase 3.5; the pack half shipped in Phase 4.1 — `pack-validate` packs all 70
-      packages, validates them as a failing test project and pushes them to a local feed twice on
+      green since Phase 3.5; the pack half shipped in Phase 4.1 — `pack-validate` packs every
+      package [all 70; **66** since Phase 4.7's decomposition, 2026-08-04, with
+      `ExpectedPackageCount` moved by stated arithmetic], validates them as a failing test
+      project and pushes them to a local feed twice on
       every push, with the nuget.org push gated to 6.3 — **but none of it has executed on GitHub
       Actions yet**: the branch has not been pushed, and this repository's own record (the
       post-3.15 nightly failed on its first genuine run) says the first real run is the
@@ -92,11 +95,39 @@ agree.
    phase entry: the 6.3 push residual, the never-run workflow changes, the DOCINTEL
    satisfiable-but-never-run gap, feature-branch prerelease numbering, and the XML-documentation
    blocker this phase did **not** take up (recorded as a new debt, not absorbed).
-3. Phase 4.2 — Options Alignment & Validation [pending]
-4. Phase 4.3 — Structured Logging Enrichment [pending]
-5. Phase 4.4 — OpenTelemetry Tracing & Metrics [pending]
-6. Phase 4.5 — Sample Applications [pending]
-7. Phase 4.6 — Rag.NET CLI Tool [pending]
+3. Phase 4.7 — Package Decomposition, Consolidation & Per-Package READMEs [complete —
+   2026-08-04; created mid-milestone out of Phase 4.1's residue ("70 packages a user cannot
+   choose between"), numbered after 4.6, executed between 4.1 and 4.2] — **core's transitive
+   closure fell 49 → 28, measured at every step** (`dotnet list package --include-transitive`;
+   the `.nupkg` sizes were never the problem — the weight was transitive, and 31 of the 43
+   packages a consumer downloaded served features behind an explicit opt-in). Three opt-in
+   clusters extracted with their builder methods (`Rag.NET.Storage.Sqlite`,
+   `Rag.NET.Resilience`, `Rag.NET.Caching` — the last a reference swap, since `HybridCache`
+   lives in `Caching.Abstractions`), three satellite families merged (`Parsers.Office`,
+   `DataProviders.Microsoft365`, chunking folded into `Rag.NET.Chunking`): **70 → 66 packages,
+   measured by packing**, both shapes enforced from the shipped nuspecs by
+   `DependencyClosureTests` (both guards proven red first). **One deliberate behaviour change**,
+   owner-decided 2026-08-04: `UseCostBudgeting()` now defaults to `InMemoryCostLedger`, so
+   spend limits reset on process restart where they previously persisted —
+   `UseSqliteCostLedger()` restores persistence, and a registration warning makes the default
+   visible. **One public-API addition the design said it would not make**:
+   `IVectorStoreDecorator` in Abstractions, sparing every Memory consumer a measured 14-package
+   resilience closure. Task 10 (Templates parsers) was **stopped** — dependency cycle,
+   `Chunking.Templates` still ships MimeKit/CsvHelper/ClosedXML — and the tokenizer extraction
+   **cancelled after measurement** (core hard-references `QueryTechniques`, which pulls the
+   tokenizers independently); both recorded, the first routed. All 66 packages ship their own
+   README behind `PackageReadmeTests`, the repository's first doc-snippet verification
+   (reflection over every C# fence; semantics stay unchecked, full compilation recorded as
+   later strengthening) — writing them surfaced five members the data-providers guide documents
+   that do not exist (READMEs correct; the guide routed → 4.5). `docs/guide/choosing-packages.md`
+   answers "what do I install?" with the SharePoint + Qdrant two-choices example. The Mcp.Tool
+   19 MB question is explained by measurement (a `PackAsTool` package ships its dependency
+   closure; now 1.87 MB) with the residual confirmation → 4.6. Full entry in the ROADMAP.
+4. Phase 4.2 — Options Alignment & Validation [pending]
+5. Phase 4.3 — Structured Logging Enrichment [pending]
+6. Phase 4.4 — OpenTelemetry Tracing & Metrics [pending]
+7. Phase 4.5 — Sample Applications [pending]
+8. Phase 4.6 — Rag.NET CLI Tool [pending]
 
 ## Explicitly not in scope
 

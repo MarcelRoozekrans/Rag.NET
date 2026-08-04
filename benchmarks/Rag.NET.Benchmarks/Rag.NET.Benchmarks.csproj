@@ -9,18 +9,25 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <!-- ProviderIngestionBenchmarks constructs SqliteContentHashStore, extracted from core
+         into the Rag.NET.Storage.Sqlite satellite by the package decomposition. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Storage.Sqlite\Rag.NET.Storage.Sqlite.csproj" />
+    <!-- FallbackChatClientBenchmarks constructs FallbackChatClient, extracted from core
+         into the Rag.NET.Resilience satellite by the package decomposition. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Resilience\Rag.NET.Resilience.csproj" />
+    <!-- CachingBenchmarks registers caching through UseCaching(), which lives in the
+         Rag.NET.Caching satellite since the package decomposition. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Caching\Rag.NET.Caching.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.QueryTechniques\Rag.NET.QueryTechniques.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Word\Rag.NET.Parsers.Word.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Excel\Rag.NET.Parsers.Excel.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Parsers.PowerPoint\Rag.NET.Parsers.PowerPoint.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Office\Rag.NET.Parsers.Office.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Microsoft365\Rag.NET.DataProviders.Microsoft365.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Confluence\Rag.NET.DataProviders.Confluence.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Jira\Rag.NET.DataProviders.Jira.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Notion\Rag.NET.DataProviders.Notion.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Asana\Rag.NET.DataProviders.Asana.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Slack\Rag.NET.DataProviders.Slack.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.DataProviders.MicrosoftTeams\Rag.NET.DataProviders.MicrosoftTeams.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Gmail\Rag.NET.DataProviders.Gmail.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.GitLab\Rag.NET.DataProviders.GitLab.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Bitbucket\Rag.NET.DataProviders.Bitbucket.csproj" />
@@ -30,8 +37,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.Graph\Rag.NET.Graph.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.GraphRag\Rag.NET.GraphRag.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Reranking.Cohere\Rag.NET.Reranking.Cohere.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Chunking.TokenAware\Rag.NET.Chunking.TokenAware.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Chunking.Semantic\Rag.NET.Chunking.Semantic.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Chunking\Rag.NET.Chunking.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Chunking.CSharp\Rag.NET.Chunking.CSharp.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.AnswerEngines\Rag.NET.AnswerEngines.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Memory\Rag.NET.Memory.csproj" />

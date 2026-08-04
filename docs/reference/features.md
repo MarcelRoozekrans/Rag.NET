@@ -13,7 +13,7 @@ Candidate features for future design and implementation. Completed features are 
 ## Chunking
 
 ### Semantic Chunking (Embedding-Based Boundary Detection)
-**Package:** `Rag.NET.Chunking.Semantic`
+**Package:** `Rag.NET.Chunking`
 
 Split text by meaning boundaries rather than fixed sizes. Embed each sentence, compute cosine similarity between consecutive sentence embeddings, and break where similarity drops below a configurable percentile threshold (breakpoint detection). Produces chunks that are coherent units of meaning — no more splitting mid-thought.
 
@@ -399,8 +399,8 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 | Package | SDK | Delta sync |
 |---|---|---|
 | `Rag.NET.DataProviders.AzureBlob` | `Azure.Storage.Blobs` | ETag / `LastModified` watermark |
-| `Rag.NET.DataProviders.SharePoint` | Microsoft Graph SDK | `deltaLink` token |
-| `Rag.NET.DataProviders.OneDrive` | Microsoft Graph SDK | `deltaLink` token |
+| `Rag.NET.DataProviders.Microsoft365` | Microsoft Graph SDK (SharePoint connector) | `deltaLink` token |
+| `Rag.NET.DataProviders.Microsoft365` | Microsoft Graph SDK (OneDrive connector) | `deltaLink` token |
 | `Rag.NET.DataProviders.GoogleDrive` | `Google.Apis.Drive.v3` | `pageToken` change stream |
 | `Rag.NET.DataProviders.Dropbox` | `Dropbox.Api` | cursor-based delta |
 | `Rag.NET.DataProviders.Box` | `Box.V2` | events cursor |
@@ -424,7 +424,7 @@ Production connectors for cloud and enterprise systems, each exposing `IFileCont
 | Package | SDK | Delta sync |
 |---|---|---|
 | `Rag.NET.DataProviders.Slack` | Slack Web API | cursor + `oldest` timestamp |
-| `Rag.NET.DataProviders.MicrosoftTeams` | Microsoft Graph SDK | `deltaLink` token |
+| `Rag.NET.DataProviders.Microsoft365` | Microsoft Graph SDK (Teams connector) | `deltaLink` token |
 | `Rag.NET.DataProviders.Gmail` | MailKit (IMAP) | UID watermark |
 
 #### Group 4 — Source Control
@@ -462,7 +462,7 @@ Producers push `IngestionJob`s (byte payload + metadata) onto a bounded `IIngest
 ---
 
 ### Email Connectors (Outlook / Exchange)
-**Package:** `Rag.NET.DataProviders.Exchange`
+**Package:** `Rag.NET.DataProviders.Microsoft365` (Exchange connector)
 
 Ingest emails and attachments from Outlook/Exchange via Microsoft Graph (`/users/{mailbox}/mailFolders/{folder}/messages`, app-only auth). Emits raw RFC 822 `.eml` entries (Graph `$value`), so a registered `AddEmailParser()` parses subject/body and delegates attachment parsing to the existing parsers (PDF/Word/text/…). Supports folder filtering, a `receivedDateTime` watermark (`GetDeltaToken()`), and `MaxResults` capping. Complements the existing Gmail connector.
 
@@ -789,13 +789,13 @@ LLM-driven chunking that decomposes document text into atomic, self-contained pr
 ---
 
 ### Sliding Window Chunking with Overlap
-**Package:** `Rag.NET.Chunking.TokenAware`
+**Package:** `Rag.NET.Chunking`
 
 Fixed-size chunks with configurable token overlap between adjacent chunks. The simplest baseline chunking strategy — no LLM, no regex, O(n) time. Useful as a fast fallback or comparison baseline.
 
 **Why:** Despite being the oldest technique, sliding window is still the default in many frameworks and serves as an important performance baseline.
 
-**Status:** Delivered by `TokenAwareChunkingStrategy` in `Rag.NET.Chunking.TokenAware`, upgraded with `TokenAwareChunkingOptions` (`WindowSizeTokens` / `OverlapTokens` with fallback to `ChunkingOptions`).
+**Status:** Delivered by `TokenAwareChunkingStrategy` in `Rag.NET.Chunking`, upgraded with `TokenAwareChunkingOptions` (`WindowSizeTokens` / `OverlapTokens` with fallback to `ChunkingOptions`).
 
 ---
 

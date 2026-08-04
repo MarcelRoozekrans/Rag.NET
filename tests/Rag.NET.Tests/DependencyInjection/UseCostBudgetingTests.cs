@@ -1,26 +1,20 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Resilience;
-using Rag.NET.Storage;
 using Rag.NET.Tests.Resilience;
 using Xunit;
 
 namespace Rag.NET.Tests.DependencyInjection;
 
-public sealed class UseCostBudgetingTests : IDisposable
+public sealed class UseCostBudgetingTests
 {
-    private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"ragnet-costbudget-{Guid.NewGuid():N}.db");
-
-    public void Dispose()
-    {
-        if (File.Exists(_dbPath)) File.Delete(_dbPath);
-    }
-
     private static IChatClient RespondingChatClient(string text)
     {
         var client = Substitute.For<IChatClient>();
@@ -83,22 +77,28 @@ public sealed class UseCostBudgetingTests : IDisposable
     // ── Ledger registration ──────────────────────────────────────────────────
 
     [Fact]
-    public void UseCostBudgeting_NoCustomLedger_RegistersSqliteLedgerAtConfiguredPath()
+    public void UseCostBudgeting_NoCustomLedger_DefaultsToInMemoryLedgerAndWarns()
     {
+        // The decomposition's one deliberate behaviour change (owner decision, 2026-08-04):
+        // the SQLite ledger moved to Rag.NET.Storage.Sqlite, so the default is the in-memory
+        // ledger — spend now resets on restart where it used to persist. The change must not
+        // be invisible, so the default's construction warns and names UseSqliteCostLedger().
+        var logger = new FakeLogger<InMemoryCostLedger>();
         var sp = new ServiceCollection()
             .AddRagNet(rag =>
             {
+                rag.Services.AddSingleton<ILogger<InMemoryCostLedger>>(logger);
                 rag.Services.AddSingleton(RespondingChatClient("ok"));
-                rag.UseCostBudgeting(o =>
-                {
-                    o.DailyLimit = 10m;
-                    o.DatabasePath = _dbPath;
-                });
+                rag.UseCostBudgeting(o => o.DailyLimit = 10m);
             })
             .BuildServiceProvider();
 
-        Assert.IsType<SqliteCostLedger>(sp.GetRequiredService<ICostLedger>());
-        Assert.True(File.Exists(_dbPath));
+        Assert.IsType<InMemoryCostLedger>(sp.GetRequiredService<ICostLedger>());
+
+        var warning = Assert.Single(logger.Collector.GetSnapshot());
+        Assert.Equal(LogLevel.Warning, warning.Level);
+        Assert.Contains("UseSqliteCostLedger()", warning.Message, StringComparison.Ordinal);
+        Assert.Contains("resets when the process restarts", warning.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -188,6 +188,29 @@ public sealed class UseCostBudgetingTests : IDisposable
                 o.DailyLimit = 10m;
                 o.DatabasePath = " ";
             })));
+    }
+
+    [Fact]
+    public void UseCostBudgeting_NonDefaultDatabasePath_ThrowsNamingUseSqliteCostLedger()
+    {
+        // The SQLite ledger moved to Rag.NET.Storage.Sqlite, so nothing reads DatabasePath any
+        // more. A consumer who explicitly set it asked for a specific persistent ledger; letting
+        // that compile, pass validation and silently degrade to an in-memory ledger (spend resets
+        // on restart) is the worst outcome — so a non-default value must fail loudly and name
+        // the replacement, including the path the user chose.
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            new ServiceCollection().AddRagNet(rag =>
+            {
+                rag.Services.AddSingleton(RespondingChatClient("ok"));
+                rag.UseCostBudgeting(o =>
+                {
+                    o.DailyLimit = 10m;
+                    o.DatabasePath = "spend.db";
+                });
+            }));
+
+        Assert.Contains("UseSqliteCostLedger(\"spend.db\")", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("Rag.NET.Storage.Sqlite", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

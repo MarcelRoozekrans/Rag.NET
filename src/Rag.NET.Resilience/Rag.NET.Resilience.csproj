@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Resilience</RootNamespace>
+    <PackageId>Rag.NET.Resilience</PackageId>
+    <Description>Resilience decorators for Rag.NET: the Polly retry pipeline over embedding generators and vector stores (ConfigureResilience), token-bucket rate limiting for chat and embedding calls (UseRateLimiting), and the multi-provider chat fallback chain (UseFallbackChain)</Description>
+    <!-- unit: every decorator and registration path is exercised in-process by
+         Rag.NET.Resilience.Tests with deterministic counter fakes and manual-replenishment
+         token buckets — no provider, container, or wall clock is involved. -->
+    <VerifiedBy>unit</VerifiedBy>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Resilience.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <!-- The builder extensions register against core's RagBuilder surface and decorate via
+         core's internal ServiceDecorationHelper, so this satellite references core — the
+         direction that matters is that core never references this. -->
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Resilience" Version="10.*" />
+    <!-- Not part of the Microsoft.NETCore.App shared framework (verified: absent from the
+         net10.0 ref pack) — only reachable transitively via Polly today, so reference it
+         explicitly for the token-bucket rate limiter. -->
+    <PackageReference Include="System.Threading.RateLimiting" Version="10.*" />
+  </ItemGroup>
+
+</Project>
