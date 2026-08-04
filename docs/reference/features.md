@@ -13,7 +13,7 @@ Candidate features for future design and implementation. Completed features are 
 ## Chunking
 
 ### Semantic Chunking (Embedding-Based Boundary Detection)
-**Package:** `Rag.NET.Chunking.Semantic`
+**Package:** `Rag.NET.Chunking`
 
 Split text by meaning boundaries rather than fixed sizes. Embed each sentence, compute cosine similarity between consecutive sentence embeddings, and break where similarity drops below a configurable percentile threshold (breakpoint detection). Produces chunks that are coherent units of meaning — no more splitting mid-thought.
 
@@ -789,13 +789,13 @@ LLM-driven chunking that decomposes document text into atomic, self-contained pr
 ---
 
 ### Sliding Window Chunking with Overlap
-**Package:** `Rag.NET.Chunking.TokenAware`
+**Package:** `Rag.NET.Chunking`
 
 Fixed-size chunks with configurable token overlap between adjacent chunks. The simplest baseline chunking strategy — no LLM, no regex, O(n) time. Useful as a fast fallback or comparison baseline.
 
 **Why:** Despite being the oldest technique, sliding window is still the default in many frameworks and serves as an important performance baseline.
 
-**Status:** Delivered by `TokenAwareChunkingStrategy` in `Rag.NET.Chunking.TokenAware`, upgraded with `TokenAwareChunkingOptions` (`WindowSizeTokens` / `OverlapTokens` with fallback to `ChunkingOptions`).
+**Status:** Delivered by `TokenAwareChunkingStrategy` in `Rag.NET.Chunking`, upgraded with `TokenAwareChunkingOptions` (`WindowSizeTokens` / `OverlapTokens` with fallback to `ChunkingOptions`).
 
 ---
 

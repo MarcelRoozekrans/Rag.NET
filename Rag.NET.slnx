@@ -56,9 +56,7 @@
     <Project Path="src/Rag.NET.GraphRag/Rag.NET.GraphRag.csproj" />
     <Project Path="src/Rag.NET.Chunking/Rag.NET.Chunking.csproj" />
     <Project Path="src/Rag.NET.Chunking.CSharp/Rag.NET.Chunking.CSharp.csproj" />
-    <Project Path="src/Rag.NET.Chunking.Semantic/Rag.NET.Chunking.Semantic.csproj" />
     <Project Path="src/Rag.NET.Chunking.Templates/Rag.NET.Chunking.Templates.csproj" />
-    <Project Path="src/Rag.NET.Chunking.TokenAware/Rag.NET.Chunking.TokenAware.csproj" />
     <Project Path="src/Rag.NET.AnswerEngines/Rag.NET.AnswerEngines.csproj" />
     <Project Path="src/Rag.NET.QueryTechniques/Rag.NET.QueryTechniques.csproj" />
     <Project Path="src/Rag.NET.Memory/Rag.NET.Memory.csproj" />

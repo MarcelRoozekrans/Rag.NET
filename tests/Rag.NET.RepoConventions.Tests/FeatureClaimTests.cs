@@ -58,7 +58,7 @@ public sealed partial class FeatureClaimTests
     /// <param name="shape">Where in its section the claim sits, for the failure message.</param>
     [Theory]
     [InlineData("Rag.NET.Chunking.Templates", "a **Package:** line immediately after the Done status line")]
-    [InlineData("Rag.NET.Chunking.Semantic", "a **Package:** line under the heading, the Done status at the section's end")]
+    [InlineData("Rag.NET.Chunking", "a **Package:** line under the heading, the Done status at the section's end")]
     [InlineData("Rag.NET.Ingestion.AzureServiceBus", "a **Packages:** (plural) line naming several packages")]
     [InlineData("Rag.NET.DataProviders.Zendesk", "a package-table row under a Done group heading")]
     public void TheParseSeesEveryShapeAPackageClaimTakes(string package, string shape)
