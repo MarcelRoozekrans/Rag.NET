@@ -6,18 +6,18 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Reranking.Cohere\Rag.NET.Reranking.Cohere.csproj" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
-    <PackageReference Include="xunit.v3" Version="2.*" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="NSubstitute" Version="5.*" />
-    <PackageReference Include="WireMock.Net" Version="1.*" />
+    <PackageReference Include="NSubstitute" />
+    <PackageReference Include="WireMock.Net" />
     <!-- Audit lifts: WireMock.Net pins Scriban.Signed 5.5.0 and OpenTelemetry 1.14.0 (advisories; patched in 7.0.0 / 1.15.3). -->
-    <PackageReference Include="Scriban.Signed" Version="7.2.5" />
-    <PackageReference Include="OpenTelemetry.Api" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
+    <PackageReference Include="Scriban.Signed" />
+    <PackageReference Include="OpenTelemetry.Api" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
   </ItemGroup>
 
 </Project>

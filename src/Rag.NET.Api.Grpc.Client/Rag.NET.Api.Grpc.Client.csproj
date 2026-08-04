@@ -11,6 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
     <ProjectReference Include="..\Rag.NET.Api.Grpc\Rag.NET.Api.Grpc.csproj" />
-    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.*" />
+    <PackageReference Include="Grpc.Net.ClientFactory" />
   </ItemGroup>
 </Project>

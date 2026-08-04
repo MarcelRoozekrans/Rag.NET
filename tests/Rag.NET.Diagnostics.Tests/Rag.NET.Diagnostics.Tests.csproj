@@ -14,14 +14,14 @@
     <ProjectReference Include="..\..\src\Rag.NET.Api\Rag.NET.Api.csproj" />
     <!-- Microsoft.Extensions.DependencyInjection and .Hosting are not referenced: the AspNetCore
          framework reference above already ships both, and NU1510 is an error here. -->
-    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.*" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
-    <PackageReference Include="xunit.v3" Version="2.*" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="NSubstitute" Version="5.*" />
+    <PackageReference Include="NSubstitute" />
   </ItemGroup>
 
 </Project>

@@ -12,7 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cohere" Version="1.*" />
+    <PackageReference Include="Cohere" />
   </ItemGroup>
 
 </Project>

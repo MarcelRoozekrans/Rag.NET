@@ -16,9 +16,9 @@
        force an Azure-only consumer to pull Tesseract's native payload as well. -->
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
-    <PackageReference Include="Azure.AI.DocumentIntelligence" Version="1.*" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+    <PackageReference Include="Azure.AI.DocumentIntelligence" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
 
 </Project>

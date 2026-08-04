@@ -27,12 +27,12 @@
          if 2025-04+ features are needed — native sparse indexes above all. That port
          also means giving up Pinecone Local coverage for index management unless #54 is
          fixed upstream or worked around. -->
-    <PackageReference Include="Pinecone.Client" Version="3.1.0" />
+    <PackageReference Include="Pinecone.Client" />
     <!-- Lifts Pinecone.Client's transitive Grpc.Net.ClientFactory 2.63.0 (repo convention
          wildcard, matching Rag.NET.Api.Grpc.Client): 2.63.0 and earlier trigger the
          Microsoft.Extensions.Http.Resilience known-issue build warning in consumers that
          also reference the resilience handler (e.g. via the Weaviate/Chroma stores). -->
-    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.*" />
+    <PackageReference Include="Grpc.Net.ClientFactory" />
   </ItemGroup>
 
   <ItemGroup>

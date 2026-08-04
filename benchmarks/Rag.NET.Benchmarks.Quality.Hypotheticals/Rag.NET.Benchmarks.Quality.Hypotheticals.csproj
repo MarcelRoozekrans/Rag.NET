@@ -15,7 +15,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.Benchmarks.Quality\Rag.NET.Benchmarks.Quality.csproj" />
     <!-- The OpenAI-compatible IChatClient. OpenRouter is a drop-in behind the same wire protocol,
          so the well-trodden OpenAI client with its Endpoint overridden is the whole integration. -->
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
   </ItemGroup>
 
 </Project>

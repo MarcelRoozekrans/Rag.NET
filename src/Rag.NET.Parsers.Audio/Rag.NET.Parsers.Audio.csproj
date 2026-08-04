@@ -10,12 +10,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
-    <PackageReference Include="Whisper.net" Version="1.*" />
+    <PackageReference Include="Whisper.net" />
     <!-- PrivateAssets narrowed from the default (contentfiles;analyzers;build) to analyzers so
          the runtime's `build` assets flow to consumers of this package: Whisper.net.Runtime
          delivers its native libraries through build-folder targets, not runtimes/, so a consumer
          that cannot import those targets restores the dependency and still gets no natives. -->
-    <PackageReference Include="Whisper.net.Runtime" Version="1.*" PrivateAssets="analyzers" />
+    <PackageReference Include="Whisper.net.Runtime" PrivateAssets="analyzers" />
   </ItemGroup>
 
   <!-- Whisper.net.Runtime's build targets (and those of its Whisper.net.Runtime.Metal

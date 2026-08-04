@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
-    <PackageReference Include="DocumentFormat.OpenXml" Version="3.*" />
+    <PackageReference Include="DocumentFormat.OpenXml" />
   </ItemGroup>
 
 </Project>

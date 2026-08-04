@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
-    <PackageReference Include="Octokit" Version="13.*" />
+    <PackageReference Include="Octokit" />
   </ItemGroup>
 
 </Project>

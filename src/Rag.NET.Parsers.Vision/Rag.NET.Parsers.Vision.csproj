@@ -23,10 +23,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="FFMpegCore" Version="5.*" />
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
-    <PackageReference Include="Tesseract" Version="5.*" Condition="'$(EnableOcr)'=='true'" />
+    <PackageReference Include="FFMpegCore" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Tesseract" Condition="'$(EnableOcr)'=='true'" />
   </ItemGroup>
 
 </Project>

@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
-    <PackageReference Include="AngleSharp" Version="1.*" />
+    <PackageReference Include="AngleSharp" />
   </ItemGroup>
 
 </Project>
