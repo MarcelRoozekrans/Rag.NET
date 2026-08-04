@@ -188,13 +188,36 @@ for f in artifacts/after/*.nupkg; do
 done | sort > /tmp/nuspec-after.txt
 ```
 
-**Step 2: Diff against the baseline.**
+**Step 2: Diff against the baseline — external dependencies only.**
+
+> **Hazard found after Task 1 ran.** The baseline is 232 lines, of which **76 are internal
+> `Rag.NET.*` dependencies carrying the GitVersion-derived version** (`1.0.0` at capture time).
+> Task 4 adds commits, so GitVersion derives a *different* version, and all 76 lines will differ —
+> a non-empty diff caused by version derivation, not by pinning.
+>
+> **Compare the 156 external lines**, which are the published floors this phase is about:
 
 ```bash
-diff docs/plans/2026-08-04-nuspec-baseline.txt /tmp/nuspec-after.txt
+grep -v 'id="Rag.NET' docs/plans/2026-08-04-nuspec-baseline.txt > /tmp/base-external.txt
+grep -v 'id="Rag.NET' /tmp/nuspec-after.txt                      > /tmp/after-external.txt
+diff /tmp/base-external.txt /tmp/after-external.txt
 ```
 
-**Expected: no output.** Every one of the 66 packages must declare exactly the dependency versions it declared before.
+**Expected: no output**, over 156 lines.
+
+**Then assert the internal ones separately** — every `Rag.NET.*` dependency must carry **one
+consistent derived version**, whatever GitVersion produced for this commit. A *mixture* of versions
+would mean packages disagreeing about which build they belong to, which is a real defect:
+
+```bash
+grep -o 'id="Rag.NET[^"]*" version="[^"]*"' /tmp/nuspec-after.txt \
+  | sed 's/.*version="//;s/"//' | sort -u
+```
+
+Expected: exactly **one** line. Report it, and report the baseline's equivalent (`1.0.0`).
+
+**Do not "fix" a version-derivation difference by editing the baseline.** That is the failure mode
+this note exists to prevent: the diff would go quiet while proving nothing.
 
 **Step 3: If the diff is non-empty, do not adjust the baseline.** Each differing line is a published contract that moved. Investigate, fix the pin, and re-verify. **Report every difference you had to reconcile and why** — a silently-edited baseline turns this phase's only real test into theatre.
 
