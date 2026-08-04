@@ -4,16 +4,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Resilience;
-using Polly;
-using Polly.Registry;
-using Polly.Retry;
 using Rag.NET.Abstractions;
 using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Memory;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
-using Rag.NET.Resilience;
 using Rag.NET.SelfQuery;
 using Rag.NET.Retrieval;
 using Rag.NET.Search;
@@ -239,140 +234,6 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     {
         Services.AddSingleton(synonymMap);
         return this;
-    }
-
-    /// <summary>Name of the Polly resilience pipeline registered by <see cref="ConfigureResilience"/>.</summary>
-    internal const string ResiliencePipelineName = "rag-net";
-
-    /// <summary>Sentinel service key marking that <see cref="ConfigureResilience"/> has decorated the surfaces.</summary>
-    internal const string ResilienceAppliedKey = "ragnet.resilience.applied";
-
-    /// <summary>
-    /// Registers a Polly resilience pipeline named <c>"rag-net"</c> and wraps the registered
-    /// <c>IEmbeddingGenerator&lt;string, Embedding&lt;float&gt;&gt;</c> and
-    /// <see cref="IVectorStore"/> with decorators that execute every call through it.
-    /// When no <paramref name="configure"/> delegate is provided, a default exponential back-off retry
-    /// (3 attempts, 1 s base delay, jitter) is configured.
-    /// </summary>
-    /// <remarks>
-    /// Only the surfaces registered at the time of the call are decorated — ordering matters
-    /// (same rule as <c>UseRateLimiting</c>/<c>UseCostBudgeting</c>): register the store and
-    /// the embedding generator first, e.g. <c>rag.UsePgVector(cs).ConfigureResilience()</c>.
-    /// Not calling this method leaves the container graph completely undecorated.
-    /// Idempotent: repeated calls re-configure the named pipeline (last wins) but never stack a
-    /// second decorator layer.
-    /// <para>
-    /// Cancellation passes through untouched: the caller's token flows into every attempt and the
-    /// default retry predicate excludes <see cref="OperationCanceledException"/>, so a cancelled
-    /// call (and, deliberately, an <c>HttpClient</c> timeout surfacing as
-    /// <see cref="TaskCanceledException"/>) is never retried. <see cref="BudgetExceededException"/>
-    /// is excluded for the same reason — it is a kill switch, not a provider blip. A custom
-    /// <paramref name="configure"/> owns its own predicates and should exclude both too.
-    /// </para>
-    /// <para>
-    /// Composition with <c>UseRateLimiting</c>/<c>UseCostBudgeting</c>: those decorate the same
-    /// embedding surface, so call this method <em>after</em> them to make retry the outermost
-    /// layer — each retried attempt then re-acquires a rate permit and is recorded to the cost
-    /// ledger, which is what a real second API call costs.
-    /// </para>
-    /// <para>
-    /// Double retry: the Weaviate and Chroma stores hand-build a retry-only
-    /// <c>ResilienceHandler</c> on their own <c>HttpClient</c> (a bare
-    /// <c>AddRetry(new HttpRetryStrategyOptions())</c> pipeline — not
-    /// <c>AddStandardResilienceHandler</c>, so no transport-level timeout, circuit breaker or
-    /// concurrency limiter). For those stores this decorator stacks on top of transport-level
-    /// retries and attempts multiply: both layers default to <c>MaxRetryAttempts = 3</c>, which
-    /// Polly counts as retries, so each layer makes 1 + 3 = 4 attempts and the worst case is
-    /// 4 × 4 = up to 16 requests. Configure one layer or the other.
-    /// </para>
-    /// </remarks>
-    /// <param name="configure">
-    /// Optional delegate to customise the <see cref="ResiliencePipelineBuilder"/>.
-    /// Replaces the default retry policy when supplied.
-    /// </param>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown when neither an <c>IEmbeddingGenerator&lt;string, Embedding&lt;float&gt;&gt;</c> nor an
-    /// <see cref="IVectorStore"/> is registered yet — there would be nothing to apply the pipeline to.
-    /// </exception>
-    public RagBuilder ConfigureResilience(Action<ResiliencePipelineBuilder>? configure = null)
-    {
-        // Idempotence: a repeat call must not stack a second decorator layer (first-wins,
-        // mirroring UseRateLimiting/UseCostBudgeting). The named pipeline is still
-        // re-registered so the latest configuration wins for the already-wired decorators.
-        bool alreadyApplied = Services.Any(static d =>
-            d.IsKeyedService && Equals(d.ServiceKey, ResilienceAppliedKey));
-
-        bool decorateEmbedding = !alreadyApplied
-            && ServiceDecorationHelper.IsRegistered<IEmbeddingGenerator<string, Embedding<float>>>(Services);
-        bool decorateStore = !alreadyApplied && ServiceDecorationHelper.IsRegistered<IVectorStore>(Services);
-
-        // Validate before mutating the collection, so a misordered call leaves no half-applied state.
-        if (!alreadyApplied && !decorateEmbedding && !decorateStore)
-        {
-            throw new InvalidOperationException(
-                "ConfigureResilience found no IEmbeddingGenerator or IVectorStore registration to apply " +
-                "the \"rag-net\" pipeline to. Register the vector store and/or embedding generator " +
-                "(UsePgVector, UseQdrant, your embedding provider, …) before calling ConfigureResilience — " +
-                "it wraps whatever is registered at that point.");
-        }
-
-        Services.AddResiliencePipeline(ResiliencePipelineName, builder => BuildPipeline(builder, configure));
-
-        if (alreadyApplied)
-        {
-            return this;
-        }
-
-        Services.AddKeyedSingleton<object>(ResilienceAppliedKey, static (_, _) => new object());
-
-        if (decorateEmbedding)
-        {
-            ServiceDecorationHelper.Decorate<IEmbeddingGenerator<string, Embedding<float>>>(
-                Services, static (inner, sp) => new ResilientEmbeddingGenerator(inner, ResolvePipeline(sp)));
-        }
-
-        if (decorateStore)
-        {
-            ServiceDecorationHelper.Decorate<IVectorStore>(
-                Services, static (inner, sp) => ResilientVectorStore.Create(inner, ResolvePipeline(sp)));
-        }
-
-        return this;
-    }
-
-    private static ResiliencePipeline ResolvePipeline(IServiceProvider serviceProvider) =>
-        serviceProvider.GetRequiredService<ResiliencePipelineProvider<string>>()
-            .GetPipeline(ResiliencePipelineName);
-
-    private static void BuildPipeline(
-        ResiliencePipelineBuilder builder,
-        Action<ResiliencePipelineBuilder>? configure)
-    {
-        if (configure is not null)
-        {
-            configure(builder);
-            return;
-        }
-
-        builder.AddRetry(new RetryStrategyOptions
-        {
-            MaxRetryAttempts = 3,
-            Delay = TimeSpan.FromSeconds(1),
-            BackoffType = DelayBackoffType.Exponential,
-            UseJitter = true,
-            // Polly's default predicate handles every exception. Two exclusions:
-            // (1) Cancellation must pass through untouched — a caller's
-            //     OperationCanceledException is never a transient failure, so it is excluded
-            //     here rather than relying on Polly's internal token check (which only covers
-            //     an already-signalled token).
-            // (2) BudgetExceededException is a deliberate kill switch, not a provider blip;
-            //     retrying it would burn the back-off budget on a call that cannot succeed
-            //     (the same non-transient-by-type pin FallbackChatClient applies).
-            ShouldHandle = static args => ValueTask.FromResult(
-                args.Outcome.Exception is not null
-                    and not OperationCanceledException
-                    and not BudgetExceededException),
-        });
     }
 
     /// <summary>

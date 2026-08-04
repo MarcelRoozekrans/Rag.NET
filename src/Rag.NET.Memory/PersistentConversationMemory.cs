@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
-using Rag.NET.Resilience;
 
 namespace Rag.NET.Memory;
 
@@ -81,17 +80,19 @@ public sealed class PersistentConversationMemory(
     }
 
     /// <summary>
-    /// Names the store responsible for the opaque scale, seeing past
-    /// <see cref="ResilientVectorStore"/>. <c>ConfigureResilience</c> decorates the registered
+    /// Names the store responsible for the opaque scale, seeing past decorators such as
+    /// <c>ResilientVectorStore</c>. <c>ConfigureResilience</c> decorates the registered
     /// <see cref="IVectorStore"/>, so a plain <c>GetType().Name</c> would report
     /// <c>"ResilientVectorStore"</c> for every decorated graph — and naming the real store is
-    /// the whole point of the warning. The decorator delegates
-    /// <see cref="IScoreScaleAware.ScoreScale"/>, so it is the inner store's scale that put us
-    /// here. Decoration never stacks, so a single unwrap suffices.
+    /// the whole point of the warning. The probe goes through
+    /// <see cref="IVectorStoreDecorator"/> rather than the concrete type, which lives in the
+    /// <c>Rag.NET.Resilience</c> package this assembly deliberately does not reference. The
+    /// decorator delegates <see cref="IScoreScaleAware.ScoreScale"/>, so it is the inner
+    /// store's scale that put us here. Decoration never stacks, so a single unwrap suffices.
     /// </summary>
     private static string DescribeStore(IVectorStore store) =>
-        store is ResilientVectorStore resilient
-            ? resilient.InnerStoreType.Name
+        store is IVectorStoreDecorator decorator
+            ? decorator.InnerStoreType.Name
             : store.GetType().Name;
 
     public async Task StoreAsync(

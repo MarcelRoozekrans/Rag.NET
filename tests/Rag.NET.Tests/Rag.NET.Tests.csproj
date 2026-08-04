@@ -14,6 +14,11 @@
          IngestFromProviderTests drives real change-detection through SqliteContentHashStore;
          both live in the Rag.NET.Storage.Sqlite satellite since the package decomposition. -->
     <ProjectReference Include="..\..\src\Rag.NET.Storage.Sqlite\Rag.NET.Storage.Sqlite.csproj" />
+    <!-- DefaultCompositionTests pins the configured pipeline through ConfigureResilience and
+         PersistentConversationMemoryScoreScaleTests drives memory recall through the real
+         ResilientVectorStore decorator; both live in the Rag.NET.Resilience satellite since
+         the package decomposition. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Resilience\Rag.NET.Resilience.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Epub\Rag.NET.Parsers.Epub.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Email\Rag.NET.Parsers.Email.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />

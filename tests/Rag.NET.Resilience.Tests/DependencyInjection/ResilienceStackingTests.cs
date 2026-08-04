@@ -64,7 +64,7 @@ public class ResilienceStackingTests
                 // Deterministic seam: swap the chat limiter for a logging one (keyed last-wins)
                 // so acquisition shows up in the shared call-order log.
                 rag.Services.AddKeyedSingleton<IRateLimiter>(
-                    RagBuilderExtensions.ChatRateLimiterKey, (_, _) => new LoggingRateLimiter(log));
+                    ResilienceBuilderExtensions.ChatRateLimiterKey, (_, _) => new LoggingRateLimiter(log));
             })
             .BuildServiceProvider();
 

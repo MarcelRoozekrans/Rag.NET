@@ -13,7 +13,7 @@ using Xunit;
 namespace Rag.NET.Tests.DependencyInjection;
 
 /// <summary>
-/// Covers <see cref="RagBuilder.ConfigureResilience"/> actually applying the <c>"rag-net"</c>
+/// Covers <see cref="ResilienceBuilderExtensions.ConfigureResilience"/> actually applying the <c>"rag-net"</c>
 /// pipeline to the registered embedding generator and vector store.
 /// </summary>
 /// <remarks>
@@ -486,7 +486,7 @@ public class ConfigureResilienceTests
 
         // The pipeline itself is resolvable under the documented name.
         var pipeline = provider.GetRequiredService<ResiliencePipelineProvider<string>>()
-            .GetPipeline(RagBuilder.ResiliencePipelineName);
+            .GetPipeline(ResilienceBuilderExtensions.ResiliencePipelineName);
 
         Assert.NotNull(pipeline);
     }

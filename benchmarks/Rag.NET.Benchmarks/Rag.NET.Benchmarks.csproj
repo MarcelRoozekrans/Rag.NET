@@ -12,6 +12,9 @@
     <!-- ProviderIngestionBenchmarks constructs SqliteContentHashStore, extracted from core
          into the Rag.NET.Storage.Sqlite satellite by the package decomposition. -->
     <ProjectReference Include="..\..\src\Rag.NET.Storage.Sqlite\Rag.NET.Storage.Sqlite.csproj" />
+    <!-- FallbackChatClientBenchmarks constructs FallbackChatClient, extracted from core
+         into the Rag.NET.Resilience satellite by the package decomposition. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Resilience\Rag.NET.Resilience.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.QueryTechniques\Rag.NET.QueryTechniques.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Word\Rag.NET.Parsers.Word.csproj" />

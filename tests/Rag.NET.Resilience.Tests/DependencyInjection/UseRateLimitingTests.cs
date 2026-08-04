@@ -197,7 +197,7 @@ public class UseRateLimitingTests
         // Transactional: the failure left the chat surface untouched — no decoration, no limiter.
         using var sp = services.BuildServiceProvider();
         Assert.Same(chatInner, sp.GetRequiredService<IChatClient>());
-        Assert.Null(sp.GetKeyedService<IRateLimiter>(RagBuilderExtensions.ChatRateLimiterKey));
+        Assert.Null(sp.GetKeyedService<IRateLimiter>(ResilienceBuilderExtensions.ChatRateLimiterKey));
     }
 
     // ── Idempotence per surface ──────────────────────────────────────────────
@@ -215,7 +215,7 @@ public class UseRateLimitingTests
         });
 
         Assert.Equal(1, services.Count(d =>
-            d.IsKeyedService && Equals(d.ServiceKey, RagBuilderExtensions.ChatRateLimiterKey)));
+            d.IsKeyedService && Equals(d.ServiceKey, ResilienceBuilderExtensions.ChatRateLimiterKey)));
 
         using var sp = services.BuildServiceProvider();
         var client = Assert.IsType<RateLimitedChatClient>(sp.GetRequiredService<IChatClient>());
@@ -242,9 +242,9 @@ public class UseRateLimitingTests
         });
 
         Assert.Equal(1, services.Count(d =>
-            d.IsKeyedService && Equals(d.ServiceKey, RagBuilderExtensions.ChatRateLimiterKey)));
+            d.IsKeyedService && Equals(d.ServiceKey, ResilienceBuilderExtensions.ChatRateLimiterKey)));
         Assert.Equal(1, services.Count(d =>
-            d.IsKeyedService && Equals(d.ServiceKey, RagBuilderExtensions.EmbeddingRateLimiterKey)));
+            d.IsKeyedService && Equals(d.ServiceKey, ResilienceBuilderExtensions.EmbeddingRateLimiterKey)));
 
         using var sp = services.BuildServiceProvider();
         Assert.IsType<RateLimitedChatClient>(sp.GetRequiredService<IChatClient>());
@@ -271,14 +271,14 @@ public class UseRateLimitingTests
                 // Deterministic seam: swap the chat-surface limiter for one whose bucket
                 // never refills (keyed last-wins), so "exhausted" needs no timing tricks.
                 rag.Services.AddKeyedSingleton<IRateLimiter>(
-                    RagBuilderExtensions.ChatRateLimiterKey,
+                    ResilienceBuilderExtensions.ChatRateLimiterKey,
                     (_, _) => new TokenBucketRateLimiterAdapter(ExhaustibleBucket(), "chat"));
             })
             .BuildServiceProvider();
 
         Assert.NotSame(
-            sp.GetRequiredKeyedService<IRateLimiter>(RagBuilderExtensions.ChatRateLimiterKey),
-            sp.GetRequiredKeyedService<IRateLimiter>(RagBuilderExtensions.EmbeddingRateLimiterKey));
+            sp.GetRequiredKeyedService<IRateLimiter>(ResilienceBuilderExtensions.ChatRateLimiterKey),
+            sp.GetRequiredKeyedService<IRateLimiter>(ResilienceBuilderExtensions.EmbeddingRateLimiterKey));
 
         var chat = sp.GetRequiredService<IChatClient>();
         var embeddings = sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>();

@@ -30,7 +30,7 @@ namespace Rag.NET.Resilience;
 /// management and native hybrid search are not retried.
 /// </para>
 /// </remarks>
-public class ResilientVectorStore : IVectorStore, IScoreScaleAware
+public class ResilientVectorStore : IVectorStore, IScoreScaleAware, IVectorStoreDecorator
 {
     /// <summary>Creates a decorator over <paramref name="inner"/>.</summary>
     /// <param name="inner">The store to decorate.</param>
@@ -56,15 +56,17 @@ public class ResilientVectorStore : IVectorStore, IScoreScaleAware
 
     /// <summary>
     /// The runtime <see cref="Type"/> of the decorated store, for diagnostics that need to name
-    /// the store rather than the decorator.
+    /// the store rather than the decorator (<see cref="IVectorStoreDecorator"/>).
     /// </summary>
     /// <remarks>
     /// Deliberately the type and not the store itself: <see cref="Inner"/> stays
     /// <c>private protected</c> so no caller can reach around the pipeline, while a log line
     /// such as persistent memory's opaque-scale warning — whose entire job is naming the store
     /// responsible for the score scale — can still say <c>FederatedVectorStore</c> instead of
-    /// <c>ResilientVectorStore</c>. Decoration is idempotent (<c>ConfigureResilience</c> never
-    /// stacks a second layer), so one level of unwrapping is all there is.
+    /// <c>ResilientVectorStore</c>. Since the package decomposition that probe goes through
+    /// <see cref="IVectorStoreDecorator"/>, so <c>Rag.NET.Memory</c> needs no reference to this
+    /// package. Decoration is idempotent (<c>ConfigureResilience</c> never stacks a second
+    /// layer), so one level of unwrapping is all there is.
     /// </remarks>
     public Type InnerStoreType => Inner.GetType();
 
