@@ -6,5 +6,13 @@
   ],
   "labels": [
     "dependencies"
+  ],
+  "packageRules": [
+    {
+      "description": "Patch and minor bumps carry the least risk, so they are batched into one PR a week instead of one PR each. Majors get no rule here — config:recommended's default (ungrouped, unscheduled) is exactly 'one PR per major, as soon as it's available', which is what breakage-prone majors need.",
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "non-major dependencies",
+      "schedule": ["before 6am on monday"]
+    }
   ]
 }
