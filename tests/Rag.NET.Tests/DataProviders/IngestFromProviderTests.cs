@@ -398,6 +398,35 @@ public sealed class IngestFromProviderTests : IDisposable
     }
 
     /// <summary>
+    /// <c>baseMetadata.CreatedAt</c> is supplied once per <c>IngestFromProviderAsync</c> call —
+    /// a batch-level override, not a per-document timestamp — but <c>BuildMetadata</c> must still
+    /// forward it onto every document's <see cref="DocumentMetadata"/>, exactly like
+    /// <see cref="DocumentMetadata.ContentType"/> already is.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_BaseMetadataCreatedAt_ReachesIngestedDocument()
+    {
+        var capturedMetadata = CaptureIngestedMetadata();
+        var provider = MakeProviderWithMetadata(
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["extra"] = "entry-extra" });
+
+        var createdAt = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var baseMetadata = new DocumentMetadata
+        {
+            DocumentId = new DocumentId("id-1"),
+            FileName   = "base.pdf",
+            CreatedAt  = createdAt,
+        };
+
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            baseMetadata: baseMetadata,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Single(capturedMetadata);
+        Assert.Equal(createdAt, capturedMetadata[0].CreatedAt);
+    }
+
+    /// <summary>
     /// One entry carrying <paramref name="metadata"/> — enough to prove a per-entry metadata
     /// rule, and single-entry so an escaping exception is unambiguous.
     /// </summary>
