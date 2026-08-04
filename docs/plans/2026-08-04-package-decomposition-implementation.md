@@ -66,8 +66,25 @@ For each of the four clusters, establish whether its types are reachable on the 
 |---|---|
 | SQLite (7 `Sqlite*` stores) | **Not** in either pipeline builder. Behind `UseSqlitePersistence()` / `UseContentHashRecordManager()`. Expected clean. |
 | Resilience (3 `Resilient*` types) | **Not** in either pipeline builder. Behind `ConfigureResilience()`. Expected clean. |
-| Caching (2 behaviours) | **IS** in `RetrievalPipelineBuilder._types` — `ResultCacheBehavior` at index 1, `EmbeddingCacheBehavior` at index 12 of 17. **This is the risk.** |
+| Caching (2 behaviours) | **IS** in `RetrievalPipelineBuilder._types` — `ResultCacheBehavior` at index 1, `EmbeddingCacheBehavior` at index 12 of 16. **This is the risk.** |
 | Tokenizer (`ConversationMemoryPipeline`, `CostAccounting`) | Unknown. Determine it. |
+
+> **Task 1 completed 2026-08-04 (`bc94f8f`). Its verdicts, which override the expectations above:**
+>
+> - **Caching — answer (a), but extraction is not needed.** Both behaviours instantiate on the default
+>   path and no-op via `Cache is null`. Crucially, `HybridCache` lives in
+>   `Microsoft.Extensions.Caching.Abstractions`, **not** `Caching.Hybrid` — so core keeps both
+>   behaviours on the light `Abstractions` reference and only `UseCaching()` moves. **The `_types`
+>   list is not touched, so there is no ordering risk and no behaviour change.**
+> - **SQLite — extract, but there are five gates, not two**, plus `SqliteDocumentStore` which is
+>   user-constructed and ungated. All must move or the dependency stays.
+> - **Resilience — extract, clean.** `System.Threading.RateLimiting` moves with `UseRateLimiting`.
+> - **Tokenizer — do not extract.** Core hard-references `QueryTechniques`, which pulls both
+>   tokenizer packages independently; removing core's own references saves nothing.
+> - **The list is 16 entries, not 17**, and the clusters are **not independent**:
+>   `UseCostBudgeting` spans resilience, SQLite and the tokenizer at once.
+> - **A trap found by probe:** `Add<T>(after:)` with an absent anchor silently **appends** rather
+>   than failing. Any task removing a type from `_types` must check for anchors naming it.
 
 **Step 1: For the caching cluster, answer the decisive question.**
 
@@ -152,6 +169,32 @@ Lowest-risk extraction — do this one first to establish the pattern.
 
 **Keep the namespaces.** The moved types stay in `Rag.NET.Storage` / `Rag.NET.DependencyInjection` as they are today. Only their assembly changes.
 
+### Task 1 found five gates, not two — and one ungated type
+
+`UseSqlitePersistence()`, `UseContentHashRecordManager()`, `UseEmbeddingVersioning()`
+(`RagBuilderExtensions.cs:132`), `UseCostBudgeting()` (`RagBuilderExtensions.cs:355`), plus
+`SqliteDocumentStore`, which users construct directly with no gate at all. **Every one must move
+or the dependency stays in core** — verified by Step 3 below, which is the real test.
+
+### The cost-ledger decision — the one deliberate behaviour change in this phase
+
+`UseCostBudgeting()` does `TryAddSingleton<ICostLedger>(… new SqliteCostLedger(…))`, so the
+SQLite-backed ledger is today's **default**. That default cannot survive the extraction.
+
+**Decided by the repository owner on 2026-08-04: default to the existing `InMemoryCostLedger`.**
+`Rag.NET.Storage.Sqlite` provides `UseSqliteCostLedger()` for the persistent ledger, and
+`UseCostBudgeting()` stays in core.
+
+**This changes behaviour, and the change has a financial consequence**: daily and monthly spend
+limits are enforced against a ledger that now resets when the process restarts, where previously
+they persisted. So:
+
+- **Log a warning at registration** when the in-memory default is used, naming
+  `UseSqliteCostLedger()`. The owner chose the default; the concern was that it would be
+  *invisible*, and a warning answers that without overriding the choice.
+- Record it in the commit body and again in Task 16 as a behaviour change, not a refactor.
+- Keep `TryAdd` semantics exactly: an `ICostLedger` registered earlier still wins.
+
 **Step 1: Create the project and move the files.**
 
 Use `git mv` so history follows. Add to `Rag.NET.slnx`.
@@ -201,44 +244,56 @@ Expected: **no output.** Record the closure count — it should fall by ~15.
 
 ---
 
-## Task 5: Extract `Rag.NET.Caching` — the risky one
+## Task 5: `Rag.NET.Caching` — reference swap, not an extraction
 
-**Do not start until Task 1's verdict says extract.** If Task 1 found the behaviours default-reachable in a way that cannot be preserved, implement the seam described below and record why.
+**Task 1 changed this task's shape and removed its risk.** Do not move the behaviours.
+
+`HybridCache` is defined in **`Microsoft.Extensions.Caching.Abstractions`**, not in
+`Microsoft.Extensions.Caching.Hybrid`. `Caching.Hybrid` supplies the *implementation* registered by
+`AddHybridCache()`. And `Caching.Hybrid` is the sole root of that cluster — `Caching.Abstractions`
+and `Caching.Memory` reach core only through it. So:
 
 **Files:**
 - Create: `src/Rag.NET.Caching/Rag.NET.Caching.csproj` (takes `Microsoft.Extensions.Caching.Hybrid`)
-- Move: `src/Rag.NET/Retrieval/Behaviors/EmbeddingCacheBehavior.cs`, `ResultCacheBehavior.cs`
-- Create: `src/Rag.NET.Caching/CachingBuilderExtensions.cs` — `UseCaching`
-- Modify: `src/Rag.NET/DependencyInjection/RetrievalPipelineBuilder.cs:11-30` — remove the two `typeof(...)` entries
+- Create: `src/Rag.NET.Caching/CachingBuilderExtensions.cs` — `UseCaching()`, containing the
+  `AddHybridCache()` call lifted from core
+- Modify: `src/Rag.NET/Rag.NET.csproj` — replace `Microsoft.Extensions.Caching.Hybrid` with
+  `Microsoft.Extensions.Caching.Abstractions`
+- **Do not modify** `RetrievalPipelineBuilder.cs`. **Do not move** `ResultCacheBehavior` or
+  `EmbeddingCacheBehavior` — they stay in core, compiling against `Caching.Abstractions`, and
+  continue to no-op via `Cache is null` exactly as they do today.
 
-**The seam already exists.** `RetrievalPipelineBuilder.Add<T>(after:, before:)` inserts at a named position. `UseCaching()` must re-insert both behaviours at their exact original positions:
+**Why this is better than the original plan:** the `_types` list is untouched, so pipeline order
+cannot change, and the `Add<T>(after: typeof(ResultCacheBehavior))` anchor trap Task 1 found —
+where an absent anchor silently *appends* instead of failing — is never triggered.
 
-- `ResultCacheBehavior` — `before: typeof(LostInTheMiddleBehavior)`
-- `EmbeddingCacheBehavior` — `before: typeof(FilterBehavior)`
+**Step 1:** Make the reference swap and build. Core must compile with only `Caching.Abstractions`.
+If it does not, something in core needs the Hybrid implementation — find it and report before
+proceeding.
 
-**Step 1: Before moving anything, extend Task 2's test** with a case that calls `UseCaching()` and asserts the resulting order is **byte-identical to today's default order**. Run it — it must pass before the move.
+**Step 2: Run Task 2's characterisation test.** The default order must be **unchanged and still 16
+entries**. Any change here means the swap was not behaviour-neutral; stop and report.
 
-**Step 2:** Move the files, remove the two entries, wire `UseCaching()` with the `before:` anchors.
-
-**Step 3: Run the characterisation tests.** The `UseCaching()` case must produce the identical 17-entry order. The no-opt-in case must now produce 15 entries — **and that is a deliberate, recorded change**: a user who never calls `UseCaching()` no longer has cache behaviours in their pipeline. Update the default-case expectation to the 15 with a comment stating why.
-
-**If the two orders do not match exactly, stop.** Report the difference rather than adjusting the anchors until green.
-
-**Step 4:**
+**Step 3: Measure.**
 
 ```bash
-dotnet list src/Rag.NET/Rag.NET.csproj package --include-transitive | grep -i "caching.hybrid\|caching.memory"
+dotnet list src/Rag.NET/Rag.NET.csproj package --include-transitive | grep -i "caching"
 ```
 
-Expected: no output.
+Expected: `Microsoft.Extensions.Caching.Abstractions` **only**. `Caching.Hybrid` and
+`Caching.Memory` gone. **State the before/after count** — the cluster was 7.
 
 ---
 
-## Task 6: The tokenizer cluster — conditional
+## Task 6: The tokenizer cluster — DO NOT EXTRACT
 
-**Only proceed if Task 1's verdict was "extract".** Otherwise skip, and record in the commit for Task 11 that it stays in core with Task 1's reason.
+**Task 1 settled this: the extraction saves nothing.** Core hard-references
+`Rag.NET.QueryTechniques` (`Rag.NET.csproj:50`), which pulls `Microsoft.ML.Tokenizers` and
+`Microsoft.ML.Tokenizers.Data.Cl100kBase` independently. Removing core's own references leaves the
+closure identical — proven with `dotnet nuget why`.
 
-`Microsoft.ML.Tokenizers` is also pulled by `Rag.NET.QueryTechniques`, which core references directly — so removing it from core's own `.csproj` may not remove it from core's closure. **Verify with `dotnet nuget why` before claiming a win.** If QueryTechniques keeps it in the closure regardless, the extraction saves nothing and should not be done; record that finding.
+**No work in this task.** Record the finding and its reopening condition — decoupling core from
+`QueryTechniques` — in Task 16. Do not spend effort proving it again.
 
 ---
 
