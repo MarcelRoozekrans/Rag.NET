@@ -36,8 +36,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- PackageReadmeFile names the file inside the package; this actually packs it. -->
-    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+    <!-- PackageReadmeFile names the file inside the package; this packs each project's OWN
+         README.md, sitting beside its .csproj. The repo-wide root README.md is deliberately
+         not a fallback: a packable project without its own README fails pack (NU5039)
+         instead of silently showing every nuget.org visitor the whole project —
+         tests/Rag.NET.PackageValidation.Tests/PackageReadmeTests.cs guards what ships. -->
+    <None Include="$(MSBuildProjectDirectory)\README.md" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>
