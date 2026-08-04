@@ -4,6 +4,8 @@ using System.Threading;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.DataProviders;
+using Rag.NET.Ingestion;
+using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Storage;
@@ -587,6 +589,48 @@ public sealed class IngestFromProviderTests : IDisposable
         var tags = Assert.Single(captured).Tags;
         Assert.Equal("acme/widgets", tags["repo"]);
         Assert.Equal("modified", tags["change_status"]);
+    }
+
+    /// <summary>
+    /// The metadata produced by <c>BuildMetadata</c> here is exactly what a real pipeline would
+    /// hand to <see cref="MetadataBehavior"/> next — this closes the gap between the two tested
+    /// in isolation elsewhere: <c>IngestFromProviderTests</c> only checks the connector-side
+    /// guard, and <c>MetadataBehaviorCreatedAtTests</c> only ever exercises the behavior with an
+    /// explicit <see cref="DocumentMetadata.CreatedAt"/> already set. Neither proves what a
+    /// provider entry that supplies no timestamp actually produces in chunk metadata.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProvider_WithNoTimestampFromTheConnector_DoesNotFabricateACreationTime()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var captured = CaptureIngestedMetadata();
+        var provider = MakeProvider(("id-1", "a.txt", "hello", null));
+
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: ct);
+
+        var metadata = Assert.Single(captured);
+
+        var chunkCtx = new IngestionContext
+        {
+            Stream           = Stream.Null,
+            Metadata         = metadata,
+            GetNextBm25DocId = () => 0,
+        };
+        chunkCtx.Chunks.Add(new TextChunk
+        {
+            Text       = "hello",
+            DocumentId = metadata.DocumentId,
+            ChunkIndex = 0,
+        });
+
+        var behavior = new MetadataBehavior();
+        await behavior.HandleAsync(chunkCtx, ct,
+            (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+
+        Assert.False(
+            chunkCtx.Chunks[0].Metadata.TryGetValue(ReservedMetadataKeys.CreatedAt, out var fabricated),
+            $"Connector supplied no timestamp; chunk metadata must not fabricate one, but found '{fabricated}'.");
     }
 
     // provider_id is written centrally so all 21 connectors carry it without per-connector work.

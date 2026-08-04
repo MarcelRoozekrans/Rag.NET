@@ -17,7 +17,10 @@ public sealed class MetadataBehavior : IIngestionBehavior
                 chunk.Metadata.TryAdd(tag.Key, tag.Value);
             chunk.Metadata.TryAdd(ReservedMetadataKeys.DocumentId, ctx.Metadata.DocumentId);
             chunk.Metadata.TryAdd(ReservedMetadataKeys.FileName,   ctx.Metadata.FileName);
-            chunk.Metadata.TryAdd(ReservedMetadataKeys.CreatedAt,  ctx.Metadata.CreatedAt.ToString("O"));
+            if (ctx.Metadata.CreatedAt is { } createdAt)
+            {
+                chunk.Metadata.TryAdd(ReservedMetadataKeys.CreatedAt, createdAt.ToString("O"));
+            }
         }
 
         return await next(ctx, ct).ConfigureAwait(false);
