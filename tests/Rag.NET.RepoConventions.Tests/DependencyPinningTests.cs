@@ -111,6 +111,15 @@ public sealed class DependencyPinningTests
             string.Join('\n', offenders));
     }
 
+    /// <remarks>
+    /// NuGet is the first line of defence here, not this test: with central management on, a
+    /// floating <c>PackageVersion</c> fails restore outright with <c>NU1011</c> — verified by
+    /// mutation, which never reached the test because restore failed first. What this guard
+    /// actually covers is the case NU1011 stops covering: someone setting
+    /// <c>CentralPackageFloatingVersionsEnabled</c> to <c>true</c>, which switches the error off
+    /// repository-wide and would let every pin drift again. Mutating both together does reach
+    /// this assertion and fails it, which is the only way it can fire.
+    /// </remarks>
     [Fact]
     public void NoCentralPinFloats()
     {
