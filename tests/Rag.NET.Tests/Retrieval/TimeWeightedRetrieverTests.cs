@@ -179,6 +179,54 @@ public class TimeWeightedRetrieverTests
         Assert.InRange(result.Value[0].Score, 0.35, 0.39); // key_b used
     }
 
+    [Theory]
+    [InlineData("updated_at")]
+    [InlineData("published_at")]
+    [InlineData("lastmod")]
+    [InlineData("received_at")]
+    public async Task DefaultFallbackMetadataKeys_AppliesDecayWhenCreatedAtAbsent(string key)
+    {
+        var ct    = TestContext.Current.CancellationToken;
+        var chunk = new TextChunk
+        {
+            Text       = "content",
+            DocumentId = new DocumentId("doc1"),
+            ChunkIndex = 0,
+        };
+        chunk.Metadata[key] = DateTime.UtcNow.AddHours(-100).ToString("O");
+        // no "created_at" key — must fall back to the connector-supplied key via the default list
+
+        var inner  = MockInner([new SearchResult { Chunk = chunk, Score = 1.0 }]);
+        var sut    = new TimeWeightedRetriever(inner, new TimeWeightedOptions()); // default FallbackMetadataKeys
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        // e^(-1) ≈ 0.368 — a real decay, not the neutral 1.0 a wired-to-nothing default would give
+        Assert.InRange(result.Value[0].Score, 0.35, 0.39);
+    }
+
+    [Fact]
+    public async Task DefaultFallbackMetadataKeys_DocumentedOrderWins()
+    {
+        var ct    = TestContext.Current.CancellationToken;
+        var chunk = new TextChunk
+        {
+            Text       = "content",
+            DocumentId = new DocumentId("doc1"),
+            ChunkIndex = 0,
+        };
+        // "updated_at" precedes "published_at" in the documented default order — its value
+        // (100 hours old) must win over the fresher "published_at" value (1 hour old).
+        chunk.Metadata["updated_at"]   = DateTime.UtcNow.AddHours(-100).ToString("O");
+        chunk.Metadata["published_at"] = DateTime.UtcNow.AddHours(-1).ToString("O");
+
+        var inner  = MockInner([new SearchResult { Chunk = chunk, Score = 1.0 }]);
+        var sut    = new TimeWeightedRetriever(inner, new TimeWeightedOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        // If "published_at" (fresh) had won, decay would be ~0.99, not ~0.368.
+        Assert.InRange(result.Value[0].Score, 0.35, 0.39);
+    }
+
     [Fact]
     public async Task FutureDatedDocument_DecayFactorClampedToOne()
     {
