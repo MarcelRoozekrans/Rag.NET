@@ -401,6 +401,73 @@ future reader can tell the difference between "never existed" and "dealt with".
   project by project, which is the same pass the crefs need — and it must land before **Phase
   6.3** either way: publishing 70 IntelliSense-less packages is a defect the packaging phase has
   now measured, not a style choice.
+- **`Rag.NET.Chunking.Templates` still ships `MimeKit`, `CsvHelper` and `ClosedXML`** (Phase
+  4.7's Task 10, **stopped rather than completed**, 2026-08-04 — recorded here because a task
+  that stops without a commit leaves no other trace): moving `EmailTemplateDocumentParser` and
+  `QAPairsDocumentParser` to parser packages cycles. Both parsers constructor-require Templates
+  option types (`EmailChunkingOptions`, `QAPairsChunkingOptions`) while Templates'
+  `UseEmailChunking`/`UseQAPairsChunking` register those parsers by compile-time type, so the
+  receiving parser package needs a reference back into Templates and Templates needs one out to
+  it. Every escape route violated a phase constraint: moving the option types with the parsers
+  changes public type homes the phase promised not to change, an interface seam adds public
+  surface, duplicating the types forks them. So a user wanting the Book template — which needs
+  nothing — still installs an email stack and a spreadsheet library, and
+  `UseEmailChunking(registerParser: false)` and its QAPairs twin remain the only seam. **The
+  dissolving hint, so the next owner starts ahead:** `Rag.NET.Parsers.Email`'s
+  `EmailDocumentParser` already claims `message/rfc822` and is strictly more capable than the
+  template duplicate, so retiring the duplicate removes the cycle outright — but which parser
+  owns `message/rfc822` is exactly the behaviour decision Phase 3.11 deliberately refused to
+  make for the user, and it needs a phase's scrutiny, not a slot.
+  → **Phase 4.2**, with the parser-replacement API design that phase already owns — the same
+  registration-path-ownership question, decided in the same design session; schedule-or-decline
+  there, and declined gets written here, not implied.
+- **`ZeroAlloc.ValueObjects` roots five `Microsoft.Extensions` packages in every Rag.NET
+  package's closure** (measured in Phase 4.7 with `dotnet nuget why`, 2026-08-04, `e46fe26`):
+  `Rag.NET.Abstractions` → `ZeroAlloc.ValueObjects` → `Microsoft.Extensions.Hosting.Abstractions`
+  pulls `Options`, `Diagnostics.Abstractions`, `Configuration.Abstractions`,
+  `Hosting.Abstractions` and `FileProviders.Abstractions` into the closure of **everything**,
+  because every package references Abstractions. This is why the caching swap saved 2 packages
+  instead of the expected 6 — four of the six were rooted here independently — and it is **the
+  largest remaining thread**: no extraction inside this repository can remove them while the
+  reference stands. The fix is upstream — ZeroAlloc.ValueObjects splitting or dropping its
+  Hosting.Abstractions dependency — or a decision that five framework abstraction packages in
+  every closure is an acceptable floor.
+  → **the next phase that touches `Rag.NET.Abstractions`' own dependencies or takes a
+  ZeroAlloc-ecosystem version bump, and failing that Phase 6.3 as a pre-publish decision**:
+  publish with the five in every closure knowingly, or take the upstream fix first — the same
+  decide-before-it-ships shape as the Mcp.Tool residual, held by the phase that owns the
+  release checklist.
+- **Five members `docs/guide/data-providers.md` documents do not exist in the code, and four
+  other pages still name package ids the decomposition retired** (found in Phase 4.7 writing
+  the per-package READMEs against the reflection guard, 2026-08-04, `17e698d`): Slack
+  `ChannelIds` → `ChannelId`, Gmail `EmailAddress`/`ImapHost`/`ImapPort` → `UserName`,
+  Confluence `SpaceKeys` → `SpaceKey`, and GitLab and Bitbucket `Branch` → `Ref`. The READMEs
+  now match the code — this repository's dominant defect caught before shipping for once — but
+  **the guide is not yet fixed**, and the same close found `docs/index.md` (16 mentions),
+  `docs/guide/ingestion.md`, `docs/guide/data-providers.md` and
+  `docs/reference/oss-libraries.md` still naming `Rag.NET.Parsers.Word`/`.Excel`/`.PowerPoint`,
+  `Rag.NET.Chunking.Semantic`/`.TokenAware` and the four standalone Graph connector packages.
+  (`docs/getting-started.md`'s two stale install commands were fixed with the chooser; the rest
+  was deliberately not swept in a phase-close task.)
+  → **Phase 4.5** (the docs-read-end-to-end pass that already owns the sidebar sweep and
+  `docs.yml` — this is the same "nobody has read these pages against reality" work).
+- **`CostBudgetOptions.DatabasePath` survives on an options type core no longer reads**
+  (created by Phase 4.7's cost-ledger decision, `f2518d5`): the property stays in
+  `Rag.NET.Abstractions` (`CostBudgetOptions.cs:35`, default `"rag-cost-ledger.db"`), and
+  core's `UseCostBudgeting()` still validates it non-empty — but nothing in core consumes it;
+  its only reader is `UseSqliteCostLedger()` in `Rag.NET.Storage.Sqlite`. An option that
+  configures a package the user may not have installed, validated by a package that ignores
+  it, is exactly an options-shape question.
+  → **Phase 4.2** (Options Alignment & Validation), which owns deciding every option's home.
+- **`Rag.NET.Mcp.Tool`'s package shape needs one deliberate look before it publishes**
+  (opened by the Phase 4.7 design as "19 MB, unexplained"; the phase's close explained it by
+  measurement and shrank the question): a `PackAsTool` package ships its entire dependency
+  closure inside the `.nupkg`, so the 19 MB was the pre-decomposition core closure — SQLite
+  natives for every RID, the resilience tree — riding inside the tool, and the close's pack is
+  **1.87 MB**, 34 entries, all managed dependency assemblies under `tools/`. What remains is
+  confirming that shape is intended (the Cl100kBase vocabulary and MCP stack dominate it) —
+  small, but it must be a decision rather than a default before the tool is published.
+  → **Phase 4.6** (which owns `Rag.NET.Mcp.Tool`'s first tests), owed before **6.3** publishes.
 
 ### Closed
 
@@ -1183,12 +1250,12 @@ one was found by a test. Every criterion below can be false, and something check
 service has a scrubbed, dated recording" — and `Release tagged v1.0` moved to **Milestone 6's**
 DoD, the recording criterion widened there to recording-or-recorded-reason; completing this
 milestone no longer tags anything, and every other criterion is unchanged):
-- [ ] All planned phases complete (2 of 7 as of 2026-08-03: 4.0, 4.1)
+- [ ] All planned phases complete (3 of 8 as of 2026-08-04: 4.0, 4.1, 4.7 — the phase list grew Phase 4.7, created and completed 2026-08-04)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore
 - [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0). **The gate half holds as of 2026-08-03** (Phase 4.1): both `KnownUnsatisfiable` ledgers are empty, and every formerly-unsatisfiable gate is satisfiable by a fenced procedure in `docs/reference/ci.md` — `ENABLE_OCR` and `RAGNET_TESSDATA` by the `-p:EnableOcr=true` source-build procedure, **executed green on 2026-08-03** (the gated test's first run anywhere); `RAGNET_DOCINTEL_ENDPOINT`/`_KEY` by the `az` F0 free-tier provisioning procedure — written and satisfiable, deliberately not executed, the live run being Phase 6.1's. The box stays open on the all-projects half, checked at the milestone's close; note 4.1's own workflow changes have not yet had a genuine Actions run
 - [x] **Every `features.md` Done claim names code that exists** (`FeatureClaimTests`, Phase 4.0; **holding as of 2026-08-03**: both false claims were corrected at Milestone 3's close, `81163af` — `KnownFalseClaims` is empty and all 72 package claims across 53 Done sections are verified directly. Failing knowingly from 4.0's sweep until then, with the two claims allow-listed under owners → 4.4 and 4.1; both closed early instead, in the Closed debts list)
 - [ ] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0; **failing today, honestly**: `Rag.NET.Mcp.Tool` → 4.6, `Rag.NET.Security.AspNetCore` → 4.5)
-- [ ] CI pipeline builds, tests, and produces NuGet packages (the build-and-test half has been green since Phase 3.5; the pack half shipped in Phase 4.1 — `pack-validate` packs all 70 packages, validates them as a failing test step and pushes them to a local feed twice on every push, `publish-nuget` gated to 6.3 — **but none of it has executed on GitHub Actions yet**: the branch is unpushed, and this repository's record says a workflow's first genuine run is the verification (the post-3.15 nightly failed on its own). Tick on the evidence of that run, not on the wiring)
+- [ ] CI pipeline builds, tests, and produces NuGet packages (the build-and-test half has been green since Phase 3.5; the pack half shipped in Phase 4.1 — `pack-validate` packs every package [all 70; **66** since Phase 4.7's decomposition, 2026-08-04, with `ExpectedPackageCount` moved by stated arithmetic], validates them as a failing test step and pushes them to a local feed twice on every push, `publish-nuget` gated to 6.3 — **but none of it has executed on GitHub Actions yet**: the branch is unpushed, and this repository's record says a workflow's first genuine run is the verification (the post-3.15 nightly failed on its own). Tick on the evidence of that run, not on the wiring)
 
 **What these guards do not fix** (design §7, stated so the milestone does not claim more than it
 does — the recording clause now describes Milestone 6's guard, and holds there unchanged): a
@@ -1326,6 +1393,98 @@ entry in the follow-up list, not a silent drop.)
 >
 > Enable `GenerateDocumentationFile` across `src/` early in this phase and clear the backlog, rather
 > than discovering it while trying to pack.
+
+### Phase 4.7: Package Decomposition, Consolidation & Per-Package READMEs [status: complete]
+**Goal:** Make the `Rag.NET` core package stop shipping the dependencies of features nobody switched on, consolidate three satellite families, give every package its own verified README, and answer "what do I install?" on one page. (Not a features.md row — created 2026-08-04 out of Phase 4.1's own residue: 70 packages a user cannot choose between; numbered after 4.6 because it was created mid-milestone, executed between 4.1 and 4.2.)
+**Plan:** `docs/plans/2026-08-04-package-decomposition-design.md` + `2026-08-04-package-decomposition-implementation.md`
+**Completed:** 2026-08-04 (**the headline, measured at every step rather than once: core's
+transitive closure fell 49 → 28 packages** — 49 → 43 extracting SQLite (`f2518d5`), → 30
+extracting resilience (`7a1a661`, thirteen left rather than the predicted fifteen), → 28 on the
+caching reference swap (`e46fe26`, two rather than the expected six — the reason is a routed
+debt below), re-measured **28** at the phase's close. The `.nupkg` sizes were never the problem
+— core packs at ~133 KB against a ~19 KB median on the close's artifacts — the weight was
+entirely transitive, which is why the catalogue was the visible symptom and the dependency
+closure the actual defect: **31 of the 43 packages a consumer downloaded served features they
+had to explicitly switch on.** A Qdrant user who never called `UseSqlitePersistence()` shipped
+a SQLite engine with native binaries for every RID.
+**The package count went 70 → 66, measured by packing, not by counting directories**
+(`fcd3337`): +3 extracted satellites (`Rag.NET.Storage.Sqlite`, `Rag.NET.Resilience`,
+`Rag.NET.Caching` — each carrying its builder methods per the existing
+`PgVectorBuilderExtensions` convention, namespaces unchanged so no consumer source breaks)
+−7 merged (Word/Excel/PowerPoint → `Rag.NET.Parsers.Office`, `a8db630`; the four Graph
+connectors → `Rag.NET.DataProviders.Microsoft365`, `a32f860`; TokenAware and Semantic folded
+into `Rag.NET.Chunking`, `9ef4048`). Both shapes are mechanically enforced from the shipped
+nuspecs, never the csproj: `DependencyClosureTests` walks the produced package graph from core
+and fails on any extracted cluster, and pins each merged package to the union of what its
+sources declared — **both guards proven red before shipping** (re-adding `Microsoft.Data.Sqlite`
+to core and adding a dependency to `Parsers.Office`, each reverted). The default pipeline
+composition was pinned **before** anything moved (`DefaultCompositionTests`, `acc6e0c`) and is
+byte-identical after all of it. Every test move carries its arithmetic in its commit body
+(core 1321 → 1150 across the three extractions; the satellites run exactly the moved tests).
+**One deliberate behaviour change, recorded as a behaviour change and not a refactor:**
+`UseCostBudgeting()` defaulted to the SQLite-backed ledger; it stays in core and now defaults
+to `InMemoryCostLedger`, with `UseSqliteCostLedger()` in `Rag.NET.Storage.Sqlite` restoring
+persistence. **Daily and monthly spend limits are now enforced against a ledger that resets on
+process restart, where they previously persisted** — a financial consequence, decided by the
+repository owner on 2026-08-04. `TryAdd` semantics are unchanged (an earlier-registered
+`ICostLedger` still wins), and constructing the in-memory default logs a warning naming
+`UseSqliteCostLedger()`, so the owner's choice is never invisible.
+**One public-API addition, recorded as a surface change the phase said it would not make:**
+`IVectorStoreDecorator` was added to `Rag.NET.Abstractions`. `Rag.NET.Memory`'s
+`PersistentConversationMemory` type-checked `ResilientVectorStore` to name the store behind the
+decorator in its opaque-scale warning, and referencing the satellite instead would have dragged
+the resilience closure into every Memory consumer — measured at the close: **14 packages**
+(the 13-package Polly/`Microsoft.Extensions.Resilience` subtree plus the satellite itself).
+Additive, and it follows the existing `IScoreScaleAware` probe pattern — but the phase's design
+promised no public-surface change, so this is on the record as one.
+**Task 10 was stopped, not completed** — its debt entry below carries the detail; the short
+form: moving the two Templates document parsers to parser packages cycles, because both
+constructor-require Templates option types while Templates registers them by compile-time
+type, and every escape route violated a phase constraint. `Rag.NET.Chunking.Templates` still
+ships `MimeKit`, `CsvHelper` and `ClosedXML`.
+**The tokenizer extraction was cancelled after measurement, not attempted:** core
+hard-references `Rag.NET.QueryTechniques`, which pulls `Microsoft.ML.Tokenizers` and
+`Data.Cl100kBase` independently, so removing core's own references leaves the closure
+identical — proven with `dotnet nuget why` in the Task 1 registration audit
+(`docs/plans/2026-08-04-registration-audit.md`, `bc94f8f`), which gated all four extractions
+and overrode two of the plan's expectations. **Reopening condition: decoupling core from
+`QueryTechniques`; until then the extraction saves nothing.** The same audit turned the caching
+extraction into a reference swap — `HybridCache` is defined in
+`Microsoft.Extensions.Caching.Abstractions`, not `Caching.Hybrid`, so both cache behaviours
+stay in core on the light reference, the `_types` list is untouched, and the ordering risk the
+design called central never existed to take.
+**Every package now ships its own README, and the repo's first doc-snippet verification guards
+them** (`PackageReadmeTests`, `a466a28`, written failing before any README existed): each
+README must exist, not be the repo README, name its own package id in its install line, and
+every type and builder method in its C# fences must resolve as public against that package's
+compiled assembly by reflection. Writing the 66 READMEs against that guard surfaced **five
+members `docs/guide/data-providers.md` documents that do not exist in the code** (`17e698d`) —
+the READMEs are correct, the guide is a routed debt below. Stated limit, not absorbed:
+reflection cannot check semantics — argument lists, receiver types and behaviour claims still
+pass — and full snippet compilation is recorded as a possible later strengthening, not
+scheduled.
+**The chooser** (`docs/guide/choosing-packages.md`, linked from `docs/getting-started.md`, the
+root README and the sidebar) states what the audit found was a documentation failure rather
+than a packaging one: `Rag.NET` brings `Abstractions` and `QueryTechniques` transitively, every
+SaaS connector brings the `DataProviders` base (and with it core), the default chunker
+(`RecursiveChunkingStrategy`) is already in core, and the opt-in features each name their own
+package. Its worked example is the one that motivated the phase: SharePoint + Qdrant is two
+genuine package choices, where the pre-decomposition catalogue had a user reasoning about
+seven. Writing it also fixed `getting-started.md`'s two install commands that named the retired
+chunking packages; the wider sweep of stale package ids in other pages is routed with the guide
+debt below.
+**`Rag.NET.Mcp.Tool`'s 19 MB is explained by measurement, and mostly dissolved by this phase:**
+the close's pack is **1.87 MB** — 34 entries, all dependency assemblies under `tools/`, no
+native binaries — because a `PackAsTool` package ships its entire dependency closure inside the
+`.nupkg`, so the 19 MB the design recorded at the phase's start was the pre-decomposition core
+closure (SQLite natives for every RID, the resilience tree) made visible in bytes. What
+remains owed before 6.3 publishes is only confirming the remaining 1.87 MB shape is intended,
+routed with `Rag.NET.Mcp.Tool`'s first tests → Phase 4.6.
+**Verification at the close:** full solution builds 0 warnings / 0 errors, `RepoConventions`
+33 + 1 by-design skip, `PackageValidation` **20/20** (was 15 — the five new tests are the two
+closure guards and the three README guards). **Nothing here has run on GitHub Actions:** the
+branch is unpushed, same as 4.1's residual, and the first genuine run remains the
+verification.)
 
 ### Phase 4.2: Options Alignment & Validation [status: pending]
 **Goal:** Align pipeline options on IOptions and validate them with ZeroAlloc.Validation.
