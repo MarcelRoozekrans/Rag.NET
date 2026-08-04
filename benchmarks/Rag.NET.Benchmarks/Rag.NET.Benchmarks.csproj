@@ -15,6 +15,9 @@
     <!-- FallbackChatClientBenchmarks constructs FallbackChatClient, extracted from core
          into the Rag.NET.Resilience satellite by the package decomposition. -->
     <ProjectReference Include="..\..\src\Rag.NET.Resilience\Rag.NET.Resilience.csproj" />
+    <!-- CachingBenchmarks registers caching through UseCaching(), which lives in the
+         Rag.NET.Caching satellite since the package decomposition. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Caching\Rag.NET.Caching.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.QueryTechniques\Rag.NET.QueryTechniques.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Word\Rag.NET.Parsers.Word.csproj" />

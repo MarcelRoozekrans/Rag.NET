@@ -19,6 +19,11 @@
          ResilientVectorStore decorator; both live in the Rag.NET.Resilience satellite since
          the package decomposition. -->
     <ProjectReference Include="..\..\src\Rag.NET.Resilience\Rag.NET.Resilience.csproj" />
+    <!-- DefaultCompositionTests pins the configured pipeline through UseCaching(), which lives
+         in the Rag.NET.Caching satellite since the package decomposition. The direct
+         Caching.Hybrid package reference below stays: the behaviour tests build a real
+         HybridCache via AddHybridCache() themselves. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Caching\Rag.NET.Caching.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Epub\Rag.NET.Parsers.Epub.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Email\Rag.NET.Parsers.Email.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />

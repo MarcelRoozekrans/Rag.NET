@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Caching</RootNamespace>
+    <PackageId>Rag.NET.Caching</PackageId>
+    <Description>Retrieval caching activation for Rag.NET: UseCaching() registers the HybridCache implementation and the CachingOptions that switch on core's embedding and result cache behaviours</Description>
+    <!-- unit: the registration path is exercised in-process by Rag.NET.Caching.Tests through
+         the real HybridCache implementation over the real pipeline — no container is involved. -->
+    <VerifiedBy>unit</VerifiedBy>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Caching.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <!-- The builder extension registers against core's RagBuilder surface, so this satellite
+         references core — the direction that matters is that core never references this. -->
+    <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <!-- The HybridCache implementation that AddHybridCache() registers. Core's cache
+         behaviours compile against the abstract HybridCache in Caching.Abstractions only;
+         this package is what makes UseCaching() actually cache. -->
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.*" />
+  </ItemGroup>
+
+</Project>

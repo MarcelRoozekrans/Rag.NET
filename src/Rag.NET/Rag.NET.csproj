@@ -23,7 +23,10 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.*" />
+    <!-- HybridCache (the abstract class the cache behaviours inject) is defined here, not in
+         Microsoft.Extensions.Caching.Hybrid — that package carries the implementation and is
+         referenced only by the Rag.NET.Caching satellite, whose UseCaching() registers it. -->
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
     <PackageReference Include="Microsoft.ML.Tokenizers" Version="0.*" />

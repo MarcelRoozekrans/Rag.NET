@@ -1,5 +1,4 @@
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Caching.Hybrid;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -151,24 +150,6 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     public RagBuilder UseSelfQuery(IReadOnlyList<AttributeInfo>? schema = null)
     {
         Services.AddSingleton(new SelfQueryOptions { Schema = schema });
-        return this;
-    }
-
-    /// <summary>
-    /// Enables two-level retrieval caching backed by <see cref="HybridCache"/>.
-    /// Embedding cache caches query→embedding mappings. Result cache
-    /// caches the complete post-processed result list.
-    /// </summary>
-    /// <remarks>
-    /// Per-call opt-out: pass <c>new RetrievalOptions { UseCacheEmbedding = false, UseCacheResult = false }</c>.
-    /// </remarks>
-    /// <param name="configure">Optional delegate to configure <see cref="CachingOptions"/>.</param>
-    public RagBuilder UseCaching(Action<CachingOptions>? configure = null)
-    {
-        var options = new CachingOptions();
-        configure?.Invoke(options);
-        Services.AddSingleton(options);
-        Services.AddHybridCache();
         return this;
     }
 
