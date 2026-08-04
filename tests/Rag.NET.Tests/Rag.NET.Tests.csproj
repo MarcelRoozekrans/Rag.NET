@@ -10,6 +10,10 @@
          Microsoft.Extensions.Logging 10.0.10; the old 10.0.5 pin became a NU1605 downgrade. -->
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.10" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <!-- DefaultCompositionTests pins the configured pipeline through UseSqlitePersistence and
+         IngestFromProviderTests drives real change-detection through SqliteContentHashStore;
+         both live in the Rag.NET.Storage.Sqlite satellite since the package decomposition. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Storage.Sqlite\Rag.NET.Storage.Sqlite.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Epub\Rag.NET.Parsers.Epub.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Email\Rag.NET.Parsers.Email.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />

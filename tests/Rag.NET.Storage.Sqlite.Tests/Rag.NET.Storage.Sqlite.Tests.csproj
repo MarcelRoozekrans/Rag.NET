@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Shared fake TimeProvider, compiled into Rag.NET.Tests as well: SqliteCostLedgerTests
+         and core's InMemoryCostLedgerTests advance the same clock shape on either side of the
+         package boundary. -->
+    <Compile Include="..\Rag.NET.Tests\FakeUtcTimeProvider.cs" Link="FakeUtcTimeProvider.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Storage.Sqlite\Rag.NET.Storage.Sqlite.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="xunit.v3" Version="2.*" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+    <PackageReference Include="NSubstitute" Version="5.*" />
+  </ItemGroup>
+
+</Project>

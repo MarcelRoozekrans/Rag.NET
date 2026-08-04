@@ -98,42 +98,6 @@ public static class RagBuilderExtensions
     }
 
     /// <summary>
-    /// Registers the SQLite-backed <see cref="IEmbeddingVersionStore"/>
-    /// (<see cref="SqliteEmbeddingVersionStore"/>) so the ingestion pipeline stamps each
-    /// document with the embedding model that produced its vectors, and
-    /// <c>ReindexStaleAsync</c> can find documents embedded by an older model. The model
-    /// identity comes from the generator's <c>EmbeddingGeneratorMetadata</c> or the
-    /// explicit <see cref="EmbeddingVersioningOptions.ModelId"/> override; when neither
-    /// is available, stamping is disabled with a one-time warning. Idempotent: options
-    /// and store use <c>TryAdd</c>, so the first registration wins.
-    /// </summary>
-    /// <param name="builder">The RAG builder.</param>
-    /// <param name="configure">Configures the <see cref="EmbeddingVersioningOptions"/>.</param>
-    /// <exception cref="ArgumentException">
-    /// Thrown when <see cref="EmbeddingVersioningOptions.DatabasePath"/> is empty.
-    /// </exception>
-    public static TBuilder UseEmbeddingVersioning<TBuilder>(
-        this TBuilder builder,
-        Action<EmbeddingVersioningOptions>? configure = null)
-        where TBuilder : IRagBuilder
-    {
-        var opts = new EmbeddingVersioningOptions();
-        configure?.Invoke(opts);
-
-        if (string.IsNullOrWhiteSpace(opts.DatabasePath))
-        {
-            throw new ArgumentException(
-                "EmbeddingVersioningOptions.DatabasePath must be a non-empty string.",
-                nameof(configure));
-        }
-
-        builder.Services.TryAddSingleton(opts);
-        builder.Services.TryAddSingleton<IEmbeddingVersionStore>(
-            sp => new SqliteEmbeddingVersionStore(sp.GetRequiredService<EmbeddingVersioningOptions>().DatabasePath));
-        return builder;
-    }
-
-    /// <summary>
     /// Registers a <see cref="FallbackChatClient"/> as the <see cref="IChatClient"/>:
     /// calls try the configured clients in order, falling through to the next on transient
     /// failures (HTTP 429/503, timeouts, rate-limit/unavailable error text) and — when
@@ -295,10 +259,12 @@ public static class RagBuilderExtensions
     /// <see cref="CostBudgetOptions"/> rates — are recorded to an <see cref="ICostLedger"/>.
     /// </summary>
     /// <remarks>
-    /// The ledger defaults to the SQLite-backed <see cref="SqliteCostLedger"/> at
-    /// <see cref="CostBudgetOptions.DatabasePath"/> and is registered with <c>TryAdd</c>:
-    /// an <see cref="ICostLedger"/> registered BEFORE this call (e.g.
-    /// <see cref="InMemoryCostLedger"/> or a custom store) wins. Each registered surface
+    /// The ledger defaults to the in-memory <see cref="InMemoryCostLedger"/> and is registered
+    /// with <c>TryAdd</c>: an <see cref="ICostLedger"/> registered BEFORE this call (e.g. the
+    /// persistent <c>UseSqliteCostLedger()</c> from the <c>Rag.NET.Storage.Sqlite</c> package,
+    /// or a custom store) wins. The in-memory default resets when the process restarts, so
+    /// spend limits are only enforced within a single process lifetime — a warning naming
+    /// <c>UseSqliteCostLedger()</c> is logged when the default is used. Each registered surface
     /// is decorated; at least one must be registered before this call (same ordering rule
     /// as <c>UseRateLimiting</c>) — a surface registered afterwards is not tracked.
     /// Idempotent: repeated calls are no-ops keyed on a sentinel registration, so
@@ -350,9 +316,20 @@ public static class RagBuilderExtensions
         }
 
         builder.Services.AddKeyedSingleton<object>(CostBudgetingAppliedKey, (_, _) => new object());
-        // TryAdd: a custom/in-memory ICostLedger registered earlier wins over the SQLite default.
-        builder.Services.TryAddSingleton<ICostLedger>(sp =>
-            new SqliteCostLedger(options.DatabasePath, sp.GetService<TimeProvider>() ?? TimeProvider.System));
+        // TryAdd: an ICostLedger registered earlier (UseSqliteCostLedger from
+        // Rag.NET.Storage.Sqlite, or a custom store) wins over the in-memory default. The
+        // factory only runs when the default actually won, so the restart-reset warning
+        // fires exactly when the in-memory ledger is the one gating the budget.
+        builder.Services.TryAddSingleton<ICostLedger>(static sp =>
+        {
+            sp.GetService<ILogger<InMemoryCostLedger>>()?.LogWarning(
+                "UseCostBudgeting is using the default in-memory cost ledger: recorded spend " +
+                "resets when the process restarts, so daily/monthly limits are only enforced " +
+                "within a single process lifetime. For a ledger that survives restarts, call " +
+                "UseSqliteCostLedger() from the Rag.NET.Storage.Sqlite package before " +
+                "UseCostBudgeting().");
+            return new InMemoryCostLedger(sp.GetService<TimeProvider>());
+        });
 
         if (trackChat)
         {

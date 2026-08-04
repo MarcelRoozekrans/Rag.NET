@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Rag.NET.Abstractions/Rag.NET.Abstractions.csproj" />
     <Project Path="src/Rag.NET/Rag.NET.csproj" />
+    <Project Path="src/Rag.NET.Storage.Sqlite/Rag.NET.Storage.Sqlite.csproj" />
     <Project Path="src/Rag.NET.VectorStores.PgVector/Rag.NET.VectorStores.PgVector.csproj" />
     <Project Path="src/Rag.NET.Parsers.Pdf/Rag.NET.Parsers.Pdf.csproj" />
     <Project Path="src/Rag.NET.VectorStores.Qdrant/Rag.NET.VectorStores.Qdrant.csproj" />
@@ -77,6 +78,7 @@
     <Project Path="tests/Rag.NET.Security.Tests/Rag.NET.Security.Tests.csproj" />
     <Project Path="tests/Rag.NET.Testing/Rag.NET.Testing.csproj" />
     <Project Path="tests/Rag.NET.Tests/Rag.NET.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Storage.Sqlite.Tests/Rag.NET.Storage.Sqlite.Tests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.IntegrationTests/Rag.NET.VectorStores.IntegrationTests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.PgVector.Tests/Rag.NET.VectorStores.PgVector.Tests.csproj" />
     <Project Path="tests/Rag.NET.VectorStores.Qdrant.Tests/Rag.NET.VectorStores.Qdrant.Tests.csproj" />

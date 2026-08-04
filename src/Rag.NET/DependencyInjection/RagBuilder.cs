@@ -230,28 +230,6 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     }
 
     /// <summary>
-    /// Registers SQLite-backed persistence for <see cref="IBm25Index"/> and <see cref="IParentChunkStore"/>.
-    /// On startup, both stores load persisted data from <paramref name="dbPath"/>.
-    /// Every Add/Remove writes through to SQLite synchronously.
-    /// </summary>
-    /// <param name="dbPath">Path to the SQLite database file. Created if it does not exist.</param>
-    /// <param name="collectionName">
-    /// Optional stale-data guard. If the registered name differs from what is stored in the database,
-    /// all persisted data is wiped before loading. Change this value when replacing the vector store.
-    /// Omit to skip the stale guard.
-    /// </param>
-    public RagBuilder UseSqlitePersistence(string dbPath, string? collectionName = null)
-    {
-        Services.AddSingleton<SqliteBm25Index>(sp => new SqliteBm25Index(dbPath, collectionName, sp.GetService<SynonymMap>()));
-        Services.AddSingleton<IBm25Index>(sp => sp.GetRequiredService<SqliteBm25Index>());
-
-        Services.AddSingleton<SqliteParentChunkStore>(_ => new SqliteParentChunkStore(dbPath, collectionName));
-        Services.AddSingleton<IParentChunkStore>(sp => sp.GetRequiredService<SqliteParentChunkStore>());
-
-        return this;
-    }
-
-    /// <summary>
     /// Registers a <see cref="SynonymMap"/> that expands tokens at both BM25 index time and query time.
     /// Synonyms are bidirectional: any term in a group matches all other terms in that group.
     /// The map is a singleton — call <see cref="SynonymMap.AddGroup"/> or
@@ -260,18 +238,6 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     public RagBuilder UseBm25Synonyms(SynonymMap synonymMap)
     {
         Services.AddSingleton(synonymMap);
-        return this;
-    }
-
-    /// <summary>
-    /// Registers <see cref="SqliteContentHashStore"/> as the <see cref="IContentHashStore"/>.
-    /// When registered, <see cref="RagPipelineExtensions.IngestFromProviderAsync"/> automatically skips
-    /// files that have not changed since the last ingestion run.
-    /// </summary>
-    /// <param name="dbPath">Path to the SQLite file. Created if it does not exist.</param>
-    public RagBuilder UseContentHashRecordManager(string dbPath)
-    {
-        Services.AddSingleton<IContentHashStore>(_ => new SqliteContentHashStore(dbPath));
         return this;
     }
 
