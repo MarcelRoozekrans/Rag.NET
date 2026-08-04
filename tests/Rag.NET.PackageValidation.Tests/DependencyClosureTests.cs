@@ -143,11 +143,14 @@ public sealed class DependencyClosureTests
                 Assert.True(
                     allowed.Contains(dependency),
                     $"{contract.PackageId} declares '{dependency}', which none of its pre-merge " +
-                    "source packages declared. The merge was justified as costing consumers " +
-                    "nothing — every dependency of the merged package was already a dependency " +
-                    "of each source. A new dependency breaks that claim; if it is genuinely " +
-                    "needed, widen this contract in the same commit and say why consumers now " +
-                    "pay for it.");
+                    "source packages declared. The merge contract is that every dependency of " +
+                    "the merged package was already a dependency of AT LEAST ONE source — not " +
+                    "of each source: pre-merge Rag.NET.Chunking.Semantic declared only " +
+                    "Rag.NET.Abstractions, so a Semantic-only consumer does gain the tokenizer " +
+                    "packages (at zero byte cost, because core independently ships both and " +
+                    "semantic chunking is unusable without core). A dependency outside the " +
+                    "union is new to every consumer; if it is genuinely needed, widen this " +
+                    "contract in the same commit and say why consumers now pay for it.");
             }
         }
     }

@@ -84,9 +84,16 @@ the second alone would merge `Graph` with `Security` because they happen to shar
 |---|---|---|
 | `Parsers.Word` + `.Excel` + `.PowerPoint` | `Rag.NET.Parsers.Office` | `DocumentFormat.OpenXml` |
 | `DataProviders.Exchange` + `.MicrosoftTeams` + `.OneDrive` + `.SharePoint` | `Rag.NET.DataProviders.Microsoft365` | `Microsoft.Graph`, Kiota, `Azure.Identity` |
-| `Chunking` + `.TokenAware` + `.Semantic` | `Rag.NET.Chunking` | `Microsoft.ML.Tokenizers` |
+| `Chunking` + `.TokenAware` + `.Semantic` | `Rag.NET.Chunking` | `Microsoft.ML.Tokenizers` (Chunking and TokenAware only — pre-merge `.Semantic` declared just `Rag.NET.Abstractions`) |
 
-No consumer gains a dependency, by construction.
+For the first two merges no consumer gains a dependency: every dependency of the merged package
+was already declared by every source. The Chunking merge has one measured exception — pre-merge
+`Rag.NET.Chunking.Semantic` declared only `Rag.NET.Abstractions`, so a Semantic-only consumer
+gains `Microsoft.ML.Tokenizers` + `Microsoft.ML.Tokenizers.Data.Cl100kBase` as declared
+dependencies. The cost in bytes is zero — the core `Rag.NET` package independently ships both
+tokenizer packages and semantic chunking is unusable without core — but the honest criterion the
+merges actually satisfy is "every dependency of the merged package was already a dependency of
+*at least one* source", not "of each source".
 
 ### What deliberately does not merge
 
