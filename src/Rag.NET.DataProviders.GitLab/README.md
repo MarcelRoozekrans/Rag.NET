@@ -22,7 +22,7 @@ services.AddGitLabDataProvider(
     token:           Environment.GetEnvironmentVariable("GITLAB_TOKEN")!,
     configure: opts =>
     {
-        opts.Branch     = "main";
+        opts.Ref        = "main";          // branch, tag or commit ref
         opts.Extensions = [".md", ".cs"];
         opts.DeltaToken = savedCommitSha;  // null on first run = full traversal
     });

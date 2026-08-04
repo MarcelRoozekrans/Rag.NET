@@ -23,7 +23,7 @@ services.AddBitbucketDataProvider(
     appPassword: Environment.GetEnvironmentVariable("BITBUCKET_APP_PASSWORD")!,
     configure: opts =>
     {
-        opts.Branch     = "main";
+        opts.Ref        = "main";           // branch, tag or commit ref
         opts.Extensions = [".md", ".cs"];
         opts.DeltaToken = savedCommitHash;  // null on first run = full traversal
     });

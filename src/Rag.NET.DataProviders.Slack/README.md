@@ -19,8 +19,8 @@ services.AddSlackDataProvider(
     botToken: Environment.GetEnvironmentVariable("SLACK_BOT_TOKEN")!,
     configure: opts =>
     {
-        opts.ChannelIds = ["C01ABCDEF", "C02GHIJKL"]; // null = all public channels
-        opts.DeltaToken = savedDeltaToken;            // Unix timestamp; null = full history
+        opts.ChannelId  = "C01ABCDEF";     // null = all channels the bot has joined
+        opts.DeltaToken = savedDeltaToken; // Unix timestamp; null = full history
     });
 ```
 

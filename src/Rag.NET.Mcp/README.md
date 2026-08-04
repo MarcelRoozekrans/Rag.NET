@@ -28,7 +28,8 @@ builder.Services
     .AddRagNetMcpServer()
     .WithStdioTransport();     // subprocess transport for Claude Desktop
 
-await builder.Build().RunAsync();
+using var host = builder.Build();
+// Run the host as usual — the MCP server starts and stops with it.
 ```
 
 ## Example

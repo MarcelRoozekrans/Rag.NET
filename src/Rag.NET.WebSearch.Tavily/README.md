@@ -27,7 +27,7 @@ With the search provider registered, CRAG is switched on per retrieval:
 ```csharp
 using Rag.NET.Models;
 
-var results = await pipeline.RetrieveAsync("latest LTS release of .NET", new RetrievalOptions
+var results = await pipeline.RetrieveAsync("latest stable Kubernetes release", new RetrievalOptions
 {
     UseCrag            = true,
     CragScoreThreshold = 0.5f,                     // fall back below this score

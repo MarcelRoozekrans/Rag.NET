@@ -22,7 +22,7 @@ services.AddConfluenceDataProvider(
     apiToken: Environment.GetEnvironmentVariable("CONFLUENCE_API_TOKEN")!,
     configure: opts =>
     {
-        opts.SpaceKeys  = ["ENG", "OPS"];   // null = all spaces
+        opts.SpaceKey   = "ENG";            // null = all spaces
         opts.DeltaToken = savedDeltaToken;  // null on first run = full traversal
     });
 ```

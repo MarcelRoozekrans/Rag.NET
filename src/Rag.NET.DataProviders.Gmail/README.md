@@ -25,8 +25,8 @@ var tokenProvider = new OAuthClientCredentialsTokenProvider(
 
 services.AddGmailDataProvider(tokenProvider, opts =>
 {
-    opts.EmailAddress = "user@example.com";
-    opts.DeltaToken   = savedUidWatermark;  // IMAP UniqueId; null = full mailbox
+    opts.UserName   = "user@example.com";  // the mailbox to authenticate as
+    opts.DeltaToken = savedUidWatermark;   // IMAP UniqueId; null = full mailbox
 });
 ```
 
