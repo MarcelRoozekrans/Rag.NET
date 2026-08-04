@@ -78,12 +78,12 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         SearchOptions options,
         CancellationToken cancellationToken = default)
     {
-        var results = await Client.SearchAsync(
+        var results = await Client.QueryAsync(
             CollectionName,
-            queryEmbedding.ToArray(),
+            query: queryEmbedding.ToArray(),
             filter: BuildMetadataFilter(options.MetadataFilter),
-            limit: (ulong)options.TopK,
             scoreThreshold: (float)options.MinScore,
+            limit: (ulong)options.TopK,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return results.Select(MapScoredPoint).ToList();
