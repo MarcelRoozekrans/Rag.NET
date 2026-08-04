@@ -19,7 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
-    <PackageReference Include="MathNet.Numerics" Version="5.*" />
+    <PackageReference Include="MathNet.Numerics" />
   </ItemGroup>
 
 </Project>

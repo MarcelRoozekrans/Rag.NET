@@ -8,14 +8,14 @@
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Email\Rag.NET.Parsers.Email.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <!-- Explicit pin: MsgFixtureBuilder authors CFB containers with OpenMcdf directly.
          Without this, the reference is only transitive via MsgReader and a MsgReader bump
          could break the builder cryptically. -->
-    <PackageReference Include="OpenMcdf" Version="3.*" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
-    <PackageReference Include="xunit.v3" Version="2.*" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+    <PackageReference Include="OpenMcdf" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>

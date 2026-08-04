@@ -16,10 +16,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="ZeroAlloc.Mediator" Version="4.1.4" />
+    <PackageReference Include="ZeroAlloc.Mediator" />
     <!-- Since 4.x the generator ships under analyzers/dotnet/cs (auto-wired by the SDK) and
          bundles its ZeroAlloc.Pipeline.Generators dependency — no explicit Analyzer items. -->
-    <PackageReference Include="ZeroAlloc.Mediator.Generator" Version="4.1.4" PrivateAssets="all" ExcludeAssets="runtime" />
+    <PackageReference Include="ZeroAlloc.Mediator.Generator" PrivateAssets="all" ExcludeAssets="runtime" />
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
   </ItemGroup>
 </Project>

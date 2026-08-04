@@ -7,8 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
-    <PackageReference Include="Dropbox.Api" Version="7.*" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+    <PackageReference Include="Dropbox.Api" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
   <ItemGroup>
     <!-- DropboxClient is constructed from a token inside the provider and exposes no injectable

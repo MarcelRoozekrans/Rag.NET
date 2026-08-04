@@ -10,16 +10,16 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.VectorStores.Chroma\Rag.NET.VectorStores.Chroma.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
-    <PackageReference Include="xunit.v3" Version="2.*" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
     <!-- 10.* (not the AzureAISearch template's 9.*): ZeroAlloc.Rest transitively pins
          Microsoft.Extensions.DependencyInjection 10.x — 9.* would be a NU1605 downgrade. -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.*" />
-    <PackageReference Include="Testcontainers" Version="4.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Testcontainers" />
   </ItemGroup>
 
 </Project>

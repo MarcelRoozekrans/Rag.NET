@@ -34,10 +34,10 @@ four defects were live, so every criterion below can be false and something chec
 Milestone 6's DoD. The ROADMAP's Milestone 4 section is the authoritative copy; the two must
 agree.
 
-- [ ] All planned phases complete (3 of 8 as of 2026-08-04: 4.0, 4.1, 4.7 — the phase list
-      grew Phase 4.7, created and completed 2026-08-04)
+- [ ] All planned phases complete (4 of 9 as of 2026-08-04: 4.0, 4.1, 4.7, 4.8 — the phase list
+      grew Phase 4.8, created and completed 2026-08-04, out of the Qdrant break)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore (true on every phase close
-      so far, most recently 2026-08-03; the box is ticked at the milestone's close, from a clean
+      so far, most recently 2026-08-04; the box is ticked at the milestone's close, from a clean
       restore on that day's tree)
 - [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies**
       (`TestGateTests`, Phase 4.0). **The gate half holds as of 2026-08-03** (Phase 4.1): both
@@ -47,22 +47,31 @@ agree.
       test's first run anywhere); `RAGNET_DOCINTEL_ENDPOINT`/`_KEY` by the `az` F0 free-tier
       provisioning procedure (written, deliberately not executed — satisfiable is the claim, not
       exercised; the live run is Phase 6.1's). The box stays open on the all-projects half, which
-      is checked at the milestone's close — and Phase 4.1's own workflow changes have not yet had
-      a genuine GitHub Actions run (see the last criterion)
+      is checked at the milestone's close. **Corrected 2026-08-04 (Phase 4.8):** the note that
+      used to close this criterion — "Phase 4.1's own workflow changes have not yet had a genuine
+      GitHub Actions run" — is no longer true; the last criterion below now cites the run that
+      made it false. This box stays open regardless, because Phase 4.8's own tree has not itself
+      been through Actions yet
 - [x] **Every `features.md` Done claim names code that exists** (`FeatureClaimTests`, Phase 4.0;
       **holding as of 2026-08-03**: both false claims corrected at Milestone 3's close,
       `81163af`; `KnownFalseClaims` is empty)
 - [ ] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0; **failing
       today, honestly**: `Rag.NET.Mcp.Tool` → 4.6, `Rag.NET.Security.AspNetCore` → 4.5)
-- [ ] CI pipeline builds, tests, and produces NuGet packages (the build-and-test half has been
+- [x] CI pipeline builds, tests, and produces NuGet packages (the build-and-test half has been
       green since Phase 3.5; the pack half shipped in Phase 4.1 — `pack-validate` packs every
-      package [all 70; **66** since Phase 4.7's decomposition, 2026-08-04, with
+      package [all 70 at the time; **66** since Phase 4.7's decomposition, 2026-08-04, with
       `ExpectedPackageCount` moved by stated arithmetic], validates them as a failing test
       project and pushes them to a local feed twice on
-      every push, with the nuget.org push gated to 6.3 — **but none of it has executed on GitHub
-      Actions yet**: the branch has not been pushed, and this repository's own record (the
-      post-3.15 nightly failed on its first genuine run) says the first real run is the
-      verification. Tick on the evidence of that run, not before)
+      every push, with the nuget.org push gated to 6.3. **Ticked 2026-08-04 (Phase 4.8), on the
+      evidence this box asked for rather than the wiring:** PR #18 — Phase 4.1's own branch — ran
+      `ci.yml` for real and gated its own merge on it: `commitlint`, `pack-validate` and both
+      `build-test` legs all green (run **30828032049**, 2026-08-03). Every push to `main` since
+      has run the identical pipeline for real, including the case this repository's own record
+      predicted would eventually happen: the Qdrant `SearchAsync` break went red on a genuine
+      `build-test` run on `main` (**30919869612**, 2026-08-04, no commit involved) and the fix
+      went green on the next one (**30926805555**). The pipeline has now executed, repeatedly,
+      against real pushes. What it does **not** cover: Phase 4.8's own tree has never itself been
+      through Actions — that gap moves to the all-projects criterion above]
 
 ## Phases
 
@@ -123,11 +132,28 @@ agree.
    answers "what do I install?" with the SharePoint + Qdrant two-choices example. The Mcp.Tool
    19 MB question is explained by measurement (a `PackAsTool` package ships its dependency
    closure; now 1.87 MB) with the residual confirmation → 4.6. Full entry in the ROADMAP.
-4. Phase 4.2 — Options Alignment & Validation [pending]
-5. Phase 4.3 — Structured Logging Enrichment [pending]
-6. Phase 4.4 — OpenTelemetry Tracing & Metrics [pending]
-7. Phase 4.5 — Sample Applications [pending]
-8. Phase 4.6 — Rag.NET CLI Tool [pending]
+4. Phase 4.8 — Dependency Pinning & Renovate [complete — 2026-08-04; created out of `main` going
+   red with no commit pushed to it, numbered after 4.7, executed last] — **99+1 = 100 packages
+   pinned in a new `Directory.Packages.props`**, ending a defect where a floating
+   `PackageReference` resolves at pack time and freezes into the published nuspec as a floor
+   nobody chose: `Qdrant.Client 1.*` floated to 1.18.1 overnight, deprecated `SearchAsync`, and
+   took `main` red with no commit involved (fixed separately, PR #20). **497 `PackageReference`
+   entries stripped across 131 `.csproj`**, plus 6 more in `Directory.Build.props` the plan's own
+   count missed — both re-verified here by diff. `PrivateAssets`/`ExcludeAssets` survived
+   untouched (78 occurrences, byte-identical before and after). Zero `VersionOverride`. **The
+   phase's actual evidence, re-run independently rather than taken on trust:** every produced
+   nuspec's external dependency lines, diffed against a pre-edit baseline, came back
+   byte-identical over 156 lines. The standing guard (`DependencyPinningTests`) found `Tesseract`
+   had no central pin at all — it sits behind an OCR build flag no default restore resolves —
+   confirmed by NU1010 and fixed. `renovate.json` gained batched-weekly non-major PRs and
+   one-PR-per-major (still inert; the app is not enabled), documented in `docs/reference/ci.md`
+   with the two claims — pinning delivered and provable, upgrade automation configured and
+   unexercised — recorded separately. `RepoConventions` 33+1 → 36+1. Full entry in the ROADMAP.
+5. Phase 4.2 — Options Alignment & Validation [pending]
+6. Phase 4.3 — Structured Logging Enrichment [pending]
+7. Phase 4.4 — OpenTelemetry Tracing & Metrics [pending]
+8. Phase 4.5 — Sample Applications [pending]
+9. Phase 4.6 — Rag.NET CLI Tool [pending]
 
 ## Explicitly not in scope
 

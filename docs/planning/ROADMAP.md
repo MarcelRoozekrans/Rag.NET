@@ -206,7 +206,11 @@ future reader can tell the difference between "never existed" and "dealt with".
   `renovate.json` is `config:recommended` plus forced semantic commits, validated with
   `renovate-config-validator`, and recorded as **inert until the Renovate GitHub App is enabled
   on the repository** — a hosted service reading the file, not a workflow anything here can run.
-  Only `docs.yml` keeps this entry open → Phase 4.5.]
+  Only `docs.yml` keeps this entry open → Phase 4.5. [**Extended, still inert, 2026-08-04 (Phase
+  4.8):** `renovate.json` gained a `packageRules` entry batching patch/minor bumps into one PR a
+  week and leaving majors ungrouped and unscheduled — one PR per major, the shape the phase's own
+  Qdrant trigger argued for. Re-validated with `renovate-config-validator` the same day. Still
+  inert for the same reason: the app is still not enabled.]
 - **The ablation table's reranker row permutes only the set it is evaluated on** (found in Phase
   3.15 while writing up the table — **a design flaw in that phase's own plan, not a defect in the
   code**, and the entry says so because the two get fixed differently). The plan set the reranker
@@ -1255,12 +1259,12 @@ one was found by a test. Every criterion below can be false, and something check
 service has a scrubbed, dated recording" — and `Release tagged v1.0` moved to **Milestone 6's**
 DoD, the recording criterion widened there to recording-or-recorded-reason; completing this
 milestone no longer tags anything, and every other criterion is unchanged):
-- [ ] All planned phases complete (3 of 8 as of 2026-08-04: 4.0, 4.1, 4.7 — the phase list grew Phase 4.7, created and completed 2026-08-04)
+- [ ] All planned phases complete (4 of 9 as of 2026-08-04: 4.0, 4.1, 4.7, 4.8 — the phase list grew Phase 4.8, created and completed 2026-08-04 out of the Qdrant break)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore
-- [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0). **The gate half holds as of 2026-08-03** (Phase 4.1): both `KnownUnsatisfiable` ledgers are empty, and every formerly-unsatisfiable gate is satisfiable by a fenced procedure in `docs/reference/ci.md` — `ENABLE_OCR` and `RAGNET_TESSDATA` by the `-p:EnableOcr=true` source-build procedure, **executed green on 2026-08-03** (the gated test's first run anywhere); `RAGNET_DOCINTEL_ENDPOINT`/`_KEY` by the `az` F0 free-tier provisioning procedure — written and satisfiable, deliberately not executed, the live run being Phase 6.1's. The box stays open on the all-projects half, checked at the milestone's close; note 4.1's own workflow changes have not yet had a genuine Actions run
+- [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0). **The gate half holds as of 2026-08-03** (Phase 4.1): both `KnownUnsatisfiable` ledgers are empty, and every formerly-unsatisfiable gate is satisfiable by a fenced procedure in `docs/reference/ci.md` — `ENABLE_OCR` and `RAGNET_TESSDATA` by the `-p:EnableOcr=true` source-build procedure, **executed green on 2026-08-03** (the gated test's first run anywhere); `RAGNET_DOCINTEL_ENDPOINT`/`_KEY` by the `az` F0 free-tier provisioning procedure — written and satisfiable, deliberately not executed, the live run being Phase 6.1's. The box stays open on the all-projects half, checked at the milestone's close. **Corrected 2026-08-04 (Phase 4.8): the clause that used to end this note — "4.1's own workflow changes have not yet had a genuine Actions run" — is no longer true**; the last DoD criterion below now cites the run that made it false. This box stays open regardless: it needs every project passing on the tree at the milestone's close, and Phase 4.8's own tree has not itself been through Actions yet
 - [x] **Every `features.md` Done claim names code that exists** (`FeatureClaimTests`, Phase 4.0; **holding as of 2026-08-03**: both false claims were corrected at Milestone 3's close, `81163af` — `KnownFalseClaims` is empty and all 72 package claims across 53 Done sections are verified directly. Failing knowingly from 4.0's sweep until then, with the two claims allow-listed under owners → 4.4 and 4.1; both closed early instead, in the Closed debts list)
 - [ ] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0; **failing today, honestly**: `Rag.NET.Mcp.Tool` → 4.6, `Rag.NET.Security.AspNetCore` → 4.5)
-- [ ] CI pipeline builds, tests, and produces NuGet packages (the build-and-test half has been green since Phase 3.5; the pack half shipped in Phase 4.1 — `pack-validate` packs every package [all 70; **66** since Phase 4.7's decomposition, 2026-08-04, with `ExpectedPackageCount` moved by stated arithmetic], validates them as a failing test step and pushes them to a local feed twice on every push, `publish-nuget` gated to 6.3 — **but none of it has executed on GitHub Actions yet**: the branch is unpushed, and this repository's record says a workflow's first genuine run is the verification (the post-3.15 nightly failed on its own). Tick on the evidence of that run, not on the wiring)
+- [x] CI pipeline builds, tests, and produces NuGet packages (the build-and-test half has been green since Phase 3.5; the pack half shipped in Phase 4.1 — `pack-validate` packs every package [all 70 at the time; **66** since Phase 4.7's decomposition, 2026-08-04, with `ExpectedPackageCount` moved by stated arithmetic], validates them as a failing test step and pushes them to a local feed twice on every push, `publish-nuget` gated to 6.3. **Ticked 2026-08-04 (Phase 4.8), on the evidence this box asked for rather than the wiring**: PR #18 — Phase 4.1's own branch — ran `ci.yml` for real and gated its own merge on it: `commitlint`, `pack-validate` and both `build-test` legs all green (run **30828032049**, 2026-08-03). Every push to `main` since has run the identical pipeline for real, including the case this repository's own record predicted would eventually happen: the Qdrant `SearchAsync` break went red on a genuine `build-test` run on `main` (**30919869612**, 2026-08-04, no commit involved) and the fix went green on the next one (**30926805555**). The pipeline has now executed, repeatedly, against real pushes — this criterion is about the mechanism, and the mechanism is proven. What it does **not** cover: Phase 4.8's own tree has never itself been through Actions — this branch is unpushed, and the honest gap moves to the DoD's all-projects criterion above, not this one)
 
 **What these guards do not fix** (design §7, stated so the milestone does not claim more than it
 does — the recording clause now describes Milestone 6's guard, and holds there unchanged): a
@@ -1490,6 +1494,115 @@ routed with `Rag.NET.Mcp.Tool`'s first tests → Phase 4.6.
 closure guards and the three README guards). **Nothing here has run on GitHub Actions:** the
 branch is unpushed, same as 4.1's residual, and the first genuine run remains the
 verification.)
+
+### Phase 4.8: Dependency Pinning & Renovate [status: complete]
+**Goal:** Pin every dependency version through Central Package Management so the floor each of
+the 66 packages publishes is chosen rather than decided by pack timing, and configure Renovate
+to propose upgrades as reviewable PRs. (Not a features.md row — created 2026-08-04 out of `main`
+going red with no commit pushed to it; numbered after 4.7 because it was created after, executed
+last in the milestone's phase list.)
+**Plan:** `docs/plans/2026-08-04-dependency-pinning-design.md` + `2026-08-04-dependency-pinning-implementation.md`
+**Completed:** 2026-08-04 (**the trigger:** on 2026-08-04 `main` went red with **no commit pushed
+to it** (CI run 30919869612). `Qdrant.Client` was referenced `1.*`; it floated to 1.18.1
+overnight, and that release marked `QdrantClient.SearchAsync` obsolete — warnings-as-errors
+turned an upstream deprecation into a build failure on unrelated code. Fixed separately, in PR
+#20 (`18fec71`).
+**The defect underneath is worse than one broken build:** a floating `PackageReference` does not
+ship as a range. It resolves once, at pack time, and freezes into the published nuspec as a
+concrete floor NuGet reads as `>=` — so the dependency contract every published package carries
+was being decided by *when `dotnet pack` happened to run*, not by a choice anyone made, and it
+becomes permanent the moment 6.3 ships it. **The defect demonstrated itself mid-phase, while
+being measured** (`9c144f7`, `5924f9a`): the baseline this phase captured before touching
+anything recorded `Qdrant.Client` at **1.19.0** — one minor past the 1.18.1 the design had been
+written against hours earlier, the floating reference moving the shipped floor again while the
+phase that fixes it was already running.
+**The measured scope corrected the design's own premise:** the design estimated "~120 references
+across ~66 projects" from `src/` alone. Measured repository-wide: **497 `PackageReference`
+entries carrying a `Version` attribute across 131 `.csproj` files**, plus **6 more in
+`Directory.Build.props`** (the analyzer references) that even that recount missed until the sweep
+ran (`0b0f036`) — independently re-verified here by diff: exactly 497 removed across 131 files,
+exactly 6 in `Directory.Build.props`. **100 distinct package+version pairs, 4 packages at more
+than one version** — CPM permits exactly one. Two of the four were text-level conflicts that
+resolution made moot: `Microsoft.Data.Sqlite` and `Microsoft.Extensions.Logging` already resolved
+to `10.0.10` everywhere despite one project spelling it `10.*`, so pinning them moved no shipped
+floor and needed no decision. The other two needed one (`81c1233`): `Microsoft.Extensions.DependencyInjection`
+pinned at `10.0.10` (three test/sample projects moved off `9.x`, all passed, no escape hatch
+needed) and `Microsoft.Extensions.AI.OpenAI` pinned at `10.8.3`. **Zero `VersionOverride` used**
+— independently confirmed here by a repository-wide grep — so none of the four conflicts became
+debt.
+**What shipped** (`0b0f036`, `daafdf3`): `Directory.Packages.props` at the repository root, each
+version pinned to what `obj/project.assets.json` actually resolved after a fresh restore, not the
+range in any `.csproj` — **100 `PackageVersion` entries** (independently recounted: 99 from the
+sweep, +1 `Tesseract`, below), and `CentralPackageTransitivePinningEnabled=false`, deliberately —
+turning it on would pin transitive dependencies too and rewrite every shipped nuspec's transitive
+set, exactly what this phase exists not to do. `PrivateAssets`/`ExcludeAssets` survived the sweep
+verbatim: **78 occurrences measured before and after, byte-identical line-for-line** (independently
+diffed here against the branch's own base commit, `18fec71` → `HEAD`; six of the 78 sit in
+`Directory.Build.props` and are the ones that keep six analyzer packages out of every consumer's
+dependency closure, the other 72 are per-project entries — mostly `Microsoft.NET.Test.Sdk`'s and
+the ZeroAlloc source generators' — that the sweep had no business touching and did not).
+**The evidence — the phase's actual deliverable, not the build passing:** every produced nuspec's
+external dependency lines, diffed against a baseline captured before any edit, came back
+**byte-identical — empty — over 156 lines**. Independently re-run here rather than taken on
+trust: packed all 66 again (`dotnet pack Rag.NET.slnx -c Release -o artifacts/verify`, no
+`-p:Version`, matching the baseline's own capture condition), extracted and diffed — `diff`
+exited 0 over the same 156 external lines, and the 76 internal `Rag.NET.*` lines carried one
+consistent version (`1.0.0`, the same convention the baseline used), never a mixture. A green
+build proves the code compiles against the pinned versions; it says nothing about whether a
+published floor moved — this diff is what does, and it held on re-verification.
+**The guard found a real defect before it shipped** (`daafdf3`): `Rag.NET.RepoConventions.Tests`
+gained `DependencyPinningTests` — three facts: no `PackageReference` carries its own version, or
+`VersionOverride`, or a `Version` child element; every `PackageReference` has a matching
+`PackageVersion`; no `PackageVersion` floats. The second assertion failed on its first run, before
+it was committed: `Tesseract` had **no central pin at all**, because it sits behind
+`Condition="'$(EnableOcr)'=='true'"` — a default restore never resolves it, so the version sweep
+that read `project.assets.json` never saw it. NU1010 confirmed the gap; the OCR build path was
+broken and **no default build would ever have revealed it**. Pinned at 5.2.0; a
+`-p:EnableOcr=true` restore and build now succeed. **An honest limit on the third guard, recorded
+in its own remarks rather than left overclaiming** (`a3a5f70`): `NoCentralPinFloats` can only
+fire if someone sets `CentralPackageFloatingVersionsEnabled=true` — otherwise NuGet's own
+**NU1011** rejects a floating `PackageVersion` at restore, before any test runs; the guard's real
+coverage is the narrower case where that switch gets flipped off.
+**Counts:** `RepoConventions` 33+1 skip → **36+1** (three new facts; independently re-run here:
+36 passed, 1 skipped). `PackageValidation` **20/20** (independently re-run here). `Rag.NET.Tests`
+1151, `Storage.Sqlite` 78, `Resilience` 95, `Caching` 2, `Parsers.Office` 19,
+`DataProviders.Microsoft365` 70, `VectorStores.Qdrant` 14 (Docker, ran locally), `PgVector` 60 —
+all at the same baselines Phase 4.7 closed at, since pinning changes no resolved version. Full
+solution build: 0 warnings, 0 errors (independently re-run here).
+**Renovate** (`renovate.json`, `docs/reference/ci.md`): `renovate.json` gained one `packageRules`
+entry — patch and minor bumps batched into a single PR on a weekly schedule
+(`before 6am on monday`); majors get no rule and fall through to `config:recommended`'s default —
+ungrouped, unscheduled, already "one PR per major, proposed as soon as it's available" — which is
+deliberate, since majors are where breakage lives and Qdrant is this phase's own worked example.
+Validated with `renovate-config-validator` 2026-08-04 (`Config validated successfully`). The
+enable procedure is documented in `docs/reference/ci.md`'s Renovate section: installing the
+Renovate GitHub App is the repository owner's action, taken in a browser, and there is no CLI or
+API equivalent to fence — the one gate on this page with no runnable procedure, recorded as such
+rather than papered over. **Two claims recorded separately, not conflated:** *dependency pinning
+is delivered and provable* — the empty 156-line diff, above; *upgrade automation is configured
+and unexercised* — `renovate.json` has never proposed a PR, because the app has never been
+enabled. Only the first is demonstrated by any work in this repository to date.
+**What this does not buy, stated plainly:** pinning does not prevent deprecations. `SearchAsync`
+would still have gone obsolete in 1.18.1 whether the reference was pinned or not. What changes is
+*how the repository finds out* — a Renovate PR whose CI goes red, reviewed on the owner's
+schedule, instead of `main` going red with no commit pushed to explain it.
+**A correction worth recording, because it propagated through the plan:** `dotnet pack` **without**
+`-p:Version` silently produces the SDK default `1.0.0` — GitVersion is *not* wired into a bare
+`dotnet pack`; only `ci.yml`'s `pack-validate`/`publish-nuget` jobs pass it explicitly
+(`dotnet dotnet-gitversion /output json | jq -r '.SemVer'`). Several agent briefings during
+planning said the opposite, which is why Task 1's baseline was captured at `1.0.0` rather than a
+derived prerelease. It did not invalidate the phase's result — external floors do not depend on
+this repository's own version — and it is exactly why the correctness diff compares **external
+lines only**: the 76 internal `Rag.NET.*` lines legitimately change with whatever version a build
+derives.
+**A DoD box moved on this phase's evidence, not its own work**
+(`docs/planning/ROADMAP.md`'s Milestone 4 DoD, "CI pipeline builds, tests, and produces NuGet
+packages"): PR #18 (Phase 4.1's branch) ran `ci.yml` for real and gated its own merge on it —
+`pack-validate` and both `build-test` legs green, run **30828032049**, 2026-08-03 — and every
+push to `main` since has run the same pipeline for real, including the Qdrant break itself
+(red: 30919869612; green again after the fix: 30926805555). That box is ticked now, citing those
+runs; this branch itself (Phase 4.8) has never been through GitHub Actions, so the DoD's
+all-projects criterion stays open on that basis, not on the pipeline's existence.)
 
 ### Phase 4.2: Options Alignment & Validation [status: pending]
 **Goal:** Align pipeline options on IOptions and validate them with ZeroAlloc.Validation.

@@ -23,7 +23,7 @@
     <!-- The HybridCache implementation that AddHybridCache() registers. Core's cache
          behaviours compile against the abstract HybridCache in Caching.Abstractions only;
          this package is what makes UseCaching() actually cache. -->
-    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Hybrid" />
   </ItemGroup>
 
 </Project>

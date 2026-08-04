@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
-    <PackageReference Include="Qdrant.Client" Version="1.*" />
+    <PackageReference Include="Qdrant.Client" />
   </ItemGroup>
 
   <ItemGroup>

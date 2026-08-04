@@ -38,21 +38,21 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
-    <PackageReference Include="ZeroAlloc.Results" Version="1.2.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="ZeroAlloc.Results" />
     <!-- Generators ship under analyzers/dotnet/cs and are auto-wired by the SDK;
          Validation.Generator bundles ZeroAlloc.Pipeline(.Generators), so no standalone
          Pipeline.Generators reference or explicit Analyzer items are needed. -->
     <!-- Specification 1.1.0 bundles its generator — a separate Specification.Generator
          reference would run the generator twice (duplicate And/Or/Not members). -->
-    <PackageReference Include="ZeroAlloc.Specification" Version="1.1.0" />
-    <PackageReference Include="ZeroAlloc.Validation" Version="1.5.3" />
-    <PackageReference Include="ZeroAlloc.Validation.Generator" Version="1.5.3" PrivateAssets="all" ExcludeAssets="runtime" />
+    <PackageReference Include="ZeroAlloc.Specification" />
+    <PackageReference Include="ZeroAlloc.Validation" />
+    <PackageReference Include="ZeroAlloc.Validation.Generator" PrivateAssets="all" ExcludeAssets="runtime" />
     <!-- Pinned exactly: floating versions made builds non-reproducible. The generator always
          emits ToString(); since 1.7.x the single-property form returns the raw value, so the
          value-object types must not hand-write their own ToString. -->
-    <PackageReference Include="ZeroAlloc.ValueObjects" Version="1.7.1" />
+    <PackageReference Include="ZeroAlloc.ValueObjects" />
   </ItemGroup>
 
 </Project>

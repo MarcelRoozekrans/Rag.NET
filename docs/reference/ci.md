@@ -486,11 +486,34 @@ repository is held to: named, condition stated, satisfiable by a documented proc
 
 ### Renovate
 
-`renovate.json` is `config:recommended` plus forced semantic commits (so its PRs pass the
-commitlint gate) and a `dependencies` label. It was validated with `renovate-config-validator`
-on 2026-08-03. **It is inert until the Renovate GitHub App is enabled on the repository** —
+`renovate.json` extends `config:recommended` and `:semanticCommits` (so Renovate's own commits
+pass the commitlint gate) and carries the `dependencies` label. Phase 4.8 added one
+`packageRules` entry: patch and minor bumps are grouped into a single PR on a weekly schedule
+(`before 6am on monday`); majors get no rule of their own and fall through to
+`config:recommended`'s default — ungrouped, unscheduled — which is already "one PR per major,
+proposed as soon as it is available". That is deliberate, not an omission: majors are where
+breakage lives — `Qdrant.Client` floating to 1.18.1 overnight and deprecating `SearchAsync` is
+the worked example (Phase 4.8's entry in `docs/planning/ROADMAP.md` has the full account) — so
+each major earns its own PR and its own changelog read rather than riding inside a batched weekly
+bump. It was validated with `renovate-config-validator` on 2026-08-03 (the original config) and
+re-validated 2026-08-04 after the `packageRules` addition — both runs reported `Config validated
+successfully`.
+
+**It is inert until the Renovate GitHub App is enabled on the repository** —
 Renovate is a hosted service reading this file, not a workflow this repository runs, so no job
-here can exercise it; recorded rather than assumed working.
+here can exercise it; recorded rather than assumed working. **Enabling it is the repository
+owner's action, taken in a browser, and cannot be done from a branch or a workflow file**: install
+the [Renovate GitHub App](https://github.com/apps/renovate), choose **Configure**, and select this
+repository (or grant it organization-wide access, the owner's call). There is no CLI or API
+equivalent to fence here — installing a GitHub App is not a command this repository can script or
+rehearse, unlike every other gate on this page.
+
+**Two claims, and Phase 4.8 records them separately rather than letting one imply the other.**
+*Dependency pinning is delivered and provable*: the phase's nuspec diff came back empty over 156
+external dependency lines, so no published floor moved. *Upgrade automation is configured and
+unexercised*: this file has never proposed a pull request, because the app has never been
+enabled — `config:recommended` and the `packageRules` addition are validated syntax, not observed
+behaviour. Only the first claim is demonstrated by any work in this repository to date.
 
 ## Running the tiers locally
 

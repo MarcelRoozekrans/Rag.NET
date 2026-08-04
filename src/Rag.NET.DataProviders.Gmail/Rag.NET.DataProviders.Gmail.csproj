@@ -7,8 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
-    <PackageReference Include="MailKit" Version="4.*" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">

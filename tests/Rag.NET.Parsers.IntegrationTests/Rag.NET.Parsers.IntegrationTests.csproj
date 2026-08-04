@@ -11,9 +11,9 @@
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Epub\Rag.NET.Parsers.Epub.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Email\Rag.NET.Parsers.Email.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Office\Rag.NET.Parsers.Office.csproj" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
-    <PackageReference Include="xunit.v3" Version="2.*" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>

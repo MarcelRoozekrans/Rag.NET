@@ -22,11 +22,11 @@
          core's internal ServiceDecorationHelper, so this satellite references core — the
          direction that matters is that core never references this. -->
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
-    <PackageReference Include="Microsoft.Extensions.Resilience" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Resilience" />
     <!-- Not part of the Microsoft.NETCore.App shared framework (verified: absent from the
          net10.0 ref pack) — only reachable transitively via Polly today, so reference it
          explicitly for the token-bucket rate limiter. -->
-    <PackageReference Include="System.Threading.RateLimiting" Version="10.*" />
+    <PackageReference Include="System.Threading.RateLimiting" />
   </ItemGroup>
 
 </Project>

@@ -30,12 +30,12 @@
          Microsoft.Extensions.VectorData.Abstractions 10.1.0 — the version SK 1.78.0 itself pins.
          Exact versions, no wildcards: a comparison row measured at a floating version is a row
          nobody can reproduce. -->
-    <PackageReference Include="Microsoft.SemanticKernel" Version="1.78.0" />
-    <PackageReference Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.74.0-preview" />
-    <PackageReference Include="Microsoft.Extensions.VectorData.Abstractions" Version="10.1.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
-    <PackageReference Include="xunit.v3" Version="2.*" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.*">
+    <PackageReference Include="Microsoft.SemanticKernel" />
+    <PackageReference Include="Microsoft.SemanticKernel.Connectors.InMemory" />
+    <PackageReference Include="Microsoft.Extensions.VectorData.Abstractions" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>

@@ -5,20 +5,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Testcontainers" Version="4.*" />
-    <PackageReference Include="Testcontainers.PostgreSql" Version="4.*" />
-    <PackageReference Include="Testcontainers.Ollama" Version="4.*" />
-    <PackageReference Include="WireMock.Net" Version="1.*" />
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Testcontainers.Ollama" />
+    <PackageReference Include="WireMock.Net" />
     <!-- Audit lifts: WireMock.Net pins Scriban.Signed 5.5.0 (multiple advisories, patched in 7.0.0);
          the AI/testing chain pins OpenTelemetry 1.14.0 (advisories patched in 1.15.3). -->
-    <PackageReference Include="Scriban.Signed" Version="7.2.5" />
-    <PackageReference Include="OpenTelemetry.Api" Version="1.17.0" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
-    <PackageReference Include="xunit.v3.extensibility.core" Version="2.*" />
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.*" />
-    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.*" />
+    <PackageReference Include="Scriban.Signed" />
+    <PackageReference Include="OpenTelemetry.Api" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="xunit.v3.extensibility.core" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <!-- No stable release exists yet for Microsoft.Extensions.AI.Ollama; pinned to latest preview. Update when stable is released. -->
-    <PackageReference Include="Microsoft.Extensions.AI.Ollama" Version="9.7.0-preview.1.25356.2" />
+    <PackageReference Include="Microsoft.Extensions.AI.Ollama" />
   </ItemGroup>
 
   <ItemGroup>
