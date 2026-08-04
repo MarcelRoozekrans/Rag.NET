@@ -20,9 +20,7 @@
     <ProjectReference Include="..\..\src\Rag.NET.Caching\Rag.NET.Caching.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.QueryTechniques\Rag.NET.QueryTechniques.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Word\Rag.NET.Parsers.Word.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Excel\Rag.NET.Parsers.Excel.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Parsers.PowerPoint\Rag.NET.Parsers.PowerPoint.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Office\Rag.NET.Parsers.Office.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Confluence\Rag.NET.DataProviders.Confluence.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.DataProviders.Jira\Rag.NET.DataProviders.Jira.csproj" />
