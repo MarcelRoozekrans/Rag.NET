@@ -3,7 +3,8 @@
   <PropertyGroup>
     <RootNamespace>Rag.NET.Evaluation</RootNamespace>
     <PackageId>Rag.NET.Evaluation</PackageId>
-    <Description>Evaluation utilities for Rag.NET pipelines</Description>
+    <Description>LLM-judge and embedding-distance evaluators, A/B comparison with confidence intervals, dataset generation and shadow capture for Rag.NET pipelines</Description>
+    <PackageTags>$(PackageTags);llm-judge;ab-testing;evaluation</PackageTags>
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 

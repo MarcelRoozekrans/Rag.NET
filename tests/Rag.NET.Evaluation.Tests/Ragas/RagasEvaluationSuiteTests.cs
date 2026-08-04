@@ -158,6 +158,69 @@ public sealed class RagasEvaluationSuiteTests
     }
 
     [Fact]
+    public async Task EvaluateAsync_NoSamples_Throws()
+    {
+        // Migrated from tests/Rag.NET.Tests/Evaluation when that duplicate suite was deleted
+        // (Phase 4.1), like the three tests below: they covered suite contracts this suite did
+        // not. An empty run reporting an empty report would read as a measurement of nothing.
+        var client = new RoutingChatClient([]);
+        var suite = new RagasEvaluationSuiteBuilder(client, Embedder()).AddFaithfulness().Build();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            suite.EvaluateAsync([], TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_NoMetricsRegistered_Throws()
+    {
+        var client = new RoutingChatClient([]);
+        var suite = new RagasEvaluationSuiteBuilder(client, Embedder()).Build();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            suite.EvaluateAsync([Sample()], TestContext.Current.CancellationToken));
+
+        Assert.Equal("No metrics are registered.", exception.Message);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_MetricPreconditionFailure_ThrowsBeforeSpendingAnything()
+    {
+        // Build() succeeds — validation belongs to the run — and the run fails fast: Context
+        // Precision requires a reference answer, and the throw must land before any model call
+        // is paid for, at suite level exactly as it does on the evaluator alone.
+        var client = new RoutingChatClient([]);
+        var suite = new RagasEvaluationSuiteBuilder(client, Embedder()).AddContextPrecision().Build();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            suite.EvaluateAsync(
+                [new EvaluationSample("Q?", "A.", string.Empty, ["chunk one"])],
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(0, client.CallCount);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_OverallIsTheMeanOfTheRegisteredMetrics_AndUnregisteredStayNull()
+    {
+        // Faithfulness asserts nothing -> trivially 1.0; every chunk judged irrelevant ->
+        // Context Precision 0.0. The overall must be their mean, and the two metrics nobody
+        // registered must stay null rather than joining it as zeros.
+        var client = new RoutingChatClient([(ClaimsRoute, "[]")], fallback: "no");
+        var suite = new RagasEvaluationSuiteBuilder(client, Embedder())
+            .AddFaithfulness()
+            .AddContextPrecision()
+            .Build();
+
+        var report = await suite.EvaluateAsync([Sample()], TestContext.Current.CancellationToken);
+
+        Assert.Equal(1.0, report.Faithfulness!.Value, precision: 10);
+        Assert.Equal(0.0, report.ContextPrecision!.Value, precision: 10);
+        Assert.Null(report.AnswerRelevance);
+        Assert.Null(report.ContextRecall);
+        Assert.Equal(0.5, report.OverallScore!.Value, precision: 10);
+    }
+
+    [Fact]
     public async Task EvaluateAsync_WithACostLedger_RecordsTheWholeRunsSpend()
     {
         var ledger = new RecordingCostLedger();

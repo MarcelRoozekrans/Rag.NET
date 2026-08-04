@@ -73,19 +73,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   parser *replacement* is API design on the registration path, and §5 groups it with the rest of
   the connector-and-ingestion API work under 4.2, leaving 4.1 the packaging mechanics this entry
   originally leaned on).
-- **`HierarchicalMergerChunkingStrategy` never reads `MaxChunkSize`** (found by Phase 3.16's audit
-  of the other chunking strategies, design §7 — and it is the **inverse** of the defect that phase
-  fixed). Its chunks are one heading subtree each, unbounded above, and `BookChunkingStrategy`,
-  `LegalChunkingStrategy` and `AcademicPaperChunkingStrategy` all delegate to it — so **a user
-  setting `MaxChunkSize` on any of those three templates gets no effect from it**. Plausibly
-  deliberate: a heading subtree is a semantic unit and truncating it would defeat the strategy's
-  purpose. But nothing documents that, and an option a user can set that silently does nothing is a
-  contract defect whether or not the behaviour behind it is right. Deliberately not fixed in 3.16 —
-  that phase's entry put the other strategies out of scope "unless the same shape is found in them —
-  in which case say so rather than widening quietly", and this entry is the saying-so. The decision
-  to make is *document the limit or honour the option*, not a presumed fix.
-  → **Milestone 4, with 4.1**, which is when the public API — including every option a user can
-  set — gets scrutinised for packaging.
 - **A twice-seen, twice-unnamed test failure in `Rag.NET.Benchmarks.Quality.Tests`** (seen once
   during Phase 3.16, **not reproduced in 86 subsequent runs** — 26 solo, 45 under three-way
   concurrency, 15 under a concurrent full-solution build — then **seen a second time during the
@@ -175,6 +162,25 @@ future reader can tell the difference between "never existed" and "dealt with".
   satisfiable somewhere — a fenced, runnable local procedure is what `TestGateTests` accepts —
   or be removed before Milestone 4 closes, even though the recording itself now waits for 6.1.
   That tension lands with 4.1's gate work, said here rather than hidden by the re-point.]
+  [**4.1 delivered both halves' Milestone-4 obligations, 2026-08-03 — and the OCR half is
+  closed outright** (`107e3e9`): the decision this entry was waiting on is taken. The published
+  `Rag.NET.Parsers.Pdf` package **deliberately compiles the Tesseract engine out** — its native
+  payload should not ride into every consumer, and Azure Document Intelligence is the packaged
+  OCR engine — stated plainly in features.md, `docs/guide/ingestion.md` and the gate-off stub's
+  own exception message, all three of which had read as if a consumer project property could
+  flip it. It cannot: `EnableOcr` is evaluated when the package itself is built, so the
+  advertised per-image Tesseract OCR existed in no shipped binary — the docs' instruction was
+  impossible, and the correction says source-build (`-p:EnableOcr=true`), fenced in
+  `docs/reference/ci.md`. Not aspiration: all three gated projects build 0 warnings under the
+  flag, and `OcrFallback_RealTesseract_ReadsScannedFixture` ran **green on 2026-08-03**
+  (tessdata_fast `eng`) — the first execution of that test anywhere, closing the last of the
+  three inert guards Phase 3.7 found. The Azure half became **satisfiable**: ci.md carries a
+  fenced `az cognitiveservices account create --kind FormRecognizer --sku F0` procedure
+  (`ab2d2b4`) — the F0 free tier voids this entry's original billed-per-page premise — and both
+  `TestGateTests` ledgers are now empty. Satisfiable and exercised are different claims and only
+  the first is made: the procedure has not been executed, the live suite has still never run,
+  and its hand-written cassettes remain unconfirmed against the real service — that is 6.1's,
+  unchanged. Only the Azure half keeps this entry open.]
 - **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
   of scope, scheduled here so they do not stay open notes). All three exist in
   `MarcelRoozekrans/AdoNet.Async` and none exists here:
@@ -191,6 +197,16 @@ future reader can tell the difference between "never existed" and "dealt with".
   `renovate.json` → Phase 4.1** (the commitlint pairing this entry already argued, and dependency
   automation is the same release-plumbing pass; §5 is silent on renovate, so that half is the
   replan's assignment rather than the design's).
+  [**The two 4.1 halves shipped 2026-08-03** (`1217791`), each with its limits measured rather
+  than assumed: `.commitlintrc.yml` was run against all **1,506** existing commits before being
+  allowed to fail anything — stock config-conventional rejects 184 of them, the tuned rules
+  (`bench` type allowed, `subject-case` and `body-max-line-length` off, each deviation counted
+  against history, not guessed) still reject 70, none newer than 2026-07-29 — so the gating job
+  lints only a pull request's base-to-head range and existing history is deliberately unlinted.
+  `renovate.json` is `config:recommended` plus forced semantic commits, validated with
+  `renovate-config-validator`, and recorded as **inert until the Renovate GitHub App is enabled
+  on the repository** — a hosted service reading the file, not a workflow anything here can run.
+  Only `docs.yml` keeps this entry open → Phase 4.5.]
 - **The ablation table's reranker row permutes only the set it is evaluated on** (found in Phase
   3.15 while writing up the table — **a design flaw in that phase's own plan, not a defect in the
   code**, and the entry says so because the two get fixed differently). The plan set the reranker
@@ -219,14 +235,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   backstop rides there with it. The primary trigger — the next phase that re-measures the
   table — is unchanged, the floor stays met by the label, and only the optional depth
   re-measure remains.]
-- **`docs/reference/ci.md` does not list the nine ablation cells** (found in Phase 3.15, while
-  writing up the table). That page counts "eleven cases" in what the nightly measures, and the
-  nine ablation cells are now real gated cases in `BeirRunBudget` — so the page's count is stale
-  and its inventory of what `RAGNET_BEIR_LONG_RUNS` unlocks is incomplete. A documentation
-  defect, not a gating one: the budget table itself throws on an untimed dataset, so the code's
-  own inventory cannot drift the way the page's did.
-  → **Milestone 4, with 4.1**, which adds the `pack-push` job to `ci.yml` and is when
-  `docs/reference/ci.md` has to be reread and rewritten against the workflows anyway.
 - **TREC-COVID and EnronQA remain deferred, unchanged from 3.12** (scoped into 3.12, moved to 3.15
   in that phase's scope split, and not run there either — 3.15 spent its budget on the table, two
   library defects and FiQA's real leg). TREC-COVID is still the first graded-relevance dataset,
@@ -298,47 +306,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   (owner assigned 2026-08-02 by the Milestone 4 replan's §5, with the options work on that path,
   replacing the bare milestone-as-deadline) — the same backstop shape as the `MessageChild` debt,
   because the fix is one copied property plus a test: a slot, not a phase.
-- **The current `nightly.yml` has never executed, and its reranker download feeds nothing**
-  (found by the 2026-08-02 audit, reading the workflow against the run history). No nightly has
-  run since PR #7 merged; the last run, 2026-08-01, executed the pre-3.15 workflow. So the
-  reranker provisioning Phase 3.15 added — the ~87 MB `ms-marco-MiniLM-L6-v2` download, its
-  pinned `RERANKER_REVISION` and both SHA-256 verifications — is **unexecuted**: the same
-  "workflow that has never run" state Phase 3.5 closed on ("the first pull-request run is the
-  real verification"), recurring in the nightly two phases later. Worse, when it does run, the
-  download feeds no test: every test reading `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` sits behind
-  `RAGNET_BEIR_LONG_RUNS`, which that job deliberately never sets — so the nightly pays the
-  download, the cache and the checksum verification for nothing it runs. **The decision is
-  genuinely open and this entry does not pre-take it:** either the nightly should run something
-  that uses the reranker (a budget question, with `BeirRunBudget` holding the numbers), or it
-  should stop provisioning what nothing consumes.
-  → **Milestone 4, with 4.1** — the phase that reworks `ci.yml` and must reread
-  `docs/reference/ci.md` against the workflows anyway is where the decision lands; the first
-  genuine run of the current nightly is the verification either way, and is worth having before
-  that phase starts. **Phase 4.0 (2026-08-02) put the gate's status on the record:**
-  `TestGateTests` found `RAGNET_BEIR_LONG_RUNS` satisfiable **only locally** — the fenced command
-  in `docs/reference/ci.md` is the one place anything sets it — so "the download feeds nothing the
-  nightly runs" is now asserted by a test rather than only recorded here; the 4.1 decision stands.
-  [**Executed at last — 2026-08-02, 06:10 UTC (run 30735435427), read at Phase 3.14's close: the
-  premise of this entry's title is stale, and the run both verified and failed.** The reranker
-  provisioning ran end to end — fetch, SHA-256, cache — and, exactly as recorded above, fed no
-  test. The env-gated job then **failed**, on a defect the run found rather than a measurement:
-  see the `BeirDatasetCache` race entry, now in the Closed list. All four parity cases the job
-  exists to protect **passed** (SciFact and ArguAna, both separators), so the published numbers
-  held on the first genuine run; the 4.1 decision on the reranker download is unchanged. **The
-  second genuine run is green**: 30789374909, 2026-08-03, on the branch that fixed the races —
-  `env-gated` passed in 19m01s, still paying for a reranker download nothing in the job consumes,
-  so the 4.1 decision stands with both halves now observed.]
-- **Two near-duplicate RAGAS test suites** (found by the 2026-08-02 audit):
-  `tests/Rag.NET.Tests/Evaluation/` (~650 lines) and `tests/Rag.NET.Evaluation.Tests/Ragas/`
-  (~1,570 lines) carry near-duplicate test names over the same metrics. Phase 3.1 removed
-  exactly this hazard from `src/` — the malformed-reply defect lived in two duplicated copies of
-  the scoring plumbing — and the two-copies shape survives in the tests that certify the fix: an
-  assertion updated in one suite and not the other is how a metric gets one green certificate
-  and one stale one, and the smaller suite is the very folder the 2026-07-27 scope correction
-  records a narrowly-scoped search missing entirely. Nobody has recorded which suite is
-  authoritative.
-  → **Milestone 4, with 4.1** — merge them, or name one authoritative and delete the other, when
-  the test surface is next scrutinised whole for packaging.
 - **Nothing pins the Security→Diagnostics decoration** (found by the 2026-08-02 audit). Phase
   3.4's headline capability — recording what `RbacRetrievalGuard` and `PiiChunkSanitiser`
   removed — works only if the Security package's registrations are in place before
@@ -418,19 +385,101 @@ future reader can tell the difference between "never existed" and "dealt with".
   floor means for them and to do it, and Milestone 6's DoD fails any package still at bare
   `VerifiedBy=unit` with no stated reason. "The milestone's dominant work" was written of
   Milestone 4; the work is now Milestone 6's, and it is still the dominant work.]
-- **Two ghost directories from the PgVector rename are on disk and in no solution** (forced onto
-  the record by Phase 4.0's ledger, 2026-08-02, which had to decide whether `src/Rag.NET.PgVector`
-  was a 72nd package: it is not — untracked `bin`/`obj` only, no csproj, an empty leftover of the
-  rename to `VectorStores.PgVector`, with a matching ghost at `tests/Rag.NET.PgVector.Tests`).
-  Every figure that assumed 72 packages was counting it; the count is **71**. Not harmless while
-  they sit there: one of the pair broke a `dotnet run` in Phase 3.16 by making a project name
-  ambiguous — the same two-matches shape that killed the benchmarks re-measure via a leftover
-  agent worktree.
-  → **Phase 4.1** — delete both with the packaging pass, which is when the package inventory is
-  settled for good.
+- **The packages ship without XML documentation, and the CS1574 backlog is still unmeasured**
+  (the known blocker recorded on Phase 4.1's entry since 2026-07-28, surfaced into this list at
+  that phase's close, 2026-08-03, because the phase did **not** take it up and this list's rule
+  is record-then-schedule, not silently carry). `GenerateDocumentationFile` is set nowhere in
+  the repository, so the 70 published packages carry no IntelliSense XML, and the blocker's
+  measurement stands: **9 distinct CS1574 sites in `Rag.NET.Abstractions` alone**, only two
+  projects ever measured, the rest never having compiled their XML at all — under
+  `TreatWarningsAsErrors`, every one becomes a build failure the day generation is enabled, so
+  9 is a floor. No task in
+  4.1's plan scoped it and no commit decided against it; the phase's close says so rather than
+  absorbing it. The work is repo-wide (enable generation, clear the cref backlog, and a
+  PackageValidation check that each package carries its XML so it cannot silently regress).
+  → **Phase 4.2**, as the owning slot — the next phase that scrutinises the public API surface
+  project by project, which is the same pass the crefs need — and it must land before **Phase
+  6.3** either way: publishing 70 IntelliSense-less packages is a defect the packaging phase has
+  now measured, not a style choice.
 
 ### Closed
 
+- ~~**`HierarchicalMergerChunkingStrategy` never reads `MaxChunkSize`**~~ (found by Phase 3.16's
+  audit of the other chunking strategies — the inverse of the defect that phase fixed: chunks are
+  one heading subtree each, unbounded above, and the Book, Legal and AcademicPaper templates all
+  delegate to it, so a user setting `MaxChunkSize` on any of the three got no effect; the routed
+  decision was *document the limit or honour the option*, with behaviour changes explicitly off
+  the table) → **closed 2026-08-03 in 4.1, resolved by documenting — the option is deliberately
+  ignored, and the docs that said otherwise were false** (`085be6b`). The contract as now
+  stated: a chunk is one heading subtree, a semantic unit whose size the document decides;
+  truncating it at a character count would defeat the strategy's purpose, `Overlap` has no
+  meaning between disjoint subtrees, and the supported way to bound chunk size is
+  `UseSemanticRefinement()` on top. Said in every place a user meets the option: XML remarks on
+  the strategy and on all three templates (the packaged IntelliSense surface — this was the
+  phase inventorying that surface), and `docs/guide/chunking.md` — **whose comparison table had
+  claimed the strategy respects an approximate max-chars limit, which was false**, the docs
+  drawing the behaviour the code did not have, the same shape 3.16 found in the recursive
+  chunker's flowchart. No behaviour changed; the honour-the-option alternative stays available
+  to any future phase that brings measurements.
+- ~~**`docs/reference/ci.md` does not list the nine ablation cells**~~ (found in Phase 3.15,
+  while writing up the table: the page counted "eleven cases" in what the nightly measures,
+  from before 3.14/3.15 added their rows to `BeirRunBudget`) → **closed 2026-08-03 in 4.1,
+  corrected against measurement rather than memory** (`afe388b`). The budget table holds **30
+  dataset × protocol pairs across ten protocols**; counting parity per separator leg the way
+  the page's table always has, that is **35 cases, of which the nightly still runs seven** —
+  and the rewrite surfaced two more stale figures the entry never named: the page still quoted
+  pre-3.16 real-leg costs (~19 min derived / 28 min cold) where 2026-07-31 measured SciFact
+  real at 10m43s and ArguAna real at 11m07s. The page now lists every group with its measured
+  (or honestly derived) cost and names `BeirRunBudget` as the authority that throws on an
+  untimed pair. **The same commit corrected a second false claim found while rereading the
+  page:** it said this repository has no branch protection rules — measured 2026-08-03 via the
+  GitHub API, the `Main` ruleset is **active** and requires exactly `build-test
+  (ubuntu-latest)` and `build-test (windows-latest)`, so both matrix legs do mechanically
+  block a merge (admins can bypass; `pack-validate` and `commitlint` are outside the required
+  set, stated on the page). Three `ci.yml` comments carried the same false prose and now state
+  the measured reality.
+- ~~**The current `nightly.yml` has never executed, and its reranker download feeds nothing**~~
+  (found by the 2026-08-02 audit; the title's first half went stale in-entry — runs 30735435427
+  and 30789374909 were the first two genuine executions, both confirming the second half: the
+  ~87 MB `ms-marco-MiniLM-L6-v2` download ran end to end and fed no test, because every reader
+  sits behind `RAGNET_BEIR_LONG_RUNS`, which the job never sets; the decision — run something
+  that uses it, or stop provisioning it — was left genuinely open for 4.1) → **closed 2026-08-03
+  in 4.1: stop provisioning** (`9fc368a`), decided on the budget table's own numbers rather than
+  taste. No reranked ablation cell fits the nightly — every one is `FitsTheNightly: false` in
+  `BeirRunBudget` (SciFact ~4 m warm plus the parity embedding price cold, ArguAna ~28 m) — and
+  running one beside `BeirParityTests` would race it for the cold cache and pay the corpus
+  embedding twice, the exact reason the cheap comparison cells are opt-in. The pinned
+  `RERANKER_REVISION` and both SHA-256 checks moved verbatim into a fenced local procedure in
+  `docs/reference/ci.md` beside the `RAGNET_BEIR_LONG_RUNS` command — which is also what keeps
+  `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` satisfiable for `TestGateTests` now that no workflow
+  writes them. The presence report still lists both variables deliberately: printing them unset
+  says the reranked cells were off tonight, the same reason it lists `RAGNET_BEIR_LONG_RUNS`.
+- ~~**Two near-duplicate RAGAS test suites**~~ (found by the 2026-08-02 audit:
+  `tests/Rag.NET.Tests/Evaluation/` and `tests/Rag.NET.Evaluation.Tests/Ragas/` carried
+  near-duplicate test names over the same metrics — the two-copies shape Phase 3.1 removed from
+  `src/`, surviving in the tests that certify the fix) → **closed 2026-08-03 in 4.1:
+  `tests/Rag.NET.Evaluation.Tests/Ragas/` is authoritative and the smaller suite is deleted**
+  (`8aa9d7c`). The measured shape: 24 tests / ~650 lines (pre-3.1 style, NSubstitute canned
+  replies) against 101 tests / ~1,570 lines (post-3.1, the suite that certifies the
+  malformed-reply fixes) — the dedicated test project of the packages under test, strictly
+  deeper on every shared behaviour. Before deletion, the **six behaviours only the smaller
+  suite covered were migrated** in the authoritative suite's style — the faithfulness ratio's
+  zero floor, two suite-level throw cases, precondition fail-fast before any spend, a genuine
+  two-value overall mean, and the dataset-builder-to-report end-to-end that no per-component
+  suite shows — and the other 18 were verified duplicate name by name, not assumed. Baselines
+  moved with the merge and were verified green: `Rag.NET.Tests` 1342 → **1318**,
+  `Rag.NET.Evaluation.Tests` 382 → **388**.
+- ~~**Two ghost directories from the PgVector rename are on disk and in no solution**~~ (forced
+  onto the record by Phase 4.0's ledger, which had to decide whether `src/Rag.NET.PgVector` was
+  a 72nd package: it is not — an empty leftover of the rename to `VectorStores.PgVector`, with a
+  matching ghost at `tests/Rag.NET.PgVector.Tests`, one of which broke a `dotnet run` in Phase
+  3.16 by making a project name ambiguous) → **closed 2026-08-03 in 4.1: both deleted from
+  disk — and there is deliberately no commit to cite, because there was nothing to commit.**
+  `git ls-files` showed **nothing tracked** under either path — untracked `bin`/`obj` only — so
+  the deletion touched no tree git records; recorded here precisely because the usual
+  closed-by-commit evidence cannot exist for it. The package inventory this phase settled
+  (71 src csproj, 70 packages) never counted them, and `PackageValidation.Tests`' exact-count
+  assertion now fails if a ghost ever grows back into a csproj.
 - ~~**`BeirDatasetCache` is not safe against two test classes wanting the same un-downloaded
   dataset**~~ (found 2026-08-02 at Phase 3.14's close, reading the first genuine run of the
   post-3.15 nightly — run 30735435427, whose one failure was
@@ -1134,12 +1183,12 @@ one was found by a test. Every criterion below can be false, and something check
 service has a scrubbed, dated recording" — and `Release tagged v1.0` moved to **Milestone 6's**
 DoD, the recording criterion widened there to recording-or-recorded-reason; completing this
 milestone no longer tags anything, and every other criterion is unchanged):
-- [ ] All planned phases complete
+- [ ] All planned phases complete (2 of 7 as of 2026-08-03: 4.0, 4.1)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore
-- [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0; **failing today, knowingly**: four gates are satisfiable nowhere — see the follow-up-debts list)
+- [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0). **The gate half holds as of 2026-08-03** (Phase 4.1): both `KnownUnsatisfiable` ledgers are empty, and every formerly-unsatisfiable gate is satisfiable by a fenced procedure in `docs/reference/ci.md` — `ENABLE_OCR` and `RAGNET_TESSDATA` by the `-p:EnableOcr=true` source-build procedure, **executed green on 2026-08-03** (the gated test's first run anywhere); `RAGNET_DOCINTEL_ENDPOINT`/`_KEY` by the `az` F0 free-tier provisioning procedure — written and satisfiable, deliberately not executed, the live run being Phase 6.1's. The box stays open on the all-projects half, checked at the milestone's close; note 4.1's own workflow changes have not yet had a genuine Actions run
 - [x] **Every `features.md` Done claim names code that exists** (`FeatureClaimTests`, Phase 4.0; **holding as of 2026-08-03**: both false claims were corrected at Milestone 3's close, `81163af` — `KnownFalseClaims` is empty and all 72 package claims across 53 Done sections are verified directly. Failing knowingly from 4.0's sweep until then, with the two claims allow-listed under owners → 4.4 and 4.1; both closed early instead, in the Closed debts list)
 - [ ] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0; **failing today, honestly**: `Rag.NET.Mcp.Tool` → 4.6, `Rag.NET.Security.AspNetCore` → 4.5)
-- [ ] CI pipeline builds, tests, and produces NuGet packages
+- [ ] CI pipeline builds, tests, and produces NuGet packages (the build-and-test half has been green since Phase 3.5; the pack half shipped in Phase 4.1 — `pack-validate` packs all 70 packages, validates them as a failing test step and pushes them to a local feed twice on every push, `publish-nuget` gated to 6.3 — **but none of it has executed on GitHub Actions yet**: the branch is unpushed, and this repository's record says a workflow's first genuine run is the verification (the post-3.15 nightly failed on its own). Tick on the evidence of that run, not on the wiring)
 
 **What these guards do not fix** (design §7, stated so the milestone does not claim more than it
 does — the recording clause now describes Milestone 6's guard, and holds there unchanged): a
@@ -1155,9 +1204,84 @@ found by a prediction stated in advance and reported honestly when it failed, wh
 **Plan:** `docs/plans/2026-08-02-milestone-4-replan-design.md` + `2026-08-02-phase-4-0-verification-ledger-implementation.md`
 **Completed:** 2026-08-02 (**three guards, all cheap, and the numbers they produced are the phase's output.** **(a) `FeatureClaimTests` (`c235a9b`, `d77036f`) parses `docs/reference/features.md` and checks all 54 sections marked `✅ Done` — 54 of 54, not the ~51 the plan predicted — resolving 73 package claims at a measured false-positive rate of 0 of 73.** The residue the plan expected to need risky identifier-extraction turned out to be structured SaaS-connector tables rather than prose, so none was written. **Two claims are false, and both now live in a `KnownFalseClaims` allow-list with evidence and an owning phase, each held by a staleness test that fails the moment the entry is fixed *or* the claim leaves the docs** — an allow-list nothing re-checks is how a known defect becomes furniture. `Rag.NET.Telemetry` is **genuinely false** — the audit's finding (A), now machine-guarded rather than only recorded: no such package, no `.UseTelemetry()`, no `gen_ai.*` attribute, metric names (`ragnet.retrieve.latency`, `ragnet.answer.tokens`, `ragnet.embed.batch_size`) matching nothing in `src/Rag.NET/Telemetry/RagTelemetry.cs`, where the real instruments are `internal` under different names, and its own matrix row unchecked → Phase 4.4 owns the fix. `Rag.NET.Parsers.CSharp` is a **wrong name, not a ghost**: the feature is real and lives at `src/Rag.NET.Chunking.CSharp` → 4.1, with the packaging pass that reads every package identity anyway. **(b) `TestGateTests` (`c613fe1`) enumerates every gating site — 29 on the phase's final tree: 26 `Assert.SkipWhen`/`SkipUnless` call sites, 2 permanent `[Fact(Skip)]`s and 1 conditional-compilation symbol. (The guard first counted 28 — not its plan's 29, whose 29th was an `Assert.SkipWhen` inside a doc comment — and then guard (c)'s own release gate became the 26th call site, a correction the whole-phase review caught after the count was written down.) It asserts each gate is satisfiable somewhere, reading raw source and never compiled output**, because a compiled-output check is blind to the worst case: an `#if` block that is not compiled reports nothing at all. Prose does not satisfy a gate — only a fenced, runnable command counts — and a `secrets.*` workflow mapping is not accepted as evidence either, because the repository cannot show a secret exists. The distribution: **0 gates satisfiable in `ci.yml`** (by design), **5 only in the nightly**, **1 only locally** (`RAGNET_BEIR_LONG_RUNS`, via the fenced command in `docs/reference/ci.md`), and **4 satisfiable nowhere**: `RAGNET_DOCINTEL_ENDPOINT`/`RAGNET_DOCINTEL_KEY` (secrets never configured anywhere — the Document Intelligence live suite has never run, as its debt entry records), `RAGNET_TESSDATA` (its only reader sits inside an uncompiled block), and `ENABLE_OCR` — which is worse than a test gap: nothing sets `EnableOcr`, and the flag **also compiles the production Tesseract engine out**, so the shipped PDF parser has no real OCR in any default build. Two **permanent** `[Fact(Skip)]`s are now visible with their reasons rather than latent: `PineconeVectorStoreTests` (Pinecone Local rejects sparse-on-dense) and `AzureAISearchVectorStoreTests` (the simulator has no OData filters — the skip the audit found in no planning record). **(c) Every package under `src/` now declares `<VerifiedBy>` (`46b6bd8`, `1b206e4`)** — `unit`, `container`, `recorded`, `live` or `none` — extending the `<RequiresDocker>`/`<RequiresSecrets>` convention `ci.yml` already selects on rather than inventing a parallel one. Two gates, deliberately split: "every package declares a value" hard-fails today; "no package declares `none`" is the **release** gate and does not fail the build, because punishing an honest `none` is how a ledger becomes fiction. **The distribution across 71 packages: `unit` 61, `container` 8, `recorded` 0, `live` 0, `none` 2.** The two `none` are `Rag.NET.Mcp.Tool` (host scaffold, no test references it) and `Rag.NET.Security.AspNetCore` (two types, zero test references). The eight `container` are `Rag.NET` itself, `Rag.NET.Security`, `Rag.NET.Ingestion.AzureServiceBus`, and the PgVector, Qdrant, Chroma, Weaviate and Pinecone stores. Two judgments went against the mechanical answer and are recorded as judgments: **AzureAISearch is `unit`, not `container`, despite having Docker-tier tests** — its container is a community simulator without OData filters and of unconfirmed fidelity — and **`Parsers.Pdf.AzureDocumentIntelligence` is `unit`, not `recorded`**, because its WireMock cassettes were hand-written, never recorded from the live service, and a hand-written cassette verifies the code against *our belief* about the API, the exact shape the reranker defect punished. **The number that should shape the rest of this milestone: 61 of 71 packages have only ever been exercised against fakes** — the state late chunking was in for five phases, now visible in every csproj rather than latent. **The ledger also forced a count correction: there are 71 packages, not 72.** `src/Rag.NET.PgVector` is an empty leftover of the rename to `VectorStores.PgVector` — untracked `bin`/`obj`, no csproj — with a matching ghost at `tests/Rag.NET.PgVector.Tests`; recorded as a debt in the follow-up list, since one of the pair already broke a `dotnet run` in Phase 3.16 by making a project name ambiguous. **One §5 routing did not happen here and is said rather than absorbed:** the design sent the FiQA-qrels check ("one read settles it") to this phase, but the implementation plan scoped 4.0 to the three guards and the read was not performed — it stays with the TREC-COVID debt, first thing for whoever runs that dataset.)
 
-### Phase 4.1: NuGet Packaging & Publishing [status: pending]
+### Phase 4.1: NuGet Packaging & Publishing [status: complete]
 **Goal:** NuGet packaging, versioning and publishing on top of a pipeline that already builds and tests.
 **Backlog items:** NuGet Publishing Pipeline
+**Plan:** `docs/plans/2026-08-03-nuget-packaging-design.md` + `2026-08-03-nuget-packaging-implementation.md`
+**Completed:** 2026-08-03 (**everything except the credential and the endpoint now runs on every
+push — design §1's rule, kept:** `dotnet pack` for all **70** packages, validation as a failing
+test project (`tests/Rag.NET.PackageValidation.Tests` — exactly 70 packages in both directions,
+MIT licence agreeing with the repository `LICENSE`, README genuinely inside each package,
+description non-empty, non-placeholder and unique, repository URL + SourceLink commit, a
+`.snupkg` beside every `.nupkg`, no package empty of both `lib/` and `tools/`), and a genuine
+`dotnet nuget push` of every package to a local directory feed, twice; only the nuget.org push
+is gated, to Phase 6.3, as `publish-nuget` — dispatch-only on `main` with
+`publish_to_nuget=true` plus `NUGET_API_KEY`, recorded to the standard `TestGateTests` holds
+every other gate to. `TestGateTests` does **not** cover workflow gates — it scans test gates and
+knows nothing of a workflow `if:` — stated rather than assumed away, and extending its scanner
+was declined: one workflow gate is not a category. `WorkflowWiringTests` pins the gate's
+condition, endpoint, command text and fenced procedure instead.
+**The measurement that falsified the plan's own premise, recorded because the ledger exists for
+exactly this:** the plan and design both asserted `dotnet pack` emits `NU5xxx` for missing
+licence, README and description, so warnings-as-errors makes an incomplete package fail the
+build. **Measured before Task 1 changed anything: the SDK enforces no package metadata at all.**
+Missing licence, authors, URLs and tags emit *nothing*; a missing README is a codeless advisory
+(71 of them, failing nothing); a missing description silently becomes the literal `"Package
+Description"` in the shipped nuspec. The only genuine `NU5xxx` on the whole tree was a layout
+defect, not metadata — `NU5100` ×8 / `NU5118` ×42 from `Whisper.net.Runtime`'s natives flowing
+into the audio package as content. So the validation step is **the only guard there is**, not a
+second one, and the plan grew Task 1b mid-phase to say so (`5405c7b`) rather than absorbing it.
+The premise's counts were wrong too: 71 csproj under `src/` (one, `Benchmarks.Quality`,
+deliberately unpackable), **70 packages produced** — not the 71 the plan's final verification
+still says. Three packability defects fixed on the way: the audio natives (`4093bf8`),
+`Rag.NET.Mcp.Tool` silently unpackable because `Microsoft.NET.Sdk.Web` defaults
+`IsPackable=false` under a `PackAsTool=true` contract (`a74e55e` — packability fixed here, its
+first tests stay 4.6's), and `samples/` + `benchmarks/` packing into every solution pack
+(`618206b`). The description audit (`20612e8`): 0 duplicates across 71, 1 generic, 3 inaccurate
+against the code (QueryTechniques claimed core's self-query, AnswerEngines omitted FLARE,
+Chunking omitted late/proposition), tags added to 15 where they carry terms the ID does not.
+**The local-feed rehearsal measured three things nobody had claimed** (`57e1814`): the quoted
+glob delivers flat, one file per package; duplicates against a directory feed are **silently
+overwritten at exit 0** and `--skip-duplicate` is unsupported for that push type — so the second
+push proves re-running is harmless, and the real 409-and-skip is part of the 6.3 residual; and a
+`.snupkg` push to a directory feed is a **complete silent no-op**, which the workflow asserts as
+non-arrival so the day NuGet starts delivering them the step fails and the rehearsal widens.
+**Versioning** (`1217791`): GitVersion per the house convention — measured `0.1.0-preview.1495`
+on `main`, the produced packages on this branch carrying `0.1.0-nuget-packaging.1` read from the
+nuspec, and a `v1.0.0` tag in a throwaway clone deriving a stable `1.0.0` with **no config
+change**, so 6.3's mechanism is proven before 6.3 needs it. A trap, measured and recorded in
+`GitVersion.yml`: GitVersion 6's `ContinuousDeployment` mode *strips* the prerelease label
+(`main` derived a stable 0.1.0 — exactly what Milestone 4 must not produce); `main` uses
+`ContinuousDelivery`. `EveryPackageCarriesTheVersionGitVersionDerives` re-derives after every
+pack and reads the nuspec, so a dropped `-p:Version` ships no silent 1.0.0. Commitlint was
+measured against all **1,506** commits before being allowed to fail anything: stock
+config-conventional rejects 184, the tuned rules still reject 70, none newer than 2026-07-29 —
+so the job lints only a PR's base-to-head range. All **eight routed debts closed**, none
+silently dropped — **five moved whole to the Closed list above** with what was found, and the
+other three (the `ENABLE_OCR`/`RAGNET_TESSDATA` OCR half, `.commitlintrc.yml`,
+`renovate.json`) **closed by dated bracket-annotation on open-list entries that deliberately
+stay open for their other halves**: the Azure `RAGNET_DOCINTEL_*` live run (→ Phase 6.1) and
+`docs.yml` (→ Phase 4.5).
+**Residuals, named rather than implied:** (1) a local feed is not nuget.org — authentication,
+API-key scoping, package-ID availability (none of the 70 IDs is reserved), the service's own
+validation, the real 409-skip and `.snupkg` delivery are exercised for real exactly once, at 6.3
+(`docs/reference/ci.md` § "What the rehearsal cannot prove"); (2) `release-please.yml` is the
+one genuinely unexercisable path — its only observable effects *are* the release — gated
+dispatch-only, procedure fenced in ci.md, pinned by `WorkflowWiringTests`; (3) `renovate.json`
+is inert until the Renovate app is enabled — a hosted service, not a runnable workflow; (4) on
+feature branches the prerelease number does **not** increment per commit — this whole branch
+packed as `0.1.0-nuget-packaging.1` — only `main`'s `preview.N` counts up, which is the number
+6.3 depends on; (5) the DOCINTEL gates are satisfiable, not exercised (their entry above); and
+(6) **none of this phase's workflow changes has had a genuine GitHub Actions run** — the branch
+is unpushed, `pack-validate` and `commitlint` are new check names outside the required
+branch-protection set (adding them is scheduled, on Phase 6.3's checklist — routed there
+2026-08-03), and this repository's record (the post-3.15 nightly failed on its first
+real run) says the first PR run is the verification, not the local rehearsal.
+**Not done, recorded rather than absorbed:** the XML-documentation blocker in the blockquote
+below was not taken up — `GenerateDocumentationFile` is still set nowhere, so the 70 packages
+ship without IntelliSense XML and the CS1574 backlog stands unmeasured beyond the two projects
+probed in 3.2. No task in the plan scoped it and no commit decided against it; it is a new debt
+entry in the follow-up list, not a silent drop.)
 
 > **Narrowed 2026-07-29, and the tooling corrected.** This entry used to read *"GitHub Actions CI
 > (build + test) and NuGet packaging/publishing with **MinVer** versioning"*. Two things were wrong
@@ -1521,3 +1645,29 @@ release time — the release-please run, release notes, the published packages' 
 The tag is the last and smallest phase in the milestone, which is the point of the 2026-08-03
 restructure: by the time this phase runs, every criterion above it is already true and checked
 by something.
+
+> **Recorded at Phase 4.1's close (2026-08-03), so this phase starts from it rather than
+> discovering it on release day: the owner stated they do not yet have credentials for all the
+> packages created.** Concretely: no nuget.org API key exists (`NUGET_API_KEY` is unset — the
+> `publish-nuget` gate fails loudly on that rather than 401ing), and none of the **70** package
+> IDs is reserved on nuget.org, so ownership and ID availability are unconfirmed until the
+> first push — an exposure 4.1's design accepted and recorded rather than fixed. Acquiring the
+> account, minting the scoped key (`gh secret set NUGET_API_KEY`, fenced in
+> `docs/reference/ci.md`) and confirming the IDs is this phase's first work, before either
+> dispatch. What that first push exercises for the only time — authentication, key scoping, ID
+> availability, nuget.org's own validation, the real 409-and-skip, `.snupkg` delivery — is
+> listed in `docs/reference/ci.md` § "What the rehearsal cannot prove — the 6.3 residual",
+> alongside the other first-executions this phase owns: both `release-please` dispatches, which
+> 4.1 could not rehearse because their only observable effects *are* the release.
+
+**Checklist** (the phase's work beyond the tag itself):
+- [ ] **Add `pack-validate` and `commitlint` to the `Main` ruleset's required checks** (routed
+      here 2026-08-03 at Phase 4.1's close — until now recorded in that phase's residual (6),
+      in `ci.yml`'s BRANCH PROTECTION comments and in `docs/reference/ci.md`, but owned by no
+      phase, which violates this repository's record-then-schedule rule). Both checks run on
+      every pull request and fail loudly, but the ruleset requires only the two `build-test`
+      legs — so `pack-validate`, the only guard on the whole packaging surface, can go red
+      without blocking a merge: the exact non-gating-check failure this repository has already
+      documented. Do it before either release dispatch, and verify it the way the `build-test`
+      checks were verified on 2026-08-03 — by reading the ruleset back through the GitHub API,
+      not by trusting the settings page.

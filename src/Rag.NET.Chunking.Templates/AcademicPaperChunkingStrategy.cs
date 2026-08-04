@@ -6,6 +6,16 @@ using System.Runtime.CompilerServices;
 
 namespace Rag.NET.Chunking.Templates;
 
+/// <summary>
+/// Academic-paper chunking: abstract and references handling over
+/// <see cref="HierarchicalMergerChunkingStrategy"/>, with section metadata on every chunk.
+/// </summary>
+/// <remarks>
+/// Delegates to <see cref="HierarchicalMergerChunkingStrategy"/>, which deliberately ignores
+/// <see cref="ChunkingOptions"/> — a chunk is one heading subtree, unbounded above, and
+/// <see cref="ChunkingOptions.MaxChunkSize"/>/<see cref="ChunkingOptions.Overlap"/> have no
+/// effect here. See that strategy's remarks for the reasoning and for how to bound chunk size.
+/// </remarks>
 public sealed class AcademicPaperChunkingStrategy : IDocumentChunkingStrategy, IChunkingStrategy
 {
     private static readonly string[] AbstractHeadings = ["abstract"];

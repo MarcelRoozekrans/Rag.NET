@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Security</RootNamespace>
     <PackageId>Rag.NET.Security</PackageId>
     <Description>Prompt injection defence-in-depth for Rag.NET: chunk sanitisation, query sanitisation, retrieval guards, and prompt hardening.</Description>
+    <PackageTags>$(PackageTags);prompt-injection;guardrails;security</PackageTags>
     <!-- container: Security.IntegrationTests runs the sanitiser and retrieval-guard
          pipeline against a real pgvector container in the gating Docker tier. -->
     <VerifiedBy>container</VerifiedBy>

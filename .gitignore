@@ -16,3 +16,9 @@ site/
 
 # Test result output (--logger trx is the standing default for Benchmarks.Quality.Tests)
 TestResults/
+
+# dotnet pack output — ci.yml's pack-validate job and tests/Rag.NET.PackageValidation.Tests both
+# use artifacts/packages; packages are build products and never belong in history.
+artifacts/
+*.nupkg
+*.snupkg

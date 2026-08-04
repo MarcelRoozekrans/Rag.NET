@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.GraphRag</RootNamespace>
     <PackageId>Rag.NET.GraphRag</PackageId>
     <Description>GraphRAG — entity extraction, community detection, local + global search for Rag.NET</Description>
+    <PackageTags>$(PackageTags);graphrag;knowledge-graph;entity-extraction</PackageTags>
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 

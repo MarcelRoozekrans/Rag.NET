@@ -2,7 +2,8 @@
   <PropertyGroup>
     <RootNamespace>Rag.NET.WebSearch.Tavily</RootNamespace>
     <PackageId>Rag.NET.WebSearch.Tavily</PackageId>
-    <Description>Tavily web search provider for Rag.NET CRAG</Description>
+    <Description>Tavily web search provider for Rag.NET's corrective RAG (CRAG) fallback</Description>
+    <PackageTags>$(PackageTags);crag;corrective-rag;web-search</PackageTags>
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>

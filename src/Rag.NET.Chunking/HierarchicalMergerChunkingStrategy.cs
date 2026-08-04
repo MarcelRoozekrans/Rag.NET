@@ -14,6 +14,18 @@ namespace Rag.NET.Chunking;
 /// Implements <see cref="IDocumentChunkingStrategy"/> for pipeline use and
 /// <see cref="IChunkingStrategy"/> as a per-section fallback.
 /// </summary>
+/// <remarks>
+/// <b><see cref="ChunkingOptions"/> is deliberately ignored — chunks are unbounded above.</b>
+/// A chunk here is one heading subtree, a semantic unit whose size the document decides, and
+/// truncating it at <see cref="ChunkingOptions.MaxChunkSize"/> would defeat the strategy's
+/// purpose; <see cref="ChunkingOptions.Overlap"/> has no meaning between disjoint subtrees. The
+/// same holds for every template that delegates here — <c>BookChunkingStrategy</c>,
+/// <c>LegalChunkingStrategy</c> and <c>AcademicPaperChunkingStrategy</c> — so setting either
+/// option alongside any of them changes nothing. To bound chunk size on top of the heading
+/// structure, register <c>UseSemanticRefinement()</c>, which sub-splits oversized chunks after
+/// this strategy has shaped them. Recorded as the deliberate contract by Phase 4.1, closing the
+/// Phase 3.16 finding that the option was silently ignored.
+/// </remarks>
 public sealed class HierarchicalMergerChunkingStrategy(HierarchicalMergerOptions options)
     : IDocumentChunkingStrategy, IChunkingStrategy
 {

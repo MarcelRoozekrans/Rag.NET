@@ -4,6 +4,7 @@
     <RootNamespace>Rag.NET.Raptor</RootNamespace>
     <PackageId>Rag.NET.Raptor</PackageId>
     <Description>RAPTOR — Recursive Abstractive Processing for Tree-Organized Retrieval for Rag.NET</Description>
+    <PackageTags>$(PackageTags);raptor;hierarchical-summarization</PackageTags>
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 

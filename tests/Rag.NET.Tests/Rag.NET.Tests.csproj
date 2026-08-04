@@ -30,8 +30,6 @@
     <ProjectReference Include="..\..\src\Rag.NET.VectorStores.Chroma\Rag.NET.VectorStores.Chroma.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.VectorStores.Pinecone\Rag.NET.VectorStores.Pinecone.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Security\Rag.NET.Security.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Evaluation\Rag.NET.Evaluation.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Evaluation.Ragas\Rag.NET.Evaluation.Ragas.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit.v3" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.*">

@@ -65,33 +65,18 @@ public sealed partial class TestGateTests
     private static readonly Dictionary<string, string> KnownUnsatisfiableVariables =
         new(StringComparer.Ordinal)
         {
-            // AzureDocumentIntelligenceLiveTests. nightly.yml maps both variables from repository
-            // secrets that have never been configured — every nightly presence report to date
-            // prints them unset — and no local procedure can conjure them, because satisfying
-            // them takes a live Azure Document Intelligence resource billed per page. The live
-            // test has therefore never run anywhere; its offline coverage is WireMock cassettes,
-            // and nothing has ever confirmed those describe the real service. Found by the
-            // Milestone 3 audit, recorded by Phase 4.0; resolution belongs to Milestone 4's
-            // recorded-responses/release-readiness work (replan design §3 and §5's debt row
-            // "Two never-run live suites").
-            ["RAGNET_DOCINTEL_ENDPOINT"] =
-                "nightly.yml only maps it from a repository secret that has never been " +
-                "configured (unset in every nightly presence report to date), so " +
-                "AzureDocumentIntelligenceLiveTests has never run anywhere.",
-            ["RAGNET_DOCINTEL_KEY"] =
-                "the other half of the Document Intelligence credential pair; same state and " +
-                "same owner as RAGNET_DOCINTEL_ENDPOINT.",
-
-            // PdfOcrFallbackTests.OcrFallback_RealTesseract_ReadsScannedFixture. The variable is
-            // supplied by nightly.yml as a secret, but its only reader sits inside #if ENABLE_OCR
-            // (see KnownUnsatisfiableSymbols), so the value reaches nothing: the test is not in
-            // any compiled assembly, and the secret cannot become meaningful until the symbol's
-            // own entry below is resolved. The worse half of the pair, because the gate is
-            // invisible rather than merely inert.
-            ["RAGNET_TESSDATA"] =
-                "its only reader is compiled out by #if ENABLE_OCR, which nothing defines, so " +
-                "no build ever reaches the read; supplying the value changes nothing until the " +
-                "ENABLE_OCR entry is resolved.",
+            // RAGNET_DOCINTEL_ENDPOINT and RAGNET_DOCINTEL_KEY left this ledger on 2026-08-03
+            // (Phase 4.1): docs/reference/ci.md now carries a fenced procedure that provisions
+            // an Azure Document Intelligence resource (the F0 free tier makes it costless) and
+            // sets both variables for the live suite, so the gate is satisfiable by any
+            // maintainer. The page also still says plainly that the suite has never run and
+            // that its recorded-responses replacement is Phase 6.1's work — satisfiable and
+            // exercised are different claims, and only the first is made.
+            //
+            // RAGNET_TESSDATA left this ledger the same day: docs/reference/ci.md carries a
+            // fenced procedure that builds with -p:EnableOcr=true, provisions tessdata and
+            // sets the variable, and that procedure was executed green — the real-Tesseract
+            // test's first run anywhere. The satisfiability guard covers all three gates again.
         };
 
     /// <summary>
@@ -101,22 +86,13 @@ public sealed partial class TestGateTests
     private static readonly Dictionary<string, string> KnownUnsatisfiableSymbols =
         new(StringComparer.Ordinal)
         {
-            // Defined only under Condition="'$(EnableOcr)'=='true'" in Rag.NET.Parsers.Pdf,
-            // Rag.NET.Parsers.Vision and Rag.NET.Parsers.Pdf.Tests, and nothing sets EnableOcr:
-            // no workflow passes /p:EnableOcr=true and no fenced command in the CI documentation
-            // shows it (docs/guide/ingestion.md documents the property for package consumers,
-            // which is a different thing from a procedure that runs our gated test). The effect
-            // is double: OcrFallback_RealTesseract_ReadsScannedFixture is absent from every
-            // compiled test assembly — `dotnet test --list-tests` on that project lists 51 tests
-            // and none of them is it — and the production Tesseract engine is compiled out of
-            // every build alongside it. ROADMAP calls this "the third inert guard Phase 3.7
-            // found and the only one still open"; fixing it costs a decision about compiling the
-            // OCR flavour in CI, owned by Milestone 4's release-readiness work (replan design
-            // §5's debt row "Two never-run live suites; OCR test not compiled").
-            ["ENABLE_OCR"] =
-                "only ever defined under '$(EnableOcr)'=='true' and nothing sets EnableOcr, so " +
-                "the real-Tesseract test is not skipped but not compiled, invisible to every " +
-                "test count, and the production Tesseract engine is compiled out with it.",
+            // ENABLE_OCR left this ledger on 2026-08-03 (Phase 4.1), with RAGNET_TESSDATA above:
+            // the decision it was waiting on was taken — the published Rag.NET.Parsers.Pdf
+            // package deliberately compiles the Tesseract engine out (consumers get Azure
+            // Document Intelligence; features.md and docs/guide/ingestion.md now say so), and
+            // the gated test is compiled and run by the fenced -p:EnableOcr=true procedure in
+            // docs/reference/ci.md, executed green that day. The satisfiability guard covers
+            // the symbol again.
         };
 
     /// <summary>
@@ -163,7 +139,7 @@ public sealed partial class TestGateTests
     [InlineData("RAGNET_DOCINTEL_ENDPOINT", "a literal Environment read at the top of the gated test")]
     [InlineData("RAGNET_BEIR_LONG_RUNS", "a read through a named constant (BeirRunBudget.OptInVariable) that the budget gates consult")]
     [InlineData("RAGNET_BEIR_CACHE", "a name pinned by a test while the read itself lives in src/ (BeirDatasetCache.CacheDirectoryVariable)")]
-    [InlineData("RAGNET_TESSDATA", "a read inside an #if block that no build configuration compiles")]
+    [InlineData("RAGNET_TESSDATA", "a read inside an #if block that no default build compiles")]
     public void TheScanSeesEveryShapeAGateVariableReadTakes(string variable, string shape)
     {
         Assert.True(

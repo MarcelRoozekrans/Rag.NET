@@ -59,6 +59,19 @@ public sealed class FaithfulnessEvaluatorTests
     }
 
     [Fact]
+    public async Task ScoreAsync_NoClaimSupported_ScoresZero()
+    {
+        // The other end of the ratio: every extracted claim judged unsupported. Migrated from
+        // tests/Rag.NET.Tests/Evaluation when that duplicate suite was deleted (Phase 4.1) —
+        // this suite had the half case but never the floor.
+        var client = new RoutingChatClient([("Extract", """["alpha"]""")], fallback: "no");
+
+        var score = await Evaluator(client).ScoreAsync(Sample(), TestContext.Current.CancellationToken);
+
+        Assert.Equal(0.0, score!.Value, precision: 10);
+    }
+
+    [Fact]
     public async Task ScoreAsync_HalfTheClaimsSupported_ScoresAHalf()
     {
         var client = new RoutingChatClient(

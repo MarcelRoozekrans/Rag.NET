@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- Not shippable: a demo, not a package. Without this the SDK default packed it into
+         every solution pack with a placeholder description. PackabilityTests guards it. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>

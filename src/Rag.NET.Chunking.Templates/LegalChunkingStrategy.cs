@@ -6,6 +6,16 @@ using System.Runtime.CompilerServices;
 
 namespace Rag.NET.Chunking.Templates;
 
+/// <summary>
+/// Legal-document chunking: clause-pattern heading detection over
+/// <see cref="HierarchicalMergerChunkingStrategy"/>, with clause metadata on every chunk.
+/// </summary>
+/// <remarks>
+/// Delegates to <see cref="HierarchicalMergerChunkingStrategy"/>, which deliberately ignores
+/// <see cref="ChunkingOptions"/> — a chunk is one heading subtree, unbounded above, and
+/// <see cref="ChunkingOptions.MaxChunkSize"/>/<see cref="ChunkingOptions.Overlap"/> have no
+/// effect here. See that strategy's remarks for the reasoning and for how to bound chunk size.
+/// </remarks>
 public sealed class LegalChunkingStrategy : IDocumentChunkingStrategy, IChunkingStrategy
 {
     private readonly HierarchicalMergerChunkingStrategy _inner;
