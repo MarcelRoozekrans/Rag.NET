@@ -293,23 +293,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   Milestone 5's own DoD fails while `2^rel − 1` has scored no real dataset. **The FiQA-qrels
   check recorded above is unchanged and stays first** — it is written into 5.3's entry, not just
   here.
-- **`BuildMetadata` drops `baseMetadata.CreatedAt`, so provider-ingested documents score as brand
-  new** (found in Phase 2.2; recorded until now only in
-  `docs/plans/2026-07-26-connector-metadata-design.md:237-240`, and surfaced into this list by
-  the 2026-08-02 audit, because a closed phase's design doc is not a destination under this
-  list's own rule — the doc even says "recorded so it is not rediscovered as new", and it was
-  rediscovered as new anyway, by an audit, which is what recording a debt in a file nothing
-  re-reads buys). `src/Rag.NET/DataProviders/RagPipelineExtensions.cs:322-328` builds a
-  `DocumentMetadata` without copying `CreatedAt`, so
-  `src/Rag.NET.Abstractions/Models/DocumentMetadata.cs:22` defaults it to `DateTime.UtcNow` —
-  and the field is read: it is serialised into chunk metadata as `created_at` by
-  `MetadataBehavior` for `TimeWeightedRetriever`, per its own doc comment. A real behaviour
-  defect, not a documentation one: every document ingested through a data provider loses its
-  real creation time and time-weighted retrieval ranks it as ingested-now.
-  → **the next phase that touches the data-provider ingestion path, and failing that Phase 4.2**
-  (owner assigned 2026-08-02 by the Milestone 4 replan's §5, with the options work on that path,
-  replacing the bare milestone-as-deadline) — the same backstop shape as the `MessageChild` debt,
-  because the fix is one copied property plus a test: a slot, not a phase.
 - **Nothing pins the Security→Diagnostics decoration** (found by the 2026-08-02 audit). Phase
   3.4's headline capability — recording what `RbacRetrievalGuard` and `PiiChunkSanitiser`
   removed — works only if the Security package's registrations are in place before
@@ -446,14 +429,18 @@ future reader can tell the difference between "never existed" and "dealt with".
   the per-package READMEs against the reflection guard, 2026-08-04, `17e698d`): Slack
   `ChannelIds` → `ChannelId`, Gmail `EmailAddress`/`ImapHost`/`ImapPort` → `UserName`,
   Confluence `SpaceKeys` → `SpaceKey`, and GitLab and Bitbucket `Branch` → `Ref`. The READMEs
-  now match the code — this repository's dominant defect caught before shipping for once — but
-  **the guide is not yet fixed**, and the same close found `docs/index.md` (16 mentions),
+  now matched the code — this repository's dominant defect caught before shipping for once — but
+  **the guide was not yet fixed**, and the same close found `docs/index.md` (16 mentions),
   `docs/guide/ingestion.md`, `docs/guide/data-providers.md` and
   `docs/reference/oss-libraries.md` still naming `Rag.NET.Parsers.Word`/`.Excel`/`.PowerPoint`,
   `Rag.NET.Chunking.Semantic`/`.TokenAware` and the four standalone Graph connector packages.
   (`docs/getting-started.md`'s two stale install commands were fixed with the chooser; the rest
   was deliberately not swept in a phase-close task.)
-  → **Phase 4.5** (the docs-read-end-to-end pass that already owns the sidebar sweep and
+  **The five-members half closed 2026-08-04 in Phase 4.9** (which was already editing this file
+  for the time-weighting fallback keys): all five re-verified against the actual option classes
+  before writing, not copied from this entry's own table — it was accurate, but the phase checked
+  rather than trusted it. **Only the package-id-naming half remains open** →
+  **Phase 4.5** (the docs-read-end-to-end pass that already owns the sidebar sweep and
   `docs.yml` — this is the same "nobody has read these pages against reality" work).
 - **`CostBudgetOptions.DatabasePath` survives as a property nothing reads** (created by
   Phase 4.7's cost-ledger decision, `f2518d5`): the property stays in `Rag.NET.Abstractions`
@@ -480,6 +467,31 @@ future reader can tell the difference between "never existed" and "dealt with".
 
 ### Closed
 
+- ~~**`BuildMetadata` drops `baseMetadata.CreatedAt`, so provider-ingested documents score as
+  brand new**~~ (found in Phase 2.2; recorded until 2026-08-02 only in
+  `docs/plans/2026-07-26-connector-metadata-design.md:237-240`, surfaced into this list by that
+  day's audit; routed to **the next phase that touches the data-provider ingestion path, and
+  failing that Phase 4.2, because "the fix is one copied property plus a test: a slot, not a
+  phase"**) → **closed 2026-08-04 in Phase 4.9 — and the routing corrected, not merely
+  serviced.** The "slot, not a phase" estimate was wrong, and the evidence was already in the
+  repository: the very design doc the routing cited already said, in the sentence right before
+  the one this list quoted, that "a connector's real creation timestamp cannot reach
+  `DocumentMetadata.CreatedAt` — only a tag." Four independent reasons confirm the one-line fix
+  could never have worked, each measured rather than argued: `baseMetadata` is a **per-call**,
+  not per-document, parameter on `IngestFromProviderAsync` (`RagPipelineExtensions.cs:67-76`), so
+  copying it would stamp every document in a run with one identical value, not each document's
+  own creation time; **no production caller sets it** — `BackgroundPollingTrigger`, the only
+  production caller found, never passes `baseMetadata`; `FileEntry`/`FileHandle` carry **no
+  timestamp field**, so a connector has no typed channel to supply one even if it wanted to; and
+  `created_at` is a **reserved** tag key — a connector that emits it gets
+  `ReservedMetadataKeyException`, so the tag channel is closed too. `DocumentMetadata.CreatedAt`
+  is now `DateTime?` with no default (`2166eab`) — a breaking change to an unpublished type, no
+  `[Obsolete]` shim needed — and provider-ingested documents that carry no timestamp now rank
+  **neutrally** under `TimeWeightedRetriever` (decay `1.0`, pinned by test in `b35a835`) rather
+  than fabricating freshness. Full entry in Phase 4.9, ROADMAP and MILESTONE. **What this did
+  not fix, priced rather than left a slot a second time:** 17 of 25 providers hold a real
+  timestamp and discard it, 4 more do not even fetch it, 4 genuinely have none —
+  → **Phase 4.10**.
 - ~~**`HierarchicalMergerChunkingStrategy` never reads `MaxChunkSize`**~~ (found by Phase 3.16's
   audit of the other chunking strategies — the inverse of the defect that phase fixed: chunks are
   one heading subtree each, unbounded above, and the Book, Legal and AcademicPaper templates all
@@ -1259,7 +1271,7 @@ one was found by a test. Every criterion below can be false, and something check
 service has a scrubbed, dated recording" — and `Release tagged v1.0` moved to **Milestone 6's**
 DoD, the recording criterion widened there to recording-or-recorded-reason; completing this
 milestone no longer tags anything, and every other criterion is unchanged):
-- [ ] All planned phases complete (4 of 9 as of 2026-08-04: 4.0, 4.1, 4.7, 4.8 — the phase list grew Phase 4.8, created and completed 2026-08-04 out of the Qdrant break)
+- [ ] All planned phases complete (5 of 11 as of 2026-08-04: 4.0, 4.1, 4.7, 4.8, 4.9 — the phase list grew Phase 4.9, created and completed 2026-08-04 to fix the `BuildMetadata`/`CreatedAt` defect and correct the wrong "slot, not a phase" estimate that had routed it to 4.2, and Phase 4.10, created the same day and left pending — the connector-timestamp-threading work 4.9 priced but did not do)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore
 - [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0). **The gate half holds as of 2026-08-03** (Phase 4.1): both `KnownUnsatisfiable` ledgers are empty, and every formerly-unsatisfiable gate is satisfiable by a fenced procedure in `docs/reference/ci.md` — `ENABLE_OCR` and `RAGNET_TESSDATA` by the `-p:EnableOcr=true` source-build procedure, **executed green on 2026-08-03** (the gated test's first run anywhere); `RAGNET_DOCINTEL_ENDPOINT`/`_KEY` by the `az` F0 free-tier provisioning procedure — written and satisfiable, deliberately not executed, the live run being Phase 6.1's. The box stays open on the all-projects half, checked at the milestone's close. **Corrected 2026-08-04 (Phase 4.8): the clause that used to end this note — "4.1's own workflow changes have not yet had a genuine Actions run" — is no longer true**; the last DoD criterion below now cites the run that made it false. This box stays open regardless: it needs every project passing on the tree at the milestone's close, and Phase 4.8's own tree has not itself been through Actions yet
 - [x] **Every `features.md` Done claim names code that exists** (`FeatureClaimTests`, Phase 4.0; **holding as of 2026-08-03**: both false claims were corrected at Milestone 3's close, `81163af` — `KnownFalseClaims` is empty and all 72 package claims across 53 Done sections are verified directly. Failing knowingly from 4.0's sweep until then, with the two claims allow-listed under owners → 4.4 and 4.1; both closed early instead, in the Closed debts list)
@@ -1603,6 +1615,121 @@ push to `main` since has run the same pipeline for real, including the Qdrant br
 (red: 30919869612; green again after the fix: 30926805555). That box is ticked now, citing those
 runs; this branch itself (Phase 4.8) has never been through GitHub Actions, so the DoD's
 all-projects criterion stays open on that basis, not on the pipeline's existence.)
+
+### Phase 4.9: Provider Creation Time [status: complete]
+**Goal:** Stop provider-ingested documents claiming they were created at ingestion time, and make
+the timestamps connectors already emit actually drive time-weighted retrieval. (Not a features.md
+row — created 2026-08-04 out of the `BuildMetadata`-drops-`CreatedAt` debt open since Phase 2.2,
+numbered after 4.8 because it was created after, executed next in the milestone's phase list.)
+**Plan:** `docs/plans/2026-08-04-provider-creation-time-design.md` +
+`2026-08-04-provider-creation-time-implementation.md`
+**Completed:** 2026-08-04, branch `fix/provider-creation-time`.
+**The defect:** `DocumentMetadata.CreatedAt` defaulted to `DateTime.UtcNow`
+(`src/Rag.NET.Abstractions/Models/DocumentMetadata.cs:22`), and nothing on the provider-ingestion
+path (`RagPipelineExtensions.BuildMetadata`) ever set it. `MetadataBehavior` wrote that fabricated
+value into every chunk's `created_at` tag, and `TimeWeightedRetriever` ranks on it — so a 2019
+Confluence page and a document added this morning scored identically on recency. **Not a missing
+value — a wrong one, asserted confidently**, which is why it read as working.
+**The roadmap's own estimate for this defect was wrong, and the evidence was already on file.** It
+had been routed to Phase 4.2 with the note *"the fix is one copied property plus a test: a slot,
+not a phase."* The document that routing itself cited —
+`docs/plans/2026-07-26-connector-metadata-design.md:237-240` — already said plainly that "a
+connector's real creation timestamp cannot reach `DocumentMetadata.CreatedAt` — only a tag." Four
+reasons, each measured rather than argued, why the one-line fix could never have worked:
+`baseMetadata` is a **per-call**, not per-document, parameter on `IngestFromProviderAsync`
+(`RagPipelineExtensions.cs:67-76`), so copying it would stamp every document in a run with one
+identical value, not each document's own creation time; **no production caller sets it** —
+`BackgroundPollingTrigger`, the only production caller found, never passes `baseMetadata`;
+`FileEntry`/`FileHandle` carry **no timestamp field**, so a connector has no typed channel to
+supply one even if it wanted to; and `created_at` is a **reserved** tag key — a connector that
+emits it gets `ReservedMetadataKeyException`, so the tag channel is closed too. That routing is
+corrected on the debts list (moved to Closed), not left standing beside this entry.
+**Task 1 (red first, `2166eab`):** added
+`IngestFromProvider_WithNoTimestampFromTheConnector_DoesNotFabricateACreationTime` to
+`IngestFromProviderTests.cs` — the join between the connector side and the behavior side that no
+existing test covered. Confirmed red first: *"Connector supplied no timestamp; chunk metadata must
+not fabricate one, but found '2026-08-04T19:40:09.9483802Z'."* Made `CreatedAt` a nullable
+`DateTime?` with no default — a **breaking change to an unpublished type**; nothing is published
+and no package ID is reserved, so no `[Obsolete]` shim was needed or added — and made
+`MetadataBehavior` write `created_at` only when a value exists, keeping `TryAdd` so a
+connector-supplied tag still wins. The three other read sites (`ContainerContext`,
+`ContainerEntryDispatcher`, `EmbeddedMessageMetadata`) are plain pass-throughs and compiled
+unchanged; no existing test assertions needed to change.
+**Task 3 (`258a6b9`):** `BuildMetadata` copied `ContentType` from the caller-supplied
+`baseMetadata` but silently dropped `CreatedAt`. Wired it through — stated precisely as what it
+is, not oversold: this makes the batch-level override real, it does **not** give any individual
+document its own real creation time, and overstating it would recreate exactly the "one copied
+property" misunderstanding the routing correction above exists to fix.
+**Task 4 (`7a5bb61`):** `TimeWeightedOptions.FallbackMetadataKeys` — the mechanism
+`TimeWeightedRetriever` already implements to resolve a timestamp from a connector tag when
+`created_at` is absent — defaulted to `[]`, built and wired to nothing. Verified against the
+actual connector source, not the design doc's claim: default is now `["updated_at", "published_at",
+"lastmod", "received_at"]`, broadest coverage first — `updated_at` (Asana, Jira, Notion, Zendesk
+tickets and articles), `published_at` (RSS/Atom), `lastmod` (Sitemap), `received_at` (Exchange — a
+distinct key, since "when this message arrived" is Exchange's own vocabulary, not a value it
+copies into `updated_at`). **One correction this verification forced**: the design listed Linear as
+covered by `updated_at`; it is not — Linear's `updatedAt` feeds only the connector's `ETag` and
+delta-token watermark and is never copied into a chunk tag, so it was dropped from the list before
+shipping. `"date"` (Gmail, Slack, Teams) stays excluded from the default by design, not oversight:
+Gmail's is a full timestamp, Slack's and Teams' are day-granularity only, and the key is generic
+enough that a caller's own metadata may mean something unrelated by it — documented as a one-line
+opt-in.
+**Task 5 (`b35a835`):** pinned the property the whole design rests on —
+`TimeWeightedRetriever.ComputeDecay` returning `1.0` for an absent timestamp was incidental,
+covered by no test. Added a test asserting a chunk with no `created_at` and no matching fallback
+key scores exactly its base score, and proved it can fail: mutated the null-timestamp branch to
+`return 0.9;`, confirmed four tests went red, reverted (`git diff` on the file empty before
+committing).
+**What this phase does not fix, priced rather than left a slot:** those connectors now rank
+**neutrally rather than wrongly** — better, and honest about being incomplete. Of 25 providers,
+**17 hold a real timestamp today and discard it** (folded into an opaque `ETag` or an un-promoted
+tag), **4 more do not even fetch it** (Confluence, Jira, Box, GoogleDrive — the same four of Phase
+2.2's five narrowed-field-selection connectors that touch a creation/update timestamp; widening
+them needs DTO changes and re-recorded WireMock cassettes), and **4 genuinely have none**
+(Bitbucket, GitHub, GitLab, WebCrawler). Closing the gap needs a typed timestamp field threaded
+through `FileEntry`/`FileHandle`/`BuildMetadata` plus ~17 connector changes — scheduled as **Phase
+4.10**, not left as a slot a second time.
+**Documentation:** `docs/guide/retrieval.md`'s time-weighting section corrected two false
+statements — `FallbackMetadataKeys` documented as defaulting to `[]` (now the shipped default,
+with the per-connector coverage table and the `date`/Linear exclusions spelled out) and
+`DocumentMetadata.CreatedAt` documented as defaulting to `DateTime.UtcNow` (now: no default, and
+what "no timestamp" means for ranking). While already in `docs/guide/data-providers.md` for this
+change, also fixed the five documented members Phase 4.7's README guard found and routed there:
+Slack `ChannelIds` → `ChannelId`, Gmail `EmailAddress`/`ImapHost`/`ImapPort` → `UserName` (the IMAP
+host and port are not configurable at all — `imap.gmail.com:993` is hardcoded), Confluence
+`SpaceKeys` → `SpaceKey`, GitLab and Bitbucket `Branch` → `Ref` — each verified against the actual
+option class before writing it, not copied from the routed debt's own table.
+**Counts:** `Rag.NET.Tests` 1151 → **1159**. `RepoConventions` unchanged at 36 + 1 skip.
+`Rag.NET.DataProviders.Tests` **69**. Full solution build: 0 warnings, 0 errors.
+**The test gap that let this survive:** nothing asserted what `CreatedAt` became after provider
+ingestion — `IngestFromProviderTests` only checked that a connector *emitting* `created_at` throws,
+and `MetadataBehaviorCreatedAtTests`/`TimeWeightedRetrieverTests` tested the two ends in isolation.
+The path between them was untested, which is exactly where the defect lived.
+
+### Phase 4.10: Connector Timestamp Threading [status: pending]
+**Goal:** Give connectors a typed channel for the real creation/update timestamp they already
+hold, so it reaches `DocumentMetadata.CreatedAt` instead of only ever a tag (or nothing).
+**Not a features.md row** — created 2026-08-04 out of Phase 4.9's own measurement, priced there
+rather than left as a routing arrow a second time (Phase 4.9, above;
+`docs/plans/2026-08-04-provider-creation-time-design.md` §4).
+**Scope, measured by Phase 4.9, not estimated:** of 25 providers, **17 hold a real timestamp today
+and discard it** — folded into an opaque `ETag` or an un-promoted tag (AzureBlob, OneDrive,
+SharePoint, Dropbox, Linear, Gmail, Teams, Slack and others); **4 do not even fetch it**
+(Confluence, Jira, Box, GoogleDrive — the same four connectors Phase 2.2's "Recorded, not fixed"
+section already priced for narrowed API field selections, so this phase's DTO-widening cost and
+that debt's cost are the same work seen from two angles, not two separate costs); **4 genuinely
+have none to give** (Bitbucket, GitHub, GitLab, WebCrawler — content-addressed or crawl-derived
+sources with no vendor-supplied creation timestamp at all).
+**Cost, priced rather than assumed:** a typed timestamp field threaded through
+`FileEntry`/`FileHandle`, `FileContentProviderBase`, and `BuildMetadata`; ~17 connector changes to
+populate it from data already in hand; and, for the 4 that do not fetch it, DTO changes plus
+**re-recorded WireMock cassettes** for Confluence, Jira, Box and GoogleDrive — the same cassette
+cost Phase 2.2 declined to pay for the same four connectors.
+**Explicitly out of scope for this phase** (per the 4.9 design, §6): no change to
+`ReservedMetadataKeys` — `created_at` stays reserved, since the fix routes real values through the
+new typed field, not the tag channel; no `ModifiedAt` field — most connectors expose *modified*
+rather than *created*, which is a real modelling question that belongs with this same connector
+work rather than being decided ahead of it.
 
 ### Phase 4.2: Options Alignment & Validation [status: pending]
 **Goal:** Align pipeline options on IOptions and validate them with ZeroAlloc.Validation.

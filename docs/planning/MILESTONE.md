@@ -34,8 +34,11 @@ four defects were live, so every criterion below can be false and something chec
 Milestone 6's DoD. The ROADMAP's Milestone 4 section is the authoritative copy; the two must
 agree.
 
-- [ ] All planned phases complete (4 of 9 as of 2026-08-04: 4.0, 4.1, 4.7, 4.8 — the phase list
-      grew Phase 4.8, created and completed 2026-08-04, out of the Qdrant break)
+- [ ] All planned phases complete (5 of 11 as of 2026-08-04: 4.0, 4.1, 4.7, 4.8, 4.9 — the phase
+      list grew Phase 4.9, created and completed 2026-08-04 to fix the `BuildMetadata`/`CreatedAt`
+      defect and correct the wrong "slot, not a phase" estimate that had routed it to 4.2, and
+      Phase 4.10, created the same day and left pending — the connector-timestamp-threading work
+      4.9 priced but did not do)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore (true on every phase close
       so far, most recently 2026-08-04; the box is ticked at the milestone's close, from a clean
       restore on that day's tree)
@@ -149,11 +152,45 @@ agree.
    one-PR-per-major (still inert; the app is not enabled), documented in `docs/reference/ci.md`
    with the two claims — pinning delivered and provable, upgrade automation configured and
    unexercised — recorded separately. `RepoConventions` 33+1 → 36+1. Full entry in the ROADMAP.
-5. Phase 4.2 — Options Alignment & Validation [pending]
-6. Phase 4.3 — Structured Logging Enrichment [pending]
-7. Phase 4.4 — OpenTelemetry Tracing & Metrics [pending]
-8. Phase 4.5 — Sample Applications [pending]
-9. Phase 4.6 — Rag.NET CLI Tool [pending]
+5. Phase 4.9 — Provider Creation Time [complete — 2026-08-04; created out of the
+   `BuildMetadata`-drops-`CreatedAt` debt open since Phase 2.2, numbered after 4.8, executed next]
+   — `DocumentMetadata.CreatedAt` defaulted to `DateTime.UtcNow` and nothing on the
+   provider-ingestion path set it, so every provider-ingested document scored as ingested-now
+   under `TimeWeightedRetriever`: not a missing value, a wrong one asserted confidently. **The
+   debt's own Phase 4.2 routing was wrong, and the evidence was already on file**: the design doc
+   it cited already said a connector's real timestamp cannot reach `CreatedAt` — only a tag. Four
+   measured reasons confirm it: `baseMetadata` is per-call, not per-document; no production
+   caller sets it; `FileEntry` carries no timestamp field; `created_at` is reserved and a
+   connector emitting it is blocked with `ReservedMetadataKeyException`. `CreatedAt` is now
+   `DateTime?` with no default (breaking change to an unpublished type, no shim needed);
+   `MetadataBehavior` writes `created_at` only when set; `BuildMetadata` now forwards
+   `baseMetadata.CreatedAt` (a real but batch-level fix, stated as such, not oversold as a
+   per-document one); `TimeWeightedOptions.FallbackMetadataKeys` — built, defaulted to `[]` —
+   now defaults to `["updated_at", "published_at", "lastmod", "received_at"]`, verified against
+   connector source (Asana, Jira, Notion, Zendesk tickets+articles, RSS, Sitemap, Exchange),
+   correcting the design's claim that Linear is covered — it is not: `updatedAt` feeds only
+   Linear's `ETag`/delta watermark, never a chunk tag. The absent-timestamp-neutral decay (`1.0`)
+   the whole design rests on is now pinned by test, proven able to fail by mutation. Corrected two
+   false statements in `docs/guide/retrieval.md` (`FallbackMetadataKeys` defaulting to `[]`,
+   `CreatedAt` defaulting to `DateTime.UtcNow`); while already in `docs/guide/data-providers.md`,
+   also fixed the five members Phase 4.7 found and routed there (Slack `ChannelId`, Gmail
+   `UserName`, Confluence `SpaceKey`, GitLab/Bitbucket `Ref`), each re-verified against the option
+   class rather than copied from the routed debt's table. **What this phase does not fix, priced
+   into Phase 4.10 rather than left a slot a second time:** of 25 providers, 17 hold a real
+   timestamp and discard it, 4 more (Confluence, Jira, Box, GoogleDrive) do not even fetch it, 4
+   genuinely have none. `Rag.NET.Tests` 1151 → **1159**; `RepoConventions` unchanged 36+1;
+   `DataProviders.Tests` **69**. Full entry in the ROADMAP.
+6. Phase 4.10 — Connector Timestamp Threading [pending; created 2026-08-04 out of Phase 4.9's own
+   measurement] — thread a typed creation/update timestamp through
+   `FileEntry`/`FileHandle`/`BuildMetadata` so the 17 of 25 providers that hold one today stop
+   discarding it, and widen the 4 (Confluence, Jira, Box, GoogleDrive) that do not even fetch it —
+   the same DTO/cassette cost Phase 2.2 already priced and declined to pay for those four
+   connectors. Full entry in the ROADMAP.
+7. Phase 4.2 — Options Alignment & Validation [pending]
+8. Phase 4.3 — Structured Logging Enrichment [pending]
+9. Phase 4.4 — OpenTelemetry Tracing & Metrics [pending]
+10. Phase 4.5 — Sample Applications [pending]
+11. Phase 4.6 — Rag.NET CLI Tool [pending]
 
 ## Explicitly not in scope
 
