@@ -9,6 +9,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Guide',
       items: [
+        'guide/choosing-packages',
         'guide/architecture',
         'guide/ingestion',
         'guide/chunking',

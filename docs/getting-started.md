@@ -26,6 +26,10 @@ dotnet add package Rag.NET.VectorStores.PgVector          # or Rag.NET.VectorSto
 dotnet add package Rag.NET.Parsers.Pdf       # add as many format parsers as you need
 ```
 
+Not sure which packages your scenario needs — or whether you need more than these?
+[Choosing packages](guide/choosing-packages.md) walks through the decisions and what
+arrives transitively.
+
 ## 2. Register AI services
 
 Rag.NET consumes two standard `Microsoft.Extensions.AI` abstractions. Register them before calling `AddRagNet`:
@@ -176,7 +180,7 @@ The core `Rag.NET` package includes `RecursiveChunkingStrategy` and `ChatAnswerE
 ### Semantic chunking
 
 ```bash
-dotnet add package Rag.NET.Chunking.Semantic
+dotnet add package Rag.NET.Chunking
 ```
 
 ```csharp
@@ -186,7 +190,7 @@ services.AddRagNet(rag => rag.UseSemanticChunking());
 ### Token-aware chunking
 
 ```bash
-dotnet add package Rag.NET.Chunking.TokenAware
+dotnet add package Rag.NET.Chunking
 ```
 
 ```csharp
