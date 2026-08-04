@@ -451,13 +451,18 @@ future reader can tell the difference between "never existed" and "dealt with".
   was deliberately not swept in a phase-close task.)
   → **Phase 4.5** (the docs-read-end-to-end pass that already owns the sidebar sweep and
   `docs.yml` — this is the same "nobody has read these pages against reality" work).
-- **`CostBudgetOptions.DatabasePath` survives on an options type core no longer reads**
-  (created by Phase 4.7's cost-ledger decision, `f2518d5`): the property stays in
-  `Rag.NET.Abstractions` (`CostBudgetOptions.cs:35`, default `"rag-cost-ledger.db"`), and
-  core's `UseCostBudgeting()` still validates it non-empty — but nothing in core consumes it;
-  its only reader is `UseSqliteCostLedger()` in `Rag.NET.Storage.Sqlite`. An option that
-  configures a package the user may not have installed, validated by a package that ignores
-  it, is exactly an options-shape question.
+- **`CostBudgetOptions.DatabasePath` survives as a property nothing reads** (created by
+  Phase 4.7's cost-ledger decision, `f2518d5`): the property stays in `Rag.NET.Abstractions`
+  (`CostBudgetOptions.cs`, default `"rag-cost-ledger.db"`), but no code consumes it —
+  `UseSqliteCostLedger()` takes its own `dbPath` parameter and never consults the option. The
+  stakes are higher than an options-shape question: a consumer who explicitly wrote
+  `o.DatabasePath = "spend.db"` asked for a specific persistent ledger, and until the phase's
+  adversarial-review fix their code compiled, passed validation, and silently got an in-memory
+  ledger whose spend resets on restart — budget enforcement quietly lost, with real money
+  behind it. That fix made a non-default `DatabasePath` a hard error from `UseCostBudgeting()`
+  naming `UseSqliteCostLedger(path)` as the replacement, so the loss is now loud; what remains
+  is retiring the write-only property itself (it still exists, still carries a default, and
+  can still be assigned its default value to no effect).
   → **Phase 4.2** (Options Alignment & Validation), which owns deciding every option's home.
 - **`Rag.NET.Mcp.Tool`'s package shape needs one deliberate look before it publishes**
   (opened by the Phase 4.7 design as "19 MB, unexplained"; the phase's close explained it by

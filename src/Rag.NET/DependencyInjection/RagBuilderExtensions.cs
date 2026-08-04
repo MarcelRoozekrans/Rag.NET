@@ -132,8 +132,10 @@ public static class RagBuilderExtensions
     /// is required.
     /// </param>
     /// <exception cref="InvalidOperationException">
-    /// Thrown when no limit is configured, or when neither surface has an underlying
-    /// registration to decorate.
+    /// Thrown when no limit is configured, when neither surface has an underlying
+    /// registration to decorate, or when <see cref="CostBudgetOptions.DatabasePath"/> is set
+    /// to a non-default value — nothing reads it any more; configure the ledger path via
+    /// <c>UseSqliteCostLedger(dbPath)</c> from <c>Rag.NET.Storage.Sqlite</c> instead.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when a price or limit is negative.</exception>
     /// <exception cref="ArgumentException">Thrown when <see cref="CostBudgetOptions.DatabasePath"/> is empty.</exception>
@@ -218,6 +220,21 @@ public static class RagBuilderExtensions
         {
             throw new ArgumentException(
                 "CostBudgetOptions.DatabasePath must be a non-empty string.", paramName);
+        }
+
+        // The SQLite ledger moved to Rag.NET.Storage.Sqlite, so nothing here reads
+        // DatabasePath any more. A caller who set it explicitly asked for a specific
+        // persistent ledger; silently giving them the in-memory default (spend resets on
+        // restart) would be a quiet loss of budget enforcement, so it is a hard error.
+        if (!string.Equals(options.DatabasePath, CostBudgetOptions.DefaultDatabasePath, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"CostBudgetOptions.DatabasePath is set to '{options.DatabasePath}', but " +
+                "UseCostBudgeting no longer reads it: the SQLite cost ledger moved to the " +
+                "Rag.NET.Storage.Sqlite package, and the default ledger is in-memory (spend " +
+                "resets on restart). To keep a persistent ledger at that path, remove the " +
+                $"DatabasePath assignment and call UseSqliteCostLedger(\"{options.DatabasePath}\") " +
+                "before UseCostBudgeting().");
         }
     }
 

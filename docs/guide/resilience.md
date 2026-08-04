@@ -125,12 +125,13 @@ Wait time is observable via the `ragnet.ratelimit.wait.duration` histogram (ms; 
 
 ## Cost budgeting
 
-`UseCostBudgeting` wraps the registered `IChatClient` and/or `IEmbeddingGenerator<string, Embedding<float>>` with cost-tracking decorators backed by a SQLite ledger, giving you a persistent daily/monthly spend guardrail:
+`UseCostBudgeting` wraps the registered `IChatClient` and/or `IEmbeddingGenerator<string, Embedding<float>>` with cost-tracking decorators backed by a cost ledger, giving you a daily/monthly spend guardrail. The default ledger is **in-memory** — recorded spend resets when the process restarts — so for a guardrail that survives restarts, call `UseSqliteCostLedger()` from the `Rag.NET.Storage.Sqlite` package *before* `UseCostBudgeting`:
 
 ```csharp
 services.AddRagNet(rag =>
 {
     rag.Services.AddSingleton<IChatClient>(myProviderClient); // register the client FIRST
+    rag.UseSqliteCostLedger("rag-cost-ledger.db"); // optional: persistent ledger (Rag.NET.Storage.Sqlite)
     rag.UseCostBudgeting(o =>
     {
         o.InputPricePerMTokens = 3m;        // your provider's price per 1M input tokens
@@ -138,10 +139,11 @@ services.AddRagNet(rag =>
         o.EmbeddingPricePerMTokens = 0.02m; // ... per 1M embedding input tokens
         o.DailyLimit = 25m;
         o.MonthlyLimit = 400m;              // at least one limit is required
-        o.DatabasePath = "rag-cost-ledger.db";
     });
 });
 ```
+
+> **Migrating from a version where the SQLite ledger was built in?** `CostBudgetOptions.DatabasePath` is no longer read — setting it to a non-default value makes `UseCostBudgeting` throw, pointing you at `UseSqliteCostLedger(path)`, rather than silently downgrading your explicitly configured persistent ledger to the in-memory one.
 
 Before each call the decorator checks the recorded spend of the current UTC day and month against the configured limits and throws `BudgetExceededException` (carrying `Window`, `Limit`, and `Spend`) once a limit is reached. After each call it records token usage and cost to the ledger. For streaming calls the gate — like the rate limiter's permit — fires on **first enumeration**, not when `GetStreamingResponseAsync` returns. Every registered surface is decorated; at least one must be registered before the call. Repeat calls are idempotent (first configuration wins; decorators never stack).
 
@@ -152,7 +154,7 @@ Things to know:
 - **Streaming records once, after the stream completes**, using the usage the provider emitted in the update stream (`UsageContent`) when present, else estimating from the accumulated text. A stream abandoned mid-way — cancelled or faulted — is deliberately **not recorded**: its true usage is unknown, and guessing would corrupt the ledger.
 - **The gate is pre-call, so a budget can overshoot by all in-flight calls.** Every call admitted before the limit is reached runs to completion and records its full cost — and under concurrency that is *several* calls, not one: parallel ingestion routinely has N embedding batches in flight (`IngestionOptions.MaxConcurrentEmbeddingBatches` × `MaxDegreeOfParallelism`), all of which pass the gate before any of them records. Size limits with headroom for your concurrency level, not just one call's worth.
 - **Ledger failures degrade, never break.** If the ledger cannot be read, the call proceeds ungated (with a warning); if it cannot be written, the call still succeeds (with a warning). Budget enforcement is best-effort under storage failure.
-- **The ledger is replaceable.** `UseCostBudgeting` registers `SqliteCostLedger` with `TryAdd`, so an `ICostLedger` registered *before* the call — the shipped `InMemoryCostLedger`, or your own store — wins.
+- **The ledger is replaceable.** `UseCostBudgeting` registers the in-memory default with `TryAdd`, so an `ICostLedger` registered *before* the call — `UseSqliteCostLedger()`, or your own store — wins. When the in-memory default is the one in effect, a warning is logged naming `UseSqliteCostLedger()`, because spend limits are then only enforced within a single process lifetime.
 - **`SqliteCostLedger` migrates an existing `cost_ledger` table on first open after upgrade.** The `pages` column (for per-page kinds such as `CostKind.Ocr`) was added after the initial release, and `CREATE TABLE IF NOT EXISTS` will not add it to a table an earlier version created — so the ledger probes the table and, when the column is absent, runs `ALTER TABLE cost_ledger ADD COLUMN pages INTEGER NOT NULL DEFAULT 0` **against your database, automatically**, from the constructor. It is additive and metadata-only: no row is rewritten, no column is dropped, and `0` is the true value for pre-existing chat and embedding rows, which were never billed pages. The ALTER is race-guarded, so concurrent openers of one ledger file (scaled-out workers on a shared volume) do not crash on `duplicate column name`.
 - **Not everything in the ledger is an LLM call.** The Azure Document Intelligence OCR engine (see [ingestion](ingestion.md#ocr-spend-the-cost-ledger-and-your-budget)) records `CostKind.Ocr` entries carrying `Pages` and zero tokens. Those entries count toward the same daily/monthly window enforced here, so **enabling OCR can trip the chat and embedding gates** — though the OCR call itself is never gated: the engine records spend but is not decorated, so a blown budget stops chat and embedding, not OCR (`PdfParserOptions.MaxOcrPages` is what bounds OCR). They do *not* emit the `ragnet.llm.cost` / `ragnet.llm.tokens` meters below — dashboards built on those meters under-report total spend by exactly the OCR portion; query the ledger for the whole picture.
 - Windows are UTC calendar windows: `Day` is the current UTC date, `Month` runs from the first of the current UTC month.
