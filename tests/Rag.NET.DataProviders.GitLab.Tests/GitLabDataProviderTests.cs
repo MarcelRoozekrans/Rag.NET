@@ -111,6 +111,26 @@ public sealed class GitLabDataProviderTests
         Assert.Contains(entries, e => string.Equals(e.Value.Id, "src/main.cs", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: neither the tree listing (<c>Tree</c>) nor the compare-API diff
+    /// entries carry a commit date — a blob is just a path/mode/sha/type. This is a deliberate
+    /// "checked and there is none", not an oversight: pulling the date would need a separate
+    /// commit lookup per file, out of scope for this task.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_FullTraversal_NoTimestampAvailable_LeavesBothUnset()
+    {
+        var items = new[] { MakeTreeItem("docs/readme.md", "aaa111") };
+        var (client, _) = MakeClient(treeItems: items);
+        var sut = new GitLabDataProvider(client, MakeOptions());
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Null(entries[0].Value.CreatedAt);
+        Assert.Null(entries[0].Value.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_DeltaTraversal_SkipsDeletedFiles()
     {

@@ -48,6 +48,35 @@ public sealed class SlackDataProviderTests
         Assert.Equal("1711929700.000000", results[0].Value.ETag);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: the day's earliest message <c>ts</c> becomes the typed
+    /// <see cref="FileEntry.CreatedAt"/>, at full unix-epoch precision — unlike the day-grouping
+    /// <c>date</c> metadata tag, which is deliberately day-granularity (asserted unchanged
+    /// separately) and never normalised. <c>UpdatedAt</c> stays unset.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_EarliestTs_IsTypedAsCreatedAt()
+    {
+        var api = new FakeSlackApi(
+            channels: [new SlackChannel("C001", "general")],
+            messages: [
+                new SlackMessage { Ts = "1711929700.000000", User = "U001", Text = "Second" },
+                new SlackMessage { Ts = "1711929600.000000", User = "U001", Text = "First" }
+            ],
+            realName: "Alice");
+
+        var sut = MakeProvider(api);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(results).Value;
+        Assert.Equal(
+            DateTimeOffset.FromUnixTimeSeconds(1711929600).UtcDateTime, entry.CreatedAt);
+        Assert.Equal("2024-04-01", entry.Metadata!["date"]);
+        Assert.Null(entry.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_HostileChannelName_Sanitized()
     {

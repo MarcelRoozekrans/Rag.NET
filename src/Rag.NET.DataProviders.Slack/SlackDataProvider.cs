@@ -19,6 +19,14 @@ namespace Rag.NET.DataProviders.Slack;
 /// Delta support uses <see cref="SlackOptions.DeltaToken"/> as the <c>oldest</c> timestamp
 /// parameter in the <c>conversations.history</c> call.
 /// </para>
+/// <para>
+/// Phase 4.10 Task 5: each day's earliest message <c>ts</c> becomes
+/// <see cref="FileHandle.CreatedAt"/> — full second-plus-microsecond precision, unlike the
+/// day-grouping's <c>date</c> metadata tag (see <see cref="BuildMetadata"/>), which is
+/// deliberately left at day granularity. <c>UpdatedAt</c> stays unset: a day's document has no
+/// single "last modified" instant distinct from its latest message, and that value is already
+/// exposed as the ETag.
+/// </para>
 /// </summary>
 public sealed class SlackDataProvider : FileContentProviderBase
 {
@@ -81,10 +89,15 @@ public sealed class SlackDataProvider : FileContentProviderBase
             var dateStr = kvp.Key.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             var dayMsgs = kvp.Value;
 
-            string latestTs = dayMsgs[0].Ts;
+            string earliestTs = dayMsgs[0].Ts;
+            string latestTs   = dayMsgs[0].Ts;
             for (int k = 1; k < dayMsgs.Count; k++)
+            {
                 if (string.CompareOrdinal(dayMsgs[k].Ts, latestTs) > 0)
                     latestTs = dayMsgs[k].Ts;
+                if (string.CompareOrdinal(dayMsgs[k].Ts, earliestTs) < 0)
+                    earliestTs = dayMsgs[k].Ts;
+            }
 
             var (markdown, markdownError) = await BuildDayMarkdownAsync(
                 channel.Id, channel.Name, dateStr, dayMsgs, cancellationToken)
@@ -105,9 +118,22 @@ public sealed class SlackDataProvider : FileContentProviderBase
                 ETag:             latestTs,
                 OpenContentAsync: _ => Task.FromResult<Stream>(
                     new MemoryStream(Encoding.UTF8.GetBytes(md))),
-                Metadata:         BuildMetadata(channel, dateStr, dayMsgs.Count)));
+                Metadata:         BuildMetadata(channel, dateStr, dayMsgs.Count),
+                CreatedAt:        ParseSlackTimestamp(earliestTs)));
         }
     }
+
+    /// <summary>
+    /// Converts a Slack <c>ts</c> value — seconds since the Unix epoch, with microsecond
+    /// precision as a decimal string, e.g. <c>"1700000000.123456"</c> — to UTC. Unlike the
+    /// ISO-8601 timestamps other connectors carry, this cannot go through
+    /// <see cref="ConnectorTimestampParser"/>: it is a decimal Unix timestamp, not a datetime
+    /// string. Mirrors the conversion <see cref="GroupByDay"/> and
+    /// <see cref="BuildDayMarkdownAsync"/> already perform for day-bucketing and display.
+    /// </summary>
+    private static DateTime ParseSlackTimestamp(string ts)
+        => DateTimeOffset.FromUnixTimeMilliseconds(
+            (long)(double.Parse(ts, CultureInfo.InvariantCulture) * 1000)).UtcDateTime;
 
     /// <summary>
     /// The day document's filterable fields. Built synchronously — a dictionary assembled inside

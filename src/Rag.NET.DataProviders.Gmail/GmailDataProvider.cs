@@ -101,7 +101,8 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
             ETag:             uid.ToString(),
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
-            Metadata:         BuildMetadata(message));
+            Metadata:         BuildMetadata(message),
+            CreatedAt:        message.Date.UtcDateTime);
     }
 
     /// <summary>
@@ -111,6 +112,12 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
     /// <para>
     /// <c>date</c> is round-trip ISO-8601 rather than the header's RFC 822 rendering, so tag
     /// values sort and compare consistently across connectors.
+    /// </para>
+    /// <para>
+    /// Phase 4.10 Task 5: <c>message.Date</c> also becomes the typed
+    /// <see cref="FileHandle.CreatedAt"/> (see <see cref="ToHandle"/>) — a received/sent email's
+    /// <c>Date</c> header is its creation for our purposes. This <c>date</c> tag is kept exactly
+    /// as-is; the typed field is an addition, not a replacement.
     /// </para>
     /// </summary>
     private static Dictionary<string, string> BuildMetadata(MimeMessage message)

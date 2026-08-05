@@ -9,6 +9,11 @@ namespace Rag.NET.DataProviders;
 /// ETag is computed cheaply from last-write timestamp and file size — no I/O until
 /// <see cref="FileEntry.OpenContentAsync"/> is called.
 /// </summary>
+/// <remarks>
+/// Phase 4.10 Task 5: <see cref="FileEntry.CreatedAt"/>/<see cref="FileEntry.UpdatedAt"/> are set
+/// from <see cref="FileInfo.CreationTimeUtc"/>/<see cref="FileInfo.LastWriteTimeUtc"/> — already
+/// UTC <see cref="DateTime"/> values, so no parsing is needed.
+/// </remarks>
 public sealed class LocalFilesDataProvider : IFileContentProvider
 {
     private readonly string _rootPath;
@@ -42,7 +47,9 @@ public sealed class LocalFilesDataProvider : IFileContentProvider
                 Id: new EntryId(Path.GetRelativePath(_rootPath, path)),
                 FileName: Path.GetFileName(path),
                 OpenContentAsync: _ => Task.FromResult<Stream>(File.OpenRead(capturedPath)),
-                ETag: etag));
+                ETag: etag,
+                CreatedAt: info.CreationTimeUtc,
+                UpdatedAt: info.LastWriteTimeUtc));
         }
     }
 

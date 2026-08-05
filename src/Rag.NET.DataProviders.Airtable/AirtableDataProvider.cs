@@ -21,6 +21,15 @@ namespace Rag.NET.DataProviders.Airtable;
 /// Delta support uses <c>LAST_MODIFIED_TIME()&gt;'{DeltaToken}'</c> when
 /// <see cref="AirtableOptions.LastModifiedFieldName"/> is set.
 /// </para>
+/// <para>
+/// Phase 4.10 Task 5: <c>AirtableRecord.CreatedTime</c> — auto-populated by Airtable for every
+/// record, typed as a non-nullable <see cref="DateTime"/> by the SDK — becomes
+/// <see cref="FileHandle.CreatedAt"/> on the record's own handle. Airtable's "last modified"
+/// concept is per-field (<see cref="AirtableOptions.LastModifiedFieldName"/>), not a fixed
+/// record property, so there is no single value to set <see cref="FileHandle.UpdatedAt"/> from;
+/// it stays unset. Attachment handles carry no timestamp of their own — only the parent
+/// record does.
+/// </para>
 /// </summary>
 public sealed class AirtableDataProvider : FileContentProviderBase
 {
@@ -107,7 +116,8 @@ public sealed class AirtableDataProvider : FileContentProviderBase
             ETag:             etag,
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
-            Metadata:         BuildRecordMetadata(record.Id));
+            Metadata:         BuildRecordMetadata(record.Id),
+            CreatedAt:        record.CreatedTime);
     }
 
     /// <summary>
