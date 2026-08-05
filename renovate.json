@@ -13,6 +13,11 @@
       "matchUpdateTypes": ["patch", "minor"],
       "groupName": "non-major dependencies",
       "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Microsoft.Graph and Microsoft.Kiota.Abstractions must move together: Graph pins a Kiota major internally, so bumping Graph alone produces a PR that cannot restore. Renovate's first Graph v6 PR (#26) failed exactly this way with NU1605 on every project — Graph 6.2.0 wants Kiota >= 2.0.0 while the repository pinned 1.22.0.",
+      "matchPackageNames": ["Microsoft.Graph", "Microsoft.Kiota.Abstractions"],
+      "groupName": "microsoft-graph"
     }
   ]
 }
