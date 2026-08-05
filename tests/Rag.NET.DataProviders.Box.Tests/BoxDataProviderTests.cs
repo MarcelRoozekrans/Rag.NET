@@ -1,5 +1,6 @@
 using Box.V2;
 using Box.V2.Config;
+using Box.V2.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Box;
@@ -108,6 +109,50 @@ public sealed class BoxDataProviderTests
 
         Assert.Null(handle.Metadata);
         MetadataContract.AssertValid(handle.Metadata, handle.Id);
+    }
+
+    /// <summary>
+    /// Phase 4.10 Task 6: the full-run field selection was widened with <c>created_at</c>/
+    /// <c>modified_at</c>, and <c>ToHandle</c> now forwards <c>BoxItem.CreatedAt</c>/
+    /// <c>ModifiedAt</c> onto the typed <see cref="FileHandle.CreatedAt"/>/
+    /// <see cref="FileHandle.UpdatedAt"/> channel.
+    /// </summary>
+    [Fact]
+    public void ToHandle_SourceWithTimestamps_PopulatesTypedCreatedAndUpdatedAt()
+    {
+        // BoxItem.CreatedAt/ModifiedAt have private setters (Box.V2 populates them only via its
+        // own Newtonsoft deserialization), so a source object is built the same way the SDK
+        // builds one — deserializing the wire JSON — rather than via an object initializer.
+        const string json = """
+            { "id": "file-1", "name": "readme.md",
+              "created_at": "2026-01-01T09:00:00Z", "modified_at": "2026-02-01T10:30:00Z" }
+            """;
+        var sut = new BoxDataProvider(MakeBoxClient());
+        var source = Newtonsoft.Json.JsonConvert.DeserializeObject<BoxFile>(json)!;
+
+        var handle = sut.ToHandle(
+            "file-1", "readme.md", "sha1-abc", folderId: "folder-42", changeStatus: null,
+            source: source);
+
+        Assert.Equal(new DateTime(2026, 1, 1, 9, 0, 0, DateTimeKind.Utc), handle.CreatedAt);
+        Assert.Equal(new DateTime(2026, 2, 1, 10, 30, 0, DateTimeKind.Utc), handle.UpdatedAt);
+    }
+
+    /// <summary>
+    /// A missing <c>source</c> (or a source with unset timestamps) must leave
+    /// <see cref="FileHandle.CreatedAt"/>/<see cref="FileHandle.UpdatedAt"/> null rather than
+    /// throwing or defaulting to some fabricated value.
+    /// </summary>
+    [Fact]
+    public void ToHandle_NoSource_LeavesTypedTimestampsNull()
+    {
+        var sut = new BoxDataProvider(MakeBoxClient());
+
+        var handle = sut.ToHandle(
+            "file-1", "readme.md", "sha1-abc", folderId: "folder-42", changeStatus: null);
+
+        Assert.Null(handle.CreatedAt);
+        Assert.Null(handle.UpdatedAt);
     }
 
     [Fact]
