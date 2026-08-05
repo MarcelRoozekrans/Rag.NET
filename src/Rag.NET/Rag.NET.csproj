@@ -11,6 +11,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The "Rag.NET"-named ActivitySource every instrumented satellite also links; see
+         src/Shared/RagTelemetrySource.cs for why linking (one definition, no new dependency on
+         either side) rather than a shared reference is the right shape here. -->
+    <Compile Include="..\Shared\RagTelemetrySource.cs" Link="Telemetry\RagTelemetrySource.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>Rag.NET.Tests</_Parameter1>
     </AssemblyAttribute>

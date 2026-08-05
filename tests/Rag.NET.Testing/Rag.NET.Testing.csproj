@@ -22,6 +22,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The "Rag.NET"-named ActivitySource core and every instrumented satellite link; see
+         src/Shared/RagTelemetrySource.cs. Linked here (a second, independently-compiled copy)
+         purely so TelemetryProbe can hand RagTelemetrySourceCrossAssemblyTests a genuine
+         second assembly's instance without a ProjectReference to core — this project already
+         plays that "reachable from Rag.NET.Tests but not core" role for other fixtures. -->
+    <Compile Include="..\..\src\Shared\RagTelemetrySource.cs" Link="Telemetry\RagTelemetrySource.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
   </ItemGroup>
 
