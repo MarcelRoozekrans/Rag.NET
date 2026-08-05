@@ -22,7 +22,7 @@ public class SemanticChunkingStrategyTests
                 Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
-                var inputs = ci.Arg<IEnumerable<string>>().ToList();
+                var inputs = ci.Arg<IEnumerable<string>>()!.ToList();
                 var result = new GeneratedEmbeddings<Embedding<float>>();
                 for (int i = 0; i < inputs.Count; i++)
                     result.Add(new Embedding<float>(i < vectors.Length ? vectors[i] : vectors[^1]));

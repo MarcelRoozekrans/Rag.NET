@@ -139,7 +139,7 @@ public sealed class BackgroundPollingTriggerTests
         // GetAllIdsAsync is only invoked when CleanupMode.Full reaches
         // IngestFromProviderAsync — observable proof of the pass-through.
         await hashStore.Received().GetAllIdsAsync(
-            Arg.Is<ProviderId>(p => p.Value == "test-provider"), Arg.Any<CancellationToken>());
+            Arg.Is<ProviderId>(p => p!.Value == "test-provider"), Arg.Any<CancellationToken>());
     }
 
     [Fact]

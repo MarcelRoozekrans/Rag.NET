@@ -163,7 +163,7 @@ public class IngestionBehaviorTests
         var reports = new List<IngestionProgress>();
         var progress = Substitute.For<IProgress<IngestionProgress>>();
         progress.When(p => p.Report(Arg.Any<IngestionProgress>()))
-            .Do(ci => reports.Add(ci.Arg<IngestionProgress>()));
+            .Do(ci => reports.Add(ci.Arg<IngestionProgress>()!));
 
         var ctx = MakeContext(progress: progress);
         ctx.Chunks.Add(new TextChunk { Text = "hello", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0 });

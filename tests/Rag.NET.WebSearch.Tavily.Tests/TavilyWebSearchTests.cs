@@ -56,7 +56,7 @@ public class TavilyWebSearchTests
 
         _ = await api.Received(1).SearchAsync(
             Arg.Is<TavilySearchRequest>(r =>
-                string.Equals(r.ApiKey, "my-api-key", StringComparison.Ordinal) &&
+                string.Equals(r!.ApiKey, "my-api-key", StringComparison.Ordinal) &&
                 string.Equals(r.Query, "hello", StringComparison.Ordinal) &&
                 r.MaxResults == 3),
             Arg.Any<CancellationToken>());

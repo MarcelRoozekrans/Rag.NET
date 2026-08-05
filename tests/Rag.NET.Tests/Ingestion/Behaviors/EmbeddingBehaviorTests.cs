@@ -47,7 +47,7 @@ public class EmbeddingBehaviorTests
                 Arg.Any<CancellationToken>())
             .Returns(call =>
             {
-                var texts = call.Arg<IEnumerable<string>>().ToArray();
+                var texts = call.Arg<IEnumerable<string>>()!.ToArray();
                 if (batches is not null)
                 {
                     lock (batches) { batches.Add(texts); }
@@ -107,7 +107,7 @@ public class EmbeddingBehaviorTests
 
         // Embedder receives exactly the plain chunk's text: one call, one item.
         await embedder.Received(1).GenerateAsync(
-            Arg.Is<IEnumerable<string>>(texts => texts.SequenceEqual(new[] { "plain" })),
+            Arg.Is<IEnumerable<string>>(texts => texts!.SequenceEqual(new[] { "plain" })),
             Arg.Any<EmbeddingGenerationOptions?>(),
             Arg.Any<CancellationToken>());
 
@@ -179,7 +179,7 @@ public class EmbeddingBehaviorTests
         await sut.HandleAsync(ctx, ct, Next);
 
         await embedder.Received(1).GenerateAsync(
-            Arg.Is<IEnumerable<string>>(texts => texts.SequenceEqual(new[] { "empty-embedding" })),
+            Arg.Is<IEnumerable<string>>(texts => texts!.SequenceEqual(new[] { "empty-embedding" })),
             Arg.Any<EmbeddingGenerationOptions?>(),
             Arg.Any<CancellationToken>());
 
@@ -306,7 +306,7 @@ public class EmbeddingBehaviorTests
                 Arg.Any<CancellationToken>())
             .Returns(call =>
             {
-                var texts = call.Arg<IEnumerable<string>>().ToArray();
+                var texts = call.Arg<IEnumerable<string>>()!.ToArray();
                 var count = Array.Exists(texts, t => string.Equals(t, "c2", StringComparison.Ordinal)) ? 1 : texts.Length;
                 var embeddings = new List<Embedding<float>>();
                 for (var i = 0; i < count; i++)
@@ -417,7 +417,7 @@ public class EmbeddingBehaviorTests
                 Arg.Any<CancellationToken>())
             .Returns(async call =>
             {
-                var texts = call.Arg<IEnumerable<string>>().ToArray();
+                var texts = call.Arg<IEnumerable<string>>()!.ToArray();
                 var current = Interlocked.Increment(ref probe.InFlight);
                 InterlockedMax(ref probe.MaxInFlight, current);
                 started[Interlocked.Increment(ref probe.Started) - 1].SetResult();
@@ -458,7 +458,7 @@ public class EmbeddingBehaviorTests
         await sut.HandleAsync(ctx, ct, Next);
 
         await embedder.Received(1).GenerateAsync(
-            Arg.Is<IEnumerable<string>>(texts => texts.SequenceEqual(new[] { "c0", "c1", "c2" })),
+            Arg.Is<IEnumerable<string>>(texts => texts!.SequenceEqual(new[] { "c0", "c1", "c2" })),
             Arg.Any<EmbeddingGenerationOptions?>(),
             Arg.Any<CancellationToken>());
 

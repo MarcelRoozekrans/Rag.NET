@@ -33,7 +33,7 @@ public class AuditRetrievalBehaviorTests
 
         await auditLog.Received(1).LogRetrievalAsync(
             Arg.Is<AuditRetrievalEvent>(e =>
-                e.Chunks.Count == 2 &&
+                e!.Chunks.Count == 2 &&
                 string.Equals(e.CallerRoles[0], "user", StringComparison.Ordinal)),
             Arg.Any<CancellationToken>());
     }
@@ -49,7 +49,7 @@ public class AuditRetrievalBehaviorTests
         await sut.HandleAsync(MakeCtx("secret"), TestContext.Current.CancellationToken, NextReturning([]));
 
         await auditLog.Received(1).LogRetrievalAsync(
-            Arg.Is<AuditRetrievalEvent>(e => e.Query == null),
+            Arg.Is<AuditRetrievalEvent>(e => e!.Query == null),
             Arg.Any<CancellationToken>());
     }
 
@@ -64,7 +64,7 @@ public class AuditRetrievalBehaviorTests
         await sut.HandleAsync(MakeCtx("find me"), TestContext.Current.CancellationToken, NextReturning([]));
 
         await auditLog.Received(1).LogRetrievalAsync(
-            Arg.Is<AuditRetrievalEvent>(e => string.Equals(e.Query, "find me", StringComparison.Ordinal)),
+            Arg.Is<AuditRetrievalEvent>(e => string.Equals(e!.Query, "find me", StringComparison.Ordinal)),
             Arg.Any<CancellationToken>());
     }
 

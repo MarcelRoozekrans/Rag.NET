@@ -159,7 +159,7 @@ public class ReindexStaleTests
         Assert.Empty(result.Failed);
         await vectorStore.Received(1).StoreAsync(
             Arg.Is<IReadOnlyList<EmbeddedChunk>>(chunks =>
-                chunks.Count == 2 &&
+                chunks!.Count == 2 &&
                 chunks[0].Chunk.Text == "chunk a" &&
                 chunks[1].Chunk.Text == "chunk b" &&
                 chunks[0].Embedding.Length == 3),
@@ -314,7 +314,7 @@ public class ReindexStaleTests
 
         Assert.Equal(["doc-1"], result.Reindexed);
         await ((ISparseSearchable)vectorStore).Received(1).StoreSparseAsync(
-            Arg.Is<IReadOnlyList<(EmbeddedChunk Chunk, SparseVector Sparse)>>(items => items.Count == 2),
+            Arg.Is<IReadOnlyList<(EmbeddedChunk Chunk, SparseVector Sparse)>>(items => items!.Count == 2),
             Arg.Any<CancellationToken>());
     }
 

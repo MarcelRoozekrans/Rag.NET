@@ -94,7 +94,7 @@ public class ContextualCompressionIntegrationTests
         chat.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
-                capturedMessages.Add(ci.Arg<IList<ChatMessage>>().ToList());
+                capturedMessages.Add(ci.Arg<IList<ChatMessage>>()!.ToList());
                 return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, assistantText)));
             });
         return chat;
@@ -109,7 +109,7 @@ public class ContextualCompressionIntegrationTests
         embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(ci =>
             {
-                var inputs = ci.Arg<IEnumerable<string>>().ToList();
+                var inputs = ci.Arg<IEnumerable<string>>()!.ToList();
                 var embeddings = inputs.Select(s =>
                 {
                     var topic = s.Contains("cats", StringComparison.OrdinalIgnoreCase) ? 1f :

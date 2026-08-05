@@ -94,7 +94,7 @@ public class FlareAnswerEngineTests
         Assert.Contains(result.Sources, s => string.Equals(s.Chunk.DocumentId.Value, "doc-new", StringComparison.Ordinal));
         Assert.Contains(result.Sources, s => string.Equals(s.Chunk.DocumentId.Value, "doc-1", StringComparison.Ordinal));
         _ = await _retriever.Received(1).RetrieveAsync(
-            Arg.Is<string>(q => q.Contains("original query") && q.Contains("Wrong fact.")),
+            Arg.Is<string>(q => q!.Contains("original query") && q.Contains("Wrong fact.")),
             Arg.Is<RetrievalOptions>(o => o!.TopK == 3),
             Arg.Any<CancellationToken>());
     }

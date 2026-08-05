@@ -220,7 +220,7 @@ public class ConversationMemoryTests
         _ = await sut.ProcessAsync(history, ct);
 
         await chatClient.Received(1).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Text != null && m.Text.Contains("Summarize this chat", StringComparison.Ordinal))),
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m => m.Text != null && m.Text.Contains("Summarize this chat", StringComparison.Ordinal))),
             Arg.Any<ChatOptions?>(),
             Arg.Any<CancellationToken>());
     }

@@ -117,7 +117,7 @@ public class IngestTelemetryTests
         chunkingStrategy.ChunkAsync(Arg.Any<DocumentSection>(), Arg.Any<ChunkingOptions>(), Arg.Any<CancellationToken>())
             .Returns(ci => YieldChunks(new TextChunk
             {
-                Text = ci.Arg<DocumentSection>().Text,
+                Text = ci.Arg<DocumentSection>()!.Text,
                 DocumentId = new DocumentId("parse-chunk-doc"),
                 ChunkIndex = 0,
             }, TestContext.Current.CancellationToken));

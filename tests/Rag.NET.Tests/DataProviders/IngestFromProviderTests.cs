@@ -155,7 +155,7 @@ public sealed class IngestFromProviderTests : IDisposable
         // id-1 returns failure, id-2 succeeds — both must be attempted
         _pipeline.IngestAsync(
                 Arg.Any<Stream>(),
-                Arg.Is<DocumentMetadata>(m => string.Equals(m.DocumentId, "id-1", StringComparison.Ordinal)),
+                Arg.Is<DocumentMetadata>(m => string.Equals(m!.DocumentId, "id-1", StringComparison.Ordinal)),
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
@@ -164,7 +164,7 @@ public sealed class IngestFromProviderTests : IDisposable
 
         _pipeline.IngestAsync(
                 Arg.Any<Stream>(),
-                Arg.Is<DocumentMetadata>(m => string.Equals(m.DocumentId, "id-2", StringComparison.Ordinal)),
+                Arg.Is<DocumentMetadata>(m => string.Equals(m!.DocumentId, "id-2", StringComparison.Ordinal)),
                 Arg.Any<IngestionOptions?>(),
                 Arg.Any<IProgress<IngestionProgress>?>(),
                 Arg.Any<CancellationToken>())
@@ -251,7 +251,7 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Contains(result.Errors, e => e is RagError.StorageFailed);
         // Processing continued — id-new was ingested
         _ = await _pipeline.Received(1).IngestAsync(
-            Arg.Any<Stream>(), Arg.Is<DocumentMetadata>(m => m.DocumentId.Equals(new DocumentId("id-new"))),
+            Arg.Any<Stream>(), Arg.Is<DocumentMetadata>(m => m!.DocumentId.Equals(new DocumentId("id-new"))),
             Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), ct);
     }
 

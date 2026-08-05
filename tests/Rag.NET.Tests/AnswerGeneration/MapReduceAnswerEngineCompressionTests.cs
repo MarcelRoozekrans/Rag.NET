@@ -25,7 +25,7 @@ public class MapReduceAnswerEngineCompressionTests
         chat.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
-                captured.AddRange(ci.Arg<IEnumerable<ChatMessage>>());
+                captured.AddRange(ci.Arg<IEnumerable<ChatMessage>>()!);
                 var text = queue.Count > 0 ? queue.Dequeue() : "answer";
                 return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, text)));
             });
@@ -45,7 +45,7 @@ public class MapReduceAnswerEngineCompressionTests
             .Returns(ci =>
             {
                 var input = ci.Arg<IReadOnlyList<SearchResult>>();
-                var compressed = input
+                var compressed = input!
                     .Select(s => s with { CompressedText = "COMPRESSED" })
                     .ToArray();
                 return new ValueTask<IReadOnlyList<SearchResult>>(compressed);

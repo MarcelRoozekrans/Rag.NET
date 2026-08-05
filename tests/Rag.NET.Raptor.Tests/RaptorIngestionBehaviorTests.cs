@@ -140,7 +140,7 @@ public class RaptorIngestionBehaviorTests
         customEmbedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
-                var texts = callInfo.Arg<IEnumerable<string>>().ToList();
+                var texts = callInfo.Arg<IEnumerable<string>>()!.ToList();
                 var rng = new Random(456);
                 return Task.FromResult<GeneratedEmbeddings<Embedding<float>>>(
                     new(texts.Select(_ => new Embedding<float>(
@@ -230,7 +230,7 @@ public class RaptorIngestionBehaviorTests
         _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
-                var texts = callInfo.Arg<IEnumerable<string>>().ToList();
+                var texts = callInfo.Arg<IEnumerable<string>>()!.ToList();
                 var rng = new Random(123);
                 return Task.FromResult<GeneratedEmbeddings<Embedding<float>>>(
                     new(texts.Select(_ => new Embedding<float>(

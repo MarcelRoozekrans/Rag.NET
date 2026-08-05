@@ -126,7 +126,7 @@ public class UseContextualCompressionExtensionsTests
         var spyCompressor = Substitute.For<IContextualCompressor>();
 #pragma warning disable EPS06
         spyCompressor.CompressAsync(Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(ci => new ValueTask<IReadOnlyList<SearchResult>>(ci.Arg<IReadOnlyList<SearchResult>>()));
+            .Returns(ci => new ValueTask<IReadOnlyList<SearchResult>>(ci.Arg<IReadOnlyList<SearchResult>>()!));
 #pragma warning restore EPS06
         services.RemoveAll<IContextualCompressor>();
         services.AddSingleton(spyCompressor);
@@ -173,7 +173,7 @@ public class UseContextualCompressionExtensionsTests
         var spyCompressor = Substitute.For<IContextualCompressor>();
 #pragma warning disable EPS06
         spyCompressor.CompressAsync(Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(ci => new ValueTask<IReadOnlyList<SearchResult>>(ci.Arg<IReadOnlyList<SearchResult>>()));
+            .Returns(ci => new ValueTask<IReadOnlyList<SearchResult>>(ci.Arg<IReadOnlyList<SearchResult>>()!));
 #pragma warning restore EPS06
         services.RemoveAll<IContextualCompressor>();
         services.AddSingleton(spyCompressor);

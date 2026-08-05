@@ -29,7 +29,7 @@ public class MmrSelectorTests
                 Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
-                var texts = ci.Arg<IEnumerable<string>>().ToList();
+                var texts = ci.Arg<IEnumerable<string>>()!.ToList();
                 var embeddings = texts.Select(t =>
                 {
                     var idx = Array.IndexOf(allTexts, t);

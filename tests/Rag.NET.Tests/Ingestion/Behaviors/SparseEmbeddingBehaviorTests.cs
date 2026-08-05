@@ -162,7 +162,7 @@ public class SparseEmbeddingBehaviorTests
         await store.Received(1).StoreAsync(ctx.EmbeddedChunks, ct);
         await ((ISparseSearchable)store).Received(1).StoreSparseAsync(
             Arg.Is<IReadOnlyList<(EmbeddedChunk Chunk, SparseVector Sparse)>>(items =>
-                items.Count == 1 &&
+                items!.Count == 1 &&
                 ReferenceEquals(items[0].Chunk, ctx.EmbeddedChunks[0]) &&
                 ReferenceEquals(items[0].Sparse, vector)),
             ct);

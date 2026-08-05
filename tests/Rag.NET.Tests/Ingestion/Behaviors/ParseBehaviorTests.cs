@@ -268,7 +268,7 @@ public class ParseBehaviorTests
         var reports = new List<IngestionProgress>();
         var progress = Substitute.For<IProgress<IngestionProgress>>();
         progress.When(p => p.Report(Arg.Any<IngestionProgress>()))
-            .Do(ci => reports.Add(ci.Arg<IngestionProgress>()));
+            .Do(ci => reports.Add(ci.Arg<IngestionProgress>()!));
 
         var section = new DocumentSection { Text = "body", DocumentId = new DocumentId("doc-1") };
 
