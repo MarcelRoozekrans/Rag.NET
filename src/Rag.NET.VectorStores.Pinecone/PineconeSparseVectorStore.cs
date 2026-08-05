@@ -53,7 +53,7 @@ public sealed class PineconeSparseVectorStore : PineconeVectorStore, ISparseSear
     }
 
     /// <summary>Sparse values require dotproduct — see the class remarks.</summary>
-    private protected override CreateIndexRequestMetric IndexMetric => CreateIndexRequestMetric.Dotproduct;
+    private protected override MetricType IndexMetric => MetricType.Dotproduct;
 
     /// <summary>
     /// Fails fast when the existing index cannot host sparse values — a startup failure

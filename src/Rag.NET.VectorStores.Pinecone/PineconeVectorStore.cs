@@ -92,7 +92,7 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
     /// the sparse subtype overrides with dotproduct (the only metric that accepts
     /// sparse values).
     /// </summary>
-    private protected virtual CreateIndexRequestMetric IndexMetric => CreateIndexRequestMetric.Cosine;
+    private protected virtual MetricType IndexMetric => MetricType.Cosine;
 
     /// <inheritdoc />
     public async Task StoreAsync(
