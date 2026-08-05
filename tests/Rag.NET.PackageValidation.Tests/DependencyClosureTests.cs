@@ -61,13 +61,20 @@ public sealed class DependencyClosureTests
             May: ["Rag.NET.Abstractions"]),
         new(
             "Rag.NET.DataProviders.Microsoft365",
-            Must: ["Microsoft.Graph", "Microsoft.Kiota.Abstractions", "Azure.Identity"],
+            // Kiota was a Must until the Microsoft.Graph v6 upgrade. All four sources declared it
+            // explicitly, but only as an audit lift: Graph 5.x pinned Kiota 1.21.1, which carries
+            // GHSA-7j59-v9qr-6fq9, patched in 1.22.0. Graph 6.2.0 pulls Kiota 2.0.0 transitively,
+            // so the explicit references went and the package no longer declares it. It stays in
+            // May rather than being deleted, because it was a genuine source dependency and a
+            // future Graph that declares it again must not fail this guard.
+            Must: ["Microsoft.Graph", "Azure.Identity"],
             // Union of the four Graph connectors (parent of a32f860): all four declared
             // Rag.NET.DataProviders, Graph, Kiota, Azure.Identity, Http.Resilience and
             // DependencyInjection.Abstractions; Exchange alone added Logging.Abstractions.
             May:
             [
                 "Rag.NET.DataProviders",
+                "Microsoft.Kiota.Abstractions",
                 "Microsoft.Extensions.Http.Resilience",
                 "Microsoft.Extensions.DependencyInjection.Abstractions",
                 "Microsoft.Extensions.Logging.Abstractions",
