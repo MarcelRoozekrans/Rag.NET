@@ -11,6 +11,13 @@ namespace Rag.NET.DataProviders.Web;
 /// Follows <c>&lt;sitemapindex&gt;</c> links recursively.
 /// ETag is set from the <c>&lt;lastmod&gt;</c> element when present.
 /// </summary>
+/// <remarks>
+/// Phase 4.10 Task 5: <c>&lt;lastmod&gt;</c> also becomes the typed
+/// <see cref="FileEntry.UpdatedAt"/>, parsed via <see cref="ConnectorTimestampParser"/>. The
+/// existing <c>lastmod</c> metadata tag (see <see cref="BuildMetadata"/>) is kept exactly as-is —
+/// it stays unreserved and continues to pass the raw string through verbatim, precision and all;
+/// the typed field is an addition, not a replacement.
+/// </remarks>
 public sealed class SitemapDataProvider : IFileContentProvider
 {
     private static readonly XNamespace s_ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
@@ -71,7 +78,8 @@ public sealed class SitemapDataProvider : IFileContentProvider
                         return (Stream)buffer;
                     },
                     ETag: lastMod,
-                    Metadata: BuildMetadata(loc, lastMod)));
+                    Metadata: BuildMetadata(loc, lastMod),
+                    UpdatedAt: ConnectorTimestampParser.Parse(lastMod)));
             }
         }
     }

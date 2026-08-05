@@ -102,6 +102,69 @@ public sealed class RssDataProviderTests
         Assert.Equal("2024-01-01T00:00:00Z", entries[0].Value.ETag);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: RSS 2.0 has no <c>published</c>/<c>updated</c> split — only
+    /// <c>pubDate</c> — so it becomes the typed <see cref="Rag.NET.DataProviders.FileEntry.CreatedAt"/>
+    /// and <c>UpdatedAt</c> stays unset rather than fabricated.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_Rss2_PubDate_IsTypedAsCreatedAtOnly()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <guid>https://example.com/post-1</guid>
+                  <link>https://example.com/post-1</link>
+                  <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>
+                </item>
+              </channel>
+            </rss>
+            """;
+        var sut = new RssDataProvider("https://example.com/feed.rss", MakeClient("https://example.com/feed.rss", xml));
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), entries[0].Value.CreatedAt);
+        Assert.Null(entries[0].Value.UpdatedAt);
+    }
+
+    /// <summary>
+    /// Phase 4.10 Task 5: Atom's <c>&lt;published&gt;</c>/<c>&lt;updated&gt;</c> become the typed
+    /// <see cref="Rag.NET.DataProviders.FileEntry.CreatedAt"/>/
+    /// <see cref="Rag.NET.DataProviders.FileEntry.UpdatedAt"/> — both, unlike RSS 2.0.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_Atom_PublishedAndUpdated_AreTypedAsCreatedAndUpdatedAt()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <id>https://example.com/post-1</id>
+                <link href="https://example.com/post-1"/>
+                <published>2024-01-01T00:00:00Z</published>
+                <updated>2024-02-02T00:00:00Z</updated>
+              </entry>
+              <entry>
+                <id>https://example.com/post-2</id>
+                <link href="https://example.com/post-2"/>
+                <updated>2024-03-03T00:00:00Z</updated>
+              </entry>
+            </feed>
+            """;
+        var sut = new RssDataProvider("https://example.com/atom.xml", MakeClient("https://example.com/atom.xml", xml));
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc), entries[0].Value.CreatedAt);
+        Assert.Equal(new DateTime(2024, 2, 2, 0, 0, 0, DateTimeKind.Utc), entries[0].Value.UpdatedAt);
+
+        // No <published> at all — CreatedAt stays unset rather than falling back to <updated>
+        // (unlike the published_at metadata tag, which does fall back).
+        Assert.Null(entries[1].Value.CreatedAt);
+        Assert.Equal(new DateTime(2024, 3, 3, 0, 0, 0, DateTimeKind.Utc), entries[1].Value.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_Rss2_MissingGuid_FallsBackToLink()
     {

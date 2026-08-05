@@ -52,6 +52,41 @@ public sealed class SitemapDataProviderTests
         Assert.Equal("2024-01-15", entries[0].Value.ETag);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: <c>&lt;lastmod&gt;</c> also becomes the typed
+    /// <see cref="Rag.NET.DataProviders.FileEntry.UpdatedAt"/>. The <c>lastmod</c> metadata tag
+    /// keeps carrying the raw string verbatim (asserted separately) — the typed field is an
+    /// addition, not a replacement.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_Lastmod_IsTypedAsUpdatedAt()
+    {
+        const string xml = """
+            <?xml version="1.0"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+              <url>
+                <loc>https://example.com/page1</loc>
+                <lastmod>2024-01-15T10:00:00Z</lastmod>
+              </url>
+              <url>
+                <loc>https://example.com/page2</loc>
+              </url>
+            </urlset>
+            """;
+        var client = MakeClient(new Dictionary<string, string>(StringComparer.Ordinal) { ["https://example.com/sitemap.xml"] = xml });
+        var sut = new SitemapDataProvider("https://example.com/sitemap.xml", client);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            new DateTime(2024, 1, 15, 10, 0, 0, DateTimeKind.Utc),
+            entries[0].Value.UpdatedAt);
+        Assert.Equal("2024-01-15T10:00:00Z", entries[0].Value.Metadata!["lastmod"]);
+
+        // No <lastmod> at all — stays unset, never guessed.
+        Assert.Null(entries[1].Value.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_SitemapIndex_RecursesIntoChildSitemaps()
     {
