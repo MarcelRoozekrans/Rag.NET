@@ -909,16 +909,16 @@ A key in the **Always** column is still omitted if its source value comes back e
 | GitLab | `path`, `project` (configured id or `namespace/project`), `ref` | `change_status` — delta runs only |
 | Bitbucket | `path`, `repo` (`workspace/slug`), `ref` | `change_status` — diffstat (delta) runs only |
 | Confluence | `page_id`, `version` | `space` — only when `SpaceKey` scoped the run; the API response does not carry it, so an unscoped run has no space to report |
-| Jira | `issue_key`, `project`, `status`, `updated_at` | `priority` — when set; `assignee` — when assigned |
-| Notion | `page_id`, `updated_at` | — (no container key; see the caveats) |
-| Asana | `workspace`, `completed` (`"true"`/`"false"`) | `assignee`, `due_on`, `updated_at`; `project` — when `ProjectGid` narrowed the enumeration |
+| Jira | `issue_key`, `project`, `status` | `priority` — when set; `assignee` — when assigned |
+| Notion | `page_id` | — (no container key; see the caveats) |
+| Asana | `workspace`, `completed` (`"true"`/`"false"`) | `assignee`, `due_on`; `project` — when `ProjectGid` narrowed the enumeration |
 | Slack | `channel`, `channel_id`, `date` (`yyyy-MM-dd` — the day this rollup covers), `message_count` | — |
 | Microsoft Teams | `team_id`, `channel_id`, `channel`, `date` (`yyyy-MM-dd` — the day this rollup covers), `message_count` | — |
 | Gmail | `date` (ISO-8601), `has_attachments` | `from` — when the message has a `From` header |
 | Exchange / Outlook | `folder` (the Graph mail-folder id or well-known name being enumerated, e.g. `inbox`), `has_attachments` | `received_at` (ISO-8601) — when Graph returned `receivedDateTime` |
 | Linear | `url` | `team` (team key); `state` **and** `state_type` together — when the issue has a workflow state; `project` (project name); `comments_truncated` = `"true"` — only when the issue's comments exceeded the fetched page, never `"false"` |
-| Zendesk (Tickets) | `ticket_id`, `status`, `updated_at`, `subdomain` | `priority` — when set |
-| Zendesk (Articles) | `article_id`, `updated_at`, `subdomain` | `section_id` — when the article belongs to a Help Center section |
+| Zendesk (Tickets) | `ticket_id`, `status`, `subdomain` | `priority` — when set |
+| Zendesk (Articles) | `article_id`, `subdomain` | `section_id` — when the article belongs to a Help Center section |
 | Airtable | `base_id`, `table`, `record_id` | attachment entries additionally carry `field` (the source field name) and `attachment_id` |
 | Web — Crawler | `url`, `depth` (BFS distance from the seed; the seed is `"0"`), `host` | — |
 | Web — RSS / Atom | `url` | `author`; `published_at` — normalised to ISO-8601 when the feed's timestamp parses, otherwise passed through verbatim |
@@ -928,17 +928,20 @@ A key in the **Always** column is still omitted if its source value comes back e
 
 ### Reserved keys
 
-Seven keys are written (or read) by the framework itself and must never be emitted by a connector:
+Eight keys are written (or read) by the framework itself and must never be emitted by a connector:
 
 | Key | Written by | Read by |
 |-----|-----------|---------|
 | `document_id` | `MetadataBehavior` | — |
 | `file_name` | `MetadataBehavior` | sanitisers, for diagnostics |
 | `created_at` | `MetadataBehavior` | `TimeWeightedRetriever` |
+| `updated_at` | `MetadataBehavior` | `TimeWeightedRetriever` (in preference to `created_at`) |
 | `provider_id` | `IngestFromProviderAsync` | — |
 | `_parentKey` | parent/child chunking | parent-document retrieval |
 | `allowed_roles` | *nobody* — supplied by the caller | `RbacRetrievalGuard` |
 | `trust_level` | *nobody* — supplied by the caller | `TrustLevelRetrievalGuard` |
+
+`updated_at` joined this list in Phase 4.10, together with the migration of the five connectors that used to hand-write it as a plain tag (Asana, Jira, Notion, Zendesk Articles, Zendesk Tickets) — see [Timestamps](#timestamps-createdat-and-updatedat) below.
 
 A connector that emits one of these throws `ReservedMetadataKeyException` out of `IngestFromProviderAsync`, naming the offending key, the provider id and the entry id.
 
@@ -949,6 +952,28 @@ Consequences worth knowing:
 - **It arrives unwrapped.** Even under parallel ingestion — `Parallel.ForEachAsync` faults through an `AggregateException`, but awaiting unwraps it — so `catch (ReservedMetadataKeyException)` is enough; no `AggregateException` handling is needed.
 - **Ingestion is left partially complete.** Entries processed before the collision surfaced stay ingested (and hash-recorded). Because the method throws rather than returns, the accumulated error bag is discarded and `CleanupMode.Full` cleanup is skipped — **nothing is deleted**.
 - **Re-running after the fix is safe.** Whatever was ingested was collision-free by definition, and the hash store skips it as unchanged on the next run.
+
+### Timestamps: CreatedAt and UpdatedAt
+
+Beside the string-tag `Metadata` dictionary, `FileHandle` and `FileEntry` each carry two optional typed fields — `CreatedAt` and `UpdatedAt`, both `DateTime?` — forwarded onto `DocumentMetadata.CreatedAt`/`UpdatedAt` when the entry survives filtering. `MetadataBehavior` turns whichever of the two is set into the reserved `created_at`/`updated_at` chunk tags (see [Reserved keys](#reserved-keys) above), and `TimeWeightedRetriever` reads them at query time — `updated_at` in preference to `created_at` — to rank fresher content higher. See [Retrieval — Time-Weighted Retrieval](retrieval.md#time-weighted-retrieval) for the full resolution order and why a modified timestamp outranks a creation one.
+
+Not every connector holds both concepts on the objects it fetches, and none fabricates the one it lacks — a connector with only a modification time sets `UpdatedAt` and leaves `CreatedAt` unset, never the other way around. Verified against each connector's source, not assumed:
+
+| Supplies | Connectors |
+|---|---|
+| **Both** `CreatedAt` and `UpdatedAt` | AzureBlob, Box, GoogleDrive, Exchange / Outlook, Microsoft Teams, OneDrive, SharePoint, RSS/Atom feeds¹, LocalFiles |
+| **`UpdatedAt` only** | Asana, Confluence, Dropbox, Jira, Linear, Notion, Sitemap, Zendesk (Tickets and Articles) |
+| **`CreatedAt` only** | Airtable, Gmail, Slack |
+| **Neither — no vendor timestamp on the fetched objects** | GitHub, GitLab, WebCrawler, Bitbucket² |
+
+¹ RSS/Atom is connector-wide "both" only for Atom feeds, which carry separate `<published>`/`<updated>` elements. RSS 2.0 has only `<pubDate>`, so RSS 2.0 entries get `CreatedAt` alone; `UpdatedAt` stays unset rather than borrowing `<pubDate>` under the wrong name.
+
+² Bitbucket was investigated rather than assumed empty: the `commit` object embedded in the src-listing and diffstat responses that `BitbucketDataProvider` already calls is documented as a minimal reference (type/hash/links); the full commit resource that does carry `date` lives behind a separate per-commit endpoint, which would mean a second API call per file to reach — out of scope for populating fields from data already in hand. Left unset as a truthful "unknown" rather than a guess.
+
+Two things this typed channel is deliberately **not**:
+
+- **It does not replace the connector-specific tags that already carry a timestamp under their own name.** `lastmod` (Sitemap), `published_at` (RSS/Atom), `received_at` (Exchange) and `date` (Gmail, Slack, Teams) all stay exactly as they were — unreserved, connector-formatted, and still readable via `MetadataFilter`/`HasTagSpec`. They now sit alongside, not underneath, the typed fields: Sitemap's `UpdatedAt`, for example, is parsed from the same `<lastmod>` value the `lastmod` tag passes through verbatim, so the two can disagree in format (ISO-8601 vs. whatever the sitemap published) while agreeing in substance.
+- **It does not backfill the other field from the one a connector has.** 4.9 stopped `CreatedAt` being fabricated from `DateTime.UtcNow`; squeezing a connector's modification time into `CreatedAt` (or vice versa) when only one is available would reintroduce that defect under a different name. A connector that knows only "last modified" reports exactly that and nothing else.
 
 ### Precedence
 
@@ -968,7 +993,7 @@ Only step 2 is reserved-key guarded. Base metadata is deliberately left unguarde
 
 **`path` and `parent_path` are not interchangeable.** Across the file/blob connectors `path` is the *file's own* full path — the value you would filter with `path` starts-with `docs/`. OneDrive and SharePoint emit **`parent_path`** instead, because Graph's `DriveItem` exposes `ParentReference.Path`, which is the *containing folder* and carries a `/drive/root:` namespace prefix. Filing that under `path` would make a cross-connector `path` filter silently match nothing on those two connectors.
 
-**`updated_at` is not comparable across connectors.** Asana, Jira, Notion and Zendesk each write `updated_at` straight through from their API in whatever format that vendor returns — the connector does not reformat it. The values are useful for exact-match and for per-connector ordering when a vendor's format happens to sort lexically, but a cross-connector range filter over `updated_at` is not sound. RSS's `published_at` is the better-behaved case: it is normalised to ISO-8601 **whenever the feed's timestamp parses** (Atom carries ISO-8601, RSS 2.0 carries RFC 822 `pubDate`; both are parsed and re-rendered), and is ordered and comparable for those entries. A timestamp that does not parse — a hand-written `pubDate` such as `sometime last Tuesday` — is passed through **verbatim** rather than dropped, so a feed with malformed dates can still yield unsortable values on this key. Sitemap's `lastmod` is passed through verbatim by design, because the sitemap protocol permits both a full W3C datetime and a bare date and normalising would discard which precision the site published.
+**`updated_at` used to be a per-connector tag with no common format; it no longer is.** Before Phase 4.10, Asana, Jira, Notion and Zendesk each wrote `updated_at` straight through from their API in whatever format that vendor returned, so a cross-connector range filter over it was not sound. `updated_at` is now a [reserved key](#reserved-keys) written centrally by `MetadataBehavior` from the typed `DocumentMetadata.UpdatedAt` field, in one ISO-8601 round-trip format (`"o"`) regardless of connector — see [Timestamps](#timestamps-createdat-and-updatedat). The connector-specific tags that remain — `lastmod`, `published_at`, `received_at`, `date` — are not reserved and keep their own per-connector formats, so the caveats below still apply to those. RSS's `published_at` is the better-behaved case among them: it is normalised to ISO-8601 **whenever the feed's timestamp parses** (Atom carries ISO-8601, RSS 2.0 carries RFC 822 `pubDate`; both are parsed and re-rendered), and is ordered and comparable for those entries. A timestamp that does not parse — a hand-written `pubDate` such as `sometime last Tuesday` — is passed through **verbatim** rather than dropped, so a feed with malformed dates can still yield unsortable values on this key. Sitemap's `lastmod` is passed through verbatim by design, because the sitemap protocol permits both a full W3C datetime and a bare date and normalising would discard which precision the site published.
 
 **`date` means two different things, in two different formats.** Slack and Teams emit `date` as `yyyy-MM-dd` — a *day-bucket label* identifying the day their per-day rollup document covers. Gmail emits `date` as a full ISO-8601 round-trip timestamp — the *instant* a single message carries. A cross-connector `date` filter therefore compares `2026-03-01` against `2026-03-01T10:00:00.0000000+00:00`, which matches nothing and sorts wrongly. This is more treacherous than the `updated_at` case above precisely because the values *look* comparable: filter `date` per connector, never across them.
 

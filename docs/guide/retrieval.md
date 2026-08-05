@@ -567,11 +567,24 @@ services.AddRagNet(rag => rag.UseTimeWeighting(new TimeWeightedOptions
 | Option | Default | Description |
 |--------|---------|-------------|
 | `DecayRate` | `0.01` | λ in `score × e^(−λ × age_hours)`. Default halves relevance at ~69 hours (~3 days). |
-| `FallbackMetadataKeys` | `["updated_at", "published_at", "lastmod", "received_at"]` | Metadata keys to try (in order) when `"created_at"` is absent. First parseable ISO 8601 value wins. |
+| `FallbackMetadataKeys` | `["updated_at", "published_at", "lastmod", "received_at"]` | Connector-specific metadata keys to try, in order, after both reserved timestamp keys have been checked and missed. First parseable ISO 8601 value wins. |
+
+### Resolution order
+
+`TimeWeightedRetriever` resolves a chunk's timestamp in this order, taking the first key that is present and parses:
+
+1. **`updated_at`** — the reserved chunk tag `MetadataBehavior` writes from `DocumentMetadata.UpdatedAt`.
+2. **`created_at`** — the reserved chunk tag `MetadataBehavior` writes from `DocumentMetadata.CreatedAt`.
+3. **`TimeWeightedOptions.FallbackMetadataKeys`**, in list order — connector-specific tags that carry a timestamp under a different key.
+4. **Absent** — decay factor `1.0`, neutral.
+
+Freshness is a **last-changed** question, not a first-created one: a page written five years ago and edited yesterday is current information, and a page written yesterday and never touched since is exactly as current as its creation date says. That is why a modified timestamp outranks a creation timestamp whenever both are present — `updated_at` is checked before `created_at`, not the other way around — and why a connector-specific fallback key is only consulted once neither reserved key resolved anything.
+
+`FallbackMetadataKeys`' default list still opens with `"updated_at"` for backward compatibility with callers who set `TimeWeightedOptions` explicitly and drop the reserved keys — but for chunks produced by this repository's own connectors, that entry never actually fires: any chunk carrying `updated_at` was already caught at step 1, and one that is not carrying it will not find it again at step 3 either.
 
 ### How timestamps are set
 
-`DocumentMetadata.CreatedAt` is `DateTime?` with **no default**. A document you ingest directly has no creation time unless you set one:
+`DocumentMetadata.CreatedAt` and `DocumentMetadata.UpdatedAt` are both `DateTime?` with **no default**. A document you ingest directly has neither unless you set one:
 
 ```csharp
 await pipeline.IngestAsync(stream, new DocumentMetadata
@@ -579,27 +592,19 @@ await pipeline.IngestAsync(stream, new DocumentMetadata
     DocumentId = new DocumentId("release-notes-v3"),
     FileName   = "release-notes-v3.md",
     CreatedAt  = new DateTime(2024, 9, 1, 0, 0, 0, DateTimeKind.Utc),
+    UpdatedAt  = new DateTime(2024, 11, 15, 0, 0, 0, DateTimeKind.Utc),
 });
 ```
 
-`MetadataBehavior` serialises `CreatedAt` into each chunk's metadata as `"created_at"` (ISO 8601) **only when it is set**. `TimeWeightedRetriever` reads this key at query time.
+`MetadataBehavior` serialises each into its chunk's metadata — `CreatedAt` as `"created_at"`, `UpdatedAt` as `"updated_at"` — **only when it is set**. `TimeWeightedRetriever` reads both keys at query time, per the resolution order above.
 
-### Provider-ingested documents have no creation time by default
+### Provider-ingested documents: a typed channel, connector by connector
 
-Documents ingested through `IngestFromProviderAsync` (see [Data Providers](data-providers.md)) get **no** `created_at` unless the connector itself supplies one as a chunk tag under one of `FallbackMetadataKeys`. `DocumentMetadata.CreatedAt` is a per-call parameter on `IngestFromProviderAsync` (`baseMetadata`), not something any connector populates per document, and no built-in caller sets it — so for provider ingestion the real timestamp, if the connector has one at all, only ever reaches a chunk tag.
+Documents ingested through `IngestFromProviderAsync` (see [Data Providers](data-providers.md)) get `CreatedAt`/`UpdatedAt` from `FileHandle.CreatedAt`/`UpdatedAt` (or `FileEntry.CreatedAt`/`UpdatedAt` for the three connectors that build entries directly) — a typed channel each connector populates for itself from whatever creation/modification timestamp the vendor API actually returns, distinct from any string tag the same connector also writes. **Not every connector has both concepts to offer**, and none fabricates the one it lacks: a connector that only knows a modification time sets `UpdatedAt` and leaves `CreatedAt` unset, and vice versa. See [Data Providers — Timestamps](data-providers.md#timestamps-createdat-and-updatedat) for the full per-connector table of which of the two, if either, each connector supplies.
 
-This is deliberate, not a workaround: when no timestamp is available, `TimeWeightedRetriever` returns a decay factor of `1.0` — **neutral**, not fabricated. A 2019 Confluence page ingested today is left unranked by recency rather than being scored as if it were created this morning, which is what happened before this behaviour was fixed. Neutral-but-honest is better than confident-but-wrong, and it is still incomplete: those chunks simply do not benefit from time-weighting until their connector's real timestamp is wired to `CreatedAt` (tracked as future work — see the ROADMAP).
+For connectors with neither concept available on the objects they fetch — GitHub, GitLab, WebCrawler, and (after investigation) Bitbucket — `TimeWeightedRetriever` returns a decay factor of `1.0`: **neutral**, not fabricated. A 2019 GitHub file ingested today is left unranked by recency rather than scored as if it were created this morning, which is what happened before Phase 4.9 fixed the underlying defect. Neutral-but-honest is better than confident-but-wrong, and it remains a real gap for those connectors specifically — there is no vendor timestamp to wire up, so nothing short of a different API surface would close it.
 
-The default `FallbackMetadataKeys` — `["updated_at", "published_at", "lastmod", "received_at"]` — makes time-weighting work today for the connectors that already write one of those keys as a chunk tag, verified against the connector source rather than assumed:
-
-| Fallback key | Connectors that write it |
-|---|---|
-| `updated_at` | Asana, Jira, Notion, Zendesk (tickets and articles) |
-| `published_at` | RSS/Atom (`Rag.NET.DataProviders.Web`) |
-| `lastmod` | Sitemap (`Rag.NET.DataProviders.Web`) |
-| `received_at` | Exchange / Outlook |
-
-**`"date"` is deliberately excluded from the default.** Gmail, Slack and Microsoft Teams all write a `date` tag, but not the same thing: Gmail's is a full ISO-8601 timestamp (the message's send time), while Slack's and Teams' is day-granularity only (`yyyy-MM-dd`, the day a per-day rollup document covers) — mixing the two under one fallback key would apply decay computed from inconsistent precision depending on which connector produced the chunk. `date` is also generic enough that a caller's own document metadata may already use it for something time-weighting should not touch (an invoice date, a due date), so treating it as a timestamp source by default risks decaying by the wrong clock. Opt in with one line if you accept the risk for your own data:
+**`"date"` stays deliberately excluded from `FallbackMetadataKeys`'s default.** Gmail, Slack and Microsoft Teams all write a `date` tag, but not the same thing: Gmail's is a full ISO-8601 timestamp (redundant with its typed `CreatedAt` now), while Slack's and Teams' is day-granularity only (`yyyy-MM-dd`, the day a per-day rollup document covers) — mixing the two under one fallback key would apply decay computed from inconsistent precision depending on which connector produced the chunk. `date` is also generic enough that a caller's own document metadata may already use it for something time-weighting should not touch (an invoice date, a due date), so treating it as a timestamp source by default risks decaying by the wrong clock. Slack and Teams both populate their typed `CreatedAt`/`UpdatedAt` at full precision from the same underlying data the day-bucketed `date` tag summarises — so `date`'s day-granularity is no longer the only signal available for those two, even though the tag itself was left as-is; normalising it directly was out of this phase's scope. Opt in with one line if you accept the risk of using `date` for your own data anyway:
 
 ```csharp
 services.AddRagNet(rag => rag.UseTimeWeighting(new TimeWeightedOptions
@@ -607,8 +612,6 @@ services.AddRagNet(rag => rag.UseTimeWeighting(new TimeWeightedOptions
     FallbackMetadataKeys = ["updated_at", "published_at", "lastmod", "received_at", "date"],
 }));
 ```
-
-**Linear is not covered**, despite writing an `updatedAt` timestamp. That value feeds only the connector's `ETag` and delta-token watermark — it is never copied into a chunk metadata tag, so there is nothing under any key for `FallbackMetadataKeys` to find. An earlier design for this behaviour assumed Linear's `updatedAt` reached a chunk tag; it does not, and the assumption was corrected before this default shipped.
 
 ### Per-call opt-out
 

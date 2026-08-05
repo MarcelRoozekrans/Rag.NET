@@ -464,6 +464,26 @@ future reader can tell the difference between "never existed" and "dealt with".
   confirming that shape is intended (the Cl100kBase vocabulary and MCP stack dominate it) —
   small, but it must be a decision rather than a default before the tool is published.
   → **Phase 4.6** (which owns `Rag.NET.Mcp.Tool`'s first tests), owed before **6.3** publishes.
+- **GoogleDrive's fourth field mask has no test** (found by Phase 4.10, `b3f026c`, 2026-08-05):
+  widening `CreatedAt`/`UpdatedAt` support touched four identical field-selection sites — whole-drive
+  `Files.List`, folder-traversal `Files.List`, and both pages of `Changes.List` — and three are
+  each pinned by a dedicated test. **Delta pagination's second page is not**, because no existing
+  test drives GoogleDrive delta pagination at all; this is pre-existing coverage, not a regression
+  the phase introduced, but stating it as debt beats leaving three-of-four tests to imply
+  four-of-four coverage.
+  → **Phase 6.2** (Raise the Floor on Unit-Only Packages), which already owns auditing every
+  `unit`-verified package's coverage before the ledger can call it more than "exercised at all".
+- **Slack's and Microsoft Teams' `date` tags stay day-granularity (`yyyy-MM-dd`) despite both
+  connectors now holding full-precision timestamps internally** (found by Phase 4.9's design,
+  reaffirmed out of scope by Phase 4.10's design §8, 2026-08-05): both connectors group messages
+  into one document per UTC calendar day and tag it with the day label; Phase 4.10 gave both a
+  full-precision typed `CreatedAt`/`UpdatedAt` pair (the day's earliest/latest message) that
+  `TimeWeightedRetriever` now ranks on, but the `date` *tag* itself — what a caller filters or reads
+  directly — was deliberately left exactly as it was. Normalising it changes what these two
+  connectors report to callers and belongs with whoever next touches their own fetch/grouping
+  logic, not with the timestamp-channel work that happened to sit next to it twice now.
+  → no phase currently owns the Slack or Microsoft Teams connectors' own fetch layer; stays
+  unscheduled until one does, re-justified rather than silently dropped.
 
 ### Closed
 
@@ -966,7 +986,7 @@ future reader can tell the difference between "never existed" and "dealt with".
 ### Phase 2.2: Connector Metadata Consistency [status: complete]
 **Items:** populate `FileHandle.Metadata` across the remaining 19 of 21 connectors
 **Plan:** `docs/plans/2026-07-26-connector-metadata-design.md` + `-implementation.md`
-**Completed:** 2026-07-27 (also codified the tag convention, enforced reserved keys, and added `provider_id`; five connectors' narrowed API field selections remain recorded as debt)
+**Completed:** 2026-07-27 (also codified the tag convention, enforced reserved keys, and added `provider_id`; five connectors' narrowed API field selections remain recorded as debt). **Corrected 2026-08-05 (Phase 4.10):** this debt's own "Recorded, not fixed" section (`docs/plans/2026-07-26-connector-metadata-design.md`) priced widening Confluence, Jira, Asana, GoogleDrive and Box's field selections as needing **re-recorded WireMock cassettes** — a cost then repeated unverified by Phase 4.9's design and Phase 4.10's own design, three planning documents agreeing with each other and all wrong. **There are no WireMock cassettes anywhere near these connectors' fast unit-test suites.** Confluence's fixtures are inline JSON literals fed to a fake `HttpMessageHandler`; GoogleDrive's are a fake HTTP handler of the same shape; Box has no offline HTTP layer to fake at all — its tests call the internal `ToHandle` mapping directly, DI-registered against a real `BoxClient`. (WireMock cassettes do exist in this repository, under `tests/Rag.NET.DataProviders.IntegrationTests/Cassettes/` — but that is a separate, Docker/live-gated suite over a different connector list, and was never what this debt's cost was actually about.) Phase 4.10 widened Confluence, GoogleDrive and Box's DTO mappings without touching a cassette anywhere; see its own entry below.
 
 ### Phase 2.3: PgVector Sparse Storage [status: complete]
 **Items:** SPLADE for PgVector (deferred in Phase 1.2 for lack of a native sparse type)
@@ -1271,7 +1291,7 @@ one was found by a test. Every criterion below can be false, and something check
 service has a scrubbed, dated recording" — and `Release tagged v1.0` moved to **Milestone 6's**
 DoD, the recording criterion widened there to recording-or-recorded-reason; completing this
 milestone no longer tags anything, and every other criterion is unchanged):
-- [ ] All planned phases complete (5 of 11 as of 2026-08-04: 4.0, 4.1, 4.7, 4.8, 4.9 — the phase list grew Phase 4.9, created and completed 2026-08-04 to fix the `BuildMetadata`/`CreatedAt` defect and correct the wrong "slot, not a phase" estimate that had routed it to 4.2, and Phase 4.10, created the same day and left pending — the connector-timestamp-threading work 4.9 priced but did not do)
+- [ ] All planned phases complete (6 of 11 as of 2026-08-05: 4.0, 4.1, 4.7, 4.8, 4.9, 4.10 — the phase list grew Phase 4.9, created and completed 2026-08-04 to fix the `BuildMetadata`/`CreatedAt` defect and correct the wrong "slot, not a phase" estimate that had routed it to 4.2, and Phase 4.10, created the same day and completed 2026-08-05 — the connector-timestamp-threading work 4.9 priced but did not do. Phases 4.2–4.6 remain pending, so this box stays open)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore
 - [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0). **The gate half holds as of 2026-08-03** (Phase 4.1): both `KnownUnsatisfiable` ledgers are empty, and every formerly-unsatisfiable gate is satisfiable by a fenced procedure in `docs/reference/ci.md` — `ENABLE_OCR` and `RAGNET_TESSDATA` by the `-p:EnableOcr=true` source-build procedure, **executed green on 2026-08-03** (the gated test's first run anywhere); `RAGNET_DOCINTEL_ENDPOINT`/`_KEY` by the `az` F0 free-tier provisioning procedure — written and satisfiable, deliberately not executed, the live run being Phase 6.1's. The box stays open on the all-projects half, checked at the milestone's close. **Corrected 2026-08-04 (Phase 4.8): the clause that used to end this note — "4.1's own workflow changes have not yet had a genuine Actions run" — is no longer true**; the last DoD criterion below now cites the run that made it false. This box stays open regardless: it needs every project passing on the tree at the milestone's close, and Phase 4.8's own tree has not itself been through Actions yet
 - [x] **Every `features.md` Done claim names code that exists** (`FeatureClaimTests`, Phase 4.0; **holding as of 2026-08-03**: both false claims were corrected at Milestone 3's close, `81163af` — `KnownFalseClaims` is empty and all 72 package claims across 53 Done sections are verified directly. Failing knowingly from 4.0's sweep until then, with the two claims allow-listed under owners → 4.4 and 4.1; both closed early instead, in the Closed debts list)
@@ -1706,30 +1726,104 @@ ingestion — `IngestFromProviderTests` only checked that a connector *emitting*
 and `MetadataBehaviorCreatedAtTests`/`TimeWeightedRetrieverTests` tested the two ends in isolation.
 The path between them was untested, which is exactly where the defect lived.
 
-### Phase 4.10: Connector Timestamp Threading [status: pending]
+### Phase 4.10: Connector Timestamp Threading [status: complete]
 **Goal:** Give connectors a typed channel for the real creation/update timestamp they already
-hold, so it reaches `DocumentMetadata.CreatedAt` instead of only ever a tag (or nothing).
+hold, so it reaches `DocumentMetadata.CreatedAt`/`UpdatedAt` instead of only ever a tag (or
+nothing).
 **Not a features.md row** — created 2026-08-04 out of Phase 4.9's own measurement, priced there
-rather than left as a routing arrow a second time (Phase 4.9, above;
-`docs/plans/2026-08-04-provider-creation-time-design.md` §4).
-**Scope, measured by Phase 4.9, not estimated:** of 25 providers, **17 hold a real timestamp today
-and discard it** — folded into an opaque `ETag` or an un-promoted tag (AzureBlob, OneDrive,
-SharePoint, Dropbox, Linear, Gmail, Teams, Slack and others); **4 do not even fetch it**
-(Confluence, Jira, Box, GoogleDrive — the same four connectors Phase 2.2's "Recorded, not fixed"
-section already priced for narrowed API field selections, so this phase's DTO-widening cost and
-that debt's cost are the same work seen from two angles, not two separate costs); **4 genuinely
-have none to give** (Bitbucket, GitHub, GitLab, WebCrawler — content-addressed or crawl-derived
-sources with no vendor-supplied creation timestamp at all).
-**Cost, priced rather than assumed:** a typed timestamp field threaded through
-`FileEntry`/`FileHandle`, `FileContentProviderBase`, and `BuildMetadata`; ~17 connector changes to
-populate it from data already in hand; and, for the 4 that do not fetch it, DTO changes plus
-**re-recorded WireMock cassettes** for Confluence, Jira, Box and GoogleDrive — the same cassette
-cost Phase 2.2 declined to pay for the same four connectors.
-**Explicitly out of scope for this phase** (per the 4.9 design, §6): no change to
-`ReservedMetadataKeys` — `created_at` stays reserved, since the fix routes real values through the
-new typed field, not the tag channel; no `ModifiedAt` field — most connectors expose *modified*
-rather than *created*, which is a real modelling question that belongs with this same connector
-work rather than being decided ahead of it.
+rather than left as a routing arrow a second time (Phase 4.9, above).
+**Plan:** `docs/plans/2026-08-05-connector-timestamps-design.md` +
+`2026-08-05-connector-timestamps-implementation.md`
+**Completed:** 2026-08-05, branch `feature/connector-timestamps`.
+**Two typed fields, not one.** `DocumentMetadata` gains `UpdatedAt` beside `CreatedAt` (both
+`DateTime?`, neither defaulted, neither ever backfilled from the other), threaded through
+`FileHandle`/`FileEntry` as optional trailing parameters and through `FileContentProviderBase` for
+the connectors that go through it. `RssDataProvider`, `SitemapDataProvider` and
+`WebCrawlerDataProvider` implement `IFileContentProvider` directly and never touch `FileHandle`, so
+the field was threaded onto `FileEntry` for that path independently — missing it would have failed
+silently, indistinguishable from a connector with no timestamp at all (`e6b834b`).
+**`updated_at` reserved, five hand-writers migrated (`3a9fdb7`).** Reserving the key before its
+existing writers stopped would have thrown `ReservedMetadataKeyException` for every one of them at
+ingest time, not compile time, so reservation and migration landed in one commit: Asana, Jira,
+Notion, Zendesk Articles and Zendesk Tickets each dropped their hand-written
+`metadata["updated_at"]` tag in favour of `FileHandle.UpdatedAt`, parsed via a new
+`ConnectorTimestampParser`. `ReservedMetadataKeyGuardTests` (`Rag.NET.RepoConventions.Tests`) now
+scans every connector source file for a hand-written reserved-key assignment and was proven red
+first by reinstating the Asana line.
+**~17 connectors populated across three commits (`d6ba3ea`, `f3e6658`, `2812915`):** Microsoft 365
+(OneDrive, SharePoint, Teams, Exchange), Web (RSS/Atom, Sitemap, WebCrawler), and the rest
+(Dropbox, Linear, Airtable, Gmail, Slack, LocalFiles, AzureBlob, GitHub, GitLab, Bitbucket) — the
+last three recorded, with a test each, as genuinely having no vendor timestamp rather than being
+skipped by oversight.
+**Confluence, Box, GoogleDrive widened (`0c1230f`, `0975abe`, `b3f026c`)** — the three connectors
+whose real cost this whole phase turned on, and the three that produced this phase's most valuable
+findings:
+1. **The cassette cost was fictional.** Phase 2.2's "Recorded, not fixed" section priced this
+   widening as needing re-recorded WireMock cassettes; Phase 4.9's design cited that price; this
+   phase's own design repeated it — three planning documents agreeing with each other and all
+   wrong. **There are no WireMock cassettes anywhere near these three connectors' test suites.**
+   Confluence uses inline JSON literals fed to a fake `HttpMessageHandler`; GoogleDrive uses a fake
+   HTTP handler of the same shape; Box has no offline HTTP layer to fake at all — its tests call
+   the internal `ToHandle` mapping directly against a real `BoxClient`. Corrected on Phase 2.2's own
+   entry above, so the false cost stops propagating from there too.
+2. **Confluence needed no `expand` widening at all.** The default `expand=body.storage,version`
+   already returns `version.when` — `IConfluenceApi` needed no change, only the DTO mapping and
+   `ToHandle` did, contrary to this phase's own design's expectation.
+3. **Jira never needed DTO work.** `IJiraApi` already requests `fields=…,updated`; this was
+   already corrected once, inside this phase's own design (§1), which caught its own prior
+   framing (inherited from Phase 4.9's design, which listed Jira correctly in §3 among connectors
+   already writing the tag and wrongly in §4 among connectors that do not even fetch it) before any
+   code was written. Of the original four "does not fetch it" connectors, only Confluence, Box and
+   GoogleDrive actually needed widening.
+4. **An unresolvable analyzer conflict on `DateTime?` scalar parameters, worth recording as a house
+   pattern.** EPS05 (ErrorProne.NET) wants a large-readonly-struct parameter passed by `in`; RCS1242
+   (Roslynator) rejects `in` on a non-readonly struct, and `DateTime` is exactly that. Both Box's
+   `ToHandle` and GoogleDrive's `BuildHandle` sidestep the conflict by taking the source
+   reference-typed object (`BoxItem`, `Google.Apis.Drive.v3.Data.File`) instead of two `DateTime?`
+   scalars — a wrinkle neither connector's task description anticipated, and the pattern the next
+   connector hitting this same pair of analyzers should reach for first.
+5. **GoogleDrive's `CreatedTime`/`ModifiedTime` are `[Obsolete]`**, and their `DateTimeOffset`
+   replacements (`CreatedTimeDateTimeOffset`/`ModifiedTimeDateTimeOffset`) are themselves
+   `[JsonIgnore]` — only the `*Raw` string properties round-trip through the test project's
+   Newtonsoft-based JSON builder, so the fixtures are built from those. Neither wrinkle was
+   anticipated by the task description either.
+6. **A gap, stated rather than implied.** GoogleDrive has four field masks needing the same
+   widening (whole-drive, folder-traversal, and two Changes.List pages); three are covered by a
+   dedicated test each. **The fourth — delta pagination's second page — has no test**, because no
+   existing test drives GoogleDrive delta pagination at all, matching pre-existing coverage. Recorded
+   as debt, not implied as complete.
+**The `updated_at` writer count was five, not eight.** This phase's own design (§2, §4) said eight,
+double-counting writers of `published_at`, `lastmod` and `received_at` — three different keys that
+stay unreserved and connector-specific (see `docs/guide/data-providers.md`). Only Asana, Jira,
+Notion, Zendesk Tickets and Zendesk Articles ever hand-wrote `updated_at` itself.
+**Documentation:** `docs/guide/retrieval.md`'s time-weighting section rewritten in place (not
+appended) for the new `UpdatedAt` → `CreatedAt` → `FallbackMetadataKeys` → neutral resolution
+order, with the now-false "Linear is not covered" claim removed (Linear's `updatedAt` now reaches
+`FileHandle.UpdatedAt` directly, no longer only its `ETag`). `docs/guide/data-providers.md` gains a
+Timestamps section (which connector supplies which of the two, verified against source, including
+Bitbucket's investigated-but-unconfirmed status — see above), an eighth reserved key in the
+Reserved keys table, and the now-stale "`updated_at` is not comparable across connectors" caveat
+rewritten to describe the new centrally-formatted reality.
+**What remains unfixed, stated plainly rather than left implicit:** connectors with no vendor
+timestamp on the objects they fetch — GitHub, GitLab, WebCrawler, and Bitbucket after
+investigation — still rank neutrally under `TimeWeightedRetriever`. That is correct, not a gap:
+there is nothing to wire up. Bitbucket's `commit` object embedded in the src-listing/diffstat
+responses is documented as a minimal reference distinct from the full commit resource (which does
+carry `date`) behind a separate per-commit endpoint; confirming it and reaching it would both need
+a second API call per file, outside this phase's "populate from data already in hand" scope — left
+unset rather than guessed. Slack's and Teams' `date` tags remain day-granularity
+(`yyyy-MM-dd`); normalising them to the full precision their new typed fields now carry internally
+was out of scope and stays open.
+**Counts:** `Rag.NET.Tests` 1159 → **1169**, `Rag.NET.DataProviders.Tests` 70 → **71**,
+`RepoConventions` 36+1 → **37+1**, `Microsoft365.Tests` 70 → **74**, `Web.Tests` 27 → **31**,
+`Confluence.Tests` 20 → **21**, `Box.Tests` 13 → **15**, `GoogleDrive.Tests` 10 → **13**;
+Dropbox/Linear/Airtable/Gmail/Slack/AzureBlob/GitHub/GitLab/Bitbucket each +1. Full solution build:
+0 warnings, 0 errors.
+**Explicitly out of scope for this phase** (per the 4.9 design, §6, reaffirmed by this phase's own
+design §8): no change to `created_at`'s reservation; no `ModifiedAt` field name (settled as
+`UpdatedAt`, since the emitted tag is `updated_at` and the pre-existing `FallbackMetadataKeys`
+default already used that vocabulary); no normalisation of Slack's/Teams' day-granularity `date`
+tags; no removal of `lastmod`/`published_at`/`received_at` as connector-specific tags.
 
 ### Phase 4.2: Options Alignment & Validation [status: pending]
 **Goal:** Align pipeline options on IOptions and validate them with ZeroAlloc.Validation.
