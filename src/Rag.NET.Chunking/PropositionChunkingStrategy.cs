@@ -218,11 +218,11 @@ public sealed partial class PropositionChunkingStrategy(
             },
         };
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 155577360, EventName = "log_proposition_extraction_failure", Level = LogLevel.Warning,
         Message = "Proposition extraction LLM call or JSON parse failed for document {DocumentId}; falling back to passage chunk.")]
     private static partial void LogPropositionExtractionFailure(ILogger logger, string documentId, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1052473395, EventName = "log_empty_response", Level = LogLevel.Warning,
         Message = "Proposition extraction returned empty response for document {DocumentId}; falling back to passage chunk.")]
     private static partial void LogEmptyResponse(ILogger logger, string documentId);
 }

@@ -114,6 +114,6 @@ public sealed partial class ResumeChunkingStrategy(
         return sb.ToString().Trim();
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Resume LLM call or JSON parse failed for document {DocumentId}; falling back to full-text chunk.")]
+    [LoggerMessage(EventId = 1725293571, EventName = "log_resume_parse_failure", Level = LogLevel.Warning, Message = "Resume LLM call or JSON parse failed for document {DocumentId}; falling back to full-text chunk.")]
     private static partial void LogResumeParseFailure(ILogger logger, string documentId, Exception ex);
 }

@@ -149,9 +149,9 @@ public sealed partial class QAPairsDocumentParser(
         return -1;
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping row {Row} — empty question column.")]
+    [LoggerMessage(EventId = 1887217151, EventName = "log_skipping_empty_question", Level = LogLevel.Warning, Message = "Skipping row {Row} — empty question column.")]
     private static partial void LogSkippingEmptyQuestion(ILogger logger, int row);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Row {Row} has an empty answer column — chunk will be stored with no answer text.")]
+    [LoggerMessage(EventId = 1626418564, EventName = "log_empty_answer", Level = LogLevel.Warning, Message = "Row {Row} has an empty answer column — chunk will be stored with no answer text.")]
     private static partial void LogEmptyAnswer(ILogger logger, int row);
 }
