@@ -53,6 +53,24 @@ public sealed class GoogleDriveDataProviderTests
         return NewtonsoftJsonSerializer.Instance.Serialize(fileList);
     }
 
+    /// <summary>
+    /// Builds a Files.List JSON payload for a single file carrying <c>createdTime</c>/
+    /// <c>modifiedTime</c>. Raw JSON, not the <c>File</c> model: <c>CreatedTimeDateTimeOffset</c>/
+    /// <c>ModifiedTimeDateTimeOffset</c> are <c>[JsonIgnore]</c> on this SDK version — only the
+    /// <c>*Raw</c> string properties round-trip through <see cref="NewtonsoftJsonSerializer"/> —
+    /// so a raw literal matches the wire format the provider actually parses.
+    /// </summary>
+    private static string BuildFilesListJsonWithTimestamps(
+        string id, string name, string mimeType, string createdTimeIso, string modifiedTimeIso)
+        => $$"""
+            {
+              "files": [
+                { "id": "{{id}}", "name": "{{name}}", "mimeType": "{{mimeType}}",
+                  "createdTime": "{{createdTimeIso}}", "modifiedTime": "{{modifiedTimeIso}}" }
+              ]
+            }
+            """;
+
     [Fact]
     public void Constructor_NullDrive_Throws()
     {
@@ -223,6 +241,75 @@ public sealed class GoogleDriveDataProviderTests
         Assert.False(entry.Metadata.ContainsKey("folder_id"));
         _ = Assert.Single(entry.Metadata);
         MetadataContract.AssertValid(entry);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 4.10 Task 6 — createdTime/modifiedTime become typed CreatedAt/UpdatedAt.
+    // All four field masks (whole-drive Files.List, folder Files.List, and the two
+    // Changes.List masks) were widened; the three tests below drive the whole-drive,
+    // folder-traversal and Changes-feed code paths independently so that widening only
+    // one mask cannot pass unnoticed.
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_WholeDrive_CreatedTimeAndModifiedTime_BecomeTypedTimestamps()
+    {
+        var json = BuildFilesListJsonWithTimestamps(
+            "file-1", "readme.md", "text/markdown",
+            "2026-01-01T09:00:00Z", "2026-02-01T10:30:00Z");
+        var sut = new GoogleDriveDataProvider(MakeDriveServiceWithFakeHttp(json));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries).Value;
+        Assert.Equal(new DateTime(2026, 1, 1, 9, 0, 0, DateTimeKind.Utc), entry.CreatedAt);
+        Assert.Equal(new DateTime(2026, 2, 1, 10, 30, 0, DateTimeKind.Utc), entry.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_FolderTraversal_CreatedTimeAndModifiedTime_BecomeTypedTimestamps()
+    {
+        var json = BuildFilesListJsonWithTimestamps(
+            "file-1", "readme.md", "text/markdown",
+            "2026-01-01T09:00:00Z", "2026-02-01T10:30:00Z");
+        var opts = new GoogleDriveOptions { FolderId = "folder-abc" };
+        var sut = new GoogleDriveDataProvider(MakeDriveServiceWithFakeHttp(json), opts);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries).Value;
+        Assert.Equal(new DateTime(2026, 1, 1, 9, 0, 0, DateTimeKind.Utc), entry.CreatedAt);
+        Assert.Equal(new DateTime(2026, 2, 1, 10, 30, 0, DateTimeKind.Utc), entry.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ChangesFeed_CreatedTimeAndModifiedTime_BecomeTypedTimestamps()
+    {
+        const string changesJson = """
+            {
+              "changes": [
+                { "removed": false,
+                  "file": { "id": "file-changed", "name": "updated.md", "mimeType": "text/markdown",
+                            "createdTime": "2026-01-01T09:00:00Z", "modifiedTime": "2026-02-01T10:30:00Z" } }
+              ]
+            }
+            """;
+        var handler = new FakeChangesListHandler(changesJson);
+        var drive = new DriveService(new BaseClientService.Initializer
+        {
+            ApplicationName   = "test",
+            HttpClientFactory = new FakeHttpClientFactory(handler),
+        });
+        var sut = new GoogleDriveDataProvider(drive, new GoogleDriveOptions { DeltaToken = "tok1" });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries).Value;
+        Assert.Equal(new DateTime(2026, 1, 1, 9, 0, 0, DateTimeKind.Utc), entry.CreatedAt);
+        Assert.Equal(new DateTime(2026, 2, 1, 10, 30, 0, DateTimeKind.Utc), entry.UpdatedAt);
     }
 
     [Fact]
