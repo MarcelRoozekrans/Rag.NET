@@ -98,7 +98,8 @@ public sealed class NotionDataProvider : FileContentProviderBase
             ETag:             page.LastEditedTime,
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
-            Metadata:         BuildMetadata(page)));
+            Metadata:         BuildMetadata(page),
+            UpdatedAt:        ConnectorTimestampParser.Parse(page.LastEditedTime)));
     }
 
     /// <summary>
@@ -116,8 +117,7 @@ public sealed class NotionDataProvider : FileContentProviderBase
     private static Dictionary<string, string>? BuildMetadata(NotionPage page)
     {
         var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (!string.IsNullOrEmpty(page.Id))             metadata["page_id"]    = page.Id;
-        if (!string.IsNullOrEmpty(page.LastEditedTime)) metadata["updated_at"] = page.LastEditedTime;
+        if (!string.IsNullOrEmpty(page.Id)) metadata["page_id"] = page.Id;
         return metadata.Count == 0 ? null : metadata;
     }
 

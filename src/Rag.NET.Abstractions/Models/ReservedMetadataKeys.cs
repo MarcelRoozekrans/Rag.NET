@@ -36,11 +36,13 @@ public static class ReservedMetadataKeys
     /// <c>TimeWeightedRetriever</c> in preference to <see cref="CreatedAt"/>.
     /// </summary>
     /// <remarks>
-    /// Deliberately <b>not</b> a member of <see cref="AllKeys"/>/<see cref="IsReserved"/> yet —
-    /// reserving it is a separate change (Phase 4.10 Task 4) that must land together with the
-    /// connector migrations that stop writing it as a plain tag, or <c>BuildMetadata</c> would
-    /// start throwing <see cref="Rag.NET.Models.ReservedMetadataKeyException"/> for every one of
-    /// them at ingest time.
+    /// A member of <see cref="AllKeys"/>/<see cref="IsReserved"/> since Phase 4.10 Task 4, which
+    /// landed this reservation together with the five connector migrations that used to write it
+    /// as a plain <c>entry.Metadata["updated_at"]</c> tag (Asana, Jira, Notion, Zendesk Articles,
+    /// Zendesk Tickets) — those now set <c>FileHandle.UpdatedAt</c> instead. The two changes could
+    /// not land separately: reserving the key first, before the connectors stopped writing it,
+    /// would have made <c>BuildMetadata</c> throw <see cref="Rag.NET.Models.ReservedMetadataKeyException"/>
+    /// for every one of them at ingest time.
     /// </remarks>
     public const string UpdatedAt = "updated_at";
 
@@ -64,6 +66,7 @@ public static class ReservedMetadataKeys
         DocumentId,
         FileName,
         CreatedAt,
+        UpdatedAt,
         ProviderId,
         ParentKey,
         AllowedRoles,

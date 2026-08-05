@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using Rag.NET.DataProviders;
@@ -506,13 +507,15 @@ public sealed class JiraDataProviderTests
         MetadataContract.AssertAll(results.Select(r => r.Value));
 
         var metadata = Assert.Single(results).Value.Metadata!;
-        Assert.Equal("PROJ-1",               metadata["issue_key"]);
-        Assert.Equal("In Progress",          metadata["status"]);
-        Assert.Equal("High",                 metadata["priority"]);
-        Assert.Equal("Alice",                metadata["assignee"]);
-        Assert.Equal("2026-03-01T10:00:00Z", metadata["updated_at"]);
-        Assert.Equal("PROJ",                 metadata["project"]);
-        Assert.Equal(6, metadata.Count);
+        Assert.Equal("PROJ-1",      metadata["issue_key"]);
+        Assert.Equal("In Progress", metadata["status"]);
+        Assert.Equal("High",        metadata["priority"]);
+        Assert.Equal("Alice",       metadata["assignee"]);
+        // updated_at is no longer a plain tag — it is the typed FileHandle.UpdatedAt, asserted in
+        // GetFilesAsync_Updated_IsTypedAndSurfacesAsUpdatedAtChunkTag below.
+        Assert.False(metadata.ContainsKey("updated_at"));
+        Assert.Equal("PROJ", metadata["project"]);
+        Assert.Equal(5, metadata.Count);
 
         // The same values stay in the Markdown body — that is what gets embedded.
         var content = await ReadContentAsync(results[0].Value);
@@ -557,7 +560,7 @@ public sealed class JiraDataProviderTests
         Assert.Equal("PROJ",   metadata["project"]);
         Assert.False(metadata.ContainsKey("priority"));
         Assert.False(metadata.ContainsKey("assignee"));
-        Assert.Equal(4, metadata.Count);
+        Assert.Equal(3, metadata.Count);
     }
 
     [Fact]
@@ -621,6 +624,50 @@ public sealed class JiraDataProviderTests
         await using var stream = await entry.OpenContentAsync(CancellationToken.None);
         using var reader = new StreamReader(stream, Encoding.UTF8);
         return await reader.ReadToEndAsync();
+    }
+
+    /// <summary>
+    /// Phase 4.10 Task 4: <c>fields.updated</c> used to be written as a plain
+    /// <c>metadata["updated_at"]</c> tag; it now becomes <c>FileHandle.UpdatedAt</c> and reaches
+    /// <c>FileEntry.UpdatedAt</c> unchanged. This pins both that the connector still produces the
+    /// timestamp at all, and that it still surfaces as the reserved chunk tag downstream.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_Updated_IsTypedAndSurfacesAsUpdatedAtChunkTag()
+    {
+        const string json = """
+            {
+              "issues": [
+                {
+                  "id": "10001",
+                  "key": "PROJ-1",
+                  "fields": {
+                    "summary": "Timestamp issue",
+                    "description": null,
+                    "status": { "name": "Open" },
+                    "priority": null,
+                    "assignee": null,
+                    "comment": null,
+                    "updated": "2026-03-01T10:00:00Z"
+                  }
+                }
+              ],
+              "total": 1
+            }
+            """;
+        var sut = MakeProvider(json);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(results).Value;
+        var expected = DateTime.Parse(
+            "2026-03-01T10:00:00Z", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+        Assert.Equal(expected, entry.UpdatedAt);
+        Assert.False(entry.Metadata!.ContainsKey("updated_at"));
+
+        await UpdatedAtChunkTagAssertion.AssertSurfacesAsChunkTagAsync(
+            entry.UpdatedAt, TestContext.Current.CancellationToken);
     }
 }
 

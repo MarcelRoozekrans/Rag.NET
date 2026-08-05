@@ -86,6 +86,7 @@ public sealed class MetadataContractTests
     [InlineData(ReservedMetadataKeys.DocumentId)]
     [InlineData(ReservedMetadataKeys.FileName)]
     [InlineData(ReservedMetadataKeys.CreatedAt)]
+    [InlineData(ReservedMetadataKeys.UpdatedAt)]
     [InlineData(ReservedMetadataKeys.ProviderId)]
     [InlineData(ReservedMetadataKeys.ParentKey)]
     [InlineData(ReservedMetadataKeys.AllowedRoles)]
@@ -97,11 +98,14 @@ public sealed class MetadataContractTests
     /// <summary>
     /// Pins the reserved set itself. If a key is added to or removed from
     /// <see cref="ReservedMetadataKeys"/> without the design being revisited, this fails.
+    /// Phase 4.10 Task 4 grew this from seven to eight, reserving <c>updated_at</c> once the five
+    /// connectors that used to write it as a plain tag were migrated to
+    /// <c>FileHandle.UpdatedAt</c> in the same commit.
     /// </summary>
     [Fact]
-    public void ReservedKeys_AreExactlyTheSevenFromTheDesign()
+    public void ReservedKeys_AreExactlyTheEightFromTheDesign()
         => Assert.Equal(
-            ["_parentKey", "allowed_roles", "created_at", "document_id", "file_name", "provider_id", "trust_level"],
+            ["_parentKey", "allowed_roles", "created_at", "document_id", "file_name", "provider_id", "trust_level", "updated_at"],
             ReservedMetadataKeys.All.Order(StringComparer.Ordinal));
 
     // --- rule: no null or empty values ---
