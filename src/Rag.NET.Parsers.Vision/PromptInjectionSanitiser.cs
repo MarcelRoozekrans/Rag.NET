@@ -22,7 +22,7 @@ internal static partial class PromptInjectionSanitiser
         });
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 2053114672, EventName = "log_injection_detected", Level = LogLevel.Warning,
         Message = "Prompt injection pattern detected in vision LLM output for '{FileName}': matched '{Pattern}'.")]
     private static partial void LogInjectionDetected(ILogger logger, string fileName, string pattern);
 

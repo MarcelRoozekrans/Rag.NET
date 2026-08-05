@@ -96,7 +96,7 @@ public partial class ImageDocumentParser(
         return ms.ToArray();
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1703571814, EventName = "log_ocr_failed", Level = LogLevel.Warning,
         Message = "OCR failed for '{FileName}'; falling back to vision LLM.")]
     private static partial void LogOcrFailed(ILogger logger, string fileName, Exception ex);
 }

@@ -13,7 +13,7 @@ namespace Rag.NET.Parsers.Archive;
 /// </remarks>
 internal static partial class ArchiveParserLog
 {
-    [LoggerMessage(Level = LogLevel.Warning, Message = "No parser registered for archive entry content type {ContentType}; skipping {FileName}")]
+    [LoggerMessage(EventId = 1178788924, EventName = "no_parser_for_entry", Level = LogLevel.Warning, Message = "No parser registered for archive entry content type {ContentType}; skipping {FileName}")]
     internal static partial void NoParserForEntry(ILogger logger, string contentType, string fileName);
 
     /// <summary>
@@ -24,12 +24,12 @@ internal static partial class ArchiveParserLog
     /// EPC12/EPC13 make a <c>catch</c> that reads only <c>ex.Message</c> a build error here, and the
     /// stack trace is the only thing that locates the failure inside the other parser.
     /// </summary>
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Parser {ParserType} failed on archive entry '{FileName}'; skipping that entry and continuing")]
+    [LoggerMessage(EventId = 1997169265, EventName = "entry_parser_failed", Level = LogLevel.Warning, Message = "Parser {ParserType} failed on archive entry '{FileName}'; skipping that entry and continuing")]
     internal static partial void EntryParserFailed(ILogger logger, string parserType, string fileName, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping nested container '{Name}': maximum container nesting depth of {MaxNestingDepth} reached")]
+    [LoggerMessage(EventId = 1317606987, EventName = "nesting_depth_exceeded", Level = LogLevel.Warning, Message = "Skipping nested container '{Name}': maximum container nesting depth of {MaxNestingDepth} reached")]
     internal static partial void NestingDepthExceeded(ILogger logger, string name, int maxNestingDepth);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Skipping nested container '{Name}': maximum of {MaxNestedContainers} nested containers per document reached")]
+    [LoggerMessage(EventId = 871319645, EventName = "nested_container_count_limit", Level = LogLevel.Warning, Message = "Skipping nested container '{Name}': maximum of {MaxNestedContainers} nested containers per document reached")]
     internal static partial void NestedContainerCountLimit(ILogger logger, string name, int maxNestedContainers);
 }
