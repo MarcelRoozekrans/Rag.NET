@@ -90,6 +90,7 @@ internal sealed partial class TracingChunkSanitiser : IChunkSanitiser
     }
 
     [LoggerMessage(
+        EventId = 1912556956, EventName = "log_capture_failed",
         Level = LogLevel.Warning,
         Message = "Failed to record how {Component} rewrote a chunk. " +
                   "The sanitised chunk stands and the pipeline is unaffected.")]

@@ -145,6 +145,7 @@ internal sealed partial class TracingRetrievalGuard : IRetrievalGuard
     }
 
     [LoggerMessage(
+        EventId = 1912556956, EventName = "log_capture_failed",
         Level = LogLevel.Warning,
         Message = "Failed to record what {Component} did to the retrieval results. " +
                   "The guard's own decision stands and the pipeline is unaffected.")]

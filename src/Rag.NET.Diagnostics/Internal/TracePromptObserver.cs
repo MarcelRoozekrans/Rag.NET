@@ -99,6 +99,7 @@ internal sealed partial class TracePromptObserver : IPromptObserver
     }
 
     [LoggerMessage(
+        EventId = 1912556956, EventName = "log_capture_failed",
         Level = LogLevel.Warning,
         Message = "Failed to record the assembled prompt into the trace. " +
                   "Answer generation is unaffected.")]

@@ -186,6 +186,7 @@ internal sealed partial class StageActivityListener : IDisposable
         && activity.OperationName.StartsWith(StageNamePrefix, StringComparison.Ordinal);
 
     [LoggerMessage(
+        EventId = 791301700, EventName = "log_stage_capture_failed",
         Level = LogLevel.Warning,
         Message = "Failed to record a pipeline stage span into the trace. The pipeline is unaffected.")]
     private static partial void LogStageCaptureFailed(ILogger logger, Exception ex);

@@ -95,6 +95,7 @@ internal sealed partial class TracingQuerySanitiser : IQuerySanitiser
     }
 
     [LoggerMessage(
+        EventId = 1912556956, EventName = "log_capture_failed",
         Level = LogLevel.Warning,
         Message = "Failed to record how {Component} rewrote the query. " +
                   "The sanitised query stands and the pipeline is unaffected.")]

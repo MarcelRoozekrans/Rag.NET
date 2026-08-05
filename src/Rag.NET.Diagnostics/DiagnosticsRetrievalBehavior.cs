@@ -101,6 +101,7 @@ public sealed partial class DiagnosticsRetrievalBehavior(
     }
 
     [LoggerMessage(
+        EventId = 1912556956, EventName = "log_capture_failed",
         Level = LogLevel.Warning,
         Message = "DiagnosticsRetrievalBehavior failed to capture retrieval into the trace. " +
                   "The retrieval results were returned unaffected.")]
