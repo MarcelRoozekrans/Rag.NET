@@ -237,7 +237,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 24
 
       # Versions pinned to what was measured against the full history on 2026-08-03; the two
       # packages version independently (cli 21.2.1, config 21.2.0), which is why the pins differ.
