@@ -47,6 +47,6 @@ jobs:
       # `Release-As: x.y.z` footer on an empty commit overrides it — the procedure in
       # docs/reference/ci.md records both.
       - name: Create or update the release pull request
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           release-type: simple
