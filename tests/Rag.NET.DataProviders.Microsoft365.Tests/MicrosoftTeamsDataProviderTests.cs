@@ -503,6 +503,55 @@ public sealed class MicrosoftTeamsDataProviderTests
         Assert.Equal("chan-1", metadata["channel"]);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: the day's earliest <c>createdDateTime</c> becomes the typed
+    /// <see cref="Rag.NET.DataProviders.FileEntry.CreatedAt"/> and the latest
+    /// <c>lastModifiedDateTime</c> becomes <see cref="Rag.NET.DataProviders.FileEntry.UpdatedAt"/>
+    /// — full precision, unlike the day-grouping <c>date</c> metadata tag (asserted unchanged
+    /// separately), which stays day-granularity.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_EarliestCreatedAndLatestModified_BecomeTypedTimestamps()
+    {
+        const string twoMessagesJson = """
+            {
+              "value": [
+                {
+                  "id": "msg-1",
+                  "createdDateTime": "2026-03-01T11:00:00Z",
+                  "lastModifiedDateTime": "2026-03-01T11:30:00Z",
+                  "from": { "user": { "displayName": "Alice" } },
+                  "body": { "content": "First", "contentType": "text" }
+                },
+                {
+                  "id": "msg-2",
+                  "createdDateTime": "2026-03-01T09:00:00Z",
+                  "lastModifiedDateTime": "2026-03-01T09:15:00Z",
+                  "from": { "user": { "displayName": "Bob" } },
+                  "body": { "content": "Second", "contentType": "text" }
+                }
+              ]
+            }
+            """;
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [MessagesKey] = twoMessagesJson,
+        };
+        var graph = MakeGraphClient(responses);
+        var opts  = new MicrosoftTeamsOptions { TeamId = "team-1", ChannelId = "chan-1" };
+        var sut   = new MicrosoftTeamsDataProvider(graph, opts);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries).Value;
+        // Earliest of the two createdDateTime values (09:00, not 11:00).
+        Assert.Equal(new DateTime(2026, 3, 1, 9, 0, 0, DateTimeKind.Utc), entry.CreatedAt);
+        // Latest of the two lastModifiedDateTime values (11:30, not 09:15).
+        Assert.Equal(new DateTime(2026, 3, 1, 11, 30, 0, DateTimeKind.Utc), entry.UpdatedAt);
+        Assert.Equal("2026-03-01", entry.Metadata!["date"]);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

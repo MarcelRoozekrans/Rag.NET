@@ -190,6 +190,11 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
     /// (and prefixes it with the <c>/drive/root:</c> namespace token). Filing that under
     /// <c>path</c> would make a cross-connector <c>path</c> filter silently match nothing here.
     /// </para>
+    /// <para>
+    /// Phase 4.10 Task 5: <c>item.CreatedDateTime</c>/<c>LastModifiedDateTime</c> — both typed
+    /// as <see cref="DateTimeOffset"/><c>?</c> by the Graph SDK — become
+    /// <see cref="FileHandle.CreatedAt"/>/<see cref="FileHandle.UpdatedAt"/>.
+    /// </para>
     /// </remarks>
     private FileHandle ToHandle(string driveId, DriveItem item)
     {
@@ -212,7 +217,9 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
                 await _graph.Drives[capturedDriveId].Items[capturedId].Content
                     .GetAsync(cancellationToken: ct).ConfigureAwait(false)
                     ?? Stream.Null,
-            Metadata:         metadata);
+            Metadata:         metadata,
+            CreatedAt:        item.CreatedDateTime?.UtcDateTime,
+            UpdatedAt:        item.LastModifiedDateTime?.UtcDateTime);
     }
 
     private async Task<Result<DriveItemCollectionResponse?, RagError>> FetchChildrenPageAsync(

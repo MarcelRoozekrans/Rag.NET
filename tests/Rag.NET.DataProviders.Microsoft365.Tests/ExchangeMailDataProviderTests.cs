@@ -58,6 +58,27 @@ public sealed class ExchangeMailDataProviderTests
             entry.Metadata["received_at"]);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: <c>receivedDateTime</c> becomes
+    /// <see cref="Rag.NET.DataProviders.FileEntry.CreatedAt"/> — a deliberate modelling choice,
+    /// a received mail's "creation" for our purposes — and <c>lastModifiedDateTime</c> becomes
+    /// <see cref="Rag.NET.DataProviders.FileEntry.UpdatedAt"/>. The
+    /// <c>received_at</c> metadata tag (asserted separately above) is kept exactly as-is.
+    /// </summary>
+    [Fact]
+    public async Task Enumerate_ReceivedAndLastModifiedDateTime_BecomeTypedTimestamps()
+    {
+        var handler = MakeHandler((InboxKey, HttpStatusCode.OK, InboxMessagesJson));
+        var sut     = MakeProvider(handler);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries).Value;
+        Assert.Equal(new DateTime(2026, 3, 1, 10, 0, 0, DateTimeKind.Utc), entry.CreatedAt);
+        Assert.Equal(new DateTime(2026, 3, 1, 10, 5, 0, DateTimeKind.Utc), entry.UpdatedAt);
+    }
+
     // -------------------------------------------------------------------------
     // 2. Multiple folders
     // -------------------------------------------------------------------------

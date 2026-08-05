@@ -64,6 +64,47 @@ public sealed class OneDriveDataProviderTests
         Assert.Equal("etag-1",    entries.Single(e => e.Value.Id.Value.Contains("readme.md", StringComparison.Ordinal)).Value.ETag);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: <c>createdDateTime</c>/<c>lastModifiedDateTime</c> become the typed
+    /// <see cref="Rag.NET.DataProviders.FileEntry.CreatedAt"/>/
+    /// <see cref="Rag.NET.DataProviders.FileEntry.UpdatedAt"/>.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_CreatedAndLastModifiedDateTime_BecomeTypedTimestamps()
+    {
+        const string userId = "user-1";
+        const string driveId = "drive-abc";
+
+        var driveJson = $$$"""{ "id": "{{{driveId}}}" }""";
+        var childrenJson = """
+            {
+              "value": [
+                {
+                  "id": "file-1", "name": "readme.md", "file": {}, "eTag": "etag-1",
+                  "createdDateTime": "2026-01-01T09:00:00Z",
+                  "lastModifiedDateTime": "2026-02-01T10:30:00Z"
+                }
+              ]
+            }
+            """;
+
+        var responses = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [$"/users/{userId}/drive"]                 = driveJson,
+            [$"/drives/{driveId}/items/root/children"] = childrenJson,
+        };
+        var graph = MakeGraphClient(responses);
+        var opts = new OneDriveOptions { UserId = userId };
+        var sut = new OneDriveDataProvider(graph, opts);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries).Value;
+        Assert.Equal(new DateTime(2026, 1, 1, 9, 0, 0, DateTimeKind.Utc), entry.CreatedAt);
+        Assert.Equal(new DateTime(2026, 2, 1, 10, 30, 0, DateTimeKind.Utc), entry.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_DeltaTraversal_YieldsOnlyChangedFiles()
     {

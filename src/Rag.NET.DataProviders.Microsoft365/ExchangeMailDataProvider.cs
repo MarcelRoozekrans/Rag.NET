@@ -257,6 +257,16 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
         }
     }
 
+    /// <summary>
+    /// Builds the handle for one message.
+    /// </summary>
+    /// <remarks>
+    /// Phase 4.10 Task 5: <c>message.ReceivedDateTime</c> becomes
+    /// <see cref="FileHandle.CreatedAt"/> — a deliberate modelling choice: a received mail's
+    /// <c>receivedDateTime</c> is its "creation" for our purposes. <c>message.LastModifiedDateTime</c>
+    /// becomes <see cref="FileHandle.UpdatedAt"/>, mirroring what already drives the ETag. The
+    /// existing <c>received_at</c> metadata tag (built above) is kept exactly as-is.
+    /// </remarks>
     private FileHandle ToHandle(string folderId, Message message)
     {
         var messageId = message.Id!;
@@ -275,7 +285,9 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
             FileName:         fileName,
             ETag:             message.LastModifiedDateTime?.ToString("o", CultureInfo.InvariantCulture),
             OpenContentAsync: ct => OpenMessageContentAsync(messageId, ct),
-            Metadata:         metadata);
+            Metadata:         metadata,
+            CreatedAt:        message.ReceivedDateTime?.UtcDateTime,
+            UpdatedAt:        message.LastModifiedDateTime?.UtcDateTime);
     }
 
     /// <summary>
