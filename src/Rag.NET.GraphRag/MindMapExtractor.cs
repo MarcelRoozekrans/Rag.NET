@@ -114,9 +114,9 @@ public sealed partial class MindMapExtractor
 
     private static MindMapNode EmptyRoot() => new(string.Empty, string.Empty, []);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM call failed during mind-map extraction")]
+    [LoggerMessage(EventId = 1197856777, EventName = "log_llm_call_failed", Level = LogLevel.Warning, Message = "LLM call failed during mind-map extraction")]
     private static partial void LogLlmCallFailed(ILogger logger, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse mind-map JSON from LLM response")]
+    [LoggerMessage(EventId = 1301217475, EventName = "log_json_parse_failed", Level = LogLevel.Warning, Message = "Failed to parse mind-map JSON from LLM response")]
     private static partial void LogJsonParseFailed(ILogger logger, Exception ex);
 }
