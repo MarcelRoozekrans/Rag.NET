@@ -75,7 +75,7 @@
     <PackageVersion Include="Qdrant.Client" Version="1.19.0" />
     <PackageVersion Include="Roslynator.Analyzers" Version="4.15.0" />
     <PackageVersion Include="Scriban.Signed" Version="7.2.5" />
-    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageVersion Include="System.Linq.Async" Version="7.0.0" />
     <PackageVersion Include="System.Numerics.Tensors" Version="10.0.5" />
     <PackageVersion Include="System.Threading.RateLimiting" Version="10.0.10" />
