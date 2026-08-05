@@ -54,15 +54,15 @@ public sealed partial class LlmPiiChunkSanitiser(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Information,
+    [LoggerMessage(EventId = 2025494598, EventName = "log_llm_pii_redacted", Level = LogLevel.Information,
         Message = "LLM PII sanitiser redacted content in chunk from '{FileName}'.")]
     private static partial void LogLlmPiiRedacted(ILogger logger, string fileName);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 205407954, EventName = "log_llm_empty_response", Level = LogLevel.Warning,
         Message = "LLM PII sanitiser returned empty response for '{FileName}'; falling back to regex sanitiser.")]
     private static partial void LogLlmEmptyResponse(ILogger logger, string fileName);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1385825225, EventName = "log_llm_failed", Level = LogLevel.Warning,
         Message = "LLM PII sanitiser failed; falling back to regex sanitiser.")]
     private static partial void LogLlmFailed(ILogger logger, Exception ex);
 }

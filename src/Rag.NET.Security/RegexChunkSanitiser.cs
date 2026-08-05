@@ -32,11 +32,11 @@ public sealed partial class RegexChunkSanitiser(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 2053114672, EventName = "log_injection_detected", Level = LogLevel.Warning,
         Message = "Prompt injection pattern detected in chunk from '{FileName}': matched '{Pattern}'.")]
     private static partial void LogInjectionDetected(ILogger logger, string fileName, string pattern);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1287818186, EventName = "log_sanitise_failed", Level = LogLevel.Warning,
         Message = "RegexChunkSanitiser failed; returning original text.")]
     private static partial void LogSanitiseFailed(ILogger logger, Exception ex);
 }

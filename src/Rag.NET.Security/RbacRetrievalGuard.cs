@@ -65,7 +65,7 @@ public sealed partial class RbacRetrievalGuard(
         return filtered is not null ? filtered.AsReadOnly() : results;
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 277457468, EventName = "log_access_denied", Level = LogLevel.Warning,
         Message = "RBAC: chunk from '{DocumentId}' filtered — caller lacks required role.")]
     private static partial void LogAccessDenied(ILogger logger, string documentId);
 }

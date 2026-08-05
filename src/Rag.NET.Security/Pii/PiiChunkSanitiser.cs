@@ -50,15 +50,15 @@ public sealed partial class PiiChunkSanitiser : IChunkSanitiser
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1097036419, EventName = "log_pii_detected", Level = LogLevel.Warning,
         Message = "PII pattern '{Placeholder}' detected in chunk from '{FileName}'.")]
     private static partial void LogPiiDetected(ILogger logger, string placeholder, string fileName);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1657271217, EventName = "log_regex_timeout", Level = LogLevel.Warning,
         Message = "PII regex timed out — pattern likely too complex for input. Returning original text.")]
     private static partial void LogRegexTimeout(ILogger logger, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1287818186, EventName = "log_sanitise_failed", Level = LogLevel.Warning,
         Message = "PiiChunkSanitiser failed; returning original text.")]
     private static partial void LogSanitiseFailed(ILogger logger, Exception ex);
 }

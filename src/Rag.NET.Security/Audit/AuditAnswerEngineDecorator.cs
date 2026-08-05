@@ -59,6 +59,6 @@ public sealed partial class AuditAnswerEngineDecorator(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "AuditAnswerEngineDecorator failed to write audit log entry.")]
+    [LoggerMessage(EventId = 970862183, EventName = "log_audit_failed", Level = LogLevel.Warning, Message = "AuditAnswerEngineDecorator failed to write audit log entry.")]
     private static partial void LogAuditFailed(ILogger logger, Exception ex);
 }
