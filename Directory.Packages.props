@@ -71,7 +71,7 @@
     <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
     <PackageVersion Include="PdfPig" Version="0.1.15" />
     <PackageVersion Include="Pgvector" Version="0.3.2" />
-    <PackageVersion Include="Pinecone.Client" Version="3.1.0" />
+    <PackageVersion Include="Pinecone.Client" Version="4.0.2" />
     <PackageVersion Include="Qdrant.Client" Version="1.19.0" />
     <PackageVersion Include="Roslynator.Analyzers" Version="4.15.0" />
     <PackageVersion Include="Scriban.Signed" Version="7.2.5" />
