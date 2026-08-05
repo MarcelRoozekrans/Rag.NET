@@ -50,8 +50,8 @@ public sealed class IngestionJobProcessorTests
                 Arg.Any<CancellationToken>())
             .Returns(call =>
             {
-                var documentId = call.Arg<DocumentMetadata>().DocumentId.Value;
-                using var reader = new StreamReader(call.Arg<Stream>(), Encoding.UTF8, leaveOpen: true);
+                var documentId = call.Arg<DocumentMetadata>()!.DocumentId.Value;
+                using var reader = new StreamReader(call.Arg<Stream>()!, Encoding.UTF8, leaveOpen: true);
                 var content = reader.ReadToEnd();
                 try
                 {

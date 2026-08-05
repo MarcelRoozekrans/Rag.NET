@@ -247,7 +247,7 @@ public class PropositionChunkingStrategyTests
         chat.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
-                captured = ci.Arg<IEnumerable<ChatMessage>>().ToList();
+                captured = ci.Arg<IEnumerable<ChatMessage>>()!.ToList();
                 return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, """["Fact."]""")));
             });
         var sut = MakeSut(chat);
@@ -276,7 +276,7 @@ public class PropositionChunkingStrategyTests
         chat.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
-                var user = ci.Arg<IEnumerable<ChatMessage>>().Last().Text!;
+                var user = ci.Arg<IEnumerable<ChatMessage>>()!.Last().Text!;
                 // User message format: <content-{delim}>\n{passage}\n</content-{delim}>
                 sentPassages.Add(user[(user.IndexOf('\n', StringComparison.Ordinal) + 1)..user.LastIndexOf('\n')]);
                 return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, """["Fact."]""")));

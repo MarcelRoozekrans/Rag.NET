@@ -147,7 +147,7 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
         await _httpRagPipeline.DeleteAsync("doc-1", TestContext.Current.CancellationToken);
 
         _ = await _mockMediator.Received(1).Send(
-            Arg.Is<DeleteCommand>(c => c.DocumentId.ToString() == "doc-1"),
+            Arg.Is<DeleteCommand>(c => c!.DocumentId.ToString() == "doc-1"),
             Arg.Any<CancellationToken>());
     }
 

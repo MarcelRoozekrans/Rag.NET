@@ -23,7 +23,7 @@ public class ChatAnswerEngineCompressionTests
         chat.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
-                captured.AddRange(ci.Arg<IEnumerable<ChatMessage>>());
+                captured.AddRange(ci.Arg<IEnumerable<ChatMessage>>()!);
                 return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, "answer")));
             });
         return chat;

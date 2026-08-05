@@ -23,7 +23,7 @@ public class ExtractiveCompressorTests
         embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(ci =>
             {
-                var inputs = ci.Arg<IEnumerable<string>>().ToList();
+                var inputs = ci.Arg<IEnumerable<string>>()!.ToList();
                 var embeddings = inputs.Select(s =>
                 {
                     var topic = s.Contains("cats", StringComparison.OrdinalIgnoreCase) ? 1f :
@@ -114,7 +114,7 @@ public class ExtractiveCompressorTests
         embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns<Task<GeneratedEmbeddings<Embedding<float>>>>(ci =>
             {
-                var inputs = ci.Arg<IEnumerable<string>>().ToList();
+                var inputs = ci.Arg<IEnumerable<string>>()!.ToList();
                 var embeddings = inputs.Select(_ => new Embedding<float>(new[] { 1f, 0f, 0f })).ToList();
                 return Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(embeddings));
             });

@@ -162,12 +162,12 @@ public class RefineAnswerEngineTests
 
         // Verify initial template was used
         await _chatClient.Received(1).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Text != null && m.Text.Contains("Initial:"))),
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m => m.Text != null && m.Text.Contains("Initial:"))),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
 
         // Verify refine template was used
         await _chatClient.Received(1).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Text != null && m.Text.Contains("Refine:"))),
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m => m.Text != null && m.Text.Contains("Refine:"))),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
@@ -189,7 +189,7 @@ public class RefineAnswerEngineTests
 
         // Both initial and refine calls should include the system message
         await _chatClient.Received(2).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Role == ChatRole.System && m.Text == "You are a helpful assistant.")),
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m => m.Role == ChatRole.System && m.Text == "You are a helpful assistant.")),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 }

@@ -69,7 +69,7 @@ public class StorageAndEmbeddingBehaviorTests
             new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
 
         await embedder.Received(1).GenerateAsync(
-            Arg.Is<IEnumerable<string>>(texts => texts.SequenceEqual(new[] { "hello", "world" })),
+            Arg.Is<IEnumerable<string>>(texts => texts!.SequenceEqual(new[] { "hello", "world" })),
             Arg.Any<EmbeddingGenerationOptions?>(),
             Arg.Any<CancellationToken>());
 
@@ -97,7 +97,7 @@ public class StorageAndEmbeddingBehaviorTests
         var reports = new List<IngestionProgress>();
         var progress = Substitute.For<IProgress<IngestionProgress>>();
         progress.When(p => p.Report(Arg.Any<IngestionProgress>()))
-            .Do(ci => reports.Add(ci.Arg<IngestionProgress>()));
+            .Do(ci => reports.Add(ci.Arg<IngestionProgress>()!));
 
         var sut = new EmbeddingBehavior { Embedder = embedder };
         var ctx = MakeContext(progress: progress);
@@ -251,7 +251,7 @@ public class StorageAndEmbeddingBehaviorTests
         var reports = new List<IngestionProgress>();
         var progress = Substitute.For<IProgress<IngestionProgress>>();
         progress.When(p => p.Report(Arg.Any<IngestionProgress>()))
-            .Do(ci => reports.Add(ci.Arg<IngestionProgress>()));
+            .Do(ci => reports.Add(ci.Arg<IngestionProgress>()!));
 
         var sut = new StorageBehavior
         {

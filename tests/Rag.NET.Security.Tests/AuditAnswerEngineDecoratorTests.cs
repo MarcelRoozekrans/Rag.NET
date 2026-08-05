@@ -34,7 +34,7 @@ public class AuditAnswerEngineDecoratorTests
 
         await auditLog.Received(1).LogAnswerAsync(
             Arg.Is<AuditAnswerEvent>(e =>
-                string.Equals(e.RequestId, "req-123", StringComparison.Ordinal) &&
+                string.Equals(e!.RequestId, "req-123", StringComparison.Ordinal) &&
                 string.Equals(e.Answer, "The answer.", StringComparison.Ordinal)),
             Arg.Any<CancellationToken>());
     }
@@ -52,7 +52,7 @@ public class AuditAnswerEngineDecoratorTests
         await sut.AskAsync("q", Sources, null, TestContext.Current.CancellationToken);
 
         await auditLog.Received(1).LogAnswerAsync(
-            Arg.Is<AuditAnswerEvent>(e => e.Answer == null),
+            Arg.Is<AuditAnswerEvent>(e => e!.Answer == null),
             Arg.Any<CancellationToken>());
     }
 
@@ -86,7 +86,7 @@ public class AuditAnswerEngineDecoratorTests
         await sut.AskAsync("q", Sources, null, TestContext.Current.CancellationToken);
 
         await auditLog.Received(1).LogAnswerAsync(
-            Arg.Is<AuditAnswerEvent>(e => !string.IsNullOrEmpty(e.RequestId)),
+            Arg.Is<AuditAnswerEvent>(e => !string.IsNullOrEmpty(e!.RequestId)),
             Arg.Any<CancellationToken>());
     }
 }

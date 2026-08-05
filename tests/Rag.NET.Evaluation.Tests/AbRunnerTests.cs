@@ -274,7 +274,7 @@ public sealed class AbRunnerTests
     {
         var pipeline = Substitute.For<IRagPipeline>();
         pipeline.AskAsync(Arg.Any<string>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(call => string.Equals((string)call[0], "q2", StringComparison.Ordinal)
+            .Returns(call => string.Equals((string)call[0]!, "q2", StringComparison.Ordinal)
                 ? Task.FromException<RagResponse>(new InvalidOperationException("the vector store went away"))
                 : Task.FromResult(Answer($"answer to {call[0]}")));
 

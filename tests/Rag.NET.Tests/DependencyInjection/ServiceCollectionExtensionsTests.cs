@@ -295,7 +295,7 @@ public class ServiceCollectionExtensionsTests
         embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
-                var count = ci.Arg<IEnumerable<string>>().Count();
+                var count = ci.Arg<IEnumerable<string>>()!.Count();
                 var embeddings = Enumerable.Range(0, count)
                     .Select(_ => new Embedding<float>(singleVec))
                     .ToList();

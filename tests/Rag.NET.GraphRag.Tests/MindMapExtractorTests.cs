@@ -83,7 +83,7 @@ public class MindMapExtractorTests
 
         await _chatClient.Received(1).GetResponseAsync(
             Arg.Is<IEnumerable<ChatMessage>>(msgs =>
-                msgs.Any(m => m.Text != null &&
+                msgs!.Any(m => m.Text != null &&
                               m.Text.Contains("My document text.", StringComparison.Ordinal) &&
                               m.Text.Contains("5", StringComparison.Ordinal))),
             Arg.Any<ChatOptions?>(),

@@ -32,7 +32,7 @@ public sealed class RagMcpToolsTests
 
         _pipeline.RetrieveAsync(
                 "my query",
-                Arg.Is<RetrievalOptions>(o => o.TopK == 3 && o.UseHybridSearch),
+                Arg.Is<RetrievalOptions>(o => o!.TopK == 3 && o.UseHybridSearch),
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(results)));
 
@@ -49,7 +49,7 @@ public sealed class RagMcpToolsTests
     {
         _pipeline.RetrieveAsync(
                 Arg.Any<string>(),
-                Arg.Is<RetrievalOptions>(o => o.TopK == 5 && o.UseHybridSearch),
+                Arg.Is<RetrievalOptions>(o => o!.TopK == 5 && o.UseHybridSearch),
                 Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(
                 (IReadOnlyList<SearchResult>)Array.Empty<SearchResult>())));
@@ -58,7 +58,7 @@ public sealed class RagMcpToolsTests
 
         _ = await _pipeline.Received(1).RetrieveAsync(
             "test",
-            Arg.Is<RetrievalOptions>(o => o.TopK == 5 && o.UseHybridSearch),
+            Arg.Is<RetrievalOptions>(o => o!.TopK == 5 && o.UseHybridSearch),
             Arg.Any<CancellationToken>());
     }
 
@@ -78,7 +78,7 @@ public sealed class RagMcpToolsTests
 
         _pipeline.AskAsync(
                 "What is the answer?",
-                Arg.Is<RagOptions>(o => o.TopK == 4 && !o.UseHybridSearch),
+                Arg.Is<RagOptions>(o => o!.TopK == 4 && !o.UseHybridSearch),
                 Arg.Any<CancellationToken>())
             .Returns(response);
 
@@ -96,7 +96,7 @@ public sealed class RagMcpToolsTests
 
         _pipeline.AskAsync(
                 Arg.Any<string>(),
-                Arg.Is<RagOptions>(o => o.TopK == 5 && o.UseHybridSearch),
+                Arg.Is<RagOptions>(o => o!.TopK == 5 && o.UseHybridSearch),
                 Arg.Any<CancellationToken>())
             .Returns(response);
 
@@ -104,7 +104,7 @@ public sealed class RagMcpToolsTests
 
         await _pipeline.Received(1).AskAsync(
             "question",
-            Arg.Is<RagOptions>(o => o.TopK == 5 && o.UseHybridSearch),
+            Arg.Is<RagOptions>(o => o!.TopK == 5 && o.UseHybridSearch),
             Arg.Any<CancellationToken>());
     }
 
@@ -118,7 +118,7 @@ public sealed class RagMcpToolsTests
         _pipeline.IngestAsync(
                 Arg.Any<Stream>(),
                 Arg.Is<DocumentMetadata>(m =>
-                    m.DocumentId.Equals(new DocumentId("doc-42")) &&
+                    m!.DocumentId.Equals(new DocumentId("doc-42")) &&
                     m.FileName == "report.txt" &&
                     m.ContentType == "text/plain" &&
                     m.Tags["author"] == "Alice"),

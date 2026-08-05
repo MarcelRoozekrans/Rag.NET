@@ -48,7 +48,7 @@ public class ChatAnswerEngineTests
         await _sut.AskAsync("q", sources, opts, TestContext.Current.CancellationToken);
 
         await _chatClient.Received(1).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs[0].Text == "Custom prompt"),
+            Arg.Is<IList<ChatMessage>>(msgs => msgs![0].Text == "Custom prompt"),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
@@ -89,7 +89,7 @@ public class ChatAnswerEngineTests
 
         await _chatClient.Received(1).GetResponseAsync(
             Arg.Is<IList<ChatMessage>>(msgs =>
-                msgs.Count == 4 && // system + 2 history + user
+                msgs!.Count == 4 && // system + 2 history + user
                 msgs[1].Text == "previous question" &&
                 msgs[2].Text == "previous answer"),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
@@ -179,7 +179,7 @@ public class ChatAnswerEngineTests
 
         await _chatClient.Received(1).GetResponseAsync(
             Arg.Is<IList<ChatMessage>>(msgs =>
-                msgs[msgs.Count - 1].Text!.Contains("First source") &&
+                msgs![msgs.Count - 1].Text!.Contains("First source") &&
                 msgs[msgs.Count - 1].Text!.Contains("Second source") &&
                 msgs[msgs.Count - 1].Text!.Contains("my question")),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());

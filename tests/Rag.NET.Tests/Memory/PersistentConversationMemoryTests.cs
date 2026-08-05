@@ -24,7 +24,7 @@ public class PersistentConversationMemoryTests
     {
         var inner = Substitute.For<IConversationMemory>();
         inner.ProcessAsync(Arg.Any<IReadOnlyList<ChatMessage>>(), Arg.Any<CancellationToken>())
-             .Returns(ci => ci.Arg<IReadOnlyList<ChatMessage>>());
+             .Returns(ci => ci.Arg<IReadOnlyList<ChatMessage>>()!);
         return inner;
     }
 
@@ -103,7 +103,7 @@ public class PersistentConversationMemoryTests
 
         await vectorStore.Received(1).StoreAsync(
             Arg.Is<IReadOnlyList<EmbeddedChunk>>(chunks =>
-                chunks.Count == 1 &&
+                chunks!.Count == 1 &&
                 chunks[0].Chunk.Text.Contains("User: Hello",         StringComparison.Ordinal) &&
                 chunks[0].Chunk.Text.Contains("Assistant: Hi there", StringComparison.Ordinal) &&
                 chunks[0].Chunk.DocumentId.Value == "session-42"),

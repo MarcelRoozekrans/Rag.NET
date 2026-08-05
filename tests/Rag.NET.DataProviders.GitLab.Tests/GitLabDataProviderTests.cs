@@ -334,7 +334,7 @@ public sealed class GitLabDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         repo.Received(1).GetTreeAsync(Arg.Is<RepositoryGetTreeOptions>(o =>
-            o.Ref == "develop" && o.Recursive == true));
+            o!.Ref == "develop" && o.Recursive == true));
     }
 
     [Fact]

@@ -161,7 +161,7 @@ public class MapReduceAnswerEngineTests
 
         // Both map call and reduce call should include the system message
         await _chatClient.Received(2).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Role == ChatRole.System && m.Text == "You are a helpful assistant.")),
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m => m.Role == ChatRole.System && m.Text == "You are a helpful assistant.")),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
@@ -188,12 +188,12 @@ public class MapReduceAnswerEngineTests
 
         // Verify the map call used the custom map template
         await _chatClient.Received(1).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Text != null && m.Text.Contains("Custom map:"))),
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m => m.Text != null && m.Text.Contains("Custom map:"))),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
 
         // Verify the reduce call used the custom reduce template
         await _chatClient.Received(1).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs.Any(m => m.Text != null && m.Text.Contains("Custom reduce:"))),
+            Arg.Is<IList<ChatMessage>>(msgs => msgs!.Any(m => m.Text != null && m.Text.Contains("Custom reduce:"))),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 }
