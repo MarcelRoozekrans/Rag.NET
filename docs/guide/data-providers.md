@@ -237,7 +237,7 @@ services.AddConfluenceDataProvider(
     apiToken: "ATATT3xFfGF0...",
     configure: opts =>
     {
-        opts.SpaceKeys  = ["ENG", "OPS"];         // null = all spaces
+        opts.SpaceKey   = "ENG";                  // null = all spaces
         opts.Extensions = [".html"];
         opts.DeltaToken = settings.ConfluenceDeltaToken;
     });
@@ -308,7 +308,7 @@ services.AddSlackDataProvider(
     botToken: "xoxb-...",
     configure: opts =>
     {
-        opts.ChannelIds = ["C01ABCDEF", "C02GHIJKL"]; // null = all public channels
+        opts.ChannelId  = "C01ABCDEF";                // null = all public channels
         opts.DeltaToken = settings.SlackDeltaToken;
     });
 ```
@@ -340,12 +340,12 @@ var tokenProvider = new OAuthClientCredentialsTokenProvider(
 
 services.AddGmailDataProvider(tokenProvider, opts =>
 {
-    opts.ImapHost   = "imap.gmail.com";            // default
-    opts.ImapPort   = 993;                         // default
-    opts.EmailAddress = "user@example.com";
+    opts.UserName   = "user@example.com";          // IMAP OAuth2 user name (email address)
     opts.DeltaToken = settings.GmailDeltaToken;    // IMAP UniqueId watermark
 });
 ```
+
+`GmailOptions` connects to `imap.gmail.com:993` — the IMAP host and port are not configurable; only `UserName` (for authentication), `Query` (reserved for a future `SEARCH` filter, currently unused) and `MaxResults` (default 500) are.
 
 ### Exchange / Outlook
 
@@ -459,7 +459,7 @@ services.AddGitLabDataProvider(
     token:             "glpat-xxxxxxxxxxxxxxxxxxxx",
     configure: opts =>
     {
-        opts.Branch     = "main";
+        opts.Ref        = "main";
         opts.Extensions = [".md", ".cs"];
         opts.DeltaToken = settings.GitLabDeltaToken; // commit SHA; null on first run
     });
@@ -475,7 +475,7 @@ services.AddBitbucketDataProvider(
     appPassword: "my-app-password",
     configure: opts =>
     {
-        opts.Branch     = "main";
+        opts.Ref        = "main";
         opts.Extensions = [".md", ".cs"];
         opts.DeltaToken = settings.BitbucketDeltaToken; // commit hash; null on first run
     });

@@ -324,6 +324,7 @@ public static class RagPipelineExtensions
             DocumentId = new DocumentId(entry.Id.Value),
             FileName = entry.FileName,
             ContentType = baseMetadata?.ContentType,
+            CreatedAt = baseMetadata?.CreatedAt,
             Tags = tags,
         };
     }

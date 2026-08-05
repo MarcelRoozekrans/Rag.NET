@@ -14,10 +14,13 @@ public sealed class DocumentMetadata
     public IDictionary<string, string> Tags { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
 
     /// <summary>
-    /// Creation or publication timestamp. Defaults to <see cref="DateTime.UtcNow"/> (ingest time)
-    /// when not set explicitly. Serialised into chunk metadata as <c>"created_at"</c> by
-    /// <see cref="Rag.NET.Ingestion.Behaviors.MetadataBehavior"/> for use by
-    /// <see cref="Rag.NET.Retrieval.TimeWeightedRetriever"/>.
+    /// Creation or publication timestamp, if known. <see langword="null"/> means the timestamp
+    /// is unknown — it is <b>not</b> defaulted to ingest time, because ingest time is not when
+    /// the document was created. When set, it is serialised into chunk metadata as
+    /// <c>"created_at"</c> by <see cref="Rag.NET.Ingestion.Behaviors.MetadataBehavior"/>; when
+    /// absent, no <c>"created_at"</c> tag is written, and
+    /// <see cref="Rag.NET.Retrieval.TimeWeightedRetriever"/> treats the document neutrally
+    /// instead of ranking it as freshly created.
     /// </summary>
-    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+    public DateTime? CreatedAt { get; init; }
 }
