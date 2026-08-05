@@ -1,9 +1,12 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
+using Rag.NET.Retrieval;
 using Xunit;
 using ZeroAlloc.Results;
 
@@ -77,6 +80,44 @@ public class RagPipelineFacadeTests
         var result = await _sut.AskAsync("q", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("The answer", result.Answer);
+    }
+
+    [Fact]
+    public async Task AskAsync_OpensQueryHashScope_CoveringBothRetrievalAndAnswerGeneration()
+    {
+        var logger = new FakeLogger<RagPipeline>();
+        var sut = new RagPipeline(_retriever, _ingestor, _answerEngine, logger);
+
+        var sources = new List<SearchResult>
+        {
+            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 0.9 }
+        };
+        _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                ScopeProbeLog.Emit(logger);
+                return Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success((IReadOnlyList<SearchResult>)sources));
+            });
+        _answerEngine.AskAsync("q", sources, Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                ScopeProbeLog.Emit(logger);
+                return new RagResponse { Answer = "a", Sources = sources };
+            });
+
+        await sut.AskAsync("q", cancellationToken: TestContext.Current.CancellationToken);
+
+        var expectedHash = PipelineRetriever.HashQuery("q");
+        var records = logger.Collector.GetSnapshot();
+        Assert.Equal(2, records.Count);
+        foreach (var record in records)
+        {
+            var scope = Assert.Single(record.Scopes);
+            var state = Assert.IsAssignableFrom<IEnumerable<KeyValuePair<string, object>>>(scope);
+            var pair = Assert.Single(state);
+            Assert.Equal("query_hash", pair.Key);
+            Assert.Equal(expectedHash, pair.Value);
+        }
     }
 
     [Fact]

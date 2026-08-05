@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -24,6 +25,7 @@ public sealed class PipelineIngestor : IIngestor
     [Inject(Required = false)] public IParentChunkStore? ParentStore { get; set; }
     [Inject(Required = false)] public IRagDataManager? DataManager { get; set; }
     [Inject(Required = false)] public IEmbeddingVersionStore? VersionStore { get; set; }
+    [Inject(Required = false)] public ILogger<PipelineIngestor>? Logger { get; set; }
 
     private int _nextBm25DocId;
 
@@ -50,6 +52,8 @@ public sealed class PipelineIngestor : IIngestor
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.ingest");
         activity?.SetTag("document.id", metadata.DocumentId.Value);
         activity?.SetTag("content.type", metadata.ContentType);
+
+        using var scope = Logger?.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal) { ["document_id"] = metadata.DocumentId.Value });
 
         var sw = Stopwatch.StartNew();
         try

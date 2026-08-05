@@ -47,9 +47,13 @@ public sealed class PipelineRetriever : IRetriever
             Logger = (ILogger?)Logger ?? NullLogger.Instance,
         };
 
+        var queryHash = HashQuery(query);
+
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.retrieve");
-        activity?.SetTag("query.hash", HashQuery(query));
+        activity?.SetTag("query.hash", queryHash);
         activity?.SetTag("top_k", resolvedOptions.TopK);
+
+        using var scope = Logger?.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal) { ["query_hash"] = queryHash });
 
         var sw = Stopwatch.StartNew();
         try
@@ -73,7 +77,13 @@ public sealed class PipelineRetriever : IRetriever
         }
     }
 
-    private static string HashQuery(string query)
+    /// <summary>
+    /// SHA-256 8-char query hash used for both the <c>query.hash</c> span tag and the
+    /// <c>query_hash</c> log scope. Internal so <see cref="Pipeline.RagPipeline"/> can reuse the
+    /// same hash for its answering scope rather than computing a second one — and so the raw
+    /// query text, which is PII, never has to leave this method.
+    /// </summary>
+    internal static string HashQuery(string query)
     {
         var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(query));
         return Convert.ToHexString(bytes)[..8].ToLowerInvariant();
