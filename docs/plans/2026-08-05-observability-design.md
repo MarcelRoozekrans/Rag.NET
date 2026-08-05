@@ -85,6 +85,41 @@ Each assembly gets its own `ActivitySource` instance **sharing the name `"Rag.NE
 normal — OTel matches sources by name and listens to all of them. So consumers still write one
 `AddSource`, and **no package gains a project reference or a NuGet dependency**.
 
+### `ZeroAlloc.Telemetry` was evaluated and rejected — with evidence
+
+The org already supplies ten of this repository's dependencies and publishes
+**`ZeroAlloc.Telemetry`**: source-generated OTel instrumentation, `[Instrument]` on an interface
+plus `[Trace]`/`[Count]`/`[Histogram]` on methods, generating a proxy. Zero transitive NuGet
+dependencies, net10, genuinely zero marginal allocation. It was measured against this phase rather
+than adopted on convention.
+
+**It cannot set span tags at all.** Its entire API is four attributes, none parameter-targeted, and
+no tag-setting code is ever emitted. **This phase exists for the tags** — of the 13 traced units
+examined, **zero** have all their wanted tags settable by the proxy.
+
+Three structural mismatches beyond that:
+
+- **The generated proxy is `internal sealed`**, constructible only from the assembly declaring the
+  interface. `IVectorStore` lives in `Rag.NET.Abstractions`, so the annotation would land *there* —
+  the most foundational assembly taking a new dependency, **inverting what Phase 4.7 achieved**.
+  (Only four of the six store packages even have `InternalsVisibleTo` from Abstractions today.)
+- **GraphRAG and RAPTOR have no package-specific interface** — they implement the generic
+  `IIngestionBehavior`/`IRetrievalBehavior` shared by ~30 implementations, so one `[Trace]` name
+  would cover all of them indistinguishably.
+- **Caching has no interface or class at all**; `UseCaching()` only registers `HybridCache`.
+
+**The probe validated two assumptions this design rests on**, which is worth as much as the
+rejection:
+
+- **Cross-assembly source-name sharing works** — one listener on `"Rag.NET"` received spans from
+  two independently-generated `ActivitySource` instances in separate assemblies. The linked-file
+  approach in §3 is proven before it is built.
+- **Measured allocation, 200k calls, Release, no listener**: bare call **72 B**, hand-written no-op
+  decorator **144 B**, generated proxy **144 B**. `StartActivity` allocates **zero** when
+  unobserved; the extra cost is *decorator-shaped*, not telemetry-shaped. **Spans placed inside
+  existing methods — this design — are therefore cheaper than any proxy approach**, and the
+  existing `TelemetryOverheadBenchmarks` zero-overhead property is preserved.
+
 ## 4. `Rag.NET.Telemetry`, following the 4.7 pattern
 
 A satellite package holding `AddRagNetInstrumentation()` for tracing and metrics. Core keeps
