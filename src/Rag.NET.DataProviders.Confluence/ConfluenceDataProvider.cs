@@ -159,7 +159,8 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
             ETag:            p.Version.Number.ToString(System.Globalization.CultureInfo.InvariantCulture),
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
-            Metadata:        BuildMetadata(p));
+            Metadata:        BuildMetadata(p),
+            UpdatedAt:       ConnectorTimestampParser.Parse(p.Version.When));
     }
 
     /// <summary>

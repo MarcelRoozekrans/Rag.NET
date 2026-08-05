@@ -140,4 +140,22 @@ public sealed class DropboxDataProviderTests
         _ = Assert.Single(handle.Metadata);
         MetadataContract.AssertValid(handle.Metadata, handle.Id);
     }
+
+    /// <summary>
+    /// Phase 4.10 Task 5: <c>FileMetadata.ServerModified</c> is typed as a non-nullable
+    /// <see cref="DateTime"/> by the Dropbox SDK, so it becomes <see cref="FileHandle.UpdatedAt"/>
+    /// directly — no string parsing involved. Dropbox has no creation-time field, so
+    /// <see cref="FileHandle.CreatedAt"/> stays unset.
+    /// </summary>
+    [Fact]
+    public void ToHandle_ServerModified_BecomesTypedUpdatedAt()
+    {
+        var sut = new DropboxDataProvider(new StaticTokenProvider("tok"));
+        var file = MakeFile("readme.md", "/readme.md", "/README.md");
+
+        var handle = sut.ToHandle(file);
+
+        Assert.Equal(file.ServerModified, handle.UpdatedAt);
+        Assert.Null(handle.CreatedAt);
+    }
 }

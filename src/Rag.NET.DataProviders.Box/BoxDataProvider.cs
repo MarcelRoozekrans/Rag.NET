@@ -47,7 +47,8 @@ public sealed class BoxDataProvider : FileContentProviderBase
             while (true)
             {
                 var items = await _client.FoldersManager.GetFolderItemsAsync(
-                    folderId, limit, (int)offset, fields: ["id", "name", "type", "sha1"])
+                    folderId, limit, (int)offset,
+                    fields: ["id", "name", "type", "sha1", "created_at", "modified_at"])
                     .ConfigureAwait(false);
 
                 for (int i = 0; i < items.Entries.Count; i++)
@@ -62,7 +63,7 @@ public sealed class BoxDataProvider : FileContentProviderBase
 
                     yield return Result<FileHandle, RagError>.Success(ToHandle(
                         item.Id, item.Name, (item as BoxFile)?.Sha1,
-                        folderId: folderId, changeStatus: null));
+                        folderId: folderId, changeStatus: null, source: item));
                 }
 
                 offset += items.Entries.Count;
@@ -95,7 +96,7 @@ public sealed class BoxDataProvider : FileContentProviderBase
 
                     yield return Result<FileHandle, RagError>.Success(ToHandle(
                         file.Id, file.Name, file.Sha1,
-                        folderId: null, MapChangeStatus(ev.EventType)));
+                        folderId: null, MapChangeStatus(ev.EventType), source: file));
                 }
             }
 
@@ -110,20 +111,30 @@ public sealed class BoxDataProvider : FileContentProviderBase
     /// </summary>
     /// <remarks>
     /// Metadata emitted: <c>folder_id</c> on the full run only, and <c>change_status</c> on the
-    /// delta run only.
+    /// delta run only. <paramref name="source"/>'s <c>CreatedAt</c>/<c>ModifiedAt</c> are
+    /// forwarded onto the typed <see cref="FileHandle.CreatedAt"/>/<see cref="FileHandle.UpdatedAt"/>
+    /// channel on both runs — already typed <c>DateTime?</c> on <c>BoxItem</c>, so no string
+    /// parsing is involved. <paramref name="source"/> is taken as the reference-typed
+    /// <c>BoxItem</c> itself, rather than two separate <c>DateTime?</c> scalar parameters, because
+    /// passing <c>Nullable&lt;DateTime&gt;</c> by value here trips ErrorProne.NET's EPS05 (pass
+    /// large readonly structs by <c>in</c>) while adding <c>in</c> then trips Roslynator's RCS1242
+    /// (don't pass non-readonly structs by readonly reference) — the two analyzers disagree on
+    /// <c>DateTime</c>, and a reference-typed parameter sidesteps the conflict entirely.
     /// <para>
     /// The delta run <i>could</i> supply <c>folder_id</c>: <c>BoxItem.Parent</c> is present on the
     /// events source object, and the events call passes no field selection at all, so nothing
     /// restricts it. This code simply does not read it today. (The
-    /// <c>fields: ["id","name","type","sha1"]</c> selection is on the <i>full</i> traversal's
-    /// <c>GetFolderItemsAsync</c> call and has no bearing on the delta path.)
+    /// <c>fields: ["id","name","type","sha1","created_at","modified_at"]</c> selection is on the
+    /// <i>full</i> traversal's <c>GetFolderItemsAsync</c> call and has no bearing on the delta
+    /// path — the events call already returns <c>created_at</c>/<c>modified_at</c> unrestricted.)
     /// </para>
     /// <para><b>Internal for testing.</b> <c>BoxClient</c> is a concrete type with no injectable
     /// transport, so the enumeration paths cannot be driven from a unit test; this is the seam
     /// that pins the emitted keys.</para>
     /// </remarks>
     internal FileHandle ToHandle(
-        string id, string name, string? sha1, string? folderId, string? changeStatus)
+        string id, string name, string? sha1, string? folderId, string? changeStatus,
+        BoxItem? source = null)
     {
         Dictionary<string, string>? metadata = null;
         if (folderId is not null || changeStatus is not null)
@@ -143,7 +154,9 @@ public sealed class BoxDataProvider : FileContentProviderBase
                 return await _client.FilesManager.DownloadAsync(id, null)
                     .ConfigureAwait(false);
             },
-            Metadata:         metadata);
+            Metadata:         metadata,
+            CreatedAt:        source?.CreatedAt,
+            UpdatedAt:        source?.ModifiedAt);
     }
 
     /// <summary>

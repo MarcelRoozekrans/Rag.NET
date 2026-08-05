@@ -104,7 +104,8 @@ public sealed class ZendeskTicketsDataProvider : FileContentProviderBase
             ETag: ticket.UpdatedAt,
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
-            Metadata: BuildMetadata(ticket));
+            Metadata: BuildMetadata(ticket),
+            UpdatedAt: ConnectorTimestampParser.Parse(ticket.UpdatedAt));
     }
 
     /// <summary>
@@ -120,7 +121,6 @@ public sealed class ZendeskTicketsDataProvider : FileContentProviderBase
         };
         if (!string.IsNullOrEmpty(ticket.Status))    metadata["status"]     = ticket.Status;
         if (!string.IsNullOrEmpty(ticket.Priority))  metadata["priority"]   = ticket.Priority;
-        if (!string.IsNullOrEmpty(ticket.UpdatedAt)) metadata["updated_at"] = ticket.UpdatedAt;
         if (!string.IsNullOrEmpty(_options.Subdomain)) metadata["subdomain"] = _options.Subdomain;
         return metadata;
     }

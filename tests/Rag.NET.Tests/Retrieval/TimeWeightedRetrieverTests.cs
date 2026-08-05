@@ -154,6 +154,86 @@ public class TimeWeightedRetrieverTests
         Assert.False(captured.UseTimeWeighting);    // original options passed through
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 3: new precedence is <c>updated_at</c> → <c>created_at</c> →
+    /// <c>FallbackMetadataKeys</c> → absent. This pins the first step: when both the dedicated
+    /// <c>updated_at</c> key and <c>created_at</c> are present, <c>updated_at</c> must win, even
+    /// though <c>created_at</c> here is the fresher (would-decay-less) value — if
+    /// <c>created_at</c> won instead, the score would be near 1.0, not the ~0.368 asserted below.
+    /// </summary>
+    [Fact]
+    public async Task UpdatedAtAndCreatedAtBothPresent_UpdatedAtWins()
+    {
+        var ct    = TestContext.Current.CancellationToken;
+        var chunk = new TextChunk { Text = "content", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 };
+        chunk.Metadata["updated_at"] = DateTime.UtcNow.AddHours(-100).ToString("O"); // old
+        chunk.Metadata["created_at"] = DateTime.UtcNow.AddHours(-1).ToString("O");   // fresh
+
+        var inner  = MockInner([new SearchResult { Chunk = chunk, Score = 1.0 }]);
+        var sut    = new TimeWeightedRetriever(inner, new TimeWeightedOptions { DecayRate = 0.01 });
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.InRange(result.Value[0].Score, 0.35, 0.39);
+    }
+
+    /// <summary>Second step of the order: <c>created_at</c> is used when <c>updated_at</c> is absent.</summary>
+    [Fact]
+    public async Task UpdatedAtAbsent_CreatedAtPresent_UsesCreatedAt()
+    {
+        var ct    = TestContext.Current.CancellationToken;
+        var chunk = MakeChunk(DateTime.UtcNow.AddHours(-100).ToString("O")); // created_at only
+        var inner = MockInner([new SearchResult { Chunk = chunk, Score = 1.0 }]);
+
+        var sut    = new TimeWeightedRetriever(inner, new TimeWeightedOptions { DecayRate = 0.01 });
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.InRange(result.Value[0].Score, 0.35, 0.39);
+    }
+
+    /// <summary>
+    /// Third step: neither dedicated key is present, so a chunk carrying only a
+    /// <c>FallbackMetadataKeys</c>-listed key must still apply decay — the primary keys being
+    /// absent must not short-circuit to neutral before the fallback list is tried.
+    /// </summary>
+    [Fact]
+    public async Task UpdatedAtAndCreatedAtAbsent_FallbackKeyStillApplies()
+    {
+        var ct    = TestContext.Current.CancellationToken;
+        var chunk = new TextChunk { Text = "content", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 };
+        chunk.Metadata["published_at"] = DateTime.UtcNow.AddHours(-100).ToString("O");
+        // no "updated_at", no "created_at"
+
+        var inner  = MockInner([new SearchResult { Chunk = chunk, Score = 1.0 }]);
+        var sut    = new TimeWeightedRetriever(inner, new TimeWeightedOptions
+        {
+            DecayRate            = 0.01,
+            FallbackMetadataKeys = ["published_at"],
+        });
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.InRange(result.Value[0].Score, 0.35, 0.39);
+    }
+
+    /// <summary>
+    /// An unparseable <c>updated_at</c> must not stop resolution — it falls through to
+    /// <c>created_at</c>, exactly like an unparseable <c>created_at</c> already falls through to
+    /// <c>FallbackMetadataKeys</c>.
+    /// </summary>
+    [Fact]
+    public async Task UnparseableUpdatedAt_FallsBackToCreatedAt()
+    {
+        var ct    = TestContext.Current.CancellationToken;
+        var chunk = new TextChunk { Text = "content", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 };
+        chunk.Metadata["updated_at"] = "not-a-date";
+        chunk.Metadata["created_at"] = DateTime.UtcNow.AddHours(-100).ToString("O");
+
+        var inner  = MockInner([new SearchResult { Chunk = chunk, Score = 1.0 }]);
+        var sut    = new TimeWeightedRetriever(inner, new TimeWeightedOptions { DecayRate = 0.01 });
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.InRange(result.Value[0].Score, 0.35, 0.39);
+    }
+
     [Fact]
     public async Task FallbackMetadataKey_UsedWhenCreatedAtAbsent()
     {

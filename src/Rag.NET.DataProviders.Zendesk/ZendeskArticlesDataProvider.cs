@@ -94,7 +94,8 @@ public sealed partial class ZendeskArticlesDataProvider : FileContentProviderBas
             ETag: article.UpdatedAt,
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
-            Metadata: BuildMetadata(article));
+            Metadata: BuildMetadata(article),
+            UpdatedAt: ConnectorTimestampParser.Parse(article.UpdatedAt));
     }
 
     /// <summary>
@@ -109,8 +110,7 @@ public sealed partial class ZendeskArticlesDataProvider : FileContentProviderBas
         };
         if (article.SectionId is { } sectionId)
             metadata["section_id"] = sectionId.ToString(CultureInfo.InvariantCulture);
-        if (!string.IsNullOrEmpty(article.UpdatedAt))  metadata["updated_at"] = article.UpdatedAt;
-        if (!string.IsNullOrEmpty(_options.Subdomain)) metadata["subdomain"]  = _options.Subdomain;
+        if (!string.IsNullOrEmpty(_options.Subdomain)) metadata["subdomain"] = _options.Subdomain;
         return metadata;
     }
 

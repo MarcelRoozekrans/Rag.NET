@@ -540,6 +540,32 @@ public sealed class ConfluenceDataProviderTests
         Assert.Equal(2, metadata.Count);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 6: Confluence's <c>version</c> object carries <c>when</c> — the
+    /// last-modified time — which was previously discarded by <see cref="ConfluenceVersion"/>
+    /// mapping only <c>number</c>. It now becomes the typed
+    /// <see cref="Rag.NET.DataProviders.FileEntry.UpdatedAt"/>.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_VersionWhen_BecomesTypedUpdatedAt()
+    {
+        const string json = """
+            {
+              "results": [
+                { "id": "123", "title": "Guide", "body": { "storage": { "value": "<p>Hello</p>" } }, "version": { "number": 3, "when": "2026-03-01T10:00:00Z" } }
+              ],
+              "_links": {}
+            }
+            """;
+        var sut = MakeProvider(json);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(results).Value;
+        Assert.Equal(new DateTime(2026, 3, 1, 10, 0, 0, DateTimeKind.Utc), entry.UpdatedAt);
+    }
+
     private static async Task<string> ReadContentAsync(Rag.NET.DataProviders.FileEntry entry)
     {
         await using var stream = await entry.OpenContentAsync(CancellationToken.None);

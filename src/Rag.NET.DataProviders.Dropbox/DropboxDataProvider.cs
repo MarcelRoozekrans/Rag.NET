@@ -95,6 +95,12 @@ public sealed class DropboxDataProvider : FileContentProviderBase
     /// <para><b>Internal for testing.</b> <c>DropboxClient</c> is constructed from a token inside
     /// this provider and exposes no injectable transport, so the enumeration paths cannot be
     /// driven from a unit test; this is the seam that pins the emitted keys.</para>
+    /// <para>
+    /// <see cref="FileHandle.UpdatedAt"/> is set from <see cref="FileMetadata.ServerModified"/> —
+    /// the Dropbox SDK types it as a non-nullable <see cref="DateTime"/>, so no parsing is needed.
+    /// Dropbox has no creation-time field on <see cref="FileMetadata"/>, so
+    /// <see cref="FileHandle.CreatedAt"/> is left unset.
+    /// </para>
     /// </remarks>
     internal FileHandle ToHandle(FileMetadata file)
     {
@@ -124,6 +130,7 @@ public sealed class DropboxDataProvider : FileContentProviderBase
                 ms.Seek(0, SeekOrigin.Begin);
                 return (Stream)ms;
             },
-            Metadata:         metadata);
+            Metadata:         metadata,
+            UpdatedAt:        file.ServerModified);
     }
 }

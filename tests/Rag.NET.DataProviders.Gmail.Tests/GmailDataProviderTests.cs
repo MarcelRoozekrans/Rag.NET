@@ -304,6 +304,27 @@ public sealed class GmailDataProviderTests
         Assert.Contains("**Date:**", content, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: <c>message.Date</c> also becomes the typed
+    /// <see cref="FileEntry.CreatedAt"/> — the header's <c>date</c> tag (asserted separately)
+    /// is kept exactly as-is. Gmail carries no distinct "last modified" concept for a message,
+    /// so <c>UpdatedAt</c> stays unset.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_Date_IsTypedAsCreatedAt()
+    {
+        var message = MakeMessage();
+        var (client, _) = MakeMocks([new UniqueId(1)], message);
+        var sut = MakeProvider(client);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(results).Value;
+        Assert.Equal(message.Date.UtcDateTime, entry.CreatedAt);
+        Assert.Null(entry.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_MessageWithAttachment_HasAttachmentsIsTrue()
     {

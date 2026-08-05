@@ -324,7 +324,11 @@ public static class RagPipelineExtensions
             DocumentId = new DocumentId(entry.Id.Value),
             FileName = entry.FileName,
             ContentType = baseMetadata?.ContentType,
-            CreatedAt = baseMetadata?.CreatedAt,
+            // Entry-level timestamps are per-document and connector-set; baseMetadata's are a
+            // batch-level default supplied once per IngestFromProviderAsync call — same
+            // precedence as Tags just above, where the entry also wins on collision.
+            CreatedAt = entry.CreatedAt ?? baseMetadata?.CreatedAt,
+            UpdatedAt = entry.UpdatedAt ?? baseMetadata?.UpdatedAt,
             Tags = tags,
         };
     }

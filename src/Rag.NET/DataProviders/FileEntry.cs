@@ -14,9 +14,20 @@ namespace Rag.NET.DataProviders;
 /// When the stored ETag matches, content is not fetched at all.
 /// </param>
 /// <param name="Metadata">Optional key/value pairs forwarded to <see cref="Rag.NET.Models.DocumentMetadata.Tags"/>.</param>
+/// <param name="CreatedAt">
+/// Optional creation/publication timestamp forwarded to
+/// <see cref="Rag.NET.Models.DocumentMetadata.CreatedAt"/>. Distinct from any string timestamp
+/// a connector separately writes into <paramref name="Metadata"/>.
+/// </param>
+/// <param name="UpdatedAt">
+/// Optional last-modified timestamp forwarded to
+/// <see cref="Rag.NET.Models.DocumentMetadata.UpdatedAt"/>.
+/// </param>
 public sealed record FileEntry(
     EntryId Id,
     string FileName,
     Func<CancellationToken, Task<Stream>> OpenContentAsync,
     string? ETag = null,
-    IReadOnlyDictionary<string, string>? Metadata = null);
+    IReadOnlyDictionary<string, string>? Metadata = null,
+    DateTime? CreatedAt = null,
+    DateTime? UpdatedAt = null);

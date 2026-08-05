@@ -45,6 +45,14 @@ public sealed class AzureBlobDataProvider : FileContentProviderBase
     /// Metadata emitted: <c>path</c> (the full blob name, which is the only path a blob has —
     /// the container is flat and "directories" are just name prefixes) and <c>container</c>.
     /// Both are always present, so the dictionary is never null here.
+    /// <para>
+    /// Phase 4.10 Task 5: <c>blob.Properties.CreatedOn</c>/<c>LastModified</c> become
+    /// <see cref="FileHandle.CreatedAt"/>/<see cref="FileHandle.UpdatedAt"/>. Both are part of
+    /// the standard <c>BlobItemProperties</c> the List Blobs response always returns — unlike
+    /// <c>Metadata</c>/<c>Tags</c>, they do not require an opt-in <c>BlobTraits</c> flag, so the
+    /// <see cref="Azure.Storage.Blobs.Models.BlobTraits.None"/> passed to <c>GetBlobsAsync</c>
+    /// does not affect them.
+    /// </para>
     /// </remarks>
     private FileHandle ToHandle(Azure.Storage.Blobs.Models.BlobItem blob)
     {
@@ -66,6 +74,8 @@ public sealed class AzureBlobDataProvider : FileContentProviderBase
                     .ConfigureAwait(false);
                 return download.Value.Content;
             },
-            Metadata:         metadata);
+            Metadata:         metadata,
+            CreatedAt:        blob.Properties.CreatedOn?.UtcDateTime,
+            UpdatedAt:        blob.Properties.LastModified?.UtcDateTime);
     }
 }

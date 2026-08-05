@@ -261,7 +261,8 @@ public sealed class LinearDataProvider : FileContentProviderBase
             ETag:             issue.UpdatedAt.ToString("o", CultureInfo.InvariantCulture),
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
-            Metadata:         metadata);
+            Metadata:         metadata,
+            UpdatedAt:        issue.UpdatedAt.UtcDateTime);
     }
 
     /// <summary>

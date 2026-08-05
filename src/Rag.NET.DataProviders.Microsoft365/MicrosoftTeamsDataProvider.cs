@@ -24,6 +24,12 @@ namespace Rag.NET.DataProviders.MicrosoftTeams;
 /// reset, client-side timeout, token acquisition — becomes
 /// <see cref="RagError.TransportFailed"/>. Caller cancellation always propagates.
 /// </para>
+/// <para>
+/// Phase 4.10 Task 5: each day's document also carries typed
+/// <see cref="FileHandle.CreatedAt"/>/<see cref="FileHandle.UpdatedAt"/>, at full
+/// <c>createdDateTime</c>/<c>lastModifiedDateTime</c> precision. The <c>date</c> metadata tag
+/// stays deliberately at day granularity — see <see cref="GroupByDay"/>.
+/// </para>
 /// </summary>
 public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
 {
@@ -215,15 +221,7 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
             var dateStr = kvp.Key.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
             var dayMsgs = kvp.Value;
 
-            // ETag = lastModifiedDateTime of latest message
-            string? lastMod = null;
-            for (int i = 0; i < dayMsgs.Count; i++)
-            {
-                var lm = dayMsgs[i].LastModifiedDateTime?.ToString("o",
-                    System.Globalization.CultureInfo.InvariantCulture);
-                if (lm is not null && (lastMod is null || string.CompareOrdinal(lm, lastMod) > 0))
-                    lastMod = lm;
-            }
+            var (lastMod, earliestCreated, latestModified) = SummariseDay(dayMsgs);
 
             var markdown = BuildDayMarkdown(channelName, dateStr, dayMsgs);
             handles.Add(new FileHandle(
@@ -235,9 +233,42 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
                 ETag:             lastMod,
                 OpenContentAsync: _ => Task.FromResult<Stream>(
                     new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
-                Metadata:         BuildMetadata(teamId, channelId, channelName, dateStr, dayMsgs.Count)));
+                Metadata:         BuildMetadata(teamId, channelId, channelName, dateStr, dayMsgs.Count),
+                CreatedAt:        earliestCreated,
+                UpdatedAt:        latestModified));
         }
         return handles;
+    }
+
+    /// <summary>
+    /// Phase 4.10 Task 5: the day's earliest <c>createdDateTime</c> becomes
+    /// <see cref="FileHandle.CreatedAt"/> and the latest <c>lastModifiedDateTime</c> becomes
+    /// <see cref="FileHandle.UpdatedAt"/> — full precision, unlike the day-grouping <c>date</c>
+    /// metadata tag (see <see cref="BuildMetadata"/>), which stays at day granularity. The ETag
+    /// string is kept exactly as it was computed before this task.
+    /// </summary>
+    private static (string? LastModifiedEtag, DateTime? EarliestCreated, DateTime? LatestModified)
+        SummariseDay(List<ChatMessage> dayMsgs)
+    {
+        string? lastMod = null;
+        DateTimeOffset? earliestCreated = null;
+        DateTimeOffset? latestModified  = null;
+        for (int i = 0; i < dayMsgs.Count; i++)
+        {
+            var msg = dayMsgs[i];
+            var lm = msg.LastModifiedDateTime?.ToString("o", System.Globalization.CultureInfo.InvariantCulture);
+            if (lm is not null && (lastMod is null || string.CompareOrdinal(lm, lastMod) > 0))
+                lastMod = lm;
+
+            if (msg.CreatedDateTime is { } created &&
+                (earliestCreated is null || created < earliestCreated))
+                earliestCreated = created;
+
+            if (msg.LastModifiedDateTime is { } modified &&
+                (latestModified is null || modified > latestModified))
+                latestModified = modified;
+        }
+        return (lastMod, earliestCreated?.UtcDateTime, latestModified?.UtcDateTime);
     }
 
     /// <summary>

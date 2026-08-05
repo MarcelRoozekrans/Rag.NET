@@ -85,6 +85,24 @@ public sealed class LocalFilesDataProviderTests : IDisposable
         Assert.Equal(expected, entries[0].Value.ETag);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: <see cref="FileInfo.CreationTimeUtc"/>/<see cref="FileInfo.LastWriteTimeUtc"/>
+    /// become the typed <see cref="FileEntry.CreatedAt"/>/<see cref="FileEntry.UpdatedAt"/> — both
+    /// are already UTC <see cref="DateTime"/> values, so no parsing is involved.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_Entry_HasCreatedAtAndUpdatedAtFromFileInfo()
+    {
+        WriteFile("readme.md", "some content");
+        var sut = new LocalFilesDataProvider(_dir);
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var info = new FileInfo(Path.Combine(_dir, "readme.md"));
+        Assert.Equal(info.CreationTimeUtc, entries[0].Value.CreatedAt);
+        Assert.Equal(info.LastWriteTimeUtc, entries[0].Value.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_OpenContentAsync_ReturnsFileContents()
     {

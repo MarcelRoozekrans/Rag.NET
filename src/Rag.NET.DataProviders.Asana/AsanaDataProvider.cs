@@ -100,7 +100,8 @@ public sealed class AsanaDataProvider : FileContentProviderBase
             ETag:             task.ModifiedAt ?? string.Empty,
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
-            Metadata:         BuildMetadata(task));
+            Metadata:         BuildMetadata(task),
+            UpdatedAt:        ConnectorTimestampParser.Parse(task.ModifiedAt));
     }
 
     /// <summary>
@@ -126,7 +127,6 @@ public sealed class AsanaDataProvider : FileContentProviderBase
         };
         if (!string.IsNullOrEmpty(task.Assignee?.Name)) metadata["assignee"]   = task.Assignee.Name;
         if (!string.IsNullOrEmpty(task.DueOn))          metadata["due_on"]     = task.DueOn;
-        if (!string.IsNullOrEmpty(task.ModifiedAt))     metadata["updated_at"] = task.ModifiedAt;
         if (!string.IsNullOrEmpty(_options.WorkspaceGid)) metadata["workspace"] = _options.WorkspaceGid;
         if (!string.IsNullOrEmpty(_options.ProjectGid))   metadata["project"]   = _options.ProjectGid;
         return metadata;

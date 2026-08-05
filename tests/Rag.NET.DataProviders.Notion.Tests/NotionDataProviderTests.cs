@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
@@ -559,14 +560,58 @@ public sealed class NotionDataProviderTests
         MetadataContract.AssertAll(results.Select(r => r.Value));
 
         var metadata = Assert.Single(results).Value.Metadata!;
-        Assert.Equal("page-md",                  metadata["page_id"]);
-        Assert.Equal("2026-03-01T10:00:00.000Z", metadata["updated_at"]);
-        Assert.Equal(2, metadata.Count);
+        Assert.Equal("page-md", metadata["page_id"]);
+        // updated_at is no longer a plain tag — it is the typed FileHandle.UpdatedAt, asserted in
+        // GetFilesAsync_LastEditedTime_IsTypedAndSurfacesAsUpdatedAtChunkTag below.
+        Assert.False(metadata.ContainsKey("updated_at"));
+        _ = Assert.Single(metadata);
 
         // NotionOptions.DatabaseId is documented as "reserved for a future implementation" and
         // appears nowhere in the /v1/search request, which returns every accessible page. Tagging
         // pages with it would claim a parentage the API never confirmed.
         Assert.False(metadata.ContainsKey("database_id"));
+    }
+
+    /// <summary>
+    /// Phase 4.10 Task 4: <c>last_edited_time</c> used to be written as a plain
+    /// <c>metadata["updated_at"]</c> tag; it now becomes <c>FileHandle.UpdatedAt</c> and reaches
+    /// <c>FileEntry.UpdatedAt</c> unchanged. This pins both that the connector still produces the
+    /// timestamp at all, and that it still surfaces as the reserved chunk tag downstream.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_LastEditedTime_IsTypedAndSurfacesAsUpdatedAtChunkTag()
+    {
+        const string searchJson = """
+            {
+              "results": [
+                {
+                  "id": "page-ts",
+                  "last_edited_time": "2026-03-01T10:00:00.000Z",
+                  "properties": { "title": { "title": [{ "plain_text": "Timestamp Page" }] } }
+                }
+              ],
+              "has_more": false
+            }
+            """;
+        const string blocksJson = """{ "results": [], "has_more": false }""";
+
+        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/v1/search"] = searchJson,
+            ["page-ts"]    = blocksJson
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(results).Value;
+        var expected = DateTime.Parse(
+            "2026-03-01T10:00:00.000Z", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+        Assert.Equal(expected, entry.UpdatedAt);
+        Assert.False(entry.Metadata!.ContainsKey("updated_at"));
+
+        await UpdatedAtChunkTagAssertion.AssertSurfacesAsChunkTagAsync(
+            entry.UpdatedAt, TestContext.Current.CancellationToken);
     }
 }
 

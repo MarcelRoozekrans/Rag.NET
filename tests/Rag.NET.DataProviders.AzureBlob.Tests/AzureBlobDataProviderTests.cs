@@ -72,6 +72,33 @@ public sealed class AzureBlobDataProviderTests
         MetadataContract.AssertAll(entries.Select(e => e.Value));
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: <c>Properties.CreatedOn</c>/<c>LastModified</c> — part of the standard
+    /// List Blobs response, present regardless of <c>BlobTraits</c> — become the typed
+    /// <see cref="FileHandle.CreatedAt"/>/<see cref="FileHandle.UpdatedAt"/>.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_PropertiesCreatedOnAndLastModified_BecomeTypedTimestamps()
+    {
+        var xml =
+            """<?xml version="1.0" encoding="utf-8"?><EnumerationResults ServiceEndpoint="https://test.blob.core.windows.net/" ContainerName="my-container"><Blobs><Blob><Name>docs/readme.md</Name><Properties><Creation-Time>Wed, 01 Jan 2025 10:00:00 GMT</Creation-Time><Last-Modified>Thu, 02 Jan 2025 11:30:00 GMT</Last-Modified><Etag>0x8DAAAA1</Etag></Properties></Blob></Blobs><NextMarker /></EnumerationResults>""";
+        var options = new BlobClientOptions
+        {
+            Transport = new HttpClientTransport(new HttpClient(new CannedXmlHandler(xml))),
+        };
+        var container = new BlobContainerClient(ConnectionString, "my-container", options);
+        var sut = new AzureBlobDataProvider(container);
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(entries).Value;
+        Assert.Equal(
+            new DateTime(2025, 1, 1, 10, 0, 0, DateTimeKind.Utc), entry.CreatedAt);
+        Assert.Equal(
+            new DateTime(2025, 1, 2, 11, 30, 0, DateTimeKind.Utc), entry.UpdatedAt);
+    }
+
     [Fact]
     public void Constructor_NullContainer_Throws()
     {

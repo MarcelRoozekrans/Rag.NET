@@ -115,6 +115,28 @@ public sealed class LinearDataProviderTests
             content.ReplaceLineEndings("\n"));
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: <c>issue.updatedAt</c> was previously only rendered into the ETag —
+    /// never surfaced as a metadata tag or a typed field. It now also becomes
+    /// <see cref="FileHandle.UpdatedAt"/> / <see cref="FileEntry.UpdatedAt"/> (UTC), and Linear
+    /// has no issue creation timestamp in the query, so <c>CreatedAt</c> stays unset.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_UpdatedAt_IsTypedAsUpdatedAt()
+    {
+        var updatedAt = new DateTimeOffset(2026, 3, 1, 10, 0, 0, TimeSpan.Zero);
+        var issue = Issue(updatedAt: updatedAt);
+        var api = new FakeLinearApi(Page(hasNext: false, endCursor: null, issue));
+        var sut = MakeProvider(api);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(results).Value;
+        Assert.Equal(updatedAt.UtcDateTime, entry.UpdatedAt);
+        Assert.Null(entry.CreatedAt);
+    }
+
     // 2. Cursor pagination: two pages, captured after-cursors.
     [Fact]
     public async Task GetFilesAsync_CursorPagination_FollowsEndCursor()

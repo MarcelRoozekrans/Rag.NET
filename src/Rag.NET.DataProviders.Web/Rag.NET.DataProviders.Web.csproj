@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
     <PackageReference Include="AngleSharp" />
   </ItemGroup>
 

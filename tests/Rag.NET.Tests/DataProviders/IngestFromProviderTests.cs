@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using NSubstitute;
@@ -424,6 +425,95 @@ public sealed class IngestFromProviderTests : IDisposable
 
         Assert.Single(capturedMetadata);
         Assert.Equal(createdAt, capturedMetadata[0].CreatedAt);
+    }
+
+    /// <summary>
+    /// Phase 4.10 Task 1: <c>FileEntry.CreatedAt</c>/<c>UpdatedAt</c> are per-entry, connector-set
+    /// timestamps — distinct from <c>baseMetadata.CreatedAt</c>, which is a batch-level default
+    /// supplied once per <c>IngestFromProviderAsync</c> call. Both must reach the ingested
+    /// document's <see cref="DocumentMetadata"/> unchanged.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_FileEntryTimestamps_ReachIngestedDocument()
+    {
+        var captured = CaptureIngestedMetadata();
+        var createdAt = new DateTime(2024, 3, 1, 0, 0, 0, DateTimeKind.Utc);
+        var updatedAt = new DateTime(2024, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        // Constructed inline (not via a hand-written helper taking DateTime? parameters):
+        // Roslynator RCS1242 and EPS05 disagree about whether such a parameter needs `in`, so
+        // the timestamps are threaded straight from locals into the record's own constructor.
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-1"),
+                    FileName: "doc.txt",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
+                    CreatedAt: createdAt,
+                    UpdatedAt: updatedAt)),
+            }.ToAsyncEnumerable());
+
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(captured);
+        Assert.Equal(createdAt, metadata.CreatedAt);
+        Assert.Equal(updatedAt, metadata.UpdatedAt);
+    }
+
+    /// <summary>
+    /// <c>RssDataProvider</c>, <c>SitemapDataProvider</c> and <c>WebCrawlerDataProvider</c>
+    /// (in <c>Rag.NET.DataProviders.Web</c>) implement <see cref="IFileContentProvider"/>
+    /// directly and construct <see cref="FileEntry"/> themselves — they never touch
+    /// <c>FileHandle</c> or <c>FileContentProviderBase</c>. Missing this path is invisible: if
+    /// <c>BuildMetadata</c> only ever forwarded a timestamp reached via that base class (or only
+    /// from <c>baseMetadata</c>), a connector on this path would silently never produce a
+    /// timestamp — indistinguishable from a connector that truly has none. This test uses a bare
+    /// <see cref="IFileContentProvider"/> implementation — not <c>FileContentProviderBase</c>,
+    /// not a mock — to prove the direct path threads timestamps through.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_DirectIFileContentProviderImplementation_TimestampsReachIngestedDocument()
+    {
+        var captured = CaptureIngestedMetadata();
+        var createdAt = new DateTime(2024, 3, 1, 0, 0, 0, DateTimeKind.Utc);
+        var updatedAt = new DateTime(2024, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        var provider = new DirectFileContentProvider { CreatedAt = createdAt, UpdatedAt = updatedAt };
+
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(captured);
+        Assert.Equal(createdAt, metadata.CreatedAt);
+        Assert.Equal(updatedAt, metadata.UpdatedAt);
+    }
+
+    /// <summary>
+    /// A real (non-mock, non-<c>FileContentProviderBase</c>) <see cref="IFileContentProvider"/>
+    /// implementation, shaped like the web connectors that construct <see cref="FileEntry"/>
+    /// without ever going through <c>FileHandle</c>. Timestamps are plain <c>init</c> properties
+    /// set by object initialiser, not constructor parameters — Roslynator RCS1242 and EPS05
+    /// disagree about whether a hand-written method parameter of type <c>DateTime?</c> needs
+    /// <c>in</c>, and property accessors sidestep that conflict entirely.
+    /// </summary>
+    private sealed class DirectFileContentProvider : IFileContentProvider
+    {
+        public DateTime? CreatedAt { get; init; }
+        public DateTime? UpdatedAt { get; init; }
+
+        public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            yield return Result<FileEntry, RagError>.Success(new FileEntry(
+                Id: new EntryId("id-1"),
+                FileName: "doc.txt",
+                OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
+                CreatedAt: CreatedAt,
+                UpdatedAt: UpdatedAt));
+            await Task.CompletedTask.ConfigureAwait(false);
+        }
     }
 
     /// <summary>

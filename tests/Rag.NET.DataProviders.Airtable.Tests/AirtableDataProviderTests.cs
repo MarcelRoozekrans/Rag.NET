@@ -167,6 +167,37 @@ public sealed class AirtableDataProviderTests
         Assert.Equal("Ops_Runbook_ Prod.md", results[0].Value.FileName);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: <c>AirtableRecord.CreatedTime</c> is auto-populated by Airtable for
+    /// every record and typed as a non-nullable <see cref="DateTime"/> by the SDK, so it becomes
+    /// <see cref="FileEntry.CreatedAt"/> directly — no parsing involved. Airtable's "last
+    /// modified" concept is per-field, not a fixed record property, so <c>UpdatedAt</c> stays
+    /// unset.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_CreatedTime_IsTypedAsCreatedAt()
+    {
+        var createdTime = new DateTime(2026, 1, 15, 9, 30, 0, DateTimeKind.Utc);
+        var record = MakeRecord("rec010", new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["Name"] = Json("\"Timestamped record\"")
+        });
+        record.CreatedTime = createdTime;
+
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync("Tasks", null, null, null, Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([record]));
+
+        var sut = MakeProvider(client);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(results).Value;
+        Assert.Equal(createdTime, entry.CreatedAt);
+        Assert.Null(entry.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_ExtensionFilter_ExcludesNonMatching()
     {

@@ -131,6 +131,20 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
     /// Metadata emitted: <c>path</c>, <c>repo</c> (<c>workspace/slug</c>) and <c>ref</c> on every
     /// run, plus <c>change_status</c> on diffstat (delta) runs only — a source listing has no
     /// notion of change.
+    /// <para>
+    /// <b>Phase 4.10 Task 5 — investigated, left unset.</b> <see cref="BitbucketSourceCommit"/>
+    /// maps only <c>hash</c> because that is what the src-listing and diffstat endpoints were
+    /// modelled from, and Bitbucket Cloud's documented shape for the <c>commit</c> object
+    /// embedded on each file entry there is a minimal reference (type/hash/links) distinct from
+    /// the full commit resource — which does carry <c>date</c> — returned by the dedicated
+    /// <c>/repositories/{workspace}/{repo}/commit/{hash}</c> endpoint. Available documentation
+    /// could not be retrieved in enough detail to confirm the embedded object's exact fields
+    /// without live API access, so no date is read here rather than guessed. Even if confirmed
+    /// absent, obtaining it would mean a second API call per file (fetching the full commit
+    /// resource by hash) — widening the request, which Task 5 explicitly excludes. Both
+    /// <see cref="FileHandle.CreatedAt"/> and <see cref="FileHandle.UpdatedAt"/> are therefore
+    /// left unset: a truthful "unknown", not an oversight.
+    /// </para>
     /// </remarks>
     private FileHandle ToHandle(string path, string? etag, string? changeStatus)
     {

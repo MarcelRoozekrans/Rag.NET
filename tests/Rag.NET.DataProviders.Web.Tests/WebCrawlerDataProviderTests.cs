@@ -42,6 +42,26 @@ public sealed class WebCrawlerDataProviderTests
         Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page2", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: a crawled HTML page carries no vendor-supplied timestamp — this
+    /// connector has no server cooperation at all (no ETag either, per the class summary). This
+    /// is a deliberate "checked and there is none", not an oversight.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_NoTimestampAvailable_LeavesBothUnset()
+    {
+        var sut = new WebCrawlerDataProvider(SeedUrl, MakeClient(),
+            new WebCrawlerOptions { RespectRobotsTxt = false });
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.All(entries, e =>
+        {
+            Assert.Null(e.Value.CreatedAt);
+            Assert.Null(e.Value.UpdatedAt);
+        });
+    }
+
     [Fact]
     public async Task GetFilesAsync_MaxPages_LimitsResults()
     {

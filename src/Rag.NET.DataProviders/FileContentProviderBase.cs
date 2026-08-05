@@ -49,7 +49,9 @@ public abstract class FileContentProviderBase : IFileContentProvider
                 FileName:         handle.FileName,
                 OpenContentAsync: handle.OpenContentAsync,
                 ETag:             handle.ETag,
-                Metadata:         handle.Metadata));
+                Metadata:         handle.Metadata,
+                CreatedAt:        handle.CreatedAt,
+                UpdatedAt:        handle.UpdatedAt));
         }
     }
 

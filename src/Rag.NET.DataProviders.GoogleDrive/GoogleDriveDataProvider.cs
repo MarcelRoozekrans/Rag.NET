@@ -51,7 +51,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
         do
         {
             var request = _drive.Files.List();
-            request.Fields = "nextPageToken, files(id, name, mimeType, md5Checksum)";
+            request.Fields = "nextPageToken, files(id, name, mimeType, md5Checksum, createdTime, modifiedTime)";
             request.PageSize = 100;
             request.Q = "mimeType != 'application/vnd.google-apps.folder' and trashed = false";
             if (pageToken is not null) request.PageToken = pageToken;
@@ -63,7 +63,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
                 if (string.Equals(file.MimeType, "application/vnd.google-apps.folder", StringComparison.Ordinal)) continue;
                 // No folder_id: a whole-drive listing does not know which folder a file sits in.
                 yield return Result<FileHandle, RagError>.Success(
-                    BuildHandle(file.Id, file.Name, file.Md5Checksum, file.MimeType, folderId: null));
+                    BuildHandle(file.Id, file.Name, file.Md5Checksum, file.MimeType, folderId: null, source: file));
             }
             pageToken = page.NextPageToken;
         }
@@ -84,7 +84,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
             do
             {
                 var request = _drive.Files.List();
-                request.Fields = "nextPageToken, files(id, name, mimeType, md5Checksum)";
+                request.Fields = "nextPageToken, files(id, name, mimeType, md5Checksum, createdTime, modifiedTime)";
                 request.PageSize = 100;
                 request.Q = $"'{folderId}' in parents and trashed = false";
                 if (pageToken is not null) request.PageToken = pageToken;
@@ -100,7 +100,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
                     }
                     // The traversal knows the containing folder here, so folder_id is emitted.
                     yield return Result<FileHandle, RagError>.Success(
-                        BuildHandle(file.Id, file.Name, file.Md5Checksum, file.MimeType, folderId));
+                        BuildHandle(file.Id, file.Name, file.Md5Checksum, file.MimeType, folderId, source: file));
                 }
                 pageToken = page.NextPageToken;
             }
@@ -131,7 +131,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
                 // No folder_id: the Changes feed reports the file, not the folder it lives in.
                 yield return Result<FileHandle, RagError>.Success(BuildHandle(
                     change.File.Id, change.File.Name, change.File.Md5Checksum,
-                    change.File.MimeType, folderId: null));
+                    change.File.MimeType, folderId: null, source: change.File));
             }
 
             if (page.NextPageToken is null) break;
@@ -145,7 +145,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
         try
         {
             var request = _drive.Changes.List(_options.DeltaToken!);
-            request.Fields = "nextPageToken, newStartPageToken, changes(file(id, name, mimeType, md5Checksum), removed)";
+            request.Fields = "nextPageToken, newStartPageToken, changes(file(id, name, mimeType, md5Checksum, createdTime, modifiedTime), removed)";
             request.PageSize = 100;
             return await request.ExecuteAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -160,7 +160,7 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
         CancellationToken cancellationToken)
     {
         var request = _drive.Changes.List(pageToken);
-        request.Fields = "nextPageToken, newStartPageToken, changes(file(id, name, mimeType, md5Checksum), removed)";
+        request.Fields = "nextPageToken, newStartPageToken, changes(file(id, name, mimeType, md5Checksum, createdTime, modifiedTime), removed)";
         request.PageSize = 100;
         return await request.ExecuteAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -174,9 +174,19 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
     /// call site (to skip folders) and then discarded, and <c>folder_id</c> — only the folder
     /// traversal knows the containing folder, so the whole-drive and Changes paths pass
     /// <see langword="null"/> and the key is omitted rather than written empty.
+    /// <para>
+    /// <paramref name="source"/>'s <c>createdTime</c>/<c>modifiedTime</c> (all four field masks
+    /// now request them) become the typed <see cref="FileHandle.CreatedAt"/>/
+    /// <see cref="FileHandle.UpdatedAt"/> channel. <paramref name="source"/> is the reference-typed
+    /// <c>Google.Apis.Drive.v3.Data.File</c> itself, read via <c>CreatedTimeDateTimeOffset</c>/
+    /// <c>ModifiedTimeDateTimeOffset</c> — the plain <c>CreatedTime</c>/<c>ModifiedTime</c>
+    /// properties are <see cref="ObsoleteAttribute">obsolete</see> in this SDK version, and this
+    /// repository's warnings-as-errors build turns that into a hard failure.
+    /// </para>
     /// </remarks>
     private FileHandle BuildHandle(
-        string id, string name, string? etag, string? mimeType, string? folderId)
+        string id, string name, string? etag, string? mimeType, string? folderId,
+        Google.Apis.Drive.v3.Data.File? source = null)
     {
         var capturedId = id;
 
@@ -207,6 +217,8 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
                     throw;
                 }
             },
-            Metadata: metadata);
+            Metadata:  metadata,
+            CreatedAt: source?.CreatedTimeDateTimeOffset?.UtcDateTime,
+            UpdatedAt: source?.ModifiedTimeDateTimeOffset?.UtcDateTime);
     }
 }

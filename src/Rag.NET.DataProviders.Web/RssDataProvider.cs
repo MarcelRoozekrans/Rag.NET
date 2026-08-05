@@ -11,6 +11,14 @@ namespace Rag.NET.DataProviders.Web;
 /// Enumerates items from an RSS 2.0 or Atom feed.
 /// ETag is the <c>&lt;pubDate&gt;</c> (RSS) or <c>&lt;updated&gt;</c> (Atom) value when present.
 /// </summary>
+/// <remarks>
+/// Phase 4.10 Task 5: Atom's <c>&lt;published&gt;</c>/<c>&lt;updated&gt;</c> become the typed
+/// <see cref="FileEntry.CreatedAt"/>/<see cref="FileEntry.UpdatedAt"/>, parsed via
+/// <see cref="ConnectorTimestampParser"/>. RSS 2.0 has no <c>published</c>/<c>updated</c> split —
+/// only <c>&lt;pubDate&gt;</c> — so only <c>CreatedAt</c> is set for RSS 2.0; <c>UpdatedAt</c>
+/// stays unset rather than fabricated. The existing <c>published_at</c> metadata tag (see
+/// <see cref="BuildAtomMetadata"/>/<see cref="BuildRssMetadata"/>) is unaffected.
+/// </remarks>
 public sealed class RssDataProvider : IFileContentProvider
 {
     private static readonly XNamespace s_atomNs = "http://www.w3.org/2005/Atom";
@@ -41,6 +49,7 @@ public sealed class RssDataProvider : IFileContentProvider
                 if (id is null) continue;
 
                 var link = entry.Element(s_atomNs + "link")?.Attribute("href")?.Value ?? id;
+                var published = entry.Element(s_atomNs + "published")?.Value;
                 var updated = entry.Element(s_atomNs + "updated")?.Value;
 
                 yield return Result<FileEntry, RagError>.Success(new FileEntry(
@@ -48,7 +57,9 @@ public sealed class RssDataProvider : IFileContentProvider
                     FileName: InferFileName(id),
                     OpenContentAsync: Fetch(link),
                     ETag: updated,
-                    Metadata: BuildAtomMetadata(entry, link, updated)));
+                    Metadata: BuildAtomMetadata(entry, link, updated),
+                    CreatedAt: ConnectorTimestampParser.Parse(published),
+                    UpdatedAt: ConnectorTimestampParser.Parse(updated)));
             }
         }
         else
@@ -68,7 +79,10 @@ public sealed class RssDataProvider : IFileContentProvider
                     FileName: InferFileName(id),
                     OpenContentAsync: Fetch(link ?? id),
                     ETag: pubDate,
-                    Metadata: BuildRssMetadata(item, link ?? id, pubDate)));
+                    Metadata: BuildRssMetadata(item, link ?? id, pubDate),
+                    CreatedAt: ConnectorTimestampParser.Parse(pubDate)));
+                // RSS 2.0 has no published/updated split — only pubDate. UpdatedAt stays
+                // unset rather than fabricated; Atom (above) sets both.
             }
         }
     }

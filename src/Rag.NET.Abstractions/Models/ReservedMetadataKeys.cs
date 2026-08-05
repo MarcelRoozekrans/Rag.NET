@@ -31,6 +31,21 @@ public static class ReservedMetadataKeys
     /// <summary>Creation timestamp, written by <c>MetadataBehavior</c> and read by <c>TimeWeightedRetriever</c>.</summary>
     public const string CreatedAt = "created_at";
 
+    /// <summary>
+    /// Last-modified timestamp, written by <c>MetadataBehavior</c> and read by
+    /// <c>TimeWeightedRetriever</c> in preference to <see cref="CreatedAt"/>.
+    /// </summary>
+    /// <remarks>
+    /// A member of <see cref="AllKeys"/>/<see cref="IsReserved"/> since Phase 4.10 Task 4, which
+    /// landed this reservation together with the five connector migrations that used to write it
+    /// as a plain <c>entry.Metadata["updated_at"]</c> tag (Asana, Jira, Notion, Zendesk Articles,
+    /// Zendesk Tickets) — those now set <c>FileHandle.UpdatedAt</c> instead. The two changes could
+    /// not land separately: reserving the key first, before the connectors stopped writing it,
+    /// would have made <c>BuildMetadata</c> throw <see cref="Rag.NET.Models.ReservedMetadataKeyException"/>
+    /// for every one of them at ingest time.
+    /// </remarks>
+    public const string UpdatedAt = "updated_at";
+
     /// <summary>Identifier of the <see cref="ProviderId"/> a document was ingested from, written centrally at ingest time.</summary>
     public const string ProviderId = "provider_id";
 
@@ -51,6 +66,7 @@ public static class ReservedMetadataKeys
         DocumentId,
         FileName,
         CreatedAt,
+        UpdatedAt,
         ProviderId,
         ParentKey,
         AllowedRoles,

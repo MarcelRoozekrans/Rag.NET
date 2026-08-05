@@ -174,7 +174,8 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
             ETag:             issue.Fields.Updated,
             OpenContentAsync: _ => Task.FromResult<Stream>(
                 new MemoryStream(Encoding.UTF8.GetBytes(markdown))),
-            Metadata:         BuildMetadata(issue));
+            Metadata:         BuildMetadata(issue),
+            UpdatedAt:        ConnectorTimestampParser.Parse(issue.Fields.Updated));
     }
 
     /// <summary>
@@ -192,7 +193,6 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
             metadata["priority"] = fields.Priority.Name;
         if (!string.IsNullOrEmpty(fields.Assignee?.DisplayName))
             metadata["assignee"] = fields.Assignee.DisplayName;
-        if (!string.IsNullOrEmpty(fields.Updated))     metadata["updated_at"] = fields.Updated;
 
         var project = ProjectFromKey(issue.Key);
         if (project is not null) metadata["project"] = project;

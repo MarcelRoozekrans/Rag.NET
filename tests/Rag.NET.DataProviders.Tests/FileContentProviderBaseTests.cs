@@ -142,6 +142,37 @@ public sealed class FileContentProviderBaseTests
         Assert.Null(Assert.Single(entries).Metadata);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 1: <c>FileHandle.CreatedAt</c>/<c>UpdatedAt</c> must survive the
+    /// <c>FileHandle</c> → <c>FileEntry</c> copy inside <see cref="FileContentProviderBase"/>,
+    /// exactly like <c>ETag</c> and <c>Metadata</c> already do.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_CreatedAtAndUpdatedAtAreForwardedFromHandle()
+    {
+        var createdAt = new DateTime(2024, 3, 1, 0, 0, 0, DateTimeKind.Utc);
+        var updatedAt = new DateTime(2024, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        // Constructed directly (not via the Handle() helper) so CreatedAt/UpdatedAt pass through
+        // the record's own positional constructor rather than a hand-written wrapper — Roslynator
+        // RCS1242 and EPS05 disagree about whether a hand-written method parameter of type
+        // Nullable<DateTime> should take `in`, so this test sidesteps the conflict entirely.
+        var handle = new FileHandle(
+            "file.md", "file.md", null,
+            _ => Task.FromResult<Stream>(new MemoryStream()),
+            Metadata: null,
+            CreatedAt: createdAt,
+            UpdatedAt: updatedAt);
+        var sut = new StubProvider(new TestOptions(), handle);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var entries = results.Select(r => { Assert.True(r.IsSuccess, r.IsFailure ? $"Expected success but got failure: {r.Error}" : string.Empty); return r.Value; }).ToList();
+
+        var entry = Assert.Single(entries);
+        Assert.Equal(createdAt, entry.CreatedAt);
+        Assert.Equal(updatedAt, entry.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_ExtensionFilterIsCaseInsensitive()
     {

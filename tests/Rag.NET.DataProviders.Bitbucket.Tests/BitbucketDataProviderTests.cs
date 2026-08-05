@@ -101,6 +101,34 @@ public sealed class BitbucketDataProviderTests
         Assert.Equal("app.cs", results[1].Value.FileName);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: investigated and left unset, not an oversight — see the remarks on
+    /// <c>BitbucketDataProvider.ToHandle</c>. The src-listing's embedded <c>commit</c> object
+    /// carries only <c>hash</c> (as this fixture reflects); confirming whether Bitbucket ever
+    /// widens that shape would need live API access, and even a confirmed date there would
+    /// still require a second per-file API call to the full commit resource to obtain — out of
+    /// scope for this task. Both fields stay null.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_FullTraversal_NoTimestampAvailable_LeavesBothUnset()
+    {
+        const string json = """
+            {
+              "values": [
+                { "path": "docs/readme.md", "type": "commit_file", "size": 42, "commit": { "hash": "abc123" } }
+              ],
+              "next": null
+            }
+            """;
+        var sut = MakeProvider(json);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Null(results[0].Value.CreatedAt);
+        Assert.Null(results[0].Value.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_DeltaTraversal_SkipsRemovedFiles()
     {

@@ -67,6 +67,24 @@ public sealed class GitHubDataProviderTests
         Assert.Equal("sha-abc", entries[0].Value.ETag);
     }
 
+    /// <summary>
+    /// Phase 4.10 Task 5: neither <c>TreeItem</c> (full-tree run) nor the compare API's file
+    /// entries (delta run) carry a commit or author date — a blob is just a path/mode/sha/size.
+    /// This is a deliberate "checked and there is none", not an oversight: pull the date, you'd
+    /// need a separate commit lookup per file, which is out of scope for this task.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_FullTree_NoTimestampAvailable_LeavesBothUnset()
+    {
+        var tree = MakeTree(("docs/readme.md", "sha-abc"));
+        var sut = new GitHubDataProvider(Owner, Repo, MakeClient(tree));
+
+        var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Null(entries[0].Value.CreatedAt);
+        Assert.Null(entries[0].Value.UpdatedAt);
+    }
+
     [Fact]
     public async Task GetFilesAsync_ExtensionFilter_ExcludesNonMatchingFiles()
     {

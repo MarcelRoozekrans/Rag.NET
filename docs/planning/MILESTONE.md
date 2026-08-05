@@ -34,11 +34,12 @@ four defects were live, so every criterion below can be false and something chec
 Milestone 6's DoD. The ROADMAP's Milestone 4 section is the authoritative copy; the two must
 agree.
 
-- [ ] All planned phases complete (5 of 11 as of 2026-08-04: 4.0, 4.1, 4.7, 4.8, 4.9 — the phase
-      list grew Phase 4.9, created and completed 2026-08-04 to fix the `BuildMetadata`/`CreatedAt`
-      defect and correct the wrong "slot, not a phase" estimate that had routed it to 4.2, and
-      Phase 4.10, created the same day and left pending — the connector-timestamp-threading work
-      4.9 priced but did not do)
+- [ ] All planned phases complete (6 of 11 as of 2026-08-05: 4.0, 4.1, 4.7, 4.8, 4.9, 4.10 — the
+      phase list grew Phase 4.9, created and completed 2026-08-04 to fix the
+      `BuildMetadata`/`CreatedAt` defect and correct the wrong "slot, not a phase" estimate that
+      had routed it to 4.2, and Phase 4.10, created the same day and completed 2026-08-05 — the
+      connector-timestamp-threading work 4.9 priced but did not do. Phases 4.2–4.6 remain
+      pending, so this box stays open)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore (true on every phase close
       so far, most recently 2026-08-04; the box is ticked at the milestone's close, from a clean
       restore on that day's tree)
@@ -180,12 +181,36 @@ agree.
    timestamp and discard it, 4 more (Confluence, Jira, Box, GoogleDrive) do not even fetch it, 4
    genuinely have none. `Rag.NET.Tests` 1151 → **1159**; `RepoConventions` unchanged 36+1;
    `DataProviders.Tests` **69**. Full entry in the ROADMAP.
-6. Phase 4.10 — Connector Timestamp Threading [pending; created 2026-08-04 out of Phase 4.9's own
-   measurement] — thread a typed creation/update timestamp through
-   `FileEntry`/`FileHandle`/`BuildMetadata` so the 17 of 25 providers that hold one today stop
-   discarding it, and widen the 4 (Confluence, Jira, Box, GoogleDrive) that do not even fetch it —
-   the same DTO/cassette cost Phase 2.2 already priced and declined to pay for those four
-   connectors. Full entry in the ROADMAP.
+6. Phase 4.10 — Connector Timestamp Threading [complete — 2026-08-05; created 2026-08-04 out of
+   Phase 4.9's own measurement] — `DocumentMetadata` gains `UpdatedAt` beside `CreatedAt` (both
+   `DateTime?`, neither backfilled from the other), threaded through `FileHandle`/`FileEntry` and
+   `FileContentProviderBase` for the ~17 providers that held one and discarded it, plus Confluence,
+   Box and GoogleDrive's DTO mappings widened for the 3 that did not even fetch it. `updated_at`
+   joins `created_at` as a reserved key, and its five hand-writers (Asana, Jira, Notion, Zendesk
+   Tickets, Zendesk Articles) were migrated to the typed field in the same commit that reserved it
+   (`3a9fdb7`), proven red first by reinstating Asana's hand-written line.
+   **Three planning documents were wrong in the same way, corrected here:** Phase 2.2's "Recorded,
+   not fixed" section priced this widening as needing re-recorded WireMock cassettes; Phase 4.9's
+   design repeated the price; this phase's own design repeated it again. **No connector touched
+   here uses WireMock** — Confluence's fixtures are inline JSON literals, GoogleDrive's a fake HTTP
+   handler, Box's tests call `ToHandle` directly with no HTTP layer at all. Corrected on Phase
+   2.2's own entry too, not left to keep propagating. Also corrected: this phase's own design said
+   eight `updated_at` hand-writers where it was five (the other three wrote `published_at`,
+   `lastmod` and `received_at` — different keys, still unreserved); Jira never needed DTO work,
+   already requesting `fields=…,updated`; Confluence needed no `expand` widening, since the default
+   expand already returns `version.when`. **A house pattern surfaced twice**: EPS05 wants `in` on a
+   `DateTime?` parameter, RCS1242 forbids `in` on that same non-readonly struct — Box and
+   GoogleDrive both resolve it by passing the source object instead of two scalars. **One honest
+   gap**: GoogleDrive's fourth field mask (delta pagination's second page) has no dedicated test,
+   because nothing tests that path at all — recorded as debt, not implied covered. **What stays
+   open**: GitHub, GitLab, WebCrawler and (after investigation) Bitbucket rank neutrally with no
+   vendor timestamp to give — correct, not a gap; Slack's and Teams' `date` tags stay
+   day-granularity, normalising them was out of scope. `docs/guide/retrieval.md`'s time-weighting
+   section rewritten for the `UpdatedAt → CreatedAt → FallbackMetadataKeys → neutral` order;
+   `docs/guide/data-providers.md` gains a Timestamps section and an eighth reserved key. Counts:
+   `Rag.NET.Tests` 1159 → **1169**, `DataProviders.Tests` 70 → **71**, `RepoConventions` 36+1 →
+   **37+1**, `Microsoft365.Tests` 70 → **74**, `Confluence.Tests` 20 → **21**, `Box.Tests` 13 →
+   **15**, `GoogleDrive.Tests` 10 → **13**. Full entry in the ROADMAP.
 7. Phase 4.2 — Options Alignment & Validation [pending]
 8. Phase 4.3 — Structured Logging Enrichment [pending]
 9. Phase 4.4 — OpenTelemetry Tracing & Metrics [pending]

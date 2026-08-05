@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using Microsoft.Extensions.DependencyInjection;
@@ -616,16 +617,18 @@ public sealed class AsanaDataProviderTests
         MetadataContract.AssertAll(results.Select(r => r.Value));
 
         var metadata = Assert.Single(results).Value.Metadata!;
-        Assert.Equal("Bob",                  metadata["assignee"]);
-        Assert.Equal("2026-04-01",           metadata["due_on"]);
-        Assert.Equal("2026-03-01T10:00:00Z", metadata["updated_at"]);
+        Assert.Equal("Bob",        metadata["assignee"]);
+        Assert.Equal("2026-04-01", metadata["due_on"]);
+        // updated_at is no longer a plain tag — it is the typed FileHandle.UpdatedAt, asserted in
+        // GetFilesAsync_ModifiedAt_IsTypedAndSurfacesAsUpdatedAtChunkTag below.
+        Assert.False(metadata.ContainsKey("updated_at"));
         // Lowercase literal, deliberately unlike the Markdown line's bool.ToString() ("True"):
         // HasTagSpec matches ordinally.
         Assert.Equal("true", metadata["completed"]);
         // WorkspaceGid is required and scopes every request, so workspace is unconditional.
         Assert.Equal("ws-1", metadata["workspace"]);
         Assert.False(metadata.ContainsKey("project"));
-        Assert.Equal(5, metadata.Count);
+        Assert.Equal(4, metadata.Count);
 
         var content = await ReadContentAsync(results[0].Value);
         Assert.Contains("**Completed:** True", content, StringComparison.Ordinal);
@@ -708,6 +711,51 @@ public sealed class AsanaDataProviderTests
         Assert.False(metadata.ContainsKey("updated_at"));
         Assert.False(metadata.ContainsKey("project"));
         Assert.Equal(2, metadata.Count);
+    }
+
+    /// <summary>
+    /// Phase 4.10 Task 4: <c>modified_at</c> used to be written as a plain
+    /// <c>metadata["updated_at"]</c> tag; it now becomes <c>FileHandle.UpdatedAt</c> and reaches
+    /// <c>FileEntry.UpdatedAt</c> unchanged. This pins both that the connector still produces the
+    /// timestamp at all, and that it still surfaces as the reserved chunk tag downstream.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_ModifiedAt_IsTypedAndSurfacesAsUpdatedAtChunkTag()
+    {
+        const string tasksJson = """
+            {
+              "data": [
+                {
+                  "gid": "task-ts",
+                  "name": "Timestamp task",
+                  "notes": null,
+                  "due_on": null,
+                  "completed": false,
+                  "assignee": null,
+                  "modified_at": "2026-03-01T10:00:00Z"
+                }
+              ]
+            }
+            """;
+        const string subtasksJson = """{ "data": [] }""";
+
+        var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/api/1.0/tasks"]   = tasksJson,
+            ["task-ts/subtasks"] = subtasksJson
+        });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var entry = Assert.Single(results).Value;
+        var expected = DateTime.Parse(
+            "2026-03-01T10:00:00Z", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+        Assert.Equal(expected, entry.UpdatedAt);
+        Assert.False(entry.Metadata!.ContainsKey("updated_at"));
+
+        await UpdatedAtChunkTagAssertion.AssertSurfacesAsChunkTagAsync(
+            entry.UpdatedAt, TestContext.Current.CancellationToken);
     }
 }
 
