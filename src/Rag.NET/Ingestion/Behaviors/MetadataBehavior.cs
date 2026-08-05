@@ -21,6 +21,10 @@ public sealed class MetadataBehavior : IIngestionBehavior
             {
                 chunk.Metadata.TryAdd(ReservedMetadataKeys.CreatedAt, createdAt.ToString("O"));
             }
+            if (ctx.Metadata.UpdatedAt is { } updatedAt)
+            {
+                chunk.Metadata.TryAdd(ReservedMetadataKeys.UpdatedAt, updatedAt.ToString("O"));
+            }
         }
 
         return await next(ctx, ct).ConfigureAwait(false);

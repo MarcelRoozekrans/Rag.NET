@@ -23,4 +23,15 @@ public sealed class DocumentMetadata
     /// instead of ranking it as freshly created.
     /// </summary>
     public DateTime? CreatedAt { get; init; }
+
+    /// <summary>
+    /// Last-modified timestamp, if known. <see langword="null"/> means the timestamp is
+    /// unknown — like <see cref="CreatedAt"/>, it is never defaulted. When set, it is serialised
+    /// into chunk metadata as <c>"updated_at"</c> by
+    /// <see cref="Rag.NET.Ingestion.Behaviors.MetadataBehavior"/>; when absent, no
+    /// <c>"updated_at"</c> tag is written. <see cref="Rag.NET.Retrieval.TimeWeightedRetriever"/>
+    /// prefers this over <see cref="CreatedAt"/> when ranking, because freshness is a
+    /// last-changed question, not a creation-date one.
+    /// </summary>
+    public DateTime? UpdatedAt { get; init; }
 }

@@ -31,6 +31,19 @@ public static class ReservedMetadataKeys
     /// <summary>Creation timestamp, written by <c>MetadataBehavior</c> and read by <c>TimeWeightedRetriever</c>.</summary>
     public const string CreatedAt = "created_at";
 
+    /// <summary>
+    /// Last-modified timestamp, written by <c>MetadataBehavior</c> and read by
+    /// <c>TimeWeightedRetriever</c> in preference to <see cref="CreatedAt"/>.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately <b>not</b> a member of <see cref="AllKeys"/>/<see cref="IsReserved"/> yet —
+    /// reserving it is a separate change (Phase 4.10 Task 4) that must land together with the
+    /// connector migrations that stop writing it as a plain tag, or <c>BuildMetadata</c> would
+    /// start throwing <see cref="Rag.NET.Models.ReservedMetadataKeyException"/> for every one of
+    /// them at ingest time.
+    /// </remarks>
+    public const string UpdatedAt = "updated_at";
+
     /// <summary>Identifier of the <see cref="ProviderId"/> a document was ingested from, written centrally at ingest time.</summary>
     public const string ProviderId = "provider_id";
 
