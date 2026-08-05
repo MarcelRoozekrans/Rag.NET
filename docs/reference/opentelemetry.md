@@ -107,6 +107,96 @@ When an operation fails the span status is set to `Error` with the exception mes
 
 ---
 
+## Conventions for instrumenting a satellite package
+
+Phase 4.4 gives nine previously-silent satellites (the six vector stores, the two rerankers,
+GraphRag, Raptor, Graph, Security, Caching) spans of their own, on the same shared `"Rag.NET"`
+`ActivitySource` core uses — see `src/Shared/RagTelemetrySource.cs` for the linking mechanism
+that lets every package create its own instance of that name without depending on core. This
+section is decided once, here, so instrumenting each package is a lookup rather than a fresh
+design.
+
+### Span names: `ragnet.<area>.<operation>`
+
+Core's eight spans — `ragnet.ingest`, `ragnet.parse`, `ragnet.chunk`, `ragnet.embed`,
+`ragnet.store`, `ragnet.query`, `ragnet.retrieve`, `ragnet.ask` — are all two segments:
+`ragnet.<operation>`, because the "area" is implicitly the core pipeline itself. A satellite has
+no such default area, so its spans take a third segment naming it: `ragnet.<area>.<operation>`.
+
+**The area names one subsystem, not one backend.** Where several packages implement the same
+abstraction — the six vector stores, the two rerankers — they share one area and one span name,
+and the specific backend is a *tag*, not a name suffix. This already exists: `ragnet.store`
+carries a `vector_store` tag rather than core minting `ragnet.qdrant.store`,
+`ragnet.pgvector.store`, and so on. The same discipline applies going forward:
+
+| Area | Span name shape | Backend tag |
+|---|---|---|
+| Vector stores (Qdrant, PgVector, Pinecone, Weaviate, Chroma, Azure AI Search) | `ragnet.vectorstore.<operation>` (e.g. `ragnet.vectorstore.upsert`, `ragnet.vectorstore.search`) | `vector_store` |
+| Reranking (Onnx, Cohere) | `ragnet.rerank.<operation>` (e.g. `ragnet.rerank.score`) | `reranker.type` |
+
+Forking the span name per backend multiplies the number of distinct span names by the number of
+backends for no analytical benefit — every dashboard or alert built on `ragnet.vectorstore.search`
+p99 latency would otherwise need to know the full backend list and OR them together. Six span
+names collapsing to one, tagged, is the same reasoning that produced `vector_store` on
+`ragnet.store` in the first place.
+
+Where a package is its own subsystem with no shared abstraction to fork from, its area is its own
+name and every operation is genuinely area-specific:
+
+| Package | Area | Example span names |
+|---|---|---|
+| GraphRag | `graphrag` | `ragnet.graphrag.extract`, `ragnet.graphrag.communities`, `ragnet.graphrag.search` |
+| Raptor | `raptor` | `ragnet.raptor.build`, `ragnet.raptor.summarize` |
+| Graph | `graph` | `ragnet.graph.cluster`, `ragnet.graph.pagerank` |
+| Security | `security` | `ragnet.security.sanitize`, `ragnet.security.guard` |
+| Caching | `caching` | `ragnet.caching.lookup` |
+
+A satellite span nests under whichever core span models the step it participates in — a
+`ragnet.vectorstore.upsert` span is a child of `ragnet.store`, a `ragnet.rerank.score` span is a
+child of `ragnet.retrieve` — the same way `ragnet.parse`/`ragnet.chunk`/`ragnet.embed`/`ragnet.store`
+already nest under `ragnet.ingest`.
+
+### Tag names: dotted, no exceptions going forward
+
+Every current tag is dotted (`document.id`, `chunk.count`, `query.hash`, `result.count`,
+`source.count`, `parser.type`, `synthesis.strategy`) except two snake_case outliers, `top_k` and
+`vector_store`, predating this convention. **New tags — every tag a satellite adds — are dotted.**
+`top_k` and `vector_store` are not renamed here; that rename, and the test assertions it touches,
+is Task 7's.
+
+**No tag is mandated on every span.** `ragnet.query` itself carries none, by design (see the PII
+note above and its rationale in the Spans section). Two tags recur today only because the same
+identifying value threads through several stages of the *same* tree: `document.id` on every span
+in the ingest tree, `query.hash`/`top_k` on `ragnet.retrieve`. A satellite span nested inside one
+of those trees should repeat the identifying tag it inherits — `document.id` inside ingest,
+`query.hash` inside retrieve — when it is cheaply available at that call site; it costs one field
+copy and saves a trace-tree walk for anyone inspecting a single span in isolation. It should not
+invent a new cross-cutting tag that duplicates what an ancestor already carries for a different
+purpose.
+
+Everything else is area-specific: an operation's own inputs and outputs, named `<area>.<attribute>`
+— `vectorstore.batch.size`, `reranker.candidate.count`, `graphrag.entity.count`, `raptor.tree.depth`,
+`security.guard.action`, `caching.hit` — mirroring the shape of `parser.type` and
+`synthesis.strategy`, not the bare-noun shape reserved for the core cross-area identifiers above.
+
+### What must never appear in a tag
+
+- **Raw query text.** This is exactly why `query.hash` exists instead — see the PII note above.
+- **Document or chunk content.** Tag counts and types (`chunk.count`, `parser.type`), never the text itself.
+- **Anything a Security guard removed or blocked.** A span may say *that* a guard acted
+  (`security.guard.action=redact`) and how much (a count), never *what* it acted on. Task 8
+  instruments the Security package against this rule directly — a `ragnet.security.sanitize`
+  span records the sanitiser ran and what it found the *shape* of (e.g. an injection-pattern
+  category), never the substring that matched.
+- **Credentials, connection strings, and API keys.** Not called out by the existing spans because
+  core never touches them, but every vector-store and Cohere-reranking satellite does, and none
+  of that ever belongs in a tag.
+
+If a value fails any of these, hash it (`query.hash`'s pattern), count it, or classify it —
+never carry the raw value.
+
+---
+
 ## Example: Prometheus + Grafana
 
 ```csharp
