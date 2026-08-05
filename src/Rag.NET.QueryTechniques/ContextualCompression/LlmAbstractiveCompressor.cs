@@ -94,11 +94,11 @@ public sealed partial class LlmAbstractiveCompressor(
         };
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 501829536, EventName = "log_compression_failed", Level = LogLevel.Warning,
         Message = "Abstractive compression failed for chunk {DocumentId}, falling back to original text.")]
     private static partial void LogCompressionFailed(ILogger logger, string documentId, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1052473395, EventName = "log_empty_response", Level = LogLevel.Warning,
         Message = "Abstractive compression returned empty response for chunk {DocumentId}, falling back to original text.")]
     private static partial void LogEmptyResponse(ILogger logger, string documentId);
 }
