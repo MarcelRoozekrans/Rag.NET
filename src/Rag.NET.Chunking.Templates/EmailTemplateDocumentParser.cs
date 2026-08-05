@@ -135,6 +135,6 @@ public sealed partial class EmailTemplateDocumentParser(
     [GeneratedRegex(@"\s{2,}", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex WhitespaceCollapseRegex();
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Skipping binary attachment '{FileName}' — binary attachments are not inlined.")]
+    [LoggerMessage(EventId = 1933928246, EventName = "log_skipping_binary_attachment", Level = LogLevel.Debug, Message = "Skipping binary attachment '{FileName}' — binary attachments are not inlined.")]
     private static partial void LogSkippingBinaryAttachment(ILogger logger, string fileName);
 }

@@ -1,4 +1,6 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Ingestion;
@@ -115,5 +117,30 @@ public class PipelineIngestorTests
         Assert.True(capturedIds[0] < capturedIds[1]);
         Assert.True(capturedIds[1] < capturedIds[2]);
         Assert.True(capturedIds[2] < capturedIds[3]);
+    }
+
+    [Fact]
+    public async Task IngestAsync_OpensDocumentIdScope_CoveringThePipelineExecution()
+    {
+        var logger = new FakeLogger<PipelineIngestor>();
+        var pipeline = new Pipeline<IngestionContext, IngestionResult>((ctx, _) =>
+        {
+            // A behavior logging mid-pipeline should inherit the document_id scope
+            // PipelineIngestor opened around Pipeline.ExecuteAsync.
+            ScopeProbeLog.Emit(logger);
+            return ValueTask.FromResult(new IngestionResult { DocumentId = ctx.Metadata.DocumentId, ChunksStored = 1 });
+        });
+        var sut = CreateSut(pipeline: pipeline);
+        sut.Logger = logger;
+        var metadata = new DocumentMetadata { DocumentId = new DocumentId("doc-42"), FileName = "f.txt", ContentType = "text/plain" };
+
+        _ = await sut.IngestAsync(new MemoryStream(), metadata, cancellationToken: TestContext.Current.CancellationToken);
+
+        var record = Assert.Single(logger.Collector.GetSnapshot());
+        var scope = Assert.Single(record.Scopes);
+        var state = Assert.IsAssignableFrom<IEnumerable<KeyValuePair<string, object>>>(scope);
+        var pair = Assert.Single(state);
+        Assert.Equal("document_id", pair.Key);
+        Assert.Equal("doc-42", pair.Value);
     }
 }

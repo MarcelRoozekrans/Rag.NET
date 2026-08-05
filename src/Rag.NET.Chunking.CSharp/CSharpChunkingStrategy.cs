@@ -54,7 +54,7 @@ public sealed partial class CSharpChunkingStrategy : IChunkingStrategy
             yield return chunk;
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "C# parse errors in document {DocumentId}; falling back to single chunk")]
+    [LoggerMessage(EventId = 879715426, EventName = "log_parse_error", Level = LogLevel.Warning, Message = "C# parse errors in document {DocumentId}; falling back to single chunk")]
     private static partial void LogParseError(ILogger logger, DocumentId documentId);
 
     private async IAsyncEnumerable<TextChunk> ExtractMembersAsync(

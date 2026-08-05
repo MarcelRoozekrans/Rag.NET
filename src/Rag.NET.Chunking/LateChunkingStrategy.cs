@@ -258,11 +258,11 @@ public sealed partial class LateChunkingStrategy(
             Embedding = embedding is null ? (ReadOnlyMemory<float>?)null : new ReadOnlyMemory<float>(embedding),
         };
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1371604333, EventName = "log_token_embedding_failure", Level = LogLevel.Warning,
         Message = "Token embedding generation failed for document {DocumentId}; falling back to token-window chunks without embeddings.")]
     private static partial void LogTokenEmbeddingFailure(ILogger logger, string documentId, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Error,
+    [LoggerMessage(EventId = 1235670448, EventName = "log_token_embedding_contract_violation", Level = LogLevel.Error,
         Message = "Token embedding generator returned a result violating the matrix contract for document {DocumentId}; falling back to token-window chunks without embeddings.")]
     private static partial void LogTokenEmbeddingContractViolation(ILogger logger, string documentId, Exception ex);
 }

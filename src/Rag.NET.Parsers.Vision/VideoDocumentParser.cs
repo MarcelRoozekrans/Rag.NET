@@ -175,7 +175,7 @@ public partial class VideoDocumentParser(
             .ToList();
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 276347502, EventName = "log_frame_extraction_failed", Level = LogLevel.Warning,
         Message = "Failed to extract frame at {TimestampSeconds}s from '{FileName}'.")]
     private static partial void LogFrameExtractionFailed(
         ILogger logger, double timestampSeconds, string fileName);

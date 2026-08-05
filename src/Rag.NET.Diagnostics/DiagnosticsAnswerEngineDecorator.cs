@@ -73,6 +73,7 @@ public sealed partial class DiagnosticsAnswerEngineDecorator(
         => inner.AskStreamingAsync(query, sources, options, cancellationToken);
 
     [LoggerMessage(
+        EventId = 1912556956, EventName = "log_capture_failed",
         Level = LogLevel.Warning,
         Message = "DiagnosticsAnswerEngineDecorator failed to capture the answer into the trace. " +
                   "The answer was returned unaffected.")]

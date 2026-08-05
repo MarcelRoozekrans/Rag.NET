@@ -47,11 +47,11 @@ public sealed partial class LlmQuerySanitiser(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 2053114672, EventName = "log_injection_detected", Level = LogLevel.Warning,
         Message = "LLM classifier detected injection in query: '{Verdict}'.")]
     private static partial void LogInjectionDetected(ILogger logger, string verdict);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1385825225, EventName = "log_llm_failed", Level = LogLevel.Warning,
         Message = "LLM query classifier failed; falling back to regex sanitiser.")]
     private static partial void LogLlmFailed(ILogger logger, Exception ex);
 }

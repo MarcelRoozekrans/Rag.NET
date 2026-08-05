@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -50,5 +52,28 @@ public class PipelineRetrieverTests
 
         Assert.NotNull(captured);
         Assert.NotNull(captured!.Options);
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_OpensQueryHashScope_MatchingTheSpanTagHash()
+    {
+        var logger = new FakeLogger<PipelineRetriever>();
+        var pipeline = new Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>((ctx, _) =>
+        {
+            // A behavior logging mid-pipeline should inherit the query_hash scope
+            // PipelineRetriever opened around Pipeline.ExecuteAsync.
+            ScopeProbeLog.Emit(ctx.Logger);
+            return ValueTask.FromResult<IReadOnlyList<SearchResult>>([]);
+        });
+        var sut = new PipelineRetriever { Pipeline = pipeline, Logger = logger };
+
+        _ = await sut.RetrieveAsync("my query", null, TestContext.Current.CancellationToken);
+
+        var record = Assert.Single(logger.Collector.GetSnapshot());
+        var scope = Assert.Single(record.Scopes);
+        var state = Assert.IsAssignableFrom<IEnumerable<KeyValuePair<string, object>>>(scope);
+        var pair = Assert.Single(state);
+        Assert.Equal("query_hash", pair.Key);
+        Assert.Equal(PipelineRetriever.HashQuery("my query"), pair.Value);
     }
 }

@@ -31,11 +31,11 @@ public sealed partial class RegexQuerySanitiser(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 2053114672, EventName = "log_injection_detected", Level = LogLevel.Warning,
         Message = "Prompt injection pattern detected in query '{QueryPreview}': matched '{Pattern}'.")]
     private static partial void LogInjectionDetected(ILogger logger, string queryPreview, string pattern);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1287818186, EventName = "log_sanitise_failed", Level = LogLevel.Warning,
         Message = "RegexQuerySanitiser failed; returning original query.")]
     private static partial void LogSanitiseFailed(ILogger logger, Exception ex);
 }

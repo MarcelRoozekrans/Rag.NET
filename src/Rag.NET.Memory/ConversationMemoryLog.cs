@@ -5,6 +5,7 @@ namespace Rag.NET.Memory;
 internal static partial class ConversationMemoryLog
 {
     [LoggerMessage(
+        EventId = 790087831, EventName = "opaque_score_scale_ignores_min_score",
         Level = LogLevel.Warning,
         Message = "Vector store '{StoreType}' reports an opaque ranking score scale, so its scores cannot be thresholded; " +
                   "PersistentMemoryOptions.MinScore ({MinScore}) is ignored and recall takes the top {TopK} matches by rank. " +

@@ -276,11 +276,13 @@ internal sealed partial class TraceCollector : ITraceCollector
     }
 
     [LoggerMessage(
+        EventId = 1912556956, EventName = "log_capture_failed",
         Level = LogLevel.Warning,
         Message = "Trace capture failed and the trace was left incomplete. The pipeline is unaffected.")]
     private static partial void LogCaptureFailed(ILogger logger, Exception ex);
 
     [LoggerMessage(
+        EventId = 857107281, EventName = "log_in_flight_ceiling_reached",
         Level = LogLevel.Debug,
         Message = "Not starting a new trace: {MaxInFlight} are already uncommitted. Traces are " +
                   "being started and never committed, which usually means nothing is calling Commit.")]

@@ -41,11 +41,11 @@ public sealed partial class RegexRetrievalGuard(
         return modified is not null ? modified.AsReadOnly() : results;
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 2053114672, EventName = "log_injection_detected", Level = LogLevel.Warning,
         Message = "Prompt injection pattern detected in retrieved chunk from '{DocumentId}': matched '{Pattern}'.")]
     private static partial void LogInjectionDetected(ILogger logger, string documentId, string pattern);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 978886414, EventName = "log_inspect_failed", Level = LogLevel.Warning,
         Message = "RegexRetrievalGuard failed on a chunk; chunk returned unmodified.")]
     private static partial void LogInspectFailed(ILogger logger, Exception ex);
 }

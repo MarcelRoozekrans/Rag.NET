@@ -1,7 +1,9 @@
 using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Retrieval;
 using Rag.NET.Telemetry;
 using ZeroAlloc.Results;
 
@@ -14,7 +16,8 @@ namespace Rag.NET.Pipeline;
 public sealed class RagPipeline(
     IRetriever retriever,
     IIngestor ingestor,
-    IAnswerEngine? answerEngine = null) : IRagPipeline
+    IAnswerEngine? answerEngine = null,
+    ILogger<RagPipeline>? logger = null) : IRagPipeline
 {
     /// <summary>
     /// The span opened around one whole query, whichever public entry point started it.
@@ -86,6 +89,7 @@ public sealed class RagPipeline(
                 "IAnswerEngine is not registered. Register an IChatClient in DI to use AskAsync.");
 
         using var activity = RagTelemetry.ActivitySource.StartActivity(QuerySpanName);
+        using var scope = logger?.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal) { ["query_hash"] = PipelineRetriever.HashQuery(query) });
 
         var opts = options ?? new RagOptions();
         var retrievalResult = await retriever.RetrieveAsync(query, BuildRetrievalOptions(opts), cancellationToken).ConfigureAwait(false);
@@ -106,6 +110,7 @@ public sealed class RagPipeline(
                 "IAnswerEngine is not registered. Register an IChatClient in DI to use AskStreamingAsync.");
 
         using var activity = RagTelemetry.ActivitySource.StartActivity(QuerySpanName);
+        using var scope = logger?.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal) { ["query_hash"] = PipelineRetriever.HashQuery(query) });
 
         var opts = options ?? new RagOptions();
         var retrievalResult = await retriever.RetrieveAsync(query, BuildRetrievalOptions(opts), cancellationToken).ConfigureAwait(false);

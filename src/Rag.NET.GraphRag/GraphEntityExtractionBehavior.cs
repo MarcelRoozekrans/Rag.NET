@@ -282,6 +282,6 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
             : description;
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse entity extraction JSON from LLM response")]
+    [LoggerMessage(EventId = 1144623303, EventName = "log_extraction_failed", Level = LogLevel.Warning, Message = "Failed to parse entity extraction JSON from LLM response")]
     private static partial void LogExtractionFailed(ILogger logger, Exception ex);
 }

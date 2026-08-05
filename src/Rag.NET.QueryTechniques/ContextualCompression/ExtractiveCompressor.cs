@@ -193,11 +193,11 @@ public sealed partial class ExtractiveCompressor(
         return denom == 0 ? 0 : dot / denom;
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 501829536, EventName = "log_compression_failed", Level = LogLevel.Warning,
         Message = "Extractive compression failed for chunk {DocumentId}, falling back to original text.")]
     private static partial void LogCompressionFailed(ILogger logger, string documentId, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 766317281, EventName = "log_query_embedding_failed", Level = LogLevel.Warning,
         Message = "Extractive compression failed to embed query; returning all sources uncompressed.")]
     private static partial void LogQueryEmbeddingFailed(ILogger logger, Exception ex);
 }

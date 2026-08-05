@@ -41,11 +41,11 @@ public sealed partial class TrustLevelRetrievalGuard(
         return filtered is not null ? filtered.AsReadOnly() : results;
     }
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 1466814037, EventName = "log_untrusted_dropped", Level = LogLevel.Warning,
         Message = "Dropping chunk from '{DocumentId}' — trust_level=untrusted.")]
     private static partial void LogUntrustedDropped(ILogger logger, string documentId);
 
-    [LoggerMessage(Level = LogLevel.Warning,
+    [LoggerMessage(EventId = 615778578, EventName = "log_external_warning", Level = LogLevel.Warning,
         Message = "Retrieved chunk from '{DocumentId}' has trust_level=external — treat with caution.")]
     private static partial void LogExternalWarning(ILogger logger, string documentId);
 }

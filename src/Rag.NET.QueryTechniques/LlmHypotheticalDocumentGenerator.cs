@@ -83,6 +83,6 @@ internal sealed partial class LlmHypotheticalDocumentGenerator(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "HyDE hypothesis generation call failed; discarding it and continuing with the surviving hypotheses")]
+    [LoggerMessage(EventId = 1516811390, EventName = "log_hypothesis_call_failed", Level = LogLevel.Debug, Message = "HyDE hypothesis generation call failed; discarding it and continuing with the surviving hypotheses")]
     private static partial void LogHypothesisCallFailed(ILogger logger, Exception exception);
 }

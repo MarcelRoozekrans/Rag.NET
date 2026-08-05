@@ -51,7 +51,8 @@ public static class ServiceCollectionExtensions
             {
                 answerEngine = ChatAnswerEngine.CreateFromServices(sp);
             }
-            return new RagPipeline(r, i, answerEngine);
+            var pipelineLogger = sp.GetService<ILogger<RagPipeline>>();
+            return new RagPipeline(r, i, answerEngine, pipelineLogger);
         });
         services.AddSingleton<IRagPipeline>(sp => sp.GetRequiredService<RagPipeline>());
 

@@ -104,6 +104,6 @@ public sealed partial class SqliteAuditLog : IAuditLog, IAsyncDisposable
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "SqliteAuditLog failed to write audit event.")]
+    [LoggerMessage(EventId = 1577581389, EventName = "log_write_failed", Level = LogLevel.Warning, Message = "SqliteAuditLog failed to write audit event.")]
     private static partial void LogWriteFailed(ILogger logger, Exception ex);
 }

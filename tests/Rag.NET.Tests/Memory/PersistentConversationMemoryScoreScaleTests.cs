@@ -121,8 +121,11 @@ public class PersistentConversationMemoryScoreScaleTests
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
-    /// <summary>Source-generated <c>LoggerMessage</c> names the event after the method.</summary>
-    private const string OpaqueWarningEventName = "OpaqueScoreScaleIgnoresMinScore";
+    /// <summary>
+    /// Phase 4.3 standardised <c>[LoggerMessage]</c> <c>EventName</c>s to snake_case (the
+    /// generator defaults to the PascalCase method name otherwise).
+    /// </summary>
+    private const string OpaqueWarningEventName = "opaque_score_scale_ignores_min_score";
 
     private static SearchResult Match(string text, double score) =>
         new()
