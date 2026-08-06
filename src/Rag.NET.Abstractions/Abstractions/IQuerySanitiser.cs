@@ -7,5 +7,6 @@ namespace Rag.NET.Abstractions;
 /// </summary>
 public interface IQuerySanitiser
 {
+    /// <summary>Returns a sanitised copy of <paramref name="query"/>. Returns the original text unchanged if there is nothing to redact.</summary>
     string Sanitise(string query);
 }

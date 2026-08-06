@@ -78,6 +78,10 @@ public static class ContentTypeMap
         [".webm"] = "video/webm",
     };
 
+    /// <summary>
+    /// Maps a file name's extension to a MIME type. Unknown or missing extensions return
+    /// <c>"application/octet-stream"</c> rather than <see langword="null"/> or throwing.
+    /// </summary>
     public static string FromFileName(string fileName)
     {
         var extension = Path.GetExtension(fileName);

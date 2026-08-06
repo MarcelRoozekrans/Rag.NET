@@ -22,10 +22,13 @@ namespace Rag.NET;
 /// </remarks>
 public sealed class ContainerBudget(int remaining, IDictionary<string, string>? sink)
 {
+    /// <summary>Nested containers still allowed before <see cref="ContainerContext.TryEnterNested"/> starts refusing them.</summary>
     public int Remaining { get; private set; } = remaining;
 
+    /// <summary>Reserves one nested container, decrementing <see cref="Remaining"/> by one.</summary>
     public void Consume() => SetRemaining(Remaining - 1);
 
+    /// <summary>Sets <see cref="Remaining"/> directly, writing the new value back into the sink dictionary when one was supplied.</summary>
     public void SetRemaining(int value)
     {
         Remaining = value;

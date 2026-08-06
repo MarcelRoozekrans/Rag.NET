@@ -10,6 +10,11 @@ namespace Rag.NET.Abstractions;
 /// </summary>
 public interface IDocumentChunkingStrategy
 {
+    /// <summary>
+    /// Chunks an entire document at once, given every one of its sections. Unlike
+    /// <see cref="IChunkingStrategy.ChunkAsync"/>, an implementation may look across sections —
+    /// for example merging chunks along a heading tree that spans several sections.
+    /// </summary>
     IAsyncEnumerable<TextChunk> ChunkDocumentAsync(
         IAsyncEnumerable<DocumentSection> sections,
         ChunkingOptions options,

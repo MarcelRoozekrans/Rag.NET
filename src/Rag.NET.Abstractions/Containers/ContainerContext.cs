@@ -60,8 +60,10 @@ public sealed class ContainerContext
     /// <summary>The incoming metadata with the reserved tags removed.</summary>
     public DocumentMetadata Metadata { get; }
 
+    /// <summary>The configured nesting-depth and entry-count caps this context enforces.</summary>
     public ContainerLimits Limits { get; }
 
+    /// <summary>The remaining nested-container allowance, shared with every context in this parse tree.</summary>
     public ContainerBudget Budget { get; }
 
     /// <summary>

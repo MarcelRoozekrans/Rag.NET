@@ -36,6 +36,14 @@ namespace Rag.NET;
 /// </remarks>
 public static class ContainerEntryDispatcher
 {
+    /// <summary>
+    /// Dispatches one container entry to whichever registered parser accepts
+    /// <paramref name="contentType"/>, streaming the sections it produces. Yields no sections,
+    /// logging a warning instead, when no parser matches or the entry is itself a nested container
+    /// that <paramref name="context"/> refuses (depth or budget exhausted). A matched parser that
+    /// throws is contained per this entry — the failure is logged and dispatch moves on rather
+    /// than propagating out of the whole document parse.
+    /// </summary>
     public static async IAsyncEnumerable<DocumentSection> DispatchAsync(
         IEnumerable<IDocumentParser> parsers,
         string entryName,
