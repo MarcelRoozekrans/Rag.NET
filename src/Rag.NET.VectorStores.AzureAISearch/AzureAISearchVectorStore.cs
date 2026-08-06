@@ -5,6 +5,7 @@ using Azure.Search.Documents.Indexes.Models;
 using Azure.Search.Documents.Models;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 using RagSearchOptions = Rag.NET.Models.Options.SearchOptions;
 
 namespace Rag.NET.AzureAISearch;
@@ -76,6 +77,11 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         IReadOnlyList<EmbeddedChunk> chunks,
         CancellationToken cancellationToken = default)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.upsert");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _indexName);
+        activity?.SetTag("vectorstore.batch.size", chunks.Count);
+
         var documents = chunks.Select(chunk => new SearchDocument(new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["id"] = Guid.NewGuid().ToString("N"),
@@ -99,6 +105,10 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         RagSearchOptions options,
         CancellationToken cancellationToken = default)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _indexName);
+
         var searchOptions = new Azure.Search.Documents.SearchOptions
         {
             Size = options.TopK,
@@ -124,8 +134,10 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             searchOptions.Filter = string.Join(" and ", filterClauses);
         }
 
-        return await ExecuteSearchAsync(null, searchOptions, options.MinScore, cancellationToken)
+        var results = await ExecuteSearchAsync(null, searchOptions, options.MinScore, cancellationToken)
             .ConfigureAwait(false);
+        activity?.SetTag("vectorstore.result.count", results.Count);
+        return results;
     }
 
     public async Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
@@ -134,6 +146,11 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         RagSearchOptions options,
         CancellationToken cancellationToken = default)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _indexName);
+        activity?.SetTag("vectorstore.hybrid", true);
+
         var searchOptions = new Azure.Search.Documents.SearchOptions
         {
             Size = options.TopK,
@@ -161,8 +178,10 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
             searchOptions.Filter = string.Join(" and ", filterClauses);
         }
 
-        return await ExecuteSearchAsync(textQuery, searchOptions, options.MinScore, cancellationToken)
+        var results = await ExecuteSearchAsync(textQuery, searchOptions, options.MinScore, cancellationToken)
             .ConfigureAwait(false);
+        activity?.SetTag("vectorstore.result.count", results.Count);
+        return results;
     }
 
     public Task DeleteByDocumentIdAsync(
@@ -178,6 +197,10 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(pageSize);
         if (pageSize > 1000)
             throw new ArgumentOutOfRangeException(nameof(pageSize), pageSize, "Page size must not exceed 1000 (Azure AI Search maximum).");
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _indexName);
 
         List<string> idsToDelete;
         do
