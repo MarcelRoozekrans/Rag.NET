@@ -82,6 +82,7 @@ public sealed class ParseBehavior : IIngestionBehavior
     private async Task ChunkPerSectionAsync(IngestionContext ctx, IDocumentParser parser, CancellationToken ct)
     {
         var headingBreadcrumbs = new string?[6];
+        var documentChunkIndex = 0;
 
         await foreach (var section in parser.ParseAsync(ctx.Stream, ctx.Metadata, ct).ConfigureAwait(false))
         {
@@ -93,7 +94,7 @@ public sealed class ParseBehavior : IIngestionBehavior
                     foreach (var kv in headingMetadata)
                         chunk.Metadata.TryAdd(kv.Key, kv.Value);
 
-                ctx.Chunks.Add(chunk);
+                ctx.Chunks.Add(chunk with { ChunkIndex = documentChunkIndex++ });
             }
 
             ctx.Sections.Add(section);
