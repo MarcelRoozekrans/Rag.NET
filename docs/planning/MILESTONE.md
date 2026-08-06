@@ -34,12 +34,14 @@ four defects were live, so every criterion below can be false and something chec
 Milestone 6's DoD. The ROADMAP's Milestone 4 section is the authoritative copy; the two must
 agree.
 
-- [ ] All planned phases complete (6 of 11 as of 2026-08-05: 4.0, 4.1, 4.7, 4.8, 4.9, 4.10 — the
-      phase list grew Phase 4.9, created and completed 2026-08-04 to fix the
+- [ ] All planned phases complete (7 of 12 as of 2026-08-06: 4.0, 4.1, 4.7, 4.8, 4.9, 4.10, 4.11 —
+      the phase list grew Phase 4.9, created and completed 2026-08-04 to fix the
       `BuildMetadata`/`CreatedAt` defect and correct the wrong "slot, not a phase" estimate that
-      had routed it to 4.2, and Phase 4.10, created the same day and completed 2026-08-05 — the
-      connector-timestamp-threading work 4.9 priced but did not do. Phases 4.2–4.6 remain
-      pending, so this box stays open)
+      had routed it to 4.2, Phase 4.10, created the same day and completed 2026-08-05 — the
+      connector-timestamp-threading work 4.9 priced but did not do — and Phase 4.11, created and
+      completed 2026-08-06 to fix a `ChunkIndex` uniqueness defect found while documenting
+      `IChunkingStrategy.ChunkAsync`, not by a test. Phases 4.2–4.6 remain pending, so this box
+      stays open)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore (true on every phase close
       so far, most recently 2026-08-04; the box is ticked at the milestone's close, from a clean
       restore on that day's tree)
@@ -211,11 +213,39 @@ agree.
    `Rag.NET.Tests` 1159 → **1169**, `DataProviders.Tests` 70 → **71**, `RepoConventions` 36+1 →
    **37+1**, `Microsoft365.Tests` 70 → **74**, `Confluence.Tests` 20 → **21**, `Box.Tests` 13 →
    **15**, `GoogleDrive.Tests` 10 → **13**. Full entry in the ROADMAP.
-7. Phase 4.2 — Options Alignment & Validation [pending]
-8. Phase 4.3 — Structured Logging Enrichment [pending]
-9. Phase 4.4 — OpenTelemetry Tracing & Metrics [pending]
-10. Phase 4.5 — Sample Applications [pending]
-11. Phase 4.6 — Rag.NET CLI Tool [pending]
+7. Phase 4.11 — Chunk Index Collision Fix [complete — 2026-08-06; created the same day out of a
+   documentation pass, not a test, numbered after 4.10, executed next] — `TextChunk.ChunkIndex`'s
+   own documentation says it "must be unique within a document"; nothing enforced it.
+   `ParseBehavior.ChunkPerSectionAsync` called `ChunkingStrategy.ChunkAsync` once per section, and
+   every built-in strategy numbered chunks from a counter local to that one call, so indices
+   restarted at 0 per section — the default path, since `RecursiveChunkingStrategy` implements
+   `IChunkingStrategy`, not `IDocumentChunkingStrategy`. Colliding `(DocumentId, ChunkIndex)` keyed
+   seven identity sites: `DeterministicChunkId.Derive` (Qdrant, Weaviate — **one chunk silently
+   overwrote another at write time**), `MultiQueryBehavior`, `RrfMerger`, `DeepResearchRetriever`,
+   `FederatedVectorStore` dedup (**unrelated chunks merged at read time**), `ParentChunkKeyHelper`
+   and `RagPipelineReindexExtensions`. **Verified, not assumed, that the sibling
+   `ChunkDocumentAsync` branch was unaffected**: all twelve `IDocumentChunkingStrategy`
+   implementers in `src/` keep a single document-wide counter; none restarts per section. Fixed
+   with one renumbering line in `ParseBehavior.ChunkPerSectionAsync`
+   (`ctx.Chunks.Add(chunk with { ChunkIndex = documentChunkIndex++ })`) — deliberately not in any
+   chunking strategy, since a strategy sees one section and cannot know its document offset, and
+   `IChunkingStrategy` is a public extension point. Two pre-existing tests asserting chunk
+   *instance* identity (not value) broke as a direct, reported-not-silently-fixed side effect of
+   copying every chunk via `with`, and were left unmodified per the plan. New pinning tests at
+   both corrupted consumers: `DeterministicChunkId.Derive` now proven to produce distinct GUIDs
+   for distinct indices, and `RrfMerger.MergeMany` proven to keep two different chunks from
+   different sections as two separate results. `PipelineIngestorChunkingValidationTests` — the
+   existing test in the same area — validates `ChunkingOptions` rejection only, never chunk output,
+   which is why it never caught this. **Existing data was already corrupt, not newly lost**: ids
+   change with the renumbering, so re-ingestion is needed, but colliding indices already meant
+   later-section chunks were overwriting or merging with earlier ones before this fix. Counts:
+   `Rag.NET.Tests` 1172 → **1179** (7 new tests), **1177 passed, 2 failed** (the two identity tests
+   above, left unmodified); `RepoConventions` unchanged 37+1. Full entry in the ROADMAP.
+8. Phase 4.2 — Options Alignment & Validation [pending]
+9. Phase 4.3 — Structured Logging Enrichment [pending]
+10. Phase 4.4 — OpenTelemetry Tracing & Metrics [pending]
+11. Phase 4.5 — Sample Applications [pending]
+12. Phase 4.6 — Rag.NET CLI Tool [pending]
 
 ## Explicitly not in scope
 
