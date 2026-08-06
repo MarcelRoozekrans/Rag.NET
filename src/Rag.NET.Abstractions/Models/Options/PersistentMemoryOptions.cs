@@ -1,5 +1,10 @@
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for persistent conversation memory: past exchanges are stored in a vector store and
+/// recalled by similarity to the current query, rather than kept only for the lifetime of one
+/// conversation.
+/// </summary>
 public sealed class PersistentMemoryOptions
 {
     /// <summary>Maximum number of past exchange pairs to retrieve from the vector store per query.</summary>

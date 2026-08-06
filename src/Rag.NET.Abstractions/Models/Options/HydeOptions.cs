@@ -1,5 +1,10 @@
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for HyDE (Hypothetical Document Embeddings): before retrieving, an LLM generates one or
+/// more hypothetical answers to the query, which are embedded and used as the search vector
+/// instead of embedding the query text directly.
+/// </summary>
 public sealed class HydeOptions
 {
     /// <summary>

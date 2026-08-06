@@ -1,5 +1,10 @@
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Per-arm weights and the rank constant for Reciprocal Rank Fusion, used to combine dense,
+/// BM25, and (when active) sparse retrieval results when
+/// <see cref="RetrievalOptions.UseHybridSearch"/> is <see langword="true"/>.
+/// </summary>
 public sealed class EnsembleOptions
 {
     /// <summary>

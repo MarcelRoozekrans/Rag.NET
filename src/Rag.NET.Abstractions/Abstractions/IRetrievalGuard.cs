@@ -9,5 +9,10 @@ namespace Rag.NET.Abstractions;
 /// </summary>
 public interface IRetrievalGuard
 {
+    /// <summary>
+    /// Returns a possibly-redacted copy of <paramref name="results"/>. May return the input
+    /// unchanged, a copy with some chunks' text redacted, or a shorter list with chunks removed
+    /// entirely, depending on the guard.
+    /// </summary>
     IReadOnlyList<SearchResult> Inspect(IReadOnlyList<SearchResult> results);
 }

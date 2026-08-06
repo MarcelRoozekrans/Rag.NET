@@ -1,7 +1,9 @@
 namespace Rag.NET.Models;
 
+/// <summary>The complete result of <c>IAnswerEngine.AskAsync</c> — the generated answer plus the sources it was built from.</summary>
 public sealed record RagResponse
 {
+    /// <summary>The generated answer text.</summary>
     public required string Answer { get; init; }
 
     /// <summary>

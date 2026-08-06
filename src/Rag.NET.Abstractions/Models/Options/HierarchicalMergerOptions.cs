@@ -2,6 +2,11 @@ using Rag.NET.Models;
 
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for the hierarchical-merger <c>IDocumentChunkingStrategy</c>, which merges a document's
+/// sections along its heading tree into chunks bounded by heading depth rather than character
+/// count alone.
+/// </summary>
 public sealed class HierarchicalMergerOptions
 {
     /// <summary>

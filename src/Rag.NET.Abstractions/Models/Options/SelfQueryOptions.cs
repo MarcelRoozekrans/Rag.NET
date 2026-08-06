@@ -2,6 +2,10 @@ using Rag.NET.Models;
 
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for self-query retrieval: an LLM rewrites the query and, given a schema of available
+/// metadata fields, may also generate a metadata filter, before retrieval runs.
+/// </summary>
 public sealed class SelfQueryOptions
 {
     /// <summary>

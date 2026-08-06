@@ -6,11 +6,38 @@ namespace Rag.NET.Models.Options;
 // Note: [Validate] is intentionally absent. The ZeroAlloc.Validation source generator
 // does not support record types. Validation for TopK, RedundancyThreshold, and MmrLambda
 // is applied manually in PipelineRetriever.RetrieveAsync.
+/// <summary>
+/// Per-call overrides for <c>IRetriever.RetrieveAsync</c>. Unset properties fall back to whatever
+/// the pipeline was configured with at startup.
+/// </summary>
 public sealed record RetrievalOptions
 {
+    /// <summary>
+    /// Chunks to return after all pipeline stages. Defaults to 5. <c>PipelineRetriever</c>
+    /// rejects a value that is not greater than 0 with a validation failure rather than clamping
+    /// it.
+    /// </summary>
     public int TopK { get; init; } = 5;
+
+    /// <summary>
+    /// Minimum similarity score a retrieved chunk must meet — a similarity score, not a
+    /// percentage. Defaults to 0.0 (no filtering). Passed straight through to the vector store's
+    /// own score threshold; filtering happens inside the store, not here.
+    /// </summary>
     public double MinScore { get; init; } = 0.0;
+
+    /// <summary>
+    /// Restricts retrieval to chunks whose metadata matches every key/value pair exactly
+    /// (ordinal string equality, AND semantics across pairs). <see langword="null"/> or an empty
+    /// dictionary means no filtering.
+    /// </summary>
     public IDictionary<string, string>? MetadataFilter { get; init; }
+
+    /// <summary>
+    /// Combines dense vector search with sparse/keyword search for this call, fused by
+    /// reciprocal rank; see <see cref="EnsembleOptions"/> for weighting. Defaults to
+    /// <see langword="false"/> (dense search only).
+    /// </summary>
     public bool UseHybridSearch { get; init; }
 
     /// <summary>
@@ -31,8 +58,26 @@ public sealed record RetrievalOptions
     /// </summary>
     public bool? UseSparseSearch { get; init; }
 
+    /// <summary>
+    /// Reorders retrieved chunks so the most relevant sit at the start and end of the context
+    /// rather than the middle, countering LLMs' tendency to attend less to mid-context text.
+    /// Defaults to <see langword="false"/>.
+    /// </summary>
     public bool UseLostInTheMiddleReordering { get; init; }
+
+    /// <summary>
+    /// Drops near-duplicate chunks by embedding cosine similarity before results are returned.
+    /// Defaults to <see langword="false"/>; when enabled, <see cref="RedundancyThreshold"/> is the
+    /// similarity cutoff at which a later chunk is considered a duplicate and dropped.
+    /// </summary>
     public bool UseRedundancyFilter { get; init; }
+
+    /// <summary>
+    /// Cosine similarity at or above which two chunks are treated as redundant, so the later one
+    /// is dropped. Range 0.0–1.0 — <c>PipelineRetriever</c> rejects a value outside that range
+    /// with a validation failure. Default 0.95. Ignored unless <see cref="UseRedundancyFilter"/>
+    /// is <see langword="true"/>.
+    /// </summary>
     public float RedundancyThreshold { get; init; } = 0.95f;
 
     /// <summary>

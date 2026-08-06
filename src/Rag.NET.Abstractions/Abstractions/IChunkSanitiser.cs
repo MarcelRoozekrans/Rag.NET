@@ -9,5 +9,9 @@ namespace Rag.NET.Abstractions;
 /// </summary>
 public interface IChunkSanitiser
 {
+    /// <summary>
+    /// Returns a sanitised copy of <paramref name="text"/>, given the chunk's metadata for
+    /// context. Returns the original text unchanged if there is nothing to redact.
+    /// </summary>
     string Sanitise(string text, IReadOnlyDictionary<string, string> metadata);
 }
