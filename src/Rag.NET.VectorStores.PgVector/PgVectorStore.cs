@@ -4,6 +4,7 @@ using Pgvector.Npgsql;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.PgVector;
 
@@ -150,6 +151,11 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         IReadOnlyList<EmbeddedChunk> chunks,
         CancellationToken cancellationToken = default)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.upsert");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", "rag_chunks");
+        activity?.SetTag("vectorstore.batch.size", chunks.Count);
+
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
         {
@@ -225,6 +231,10 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         SearchOptions options,
         CancellationToken cancellationToken = default)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", "rag_chunks");
+
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
         {
@@ -235,7 +245,9 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
             await using (cmd.ConfigureAwait(false))
             {
                 AddSearchParameters(cmd, queryEmbedding, options, hasFilter);
-                return await ReadSearchResultsAsync(cmd, cancellationToken).ConfigureAwait(false);
+                var results = await ReadSearchResultsAsync(cmd, cancellationToken).ConfigureAwait(false);
+                activity?.SetTag("vectorstore.result.count", results.Count);
+                return results;
             }
         }
     }
@@ -408,6 +420,10 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         string documentId,
         CancellationToken cancellationToken = default)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", "rag_chunks");
+
         var conn = await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using (conn.ConfigureAwait(false))
         {
