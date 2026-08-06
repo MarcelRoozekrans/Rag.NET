@@ -12,7 +12,7 @@ public static class RagBuilderExtensions
     /// Registers <see cref="HierarchicalMergerChunkingStrategy"/> which merges document sections
     /// into heading-subtree chunks. Each chunk covers one heading and all body text under it
     /// down to <paramref name="options"/>.<see cref="HierarchicalMergerOptions.MaxDepth"/>.
-    /// Uses <see cref="DocumentSection.HeadingLevel"/> when available; falls back to
+    /// Uses <see cref="Rag.NET.Models.DocumentSection.HeadingLevel"/> when available; falls back to
     /// <see cref="HierarchicalMergerOptions.HeadingPatterns"/> for formats without heading metadata.
     /// </summary>
     public static TBuilder UseHierarchicalMerging<TBuilder>(this TBuilder builder, HierarchicalMergerOptions? options = null)
@@ -30,6 +30,7 @@ public static class RagBuilderExtensions
     /// per-language separator hierarchies. Language is auto-detected from the file extension in
     /// <c>DocumentSection.DocumentId.Value</c> when <see cref="CodeChunkingOptions.Language"/> is null.
     /// </summary>
+    /// <param name="builder">The builder being configured.</param>
     /// <param name="options">
     /// Optional options. Set <see cref="CodeChunkingOptions.Language"/> to override extension detection.
     /// Throws <see cref="ArgumentException"/> immediately for unrecognised language values.

@@ -281,6 +281,12 @@ internal static class PdfTableExtractor
     /// the ratio computed here via <paramref name="averageWordsPerCell"/>, which is carried
     /// on the <see cref="DetectedTable"/>; that guard has no row data of its own.
     /// </summary>
+    /// <param name="rows">All word rows on the page, indexed by <paramref name="start"/> and
+    /// <paramref name="end"/>; only the window between them is inspected.</param>
+    /// <param name="start">Index of the window's first row, inclusive.</param>
+    /// <param name="end">Index of the window's last row, inclusive.</param>
+    /// <param name="cells">Cell text already extracted for the window, one entry per row.
+    /// Empty cells are excluded from the ratio, which is why an all-empty window yields 0.</param>
     /// <param name="averageWordsPerCell">
     /// Words per non-empty cell over the window, or 0 when the window has no non-empty cells —
     /// in which case the method returns false and no table is built, so a 0 ratio never

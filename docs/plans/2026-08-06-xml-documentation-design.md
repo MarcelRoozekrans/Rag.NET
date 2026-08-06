@@ -22,7 +22,46 @@ That is permanent once the package IDs are on nuget.org, which is why Phase 4.1 
 hard wall at **6.3**. It was scoped to 4.1 on 2026-07-28 and skipped; 4.1's close says so rather
 than absorbing it.
 
-## 1. The measurement — one project, not sixty-six
+## 1. CORRECTION (2026-08-06): §1a's measurement was wrong
+
+**§1a below claimed the work was confined to one project. That is false.**
+
+The probe behind it ran an **incremental** build, so only recently-touched projects recompiled and
+emitted CS1591 at all. Projects already up to date stayed silent, and that silence was read as
+"zero undocumented members". The claim then propagated into the implementation plan and into PR
+#51's description.
+
+**Measured with `dotnet build --no-incremental`:**
+
+| Project | Undocumented public members |
+|---|---|
+| `Rag.NET` (core) | **243** |
+| `Rag.NET.Security` | 66 |
+| `Rag.NET.VectorStores.Weaviate` | 61 |
+| `Rag.NET.DataProviders.Notion` | 50 |
+| `Rag.NET.Mediator` | 43 |
+| `Rag.NET.Api` | 42 |
+| …50 further projects | … |
+| **Total** | **1104 across 56 projects** |
+
+**The roadmap was right and this design "corrected" it wrongly.** It described the work as
+repo-wide; it is.
+
+What PR #51 genuinely achieved, confirmed by the same clean measurement:
+`Rag.NET.RepoConventions.Tests` is now **0** (excluded), and `Rag.NET.Abstractions` fell from 196 to
+**30** — the generated `ZeroAlloc` members, which are the upstream issue
+([ZeroAlloc.ValueObjects#55](https://github.com/ZeroAlloc-Net/ZeroAlloc.ValueObjects/issues/55)).
+
+**The lesson, recorded because this repository keeps re-learning it: an incremental build is not a
+measurement.** The same shape produced the stale-`.nupkg` `PackageValidation` failure earlier in
+this milestone. Force a clean build before quoting a number.
+
+**Consequence for scope:** everything else in this design still holds — the standard, the
+anti-vacuity guard, the packaging guard, the upstream gate — but the remaining work is roughly
+**1074 members across 55 projects**, not a tail. That needs re-planning as its own effort rather
+than being finished in this phase.
+
+## 1a. The original measurement — WRONG, kept for the record
 
 The roadmap describes this as repo-wide ("enable generation, clear the cref backlog"). Measured by
 enabling generation with CS1591 demoted to a warning and counting distinct diagnostics:
