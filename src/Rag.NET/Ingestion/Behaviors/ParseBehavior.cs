@@ -82,6 +82,7 @@ public sealed class ParseBehavior : IIngestionBehavior
     private async Task ChunkPerSectionAsync(IngestionContext ctx, IDocumentParser parser, CancellationToken ct)
     {
         var headingBreadcrumbs = new string?[6];
+        var documentChunkIndex = 0;
 
         await foreach (var section in parser.ParseAsync(ctx.Stream, ctx.Metadata, ct).ConfigureAwait(false))
         {
@@ -93,7 +94,15 @@ public sealed class ParseBehavior : IIngestionBehavior
                     foreach (var kv in headingMetadata)
                         chunk.Metadata.TryAdd(kv.Key, kv.Value);
 
-                ctx.Chunks.Add(chunk);
+                // Strategies number from zero per ChunkAsync call — i.e. per section — but
+                // ChunkIndex must be unique across the document: DeterministicChunkId, every
+                // dedup path and parent-chunk lookup key on (DocumentId, ChunkIndex). Copy only
+                // when the index actually moves, so the common single-section document keeps its
+                // chunk instances rather than allocating a copy per chunk to change nothing.
+                ctx.Chunks.Add(chunk.ChunkIndex == documentChunkIndex
+                    ? chunk
+                    : chunk with { ChunkIndex = documentChunkIndex });
+                documentChunkIndex++;
             }
 
             ctx.Sections.Add(section);

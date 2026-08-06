@@ -1825,6 +1825,101 @@ design §8): no change to `created_at`'s reservation; no `ModifiedAt` field name
 default already used that vocabulary); no normalisation of Slack's/Teams' day-granularity `date`
 tags; no removal of `lastmod`/`published_at`/`received_at` as connector-specific tags.
 
+### Phase 4.11: Chunk Index Collision Fix [status: complete]
+**Goal:** Make `ChunkIndex` unique within a document, as its own documentation already requires,
+so a chunk stops overwriting another at write time and two unrelated chunks stop merging into one
+at read time. (Not a features.md row — created 2026-08-06 out of a documentation pass, numbered
+after 4.10 because it was created after, executed next in the milestone's phase list.)
+**Plan:** `docs/plans/2026-08-06-chunk-index-collision-design.md` +
+`2026-08-06-chunk-index-collision-implementation.md`
+**Completed:** 2026-08-06, branch `fix/chunk-index-collision`.
+**How it was found — not by a test.** Found while **documenting `IChunkingStrategy.ChunkAsync`**
+during the XML documentation pass: a draft summary claimed callers renumber `ChunkIndex` across
+sections, and reading `ParseBehavior.ChunkPerSectionAsync` to verify that claim showed they do
+not. **The contract was already written down** — `TextChunk.ChunkIndex`'s own documentation says
+it "must be unique within a document" — and nothing enforced it.
+**The defect:** `ParseBehavior.ChunkPerSectionAsync` (`ParseBehavior.cs:82-101`) called
+`ChunkingStrategy.ChunkAsync(section, …)` once per section. Every built-in strategy — the default
+`RecursiveChunkingStrategy` (`:57`) and `FixedSizeChunkingStrategy` (`:48`) — assigns
+`ChunkIndex = chunkIndex++` from a counter local to that single call, so indices restarted at 0
+for every section and `ParseBehavior` appended them unchanged. Nothing else in `src/` assigns
+`ChunkIndex` (verified by grep). Because `RecursiveChunkingStrategy` implements `IChunkingStrategy`
+and not `IDocumentChunkingStrategy`, this is the **default** path — any multi-section document,
+any Markdown or PDF with headings, was affected.
+**Blast radius — seven identity-key sites keyed on `(DocumentId, ChunkIndex)`:**
+`DeterministicChunkId.Derive` (Qdrant sparse store `:147`, Weaviate `:223` — **one chunk silently
+overwrote another at write time**), `MultiQueryBehavior.cs:44`'s `GroupBy`, `RrfMerger.cs:57`,
+`DeepResearchRetriever.cs:79`, and `FederatedVectorStore.cs:181` (all four — **unrelated chunks
+merged at read time**), `ParentChunkKeyHelper` (**wrong parent** returned for a child chunk), and
+`RagPipelineReindexExtensions.cs:192` (its own comment already documents that it replaces by that
+pair — a promise the collision broke silently).
+**Task 1 (`32983b4`):** `ParseBehaviorChunkIndexTests.cs` — drove `ParseBehavior` end-to-end with
+the default `RecursiveChunkingStrategy` and two stub sections, each engineered to force at least
+two chunks (`MaxChunkSize=50` against text far longer, word-boundary-packed with no long
+unbroken run — confirmed independently by a companion sanity test,
+`ChunkCountPerSection_IsAtLeastTwo`, so the collision assertion could not pass vacuously off a
+single chunk per section). **Actual failure, confirmed before any fix:** `Assert.Equal()
+Failure: Values differ — Expected: 10, Actual: 5` — 10 total chunks, only 5 distinct `ChunkIndex`
+values, because both sections independently produced 5 chunks numbered 0–4.
+**Task 2 — verified, not assumed:** `ChunkDocumentAsync` (`ParseBehavior.cs:71-80`) passes **all**
+sections to `docStrategy.ChunkDocumentAsync(...)` in **one** call, so a strategy *can* number
+globally — read all twelve `IDocumentChunkingStrategy` implementers in `src/` rather than trusting
+that: `SemanticChunkingStrategy`, `HierarchicalMergerChunkingStrategy`, `LateChunkingStrategy`,
+`PropositionChunkingStrategy`, the six `Rag.NET.Chunking.Templates` strategies (`AcademicPaper`,
+`Book`, `Email`, `Legal`, `QAPairs`, `Resume` — one more than the plan's "five", since `QAPairs`
+and `Resume` implement only `IDocumentChunkingStrategy`, not both interfaces, but both were still
+in scope), and `Image`/`VideoChunkingStrategy` in `Rag.NET.Parsers.Vision`. **Verdict: none
+restarts its counter per section** — every implementer keeps a single running index for the whole
+`ChunkDocumentAsync` call, several by explicit delegation to `HierarchicalMergerChunkingStrategy`'s
+own document-wide counter. Pinned by `ParseBehaviorDocumentChunkingIndexTests.cs` (`1f8bd1e`), a
+real `HierarchicalMergerChunkingStrategy` over a three-heading document through `ParseBehavior`
+end-to-end, asserting distinct indices. No implementer changed — this is a pinning test, not a
+fix, and the branch needed none.
+**Task 3, the fix (`64e48c1`):** a running `documentChunkIndex` counter in
+`ChunkPerSectionAsync`, renumbering as each chunk is appended:
+`ctx.Chunks.Add(chunk with { ChunkIndex = documentChunkIndex++ })`. `TextChunk` is a `sealed
+record`, so `with` copies cheaply; nothing in `src/` sorts by `ChunkIndex` (verified), so
+renumbering has no ordering consequences. **Deliberately does not touch any chunking strategy**:
+a strategy sees one section and cannot know its offset within the document, and
+`IChunkingStrategy` is a public extension point implemented by user-written strategies too — the
+fix belongs where sections are joined, not in any one of the many places that produce them.
+**Two pre-existing tests failed as a direct, reported-not-silently-fixed side effect** —
+`ParseBehaviorTests.SingleSectionSingleChunk_PopulatesChunksAndSections` and
+`ParseBehaviorRefinementTests.WhenRefinementStrategyIsNull_ChunksPassThroughUnchanged` — both
+asserted `Assert.Same(rawChunk, ctx.Chunks[0])`: reference identity with the chunk instance the
+strategy returned. That identity is never preserved now, because every chunk is copied via `with`
+even when its `ChunkIndex` does not change. This is a test depending on an incidental
+implementation detail (instance identity, not value), not a test encoding the per-section-restart
+defect — left unmodified per the plan's instruction to report rather than adjust.
+**Task 4, the consumers (`cf50dff`):** write-time — `DeterministicChunkIdTests.cs` pins that two
+chunks from different sections of the same document (distinct `ChunkIndex`) derive **distinct**
+GUIDs via `DeterministicChunkId.Derive`, the id shared by Qdrant's sparse store and Weaviate.
+Read-time — `RrfMergerSectionCollisionTests.cs` pins that `RrfMerger.MergeMany`, which dedups on
+`(DocumentId, ChunkIndex)`, keeps two genuinely different chunks from different sections as two
+separate results rather than collapsing them via `chunkLookup.TryAdd` — the exact mechanism that
+silently discarded one chunk's content at read time before the fix. Both internal types;
+`Rag.NET.Tests` already has `InternalsVisibleTo` access to `Rag.NET.Abstractions`, so no
+accessibility changes were needed.
+**Why no existing test caught this:** no test anywhere covered multi-section chunking producing
+more than one chunk per section — the exact condition needed to observe a collision. Read
+`PipelineIngestorChunkingValidationTests.cs`, which already exists in the same area, to check
+whether it validates chunking itself: **it does not — it validates `ChunkingOptions`
+(`MaxChunkSize`/`Overlap`) rejection via `PipelineIngestor.IngestAsync`'s validation step (invalid
+size, invalid overlap, and a valid-options success case). It never inspects the chunks produced
+or their indices.** Its name describes the options being validated, not chunk output being
+checked — nothing in the repository did the latter until this phase.
+**Existing data — stated plainly:** `DeterministicChunkId` output changes for every chunk whose
+`ChunkIndex` was renumbered, so previously ingested multi-section documents need re-ingestion to
+land at their new deterministic ids. **This is not data loss caused by the fix — the data was
+already corrupt**: under the old numbering, colliding `(DocumentId, ChunkIndex)` pairs meant a
+document's later-section chunks had already been silently overwriting or merging with its
+earlier-section chunks at write and read time. The fix recovers from data loss already in
+progress; it does not create it.
+**Counts:** `Rag.NET.Tests` 1172 → **1179** (7 new tests: 2 Task 1, 1 Task 2, 2 Task 4 write-time,
+2 Task 4 read-time). **1177 passed, 2 failed** — the two identity-assertion tests named above,
+left unmodified and reported rather than adjusted. `RepoConventions` unchanged at 37+1 skip (not
+touched by this phase). Full solution build: 0 warnings, 0 errors.
+
 ### Phase 4.2: Options Alignment & Validation [status: pending]
 **Goal:** Align pipeline options on IOptions and validate them with ZeroAlloc.Validation.
 **Backlog items:** IOptions Alignment + ZeroAlloc Validation for pipeline options
