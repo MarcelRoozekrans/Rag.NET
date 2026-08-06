@@ -58,6 +58,48 @@ public class AskTelemetryTests
         Assert.NotNull(span);
         Assert.Equal("0", span.GetTagItem("source.count")?.ToString());
         Assert.Equal(SynthesisStrategy.Default.ToString(), span.GetTagItem("synthesis.strategy"));
+        // gen_ai.operation.name is always set. gen_ai.request.stream is only set by the
+        // streaming overload — see AskStreamingAsync_EmitsAskSpan. gen_ai.provider.name and
+        // gen_ai.request.model are left unset here: the bare NSubstitute IChatClient exposes no
+        // ChatClientMetadata, and ChatAnswerEngine must not fabricate values it cannot obtain.
+        Assert.Equal("chat", span.GetTagItem("gen_ai.operation.name"));
+        Assert.Null(span.GetTagItem("gen_ai.request.stream"));
+        Assert.Null(span.GetTagItem("gen_ai.provider.name"));
+        Assert.Null(span.GetTagItem("gen_ai.request.model"));
+    }
+
+    [Fact]
+    public async Task AskAsync_WithChatClientMetadata_TagsProviderAndModel()
+    {
+        var (activities, listener) = CreateListener();
+        using var _ = listener;
+
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(
+                Arg.Any<IList<ChatMessage>>(),
+                Arg.Any<ChatOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "Paris.")));
+        // ChatClientMetadata is what a real provider (e.g. the OpenAI or Ollama client)
+        // exposes through GetService — this is the value ChatAnswerEngine reads for
+        // gen_ai.provider.name / gen_ai.request.model when it is actually available.
+        chatClient.GetService(typeof(ChatClientMetadata), null)
+            .Returns(new ChatClientMetadata("openai", defaultModelId: "gpt-4o"));
+
+        var engine = new ChatAnswerEngine(chatClient);
+        var sources = Array.Empty<SearchResult>();
+
+        using var parent = new Activity("test-parent").Start();
+
+        await engine.AskAsync("Where is the Eiffel Tower?", sources,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var span = activities
+            .Where(a => a.TraceId == parent.TraceId)
+            .FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.ask", StringComparison.Ordinal));
+        Assert.NotNull(span);
+        Assert.Equal("openai", span.GetTagItem("gen_ai.provider.name"));
+        Assert.Equal("gpt-4o", span.GetTagItem("gen_ai.request.model"));
     }
 
     [Fact]
@@ -92,6 +134,10 @@ public class AskTelemetryTests
         Assert.NotNull(span);
         Assert.Equal("0", span.GetTagItem("source.count")?.ToString());
         Assert.Equal(SynthesisStrategy.Default.ToString(), span.GetTagItem("synthesis.strategy"));
+        Assert.Equal("chat", span.GetTagItem("gen_ai.operation.name"));
+        // Only the streaming overload sets gen_ai.request.stream — see the non-streaming
+        // counterpart in AskAsync_EmitsAskSpan, which asserts it stays unset there.
+        Assert.Equal(true, span.GetTagItem("gen_ai.request.stream"));
     }
 
     private static async IAsyncEnumerable<ChatResponseUpdate> ToAsyncEnumerable(

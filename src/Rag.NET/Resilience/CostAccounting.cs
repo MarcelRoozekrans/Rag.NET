@@ -95,11 +95,32 @@ internal static class CostAccounting
         // Telemetry first: the counters must not silently drop usage because the ledger is down.
         // "surface" is the unified chat|embedding tag name shared with ragnet.ratelimit.wait.duration.
         var surfaceTag = new KeyValuePair<string, object?>("surface", entry.Kind == CostKind.Chat ? "chat" : "embedding");
+        // gen_ai.operation.name: the GenAI semconv v1.41.0 well-known operation value for this
+        // entry's kind (see ChatAnswerEngine.TagGenAi for the version pin). gen_ai.provider.name
+        // and gen_ai.request.model are genuine gen_ai.* attributes too, but this helper only ever
+        // receives a CostEntry — the IChatClient/IEmbeddingGenerator that produced it never
+        // reaches here — so they are not available at this call site and are deliberately left
+        // unset rather than guessed.
+        var genAiOperationTag = new KeyValuePair<string, object?>(
+            "gen_ai.operation.name", entry.Kind == CostKind.Chat ? "chat" : "embeddings");
+
         RagTelemetry.LlmTokens.Add(entry.InputTokens,
-            new TagList { surfaceTag, new KeyValuePair<string, object?>("direction", "in") });
+            new TagList
+            {
+                surfaceTag,
+                genAiOperationTag,
+                new KeyValuePair<string, object?>("direction", "in"),
+                new KeyValuePair<string, object?>("gen_ai.token.type", "input"),
+            });
         RagTelemetry.LlmTokens.Add(entry.OutputTokens,
-            new TagList { surfaceTag, new KeyValuePair<string, object?>("direction", "out") });
-        RagTelemetry.LlmCost.Add((double)entry.Cost, new TagList { surfaceTag });
+            new TagList
+            {
+                surfaceTag,
+                genAiOperationTag,
+                new KeyValuePair<string, object?>("direction", "out"),
+                new KeyValuePair<string, object?>("gen_ai.token.type", "output"),
+            });
+        RagTelemetry.LlmCost.Add((double)entry.Cost, new TagList { surfaceTag, genAiOperationTag });
 
         try
         {
