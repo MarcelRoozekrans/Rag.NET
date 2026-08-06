@@ -67,6 +67,7 @@
     <Project Path="src/Rag.NET.Diagnostics.AspNetCore/Rag.NET.Diagnostics.AspNetCore.csproj" />
     <Project Path="src/Rag.NET.WebSearch.Tavily/Rag.NET.WebSearch.Tavily.csproj" />
     <Project Path="src/Rag.NET.Benchmarks.Quality/Rag.NET.Benchmarks.Quality.csproj" />
+    <Project Path="src/Rag.NET.Telemetry/Rag.NET.Telemetry.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Security.IntegrationTests/Rag.NET.Security.IntegrationTests.csproj" />
@@ -136,6 +137,7 @@
     <Project Path="tests/Rag.NET.WebSearch.Tavily.Tests/Rag.NET.WebSearch.Tavily.Tests.csproj" />
     <Project Path="tests/Rag.NET.Benchmarks.Quality.Tests/Rag.NET.Benchmarks.Quality.Tests.csproj" />
     <Project Path="tests/Rag.NET.Benchmarks.Quality.IntegrationTests/Rag.NET.Benchmarks.Quality.IntegrationTests.csproj" />
+    <Project Path="tests/Rag.NET.Telemetry.Tests/Rag.NET.Telemetry.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />

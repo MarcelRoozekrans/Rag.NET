@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Telemetry</RootNamespace>
+    <PackageId>Rag.NET.Telemetry</PackageId>
+    <Description>OpenTelemetry SDK wiring for Rag.NET: AddRagNetInstrumentation() registers the shared "Rag.NET" ActivitySource, both ragnet meters — including "Rag.NET.Evaluation", the one a hand-wired AddMeter("Rag.NET") silently misses — and the distro resource attributes, so core and its satellites stay free of the OpenTelemetry SDK dependency themselves</Description>
+    <!-- unit: AddRagNetInstrumentation is exercised in-process against a real OpenTelemetry
+         TracerProvider/MeterProvider with an in-memory exporter — no backend, container or
+         wall clock involved; see Rag.NET.Telemetry.Tests. -->
+    <VerifiedBy>unit</VerifiedBy>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Telemetry.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Deliberately no ProjectReference to Rag.NET or Rag.NET.Evaluation. Both meter/source
+         names this package registers are internal to their own assemblies (RagTelemetrySource.Name,
+         ShadowTelemetry.MeterName) and a ProjectReference here would only exist to read two string
+         constants — the coupling the package decomposition exists to avoid. The names are
+         well-known and stable ("Rag.NET" is also documented in docs/reference/opentelemetry.md's
+         quick-setup snippet), so this package states them as its own constants instead. -->
+    <PackageReference Include="OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+  </ItemGroup>
+
+</Project>

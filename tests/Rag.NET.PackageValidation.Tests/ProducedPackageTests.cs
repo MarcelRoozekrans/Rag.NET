@@ -28,22 +28,24 @@ namespace Rag.NET.PackageValidation.Tests;
 public sealed class ProducedPackageTests
 {
     /// <summary>
-    /// The shippable set: the 66 packable projects under <c>src/</c> (67 minus
+    /// The shippable set: the 67 packable projects under <c>src/</c> (68 minus
     /// <c>Rag.NET.Benchmarks.Quality</c>, which declares <c>IsPackable=false</c>). The
     /// decomposition arithmetic from the previous baseline of 70: plus three extracted satellites
     /// (<c>Rag.NET.Storage.Sqlite</c>, <c>Rag.NET.Resilience</c>, <c>Rag.NET.Caching</c>), minus
     /// seven packages the merges retired — Word/Excel/PowerPoint parsers became
     /// <c>Rag.NET.Parsers.Office</c> (3 gone, 1 new), the four Graph connectors became
     /// <c>Rag.NET.DataProviders.Microsoft365</c> (4 gone, 1 new), and Chunking.TokenAware plus
-    /// Chunking.Semantic folded into the existing <c>Rag.NET.Chunking</c> (2 gone, 0 new). So
-    /// 70 + 3 − 7 = 66, measured by an actual <c>dotnet pack</c> of the solution. Exact on both
-    /// sides deliberately — fewer means a project silently dropped out of the solution, which is
-    /// precisely how <c>Rag.NET.WebSearch.Tavily.Tests</c> went unbuilt and untested for an
-    /// unknown period; more means something unshippable is packing, which is how the sample and
-    /// benchmark projects inflated the count before Task 1b. Adding or removing a package is a
-    /// deliberate act; update this constant in the same commit.
+    /// Chunking.Semantic folded into the existing <c>Rag.NET.Chunking</c> (2 gone, 0 new) — so
+    /// 70 + 3 − 7 = 66 as of Phase 4.1 — plus one more satellite Phase 4.4's Task 9 extracted,
+    /// <c>Rag.NET.Telemetry</c> (the OpenTelemetry SDK wiring core stays free of). So
+    /// 70 + 3 − 7 + 1 = 67, measured by an actual <c>dotnet pack</c> of the solution. Exact on
+    /// both sides deliberately — fewer means a project silently dropped out of the solution,
+    /// which is precisely how <c>Rag.NET.WebSearch.Tavily.Tests</c> went unbuilt and untested for
+    /// an unknown period; more means something unshippable is packing, which is how the sample
+    /// and benchmark projects inflated the count before Task 1b. Adding or removing a package is
+    /// a deliberate act; update this constant in the same commit.
     /// </summary>
-    private const int ExpectedPackageCount = 66;
+    private const int ExpectedPackageCount = 67;
 
     /// <summary>
     /// What NuGet ships when a project declares no <c>Description</c>. Not a warning, not an
