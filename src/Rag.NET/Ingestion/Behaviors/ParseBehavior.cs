@@ -94,7 +94,15 @@ public sealed class ParseBehavior : IIngestionBehavior
                     foreach (var kv in headingMetadata)
                         chunk.Metadata.TryAdd(kv.Key, kv.Value);
 
-                ctx.Chunks.Add(chunk with { ChunkIndex = documentChunkIndex++ });
+                // Strategies number from zero per ChunkAsync call — i.e. per section — but
+                // ChunkIndex must be unique across the document: DeterministicChunkId, every
+                // dedup path and parent-chunk lookup key on (DocumentId, ChunkIndex). Copy only
+                // when the index actually moves, so the common single-section document keeps its
+                // chunk instances rather than allocating a copy per chunk to change nothing.
+                ctx.Chunks.Add(chunk.ChunkIndex == documentChunkIndex
+                    ? chunk
+                    : chunk with { ChunkIndex = documentChunkIndex });
+                documentChunkIndex++;
             }
 
             ctx.Sections.Add(section);
