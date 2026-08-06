@@ -34,14 +34,17 @@ four defects were live, so every criterion below can be false and something chec
 Milestone 6's DoD. The ROADMAP's Milestone 4 section is the authoritative copy; the two must
 agree.
 
-- [ ] All planned phases complete (7 of 12 as of 2026-08-06: 4.0, 4.1, 4.7, 4.8, 4.9, 4.10, 4.11 —
-      the phase list grew Phase 4.9, created and completed 2026-08-04 to fix the
+- [ ] All planned phases complete (9 of 12 as of 2026-08-06: 4.0, 4.1, 4.3, 4.4, 4.7, 4.8, 4.9,
+      4.10, 4.11 — the phase list grew Phase 4.9, created and completed 2026-08-04 to fix the
       `BuildMetadata`/`CreatedAt` defect and correct the wrong "slot, not a phase" estimate that
       had routed it to 4.2, Phase 4.10, created the same day and completed 2026-08-05 — the
       connector-timestamp-threading work 4.9 priced but did not do — and Phase 4.11, created and
       completed 2026-08-06 to fix a `ChunkIndex` uniqueness defect found while documenting
-      `IChunkingStrategy.ChunkAsync`, not by a test. Phases 4.2–4.6 remain pending, so this box
-      stays open)
+      `IChunkingStrategy.ChunkAsync`, not by a test. Phase 4.3 (scoped/structured logging, PR #48,
+      2026-08-05) and Phase 4.4 (OpenTelemetry tracing and metrics, 2026-08-06) closed together off
+      the same design and implementation plan — 4.3's own ROADMAP/MILESTONE entries were not
+      written when its PR merged, corrected here rather than left silently stale. Phases 4.2, 4.5
+      and 4.6 remain pending, so this box stays open)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore (true on every phase close
       so far, most recently 2026-08-04; the box is ticked at the milestone's close, from a clean
       restore on that day's tree)
@@ -241,9 +244,65 @@ agree.
    later-section chunks were overwriting or merging with earlier ones before this fix. Counts:
    `Rag.NET.Tests` 1172 → **1179** (7 new tests), **1177 passed, 2 failed** (the two identity tests
    above, left unmodified); `RepoConventions` unchanged 37+1. Full entry in the ROADMAP.
-8. Phase 4.2 — Options Alignment & Validation [pending]
-9. Phase 4.3 — Structured Logging Enrichment [pending]
-10. Phase 4.4 — OpenTelemetry Tracing & Metrics [pending]
+8. Phase 4.3 — Structured Logging Enrichment [complete — 2026-08-05, PR #48] — measurement moved
+   the phase before any code did: structured logging was already ~92% done (140 `[LoggerMessage]`
+   source-generated declarations, 12 structured templates, **zero** string interpolation), so
+   there was no cleanup pass to run. Scoped logging did not exist at all (`BeginScope` appeared
+   zero times). `PipelineIngestor.IngestAsync`, `PipelineRetriever.RetrieveAsync`, and
+   `RagPipeline.AskAsync`/`AskStreamingAsync` each gained one scope carrying `document_id` or
+   `query_hash` (the SHA-256 hash already used for the `query.hash` span tag, never the raw query
+   text), proven with `FakeLogger<T>`. Every pre-existing `[LoggerMessage]` declaration across 13
+   package families gained an explicit snake_case `EventName` (`ingest_failed`, not the
+   PascalCase method-name default). **The trap this avoided**: `EventId.Id` is a deterministic
+   hash of `EventId.Name`, so adding `EventName` without also pinning `EventId` would have
+   silently renumbered every one of the 139 pre-existing event ids — anyone filtering logs on a
+   numeric id would have gone dark with no error. Every declaration got an explicit
+   `EventId = <the value the generator already produced>` alongside its new name, verified by
+   rebuilding with `EmitCompilerGeneratedFiles` and diffing the generated `EventId(...)` calls
+   before and after each commit — zero numeric changes. `Rag.NET.Tests` 1169 → 1172 (three scope
+   tests). Full entry in the ROADMAP.
+9. Phase 4.4 — OpenTelemetry Tracing & Metrics [complete — 2026-08-06] — planned jointly with 4.3
+   off the same design and implementation plan (`docs/plans/2026-08-05-observability-*`). The
+   2026-04-04 deferral of package-specific spans ("until evidence demands it") was overruled by
+   the owner: that wording was written when the library was a fraction of its current size, and a
+   user seeing slow retrieval could get only one generic `ragnet.retrieve` span with a
+   `vector_store` tag holding a type name — unable to tell whether the store, the reranker, or
+   graph traversal was the cost. `ZeroAlloc.Telemetry` (an in-house source-generated
+   instrumentation library) was evaluated and rejected **with evidence**: it cannot set span tags
+   at all, and this phase exists for the tags. Its probe still paid for itself — it validated
+   cross-assembly `ActivitySource` name-sharing before the real mechanism was built, and measured
+   `StartActivity` as zero-allocating when unobserved (bare 72 B, decorator 144 B, generated proxy
+   144 B), confirming spans placed directly in existing methods are cheaper than any proxy. The
+   shared `"Rag.NET"` `ActivitySource` moved to `src/Shared/RagTelemetrySource.cs`, linked (not
+   referenced) into core and all nine newly-instrumented satellites: the six vector stores
+   (`ragnet.vectorstore.{upsert,search,delete}`), both rerankers (`ragnet.rerank`), Graph,
+   GraphRag, Raptor, and Security. `gen_ai.*` landed on the LLM surface pinned to **GenAI semconv
+   v1.41.0** — the last tag before the spec moved to an as-yet-unreleased repository, every
+   attribute `Development`-stability, `gen_ai.provider.name` used in place of the deprecated
+   `gen_ai.system`. `top_k`/`vector_store` were renamed to `top.k`/`vector.store`, the two
+   snake_case outliers. `Rag.NET.Telemetry` (`AddRagNetInstrumentation()`) registers the shared
+   source, **both** meters (`"Rag.NET"` and the previously-undocumented `"Rag.NET.Evaluation"`
+   `ShadowTelemetry` meter a hand-wired `AddMeter("Rag.NET")` would silently miss), and the
+   `telemetry.distro.*` resource attributes — package count **66 → 67**. Three packages stayed
+   deliberately uninstrumented: `Caching` (registration only; the cache logic lives in core),
+   `RaptorRetrievalBehavior` (a no-op in its default mode), and `IQuerySanitiser` (runs before
+   `ragnet.query` opens, so it has no core span to nest under) — a span restating its parent's
+   cost is worse than none. `TestProjectTierTests` caught a real defect mid-phase: the new
+   env-gated ONNX reranker telemetry test read secrets without declaring
+   `<RequiresSecrets>`, which would have made it skip silently forever in CI nightly runs (fixed,
+   `90afc456`). **Closing pass (this task)**: `docs/reference/opentelemetry.md`'s metrics table had
+   already drifted once — it listed 8 of `RagTelemetry`'s 11 instruments, predating
+   `ragnet.ratelimit.wait.duration`, `ragnet.llm.tokens`, and `ragnet.llm.cost` (`features.md` had
+   the correct 11 all along). Fixed, documented the satellite spans/tags, both meters, resource
+   attributes, and `AddRagNetInstrumentation()` as the recommended setup; added
+   `RagTelemetryMetricsDocumentationTests` to `Rag.NET.RepoConventions.Tests` asserting the doc
+   table against `RagTelemetry.cs` directly, proven red by deleting the `ragnet.llm.cost` row and
+   reverted. **No sample Grafana dashboard shipped** — 4.4's own roadmap description promised one,
+   but this environment has no Docker, Grafana, Prometheus, or `promtool` available to validate a
+   dashboard JSON before committing it, and an unvalidated dashboard that looks authoritative is
+   worse than none; recorded as debt rather than shipped untested (see the ROADMAP entry). Full
+   entry in the ROADMAP.
+10. Phase 4.2 — Options Alignment & Validation [pending]
 11. Phase 4.5 — Sample Applications [pending]
 12. Phase 4.6 — Rag.NET CLI Tool [pending]
 
