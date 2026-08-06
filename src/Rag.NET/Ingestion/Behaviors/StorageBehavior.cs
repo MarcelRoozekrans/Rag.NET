@@ -33,7 +33,7 @@ public sealed class StorageBehavior : IIngestionBehavior
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.store");
         activity?.SetTag("document.id", ctx.Metadata.DocumentId.Value);
         activity?.SetTag("chunk.count", ctx.EmbeddedChunks.Count);
-        activity?.SetTag("vector_store", VectorStore.GetType().Name);
+        activity?.SetTag("vector.store", VectorStore.GetType().Name);
 
         await VectorStore.StoreAsync(ctx.EmbeddedChunks, ct).ConfigureAwait(false);
         await StoreSparseVectorsAsync(ctx, ct).ConfigureAwait(false);

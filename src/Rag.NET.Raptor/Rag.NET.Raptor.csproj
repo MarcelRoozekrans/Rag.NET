@@ -18,6 +18,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The "Rag.NET"-named ActivitySource core also links; see src/Shared/RagTelemetrySource.cs.
+         Linked rather than reached through the ProjectReference to core below: every
+         instrumented package gets its own instance of the same name, uniformly, regardless of
+         whether it also happens to depend on core for other reasons. -->
+    <Compile Include="..\Shared\RagTelemetrySource.cs" Link="Telemetry\RagTelemetrySource.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
     <PackageReference Include="MathNet.Numerics" />
   </ItemGroup>

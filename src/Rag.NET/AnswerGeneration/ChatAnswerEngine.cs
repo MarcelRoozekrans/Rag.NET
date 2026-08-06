@@ -53,6 +53,7 @@ public sealed class ChatAnswerEngine(
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.ask");
         activity?.SetTag("source.count", sources.Count);
         activity?.SetTag("synthesis.strategy", opts.SynthesisStrategy.ToString());
+        TagGenAi(activity, streaming: false);
 
         sources = await MaybeCompressAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
 
@@ -62,6 +63,7 @@ public sealed class ChatAnswerEngine(
         try
         {
             var response = await chatClient.GetResponseAsync(messages, chatOptions, cancellationToken).ConfigureAwait(false);
+            TagUsage(activity, response.Usage);
             return new RagResponse
             {
                 Answer = response.Text ?? string.Empty,
@@ -91,6 +93,7 @@ public sealed class ChatAnswerEngine(
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.ask");
         activity?.SetTag("source.count", sources.Count);
         activity?.SetTag("synthesis.strategy", opts.SynthesisStrategy.ToString());
+        TagGenAi(activity, streaming: true);
 
         sources = await MaybeCompressAsync(sources, query, opts, cancellationToken).ConfigureAwait(false);
 
@@ -215,5 +218,68 @@ public sealed class ChatAnswerEngine(
         promptObserver?.OnPromptAssembled(messages);
 
         return (messages, chatOptions);
+    }
+
+    /// <summary>
+    /// Tags <paramref name="activity"/> with the OTel GenAI semantic-convention attributes that
+    /// describe a chat completion call.
+    /// </summary>
+    /// <remarks>
+    /// Pinned against GenAI semconv <b>v1.41.0</b> — the last version of
+    /// <c>open-telemetry/semantic-conventions</c> tagged before the <c>gen_ai.*</c> definitions
+    /// moved to the dedicated <c>open-telemetry/semantic-conventions-genai</c> repository, which
+    /// as of this writing has cut no release of its own to pin against instead. See
+    /// <c>https://github.com/open-telemetry/semantic-conventions/blob/v1.41.0/docs/gen-ai/gen-ai-spans.md</c>.
+    /// Every attribute here is <c>Development</c>-stability in that revision — expect the spec to
+    /// rename or reshape them; re-check this pin before assuming a name below still matches
+    /// upstream. <c>gen_ai.provider.name</c> is used rather than the older <c>gen_ai.system</c>,
+    /// which v1.41.0 already marks deprecated in favor of it.
+    /// <para>
+    /// Provider name and request model come from <see cref="ChatClientMetadata"/>, which
+    /// <c>chatClient.GetService&lt;ChatClientMetadata&gt;()</c> may or may not expose — a bare
+    /// test double typically returns <see langword="null"/>, in which case both are left unset
+    /// rather than guessed.
+    /// </para>
+    /// </remarks>
+    private void TagGenAi(Activity? activity, bool streaming)
+    {
+        activity?.SetTag("gen_ai.operation.name", "chat");
+        if (streaming)
+        {
+            activity?.SetTag("gen_ai.request.stream", true);
+        }
+
+        var metadata = chatClient.GetService<ChatClientMetadata>();
+        if (!string.IsNullOrWhiteSpace(metadata?.ProviderName))
+        {
+            activity?.SetTag("gen_ai.provider.name", metadata.ProviderName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadata?.DefaultModelId))
+        {
+            activity?.SetTag("gen_ai.request.model", metadata.DefaultModelId);
+        }
+    }
+
+    /// <summary>
+    /// Tags <paramref name="activity"/> with <c>gen_ai.usage.input_tokens</c> /
+    /// <c>gen_ai.usage.output_tokens</c> when the provider reported usage on the response.
+    /// Only called from <see cref="AskAsync"/>, where <see cref="ChatResponse.Usage"/> is a
+    /// single already-in-scope property; <see cref="AskStreamingAsync"/> would need to scan
+    /// every update for a trailing <c>UsageContent</c> the way <c>CostTrackingChatClient</c>
+    /// does for the cost ledger, which is that decorator's job, not this engine's — so the
+    /// streaming span carries no usage tags.
+    /// </summary>
+    private static void TagUsage(Activity? activity, UsageDetails? usage)
+    {
+        if (usage?.InputTokenCount is { } inputTokens)
+        {
+            activity?.SetTag("gen_ai.usage.input_tokens", inputTokens);
+        }
+
+        if (usage?.OutputTokenCount is { } outputTokens)
+        {
+            activity?.SetTag("gen_ai.usage.output_tokens", outputTokens);
+        }
     }
 }

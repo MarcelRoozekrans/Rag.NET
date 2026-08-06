@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
 using Rag.NET.Raptor.Math;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Raptor;
 
@@ -22,6 +23,9 @@ public sealed class RaptorIngestionBehavior(
         if (!options.Enabled || ctx.EmbeddedChunks.Count < options.MinChunksForRaptor)
             return await next(ctx, ct).ConfigureAwait(false);
 
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.raptor.build");
+        activity?.SetTag("document.id", ctx.Metadata.DocumentId.Value);
+
         var currentLevel = new List<EmbeddedChunk>(ctx.EmbeddedChunks);
         var allSummaries = new List<EmbeddedChunk>();
         var level = 0;
@@ -37,6 +41,9 @@ public sealed class RaptorIngestionBehavior(
             currentLevel = summaryChunks;
         }
 
+        activity?.SetTag("raptor.tree.depth", level);
+        activity?.SetTag("raptor.summary.count", allSummaries.Count);
+
         if (!options.StoreLeafChunks)
             ctx.EmbeddedChunks.Clear();
 
@@ -48,6 +55,10 @@ public sealed class RaptorIngestionBehavior(
     private async Task<List<EmbeddedChunk>?> BuildLevelAsync(
         List<EmbeddedChunk> currentLevel, IngestionContext ctx, int level, CancellationToken ct)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.raptor.summarize");
+        activity?.SetTag("raptor.tree.level", level);
+        activity?.SetTag("raptor.chunk.count", currentLevel.Count);
+
         var embeddings = ExtractEmbeddings(currentLevel);
 
         var targetDims = System.Math.Min(options.ReducedDimensionality, embeddings[0].Length);
@@ -59,10 +70,15 @@ public sealed class RaptorIngestionBehavior(
             ? System.Math.Min(options.MaxClusters.Value, currentLevel.Count)
             : GaussianMixtureModel.SelectK(reduced, maxK: System.Math.Min(currentLevel.Count, 10));
 
-        if (k <= 1) return null;
+        if (k <= 1)
+        {
+            activity?.SetTag("raptor.cluster.count", 0);
+            return null;
+        }
 
         var gmm = GaussianMixtureModel.Fit(reduced, k);
         var clusters = GroupByClusters(currentLevel, gmm.Assignments);
+        activity?.SetTag("raptor.cluster.count", clusters.Count);
 
         var client = options.SummaryChatClient ?? chatClient;
         var emb = options.SummaryEmbedder ?? embedder;

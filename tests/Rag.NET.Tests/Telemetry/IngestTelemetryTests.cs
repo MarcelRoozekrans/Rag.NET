@@ -201,7 +201,7 @@ public class IngestTelemetryTests
         Assert.NotNull(storeSpan);
         Assert.Equal("store-doc", storeSpan.GetTagItem("document.id"));
         Assert.Equal("1", storeSpan.GetTagItem("chunk.count")?.ToString());
-        Assert.NotNull(storeSpan.GetTagItem("vector_store")); // proxy type name, not stable to assert exactly
+        Assert.NotNull(storeSpan.GetTagItem("vector.store")); // proxy type name, not stable to assert exactly
     }
 
     [Fact]

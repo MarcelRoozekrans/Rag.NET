@@ -3,6 +3,7 @@ using Pinecone;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Telemetry;
 using PineconeIndexModel = Pinecone.Index;
 
 namespace Rag.NET.Pinecone;
@@ -100,6 +101,12 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chunks);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.upsert");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", IndexName);
+        activity?.SetTag("vectorstore.batch.size", chunks.Count);
+
         if (chunks.Count == 0)
             return;
 
@@ -116,6 +123,11 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", IndexName);
+
         var index = await GetIndexAsync(cancellationToken).ConfigureAwait(false);
         var response = await index.QueryAsync(
             new QueryRequest
@@ -127,7 +139,9 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
                 Namespace = _options.Namespace,
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
-        return MapMatches(response, options.MinScore);
+        var results = MapMatches(response, options.MinScore);
+        activity?.SetTag("vectorstore.result.count", results.Count);
+        return results;
     }
 
     /// <summary>
@@ -142,6 +156,11 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(documentId);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", IndexName);
+
         var index = await GetIndexAsync(cancellationToken).ConfigureAwait(false);
         var ids = await ListChunkIdsAsync(index, documentId, cancellationToken).ConfigureAwait(false);
         for (var offset = 0; offset < ids.Count; offset += DeleteBatchSize)

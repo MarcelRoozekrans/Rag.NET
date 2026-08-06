@@ -7,6 +7,7 @@ using Polly;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Telemetry;
 using ZeroAlloc.Rest;
 using ZeroAlloc.Results;
 
@@ -65,6 +66,12 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chunks);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.upsert");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _options.ClassName);
+        activity?.SetTag("vectorstore.batch.size", chunks.Count);
+
         if (chunks.Count == 0)
             return;
 
@@ -95,12 +102,19 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _options.ClassName);
+
         var query = BuildGetQuery(
             $"nearVector: {{vector: {FormatVector(queryEmbedding.Span)}}}",
             options,
             additionalField: "distance");
         var hits = await ExecuteGetQueryAsync(query, cancellationToken).ConfigureAwait(false);
-        return MapResults(hits, ScoreFromDistance, options.MinScore);
+        var results = MapResults(hits, ScoreFromDistance, options.MinScore);
+        activity?.SetTag("vectorstore.result.count", results.Count);
+        return results;
     }
 
     public async Task<IReadOnlyList<SearchResult>> HybridSearchAsync(
@@ -110,6 +124,12 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _options.ClassName);
+        activity?.SetTag("vectorstore.hybrid", true);
+
         // properties: ["text"] scopes the BM25 side to the chunk text (the design contract);
         // without it Weaviate would also keyword-score the word-tokenized meta_* properties.
         var query = BuildGetQuery(
@@ -117,7 +137,9 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
             options,
             additionalField: "score");
         var hits = await ExecuteGetQueryAsync(query, cancellationToken).ConfigureAwait(false);
-        return MapResults(hits, ScoreFromHybridScore, options.MinScore);
+        var results = MapResults(hits, ScoreFromHybridScore, options.MinScore);
+        activity?.SetTag("vectorstore.result.count", results.Count);
+        return results;
     }
 
     public async Task DeleteByDocumentIdAsync(
@@ -125,6 +147,11 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(documentId);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _options.ClassName);
+
         var request = new WeaviateBatchDeleteRequest
         {
             Match = new WeaviateBatchDeleteMatch

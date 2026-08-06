@@ -5,10 +5,14 @@ namespace Rag.NET.Telemetry;
 
 internal static class RagTelemetry
 {
-    internal const string SourceName = "Rag.NET";
+    internal const string SourceName = RagTelemetrySource.Name;
 
-    internal static readonly ActivitySource ActivitySource = new(SourceName, "1.0.0");
-    internal static readonly Meter Meter = new(SourceName, "1.0.0");
+    // The shared "Rag.NET"-named ActivitySource: see src/Shared/RagTelemetrySource.cs for why
+    // this is core's own instance of a name every instrumented satellite also creates its own
+    // instance of, and RagTelemetrySourceCrossAssemblyTests for proof a single listener hears
+    // all of them.
+    internal static readonly ActivitySource ActivitySource = RagTelemetrySource.ActivitySource;
+    internal static readonly Meter Meter = new(SourceName, RagTelemetrySource.Version);
 
     // Histograms
     internal static readonly Histogram<double> IngestDuration =

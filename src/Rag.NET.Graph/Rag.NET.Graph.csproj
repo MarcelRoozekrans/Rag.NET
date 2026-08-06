@@ -18,6 +18,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The "Rag.NET"-named ActivitySource core also links; see src/Shared/RagTelemetrySource.cs.
+         Linked, not referenced: a ProjectReference to core would pull the whole pipeline into a
+         standalone graph library. -->
+    <Compile Include="..\Shared\RagTelemetrySource.cs" Link="Telemetry\RagTelemetrySource.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <!-- Lifts transitive SQLitePCLRaw.lib.e_sqlite3 above 2.1.11 (GHSA-2m69-gcr7-jv3q). -->
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />

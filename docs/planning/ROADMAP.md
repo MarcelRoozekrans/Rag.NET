@@ -1924,13 +1924,228 @@ touched by this phase). Full solution build: 0 warnings, 0 errors.
 **Goal:** Align pipeline options on IOptions and validate them with ZeroAlloc.Validation.
 **Backlog items:** IOptions Alignment + ZeroAlloc Validation for pipeline options
 
-### Phase 4.3: Structured Logging Enrichment [status: pending]
+### Phase 4.3: Structured Logging Enrichment [status: complete]
 **Goal:** Consistent scoped/structured logging across ingestion, retrieval, and answer generation.
 **Backlog items:** Structured Logging Enrichment
+**Plan:** `docs/plans/2026-08-05-observability-design.md` + `2026-08-05-observability-implementation.md`
+(shared with Phase 4.4 — both roadmap entries were one-liners, and measuring the code moved both
+at once, so they were planned and closed together).
+**Completed:** 2026-08-05, PR #48 (`bf486b8c`).
+**Retroactive note (added by this phase's own closing pass, Task 10 of 4.4, 2026-08-06):** this
+entry and Phase 4.4's below did not exist when PR #48 merged — both this section and
+`MILESTONE.md`'s phase list still read `[status: pending]` a day after the phase closed, with
+no full write-up. Nothing enforces that a merged PR updates these two files, and nothing caught
+the gap until this closing pass looked. Written now from the merged commit's own history rather
+than from memory.
+**The measurement that shrank the phase before any code was written:** the roadmap's one-liner
+("Consistent scoped/structured logging") reads as one undone thing. Measured: 140
+`[LoggerMessage]` source-generated declarations, 12 structured `ILogger.Log*` templates, and
+**zero** plain string interpolation already existed — structured logging was ~92% done, with no
+interpolation-cleanup pass to run. `BeginScope` appeared **zero** times — scoped logging did not
+exist at all. The phase's first act was recording that the structured half was already true, so
+nobody re-did it.
+**Task 2 — scopes (one commit):** `PipelineIngestor.IngestAsync` gained a scope carrying
+`document_id`; `PipelineRetriever.RetrieveAsync` and `RagPipeline.AskAsync`/`AskStreamingAsync`
+each gained one carrying `query_hash`, wrapped around the call the scope exists to cover (`Pipeline.ExecuteAsync`
+for ingest/retrieve; both the retrieval call and the answer-engine call for ask). `RagPipeline.RetrieveAsync`
+deliberately gets no scope of its own — it is a pure pass-through to `PipelineRetriever.RetrieveAsync`,
+which already opens the identical scope, and `RagPipeline` itself logs nothing that scope would
+cover. `query_hash` reuses `PipelineRetriever.HashQuery` (widened from `private` to `internal`)
+rather than computing a second hash — the raw query text never enters a scope, the same discipline
+`query.hash` follows on the `ragnet.retrieve` span. No scope opens inside a hot loop (chunking,
+embedding). Proven with `FakeLogger<T>`: a downstream log call made while the scope is active is
+asserted to carry the expected key/value via `record.Scopes`. `Rag.NET.Tests` 1169 → 1172 (three
+new scope tests).
+**Task 3 — event-name standardisation (13 commits, one per package family):** every pre-existing
+`[LoggerMessage]` declaration across the repository gained an explicit snake_case `EventName`
+(`ingest_failed`, `mmr_candidate_count_less_than_top_k`, …) in place of the generator's PascalCase
+method-name default. **The trap this phase's own plan recorded before writing any code, and
+avoided in practice:** `EventId.Name` and `EventId.Id` are not independent — the source generator
+derives the numeric id as a deterministic hash of the name string. Adding an `EventName` without
+also pinning `EventId` would have silently renumbered every one of the 139 pre-existing event ids
+in one commit; anyone filtering logs or alerts on a numeric id would have gone dark with no error
+and no warning. Every touched declaration therefore carries an explicit
+`EventId = <the value the generator already produced>` alongside its new `EventName` — verified,
+not assumed, by rebuilding with `EmitCompilerGeneratedFiles` and diffing the generated
+`EventId(...)` calls before and after each commit: **zero numeric id changes** across every
+package. A repeated method name across several classes (`LogInjectionDetected` across 6 Security
+classes, `LogCaptureFailed` across 7 Diagnostics classes) already shared one generator-computed id
+before this phase — the generator's hash is a pure function of `EventId.Name`, independent of the
+declaring class — and each group got one identical `EventName` and one identical pinned `EventId`,
+preserving that pre-existing equivalence rather than inventing per-class ids that never existed.
+`DataProvidersLog` (`Rag.NET.DataProviders`) resolves `[LoggerMessage]` through
+`Microsoft.Gen.Logging` rather than the plain `Microsoft.Extensions.Logging.Generators` used
+elsewhere — a transitive effect of `Microsoft.Extensions.Http.Resilience` — but that generator
+hashes the same way, so the same pin-before-rename approach applied unchanged.
+`PersistentConversationMemoryScoreScaleTests` (`Rag.NET.Memory`) needed updating: it hardcoded
+the expected `EventId.Name` as a string constant to assert "exactly one warning" via a
+`CountingLogger`, and that constant was asserting against the generator's old PascalCase default —
+a genuine, intended consequence of the rename, not a regression.
+**Not touched:** `MessageId`/named-property additions (`document_id`, `chunk_index`,
+`vector_store`, `strategy`) the design doc noted `features.md` already promises in some log
+messages — 26 `document_id` and 3 `chunk_index` placeholders already existed in
+`RagPipelineLog`, and no core log statement names a specific vector store or synthesis strategy at
+its call site, so inventing either value there would have meant fabricating data behind a tag
+that looks real. Recorded, not done — the design's own instruction was to report this rather than
+invent the missing field.
+**Counts:** `Rag.NET.Tests` 1169 → **1172** (3 new scope tests). No other test project touched;
+`RepoConventions` unaffected by this phase (37+1 skip, unchanged — the pinning tests this phase
+depended on for verification were rebuild-and-diff checks run by hand, not new automated guards).
+Full solution build: 0 warnings, 0 errors.
 
-### Phase 4.4: OpenTelemetry Tracing & Metrics [status: pending]
+### Phase 4.4: OpenTelemetry Tracing & Metrics [status: complete]
 **Goal:** First-class OTel wiring (exporter guidance, resource attributes, sample dashboards) on top of the existing RagTelemetry ActivitySource/Meter.
 **Backlog items:** OpenTelemetry Tracing & Metrics
+**Plan:** `docs/plans/2026-08-05-observability-design.md` + `2026-08-05-observability-implementation.md`
+(shared with Phase 4.3, see above).
+**Completed:** 2026-08-06, branch `feature/otel-tracing`.
+**The measurement that set the phase's real scope:** the roadmap's one-liner undersold what
+already existed — 8 spans and 11 instruments, covered by 13 telemetry tests — while overselling
+what was wired: a repo-wide grep for `AddOpenTelemetry`, `AddSource(` and `AddMeter(` returned
+**zero** matches outside two test projects pinning a transitive package version. The gap was
+wiring and per-package coverage, not the instrumentation surface itself.
+**The 2026-04-04 package-specific-spans deferral was overruled by the owner, on the deferral's own
+terms.** It said spans should wait "until evidence demands it," written when the library was a
+fraction of its current size. The evidence now exists: a user watching slow retrieval gets one
+generic `ragnet.retrieve` span with a `vector_store` tag holding a type name, and cannot tell
+whether the vector store, the reranker, or graph traversal is the cost. All nine packages the
+deferral left untraced — the six vector stores, both rerankers, GraphRag, Raptor, Graph, and
+Security — are instrumented in this phase.
+**Task 4 (`dbe8ca8`) — the shared `ActivitySource`, first, because everything else depends on it.**
+`RagTelemetry` is `internal` to `Rag.NET` core, so a satellite could not trace onto its source
+without a `ProjectReference` — exactly the coupling Phase 4.7's package decomposition exists to
+avoid. `src/Shared/RagTelemetrySource.cs` follows the repository's existing linked-file pattern
+(`GraphErrorMapping.cs`, `BertWordPieceTokenization.cs`): it is **linked**, not referenced, into
+core and every instrumented satellite, so each assembly compiles its own `ActivitySource`
+instance sharing the name `"Rag.NET"`. OpenTelemetry matches a listener to a source by name, not
+object identity, so one listener on `"Rag.NET"` hears all of them — proven by
+`RagTelemetrySourceCrossAssemblyTests`, which reaches core's real `RagTelemetry.ActivitySource`
+and `Rag.NET.Testing`'s own linked copy through a small public `TelemetryProbe` wrapper (the
+internal type cannot be named directly from a third assembly without an `extern alias`, since two
+linked copies share the identical namespace-qualified name).
+**`ZeroAlloc.Telemetry` was evaluated and rejected — with evidence, not on convention.** The
+org's own source-generated OTel library (`[Instrument]`/`[Trace]`/`[Count]`/`[Histogram]`, zero
+transitive dependencies) was measured against this phase rather than assumed suitable. **It
+cannot set span tags at all** — its entire API is four attributes, none parameter-targeted, and
+of the 13 traced units examined, zero had their wanted tags settable by the generated proxy. Three
+structural mismatches beyond that: its generated proxy is `internal sealed`, constructible only
+from the assembly declaring the annotated interface — `IVectorStore` lives in
+`Rag.NET.Abstractions`, so adopting it would have put a new dependency on the most foundational
+assembly, inverting what Phase 4.7 achieved; GraphRAG and RAPTOR implement the generic
+`IIngestionBehavior`/`IRetrievalBehavior` shared by ~30 implementers, so one `[Trace]` name would
+cover all of them indistinguishably; Caching has no interface or class to annotate at all. **The
+probe still paid for itself**, validating two assumptions this phase's design rests on: real
+cross-assembly source-name sharing (proven before the linked-file mechanism was built), and
+measured allocation at 200k calls, Release, no listener — bare `StartActivity` **72 B**, a
+hand-written no-op decorator **144 B**, the generated proxy **144 B**. `StartActivity` allocates
+**zero** when unobserved; the extra cost either approach pays is decorator-shaped, not
+telemetry-shaped, so spans placed directly inside existing methods — this phase's approach — are
+cheaper than any proxy.
+**Task 5 (`6904d2c`) — the span/tag convention, decided once before any package was
+instrumented,** so nine packages did not produce nine conventions. Span names extend core's
+two-segment `ragnet.<operation>` to `ragnet.<area>.<operation>` for satellites; packages sharing
+an abstraction (the six vector stores, the two rerankers) share one area and one span name with
+the backend as a *tag*, not a name suffix (`ragnet.vectorstore.search` + `vector.store`, not
+`ragnet.qdrant.search`); packages with no shared abstraction (GraphRag, Raptor, Graph, Security)
+get their own area. Tags are dotted, no exceptions. Documented explicitly what must never appear
+in a tag: raw query text, document/chunk content, anything a Security guard removed or blocked
+(a count and a classification only, never the matched substring), credentials and connection
+strings.
+**Task 6 (`a76e9bb7`) — `gen_ai.*` on the LLM surface, pinned to GenAI semconv v1.41.0.** The last
+tag in `open-telemetry/semantic-conventions` before the `gen_ai.*` definitions moved to a
+dedicated repository that has cut no release of its own to pin against instead. Every attribute
+adopted is `Development`-stability in that revision and may be renamed upstream;
+`gen_ai.provider.name` is used in place of the already-deprecated `gen_ai.system`. Nothing was
+invented to fill a gap the spec does not cover: `source.count` and `synthesis.strategy` stay
+`ragnet.*` because OTel's GenAI conventions have no concept of "how many retrieved sources fed the
+prompt" — a plausible-looking invented `gen_ai.rag.*` name would misrepresent them as
+standardised when they are not, worse than an honest proprietary name.
+**Task 7 (`9eace303`) — the two snake_case tag outliers normalised**, `top_k` → `top.k` and
+`vector_store` → `vector.store`, so the convention Task 5 wrote down was internally consistent
+before nine satellites adopted it. Nothing published consumed either name, so no compatibility
+shim was needed; the asserting tests (`RetrieveTelemetryTests`, `IngestTelemetryTests`) were
+updated as a stated consequence.
+**Task 8 (12 commits) — all nine packages instrumented**, one commit per package or shared-family
+group: Qdrant, PgVector, Pinecone, Weaviate, Chroma, Azure AI Search (`ragnet.vectorstore.upsert`/
+`search`/`delete`, tagged `vector.store` + `vectorstore.collection` + operation-specific counts;
+Weaviate and Azure AI Search's hybrid overloads share the `search` span name with
+`vectorstore.hybrid=true` distinguishing them, per Task 5's shared-abstraction rule); Onnx +
+Cohere (`ragnet.rerank`, tagged `reranker.type` + `reranker.candidate.count`); Graph
+(`ragnet.graph.cluster` around `Leiden.Detect`, `ragnet.graph.pagerank` around `PageRank.Compute`);
+GraphRag (`ragnet.graphrag.extract`, `.communities`, `.search` — local/global search share one
+span name with `graphrag.search.mode` distinguishing them); Raptor (`ragnet.raptor.build` around
+whole-tree construction, `ragnet.raptor.summarize` as its per-level child); Security
+(`ragnet.security.sanitize` around every `IChunkSanitiser`, `ragnet.security.guard` around every
+`IRetrievalGuard`, both count-and-classify only per Task 5's tag rule). Every span nests under the
+core span modelling the step it participates in. **Three packages left deliberately
+uninstrumented**, each recorded rather than silently skipped: `Rag.NET.Caching` (`UseCaching()`
+only registers `HybridCache`; the hit/miss logic is core's); `RaptorRetrievalBehavior` (a no-op in
+its default retrieval mode — a span there would read "ran, did nothing" on every trace);
+`IQuerySanitiser` (`RegexQuerySanitiser`, `LlmQuerySanitiser`) — it runs before `ragnet.query`
+opens, on the raw user question, so it has no core span to nest under, the same problem
+`ragnet.query` itself was added to solve for `ragnet.retrieve`/`ragnet.ask`. **A real defect this
+task caught, not invented by it** (`90afc456`): `TestProjectTierTests` flagged the new
+`OnnxRerankerTelemetryTests`, which reads `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB`, for not declaring
+`<RequiresSecrets>` — without it, `nightly.yml` would never select the project and the env vars
+would never be set, so the test would have skipped **silently, forever**, rather than running
+whenever a real model becomes available in CI. Fixed by declaring the property, matching
+`Rag.NET.Embeddings.Onnx.Tests`'s existing precedent. `Rag.NET.RepoConventions.Tests`: 42 passed,
+1 skipped (was 1 failing).
+**Task 9 (`fb183faa`) — `Rag.NET.Telemetry`, the one-call setup.** `AddRagNetInstrumentation()`
+registers the shared `"Rag.NET"` `ActivitySource`, **both** meters, and `telemetry.distro.*`
+resource attributes on the `OpenTelemetryBuilder` it returns for the caller to chain an exporter
+onto. **Its whole reason to exist:** a consumer who hand-wires `.AddMeter("Rag.NET")` per the
+docs' own quick-setup snippet silently misses every counter `Rag.NET.Evaluation`'s
+`ShadowTelemetry` publishes under the second, previously-undocumented meter name
+`"Rag.NET.Evaluation"` — `ShadowTelemetry` builds its own meter for the identical reason
+`RagTelemetry` is internal (`Rag.NET.Evaluation` must not depend on core), and nothing before this
+task named that second meter anywhere a consumer would read it. Proven with a real
+`TracerProvider`/`MeterProvider` and in-memory exporters — both meter names reaching the exporter,
+not merely a same-named `Meter` object existing. Package count **66 → 67**.
+**Task 10 (this closing pass, `docs`/`test`/`planning` commits, 2026-08-06) — docs, one guard
+test, and both phase closes.** `docs/reference/opentelemetry.md`'s metrics table had already
+drifted once, exactly as Task 5's own commit predicted it might: it listed 8 of `RagTelemetry`'s
+11 instruments, predating `ragnet.ratelimit.wait.duration`, `ragnet.llm.tokens`, and
+`ragnet.llm.cost` — `docs/reference/features.md`'s own instrument list was correct throughout and
+never drifted, confirming the defect was in one file, not the design. Fixed the table; documented
+the satellite spans and their tags in a concrete reference table (and, while at it, corrected two
+smaller inaccuracies the Task 5 convention doc's own worked examples carried since before Task 8
+existed: `ragnet.rerank.<operation>` implied a per-operation suffix neither reranker emits — both
+use the bare `ragnet.rerank` — and `ragnet.caching.lookup` named a span Caching was always going
+to leave uninstrumented); documented `gen_ai.*` and its semconv pin (already present, left as
+found); documented both meters and why `Rag.NET.Evaluation` is separate; documented the
+`telemetry.distro.*` resource attributes and `AddRagNetInstrumentation()` as the recommended
+one-call setup, with the manual two-meter hand-wire kept as the explicit alternative for a
+consumer who wants to avoid the package dependency. Added
+`RagTelemetryMetricsDocumentationTests` (`Rag.NET.RepoConventions.Tests`) asserting the doc
+table's instrument names against `RagTelemetry.cs` directly, so this cannot silently drift a
+second time — proven red first by deleting the `ragnet.llm.cost` row (failure:
+`Defined in RagTelemetry but missing from the doc table: ragnet.llm.cost`), then reverted.
+`RepoConventions` 42+1 → **44+1**.
+**No sample Grafana dashboard shipped.** 4.4's own roadmap description promises "sample
+dashboards," and Task 5's own commit already flagged that none existed. This environment has no
+running Docker daemon, no Grafana, no Prometheus, and no `promtool` — nothing to import a
+dashboard JSON into or run its PromQL against real exported `ragnet_*` series before committing
+it. A dashboard built and never validated risks wrong Prometheus metric-name mangling (dots to
+underscores, histogram `_bucket`/`_sum`/`_count` suffixes), invalid panel JSON that fails to
+import, or PromQL that silently returns nothing — and it would carry the same authoritative look
+as a validated one while being unverified. Recorded as debt rather than shipped: producing and
+validating a sample dashboard needs a session with a real OTel/Prometheus/Grafana stack available
+(for example, docker-compose alongside `Rag.NET.Sample` exporting to a local Prometheus and
+importing the JSON via Grafana's API to confirm it renders), not routed to a numbered phase since
+Milestone 4's remaining phases (4.2, 4.5, 4.6) do not touch telemetry.
+**Counts:** `Rag.NET.Tests` 1179 → **1181** (`RagTelemetrySourceCrossAssemblyTests` plus GenAI tag
+coverage added to `AskTelemetryTests`; `RetrieveTelemetryTests`/`IngestTelemetryTests` updated in
+place for the Task 7 rename, not added to). `Rag.NET.RepoConventions.Tests` 37+1 skip → **44+1**
+(Task 8's `TestProjectTierTests` fix plus Task 10's two new documentation-drift facts).
+`Rag.NET.PackageValidation.Tests` **20**, unchanged in count (`ExpectedPackageCount` moved 66 →
+67 inside the existing test, not a new one). `Rag.NET.Telemetry.Tests` **2** (new project,
+Task 9). Each satellite's own `*.Telemetry.Tests` (Qdrant, PgVector, Pinecone, Weaviate, Chroma,
+Azure AI Search, Onnx, Cohere, Graph, GraphRag, Raptor, Security) were proven at Task 8's own
+commits against real containers/WireMock, per their commit messages; this closing pass did not
+re-run the container-gated suites (no local Docker daemon in this session) and does not claim to
+have re-verified them independently. Full solution build: 0 warnings, 0 errors (re-verified by
+this closing pass, `--no-incremental`).
 
 ### Phase 4.5: Sample Applications [status: pending]
 **Goal:** End-to-end runnable samples covering the main library scenarios.

@@ -7,6 +7,7 @@ using Polly;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Telemetry;
 using ZeroAlloc.Rest;
 using ZeroAlloc.Results;
 
@@ -71,6 +72,12 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chunks);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.upsert");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _options.CollectionName);
+        activity?.SetTag("vectorstore.batch.size", chunks.Count);
+
         if (chunks.Count == 0)
             return;
 
@@ -88,6 +95,11 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(options);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _options.CollectionName);
+
         var request = new ChromaQueryRequest
         {
             QueryEmbeddings = [queryEmbedding.ToArray()],
@@ -100,7 +112,9 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
             collectionId => _api.QueryAsync(
                 _options.Tenant, _options.Database, collectionId, request, cancellationToken),
             cancellationToken).ConfigureAwait(false);
-        return MapResults(response, options.MinScore);
+        var results = MapResults(response, options.MinScore);
+        activity?.SetTag("vectorstore.result.count", results.Count);
+        return results;
     }
 
     public async Task DeleteByDocumentIdAsync(
@@ -108,6 +122,11 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(documentId);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", _options.CollectionName);
+
         var request = new ChromaDeleteRecordsRequest
         {
             Where = new Dictionary<string, object?>(StringComparer.Ordinal)

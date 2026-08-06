@@ -10,6 +10,10 @@
          Microsoft.Extensions.Logging 10.0.10; the old 10.0.5 pin became a NU1605 downgrade. -->
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <!-- TelemetryProbe hands RagTelemetrySourceCrossAssemblyTests a second assembly's instance
+         of the shared "Rag.NET"-named ActivitySource, without a ProjectReference to any of the
+         satellites the shared source is linked into for production tracing. -->
+    <ProjectReference Include="..\..\tests\Rag.NET.Testing\Rag.NET.Testing.csproj" />
     <!-- DefaultCompositionTests pins the configured pipeline through UseSqlitePersistence and
          IngestFromProviderTests drives real change-detection through SqliteContentHashStore;
          both live in the Rag.NET.Storage.Sqlite satellite since the package decomposition. -->

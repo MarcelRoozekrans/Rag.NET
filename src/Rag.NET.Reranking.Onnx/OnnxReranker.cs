@@ -2,6 +2,7 @@ using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Reranking.Onnx;
 
@@ -42,6 +43,10 @@ public sealed class OnnxReranker : IReranker, IDisposable
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(results);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.rerank");
+        activity?.SetTag("reranker.type", nameof(OnnxReranker));
+        activity?.SetTag("reranker.candidate.count", results.Count);
 
         if (results.Count == 0)
             return Task.FromResult<IReadOnlyList<RerankResult>>([]);

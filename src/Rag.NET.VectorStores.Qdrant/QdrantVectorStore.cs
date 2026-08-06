@@ -3,6 +3,7 @@ using Qdrant.Client.Grpc;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Telemetry;
 using static Qdrant.Client.Grpc.Conditions;
 
 namespace Rag.NET.Qdrant;
@@ -44,6 +45,11 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         IReadOnlyList<EmbeddedChunk> chunks,
         CancellationToken cancellationToken = default)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.upsert");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", CollectionName);
+        activity?.SetTag("vectorstore.batch.size", chunks.Count);
+
         var points = new List<PointStruct>();
 
         foreach (var chunk in chunks)
@@ -78,6 +84,10 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         SearchOptions options,
         CancellationToken cancellationToken = default)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.search");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", CollectionName);
+
         var results = await Client.QueryAsync(
             CollectionName,
             query: queryEmbedding.ToArray(),
@@ -86,13 +96,19 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
             limit: (ulong)options.TopK,
             cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        return results.Select(MapScoredPoint).ToList();
+        var mapped = results.Select(MapScoredPoint).ToList();
+        activity?.SetTag("vectorstore.result.count", mapped.Count);
+        return mapped;
     }
 
     public async Task DeleteByDocumentIdAsync(
         string documentId,
         CancellationToken cancellationToken = default)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.vectorstore.delete");
+        activity?.SetTag("vector.store", GetType().Name);
+        activity?.SetTag("vectorstore.collection", CollectionName);
+
         await Client.DeleteAsync(
             collectionName: CollectionName,
             filter: MatchKeyword("document_id", documentId),

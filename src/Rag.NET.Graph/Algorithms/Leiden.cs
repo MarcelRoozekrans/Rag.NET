@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Graph.Algorithms;
 
@@ -8,12 +9,17 @@ public static class Leiden
     /// <summary>Detect communities in the given graph using the Leiden algorithm.</summary>
     public static IReadOnlyList<Community> Detect(GraphSnapshot graph, LeidenOptions? options = null)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.graph.cluster");
+        activity?.SetTag("graph.node.count", graph.Entities.Count);
+        activity?.SetTag("graph.relationship.count", graph.Relationships.Count);
+
         options ??= new LeidenOptions();
         var entities = graph.Entities;
         int n = entities.Count;
 
         if (n == 0)
         {
+            activity?.SetTag("graph.community.count", 0);
             return [];
         }
 
@@ -22,7 +28,9 @@ public static class Leiden
         double totalWeight = ComputeTotalWeight(weights, n);
         var assignment = RunLeiden(neighbors, weights, n, totalWeight, options);
 
-        return BuildCommunities(assignment, entities);
+        var communities = BuildCommunities(assignment, entities);
+        activity?.SetTag("graph.community.count", communities.Count);
+        return communities;
     }
 
     private static Dictionary<string, int> BuildNameIndex(IReadOnlyList<GraphEntity> entities)
