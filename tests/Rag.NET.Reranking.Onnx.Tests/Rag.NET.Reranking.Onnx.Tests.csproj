@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
+    <!-- OnnxRerankerTelemetryTests reads RAGNET_ONNX_RERANK_MODEL/_VOCAB, gated the same way
+         Rag.NET.Embeddings.Onnx.Tests gates its real-model smoke test. -->
+    <RequiresSecrets>true</RequiresSecrets>
   </PropertyGroup>
 
   <ItemGroup>
