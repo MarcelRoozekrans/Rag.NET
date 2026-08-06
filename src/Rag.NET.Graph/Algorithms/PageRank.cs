@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Graph.Algorithms;
 
@@ -12,6 +13,10 @@ public static class PageRank
         int maxIterations = 100,
         double tolerance = 1e-6)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.graph.pagerank");
+        activity?.SetTag("graph.node.count", graph.Entities.Count);
+        activity?.SetTag("graph.relationship.count", graph.Relationships.Count);
+
         var entities = graph.Entities;
         int n = entities.Count;
 
