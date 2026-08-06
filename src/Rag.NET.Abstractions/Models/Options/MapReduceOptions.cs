@@ -1,7 +1,17 @@
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for <see cref="Rag.NET.Models.Options.SynthesisStrategy.MapReduce"/> synthesis: each
+/// source chunk is answered independently in the map step, then the partial answers are combined
+/// in a reduce step. Read only when <see cref="RagOptions.SynthesisStrategy"/> is
+/// <see cref="Rag.NET.Models.Options.SynthesisStrategy.MapReduce"/>.
+/// </summary>
 public sealed class MapReduceOptions
 {
+    /// <summary>
+    /// Maximum number of map-step chunk answers generated in parallel. Defaults to 5. Values
+    /// below 1 are clamped up to 1 by the map-reduce engine, not here.
+    /// </summary>
     public int MapConcurrency { get; init; } = 5;
 
     /// <summary>

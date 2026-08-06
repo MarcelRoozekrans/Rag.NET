@@ -16,6 +16,7 @@ namespace Rag.NET.Models;
 /// </summary>
 public sealed class ReservedMetadataKeyException : InvalidOperationException
 {
+    /// <summary>Creates the exception for a single reserved-key collision.</summary>
     /// <param name="key">The reserved key the connector emitted.</param>
     /// <param name="providerId">The provider that emitted it.</param>
     /// <param name="entryId">The entry the collision was first observed on.</param>
