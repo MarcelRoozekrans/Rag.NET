@@ -1,6 +1,7 @@
 using Cohere;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Reranking.Cohere;
 
@@ -43,6 +44,10 @@ public sealed class CohereReranker : IReranker, IDisposable
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(results);
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.rerank");
+        activity?.SetTag("reranker.type", nameof(CohereReranker));
+        activity?.SetTag("reranker.candidate.count", results.Count);
 
         if (results.Count == 0)
             return [];
@@ -87,6 +92,7 @@ public sealed class CohereReranker : IReranker, IDisposable
         allRerankResults.Sort(static (a, b) => b.RelevanceScore.CompareTo(a.RelevanceScore));
         if (allRerankResults.Count > _options.TopN)
             allRerankResults.RemoveRange(_options.TopN, allRerankResults.Count - _options.TopN);
+        activity?.SetTag("reranker.result.count", allRerankResults.Count);
         return allRerankResults;
     }
 
