@@ -1,5 +1,9 @@
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for multi-query expansion: an LLM generates alternative phrasings of the query, each
+/// retrieved separately, and the result sets are merged before downstream ranking.
+/// </summary>
 public sealed class MultiQueryOptions
 {
     /// <summary>Number of alternative query phrasings to generate. Must be at least 1.</summary>

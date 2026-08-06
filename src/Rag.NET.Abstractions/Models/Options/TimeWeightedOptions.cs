@@ -1,5 +1,10 @@
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for time-weighted re-scoring: search results are multiplied by an exponential decay
+/// factor based on chunk age, so more recent content ranks higher than an equally-similar older
+/// match.
+/// </summary>
 public sealed class TimeWeightedOptions
 {
     /// <summary>

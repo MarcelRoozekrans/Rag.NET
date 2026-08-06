@@ -1,5 +1,10 @@
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for <c>IConversationMemory</c>'s trimming of conversation history before it reaches the
+/// answer engine. Policies apply in a fixed order — window, then token budget, then optional
+/// summarisation — each documented on its own property below.
+/// </summary>
 public sealed class ConversationMemoryOptions
 {
     /// <summary>

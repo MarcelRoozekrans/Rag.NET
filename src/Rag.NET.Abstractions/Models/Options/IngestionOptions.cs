@@ -2,9 +2,17 @@ using ZeroAlloc.Validation;
 
 namespace Rag.NET.Models.Options;
 
+/// <summary>Per-call tuning for <c>IIngestor.IngestAsync</c>.</summary>
 [Validate]
 public sealed class IngestionOptions
 {
+    /// <summary>
+    /// When <see langword="true"/>, purges this document's existing vectors, BM25 entries, and
+    /// sidecar record up front, before the new content is parsed or chunked — so a document whose
+    /// new content fails to parse still ends up with nothing stale left behind. Does not purge
+    /// parent chunks (see the parent-document chunking strategy), which are upserted rather than
+    /// duplicated regardless of this flag. Defaults to <see langword="false"/>.
+    /// </summary>
     public bool Overwrite { get; set; }
 
     /// <summary>

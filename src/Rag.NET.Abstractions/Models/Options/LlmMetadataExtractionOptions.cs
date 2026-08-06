@@ -2,6 +2,10 @@ using Rag.NET.Models;
 
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for LLM-based chunk metadata extraction at ingest time: one LLM call per chunk,
+/// extracting structured attributes into that chunk's metadata.
+/// </summary>
 public sealed class LlmMetadataExtractionOptions
 {
     /// <summary>

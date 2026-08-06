@@ -2,6 +2,10 @@ using Microsoft.Extensions.AI;
 
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for semantic chunking: sentences are embedded, and chunk boundaries are placed where
+/// consecutive sentences are least similar rather than at a fixed character count.
+/// </summary>
 public sealed class SemanticChunkingOptions
 {
     /// <summary>

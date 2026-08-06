@@ -1,5 +1,10 @@
 namespace Rag.NET.Models.Options;
 
+/// <summary>
+/// Tuning for Deep Research: iterative retrieval that checks whether accumulated results are
+/// sufficient to answer the query and, if not, generates sub-queries and retrieves again, up to
+/// <see cref="MaxDepth"/> iterations. Each sufficiency check and sub-query generation is an LLM call.
+/// </summary>
 public sealed class DeepResearchOptions
 {
     /// <summary>Maximum number of sufficiency-check iterations before returning accumulated results.</summary>
