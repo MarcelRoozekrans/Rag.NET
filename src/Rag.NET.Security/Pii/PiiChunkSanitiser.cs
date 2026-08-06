@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Security;
 
@@ -24,18 +25,25 @@ public sealed partial class PiiChunkSanitiser : IChunkSanitiser
     public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata)
     {
         if (text is null) return string.Empty;
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.security.sanitize");
+        activity?.SetTag("security.sanitizer.type", "pii-chunk");
+
         try
         {
             var fileName = metadata.TryGetValue(ReservedMetadataKeys.FileName, out var fn) ? fn : "<unknown>";
             var result = text;
+            var matchCount = 0;
             foreach (var (regex, placeholder) in _compiled)
             {
                 result = regex.Replace(result, _ =>
                 {
+                    matchCount++;
                     LogPiiDetected(_logger, placeholder, fileName);
                     return placeholder;
                 });
             }
+            activity?.SetTag("security.matches.count", matchCount);
             return result;
         }
         catch (RegexMatchTimeoutException ex)

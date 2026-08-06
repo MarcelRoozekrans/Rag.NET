@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Security;
 
@@ -29,6 +30,10 @@ public sealed partial class LlmPiiChunkSanitiser(
     public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata)
     {
         if (text is null) return string.Empty;
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.security.sanitize");
+        activity?.SetTag("security.sanitizer.type", "llm-pii-chunk");
+
         var fileName = metadata.TryGetValue(ReservedMetadataKeys.FileName, out var fn) ? fn : "<unknown>";
         try
         {
@@ -39,8 +44,10 @@ public sealed partial class LlmPiiChunkSanitiser(
             var result = response.Text?.Trim();
             if (!string.IsNullOrWhiteSpace(result))
             {
-                if (!string.Equals(result, text, StringComparison.Ordinal))
+                var changed = !string.Equals(result, text, StringComparison.Ordinal);
+                if (changed)
                     LogLlmPiiRedacted(_logger, fileName);
+                activity?.SetTag("security.matches.count", changed ? 1 : 0);
                 return result;
             }
             LogLlmEmptyResponse(_logger, fileName);

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Security;
 
@@ -13,7 +14,12 @@ public sealed partial class RegexRetrievalGuard(
 
     public IReadOnlyList<SearchResult> Inspect(IReadOnlyList<SearchResult> results)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.security.guard");
+        activity?.SetTag("security.guard.type", "regex");
+        activity?.SetTag("security.guard.action", "redact");
+
         List<SearchResult>? modified = null;
+        var redactedCount = 0;
         for (var i = 0; i < results.Count; i++)
         {
             var result = results[i];
@@ -30,6 +36,7 @@ public sealed partial class RegexRetrievalGuard(
                 {
                     modified ??= new List<SearchResult>(results);
                     modified[i] = result with { Chunk = result.Chunk with { Text = sanitised } };
+                    redactedCount++;
                 }
             }
             // Non-blocking by design: failures return the chunk unmodified. OperationCanceledException propagates.
@@ -38,6 +45,7 @@ public sealed partial class RegexRetrievalGuard(
                 LogInspectFailed(_logger, ex);
             }
         }
+        activity?.SetTag("security.chunks.affected", redactedCount);
         return modified is not null ? modified.AsReadOnly() : results;
     }
 

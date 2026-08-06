@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Security;
 
@@ -19,6 +20,10 @@ public sealed partial class RbacRetrievalGuard(
 
     public IReadOnlyList<SearchResult> Inspect(IReadOnlyList<SearchResult> results)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.security.guard");
+        activity?.SetTag("security.guard.type", "rbac");
+        activity?.SetTag("security.guard.action", "drop");
+
         var callerRoles = callerContext.GetRoles();
 
         List<SearchResult>? filtered = null;
@@ -62,6 +67,7 @@ public sealed partial class RbacRetrievalGuard(
 
             filtered?.Add(result);
         }
+        activity?.SetTag("security.chunks.affected", results.Count - (filtered?.Count ?? results.Count));
         return filtered is not null ? filtered.AsReadOnly() : results;
     }
 

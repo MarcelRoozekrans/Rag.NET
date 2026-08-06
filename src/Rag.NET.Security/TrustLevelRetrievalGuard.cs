@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.Security;
 
@@ -14,6 +15,10 @@ public sealed partial class TrustLevelRetrievalGuard(
 
     public IReadOnlyList<SearchResult> Inspect(IReadOnlyList<SearchResult> results)
     {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.security.guard");
+        activity?.SetTag("security.guard.type", "trustlevel");
+        activity?.SetTag("security.guard.action", "drop");
+
         List<SearchResult>? filtered = null;
         for (var i = 0; i < results.Count; i++)
         {
@@ -38,6 +43,7 @@ public sealed partial class TrustLevelRetrievalGuard(
 
             filtered?.Add(result);
         }
+        activity?.SetTag("security.chunks.affected", results.Count - (filtered?.Count ?? results.Count));
         return filtered is not null ? filtered.AsReadOnly() : results;
     }
 
