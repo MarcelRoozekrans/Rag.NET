@@ -4,6 +4,7 @@ using Rag.NET.Graph;
 using Rag.NET.Graph.Algorithms;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.GraphRag;
 
@@ -27,10 +28,14 @@ public sealed class CommunityDetectionBehavior(
             return await next(ctx, ct).ConfigureAwait(false);
         }
 
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.graphrag.communities");
+        activity?.SetTag("document.id", ctx.Metadata.DocumentId.Value);
+
         var snapshot = await graphStore.GetFullGraphAsync(ct).ConfigureAwait(false);
 
         if (snapshot.Entities.Count == 0)
         {
+            activity?.SetTag("graphrag.community.count", 0);
             return await next(ctx, ct).ConfigureAwait(false);
         }
 
@@ -48,6 +53,7 @@ public sealed class CommunityDetectionBehavior(
 
         // Store communities
         await graphStore.SetCommunitiesAsync(updatedCommunities, ct).ConfigureAwait(false);
+        activity?.SetTag("graphrag.community.count", updatedCommunities.Count);
 
         // Embed community reports
         await EmbedCommunityReports(ctx, updatedCommunities, ct).ConfigureAwait(false);

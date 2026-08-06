@@ -1,6 +1,7 @@
 using Rag.NET.Graph;
 using Rag.NET.Models;
 using Rag.NET.Retrieval;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.GraphRag;
 
@@ -22,6 +23,10 @@ public sealed class GraphLocalSearchBehavior(
         var entityResults = CollectTopEntities(results);
         if (entityResults.Count == 0)
             return results;
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.graphrag.search");
+        activity?.SetTag("graphrag.search.mode", "local");
+        activity?.SetTag("graphrag.entity.count", entityResults.Count);
 
         var pageRankByName = await TraverseGraph(entityResults, ct).ConfigureAwait(false);
         return BlendAndDeduplicate(results, pageRankByName);

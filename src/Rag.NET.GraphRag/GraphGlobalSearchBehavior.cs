@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Rag.NET.Models;
 using Rag.NET.Retrieval;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.GraphRag;
 
@@ -23,6 +24,10 @@ public sealed class GraphGlobalSearchBehavior(
 
         if (communityReports.Count == 0)
             return results;
+
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.graphrag.search");
+        activity?.SetTag("graphrag.search.mode", "global");
+        activity?.SetTag("graphrag.community.count", communityReports.Count);
 
         var synthesized = await MapReduce(ctx, communityReports, ct).ConfigureAwait(false);
         return PrependSynthesized(synthesized, otherResults);

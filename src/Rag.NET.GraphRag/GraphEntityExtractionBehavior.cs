@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Graph;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
+using Rag.NET.Telemetry;
 
 namespace Rag.NET.GraphRag;
 
@@ -49,6 +50,9 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
             return await next(ctx, ct).ConfigureAwait(false);
         }
 
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.graphrag.extract");
+        activity?.SetTag("document.id", ctx.Metadata.DocumentId.Value);
+
         var client = _options.ExtractionChatClient ?? _chatClient;
         var documentId = ctx.Metadata.DocumentId.ToString();
 
@@ -62,6 +66,9 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
                 client, ctx.Chunks[i], documentId, allEntities, allRelationships, ct).ConfigureAwait(false);
         }
 #pragma warning restore HLQ012
+
+        activity?.SetTag("graphrag.entity.count", allEntities.Count);
+        activity?.SetTag("graphrag.relationship.count", allRelationships.Count);
 
         await EmbedEntitiesAsync(ctx, allEntities, ct).ConfigureAwait(false);
         await EmbedRelationshipsAsync(ctx, allEntities.Count, allRelationships, ct).ConfigureAwait(false);
