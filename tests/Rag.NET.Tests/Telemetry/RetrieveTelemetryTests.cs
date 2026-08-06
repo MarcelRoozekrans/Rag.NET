@@ -55,7 +55,7 @@ public class RetrieveTelemetryTests
             .FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.retrieve", StringComparison.Ordinal));
         Assert.NotNull(span);
         Assert.NotNull(span.GetTagItem("query.hash")); // 8-char hex SHA-256 prefix — don't assert exact value
-        Assert.NotNull(span.GetTagItem("top_k"));
+        Assert.NotNull(span.GetTagItem("top.k"));
         Assert.Equal("0", span.GetTagItem("result.count")?.ToString()); // empty result from fake store
     }
 

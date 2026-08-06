@@ -51,7 +51,7 @@ public sealed class PipelineRetriever : IRetriever
 
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.retrieve");
         activity?.SetTag("query.hash", queryHash);
-        activity?.SetTag("top_k", resolvedOptions.TopK);
+        activity?.SetTag("top.k", resolvedOptions.TopK);
 
         using var scope = Logger?.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal) { ["query_hash"] = queryHash });
 

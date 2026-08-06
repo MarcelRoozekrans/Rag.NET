@@ -28,10 +28,43 @@ That is all. No opt-in call inside `AddRagNet(...)` is needed — instrumentatio
 | `ragnet.parse` | Document parser behavior | `document.id`, `parser.type`, `section.count`, `chunk.count` |
 | `ragnet.chunk` | Chunking behavior | `document.id`, `chunk.count` |
 | `ragnet.embed` | Embedding behavior | `document.id`, `chunk.count` |
-| `ragnet.store` | Vector store write behavior | `document.id`, `chunk.count`, `vector_store` |
+| `ragnet.store` | Vector store write behavior | `document.id`, `chunk.count`, `vector.store` |
 | `ragnet.query` | `IRagPipeline.RetrieveAsync`, `AskAsync`, `AskStreamingAsync` | *(none)* |
-| `ragnet.retrieve` | Top-level retrieval call | `query.hash`, `top_k`, `result.count` |
-| `ragnet.ask` | Answer generation engine | `source.count`, `synthesis.strategy` |
+| `ragnet.retrieve` | Top-level retrieval call | `query.hash`, `top.k`, `result.count` |
+| `ragnet.ask` | Answer generation engine | `source.count`, `synthesis.strategy`, `gen_ai.*` (see below) |
+
+### GenAI semantic-convention attributes on `ragnet.ask`
+
+`ragnet.ask` additionally carries the subset of [OpenTelemetry's GenAI semantic conventions]
+(https://github.com/open-telemetry/semantic-conventions/blob/v1.41.0/docs/gen-ai/gen-ai-spans.md)
+that genuinely applies to a chat completion call, pinned against **v1.41.0** — the last version
+tagged in `open-telemetry/semantic-conventions` before `gen_ai.*` moved to the dedicated
+`semantic-conventions-genai` repository, which has not cut a release of its own to pin against
+instead. Every `gen_ai.*` attribute is `Development`-stability in that revision and may be renamed
+by a future spec update; re-check the pin (`ChatAnswerEngine.TagGenAi`'s remarks) before assuming
+a name below still matches upstream.
+
+| Attribute | Always set? | Source |
+|---|---|---|
+| `gen_ai.operation.name` | Yes, `"chat"` | Constant — `ChatAnswerEngine` only performs chat completions. |
+| `gen_ai.request.stream` | Only on `AskStreamingAsync`, `true` | Which overload was called. |
+| `gen_ai.provider.name` | Only when the wrapped `IChatClient` exposes it | `chatClient.GetService<ChatClientMetadata>()?.ProviderName` |
+| `gen_ai.request.model` | Only when the wrapped `IChatClient` exposes it | `chatClient.GetService<ChatClientMetadata>()?.DefaultModelId` |
+| `gen_ai.usage.input_tokens` / `gen_ai.usage.output_tokens` | Only on `AskAsync`, when the provider reports usage | `ChatResponse.Usage` |
+
+`ChatClientMetadata` is frequently unavailable — a bare test double, or a provider that does not
+implement `GetService`, returns `null` — in which case the corresponding attribute is left unset
+rather than fabricated. `gen_ai.usage.*` is span-level and only captured on the non-streaming path,
+where `ChatResponse.Usage` is a single already-in-scope property; the streaming path would need to
+scan every update for a trailing `UsageContent`, which is `CostTrackingChatClient`'s job for the
+cost ledger, not this span's.
+
+`source.count` and `synthesis.strategy` stay `ragnet.*` deliberately: OpenTelemetry's GenAI
+conventions have no equivalent for "how many retrieved sources fed the prompt" or "which RAG
+synthesis strategy combined them" — those are RAG concepts, not LLM-call concepts, and a
+plausible-looking `gen_ai.rag.*` name would misrepresent them as standardized when they are not.
+Similarly, `ragnet.llm.cost` (see Metrics below) has no GenAI-metric equivalent — the spec defines
+no cost/spend metric at all — so it stays `ragnet.*` in its entirety.
 
 The ingest spans are nested under their parent, so a single `IngestAsync` call produces a tree:
 
@@ -126,18 +159,18 @@ no such default area, so its spans take a third segment naming it: `ragnet.<area
 **The area names one subsystem, not one backend.** Where several packages implement the same
 abstraction — the six vector stores, the two rerankers — they share one area and one span name,
 and the specific backend is a *tag*, not a name suffix. This already exists: `ragnet.store`
-carries a `vector_store` tag rather than core minting `ragnet.qdrant.store`,
+carries a `vector.store` tag rather than core minting `ragnet.qdrant.store`,
 `ragnet.pgvector.store`, and so on. The same discipline applies going forward:
 
 | Area | Span name shape | Backend tag |
 |---|---|---|
-| Vector stores (Qdrant, PgVector, Pinecone, Weaviate, Chroma, Azure AI Search) | `ragnet.vectorstore.<operation>` (e.g. `ragnet.vectorstore.upsert`, `ragnet.vectorstore.search`) | `vector_store` |
+| Vector stores (Qdrant, PgVector, Pinecone, Weaviate, Chroma, Azure AI Search) | `ragnet.vectorstore.<operation>` (e.g. `ragnet.vectorstore.upsert`, `ragnet.vectorstore.search`) | `vector.store` |
 | Reranking (Onnx, Cohere) | `ragnet.rerank.<operation>` (e.g. `ragnet.rerank.score`) | `reranker.type` |
 
 Forking the span name per backend multiplies the number of distinct span names by the number of
 backends for no analytical benefit — every dashboard or alert built on `ragnet.vectorstore.search`
 p99 latency would otherwise need to know the full backend list and OR them together. Six span
-names collapsing to one, tagged, is the same reasoning that produced `vector_store` on
+names collapsing to one, tagged, is the same reasoning that produced `vector.store` on
 `ragnet.store` in the first place.
 
 Where a package is its own subsystem with no shared abstraction to fork from, its area is its own
@@ -156,18 +189,19 @@ A satellite span nests under whichever core span models the step it participates
 child of `ragnet.retrieve` — the same way `ragnet.parse`/`ragnet.chunk`/`ragnet.embed`/`ragnet.store`
 already nest under `ragnet.ingest`.
 
-### Tag names: dotted, no exceptions going forward
+### Tag names: dotted, no exceptions
 
-Every current tag is dotted (`document.id`, `chunk.count`, `query.hash`, `result.count`,
-`source.count`, `parser.type`, `synthesis.strategy`) except two snake_case outliers, `top_k` and
-`vector_store`, predating this convention. **New tags — every tag a satellite adds — are dotted.**
-`top_k` and `vector_store` are not renamed here; that rename, and the test assertions it touches,
-is Task 7's.
+Every tag is dotted (`document.id`, `chunk.count`, `query.hash`, `result.count`, `source.count`,
+`parser.type`, `synthesis.strategy`, `top.k`, `vector.store`). `top_k` and `vector_store` were
+snake_case outliers predating this convention; Task 7 renamed both to `top.k` and `vector.store`
+(and updated the test assertions that pinned the old names) — nothing outside this repository
+consumed them, so no compatibility shim was needed. **New tags — every tag a satellite adds — are
+dotted**, with no exceptions going forward.
 
 **No tag is mandated on every span.** `ragnet.query` itself carries none, by design (see the PII
 note above and its rationale in the Spans section). Two tags recur today only because the same
 identifying value threads through several stages of the *same* tree: `document.id` on every span
-in the ingest tree, `query.hash`/`top_k` on `ragnet.retrieve`. A satellite span nested inside one
+in the ingest tree, `query.hash`/`top.k` on `ragnet.retrieve`. A satellite span nested inside one
 of those trees should repeat the identifying tag it inherits — `document.id` inside ingest,
 `query.hash` inside retrieve — when it is cheaply available at that call site; it costs one field
 copy and saves a trace-tree walk for anyone inspecting a single span in isolation. It should not
