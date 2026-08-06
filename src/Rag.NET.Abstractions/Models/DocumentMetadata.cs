@@ -2,15 +2,35 @@ using ZeroAlloc.Validation;
 
 namespace Rag.NET.Models;
 
+/// <summary>
+/// Caller-supplied information about a document, passed to <c>IIngestor.IngestAsync</c> alongside
+/// its content stream. Distinct from <see cref="DocumentSummary"/>, which is what the sidecar
+/// store reports back after ingestion.
+/// </summary>
 [Validate]
 public sealed class DocumentMetadata
 {
+    /// <summary>The document's identifier, assigned by the caller before ingestion.</summary>
     public required DocumentId DocumentId { get; init; }
 
+    /// <summary>The document's source file name. Validated as non-empty at ingest time.</summary>
     [NotEmpty]
     public required string FileName { get; init; }
 
+    /// <summary>
+    /// The document's MIME content type. <see langword="null"/> when the caller did not supply
+    /// one — not the same as an empty or unrecognised type.
+    /// </summary>
     public string? ContentType { get; init; }
+
+    /// <summary>
+    /// Caller-supplied tags, merged into every chunk's <see cref="TextChunk.Metadata"/> at ingest
+    /// time. Applied before the framework's own reserved keys (see
+    /// <see cref="ReservedMetadataKeys"/>) using <c>TryAdd</c>, so a tag using a reserved key name
+    /// silently shadows the framework's own value for that key rather than losing to it — unlike
+    /// the data-provider connector path, nothing here rejects the collision. Never
+    /// <see langword="null"/>; no tags is an empty dictionary, not a missing one.
+    /// </summary>
     public IDictionary<string, string> Tags { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
 
     /// <summary>
