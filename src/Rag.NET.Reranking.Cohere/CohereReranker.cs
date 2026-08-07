@@ -45,10 +45,8 @@ public sealed class CohereReranker : IReranker, IDisposable
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(results);
 
-        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.rerank");
-        activity?.SetTag("reranker.type", nameof(CohereReranker));
-        activity?.SetTag("reranker.candidate.count", results.Count);
-
+        // No span here: RerankerInstrumented opens ragnet.rerank.CohereReranker around this call
+        // and tags it from the parameter and the return value.
         if (results.Count == 0)
             return [];
 
@@ -92,7 +90,6 @@ public sealed class CohereReranker : IReranker, IDisposable
         allRerankResults.Sort(static (a, b) => b.RelevanceScore.CompareTo(a.RelevanceScore));
         if (allRerankResults.Count > _options.TopN)
             allRerankResults.RemoveRange(_options.TopN, allRerankResults.Count - _options.TopN);
-        activity?.SetTag("reranker.result.count", allRerankResults.Count);
         return allRerankResults;
     }
 

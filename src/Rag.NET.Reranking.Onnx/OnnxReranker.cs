@@ -44,10 +44,9 @@ public sealed class OnnxReranker : IReranker, IDisposable
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(results);
 
-        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.rerank");
-        activity?.SetTag("reranker.type", nameof(OnnxReranker));
-        activity?.SetTag("reranker.candidate.count", results.Count);
-
+        // No span here: RerankerInstrumented opens ragnet.rerank.OnnxReranker around this call
+        // and tags it from the parameter and the return value. It also gains
+        // reranker.result.count, which this reranker never set by hand.
         if (results.Count == 0)
             return Task.FromResult<IReadOnlyList<RerankResult>>([]);
 

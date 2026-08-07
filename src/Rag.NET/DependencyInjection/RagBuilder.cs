@@ -184,7 +184,11 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// </remarks>
     public RagBuilder UseReranking<TReranker>() where TReranker : class, IReranker
     {
-        Services.AddSingleton<IReranker, TReranker>();
+        // The concrete type is registered separately so the generated proxy has something to
+        // wrap. Every reranker package routes through here, so instrumentation is applied once
+        // rather than per package — and a reranker added later gets it without opting in.
+        Services.AddSingleton<TReranker>();
+        Services.AddSingleton<IReranker>(sp => new RerankerInstrumented(sp.GetRequiredService<TReranker>()));
         return this;
     }
 

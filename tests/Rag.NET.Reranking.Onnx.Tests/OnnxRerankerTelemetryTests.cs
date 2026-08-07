@@ -1,4 +1,5 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
+using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using Xunit;
 
@@ -23,11 +24,14 @@ public sealed class OnnxRerankerTelemetryTests
             string.IsNullOrEmpty(vocabPath) || !File.Exists(vocabPath),
             "Set RAGNET_ONNX_RERANK_MODEL and RAGNET_ONNX_RERANK_VOCAB to existing model/vocab files to run this test.");
 
-        using var reranker = new OnnxReranker(new OnnxRerankerOptions
+        // Wrapped deliberately — see the Cohere equivalent. Since the pilot moved instrumentation
+        // into the generated proxy, a directly-constructed OnnxReranker emits no span at all.
+        using var inner = new OnnxReranker(new OnnxRerankerOptions
         {
             ModelPath = modelPath!,
             VocabPath = vocabPath!,
         });
+        IReranker reranker = new RerankerInstrumented(inner);
 
         var activities = new List<Activity>();
         using var listener = new ActivityListener
@@ -54,9 +58,12 @@ public sealed class OnnxRerankerTelemetryTests
 
         var span = activities
             .Where(a => a.TraceId == parent.TraceId)
-            .SingleOrDefault(a => string.Equals(a.OperationName, "ragnet.rerank", StringComparison.Ordinal));
+            .SingleOrDefault(a => string.Equals(a.OperationName, "ragnet.rerank.OnnxReranker", StringComparison.Ordinal));
         Assert.NotNull(span);
-        Assert.Equal(nameof(OnnxReranker), span.GetTagItem("reranker.type"));
+        Assert.Null(span.GetTagItem("reranker.type"));
         Assert.Equal(1, span.GetTagItem("reranker.candidate.count"));
+        // New: this reranker never set a result count by hand. The proxy tags it from the
+        // return value, so both rerankers now report it.
+        Assert.Equal(1, span.GetTagItem("reranker.result.count"));
     }
 }

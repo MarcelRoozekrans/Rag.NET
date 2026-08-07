@@ -47,6 +47,17 @@
     <!-- Specification 1.1.0 bundles its generator — a separate Specification.Generator
          reference would run the generator twice (duplicate And/Or/Not members). -->
     <PackageReference Include="ZeroAlloc.Specification" />
+    <!-- PrivateAssets="analyzers", not "all". The attributes are applied to IReranker, so they
+         land in this assembly's metadata and must resolve at runtime: with "all" the nuspec was
+         clean but `typeof(IReranker).GetCustomAttributes()` threw FileNotFoundException for
+         ZeroAlloc.Telemetry — an error from a package declaring no such dependency, which is
+         close to undebuggable. Measured, not reasoned about; the guard lives in
+         InstrumentAttributeReflectionProbe. No PrivateAssets is needed to keep the bundled
+         generator local: NuGet's default already makes analyzers, build and contentFiles
+         private, which is why every other reference here packs as exclude="Build,Analyzers".
+         So the attribute assembly flows as an ordinary dependency and the generator does not
+         run in consumers' builds, where it would have nothing to generate. -->
+    <PackageReference Include="ZeroAlloc.Telemetry" />
     <PackageReference Include="ZeroAlloc.Validation" />
     <PackageReference Include="ZeroAlloc.Validation.Generator" PrivateAssets="all" ExcludeAssets="runtime" />
     <!-- Pinned exactly: floating versions made builds non-reproducible. The generator always

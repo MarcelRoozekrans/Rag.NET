@@ -1,4 +1,5 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
+using Rag.NET.Abstractions;
 using Rag.NET.Models;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
@@ -43,7 +44,11 @@ public sealed class CohereRerankerTelemetryTests : IDisposable
             MaxDocumentsPerBatch = 1000,
             TopN = 100,
         };
-        using var reranker = new CohereReranker(options);
+        // Wrapped deliberately. Since the pilot moved instrumentation into the generated proxy,
+        // a directly-constructed CohereReranker emits no span at all — telemetry is now a
+        // composition concern that UseReranking() applies, not a property of the type.
+        using var inner = new CohereReranker(options);
+        IReranker reranker = new RerankerInstrumented(inner);
 
         var activities = new List<Activity>();
         using var listener = new ActivityListener
@@ -62,9 +67,11 @@ public sealed class CohereRerankerTelemetryTests : IDisposable
 
         var span = activities
             .Where(a => a.TraceId == parent.TraceId)
-            .SingleOrDefault(a => string.Equals(a.OperationName, "ragnet.rerank", StringComparison.Ordinal));
+            .SingleOrDefault(a => string.Equals(a.OperationName, "ragnet.rerank.CohereReranker", StringComparison.Ordinal));
         Assert.NotNull(span);
-        Assert.Equal(nameof(CohereReranker), span.GetTagItem("reranker.type"));
+        // The backend moved from a reranker.type tag into the span name, so the tag is gone.
+        // Asserted rather than merely deleted: a silently-absent tag is how dashboards break.
+        Assert.Null(span.GetTagItem("reranker.type"));
         Assert.Equal(1, span.GetTagItem("reranker.candidate.count"));
         Assert.Equal(1, span.GetTagItem("reranker.result.count"));
     }
