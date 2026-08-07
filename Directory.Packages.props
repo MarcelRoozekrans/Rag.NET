@@ -103,8 +103,8 @@
     <PackageVersion Include="ZeroAlloc.Rest.SystemTextJson" Version="1.1.3" />
     <PackageVersion Include="ZeroAlloc.Results" Version="1.2.0" />
     <PackageVersion Include="ZeroAlloc.Specification" Version="1.1.0" />
-    <PackageVersion Include="ZeroAlloc.Validation" Version="1.5.3" />
-    <PackageVersion Include="ZeroAlloc.Validation.Generator" Version="1.5.3" />
-    <PackageVersion Include="ZeroAlloc.ValueObjects" Version="1.7.2" />
+    <PackageVersion Include="ZeroAlloc.Validation" Version="1.5.4" />
+    <PackageVersion Include="ZeroAlloc.Validation.Generator" Version="1.5.4" />
+    <PackageVersion Include="ZeroAlloc.ValueObjects" Version="2.0.2" />
   </ItemGroup>
 </Project>

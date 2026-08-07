@@ -23,6 +23,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Declared explicitly because this package uses ILogger<> and [LoggerMessage] directly.
+         It compiled without this until ZeroAlloc.ValueObjects 2.0.0, which dropped its
+         Microsoft.Extensions.Hosting.Abstractions dependency — that had been supplying
+         Logging.Abstractions transitively through Rag.NET.Abstractions. A package should
+         declare what it uses rather than inherit it by accident. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" />
     <PackageReference Include="Microsoft.ML.Tokenizers" />
   </ItemGroup>
