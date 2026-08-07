@@ -2158,6 +2158,28 @@ hand-written no-op decorator **144 B**, the generated proxy **144 B**. `StartAct
 **zero** when unobserved; the extra cost either approach pays is decorator-shaped, not
 telemetry-shaped, so spans placed directly inside existing methods — this phase's approach — are
 cheaper than any proxy.
+
+**Revisited 2026-08-07 after ZeroAlloc.Telemetry v1.5.0, and declined again — for a different
+reason.** The three issues filed off the back of the evaluation above
+([#35](https://github.com/ZeroAlloc-Net/ZeroAlloc.Telemetry/issues/35),
+[#36](https://github.com/ZeroAlloc-Net/ZeroAlloc.Telemetry/issues/36),
+[#37](https://github.com/ZeroAlloc-Net/ZeroAlloc.Telemetry/issues/37)) all shipped, and they
+worked: tag expressiveness went from ~7% to ~50% of this repository's **131** hand-written tags
+across **48** spans in **30** files. (The first count taken was 68 spans and 175 tags — wrong,
+because it swept in `obj/`, where the ZeroAlloc.Rest and Mediator generators emit their own
+instrumentation. *An unfiltered grep is not a measurement either.*) What blocks adoption is no
+longer tags but **span naming**: `[Trace("name")]` sits on the interface, so every implementation
+shares one span name, and **not one traced type in this repository has an interface to itself**
+(`IRetrievalBehavior` ~23 implementations, `IIngestionBehavior` ~16, `IVectorStore` ~10). Since
+Phase 4.4 exists precisely to make Qdrant distinguishable from Weaviate, converting would undo its
+central benefit — a cleanup that made traces less informative would be a regression in a costume.
+The 21 hand-written `GetType().Name` tags are the visible workaround for that same gap. Raised
+upstream as [#53](https://github.com/ZeroAlloc-Net/ZeroAlloc.Telemetry/issues/53); full
+measurement in `docs/plans/2026-08-07-telemetry-conversion-assessment-design.md`. Note also that
+the 144 B proxy figure above is **contradicted** by v1.5.0's published benchmark, which reports
+parity at 72 B; the shapes differ (ours are `Task`-returning async interface methods, where
+wrapping allocates a second state machine) and neither number should be trusted here without
+re-measuring, which was not done because the blocker is architectural, not performance.
 **Task 5 (`6904d2c`) — the span/tag convention, decided once before any package was
 instrumented,** so nine packages did not produce nine conventions. Span names extend core's
 two-segment `ragnet.<operation>` to `ragnet.<area>.<operation>` for satellites; packages sharing
