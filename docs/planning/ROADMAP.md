@@ -1962,7 +1962,8 @@ ordering the first assertion had been silently depending on.
 |---|---|---|---|
 | Engine-level mock | `ChatAnswerEngineTests` (existing + `c2151ef4`) | the message list is built correctly | gating |
 | Full-pipeline mock | `AskAsync_WithCustomSystemPrompt_ReachesChatClientAsSystemMessage`, `AskStreamingAsync_WithCustomSystemPrompt_ReachesChatClientAsSystemMessage` (`9febb9be`, `tests/Rag.NET.Tests/Pipeline/RagPipelineFacadeTests.cs`) | `SystemPrompt` survives `RagPipeline.AskAsync` **and `AskStreamingAsync`** | gating |
-| Real model | `AskAsync_CustomSystemPrompt_MarkerAppearsInRealProviderResponse` (`3345bbda`, `tests/Rag.NET.E2ETests/SystemPromptE2ETests.cs`) | the prompt reaches the provider and changes output | nightly `RequiresLlm` |
+| Real model, no sources | `AskAsync_CustomSystemPrompt_MarkerAppearsInRealProviderResponse` (`3345bbda`, `tests/Rag.NET.E2ETests/SystemPromptE2ETests.cs`) | the prompt reaches the provider and changes output | nightly `RequiresLlm` |
+| Real model, sources retrieved | `FullPipeline_CustomSystemPrompt_HoldsWhenSourcesAreRetrieved` (`987d7bb6`, `tests/Rag.NET.E2ETests/FullPipelineTests.cs`) | the prompt survives **real retrieved context** — the only case #56 was about | nightly `RequiresLlm`, OpenRouter-gated |
 
 Before this phase, only the first layer existed. The full-pipeline mock closes a real gap: the
 pre-existing pipeline tests substitute `IAnswerEngine` entirely, so they never touched
@@ -1989,10 +1990,39 @@ suites still pass on Ollama.
 `llama3.2:1b` fallback** — it answered *"The capital of France is Paris."* with no marker at all.
 The assertion was **not weakened** to accommodate that: the instruction was made blunter and
 shorter, and the fallback then followed it in **3 of 3** runs. Verified on both paths — OpenRouter
-and Ollama. Gating the test on `IsOpenRouterAvailable` was considered and rejected, because a skip
-in the tier when no key is set is exactly how the OpenRouter path went stale in the first place.
-The test deliberately does not assert the reporter's own case (an exact requested sentence) —
-asserting exact text would make it flaky for precisely the reason the issue exists.
+and Ollama. For the source-free test, gating on `IsOpenRouterAvailable` was considered and
+rejected, because a skip in the tier when no key is set is exactly how the OpenRouter path went
+stale in the first place. The test deliberately does not assert the reporter's own case (an exact
+requested sentence) — asserting exact text would make it flaky for precisely the reason the issue
+exists.
+
+**The empty-store gap, caught in review.** The first real-model test ran against an empty
+`InMemoryVectorStore`, so the context block was empty and the `[Source N]` labels never appeared at
+all — it proved the prompt reaches the provider, but not that it survives retrieved context, which
+is the only situation issue #56 describes. `987d7bb6` closes that in `FullPipelineTests`, which
+already ingests three documents into PgVector. All three of its assertions are load-bearing, and
+the weakest-looking one earned its place immediately: instructed to append a marker, `llama3.2:1b`
+returned **the marker and nothing else**, so a marker-only assertion would have gone green on an
+empty answer. Unlike the source-free test, this one **is** gated on `IsOpenRouterAvailable` — with
+a context block competing for its attention the 1B model either emitted the marker alone or filled
+the brackets in as a template (`<<Paris, France>>`) in 3 of 3 runs. Two rewordings did not move it,
+so the model is the limit rather than the wording and the assertion was left intact. The gate is
+live rather than inert because the nightly now supplies the key, and it was verified in both
+directions: skips without a key, passes with one.
+
+**The question this phase did not answer.** The reporter asked *"What is my address?"* and got
+*"There isn't enough information in the provided context…"*. They raised it as a `SystemPrompt`
+complaint — they wanted a literal canned sentence — and that framing is what this phase answers.
+But what they actually wanted was the address, and the issue never establishes whether it was in
+their documents at all. The evidence points at retrieval rather than the prompt: with
+`TopK = 5, MinScore = 0.5` the model reported using Sources 1–5, so five chunks cleared the floor
+and nothing was filtered into silence. If the address is in the corpus, the failure is **ranking** —
+and `"What is my address?"` is close to a worst case for dense retrieval, being four words
+dominated by a pronoun against a target chunk that shares almost no semantic surface with it. The
+maintainer reply asked about `Temperature` and pointed at `IPromptObserver` but never asked the one
+question that settles it: *is the address actually in your documents, and does it appear in the
+five retrieved sources?* Recorded as an open question needing the reporter's data, **not** as a
+finding, and deliberately not pursued on this branch.
 
 **Left open, not recorded as fact.** The reporter was asked whether `Temperature` is the actual
 cause, since several recent OpenAI reasoning models reject or ignore it. No answer yet — an open
