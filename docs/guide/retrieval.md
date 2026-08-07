@@ -888,6 +888,33 @@ var response = await pipeline.AskAsync("What is our refund policy?", new RagOpti
 });
 ```
 
+### What the model actually receives
+
+`ChatAnswerEngine.BuildMessagesAsync` builds the context block by joining the retrieved sources with `"\n\n---\n\n"`, labelling each one `[Source N]`, and sends the whole block as the final **user** message alongside the question:
+
+```
+Context:
+[Source 1]
+<chunk text>
+
+---
+
+[Source 2]
+<chunk text>
+
+Question: <the query>
+```
+
+This shape does not change based on `SystemPrompt`. **A custom system prompt does not suppress citation behaviour** — the `[Source N]` labels are delimiters the model sees regardless of what the system prompt says, and a model that notices them will often cite them unprompted. If a caller does not want citations, they must say so explicitly in their prompt (e.g. "Do not reference source numbers in your answer").
+
+This also matters because of what a custom prompt *removes*. When `SystemPrompt` is left `null`, the engine falls back to a default that ends with an explicit citation instruction:
+
+```
+Answer the user's question based only on the provided context. If the context doesn't contain enough information, say so. Cite which sources you used.
+```
+
+Setting a custom `SystemPrompt` replaces this string entirely — including its "Cite which sources you used" instruction — while the `[Source N]` labels in the context block stay exactly as they were. The labels, not the default prompt, are what drive citation-like behaviour, and they are unaffected by whichever `SystemPrompt` value is in effect.
+
 ### Conversation history
 
 Pass prior turns to maintain a multi-turn conversation. Messages are inserted between the system prompt and the final user+context message:
@@ -906,6 +933,52 @@ var response = await pipeline.AskAsync("Can you give an example?", new RagOption
     ConversationHistory = history,
 });
 ```
+
+**Ordering:** if `ConversationHistory` begins with one or more `ChatRole.System` messages — for example a host-injected prompt-hardening prefix — those are placed *before* `SystemPrompt` (or the default prompt), not after it. This is deliberate: a host-level prompt must not be shadowed by a per-request one. The remaining history (user/assistant turns) follows `SystemPrompt`, then the `Context:`/`Question:` message. So with a leading system message in history, the full order is:
+
+1. History's leading system message(s)
+2. `SystemPrompt` (or the default)
+3. Remaining history (user/assistant turns)
+4. The `Context:`/`Question:` user message
+
+This ordering is pinned by tests and should be treated as a contract, not an implementation detail.
+
+### Observing the assembled prompt
+
+`IPromptObserver` (in `Rag.NET.Abstractions`) is an optional seam that `ChatAnswerEngine` calls with the complete, ordered message list — system prompt(s), conversation history, and the `Context:`/`Question:` user message — immediately before sending it to the `IChatClient`:
+
+```csharp
+public interface IPromptObserver
+{
+    void OnPromptAssembled(IReadOnlyList<ChatMessage> messages);
+}
+```
+
+`ChatAnswerEngine.CreateFromServices` resolves it as an optional service, so registering an implementation is enough to turn it on — with none registered, nothing about answer generation changes:
+
+```csharp
+using Microsoft.Extensions.AI;
+using Rag.NET.Abstractions;
+
+public sealed class ConsolePromptObserver : IPromptObserver
+{
+    public void OnPromptAssembled(IReadOnlyList<ChatMessage> messages)
+    {
+        foreach (var message in messages)
+        {
+            Console.WriteLine($"{message.Role}: {message.Text}");
+        }
+    }
+}
+
+services.AddSingleton<IPromptObserver, ConsolePromptObserver>();
+```
+
+With this registered, every call to `AskAsync` or `AskStreamingAsync` prints exactly what the model was given — the resolved system prompt, any conversation history, and the `[Source N]`-labelled context block described above. This is the fastest way to answer "did my `SystemPrompt` actually reach the model, and what else did it see?" without reading source.
+
+Implementations must never throw — the call happens on the path to the model, so an exception there would turn a diagnostic into a failed answer.
+
+> **Built-in observer:** the `Rag.NET.Diagnostics` package's `AddRagDiagnostics()` registers its own `IPromptObserver` that renders assembled prompts into its trace store instead of the console — see that package's documentation for the full pipeline-debugger feature set.
 
 ## SQLite Persistence
 
