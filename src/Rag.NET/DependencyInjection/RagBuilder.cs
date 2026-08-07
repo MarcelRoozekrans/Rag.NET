@@ -50,14 +50,62 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// selects the first one whose <c>CanParse</c> returns <see langword="true"/> for a given content type.
     /// </summary>
     /// <typeparam name="TParser">The <see cref="IDocumentParser"/> implementation to register.</typeparam>
-    public RagBuilder AddParser<TParser>() where TParser : class, IDocumentParser
+    /// <param name="replaces">
+    /// When set, deliberately overrides <paramref name="replaces"/>: every registered
+    /// <see cref="IDocumentParser"/> descriptor implemented by it, and every
+    /// <see cref="ParserClaim"/> declared for it, are removed before <typeparamref name="TParser"/>
+    /// is registered. Removing the old registration — not just its claim — is load-bearing: parser
+    /// selection takes the <i>first</i> registered parser whose <c>CanParse</c> matches, and
+    /// built-in parsers register before <c>configure</c> runs, so leaving the replaced descriptor in
+    /// place would let it keep winning even once the conflict is silenced. <paramref name="replaces"/>
+    /// is matched by <see cref="Type.FullName"/>, not <see cref="Type.Name"/> — see
+    /// <see cref="ParserClaim.ParserTypeName"/>'s remarks for why a short-name match would collapse
+    /// two distinct parsers that happen to share one. A <paramref name="replaces"/> that was never
+    /// registered removes nothing and is not an error.
+    /// </param>
+    public RagBuilder AddParser<TParser>(Type? replaces = null) where TParser : class, IDocumentParser
     {
+        if (replaces is not null)
+        {
+            RemoveReplacedParser(replaces);
+        }
+
         Services.AddSingleton<IDocumentParser, TParser>();
         return this;
     }
 
+    /// <summary>
+    /// Removes <paramref name="replaced"/>'s <see cref="IDocumentParser"/> registration and every
+    /// <see cref="ParserClaim"/> declared for it, so a caller of
+    /// <see cref="AddParser{TParser}(Type?)"/> that names it as <c>replaces</c> actually wins
+    /// selection rather than merely avoiding the conflict check.
+    /// </summary>
+    private void RemoveReplacedParser(Type replaced)
+    {
+        var replacedTypeName = replaced.FullName ?? replaced.Name;
+
+        for (var i = Services.Count - 1; i >= 0; i--)
+        {
+            var descriptor = Services[i];
+
+            var isReplacedParser =
+                descriptor.ServiceType == typeof(IDocumentParser) &&
+                descriptor.ImplementationType == replaced;
+
+            var isReplacedClaim =
+                descriptor.ServiceType == typeof(ParserClaim) &&
+                descriptor.ImplementationInstance is ParserClaim claim &&
+                string.Equals(claim.ParserTypeName, replacedTypeName, StringComparison.Ordinal);
+
+            if (isReplacedParser || isReplacedClaim)
+            {
+                Services.RemoveAt(i);
+            }
+        }
+    }
+
     /// <inheritdoc/>
-    IRagBuilder IRagBuilder.AddParser<TParser>() => AddParser<TParser>();
+    IRagBuilder IRagBuilder.AddParser<TParser>(Type? replaces) => AddParser<TParser>(replaces);
 
     /// <inheritdoc/>
     IRagBuilder IRagBuilder.UseReranking<TReranker>() => UseReranking<TReranker>();

@@ -159,7 +159,7 @@ public sealed class RagBuilderExtensionsTests
     {
         public IServiceCollection Services { get; } = services;
 
-        public IRagBuilder AddParser<TParser>() where TParser : class, IDocumentParser =>
+        public IRagBuilder AddParser<TParser>(Type? replaces = null) where TParser : class, IDocumentParser =>
             throw new NotSupportedException("UseShadow must only touch Services.");
 
         public IRagBuilder UseReranking<TReranker>() where TReranker : class, IReranker =>

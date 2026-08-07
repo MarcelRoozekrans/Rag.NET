@@ -23,6 +23,7 @@ public class ParserClaimValidationTests
 {
     private const string EmlContentType = "message/rfc822";
     private const string SharedContentType = "application/x-shared-name";
+    private const string CsvContentType = "text/csv";
 
     private static IServiceCollection BaseServices()
     {
@@ -340,6 +341,85 @@ public class ParserClaimValidationTests
             .BuildServiceProvider();
 
         Assert.Contains(sp.GetServices<IDocumentParser>(), p => p is EmailPackageParser);
+    }
+
+    /// <summary>
+    /// <c>replaces:</c> must remove both halves of the replaced registration — its
+    /// <see cref="IDocumentParser"/> descriptor and its <see cref="ParserClaim"/> — together, not
+    /// merely silence the conflict the claim would otherwise trip.
+    /// </summary>
+    [Fact]
+    public void AddParser_WithReplaces_RemovesTheReplacedParserAndItsClaim()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag =>
+            {
+                rag.AddParser<CsvDocumentParser>();
+                rag.Services.AddSingleton(ParserClaim.For<CsvDocumentParser>(
+                    CsvContentType, "AddParser<CsvDocumentParser>()"));
+
+                rag.AddParser<FakeCsvParser>(replaces: typeof(CsvDocumentParser));
+                rag.Services.AddSingleton(ParserClaim.For<FakeCsvParser>(
+                    CsvContentType,
+                    "AddParser<FakeCsvParser>(replaces: typeof(CsvDocumentParser))",
+                    replaces: typeof(CsvDocumentParser)));
+            })
+            .BuildServiceProvider();
+
+        var parsers = sp.GetServices<IDocumentParser>().ToList();
+        Assert.Contains(parsers, p => p is FakeCsvParser);
+        Assert.DoesNotContain(parsers, p => p is CsvDocumentParser);
+    }
+
+    /// <summary>
+    /// The point of the feature, asserted separately from mere clean registration. Selection takes
+    /// the first registered parser whose <c>CanParse</c> matches, and <c>CsvDocumentParser</c> is
+    /// registered first here — exactly the shape a built-in registered ahead of <c>configure</c>
+    /// takes. Without descriptor removal this would still pass the claim check and still lose.
+    /// </summary>
+    [Fact]
+    public void AddParser_WithReplaces_MakesTheReplacementWinSelection()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag =>
+            {
+                rag.AddParser<CsvDocumentParser>();
+                rag.Services.AddSingleton(ParserClaim.For<CsvDocumentParser>(
+                    CsvContentType, "AddParser<CsvDocumentParser>()"));
+
+                rag.AddParser<FakeCsvParser>(replaces: typeof(CsvDocumentParser));
+                rag.Services.AddSingleton(ParserClaim.For<FakeCsvParser>(
+                    CsvContentType,
+                    "AddParser<FakeCsvParser>(replaces: typeof(CsvDocumentParser))",
+                    replaces: typeof(CsvDocumentParser)));
+            })
+            .BuildServiceProvider();
+
+        var selected = sp.GetServices<IDocumentParser>().First(p => p.CanParse(CsvContentType));
+
+        Assert.IsType<FakeCsvParser>(selected);
+    }
+
+    /// <summary>
+    /// The escape hatch must not become a way to switch the guard off entirely. Two parsers
+    /// claiming the same content type without <c>replaces:</c> must still throw.
+    /// </summary>
+    [Fact]
+    public void AddParser_WithoutReplaces_StillConflictsWhenBothDeclare()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            BaseServices().AddRagNet(rag =>
+            {
+                rag.AddParser<FakeCsvParser>();
+                rag.Services.AddSingleton(ParserClaim.For<FakeCsvParser>(
+                    CsvContentType, "AddParser<FakeCsvParser>()"));
+
+                rag.AddParser<SecondFakeCsvParser>();
+                rag.Services.AddSingleton(ParserClaim.For<SecondFakeCsvParser>(
+                    CsvContentType, "AddParser<SecondFakeCsvParser>()"));
+            }));
+
+        Assert.Contains(CsvContentType, ex.Message, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string text, string value)
