@@ -888,6 +888,33 @@ var response = await pipeline.AskAsync("What is our refund policy?", new RagOpti
 });
 ```
 
+### What the model actually receives
+
+`ChatAnswerEngine.BuildMessagesAsync` builds the context block by joining the retrieved sources with `"\n\n---\n\n"`, labelling each one `[Source N]`, and sends the whole block as the final **user** message alongside the question:
+
+```
+Context:
+[Source 1]
+<chunk text>
+
+---
+
+[Source 2]
+<chunk text>
+
+Question: <the query>
+```
+
+This shape does not change based on `SystemPrompt`. **A custom system prompt does not suppress citation behaviour** — the `[Source N]` labels are delimiters the model sees regardless of what the system prompt says, and a model that notices them will often cite them unprompted. If a caller does not want citations, they must say so explicitly in their prompt (e.g. "Do not reference source numbers in your answer").
+
+This also matters because of what a custom prompt *removes*. When `SystemPrompt` is left `null`, the engine falls back to a default that ends with an explicit citation instruction:
+
+```
+Answer the user's question based only on the provided context. If the context doesn't contain enough information, say so. Cite which sources you used.
+```
+
+Setting a custom `SystemPrompt` replaces this string entirely — including its "Cite which sources you used" instruction — while the `[Source N]` labels in the context block stay exactly as they were. The labels, not the default prompt, are what drive citation-like behaviour, and they are unaffected by whichever `SystemPrompt` value is in effect.
+
 ### Conversation history
 
 Pass prior turns to maintain a multi-turn conversation. Messages are inserted between the system prompt and the final user+context message:
@@ -906,6 +933,80 @@ var response = await pipeline.AskAsync("Can you give an example?", new RagOption
     ConversationHistory = history,
 });
 ```
+
+**Ordering:** if `ConversationHistory` begins with one or more `ChatRole.System` messages — for example a host-injected prompt-hardening prefix — those are placed *before* `SystemPrompt` (or the default prompt), not after it. This is deliberate: a host-level prompt must not be shadowed by a per-request one. The remaining history (user/assistant turns) follows `SystemPrompt`, then the `Context:`/`Question:` message. So with a leading system message in history, the full order is:
+
+1. History's leading system message(s)
+2. `SystemPrompt` (or the default)
+3. Remaining history (user/assistant turns)
+4. The `Context:`/`Question:` user message
+
+This ordering is pinned by tests and should be treated as a contract, not an implementation detail.
+
+### Observing the assembled prompt
+
+`IPromptObserver` (in `Rag.NET.Abstractions`) is an optional seam that `ChatAnswerEngine` calls with the complete, ordered message list — system prompt(s), conversation history, and the `Context:`/`Question:` user message — immediately before sending it to the `IChatClient`:
+
+```csharp
+public interface IPromptObserver
+{
+    void OnPromptAssembled(IReadOnlyList<ChatMessage> messages);
+}
+```
+
+`ChatAnswerEngine.CreateFromServices` resolves it as an optional service, so registering an implementation is enough to turn it on — with none registered, nothing about answer generation changes:
+
+```csharp
+using Microsoft.Extensions.AI;
+using Rag.NET.Abstractions;
+
+public sealed class ConsolePromptObserver : IPromptObserver
+{
+    public void OnPromptAssembled(IReadOnlyList<ChatMessage> messages)
+    {
+        foreach (var message in messages)
+        {
+            Console.WriteLine($"{message.Role}: {message.Text}");
+        }
+    }
+}
+
+services.AddSingleton<IPromptObserver, ConsolePromptObserver>();
+```
+
+With this registered, every call to `AskAsync` or `AskStreamingAsync` prints exactly what the model was given — the resolved system prompt, any conversation history, and the `[Source N]`-labelled context block described above. This is the fastest way to answer "did my `SystemPrompt` actually reach the model, and what else did it see?" without reading source.
+
+Implementations must never throw — the call happens on the path to the model, so an exception there would turn a diagnostic into a failed answer.
+
+> **Built-in observer:** the `Rag.NET.Diagnostics` package's `AddRagDiagnostics()` registers its own `IPromptObserver` that renders assembled prompts into its trace store instead of the console — see that package's documentation for the full pipeline-debugger feature set.
+
+### When the answer says it cannot find something
+
+An answer along the lines of *"there isn't enough information in the provided context"* has two quite different causes, and `RagResponse` already carries everything needed to tell them apart. `Sources` is the full retrieved set — every chunk's complete `Text`, with the `Score` it was retrieved at. Nothing is truncated or summarised:
+
+```csharp
+var response = await pipeline.AskAsync("What is my address?", options);
+
+Console.WriteLine(response.Answer);
+Console.WriteLine($"--- {response.Sources.Count} source(s) ---");
+foreach (var source in response.Sources)
+{
+    Console.WriteLine($"[{source.Score:F3}] {source.Chunk.DocumentId}#{source.Chunk.ChunkIndex}");
+    Console.WriteLine(source.CompressedText ?? source.Chunk.Text);
+}
+```
+
+Read the output before changing anything:
+
+- **`Sources` is empty.** Retrieval returned nothing, or `MinScore` filtered everything out. The model was asked a question with no context at all, and correctly said so. Lower `MinScore`, raise `TopK`, or check the documents were ingested at all.
+- **`Sources` is full, and the text you expected is not in it.** Retrieval ran but ranked the wrong chunks highest — a *ranking* problem, not a filtering one. Raising `TopK` may be enough; otherwise this is what hybrid search, reranking, and query expansion exist for. Short, pronoun-heavy queries are the usual trigger: `"What is my address?"` shares very little semantic surface with a chunk containing a literal street address, so a dense-only search can rank it well below chunks that merely *discuss* addresses.
+- **`Sources` is full and the text you expected *is* in it.** Retrieval did its job and the model did not use what it was given. That is a prompting or model-capability question, and `IPromptObserver` above will show you exactly what it received.
+
+`Sources` reflects the post-compression list when contextual compression is enabled, so compare `CompressedText` against `Chunk.Text` if you suspect the compressor dropped the very detail you were asking about.
+
+> **`MinScore` is an absolute floor, and it is easy to set too high.** It is a raw similarity from the embedding model, not a percentage or a calibrated confidence, and the value that means "clearly relevant" differs per model. In a measured example (`nomic-embed-text`, `tests/Rag.NET.E2ETests/AddressRetrievalReproTests.cs`) a chunk reading `Address: Keizersgracht 123, 1015 CJ Amsterdam` scored **0.525** against the query *"What is my address?"* — clearing a `MinScore` of `0.5` by 0.025 — while a decoy reading *"delivery addresses cannot be changed"* scored **0.640** and outranked it. Start at `0.0` and raise it only once you have looked at real scores for your own model and corpus.
+
+> **`MinScore` means something different under hybrid search.** With `UseHybridSearch = true`, `EnsembleBehavior` passes `MinScore` to the **dense arm only**. BM25 hits bypass it entirely, so a chunk below the floor can still be returned if it matches a query keyword. The results are then re-scored by reciprocal rank fusion, so the `Score` you get back is an RRF value — on the order of `0.016`, not a similarity — and comparing it against your own `MinScore` will not make sense. Treat `Score` as ordinal whenever hybrid search is on; see `IScoreScaleAware` and `ScoreScale.OpaqueRanking`.
 
 ## SQLite Persistence
 

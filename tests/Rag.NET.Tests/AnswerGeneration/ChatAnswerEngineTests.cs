@@ -48,7 +48,38 @@ public class ChatAnswerEngineTests
         await _sut.AskAsync("q", sources, opts, TestContext.Current.CancellationToken);
 
         await _chatClient.Received(1).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs![0].Text == "Custom prompt"),
+            Arg.Is<IList<ChatMessage>>(msgs =>
+                msgs!.Any(m => m.Role == ChatRole.System && m.Text == "Custom prompt")),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAsync_WithHistorySystemMessageAndCustomSystemPrompt_OrdersHistorySystemFirst()
+    {
+        var sources = new List<SearchResult>();
+        var history = new List<ChatMessage>
+        {
+            new(ChatRole.System, "Prompt-hardening prefix"),
+            new(ChatRole.User, "previous question"),
+            new(ChatRole.Assistant, "previous answer"),
+        };
+        var opts = new RagOptions { SystemPrompt = "Custom prompt", ConversationHistory = history };
+
+        _chatClient.GetResponseAsync(
+            Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "ok")));
+
+        await _sut.AskAsync("q", sources, opts, TestContext.Current.CancellationToken);
+
+        await _chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs =>
+                msgs!.Count == 5 &&
+                msgs[0].Role == ChatRole.System && msgs[0].Text == "Prompt-hardening prefix" &&
+                msgs[1].Role == ChatRole.System && msgs[1].Text == "Custom prompt" &&
+                msgs[2].Role == ChatRole.User && msgs[2].Text == "previous question" &&
+                msgs[3].Role == ChatRole.Assistant && msgs[3].Text == "previous answer" &&
+                msgs[4].Role == ChatRole.User && msgs[4].Text!.StartsWith("Context:", StringComparison.Ordinal) &&
+                msgs[4].Text!.Contains("Question: q", StringComparison.Ordinal)),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
