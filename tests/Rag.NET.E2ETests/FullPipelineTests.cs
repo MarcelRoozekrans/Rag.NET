@@ -122,6 +122,54 @@ public sealed class FullPipelineTests : IAsyncLifetime
         Assert.Contains("Python", response.Answer, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The scenario <see href="https://github.com/MarcelRoozekrans/Rag.NET/issues/56">issue #56</see>
+    /// actually reported: documents ingested, sources retrieved, and a custom
+    /// <see cref="RagOptions.SystemPrompt"/> expected to hold.
+    /// </summary>
+    /// <remarks>
+    /// <c>SystemPromptE2ETests</c> covers the same contract against an empty store, which leaves the
+    /// context block empty and the <c>[Source N]</c> labels absent entirely — so it cannot show that
+    /// a custom prompt survives real retrieved context. That is the case the reporter hit, and it is
+    /// this one. All three assertions are load-bearing: without the source check the marker could
+    /// pass with retrieval returning nothing, which is precisely the hole this test exists to close.
+    /// <para>
+    /// Requires OpenRouter rather than the <c>llama3.2:1b</c> fallback, which is measurably not
+    /// capable of this once a context block is competing for its attention: instructed to append a
+    /// literal marker it either emitted the marker <i>alone</i> with no answer, or filled the
+    /// brackets in as a template (<c>&lt;&lt;Paris, France&gt;&gt;</c>) — the latter in 3 of 3 runs.
+    /// The assertion is not weakened to accommodate that; the model is simply too small, and the
+    /// nightly LLM tier supplies <c>OPENROUTER_API_KEY</c> so this runs there for real. The
+    /// source-free <c>SystemPromptE2ETests</c> passes on both backends and keeps the contract
+    /// covered for contributors running locally without a key.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task FullPipeline_CustomSystemPrompt_HoldsWhenSourcesAreRetrieved()
+    {
+        Assert.SkipUnless(
+            TestChatClientFactory.IsOpenRouterAvailable,
+            "Needs OPENROUTER_API_KEY: the llama3.2:1b fallback cannot follow a marker instruction "
+            + "alongside retrieved context.");
+
+        const string marker = "<<RAGNET>>";
+        var options = new RagOptions
+        {
+            SystemPrompt =
+                "Answer the question using the context, in one short sentence. " +
+                $"After that sentence, append {marker}",
+        };
+
+        var response = await _pipeline.AskAsync(
+            "Where is the Eiffel Tower located?",
+            options,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(response.Sources);
+        Assert.Contains("Paris", response.Answer, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(marker, response.Answer, StringComparison.Ordinal);
+    }
+
     // ---------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------
