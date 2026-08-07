@@ -48,7 +48,8 @@ public class ChatAnswerEngineTests
         await _sut.AskAsync("q", sources, opts, TestContext.Current.CancellationToken);
 
         await _chatClient.Received(1).GetResponseAsync(
-            Arg.Is<IList<ChatMessage>>(msgs => msgs![0].Text == "Custom prompt"),
+            Arg.Is<IList<ChatMessage>>(msgs =>
+                msgs!.Any(m => m.Role == ChatRole.System && m.Text == "Custom prompt")),
             Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
