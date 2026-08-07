@@ -275,7 +275,8 @@ agree.
    144 B), confirming spans placed directly in existing methods are cheaper than any proxy. The
    shared `"Rag.NET"` `ActivitySource` moved to `src/Shared/RagTelemetrySource.cs`, linked (not
    referenced) into core and all nine newly-instrumented satellites: the six vector stores
-   (`ragnet.vectorstore.{upsert,search,delete}`), both rerankers (`ragnet.rerank`), Graph,
+   (`ragnet.vectorstore.{upsert,search,delete}`), both rerankers (`ragnet.rerank`, since renamed
+   to `ragnet.rerank.<Implementation>` by the 2026-08-07 telemetry pilot), Graph,
    GraphRag, Raptor, and Security. `gen_ai.*` landed on the LLM surface pinned to **GenAI semconv
    v1.41.0** — the last tag before the spec moved to an as-yet-unreleased repository, every
    attribute `Development`-stability, `gen_ai.provider.name` used in place of the deprecated

@@ -205,13 +205,23 @@ carries a `vector.store` tag rather than core minting `ragnet.qdrant.store`,
 | Area | Span name shape | Backend tag |
 |---|---|---|
 | Vector stores (Qdrant, PgVector, Pinecone, Weaviate, Chroma, Azure AI Search) | `ragnet.vectorstore.<operation>` (e.g. `ragnet.vectorstore.upsert`, `ragnet.vectorstore.search`) | `vector.store` |
-| Reranking (Onnx, Cohere) | `ragnet.rerank` (one span; both rerankers expose a single scoring operation, so there is no `<operation>` suffix to fork on) | `reranker.type` |
+| Reranking (Onnx, Cohere) | `ragnet.rerank.<Implementation>` — **the exception, see below** | *(none; the backend is in the name)* |
 
 Forking the span name per backend multiplies the number of distinct span names by the number of
 backends for no analytical benefit — every dashboard or alert built on `ragnet.vectorstore.search`
 p99 latency would otherwise need to know the full backend list and OR them together. Six span
 names collapsing to one, tagged, is the same reasoning that produced `vector.store` on
 `ragnet.store` in the first place.
+
+> **Reranking is deliberately inconsistent with the rule above, for now.** Its spans are emitted
+> by a ZeroAlloc.Telemetry generated proxy rather than written by hand — the pilot recorded in
+> `docs/plans/2026-08-07-telemetry-conversion-assessment-design.md`. The generator writes
+> `[Trace]` on the *interface*, so the only way to distinguish implementations is the `{type}`
+> token in the span name, which yields `ragnet.rerank.CohereReranker` and
+> `ragnet.rerank.OnnxReranker`, and the `reranker.type` tag is retired as redundant.
+> **A query grouping on `reranker.type` must be rewritten to group on the span name.** Whether
+> the rest of the repository follows is exactly what the pilot exists to decide; until it is
+> decided, everything else keeps the backend-as-tag convention.
 
 Where a package is its own subsystem with no shared abstraction to fork from, its area is its own
 name and every operation is genuinely area-specific:
@@ -281,7 +291,7 @@ tree. All of them are on the same shared `"Rag.NET"` `ActivitySource` described 
 | Qdrant, PgVector, Pinecone, Chroma | `ragnet.vectorstore.search` | `vector.store`, `vectorstore.collection`, `vectorstore.result.count` | `ragnet.retrieve` |
 | Qdrant, PgVector, Pinecone, Chroma | `ragnet.vectorstore.delete` | `vector.store`, `vectorstore.collection` | — (not on the ingest/retrieve hot path) |
 | Weaviate, Azure AI Search | `ragnet.vectorstore.search` (hybrid overload) | `vector.store`, `vectorstore.collection`, `vectorstore.hybrid=true`, `vectorstore.result.count` | `ragnet.retrieve` |
-| Onnx, Cohere | `ragnet.rerank` | `reranker.type`, `reranker.candidate.count` (Cohere also sets `reranker.result.count`) | `ragnet.retrieve` |
+| Onnx, Cohere | `ragnet.rerank.CohereReranker`, `ragnet.rerank.OnnxReranker` | `reranker.candidate.count`, `reranker.result.count` (both rerankers now; the proxy tags it from the return value) | `ragnet.retrieve` |
 | GraphRag | `ragnet.graphrag.extract` | `document.id`, `graphrag.entity.count`, `graphrag.relationship.count` | `ragnet.ingest` |
 | GraphRag | `ragnet.graphrag.communities` | `document.id`, `graphrag.community.count` | `ragnet.ingest` (parents the Graph spans below) |
 | GraphRag | `ragnet.graphrag.search` | `graphrag.search.mode` (`local`\|`global`), `graphrag.entity.count` (local) or `graphrag.community.count` (global) | `ragnet.retrieve` |

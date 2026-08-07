@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-07
 **Milestone:** 4 — Release Readiness
-**Status:** decided — **do not convert**; file the blocking gap upstream
+**Status:** superseded by §8 — v1.6.0 shipped the blocking fix; a reranker pilot is now in review
 **Origin:** *"Make a phase to write out all the hand written spans into the generated ones. I want to
 use as much as possible from the zeroalloc ecosystem."*
 
@@ -136,3 +136,81 @@ becomes relevant, not now.
   workaround is unnecessary.
 - **Re-running the allocation benchmark.** §5 — it cannot change the outcome, and measuring it now
   would be answering a question nobody is asking.
+
+---
+
+## 8. Superseded: v1.6.0 landed the fix, and a pilot was run
+
+**[#53](https://github.com/ZeroAlloc-Net/ZeroAlloc.Telemetry/issues/53) shipped in v1.6.0** the
+same day it was filed. `[Trace("ragnet.rerank.{type}")]` substitutes the wrapped implementation's
+type name, and — checked in the generated source, not assumed — **composes it once in the proxy
+constructor**, so it costs nothing per call. §4's blocker is gone.
+
+A pilot converted `IReranker` (Cohere + Onnx) to measure the rest. Four claims were open; **three
+resolved against what this document originally said.**
+
+### 8.1 Blocker one was overstated here
+
+§3 called `Rag.NET.Abstractions` an assembly Phase 4.7 kept free of dependencies. **It is not, and
+was not when that was written.** Its packed nuspec already lists six, four of them ZeroAlloc:
+`Results`, `Specification`, `Validation`, `ValueObjects`. A seventh with no transitive
+dependencies is a far smaller step than §3 implies.
+
+### 8.2 `PrivateAssets="all"` looked like the mitigation and is a trap
+
+The obvious move — reference the package privately so it stays out of the nuspec — **works for
+packaging and breaks the assembly.** The nuspec came out clean, but the attributes still land in
+metadata while the assembly is absent at runtime, so `typeof(IReranker).GetCustomAttributes()`
+throws `FileNotFoundException`. That is worse than a declared dependency: an unresolvable-assembly
+error from a package that declares no such dependency.
+
+**No `PrivateAssets` is needed at all.** NuGet's default already makes analyzers, build and
+contentFiles private — which is why every other reference here packs as `exclude="Build,Analyzers"`
+— so a plain `PackageReference` flows the attributes and keeps the generator out of consumers'
+builds. Guarded by `InstrumentAttributeReflectionProbe`, in a test project that does not reference
+ZeroAlloc.Telemetry and therefore stands in for a consumer.
+
+### 8.3 The allocation question, finally measured on the right shape
+
+§5 recorded a contradiction and declined to resolve it. Measured here on an `async Task`
+interface method, under a listener, tags set:
+
+| | Mean | Allocated |
+|---|---:|---:|
+| No instrumentation | 19 ns | **72 B** |
+| Span inside the method (Phase 4.4) | 565 ns | **632 B** |
+| Generated proxy (pilot) | 627 ns | **728 B** |
+
+**The proxy costs 96 B more per call, ~15%** — the second async state machine, as predicted.
+Neither §5 figure described this shape: both were measured without a listener, where
+`StartActivity` returns null and everything is free.
+
+Trust the allocation column, not the timings: this was `--job short` and the baseline's error
+exceeds its mean. For a reranker, called once per query, 96 B is immaterial. **Per-chunk
+instrumentation would be a different conversation** and must be measured separately rather than
+assumed to inherit this verdict.
+
+### 8.4 The finding nobody predicted: instrumentation became a composition concern
+
+With hand-written spans, telemetry was a property of the type — construct a `CohereReranker` and
+it traced. With a proxy, telemetry is applied by whoever wires the object up. **A directly
+constructed reranker now emits nothing**, which is why both telemetry tests had to be rewritten to
+wrap their subject.
+
+`UseReranking<T>()` applies the proxy centrally, so every reranker package — and any added later —
+gets it without opting in. But this is a real behavioural change for anyone constructing
+components by hand, and it deserves an explicit decision before it reaches thirteen packages.
+
+### 8.5 What is unverified
+
+`OnnxRerankerTelemetryTests` is env-gated on `RAGNET_ONNX_RERANK_MODEL` and **skipped** in the
+pilot run. Its span-name update is written but has never executed. Only the Cohere path has been
+observed working end to end.
+
+### 8.6 The decision this leaves open
+
+Rolling out repo-wide means accepting §8.4, and reversing the backend-as-tag convention Phase 4.4
+chose deliberately — `docs/reference/opentelemetry.md` now documents reranking as an explicit
+exception to its own rule, which is tolerable for a pilot and not tolerable indefinitely. The
+vector stores are the real test: six backends, 17 spans, and 17 tags reading instance
+configuration that attributes still cannot reach.
