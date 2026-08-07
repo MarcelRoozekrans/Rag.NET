@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
 using NSubstitute;
 using Rag.NET.Abstractions;
+using Rag.NET.AnswerGeneration;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
@@ -205,6 +206,65 @@ public class RagPipelineFacadeTests
                 r.MetadataFilter != null &&
                 r.MetadataFilter.ContainsKey("key")),
             ct);
+    }
+
+    [Fact]
+    public async Task AskAsync_WithCustomSystemPrompt_ReachesChatClientAsSystemMessage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var chatClient = Substitute.For<IChatClient>();
+        var sut = new RagPipeline(_retriever, _ingestor, new ChatAnswerEngine(chatClient));
+
+        var sources = new List<SearchResult>
+        {
+            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 0.9 }
+        };
+        _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success((IReadOnlyList<SearchResult>)sources)));
+        chatClient.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, "ok")));
+
+        var opts = new RagOptions { SystemPrompt = "Custom prompt" };
+        await sut.AskAsync("q", opts, ct);
+
+        await chatClient.Received(1).GetResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs =>
+                msgs!.Any(m => m.Role == ChatRole.System && m.Text == "Custom prompt")),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskStreamingAsync_WithCustomSystemPrompt_ReachesChatClientAsSystemMessage()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var chatClient = Substitute.For<IChatClient>();
+        var sut = new RagPipeline(_retriever, _ingestor, new ChatAnswerEngine(chatClient));
+
+        var sources = new List<SearchResult>
+        {
+            new() { Chunk = new TextChunk { Text = "ctx", DocumentId = new DocumentId("d"), ChunkIndex = 0 }, Score = 0.9 }
+        };
+        _retriever.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions?>(), ct)
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success((IReadOnlyList<SearchResult>)sources)));
+        chatClient.GetStreamingResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(StreamingChatUpdatesFrom(new ChatResponseUpdate { Contents = [new TextContent("Hello")] }));
+
+        var opts = new RagOptions { SystemPrompt = "Custom prompt" };
+        await foreach (var _ in sut.AskStreamingAsync("q", opts, ct)) { }
+
+        chatClient.Received(1).GetStreamingResponseAsync(
+            Arg.Is<IList<ChatMessage>>(msgs =>
+                msgs!.Any(m => m.Role == ChatRole.System && m.Text == "Custom prompt")),
+            Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    private static async IAsyncEnumerable<ChatResponseUpdate> StreamingChatUpdatesFrom(params ChatResponseUpdate[] items)
+    {
+        foreach (var item in items)
+        {
+            await Task.CompletedTask;
+            yield return item;
+        }
     }
 
     private static async IAsyncEnumerable<RagStreamingUpdate> StreamingUpdatesFrom(IEnumerable<RagStreamingUpdate> items)
