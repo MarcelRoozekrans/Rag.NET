@@ -96,7 +96,7 @@
     <PackageVersion Include="ZeroAlloc.Analyzers" Version="1.5.0" />
     <PackageVersion Include="ZeroAlloc.Inject" Version="1.7.1" />
     <PackageVersion Include="ZeroAlloc.Inject.Generator" Version="1.7.1" />
-    <PackageVersion Include="ZeroAlloc.Mediator" Version="4.1.4" />
+    <PackageVersion Include="ZeroAlloc.Mediator" Version="5.0.0" />
     <PackageVersion Include="ZeroAlloc.Mediator.Generator" Version="4.1.4" />
     <PackageVersion Include="ZeroAlloc.Pipeline" Version="1.2.1" />
     <PackageVersion Include="ZeroAlloc.Rest" Version="1.1.3" />
