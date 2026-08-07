@@ -24,42 +24,70 @@ turns out to be the vocabulary that mechanism is missing rather than a convenien
 anything is resolved*. Its own XML documentation says a second package claiming a declared type
 "is a startup error".
 
-| | Parsers | Content types |
-|---|---:|---:|
-| Declare claims | 6 | 8 |
-| **Declare nothing** | **11** | **~22** |
+**Corrected 2026-08-07, during Task 1.** An earlier version of this section claimed 11 parsers
+covering ~22 content types "declare nothing" and called that a coverage hole. That overstated it,
+and the correction changes what this phase should build. What follows is the measured version;
+§1.1 records what was wrong and why, because the wrong version was persuasive.
 
-Undeclared: `CsvDocumentParser` and `JsonDocumentParser` (**core**), Audio, Epub, Html,
-Office (×3), Pdf, Vision (×2).
+Parsers reach the container four different ways, and the claim declarations track the mechanism
+almost exactly:
 
-**Two live collisions, neither detected:**
-
-| Content type | Claimants | Why it is silent |
+| Mechanism | Parsers | Declares claims? |
 |---|---|---|
-| `text/csv` | `CsvDocumentParser` (**core**) + `QAPairsDocumentParser` | core declares nothing |
-| `…spreadsheetml.sheet` | `ExcelDocumentParser` (Office) + `QAPairsDocumentParser` | Office declares nothing |
+| `AddParser<T>()` | Audio, Epub, Html, Office (×3), Pdf | **No — by design, see below** |
+| `AddSingleton<IDocumentParser>` + explicit claim | Archive, Email (×2), Templates (×2) | Yes |
+| `AddSingleton<IDocumentParser>`, no claim | **Vision (×2)**, Pdf's OCR overload | **No — inconsistent** |
+| `[Singleton]` attribute + explicit claim | core Text, Markdown | Yes |
+| Not registered at all | core **Csv**, **Json** | n/a |
 
-Neither errors. The pipeline takes the first parser whose `CanParse` accepts, and built-in claims
-are registered before the user's `configure` delegate runs — so **`UseQAPairsChunking()` most
-likely registers a CSV parser that never executes**, and nothing says so.
+**The `AddParser<T>()` blindness is documented, not accidental.** `ParserClaim`'s own remarks say
+so: *"What genuinely goes undetected is a parser registered through `AddParser<T>()`, which
+declares nothing. `CanParse` is a predicate rather than an enumeration, so nothing can discover
+what an arbitrary parser accepts without probing it against a guessed list of content types — a
+worse mechanism than an undetected collision."* Seven of the eleven "undeclared" parsers are on
+that path. They are not an oversight; they are the accepted limitation.
 
-This is this milestone's recurring defect exactly: the mechanism, its tests and its documentation
-agree with one another, and the coverage is not there.
+**One live collision, not two.** `CsvDocumentParser` is **not registered by default** — it carries
+no `[Singleton]` attribute and no extension registers it, so a user must `AddParser<CsvDocumentParser>()`
+explicitly. The `text/csv` collision with `QAPairsDocumentParser` is therefore conditional, not
+universal. What *is* live for anyone using `Rag.NET.Parsers.Office` together with QA-pairs
+chunking is `…spreadsheetml.sheet`: `ExcelDocumentParser` registers through `AddParser<T>()` and
+declares nothing, so the validator sees one claimant and says nothing while selection order
+decides which parser runs.
 
-**A correction worth recording.** A first pass reported a third collision, `image/jpeg` between
-`ImageDocumentParser` and `VideoDocumentParser`. There is none: the string in `VideoDocumentParser`
-is the MIME type of an extracted *frame* handed to `DataContent`, not a `CanParse` claim. It came
-from grepping whole files rather than `CanParse` bodies. *Grepping a file is not reading a
-method.*
+**The genuine oversight is Vision.** It registers two parsers through
+`AddSingleton<IDocumentParser>` — the same mechanism Archive, Email and Templates use *with*
+claims — and declares none. That is an inconsistency with its own peers rather than a documented
+limitation, and it is the only part of the original "coverage hole" that survives measurement.
+
+### 1.1 What the first version of this section got wrong
+
+Recorded rather than quietly rewritten, because the wrong version was convincing and nearly
+reached implementation.
+
+- **"Two live silent collisions."** One. `CsvDocumentParser` is not registered by default; the
+  claim that it "ships with core, registered for everyone" confused *shipping in the core package*
+  with *being registered by `AddRagNet`*.
+- **"11 parsers declare nothing, therefore the guard has a hole."** Seven of them are on the
+  `AddParser<T>()` path that `ParserClaim` explicitly documents as undetectable. That remark was
+  read during the investigation and counted as a gap anyway.
+- **A third collision, `image/jpeg`, between the Vision parsers.** There is none. The string in
+  `VideoDocumentParser` is the MIME type of an extracted *frame* handed to `DataContent`. It came
+  from grepping whole files rather than `CanParse` bodies. *Grepping a file is not reading a
+  method.*
+
+The pattern in all three is the same: a count taken from text matching, then reasoned about as
+though it had been read.
 
 ## 2. Why the replacement API has to come first
 
-The obvious fix — declare the missing claims — **breaks QA-pairs chunking for every user who
-enables it.** `CsvDocumentParser` is a built-in, registered for everyone. Once both sides declare
-`text/csv`, `UseQAPairsChunking()` becomes a guaranteed startup error.
+Closing the gap — by any route — **breaks QA-pairs chunking for anyone who also uses
+`Rag.NET.Parsers.Office`.** Once `ExcelDocumentParser` declares `…spreadsheetml.sheet`, that pair
+becomes a startup error, and the same follows for `text/csv` for anyone who has added
+`CsvDocumentParser` explicitly.
 
 And the collision is *legitimate*. A caller who asked for QA-pairs chunking genuinely wants
-`QAPairsDocumentParser` to win for `text/csv`. **There is currently no way to express that.** The
+`QAPairsDocumentParser` to win for those types. **There is currently no way to express that.** The
 claim model has one verdict — conflict — and no vocabulary for a deliberate override.
 
 So the ordering inverts from the roadmap's framing:
@@ -111,12 +139,43 @@ apparent purpose, still carrying a default that can be assigned to no effect. Re
 phase's call because nothing is published: the loud error can be deleted along with the property,
 since after removal the compiler is the error.
 
+## 4a. Closing the gap structurally, not site by site
+
+**Decided 2026-08-07 after §1.1.** Hand-declaring claims at each registration site was the original
+plan and is the wrong shape: it leaves `AddParser<T>()` permanently blind, so every parser added
+later — by this repository or by a consumer — reopens the gap, and a convention test could only
+ever cover parsers that live here.
+
+Instead, **let a parser enumerate the content types it accepts**, and have `AddParser<T>()`
+declare claims from that automatically.
+
+`ParserClaim`'s objection was to probing `CanParse` against *a guessed list*. A parser stating its
+own types is not a guess. `CanParse` stays exactly as it is — the predicate remains the thing the
+pipeline calls, and a parser that wants to accept types it cannot enumerate (a wildcard, a
+computed set) simply does not opt in and keeps today's behaviour.
+
+The shape is deliberately opt-in and additive:
+
+- an optional declaration a parser can carry, alongside `IDocumentParser` rather than inside it,
+  so no existing implementation breaks and no third-party parser is forced to change
+- `AddParser<T>()` checks for it and declares a `ParserClaim` per type
+- parsers that do not carry it behave exactly as they do today, and remain the documented
+  undetected case
+
+**The risk this introduces, stated rather than discovered later:** the enumerated list and
+`CanParse` can drift apart, which would produce claims that do not match behaviour — a guard
+saying the wrong thing, which is worse than one saying nothing. §5's convention test exists to
+hold them together, and that is its primary job rather than an incidental one.
+
 ## 5. Testing
 
-- **A `RepoConventions` test asserting every `IDocumentParser` implementation declares a claim for
-  every content type its `CanParse` accepts.** This is the guard that stops the coverage rotting
-  again, and it is the only reason to believe §1 will not recur. It must be watched go red — a
-  guard nobody has seen fail is not a guard, and this repository has shipped three of those.
+- **A test that every enumerated content type is actually accepted by `CanParse`, and that every
+  type in `ContentTypeMap` accepted by `CanParse` is enumerated.** Both directions. This is what
+  stops §4a's declaration drifting from behaviour, and it is the primary guard of this phase
+  rather than a nicety. It must be watched go red — a guard nobody has seen fail is not a guard,
+  and this repository has shipped three of those.
+- **A test that the Vision parsers declare claims**, since they are the one genuine oversight §1
+  found and nothing else would notice them regressing.
 - **A test that a deliberate override registers cleanly and a genuine collision still throws** —
   the replacement API must not become a way to silence the guard entirely.
 - The existing `ParserClaimValidationTests` keep their coverage, including

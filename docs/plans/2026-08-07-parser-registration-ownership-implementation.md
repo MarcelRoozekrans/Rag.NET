@@ -1,10 +1,10 @@
-# Parser Registration Ownership — Implementation Plan
+﻿# Parser Registration Ownership — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make content-type ownership declarable and enforced, so that two parsers claiming one type is either a loud error or an explicit, working override — never a silent one.
 
-**Architecture:** `AddParser<T>(replaces:)` lands first as the vocabulary for a deliberate override; `UseQAPairsChunking()` adopts it; only then are the 11 missing `ParserClaim` declarations added, guarded by a convention test that probes every parser against `ContentTypeMap`.
+**Architecture:** `AddParser<T>(replaces:)` lands first as the vocabulary for a deliberate override; `UseQAPairsChunking()` adopts it; then parsers gain an opt-in way to enumerate their content types so `AddParser<T>()` declares claims itself, guarded by a convention test holding declaration and `CanParse` together.
 
 **Tech Stack:** .NET 10, xUnit v3, Microsoft.Extensions.DependencyInjection.
 
@@ -14,26 +14,25 @@
 
 ## Context
 
-`ParserClaim` exists so two parsers claiming one content type is a startup error. **It is declared by 6 parsers covering 8 content types; 11 parsers covering ~22 declare nothing** — including `CsvDocumentParser` and `JsonDocumentParser` in core.
+`ParserClaim` exists so two parsers claiming one content type is a startup error. **`AddParser<T>()` cannot declare anything**, and `ParserClaim`'s own remarks say so: `CanParse` is a predicate, not an enumeration. Seven parsers register that way — Audio, Epub, Html, Office (x3), Pdf — and are invisible to the guard by design.
 
-Both live collisions go undetected:
+**One live collision:** `...spreadsheetml.sheet`, between `ExcelDocumentParser` (registered via `AddParser<T>()`, declares nothing) and `QAPairsDocumentParser` (declares it). The validator sees one claimant, says nothing, and selection order decides which parser actually runs.
 
-| Content type | Claimants |
-|---|---|
-| `text/csv` | `CsvDocumentParser` (**core**) + `QAPairsDocumentParser` |
-| `…spreadsheetml.sheet` | `ExcelDocumentParser` (Office) + `QAPairsDocumentParser` |
+**`CsvDocumentParser` is not registered by default** — no `[Singleton]` attribute, no extension registers it. Its `text/csv` overlap with QA-pairs is conditional on a user calling `AddParser<CsvDocumentParser>()` themselves.
 
-Selection takes the **first** registered parser whose `CanParse` matches, and built-in claims register before the user's `configure` delegate. So `UseQAPairsChunking()` most likely registers a CSV parser that never runs.
+**Vision is the one genuine oversight:** it registers two parsers through `AddSingleton<IDocumentParser>` — the same mechanism Archive, Email and Templates use *with* claims — and declares none.
+
+**An earlier version of this plan claimed 11 undeclared parsers and two live collisions.** Both were overstated; see the design's SS1.1 for what was wrong and why. Do not restore those figures.
 
 ## The ordering is load-bearing — do not reorder these tasks
 
-Declaring `CsvDocumentParser`'s `text/csv` claim **before** QA-pairs has a way to declare an override turns `UseQAPairsChunking()` into a guaranteed startup error for every user of that feature.
+Closing the gap before QA-pairs can declare an override turns `UseQAPairsChunking()` into a startup error for anyone also using `Rag.NET.Parsers.Office`.
 
 ```
-Task 1 (API)  →  Task 2 (QAPairs adopts it)  →  Task 3 (declare the other 11)
+Task 1 (API)  ->  Task 2 (QAPairs adopts it)  ->  Task 3 (parsers enumerate)
 ```
 
-Task 3 before Task 2 breaks the build's own test suite. **If you find yourself doing Task 3 first, stop.**
+Task 3 before Task 2 breaks the suite. **If you find yourself doing Task 3 first, stop.**
 
 ## Ground rules
 
@@ -154,53 +153,77 @@ Expected: 1184 + 3 = **1187**.
 
 ---
 
-## Task 3: Declare the 11 missing claims
+## Task 3: Let parsers enumerate their content types
 
 **Files:**
-- Modify: `src/Rag.NET/DependencyInjection/ServiceCollectionExtensions.cs` — `DeclareBuiltInParserClaims`, add `CsvDocumentParser` (`text/csv`) and `JsonDocumentParser` (`application/json`)
-- Modify each satellite's registration extension: Audio, Epub, Html, Office (×3), Pdf, Vision (×2)
+- Create: an opt-in declaration alongside `IDocumentParser` in `src/Rag.NET.Abstractions/Abstractions/`
+- Modify: `src/Rag.NET/DependencyInjection/RagBuilder.cs` — `AddParser<TParser>` declares claims from it
+- Modify: the parsers that can enumerate — Audio, Epub, Html, Office (x3), Pdf, Vision (x2)
+- Test: `tests/Rag.NET.Tests/DependencyInjection/ParserClaimValidationTests.cs`
 
-Follow the existing shape exactly — `Rag.NET.Parsers.Email/EmailParserBuilderExtensions.cs:72` is the reference. Every claim needs a truthful `RegistrationMethod` (the call a user would recognise, e.g. `AddPdfParser()`) and a `ParserOptOut` **only where one genuinely exists** — `null` where removing the call is the only way out.
+**Read the design's SS1.1 and SS4a before starting.** An earlier version of this plan asked you to
+hand-declare claims at 11 registration sites. That was wrong: seven of those go through
+`AddParser<T>()`, which `ParserClaim`'s own remarks document as structurally unable to declare
+anything, so hand-declaring would leave the mechanism blind for every parser added later.
 
-The full set to declare:
+**The point is that `AddParser<T>()` stops being blind.**
 
-| Parser | Content types |
-|---|---|
-| `CsvDocumentParser` | `text/csv` |
-| `JsonDocumentParser` | `application/json` |
-| `AudioDocumentParser` | `audio/flac`, `audio/mpeg`, `audio/wav` |
-| `EpubDocumentParser` | `application/epub+zip` |
-| `HtmlDocumentParser` | `text/html` |
-| `ExcelDocumentParser` | `…spreadsheetml.sheet` |
-| `PowerPointDocumentParser` | `…presentationml.presentation` |
-| `WordDocumentParser` | `…wordprocessingml.document` |
-| `PdfDocumentParser` | `application/pdf` |
-| `ImageDocumentParser` | `image/bmp`, `image/gif`, `image/jpeg`, `image/jpg`, `image/png`, `image/webp` |
-| `VideoDocumentParser` | `video/mp4`, `video/quicktime`, `video/webm`, `video/x-matroska`, `video/x-msvideo` |
+Add an **opt-in, additive** declaration — a small interface a parser may implement alongside
+`IDocumentParser`, exposing the content types it accepts. Then `AddParser<TParser>()` checks for
+it and declares one `ParserClaim` per type.
 
-**Take these from each parser's `CanParse`/`SupportedTypes`, not from this table.** The table is a checklist, not a source of truth — if it disagrees with the code, the code wins and **report the difference**.
+Non-negotiables:
 
-**Run the full suite after this task specifically.** If anything now throws at registration, you have found a real collision this phase should resolve — report it rather than working around it.
+- **`IDocumentParser` does not change.** `CanParse` stays the predicate the pipeline calls. A
+  parser that cannot enumerate its types simply does not opt in, and keeps today's behaviour and
+  today's documented invisibility.
+- **Nothing existing breaks.** Third-party parsers that implement only `IDocumentParser` must
+  continue to work untouched.
+- **`AddParser<T>(replaces:)` from Task 1 composes with it** — declaring types and replacing
+  another parser must work together.
+
+Adopt it in the nine parsers listed above. **Vision is the one that matters most**: it registers
+via `AddSingleton<IDocumentParser>` like Archive/Email/Templates but declares no claims, which is
+a genuine inconsistency rather than the documented gap. If Vision's registration path does not
+route through `AddParser<T>()`, declare its claims explicitly there instead and **say so**.
+
+Take the content types from each parser's `CanParse`/`SupportedTypes`. **If a parser's accepted
+set cannot be enumerated honestly, leave it out and report which** - a wrong claim is worse than
+no claim.
+
+**Run the full suite after this task.** Anything that now throws at registration is a real
+collision this phase should resolve; report it rather than working around it.
 
 ---
 
-## Task 4: The convention test that stops it rotting again
+## Task 4: The convention test that holds declaration to behaviour
 
 **Files:**
 - Create: `tests/Rag.NET.RepoConventions.Tests/ParserClaimCoverageTests.cs`
 
-`ParserClaim`'s remarks say a parser's accepted types cannot be discovered "without probing it against a guessed list". **`ContentTypeMap` is not a guessed list** — it is this library's own extension→MIME map, documented as covering "the content types handled by the Rag.NET parser packages". Probe against it.
+Task 3's declaration can drift from `CanParse` - producing claims that do not match behaviour,
+which is worse than no claims. **This test is the reason that risk is acceptable, so it is the
+primary guard of this phase, not a nicety.**
 
-Two assertions:
+Three assertions:
 
-1. **Coverage** — for every registered `IDocumentParser`, every content type in `ContentTypeMap` that its `CanParse` accepts has a matching `ParserClaim`.
-2. **The octet-stream rule** — no parser claims `application/octet-stream`. `ContentTypeMap`'s own remarks state the unknown-binary fallback assumes nothing claims it, and that a parser which does is guessing.
+1. **Declaration implies behaviour** - every content type a parser enumerates is accepted by its
+   own `CanParse`.
+2. **Behaviour implies declaration** - for every parser that opts in, every type in
+   `ContentTypeMap` its `CanParse` accepts is enumerated. `ContentTypeMap` is this library's own
+   extension->MIME map, documented as covering "the content types handled by the Rag.NET parser
+   packages" - it is not the "guessed list" `ParserClaim`'s remarks warn about.
+3. **The octet-stream rule** - no parser claims `application/octet-stream`. `ContentTypeMap`'s
+   remarks state the unknown-binary fallback assumes nothing claims it, and a parser that does is
+   guessing.
 
-**Instantiating parsers may be the hard part** — several take an `IChatClient` or options. If reflection-instantiation is impractical for some, **say so and describe what you did instead** (a source-scanning variant is acceptable; silently skipping parsers is not — a coverage test with holes is the thing this task exists to prevent).
+**Instantiating parsers may be the hard part** - several need an `IChatClient` or options. If
+reflection-instantiation is impractical for some, **say so and describe what you did instead**. A
+source-scanning variant is acceptable; silently skipping parsers is not, because a coverage test
+with holes is precisely what this task exists to prevent.
 
-**Watch it go red.** Temporarily delete one claim added in Task 3, confirm the test fails naming that parser, restore it. **A guard nobody has seen fail is not a guard, and this repository has shipped three of those.** Report that you did this.
-
-Expected: `RepoConventions` 44 → **46 + 1 skip**.
+**Watch it go red.** Change one parser's enumerated list to include a type its `CanParse` rejects,
+confirm the test fails naming that parser, then revert. Report that you did this.
 
 ---
 
