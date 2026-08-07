@@ -1920,6 +1920,93 @@ progress; it does not create it.
 left unmodified and reported rather than adjusted. `RepoConventions` unchanged at 37+1 skip (not
 touched by this phase). Full solution build: 0 warnings, 0 errors.
 
+### Phase 4.12: SystemPrompt Coverage (Issue #56) [status: complete]
+**Goal:** Establish, provably rather than by reading source, whether `RagOptions.SystemPrompt`
+does what [issue #56](https://github.com/MarcelRoozekrans/Rag.NET/issues/56) reported it does
+not. Changes no production behaviour — this phase is coverage and documentation only. (Not a
+features.md row — created 2026-08-07 out of a user report, numbered after 4.11 because it was
+created after, executed next in the milestone's phase list.)
+**Plan:** `docs/plans/2026-08-07-system-prompt-coverage-design.md` +
+`2026-08-07-system-prompt-coverage-implementation.md`
+**Completed:** 2026-08-07, branch `fix/system-prompt-coverage`.
+
+**The origin.** Issue #56, *"SystemPrompt ?"*: a user's `RagOptions.SystemPrompt` against Azure
+OpenAI GPT-5 asked for the exact sentence *"I cannot find any relevant information."* and the
+model returned a paraphrase followed by *"Sources used: Source 1, Source 2…"*.
+
+**The verdict: `SystemPrompt` was never broken.** It is applied in all four answer engines and
+preserved by `PromptHardeningAnswerEngineDecorator`
+(`src/Rag.NET.Security/PromptHardeningAnswerEngineDecorator.cs`). Two things explain the report,
+neither a bug: the `[Source N]` context labels invite citations regardless of what the system
+prompt says, and the model paraphrased a canned string — ordinary LLM behaviour, not a defect.
+**The actual defect was that none of this could be established without reading the source** —
+untested, invisible behaviour, not a bug fix. `docs/guide/retrieval.md` now documents the literal
+`Context:`/`[Source N]`/`Question:` shape the final user message carries, the conversation-history
+ordering rule below, and how to register an `IPromptObserver` to see the assembled prompt directly
+(`1a9046a1`) — the seam that would have let the reporter answer his own question in one run.
+
+**The existing test passed for the wrong reason.** `AskAsync_WithCustomSystemPrompt_UsesIt`
+asserted `msgs[0].Text == "Custom prompt"`. That held only because its fixture supplied no
+`ConversationHistory` — with a leading history system message, `ChatAnswerEngine` places it before
+the caller's `SystemPrompt` (deliberately, so a host-injected prompt-hardening prefix is never
+shadowed by a per-request prompt), so the caller's prompt lands at index 1, not 0. Any change
+moving the prompt's position would have been caught only when a user had history *and* noticed.
+Fixed to assert by role and content instead (`f5b23728`), and a second test,
+`AskAsync_WithHistorySystemMessageAndCustomSystemPrompt_OrdersHistorySystemFirst`
+(`c2151ef4`, `tests/Rag.NET.Tests/AnswerGeneration/ChatAnswerEngineTests.cs`), pins the full
+ordering the first assertion had been silently depending on.
+
+**Three coverage layers, three tiers:**
+
+| Layer | Test(s) | Proves | Tier |
+|---|---|---|---|
+| Engine-level mock | `ChatAnswerEngineTests` (existing + `c2151ef4`) | the message list is built correctly | gating |
+| Full-pipeline mock | `AskAsync_WithCustomSystemPrompt_ReachesChatClientAsSystemMessage`, `AskStreamingAsync_WithCustomSystemPrompt_ReachesChatClientAsSystemMessage` (`9febb9be`, `tests/Rag.NET.Tests/Pipeline/RagPipelineFacadeTests.cs`) | `SystemPrompt` survives `RagPipeline.AskAsync` **and `AskStreamingAsync`** | gating |
+| Real model | `AskAsync_CustomSystemPrompt_MarkerAppearsInRealProviderResponse` (`3345bbda`, `tests/Rag.NET.E2ETests/SystemPromptE2ETests.cs`) | the prompt reaches the provider and changes output | nightly `RequiresLlm` |
+
+Before this phase, only the first layer existed. The full-pipeline mock closes a real gap: the
+pre-existing pipeline tests substitute `IAnswerEngine` entirely, so they never touched
+`ChatAnswerEngine`'s message-building code — a change swallowing the prompt between `RagOptions`
+and `IChatClient` would have passed CI.
+
+**The second finding — unrelated to #56, and the more valuable one.** Running the real-model test
+surfaced a live defect in the test infrastructure itself: `TestChatClientFactory`'s default
+OpenRouter model, `nvidia/llama-3.1-nemotron-70b-instruct`, had been **delisted** — absent from the
+400 models OpenRouter's catalogue now returns — so every request against it failed with an opaque
+`HTTP 404: No endpoints found` rather than anything resembling a test failure. It went unnoticed
+because `OPENROUTER_API_KEY` appeared nowhere in CI: the nightly LLM tier always took the Ollama
+fallback, so the OpenRouter branch was unreachable in CI and rotted unobserved. This is the same
+**inert-path** failure shape the repository has hit before — a fallback that quietly becomes the
+only path, and a primary path nobody watches go green. Fixed in `405460d7`, two changes because
+either alone leaves the trap armed: the default replaced with `meta-llama/llama-3.3-70b-instruct`
+(`tests/Rag.NET.Testing/TestChatClientFactory.cs`, with a note on where to re-check when it starts
+404ing in turn), and `OPENROUTER_API_KEY` wired into the nightly LLM tier (`.github/workflows/nightly.yml`)
+so the branch is exercised rather than merely present. Side effect: `OllamaFixture` now skips the
+`llama3.2:1b` pull when the key is set, roughly halving the tier's model download; unset, both
+suites still pass on Ollama.
+
+**Why the marker test is trustworthy.** The first instruction wording was **ignored by the
+`llama3.2:1b` fallback** — it answered *"The capital of France is Paris."* with no marker at all.
+The assertion was **not weakened** to accommodate that: the instruction was made blunter and
+shorter, and the fallback then followed it in **3 of 3** runs. Verified on both paths — OpenRouter
+and Ollama. Gating the test on `IsOpenRouterAvailable` was considered and rejected, because a skip
+in the tier when no key is set is exactly how the OpenRouter path went stale in the first place.
+The test deliberately does not assert the reporter's own case (an exact requested sentence) —
+asserting exact text would make it flaky for precisely the reason the issue exists.
+
+**Left open, not recorded as fact.** The reporter was asked whether `Temperature` is the actual
+cause, since several recent OpenAI reasoning models reject or ignore it. No answer yet — an open
+question awaiting the reporter, not a finding of this phase.
+
+**What this phase did not do.** It changed no production behaviour — `SystemPrompt`'s own code is
+untouched; every commit is `test`, `fix(tests)`, `fix(testing)`, or `docs`. It does not resolve
+issue #56 pending the `Temperature` question. It was never one of the milestone's numbered
+`features.md` items, the same status Phases 4.9–4.11 had; this entry does not itself update the
+DoD's "all planned phases complete" tally above, which as of this phase's close still reads
+"6 of 11 as of 2026-08-05" and does not mention Phase 4.11 either, despite 4.11 having completed
+2026-08-06 — a pre-existing gap this phase found but did not fix, being documentation-only and out
+of that scope.
+
 ### Phase 4.2: Options Alignment & Validation [status: pending]
 **Goal:** Align pipeline options on IOptions and validate them with ZeroAlloc.Validation.
 **Backlog items:** IOptions Alignment + ZeroAlloc Validation for pipeline options
