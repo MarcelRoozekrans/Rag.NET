@@ -55,6 +55,14 @@ jobs:
     # No RAGNET_* secrets here, deliberately. They used to sit on this job and reached nothing: the
     # only project declaring RequiresLlm reads none of them. The env-gated suites are selected by
     # their own declaration in the `secrets` job below, which is where those values now live.
+    #
+    # OPENROUTER_API_KEY is the exception that proves that rule, because this tier genuinely reads
+    # it: TestChatClientFactory prefers an OpenRouter-backed IChatClient whenever it is set, and
+    # OllamaFixture skips pulling llama3.2:1b for the same reason. Until it was added, the tier had
+    # only ever taken the Ollama branch — which is how the factory's default OpenRouter model came
+    # to be delisted upstream without anything noticing. Unset, the suites still pass on Ollama.
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -96,8 +104,9 @@ jobs:
       #
       # continue-on-error is on this step and not on the job, deliberately. Only the assertions are
       # non-deterministic; a failed checkout, restore or build is a real breakage and still fails
-      # the job. Note that these suites also pull nomic-embed-text and llama3.2:1b, roughly 2 GB per
-      # run, which is the second independent reason this is not on every push.
+      # the job. Note that these suites always pull nomic-embed-text, and pull llama3.2:1b as well
+      # whenever OPENROUTER_API_KEY is unset — roughly 2 GB per run in that case, which is the
+      # second independent reason this is not on every push.
       - name: Test (LLM tier)
         continue-on-error: true
         run: |
