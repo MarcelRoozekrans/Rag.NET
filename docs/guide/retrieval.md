@@ -980,6 +980,30 @@ Implementations must never throw — the call happens on the path to the model, 
 
 > **Built-in observer:** the `Rag.NET.Diagnostics` package's `AddRagDiagnostics()` registers its own `IPromptObserver` that renders assembled prompts into its trace store instead of the console — see that package's documentation for the full pipeline-debugger feature set.
 
+### When the answer says it cannot find something
+
+An answer along the lines of *"there isn't enough information in the provided context"* has two quite different causes, and `RagResponse` already carries everything needed to tell them apart. `Sources` is the full retrieved set — every chunk's complete `Text`, with the `Score` it was retrieved at. Nothing is truncated or summarised:
+
+```csharp
+var response = await pipeline.AskAsync("What is my address?", options);
+
+Console.WriteLine(response.Answer);
+Console.WriteLine($"--- {response.Sources.Count} source(s) ---");
+foreach (var source in response.Sources)
+{
+    Console.WriteLine($"[{source.Score:F3}] {source.Chunk.DocumentId}#{source.Chunk.ChunkIndex}");
+    Console.WriteLine(source.CompressedText ?? source.Chunk.Text);
+}
+```
+
+Read the output before changing anything:
+
+- **`Sources` is empty.** Retrieval returned nothing, or `MinScore` filtered everything out. The model was asked a question with no context at all, and correctly said so. Lower `MinScore`, raise `TopK`, or check the documents were ingested at all.
+- **`Sources` is full, and the text you expected is not in it.** Retrieval ran but ranked the wrong chunks highest — a *ranking* problem, not a filtering one. Raising `TopK` may be enough; otherwise this is what hybrid search, reranking, and query expansion exist for. Short, pronoun-heavy queries are the usual trigger: `"What is my address?"` shares very little semantic surface with a chunk containing a literal street address, so a dense-only search can rank it well below chunks that merely *discuss* addresses.
+- **`Sources` is full and the text you expected *is* in it.** Retrieval did its job and the model did not use what it was given. That is a prompting or model-capability question, and `IPromptObserver` above will show you exactly what it received.
+
+`Sources` reflects the post-compression list when contextual compression is enabled, so compare `CompressedText` against `Chunk.Text` if you suspect the compressor dropped the very detail you were asking about.
+
 ## SQLite Persistence
 
 By default, `InMemoryBm25Index` and `InMemoryParentChunkStore` are process-scoped and lost on restart. For large corpora where re-ingestion is expensive, SQLite persistence writes both stores through to a local SQLite file and reloads them on startup.
