@@ -89,9 +89,11 @@ public sealed class AddRagNetPipelineFromConfigurationTests
     }
 
     [Fact]
-    public void AnUnsetApiKeyStillProducesAUsableChatClient()
+    public void AnUnsetApiKeyForALoopbackEndpointStillProducesAUsableChatClient()
     {
         var settings = BaseSettings("InMemory");
+        settings["RagNet:ChatClient:Endpoint"] = "http://localhost:11434/v1";
+        settings["RagNet:Embeddings:Endpoint"] = "http://127.0.0.1:11434/v1";
         settings.Remove("RagNet:ChatClient:ApiKey");
         settings.Remove("RagNet:Embeddings:ApiKey");
         using var provider = BuildProvider(settings);

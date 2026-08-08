@@ -13,6 +13,10 @@ public sealed class ChatClientOptions
     /// The API key. A provider that does not require one — a local Ollama or LM Studio instance
     /// — still needs a non-empty credential value; leaving this unset supplies a placeholder
     /// rather than failing before the setting even gets a chance to matter.
+    /// <c>AddRagNetPipelineFromConfiguration</c> only allows this to be unset when
+    /// <see cref="Endpoint"/> is a loopback address (<c>localhost</c>, <c>127.0.0.1</c>,
+    /// <c>[::1]</c>); anything else requires an explicit key, so a forgotten credential is a
+    /// startup error rather than a 401 from the provider.
     /// </summary>
     public string ApiKey { get; set; } = string.Empty;
 

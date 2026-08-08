@@ -11,6 +11,10 @@ public sealed class VectorStoreOptions
     /// <summary>
     /// The store kind: <c>InMemory</c>, <c>Qdrant</c>, or <c>PgVector</c>, compared
     /// case-insensitively. Defaults to <c>InMemory</c>, whose data does not survive a restart.
+    /// An empty or unset value also resolves to <c>InMemory</c>; any other value that does not
+    /// match one of the three exactly is rejected by
+    /// <c>AddRagNetPipelineFromConfiguration</c> at startup rather than silently falling back to
+    /// <c>InMemory</c> — <c>InMemory</c> is reached only by asking for it.
     /// </summary>
     public string Kind { get; set; } = "InMemory";
 
