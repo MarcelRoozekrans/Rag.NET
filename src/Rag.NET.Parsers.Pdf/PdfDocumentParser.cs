@@ -10,8 +10,13 @@ using UglyToad.PdfPig.Content;
 
 namespace Rag.NET.Parsers.Pdf;
 
-public sealed class PdfDocumentParser : IDocumentParser, IDisposable
+public sealed class PdfDocumentParser : IDocumentParser, IDisposable, IDeclaresContentTypes
 {
+    private const string PdfContentType = "application/pdf";
+
+    /// <inheritdoc/>
+    public static IReadOnlyCollection<string> ContentTypes { get; } = [PdfContentType];
+
     private readonly PdfParserOptions _options;
     private readonly ILogger<PdfDocumentParser>? _logger;
     private readonly IPdfOcrEngine? _ocrEngine;
@@ -80,7 +85,7 @@ public sealed class PdfDocumentParser : IDocumentParser, IDisposable
     public void Dispose() => (_ocrEngine as IDisposable)?.Dispose();
 
     public bool CanParse(string contentType) =>
-        contentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase);
+        contentType.Equals(PdfContentType, StringComparison.OrdinalIgnoreCase);
 
     public IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,

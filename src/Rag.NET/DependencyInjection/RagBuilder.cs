@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -71,6 +72,12 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// <paramref name="replaces"/> — by full type name, and a name with no matching registration
     /// removes nothing and is not an error.
     /// </param>
+    /// <remarks>
+    /// When <typeparamref name="TParser"/> implements <see cref="IDeclaresContentTypes"/>, this also
+    /// declares one <see cref="ParserClaim"/> per content type it reports — see
+    /// <see cref="DeclareContentTypeClaims{TParser}"/>. A <typeparamref name="TParser"/> that does
+    /// not implement it declares nothing, exactly as before that interface existed.
+    /// </remarks>
     public RagBuilder AddParser<TParser>(Type? replaces = null, string[]? replacesTypeNames = null)
         where TParser : class, IDocumentParser
     {
@@ -88,8 +95,66 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
         }
 
         Services.AddSingleton<IDocumentParser, TParser>();
+        DeclareContentTypeClaims<TParser>(replaces, replacesTypeNames);
         return this;
     }
+
+    /// <summary>
+    /// Declares one <see cref="ParserClaim"/> per content type <typeparamref name="TParser"/>
+    /// reports through <see cref="IDeclaresContentTypes"/> — the mechanism that closes
+    /// <c>AddParser&lt;TParser&gt;()</c>'s documented blindness for any parser that opts in. A
+    /// <typeparamref name="TParser"/> that does not implement <see cref="IDeclaresContentTypes"/>
+    /// declares nothing, which is this method's no-op path and by far its most common one.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="replaces"/> is recorded on every claim this declares: a single
+    /// <c>AddParser&lt;TParser&gt;(replaces:)</c> call names one specific parser it deliberately
+    /// overrides, and every content type <typeparamref name="TParser"/> claims in that same call is
+    /// claimed as part of that override. <paramref name="replacesTypeNames"/> carries that same
+    /// unambiguous meaning only when it names exactly one parser; naming several leaves no single
+    /// answer to "which one did this claim override", so with more than one name the declared claims
+    /// record no override rather than attributing it to an arbitrary one of them. Nothing in this
+    /// repository calls <c>AddParser&lt;TParser&gt;(replacesTypeNames:)</c> with more than one name
+    /// for a parser that also implements <see cref="IDeclaresContentTypes"/> today; this is the
+    /// documented behaviour if one ever does.
+    /// </remarks>
+    private void DeclareContentTypeClaims<TParser>(Type? replaces, string[]? replacesTypeNames)
+        where TParser : class, IDocumentParser
+    {
+        if (!typeof(IDeclaresContentTypes).IsAssignableFrom(typeof(TParser)))
+        {
+            return;
+        }
+
+        var contentTypes = (IReadOnlyCollection<string>)GetDeclaredContentTypesMethod
+            .MakeGenericMethod(typeof(TParser))
+            .Invoke(obj: null, parameters: null)!;
+        var registrationMethod = $"AddParser<{typeof(TParser).Name}>()";
+        var replacedTypeName = replacesTypeNames is { Length: 1 } single ? single[0] : null;
+
+        foreach (var contentType in contentTypes)
+        {
+            Services.AddSingleton(ParserClaim.For<TParser>(
+                contentType, registrationMethod, replaces: replaces, replacesTypeName: replacedTypeName));
+        }
+    }
+
+    /// <summary>
+    /// Reflection bridge for <see cref="DeclareContentTypeClaims{TParser}"/>: a static abstract
+    /// interface member can only be invoked through a generic type parameter constrained by that
+    /// interface, and <typeparamref name="TParser"/> there carries no such constraint — it is only
+    /// known at that call site to implement <see cref="IDocumentParser"/>, with
+    /// <see cref="IDeclaresContentTypes"/> checked at runtime because most callers of
+    /// <c>AddParser&lt;TParser&gt;()</c> do not implement it. <see cref="GetDeclaredContentTypes{T}"/>
+    /// carries the constraint the direct call site cannot, and is reached through
+    /// <see cref="MethodInfo.MakeGenericMethod"/> once the runtime check confirms it applies.
+    /// </summary>
+    private static readonly MethodInfo GetDeclaredContentTypesMethod = typeof(RagBuilder).GetMethod(
+        nameof(GetDeclaredContentTypes), BindingFlags.NonPublic | BindingFlags.Static)!;
+
+    private static IReadOnlyCollection<string> GetDeclaredContentTypes<TParser>()
+        where TParser : IDeclaresContentTypes =>
+        TParser.ContentTypes;
 
     /// <summary>
     /// Removes the parser named <paramref name="replacedTypeName"/>'s <see cref="IDocumentParser"/>

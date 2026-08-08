@@ -8,8 +8,10 @@ using VersOne.Epub.Options;
 
 namespace Rag.NET.Parsers.Epub;
 
-public sealed class EpubDocumentParser(HtmlDocumentParser htmlParser) : IDocumentParser
+public sealed class EpubDocumentParser(HtmlDocumentParser htmlParser) : IDocumentParser, IDeclaresContentTypes
 {
+    private const string EpubContentType = "application/epub+zip";
+
     private static readonly EpubReaderOptions s_readerOptions = new(EpubReaderOptionsPreset.RELAXED)
     {
         Epub3NavDocumentReaderOptions = new Epub3NavDocumentReaderOptions(EpubReaderOptionsPreset.RELAXED)
@@ -18,8 +20,11 @@ public sealed class EpubDocumentParser(HtmlDocumentParser htmlParser) : IDocumen
         },
     };
 
+    /// <inheritdoc/>
+    public static IReadOnlyCollection<string> ContentTypes { get; } = [EpubContentType];
+
     public bool CanParse(string contentType) =>
-        contentType.Equals("application/epub+zip", StringComparison.OrdinalIgnoreCase);
+        contentType.Equals(EpubContentType, StringComparison.OrdinalIgnoreCase);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,

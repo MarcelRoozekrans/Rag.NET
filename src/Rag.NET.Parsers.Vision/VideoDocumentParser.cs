@@ -13,12 +13,15 @@ namespace Rag.NET.Parsers.Vision;
 public partial class VideoDocumentParser(
     IChatClient chatClient,
     VideoDescriptionOptions options,
-    ILogger<VideoDocumentParser>? logger = null) : IDocumentParser
+    ILogger<VideoDocumentParser>? logger = null) : IDocumentParser, IDeclaresContentTypes
 {
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.Ordinal)
     {
         "video/mp4", "video/quicktime", "video/x-matroska", "video/x-msvideo", "video/webm",
     };
+
+    /// <inheritdoc/>
+    public static IReadOnlyCollection<string> ContentTypes => SupportedTypes;
 
     private readonly ILogger<VideoDocumentParser> _logger =
         logger ?? NullLogger<VideoDocumentParser>.Instance;

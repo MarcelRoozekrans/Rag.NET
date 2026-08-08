@@ -29,6 +29,15 @@ public static class PdfParserBuilderExtensions
     /// resolved from DI is the most recently registered one (last wins); each parser
     /// instance keeps the options it was configured with.
     /// </summary>
+    /// <remarks>
+    /// Registers <see cref="PdfDocumentParser"/> through a factory lambda rather than
+    /// <c>AddParser&lt;TParser&gt;()</c>, because it needs to close over <paramref name="configure"/>'s
+    /// resolved <see cref="PdfParserOptions"/> and the optional <see cref="IDocumentOcrEngine"/>. That
+    /// bypasses <c>AddParser</c>'s automatic <see cref="ParserClaim"/> declaration, so this declares
+    /// the same claims by hand from <see cref="PdfDocumentParser.ContentTypes"/> — the same source
+    /// <c>AddParser&lt;PdfDocumentParser&gt;()</c> would have read, kept in sync because both read the
+    /// one static list rather than each naming <c>application/pdf</c> separately.
+    /// </remarks>
     public static TBuilder AddPdfParser<TBuilder>(this TBuilder builder, Action<PdfParserOptions>? configure)
         where TBuilder : IRagBuilder
     {
@@ -42,6 +51,13 @@ public static class PdfParserBuilderExtensions
                 options,
                 sp.GetService<ILogger<PdfDocumentParser>>(),
                 sp.GetService<IDocumentOcrEngine>()));
+
+        foreach (var contentType in PdfDocumentParser.ContentTypes)
+        {
+            builder.Services.AddSingleton(ParserClaim.For<PdfDocumentParser>(
+                contentType, "AddPdfParser(configure)"));
+        }
+
         return builder;
     }
 

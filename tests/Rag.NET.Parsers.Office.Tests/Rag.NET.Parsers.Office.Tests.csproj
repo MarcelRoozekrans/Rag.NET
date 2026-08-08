@@ -6,6 +6,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Office\Rag.NET.Parsers.Office.csproj" />
+    <!-- Only for ParserTypeNameContractTests: Rag.NET.Chunking.Templates' RagBuilderExtensions
+         names CsvDocumentParser and ExcelDocumentParser by string literal (it cannot reference
+         either assembly directly — see that file's remarks), so nothing proved the literals were
+         spelled correctly until a project referencing both real types could assert it. This is
+         that project; every other test project referencing Office already mints its own
+         same-named stand-in and would collide with the real type if this reference were added
+         there instead. -->
+    <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">

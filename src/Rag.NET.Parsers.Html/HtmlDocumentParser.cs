@@ -7,8 +7,10 @@ using Rag.NET.Models;
 
 namespace Rag.NET.Parsers.Html;
 
-public sealed class HtmlDocumentParser : IDocumentParser
+public sealed class HtmlDocumentParser : IDocumentParser, IDeclaresContentTypes
 {
+    private const string HtmlContentType = "text/html";
+
     private static readonly HashSet<string> s_headingTags = new(StringComparer.OrdinalIgnoreCase)
     {
         "h1", "h2", "h3", "h4", "h5", "h6",
@@ -16,8 +18,11 @@ public sealed class HtmlDocumentParser : IDocumentParser
 
     private static readonly string s_removeSelector = string.Join(", ", new[] { "script", "style", "nav", "footer", "header" });
 
+    /// <inheritdoc/>
+    public static IReadOnlyCollection<string> ContentTypes { get; } = [HtmlContentType];
+
     public bool CanParse(string contentType) =>
-        contentType.Equals("text/html", StringComparison.OrdinalIgnoreCase);
+        contentType.Equals(HtmlContentType, StringComparison.OrdinalIgnoreCase);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,
