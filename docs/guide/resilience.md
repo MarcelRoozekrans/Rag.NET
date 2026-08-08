@@ -143,7 +143,7 @@ services.AddRagNet(rag =>
 });
 ```
 
-> **Migrating from a version where the SQLite ledger was built in?** `CostBudgetOptions.DatabasePath` is no longer read — setting it to a non-default value makes `UseCostBudgeting` throw, pointing you at `UseSqliteCostLedger(path)`, rather than silently downgrading your explicitly configured persistent ledger to the in-memory one.
+> **Migrating from a version where the SQLite ledger was built in?** `CostBudgetOptions` has no `DatabasePath` property — the ledger path is configured on `UseSqliteCostLedger(path)` itself, from the `Rag.NET.Storage.Sqlite` package. Call it before `UseCostBudgeting()` to get a persistent ledger; without it, spend is tracked in memory and resets on restart.
 
 Before each call the decorator checks the recorded spend of the current UTC day and month against the configured limits and throws `BudgetExceededException` (carrying `Window`, `Limit`, and `Spend`) once a limit is reached. After each call it records token usage and cost to the ledger. For streaming calls the gate — like the rate limiter's permit — fires on **first enumeration**, not when `GetStreamingResponseAsync` returns. Every registered surface is decorated; at least one must be registered before the call. Repeat calls are idempotent (first configuration wins; decorators never stack).
 
