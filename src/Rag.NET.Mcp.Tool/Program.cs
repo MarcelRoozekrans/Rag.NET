@@ -17,10 +17,11 @@
 
 using Rag.NET.Hosting.DependencyInjection;
 using Rag.NET.Mcp.DependencyInjection;
+using Rag.NET.Mcp.Tool;
 
-var transport = ParseArg(args, "--transport") ?? "stdio";
-var port = int.TryParse(ParseArg(args, "--port"), System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : 5050;
-var apiKey = ParseArg(args, "--api-key") ?? Environment.GetEnvironmentVariable("RAGNET_MCP_API_KEY");
+var transport = ProgramArguments.Parse(args, "--transport") ?? "stdio";
+var port = int.TryParse(ProgramArguments.Parse(args, "--port"), System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : 5050;
+var apiKey = ProgramArguments.Parse(args, "--api-key") ?? Environment.GetEnvironmentVariable("RAGNET_MCP_API_KEY");
 
 // The two transports need different hosts, not just different MCP builder calls: HTTP needs
 // Kestrel to accept connections, but stdio must NOT start a web server at all — an MCP stdio
@@ -58,8 +59,11 @@ static async Task RunHttpAsync(string[] args, int port, string? apiKey)
     {
         app.Use(async (context, next) =>
         {
-            if (!context.Request.Headers.TryGetValue("X-Api-Key", out var suppliedKey)
-                || !string.Equals(suppliedKey.ToString(), apiKey, StringComparison.Ordinal))
+            var suppliedKey = context.Request.Headers.TryGetValue("X-Api-Key", out var value)
+                ? value.ToString()
+                : null;
+
+            if (!ApiKeyAuthorization.IsAuthorized(suppliedKey, apiKey))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 return;
@@ -101,27 +105,4 @@ static async Task RunStdioAsync(string[] args)
     var host = builder.Build();
 
     await host.RunAsync().ConfigureAwait(false);
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-static string? ParseArg(string[] args, string name)
-{
-    // Accepts both "--key=value" and "--key value" forms.
-    for (var i = 0; i < args.Length; i++)
-    {
-        if (args[i].StartsWith($"{name}=", StringComparison.OrdinalIgnoreCase))
-        {
-            return args[i][(name.Length + 1)..];
-        }
-
-        if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
-        {
-            return args[i + 1];
-        }
-    }
-
-    return null;
 }
