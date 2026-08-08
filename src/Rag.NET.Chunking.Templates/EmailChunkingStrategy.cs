@@ -6,9 +6,11 @@ using System.Runtime.CompilerServices;
 namespace Rag.NET.Chunking.Templates;
 
 /// <summary>
-/// Converts sections produced by <see cref="EmailTemplateDocumentParser"/> into
-/// <see cref="TextChunk"/> instances, stamping <c>template=email</c> and
-/// <c>part=headers|body|attachment:&lt;name&gt;</c> metadata on each chunk.
+/// Converts email-shaped <see cref="DocumentSection"/>s — headings of <c>headers</c>,
+/// <c>body</c>, or <c>attachment:&lt;name&gt;</c> — into <see cref="TextChunk"/> instances,
+/// stamping <c>template=email</c> and <c>part=headers|body|attachment:&lt;name&gt;</c> metadata on
+/// each chunk. Agnostic to which parser produced the sections; see
+/// <see cref="RagBuilderExtensions.UseEmailChunking{TBuilder}"/>.
 /// </summary>
 public sealed class EmailChunkingStrategy : IDocumentChunkingStrategy, IChunkingStrategy
 {

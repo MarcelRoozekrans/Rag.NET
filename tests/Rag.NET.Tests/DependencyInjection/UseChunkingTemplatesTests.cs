@@ -54,11 +54,18 @@ public class UseChunkingTemplatesTests
         Assert.IsType<QAPairsDocumentParser>(sp.GetRequiredService<IDocumentParser>());
     }
 
+    /// <summary>
+    /// Task 5 retired <c>EmailTemplateDocumentParser</c>: this call now registers only the chunking
+    /// strategy, never a parser. <c>.eml</c> ingestion alongside it needs
+    /// <c>Rag.NET.Parsers.Email</c> added separately (<c>AddEmailParser()</c>).
+    /// </summary>
     [Fact]
-    public void UseEmailChunking_RegistersIDocumentParser()
+    public void UseEmailChunking_RegistersNoParserClaim()
     {
         var sp = BaseServices().AddRagNet(rag => rag.UseEmailChunking()).BuildServiceProvider();
-        Assert.IsType<EmailTemplateDocumentParser>(sp.GetRequiredService<IDocumentParser>());
+        Assert.DoesNotContain(
+            sp.GetServices<ParserClaim>(),
+            c => string.Equals(c.RegistrationMethod, "UseEmailChunking()", StringComparison.Ordinal));
     }
 
     [Fact]

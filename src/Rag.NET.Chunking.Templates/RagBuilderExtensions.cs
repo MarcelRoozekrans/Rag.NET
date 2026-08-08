@@ -28,18 +28,12 @@ public static class RagBuilderExtensions
     /// </summary>
     private const string QAPairsExcelDocumentParserTypeName = "Rag.NET.Parsers.Excel.ExcelDocumentParser";
 
-    /// <summary>The content type <see cref="EmailTemplateDocumentParser.CanParse"/> accepts.</summary>
-    private const string EmailContentType = "message/rfc822";
-
     /// <summary>
-    /// Carried on the <see cref="ParserClaim"/>s these calls declare so the startup error a
-    /// content-type conflict produces can name a way out that keeps the chunking strategy. Both
-    /// calls register a parser <i>and</i> a strategy, and it is only ever the parser that
-    /// collides. Quoted verbatim into the message, so these must stay pasteable call syntax.
+    /// Carried on <see cref="UseQAPairsChunking{TBuilder}"/>'s <see cref="ParserClaim"/>s so the
+    /// startup error a content-type conflict produces can name a way out that keeps the chunking
+    /// strategy — the call registers a parser <i>and</i> a strategy, and it is only ever the parser
+    /// that collides. Quoted verbatim into the message, so this must stay pasteable call syntax.
     /// </summary>
-    private const string EmailParserOptOut = "UseEmailChunking(registerParser: false)";
-
-    /// <inheritdoc cref="EmailParserOptOut"/>
     private const string QAPairsParserOptOut = "UseQAPairsChunking(registerParser: false)";
 
     public static TBuilder UseLegalChunking<TBuilder>(
@@ -100,12 +94,17 @@ public static class RagBuilderExtensions
     /// <c>CsvDocumentParser</c> is not registered by default.
     /// </para>
     /// <para>
+    /// A parameter rather than a property on <see cref="QAPairsChunkingOptions"/>. That type
+    /// configures the <i>parser</i> — <see cref="QAPairsChunkingOptions.QuestionColumn"/>,
+    /// <see cref="QAPairsChunkingOptions.AnswerColumn"/>, <see cref="QAPairsChunkingOptions.SkipHeader"/>
+    /// — and <see cref="QAPairsChunkingStrategy"/> itself takes no options at all. A registration
+    /// switch living there would compile, run, throw nothing, and silently discard those three
+    /// settings, because dropping the parser drops its only reader. On the call it is visible where
+    /// the mutual exclusivity actually is.
+    /// </para>
+    /// <para>
     /// The opt-out is here because the conflict guard still fires on any duplicated claim this
-    /// override does not name — a third-party CSV parser, for instance — and an escape hatch present
-    /// on one bundling registration and absent from its twin is a trap of its own: the user who hits
-    /// that conflict finds the error naming an opt-out the sibling call does not have. See
-    /// <see cref="UseEmailChunking"/> for why it is a parameter rather than a property on
-    /// <see cref="QAPairsChunkingOptions"/>.
+    /// override does not name — a third-party CSV parser, for instance.
     /// </para>
     /// </remarks>
     public static TBuilder UseQAPairsChunking<TBuilder>(
@@ -140,50 +139,26 @@ public static class RagBuilderExtensions
         return builder;
     }
 
-    /// <param name="registerParser">
-    /// Whether to register <see cref="EmailTemplateDocumentParser"/> and its
-    /// <see cref="ParserClaim"/> alongside the chunking strategy. Defaults to
-    /// <see langword="true"/>; pass <see langword="false"/> to take the strategy alone.
-    /// </param>
     /// <remarks>
-    /// <para>
-    /// The escape hatch exists because this call registers two independent things — a parser and a
-    /// chunking strategy — and only the parser can collide. <see cref="EmailTemplateDocumentParser"/>
-    /// and <c>Rag.NET.Parsers.Email</c>'s parser both claim <c>message/rfc822</c>, which Phase 3.11
-    /// made a startup error; without a way to drop just the parser, that error told the user to
-    /// "register only one of them" while offering no way to keep the email-shaped chunking and let
-    /// the other package parse.
-    /// </para>
-    /// <para>
-    /// A parameter rather than a property on the options object. The options types configure
-    /// <i>chunking</i>, and their only consumers are the parsers — <see cref="EmailChunkingStrategy"/>
-    /// and <see cref="QAPairsChunkingStrategy"/> take no options at all. A registration switch
-    /// living there meant <c>UseEmailChunking(o => { o.IncludeHeaders = false; o.RegisterParser =
-    /// false; })</c> compiled, ran, threw nothing and silently discarded <c>IncludeHeaders</c>,
-    /// because dropping the parser dropped its only reader. On the call it is visible where the
-    /// mutual exclusivity actually is.
-    /// </para>
-    /// <para>
-    /// The chunking strategy is unaffected either way: it consumes
+    /// Registers no parser. Earlier versions of this call bundled
+    /// <c>EmailTemplateDocumentParser</c>, which duplicated <c>Rag.NET.Parsers.Email</c>'s strictly
+    /// more capable <c>EmailDocumentParser</c> — both claimed <c>message/rfc822</c>, which Phase
+    /// 3.11 made a startup error, worked around only by a <c>registerParser</c> escape hatch. The
+    /// duplicate parser is retired outright, which removes the collision (and its escape hatch)
+    /// rather than resolving it: <c>.eml</c> ingestion alongside this chunking strategy now needs
+    /// <c>Rag.NET.Parsers.Email</c> added separately (<c>AddEmailParser()</c>). This is a breaking
+    /// change from the previous default, where this call registered a parser on its own. The
+    /// chunking strategy is unaffected either way: it consumes
     /// <see cref="Models.DocumentSection"/>s and does not care which parser produced them.
-    /// </para>
     /// </remarks>
     public static TBuilder UseEmailChunking<TBuilder>(
         this TBuilder builder,
-        Action<EmailChunkingOptions>? configure = null,
-        bool registerParser = true)
+        Action<EmailChunkingOptions>? configure = null)
         where TBuilder : IRagBuilder
     {
         var opts = new EmailChunkingOptions();
         configure?.Invoke(opts);
         builder.Services.AddSingleton(opts);
-        if (registerParser)
-        {
-            builder.Services.AddSingleton<EmailTemplateDocumentParser>();
-            builder.Services.AddSingleton<IDocumentParser>(sp => sp.GetRequiredService<EmailTemplateDocumentParser>());
-            builder.Services.AddSingleton(ParserClaim.For<EmailTemplateDocumentParser>(
-                EmailContentType, "UseEmailChunking()", EmailParserOptOut));
-        }
 
         builder.Services.AddSingleton<EmailChunkingStrategy>();
         builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<EmailChunkingStrategy>());
