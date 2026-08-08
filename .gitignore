@@ -8,6 +8,12 @@ BenchmarkDotNet.Artifacts/
 site/
 .worktrees/
 
+# Docusaurus docs site build products. package-lock.json is committed deliberately — it is
+# what keeps the site's dependency tree reproducible (Phase 4.5).
+node_modules/
+.docusaurus/
+build/
+
 # Generated Lucent index artifacts. These were committed once, in April 2026, and had to be
 # purged from all history before this repository could be pushed: embeddings.bin reached 227 MB
 # against GitHub's hard 100 MB per-file limit, and chunks.json 73 MB. They are regenerable, so
