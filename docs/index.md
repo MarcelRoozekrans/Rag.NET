@@ -34,7 +34,8 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 
 ## Quick links
 
-- Sample application: `samples/Rag.NET.Sample` — interactive console app with Ollama and OpenAI support
+- Sample applications: `samples/Rag.NET.Sample` — interactive console app (PgVector, Ollama/OpenAI)
+  — and `samples/Rag.NET.QuickStart` — a config-driven walkthrough built on `Rag.NET.Hosting`
 - Benchmark results: [benchmarks.md](reference/benchmarks.md)
 - Feature roadmap and design notes: `docs/plans/`
 - GitHub README: covers the quick-start and package list
