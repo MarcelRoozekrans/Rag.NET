@@ -980,13 +980,28 @@ Chunk-batch embedding inside a single document: `EmbeddingBehavior` slices pendi
 ### Rag.NET CLI Tool
 **Package:** `Rag.NET.Cli` (dotnet tool)
 
-A `dotnet tool` (`ragnet`) providing:
-- `ragnet ingest <path> --store pgvector --connection <cs>` — ingest a folder
-- `ragnet ask "<question>"` — interactive query
-- `ragnet eval <dataset.json>` — run RAGAS metrics against a dataset
-- `ragnet reindex --stale` — re-embed documents with outdated embedding model versions
+A `dotnet tool` (`ragnet`) running against a pipeline configured the same way as
+`Rag.NET.Mcp.Tool` — `Rag.NET.Hosting`'s `AddRagNetPipelineFromConfiguration`, reading the
+`RagNet` section of `appsettings.json` or environment variables. See the [MCP server
+guide](../guide/mcp.mdx)'s Pattern D for the configuration shape (chat client, embeddings,
+vector store kind), the startup validation, and the `InMemory` warning — they are identical
+here.
 
-**Why:** The library is code-first, but operations tasks (ad-hoc ingestion, health checks, re-indexing) are painful to script. A CLI tool makes these accessible without writing a custom harness.
+- `ragnet ingest <path> [--overwrite]` — ingest a single file, or every file under a directory
+  (recursively)
+- `ragnet query "<question>" [--top-k N]` — retrieve the chunks a question matches
+
+Output is JSON on stdout, one object per invocation, meant to be piped onward; diagnostics,
+warnings, and errors go to stderr.
+
+`ragnet evaluate` is **not implemented**. `Rag.NET.Evaluation`'s evaluators
+(`EmbeddingDistanceEvaluator`, `LlmJudgeEvaluator`) score `EvaluationSample` instances that
+already carry a *predicted* answer, and no dataset file format exists anywhere in this
+repository to read a set of question/reference pairs from — wiring a working command needs that
+format designed first, not a thin call onto an existing seam the way `ingest`/`query` are.
+Running `ragnet evaluate` prints this reason to stderr and exits non-zero.
+
+**Why:** The library is code-first, but operations tasks (ad-hoc ingestion, retrieval checks) are painful to script. A CLI tool makes these accessible without writing a custom harness.
 
 ---
 
@@ -1169,7 +1184,7 @@ Curated, runnable sample projects demonstrating real-world Rag.NET usage:
 | [x] | Rate Limiting & Cost Budgeting | Medium | Token bucket |
 | [x] | Batch Ingestion Optimiser | Medium | `Parallel.ForEachAsync` |
 | [ ] | Sample Applications | Medium | All packages |
-| [ ] | Rag.NET CLI Tool | Medium | `dotnet tool` |
+| [x] | Rag.NET CLI Tool | Medium | `dotnet tool` (`ingest`/`query`; `evaluate` deferred — no dataset file format exists yet) |
 | [x] | Pipeline Debugger / Trace Viewer | Medium | `ActivityListener` + ring buffer; endpoint in `Rag.NET.Diagnostics.AspNetCore` |
 | [x] | Adaptive Retrieval (Query Routing) | High | `IChatClient` + classifier |
 | [x] | FLARE | High | `IChatClient` (self-assessment scorer; logprob scorer = extension point) |

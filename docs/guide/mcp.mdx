@@ -33,6 +33,7 @@ flowchart LR
 | `Rag.NET.Api.Grpc` | gRPC service exposing `IRagPipeline` |
 | `Rag.NET.Api.Grpc.Client` | `IRagPipeline` implementation that calls `Rag.NET.Api.Grpc` over gRPC |
 | `Rag.NET.Mcp.Tool` | `ragnet-mcp` dotnet global tool — self-contained, no code required |
+| `Rag.NET.Hosting` | Configuration-driven pipeline wiring (`AddRagNetPipelineFromConfiguration`) shared by `Rag.NET.Mcp.Tool` and the `ragnet` CLI — not published, referenced internally |
 
 ---
 
@@ -169,8 +170,28 @@ ragnet-mcp
 ragnet-mcp --transport http --port 5050 --api-key your-secret
 ```
 
+The tool wires its pipeline — chat client, embedding generator, vector store — from an `appsettings.json` next to its working directory, or from environment variables (`__` as the section separator, e.g. `RagNet__ChatClient__ApiKey`). A sample `appsettings.sample.json`, showing every supported `VectorStore:Kind`, ships alongside the installed binaries; copy it to `appsettings.json` and fill in real values.
+
+```json
+{
+  "RagNet": {
+    "ChatClient":  { "Endpoint": "https://api.openai.com/v1", "ApiKey": "…", "Model": "gpt-4o-mini" },
+    "Embeddings":  { "Endpoint": "https://api.openai.com/v1", "ApiKey": "…", "Model": "text-embedding-3-small", "VectorDimensions": 1536 },
+    "VectorStore": {
+      "Kind": "InMemory | Qdrant | PgVector",
+      "Qdrant":   { "Host": "…", "Port": 6334, "CollectionName": "…" },
+      "PgVector": { "ConnectionString": "…" }
+    }
+  }
+}
+```
+
+`VectorDimensions` lives under `Embeddings`, not under the store, because it is a property of the embedding model — every store merely has to agree with it. The chat client and embedding generator both go through one OpenAI-compatible endpoint, which covers OpenAI, Azure OpenAI, OpenRouter, Ollama, and LM Studio. The vector store is one of three kinds: `InMemory` (the default, zero setup, but **every ingested document is lost when the process exits** — a warning is logged at startup), `Qdrant`, or `PgVector`.
+
 :::note
-The tool is a host scaffold — `IRagPipeline` is **not** pre-configured. Add your embedding, vector store, and chat client registrations to the generated `Program.cs` before running.
+A misconfigured setting — an unrecognised `Kind`, a missing `Endpoint`/`Model`, an absent or non-positive `VectorDimensions` — fails at startup with a message naming both the setting and the `RagNet:…` configuration key that fixes it, rather than failing the first time an MCP client calls a tool.
+
+Need a provider outside that bounded set — Weaviate, Pinecone, Chroma, Azure AI Search, ONNX embeddings, a bespoke `IChatClient`? Host `Rag.NET.Mcp` directly in your own application (Pattern A above) and register whatever you like; this tool covers the bounded, OpenAI-compatible set above and nothing wider.
 :::
 
 ---
