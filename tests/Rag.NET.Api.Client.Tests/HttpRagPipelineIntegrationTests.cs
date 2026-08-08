@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Api.DependencyInjection;
+using Rag.NET.Mediator;
 using Rag.NET.Mediator.Requests;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -21,7 +22,7 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
 {
     private readonly TestServer _testServer;
     private readonly IRagPipeline _mockPipeline;
-    private readonly IMediator _mockMediator;
+    private readonly IRagMediator _mockMediator;
     private readonly HttpRagPipeline _httpRagPipeline;
 
     public HttpRagPipelineIntegrationTests()
@@ -69,9 +70,9 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
         return mock;
     }
 
-    private static IMediator CreateMockMediator()
+    private static IRagMediator CreateMockMediator()
     {
-        var mock = Substitute.For<IMediator>();
+        var mock = Substitute.For<IRagMediator>();
 
 #pragma warning disable EPS06 // ValueTask struct copy — intentional test double setup via NSubstitute
         mock.Send(Arg.Any<RetrieveQuery>(), Arg.Any<CancellationToken>())

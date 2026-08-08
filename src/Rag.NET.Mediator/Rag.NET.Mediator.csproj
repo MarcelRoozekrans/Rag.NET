@@ -9,8 +9,9 @@
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <!-- Suppress ZAM003: request types use class records because they carry Stream / IProgress
          references that cannot be stored in readonly record structs.
-         Suppress EPC12: fires on the ZeroAlloc.Mediator 4.x GENERATED dispatch code
-         (catch blocks that only read ex.Message for the activity status) — not our code. -->
+         Suppress EPC12: fires on the ZeroAlloc.Mediator 5.x GENERATED dispatch code
+         (catch blocks that only read ex.Message for the activity status) — not our code.
+         Confirmed still firing after the 4.1.4 -> 5.0.0 generator bump (2026-08). -->
     <NoWarn>ZAM003;EPC12</NoWarn>
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Mediator.Handlers;
+using Rag.NET.Mediator.Internal;
 using ZeroAlloc.Mediator;
 
 namespace Rag.NET.Mediator.DependencyInjection;
@@ -23,6 +24,10 @@ public static class MediatorBuilderExtensions
             });
             return new MediatorService(sp);
         });
+
+        // IMediator above is the generated, assembly-internal type — it cannot cross into
+        // Rag.NET.Api's signatures. IRagMediator is the public seam consumers depend on instead.
+        builder.Services.AddSingleton<IRagMediator>(sp => new RagMediator(sp.GetRequiredService<IMediator>()));
 
         return builder;
     }
