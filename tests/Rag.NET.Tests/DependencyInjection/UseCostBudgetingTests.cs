@@ -180,40 +180,6 @@ public sealed class UseCostBudgetingTests
     }
 
     [Fact]
-    public void UseCostBudgeting_BlankDatabasePath_Throws()
-    {
-        Assert.Throws<ArgumentException>(() =>
-            new ServiceCollection().AddRagNet(rag => rag.UseCostBudgeting(o =>
-            {
-                o.DailyLimit = 10m;
-                o.DatabasePath = " ";
-            })));
-    }
-
-    [Fact]
-    public void UseCostBudgeting_NonDefaultDatabasePath_ThrowsNamingUseSqliteCostLedger()
-    {
-        // The SQLite ledger moved to Rag.NET.Storage.Sqlite, so nothing reads DatabasePath any
-        // more. A consumer who explicitly set it asked for a specific persistent ledger; letting
-        // that compile, pass validation and silently degrade to an in-memory ledger (spend resets
-        // on restart) is the worst outcome — so a non-default value must fail loudly and name
-        // the replacement, including the path the user chose.
-        var ex = Assert.Throws<InvalidOperationException>(() =>
-            new ServiceCollection().AddRagNet(rag =>
-            {
-                rag.Services.AddSingleton(RespondingChatClient("ok"));
-                rag.UseCostBudgeting(o =>
-                {
-                    o.DailyLimit = 10m;
-                    o.DatabasePath = "spend.db";
-                });
-            }));
-
-        Assert.Contains("UseSqliteCostLedger(\"spend.db\")", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("Rag.NET.Storage.Sqlite", ex.Message, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void UseCostBudgeting_NoSurfaceRegistered_ThrowsActionable()
     {
         var ex = Assert.Throws<InvalidOperationException>(() =>

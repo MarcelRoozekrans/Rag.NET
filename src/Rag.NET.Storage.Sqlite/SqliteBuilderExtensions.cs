@@ -105,7 +105,7 @@ public static class SqliteBuilderExtensions
     /// <param name="dbPath">
     /// Path of the SQLite cost-ledger database file. Created if it does not exist.
     /// Defaults to <c>rag-cost-ledger.db</c>. This parameter is the only place the ledger
-    /// path is configured — <c>CostBudgetOptions.DatabasePath</c> is no longer read.
+    /// path is configured — <c>CostBudgetOptions</c> has no path property of its own.
     /// </param>
     /// <exception cref="ArgumentException">Thrown when <paramref name="dbPath"/> is empty.</exception>
     public static TBuilder UseSqliteCostLedger<TBuilder>(

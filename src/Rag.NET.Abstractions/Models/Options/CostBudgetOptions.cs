@@ -8,12 +8,6 @@ namespace Rag.NET.Models.Options;
 /// </summary>
 public sealed class CostBudgetOptions
 {
-    /// <summary>
-    /// The historical default of <see cref="DatabasePath"/>, kept so <c>UseCostBudgeting</c>
-    /// can tell "left alone" apart from "explicitly configured" and fail loudly on the latter.
-    /// </summary>
-    internal const string DefaultDatabasePath = "rag-cost-ledger.db";
-
     /// <summary>Price per 1,000,000 input (prompt) tokens for chat calls. Must be >= 0.</summary>
     public decimal InputPricePerMTokens { get; set; }
 
@@ -36,13 +30,4 @@ public sealed class CostBudgetOptions
     /// no monthly limit.
     /// </summary>
     public decimal? MonthlyLimit { get; set; }
-
-    /// <summary>
-    /// No longer read: the SQLite cost ledger moved to the <c>Rag.NET.Storage.Sqlite</c>
-    /// package, whose <c>UseSqliteCostLedger(dbPath)</c> takes the path directly, and
-    /// <c>UseCostBudgeting</c> defaults to an in-memory ledger. Setting this to anything
-    /// other than its default makes <c>UseCostBudgeting</c> throw rather than silently
-    /// hand out a non-persistent ledger the caller did not ask for.
-    /// </summary>
-    public string DatabasePath { get; set; } = DefaultDatabasePath;
 }

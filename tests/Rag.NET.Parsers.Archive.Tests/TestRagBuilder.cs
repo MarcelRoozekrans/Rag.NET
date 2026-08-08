@@ -16,7 +16,7 @@ internal sealed class TestRagBuilder : IRagBuilder
 {
     public IServiceCollection Services { get; } = new ServiceCollection();
 
-    public IRagBuilder AddParser<TParser>()
+    public IRagBuilder AddParser<TParser>(Type? replaces = null, string[]? replacesTypeNames = null)
         where TParser : class, IDocumentParser =>
         throw new NotSupportedException("AddArchiveParser is not expected to route through AddParser<T>().");
 

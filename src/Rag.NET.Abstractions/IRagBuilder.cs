@@ -19,7 +19,20 @@ public interface IRagBuilder
     /// selects the first one whose <c>CanParse</c> returns <see langword="true"/> for a given content type.
     /// </summary>
     /// <typeparam name="TParser">The <see cref="IDocumentParser"/> implementation to register.</typeparam>
-    IRagBuilder AddParser<TParser>() where TParser : class, IDocumentParser;
+    /// <param name="replaces">
+    /// When set, deliberately overrides <paramref name="replaces"/>: its registration and its
+    /// <see cref="ParserClaim"/> are removed before <typeparamref name="TParser"/> is registered, so
+    /// <typeparamref name="TParser"/> wins selection instead of merely avoiding the conflict check.
+    /// See <c>RagBuilder.AddParser</c>'s remarks for the full rationale.
+    /// </param>
+    /// <param name="replacesTypeNames">
+    /// The same override as <paramref name="replaces"/>, by full type name rather than by
+    /// <see cref="Type"/>, for a caller that cannot reference the replaced parser's assembly — an
+    /// optional package that may not even be installed. A name with no matching registration is a
+    /// no-op, not an error. See <c>RagBuilder.AddParser</c>'s remarks for the full rationale.
+    /// </param>
+    IRagBuilder AddParser<TParser>(Type? replaces = null, string[]? replacesTypeNames = null)
+        where TParser : class, IDocumentParser;
 
     /// <summary>Registers a singleton <see cref="IReranker"/> of type <typeparamref name="TReranker"/>.</summary>
     IRagBuilder UseReranking<TReranker>() where TReranker : class, IReranker;

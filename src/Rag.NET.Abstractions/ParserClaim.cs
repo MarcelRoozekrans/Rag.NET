@@ -39,6 +39,14 @@ namespace Rag.NET.Abstractions;
 /// user to "register only one of them" when the strategy they want is only reachable through the
 /// colliding call is advice they cannot take.
 /// </param>
+/// <param name="ReplacesParserTypeName">
+/// The full type name of the parser this claim's registration deliberately overrode via
+/// <c>RagBuilder.AddParser&lt;TParser&gt;(replaces:)</c>, or <see langword="null"/> when this claim
+/// did not replace one. <c>AddParser&lt;TParser&gt;(replaces:)</c> itself removes the replaced
+/// parser's descriptor and claim outright rather than leaving two claimants for the validator to
+/// referee — this property exists so the claim that took its place can still record what it
+/// overrode, for anyone reading the registration back rather than for the validator itself.
+/// </param>
 /// <remarks>
 /// <para>
 /// The claim is declared rather than discovered because neither route to discovering it works at
@@ -68,16 +76,36 @@ public sealed record ParserClaim(
     string ContentType,
     string ParserTypeName,
     string RegistrationMethod,
-    string? ParserOptOut = null)
+    string? ParserOptOut = null,
+    string? ReplacesParserTypeName = null)
 {
     /// <summary>
     /// Builds a claim for <typeparamref name="TParser"/>, taking the parser type name from the
     /// type itself so a rename cannot leave the claim naming a type that no longer exists.
     /// </summary>
+    /// <param name="replaces">
+    /// The parser type this registration deliberately overrode, if any. Recorded on
+    /// <see cref="ReplacesParserTypeName"/> as a full type name — see that property's remarks.
+    /// </param>
+    /// <param name="replacesTypeName">
+    /// The full type name of the parser this registration deliberately overrode, for callers that
+    /// cannot reference <paramref name="replaces"/> as a <see cref="Type"/> — a chunking-templates
+    /// package declaring an override against a parser that lives in an optional package it must not
+    /// take a compile-time dependency on, for instance. Ignored when <paramref name="replaces"/> is
+    /// set; the two exist for the same property because one caller has the <see cref="Type"/> and
+    /// the other only ever has its name.
+    /// </param>
     public static ParserClaim For<TParser>(
         string contentType,
         string registrationMethod,
-        string? parserOptOut = null)
+        string? parserOptOut = null,
+        Type? replaces = null,
+        string? replacesTypeName = null)
         where TParser : IDocumentParser =>
-        new(contentType, typeof(TParser).FullName ?? typeof(TParser).Name, registrationMethod, parserOptOut);
+        new(
+            contentType,
+            typeof(TParser).FullName ?? typeof(TParser).Name,
+            registrationMethod,
+            parserOptOut,
+            replaces?.FullName ?? replaces?.Name ?? replacesTypeName);
 }

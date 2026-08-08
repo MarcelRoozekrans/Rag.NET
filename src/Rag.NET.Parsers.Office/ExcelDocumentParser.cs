@@ -6,10 +6,16 @@ using Rag.NET.Models;
 
 namespace Rag.NET.Parsers.Excel;
 
-public sealed class ExcelDocumentParser : IDocumentParser
+public sealed class ExcelDocumentParser : IDocumentParser, IDeclaresContentTypes
 {
+    private const string SpreadsheetContentType =
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    /// <inheritdoc/>
+    public static IReadOnlyCollection<string> ContentTypes { get; } = [SpreadsheetContentType];
+
     public bool CanParse(string contentType) =>
-        contentType.Equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", StringComparison.OrdinalIgnoreCase);
+        contentType.Equals(SpreadsheetContentType, StringComparison.OrdinalIgnoreCase);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,

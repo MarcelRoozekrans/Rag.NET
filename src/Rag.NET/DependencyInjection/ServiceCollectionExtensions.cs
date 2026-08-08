@@ -141,12 +141,12 @@ public static class ServiceCollectionExtensions
         // Sorted rather than hashed so a container with several conflicts always reports the same
         // one, and so the claimants are listed in a stable order. Grouping is on the content type
         // case-insensitively on purpose, and deliberately stricter than the parsers themselves:
-        // they do not agree with each other. QAPairsDocumentParser and EmailTemplateDocumentParser
-        // compare Ordinal, so MESSAGE/RFC822 reaches EmailDocumentParser and TEXT/CSV reaches
-        // nobody; Rag.NET.Parsers.Email's pair compares OrdinalIgnoreCase. Grouping the strict way
-        // would let a pair that differs only in case register cleanly and then collide at parse
-        // time for whichever casing both happen to answer. Over-strict costs a false conflict
-        // between two parsers that would never have overlapped; case-sensitive costs a silent one.
+        // they do not agree with each other. QAPairsDocumentParser compares Ordinal, so TEXT/CSV
+        // reaches nobody, while Rag.NET.Parsers.Email's pair compares OrdinalIgnoreCase. Grouping
+        // the strict way would let a pair that differs only in case register cleanly and then
+        // collide at parse time for whichever casing both happen to answer. Over-strict costs a
+        // false conflict between two parsers that would never have overlapped; case-sensitive costs
+        // a silent one.
         SortedDictionary<string, SortedDictionary<string, ParserClaim>>? byContentType = null;
         foreach (var descriptor in services)
         {

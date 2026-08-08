@@ -8,10 +8,16 @@ using Drawing = DocumentFormat.OpenXml.Drawing;
 
 namespace Rag.NET.Parsers.PowerPoint;
 
-public sealed class PowerPointDocumentParser : IDocumentParser
+public sealed class PowerPointDocumentParser : IDocumentParser, IDeclaresContentTypes
 {
+    private const string PresentationContentType =
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+    /// <inheritdoc/>
+    public static IReadOnlyCollection<string> ContentTypes { get; } = [PresentationContentType];
+
     public bool CanParse(string contentType) =>
-        contentType.Equals("application/vnd.openxmlformats-officedocument.presentationml.presentation", StringComparison.OrdinalIgnoreCase);
+        contentType.Equals(PresentationContentType, StringComparison.OrdinalIgnoreCase);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,

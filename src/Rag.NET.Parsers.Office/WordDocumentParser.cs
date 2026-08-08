@@ -7,8 +7,11 @@ using Rag.NET.Models;
 
 namespace Rag.NET.Parsers.Word;
 
-public sealed class WordDocumentParser : IDocumentParser
+public sealed class WordDocumentParser : IDocumentParser, IDeclaresContentTypes
 {
+    private const string WordContentType =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
     private static readonly Dictionary<string, int> s_headingStyles = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Heading1"] = 1,
@@ -19,8 +22,11 @@ public sealed class WordDocumentParser : IDocumentParser
         ["Heading6"] = 6,
     };
 
+    /// <inheritdoc/>
+    public static IReadOnlyCollection<string> ContentTypes { get; } = [WordContentType];
+
     public bool CanParse(string contentType) =>
-        contentType.Equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document", StringComparison.OrdinalIgnoreCase);
+        contentType.Equals(WordContentType, StringComparison.OrdinalIgnoreCase);
 
     public async IAsyncEnumerable<DocumentSection> ParseAsync(
         Stream stream,

@@ -9,20 +9,21 @@ using Rag.NET.Parsers.Email;
 using Rag.NET.Tests.DependencyInjection.StubParsers;
 using Xunit;
 using EmailPackageParser = Rag.NET.Parsers.Email.EmailDocumentParser;
-using TemplatesEmailParser = Rag.NET.Chunking.Templates.EmailTemplateDocumentParser;
 
 namespace Rag.NET.Tests.DependencyInjection;
 
 /// <summary>
 /// Two parsers claiming one content type is a startup error rather than registration-order
-/// roulette. <c>UseEmailChunking()</c> and <c>AddEmailParser()</c> both claim
-/// <c>message/rfc822</c>; parser selection takes the first match, so one of them silently never
-/// runs and the content it would have produced is simply absent.
+/// roulette. <c>message/rfc822</c> was Phase 3.11's motivating example — <c>UseEmailChunking()</c>
+/// and <c>AddEmailParser()</c> both claimed it — until this phase's Task 5 retired the Templates
+/// parser outright, so that pairing is unconditionally legal now (see
+/// <see cref="TheEmailChunkingTemplateAndTheEmailParserPackageTogether_DoNotThrow"/>). The guard
+/// itself still exists for any collision that remains, pinned below against stub parsers.
 /// </summary>
 public class ParserClaimValidationTests
 {
-    private const string EmlContentType = "message/rfc822";
     private const string SharedContentType = "application/x-shared-name";
+    private const string CsvContentType = "text/csv";
 
     private static IServiceCollection BaseServices()
     {
@@ -31,81 +32,6 @@ public class ParserClaimValidationTests
         services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
         services.AddSingleton(Substitute.For<IChatClient>());
         return services;
-    }
-
-    [Fact]
-    public void TwoPackagesClaimingOneContentType_ThrowsAtStartup()
-    {
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => BaseServices().AddRagNet(rag =>
-            {
-                rag.UseEmailChunking();
-                rag.AddEmailParser();
-            }));
-
-        Assert.Contains(EmlContentType, ex.Message, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// The order the user registered in must not change the outcome — the whole point of running
-    /// the check after <c>configure</c> rather than inside either registration call.
-    /// </summary>
-    [Fact]
-    public void TwoPackagesClaimingOneContentType_ThrowsInEitherOrder()
-    {
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => BaseServices().AddRagNet(rag =>
-            {
-                rag.AddEmailParser();
-                rag.UseEmailChunking();
-            }));
-
-        Assert.Contains(EmlContentType, ex.Message, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Asserted by its parts rather than by its prose, and each part is a name the reader needs in
-    /// order to act: which two types collide, and which two calls to go and look at. A Phase 3.9
-    /// test asserted the message "names the ceiling" and passed against a mutant, because a second
-    /// incidental occurrence of the literal satisfied the substring — so each of these four names
-    /// was checked to fail the test when removed from the message.
-    /// </summary>
-    [Fact]
-    public void TheConflictMessageNamesBothParsersAndBothRegistrationCalls()
-    {
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => BaseServices().AddRagNet(rag =>
-            {
-                rag.UseEmailChunking();
-                rag.AddEmailParser();
-            }));
-
-        Assert.Contains(typeof(TemplatesEmailParser).FullName!, ex.Message, StringComparison.Ordinal);
-        Assert.Contains(typeof(EmailPackageParser).FullName!, ex.Message, StringComparison.Ordinal);
-        Assert.Contains("UseEmailChunking()", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("AddEmailParser()", ex.Message, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// The full type name is load-bearing. Both types were called <c>EmailDocumentParser</c> until
-    /// Phase 3.11 renamed the Templates one, and a message naming the short name twice would have
-    /// told the reader nothing about which registration to remove — the assertion above would have
-    /// passed against a message that named only one of them. The rename fixes that for this pair
-    /// alone; the guard still has to distinguish claimants by full name, because a third-party
-    /// parser sharing a short name is not something this repository can rename away.
-    /// </summary>
-    [Fact]
-    public void TheTwoClaimantsAreDistinguishableInTheMessage()
-    {
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => BaseServices().AddRagNet(rag =>
-            {
-                rag.UseEmailChunking();
-                rag.AddEmailParser();
-            }));
-
-        Assert.NotEqual(typeof(TemplatesEmailParser).FullName, typeof(EmailPackageParser).FullName);
-        Assert.Equal(2, CountOccurrences(ex.Message, "registered by "));
     }
 
     /// <summary>
@@ -119,11 +45,41 @@ public class ParserClaimValidationTests
         Assert.Contains(sp.GetServices<IDocumentParser>(), p => p is EmailPackageParser);
     }
 
+    /// <summary>
+    /// Task 5 retired <c>EmailTemplateDocumentParser</c>, so <c>UseEmailChunking()</c> alone
+    /// registers only the chunking strategy — no <see cref="ParserClaim"/>, no parser.
+    /// </summary>
     [Fact]
     public void TheEmailChunkingTemplateAlone_DoesNotThrow()
     {
         var sp = BaseServices().AddRagNet(rag => rag.UseEmailChunking()).BuildServiceProvider();
-        Assert.Contains(sp.GetServices<IDocumentParser>(), p => p is TemplatesEmailParser);
+        Assert.Contains(sp.GetServices<IDocumentChunkingStrategy>(), s => s is EmailChunkingStrategy);
+        Assert.DoesNotContain(
+            sp.GetServices<ParserClaim>(),
+            c => string.Equals(c.RegistrationMethod, "UseEmailChunking()", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The collision this file used to be built around. <c>EmailTemplateDocumentParser</c> and
+    /// <c>Rag.NET.Parsers.Email</c>'s <c>EmailDocumentParser</c> both claimed <c>message/rfc822</c>
+    /// until Task 5 retired the former outright, so pairing <c>UseEmailChunking()</c> with
+    /// <c>AddEmailParser()</c> no longer needs the <c>registerParser</c> escape hatch that used to
+    /// make it possible — it is simply legal now.
+    /// </summary>
+    [Fact]
+    public void TheEmailChunkingTemplateAndTheEmailParserPackageTogether_DoNotThrow()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag =>
+            {
+                rag.UseEmailChunking();
+                rag.AddEmailParser();
+            })
+            .BuildServiceProvider();
+
+        var parsers = sp.GetServices<IDocumentParser>().ToList();
+        Assert.Contains(parsers, p => p is EmailPackageParser);
+        Assert.Contains(sp.GetServices<IDocumentChunkingStrategy>(), s => s is EmailChunkingStrategy);
     }
 
     [Fact]
@@ -155,64 +111,31 @@ public class ParserClaimValidationTests
     }
 
     /// <summary>
-    /// The conflict message has to offer a way out that the API actually permits.
-    /// <c>UseEmailChunking()</c> registers a parser <i>and</i> a chunking strategy, so "register
-    /// only one of them" is unfollowable for a user who wants the email-shaped chunking with
-    /// <c>Rag.NET.Parsers.Email</c> parsing — that pairing was unreachable until the
-    /// <c>registerParser</c> parameter existed. The message quotes the opt-out verbatim so it can
-    /// be pasted straight into a composition root.
+    /// The conflict message has to offer a way out that the API actually permits, and only for the
+    /// claim that declares one. The retired email collision used to demonstrate this against real
+    /// production parsers; pinned here against stub parsers instead, now that no production
+    /// collision exercises it — <c>UseQAPairsChunking()</c> still declares an opt-out, but its
+    /// override mechanism removes the collision before the validator ever runs, so it never reaches
+    /// this code path either.
     /// </summary>
     [Fact]
-    public void TheConflictMessageNamesTheParserOptOut()
+    public void TheConflictMessageNamesTheDeclaredOptOutAndOnlyThatOne()
     {
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => BaseServices().AddRagNet(rag =>
+        const string optOut = "AddParser<FakeCsvParser>(registerParser: false)";
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            BaseServices().AddRagNet(rag =>
             {
-                rag.UseEmailChunking();
-                rag.AddEmailParser();
+                rag.AddParser<FakeCsvParser>();
+                rag.Services.AddSingleton(ParserClaim.For<FakeCsvParser>(
+                    CsvContentType, "AddParser<FakeCsvParser>()", optOut));
+
+                rag.AddParser<SecondFakeCsvParser>();
+                rag.Services.AddSingleton(ParserClaim.For<SecondFakeCsvParser>(
+                    CsvContentType, "AddParser<SecondFakeCsvParser>()"));
             }));
 
-        Assert.Contains(
-            "UseEmailChunking(registerParser: false)", ex.Message, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// <c>AddEmailParser()</c> registers nothing but parsers, so it declares no opt-out and the
-    /// message must not invent one for it. Exactly one of the two claimants offers a way out.
-    /// </summary>
-    [Fact]
-    public void OnlyTheBundlingRegistrationOffersAnOptOut()
-    {
-        var ex = Assert.Throws<InvalidOperationException>(
-            () => BaseServices().AddRagNet(rag =>
-            {
-                rag.UseEmailChunking();
-                rag.AddEmailParser();
-            }));
-
+        Assert.Contains(optOut, ex.Message, StringComparison.Ordinal);
         Assert.Equal(1, CountOccurrences(ex.Message, "to keep that registration without its parser"));
-        Assert.DoesNotContain(
-            "AddEmailParser(registerParser", ex.Message, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// The opt-out has to actually resolve the conflict, and has to drop only the parser.
-    /// </summary>
-    [Fact]
-    public void TheEmailParserOptOut_ResolvesTheConflictAndKeepsTheStrategy()
-    {
-        var sp = BaseServices()
-            .AddRagNet(rag =>
-            {
-                rag.UseEmailChunking(registerParser: false);
-                rag.AddEmailParser();
-            })
-            .BuildServiceProvider();
-
-        var parsers = sp.GetServices<IDocumentParser>().ToList();
-        Assert.Contains(parsers, p => p is EmailPackageParser);
-        Assert.DoesNotContain(parsers, p => p is TemplatesEmailParser);
-        Assert.Contains(sp.GetServices<IDocumentChunkingStrategy>(), s => s is EmailChunkingStrategy);
     }
 
     /// <summary>
@@ -340,6 +263,85 @@ public class ParserClaimValidationTests
             .BuildServiceProvider();
 
         Assert.Contains(sp.GetServices<IDocumentParser>(), p => p is EmailPackageParser);
+    }
+
+    /// <summary>
+    /// <c>replaces:</c> must remove both halves of the replaced registration — its
+    /// <see cref="IDocumentParser"/> descriptor and its <see cref="ParserClaim"/> — together, not
+    /// merely silence the conflict the claim would otherwise trip.
+    /// </summary>
+    [Fact]
+    public void AddParser_WithReplaces_RemovesTheReplacedParserAndItsClaim()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag =>
+            {
+                rag.AddParser<CsvDocumentParser>();
+                rag.Services.AddSingleton(ParserClaim.For<CsvDocumentParser>(
+                    CsvContentType, "AddParser<CsvDocumentParser>()"));
+
+                rag.AddParser<FakeCsvParser>(replaces: typeof(CsvDocumentParser));
+                rag.Services.AddSingleton(ParserClaim.For<FakeCsvParser>(
+                    CsvContentType,
+                    "AddParser<FakeCsvParser>(replaces: typeof(CsvDocumentParser))",
+                    replaces: typeof(CsvDocumentParser)));
+            })
+            .BuildServiceProvider();
+
+        var parsers = sp.GetServices<IDocumentParser>().ToList();
+        Assert.Contains(parsers, p => p is FakeCsvParser);
+        Assert.DoesNotContain(parsers, p => p is CsvDocumentParser);
+    }
+
+    /// <summary>
+    /// The point of the feature, asserted separately from mere clean registration. Selection takes
+    /// the first registered parser whose <c>CanParse</c> matches, and <c>CsvDocumentParser</c> is
+    /// registered first here — exactly the shape a built-in registered ahead of <c>configure</c>
+    /// takes. Without descriptor removal this would still pass the claim check and still lose.
+    /// </summary>
+    [Fact]
+    public void AddParser_WithReplaces_MakesTheReplacementWinSelection()
+    {
+        var sp = BaseServices()
+            .AddRagNet(rag =>
+            {
+                rag.AddParser<CsvDocumentParser>();
+                rag.Services.AddSingleton(ParserClaim.For<CsvDocumentParser>(
+                    CsvContentType, "AddParser<CsvDocumentParser>()"));
+
+                rag.AddParser<FakeCsvParser>(replaces: typeof(CsvDocumentParser));
+                rag.Services.AddSingleton(ParserClaim.For<FakeCsvParser>(
+                    CsvContentType,
+                    "AddParser<FakeCsvParser>(replaces: typeof(CsvDocumentParser))",
+                    replaces: typeof(CsvDocumentParser)));
+            })
+            .BuildServiceProvider();
+
+        var selected = sp.GetServices<IDocumentParser>().First(p => p.CanParse(CsvContentType));
+
+        Assert.IsType<FakeCsvParser>(selected);
+    }
+
+    /// <summary>
+    /// The escape hatch must not become a way to switch the guard off entirely. Two parsers
+    /// claiming the same content type without <c>replaces:</c> must still throw.
+    /// </summary>
+    [Fact]
+    public void AddParser_WithoutReplaces_StillConflictsWhenBothDeclare()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            BaseServices().AddRagNet(rag =>
+            {
+                rag.AddParser<FakeCsvParser>();
+                rag.Services.AddSingleton(ParserClaim.For<FakeCsvParser>(
+                    CsvContentType, "AddParser<FakeCsvParser>()"));
+
+                rag.AddParser<SecondFakeCsvParser>();
+                rag.Services.AddSingleton(ParserClaim.For<SecondFakeCsvParser>(
+                    CsvContentType, "AddParser<SecondFakeCsvParser>()"));
+            }));
+
+        Assert.Contains(CsvContentType, ex.Message, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string text, string value)

@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -50,14 +51,157 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// selects the first one whose <c>CanParse</c> returns <see langword="true"/> for a given content type.
     /// </summary>
     /// <typeparam name="TParser">The <see cref="IDocumentParser"/> implementation to register.</typeparam>
-    public RagBuilder AddParser<TParser>() where TParser : class, IDocumentParser
+    /// <param name="replaces">
+    /// When set, deliberately overrides <paramref name="replaces"/>: every registered
+    /// <see cref="IDocumentParser"/> descriptor implemented by it, and every
+    /// <see cref="ParserClaim"/> declared for it, are removed before <typeparamref name="TParser"/>
+    /// is registered. Removing the old registration — not just its claim — is load-bearing: parser
+    /// selection takes the <i>first</i> registered parser whose <c>CanParse</c> matches, and
+    /// built-in parsers register before <c>configure</c> runs, so leaving the replaced descriptor in
+    /// place would let it keep winning even once the conflict is silenced. <paramref name="replaces"/>
+    /// is matched by <see cref="Type.FullName"/>, not <see cref="Type.Name"/> — see
+    /// <see cref="ParserClaim.ParserTypeName"/>'s remarks for why a short-name match would collapse
+    /// two distinct parsers that happen to share one. A <paramref name="replaces"/> that was never
+    /// registered removes nothing and is not an error.
+    /// </param>
+    /// <param name="replacesTypeNames">
+    /// The same override as <paramref name="replaces"/>, expressed by full type name rather than by
+    /// <see cref="Type"/>. Exists for a caller that cannot reference the replaced parser's assembly
+    /// at all — <c>Rag.NET.Chunking.Templates</c> overriding <c>Rag.NET.Parsers.Office</c>'s Excel
+    /// parser, which may not even be installed, is the motivating case. Matched the same way as
+    /// <paramref name="replaces"/> — by full type name, and a name with no matching registration
+    /// removes nothing and is not an error.
+    /// </param>
+    /// <remarks>
+    /// When <typeparamref name="TParser"/> implements <see cref="IDeclaresContentTypes"/>, this also
+    /// declares one <see cref="ParserClaim"/> per content type it reports — see
+    /// <see cref="DeclareContentTypeClaims{TParser}"/>. A <typeparamref name="TParser"/> that does
+    /// not implement it declares nothing, exactly as before that interface existed.
+    /// </remarks>
+    public RagBuilder AddParser<TParser>(Type? replaces = null, string[]? replacesTypeNames = null)
+        where TParser : class, IDocumentParser
     {
+        if (replaces is not null)
+        {
+            RemoveReplacedParser(replaces.FullName ?? replaces.Name);
+        }
+
+        if (replacesTypeNames is not null)
+        {
+            foreach (var replacedTypeName in replacesTypeNames)
+            {
+                RemoveReplacedParser(replacedTypeName);
+            }
+        }
+
         Services.AddSingleton<IDocumentParser, TParser>();
+        DeclareContentTypeClaims<TParser>(replaces, replacesTypeNames);
         return this;
     }
 
+    /// <summary>
+    /// Declares one <see cref="ParserClaim"/> per content type <typeparamref name="TParser"/>
+    /// reports through <see cref="IDeclaresContentTypes"/> — the mechanism that closes
+    /// <c>AddParser&lt;TParser&gt;()</c>'s documented blindness for any parser that opts in. A
+    /// <typeparamref name="TParser"/> that does not implement <see cref="IDeclaresContentTypes"/>
+    /// declares nothing, which is this method's no-op path and by far its most common one.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="replaces"/> is recorded on every claim this declares: a single
+    /// <c>AddParser&lt;TParser&gt;(replaces:)</c> call names one specific parser it deliberately
+    /// overrides, and every content type <typeparamref name="TParser"/> claims in that same call is
+    /// claimed as part of that override. <paramref name="replacesTypeNames"/> carries that same
+    /// unambiguous meaning only when it names exactly one parser; naming several leaves no single
+    /// answer to "which one did this claim override", so with more than one name the declared claims
+    /// record no override rather than attributing it to an arbitrary one of them. Nothing in this
+    /// repository calls <c>AddParser&lt;TParser&gt;(replacesTypeNames:)</c> with more than one name
+    /// for a parser that also implements <see cref="IDeclaresContentTypes"/> today; this is the
+    /// documented behaviour if one ever does.
+    /// </remarks>
+    private void DeclareContentTypeClaims<TParser>(Type? replaces, string[]? replacesTypeNames)
+        where TParser : class, IDocumentParser
+    {
+        if (!typeof(IDeclaresContentTypes).IsAssignableFrom(typeof(TParser)))
+        {
+            return;
+        }
+
+        var contentTypes = (IReadOnlyCollection<string>)GetDeclaredContentTypesMethod
+            .MakeGenericMethod(typeof(TParser))
+            .Invoke(obj: null, parameters: null)!;
+        var registrationMethod = $"AddParser<{typeof(TParser).Name}>()";
+        var replacedTypeName = replacesTypeNames is { Length: 1 } single ? single[0] : null;
+
+        foreach (var contentType in contentTypes)
+        {
+            Services.AddSingleton(ParserClaim.For<TParser>(
+                contentType, registrationMethod, replaces: replaces, replacesTypeName: replacedTypeName));
+        }
+    }
+
+    /// <summary>
+    /// Reflection bridge for <see cref="DeclareContentTypeClaims{TParser}"/>: a static abstract
+    /// interface member can only be invoked through a generic type parameter constrained by that
+    /// interface, and <typeparamref name="TParser"/> there carries no such constraint — it is only
+    /// known at that call site to implement <see cref="IDocumentParser"/>, with
+    /// <see cref="IDeclaresContentTypes"/> checked at runtime because most callers of
+    /// <c>AddParser&lt;TParser&gt;()</c> do not implement it. <see cref="GetDeclaredContentTypes{T}"/>
+    /// carries the constraint the direct call site cannot, and is reached through
+    /// <see cref="MethodInfo.MakeGenericMethod"/> once the runtime check confirms it applies.
+    /// </summary>
+    private static readonly MethodInfo GetDeclaredContentTypesMethod = typeof(RagBuilder).GetMethod(
+        nameof(GetDeclaredContentTypes), BindingFlags.NonPublic | BindingFlags.Static)!;
+
+    private static IReadOnlyCollection<string> GetDeclaredContentTypes<TParser>()
+        where TParser : IDeclaresContentTypes =>
+        TParser.ContentTypes;
+
+    /// <summary>
+    /// Removes the parser named <paramref name="replacedTypeName"/>'s <see cref="IDocumentParser"/>
+    /// registration and every <see cref="ParserClaim"/> declared for it, so a caller of
+    /// <see cref="AddParser{TParser}(Type?, string[]?)"/> that names it — by <see cref="Type"/> or by
+    /// name — actually wins selection rather than merely avoiding the conflict check. A name that
+    /// matches nothing currently registered removes nothing, which is the no-op an optional
+    /// dependency that was never added requires.
+    /// <para>
+    /// <b>Only reaches parsers registered by type.</b> Matching is on
+    /// <see cref="ServiceDescriptor.ImplementationType"/>, which is <see langword="null"/> for a
+    /// factory registration — <c>AddSingleton&lt;IDocumentParser&gt;(sp =&gt; …)</c>, as
+    /// <c>Rag.NET.Parsers.Vision</c>, <c>.Email</c>, <c>.Archive</c> and this package's own
+    /// registrations use. A factory descriptor does not say what type it will produce without
+    /// resolving it, so naming one here removes nothing and looks identical to naming a package
+    /// that was never installed. Both parsers this repository replaces today
+    /// (<c>CsvDocumentParser</c>, <c>ExcelDocumentParser</c>) arrive through
+    /// <see cref="AddParser{TParser}(Type?, string[]?)"/> and are therefore reachable; a caller
+    /// trying to replace a factory-registered parser gets a silent no-op, which is the failure
+    /// shape this whole mechanism exists to remove. Recorded as debt rather than fixed here.
+    /// </para>
+    /// </summary>
+    private void RemoveReplacedParser(string replacedTypeName)
+    {
+        for (var i = Services.Count - 1; i >= 0; i--)
+        {
+            var descriptor = Services[i];
+
+            var isReplacedParser =
+                descriptor.ServiceType == typeof(IDocumentParser) &&
+                string.Equals(descriptor.ImplementationType?.FullName, replacedTypeName, StringComparison.Ordinal);
+
+            var isReplacedClaim =
+                descriptor.ServiceType == typeof(ParserClaim) &&
+                descriptor.ImplementationInstance is ParserClaim claim &&
+                string.Equals(claim.ParserTypeName, replacedTypeName, StringComparison.Ordinal);
+
+            if (isReplacedParser || isReplacedClaim)
+            {
+                Services.RemoveAt(i);
+            }
+        }
+    }
+
     /// <inheritdoc/>
-    IRagBuilder IRagBuilder.AddParser<TParser>() => AddParser<TParser>();
+    IRagBuilder IRagBuilder.AddParser<TParser>(Type? replaces, string[]? replacesTypeNames) =>
+        AddParser<TParser>(replaces, replacesTypeNames);
 
     /// <inheritdoc/>
     IRagBuilder IRagBuilder.UseReranking<TReranker>() => UseReranking<TReranker>();

@@ -7,7 +7,7 @@ using Whisper.net.Ggml;
 
 namespace Rag.NET.Parsers.Audio;
 
-public class AudioDocumentParser : IDocumentParser
+public class AudioDocumentParser : IDocumentParser, IDeclaresContentTypes
 {
     private static readonly HashSet<string> SupportedTypes =
     [
@@ -17,6 +17,9 @@ public class AudioDocumentParser : IDocumentParser
         "audio/ogg",
         "audio/mp4",
     ];
+
+    /// <inheritdoc/>
+    public static IReadOnlyCollection<string> ContentTypes => SupportedTypes;
 
     private readonly AudioParserOptions _options;
 

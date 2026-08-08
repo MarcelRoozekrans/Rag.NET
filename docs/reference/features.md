@@ -88,6 +88,30 @@ Pre-built chunking templates for common vertical document types:
 
 **Why:** Domain templates dramatically reduce noise. Legal documents chunked generically lose clause hierarchy; academic papers mix references into the body. Pre-built templates serve vertical markets out of the box.
 
+> **Breaking change (Phase 4.2) — `UseEmailChunking()` no longer registers a parser.** It used to
+> bundle its own `EmailTemplateDocumentParser`, which duplicated `Rag.NET.Parsers.Email`'s
+> `EmailDocumentParser` (see [Email File Parser](#email-file-parser-eml--msg) below) — both claimed
+> `message/rfc822`, which was a startup error the moment both packages were registered together.
+> The duplicate is retired outright rather than resolved: `.eml` ingestion alongside this chunking
+> strategy now needs `Rag.NET.Parsers.Email` added separately (`AddEmailParser()`). The chunking
+> strategy itself is unaffected either way — it consumes `DocumentSection`s and does not care which
+> parser produced them.
+>
+> **Enabling QA-pairs chunking makes plain CSVs (and Excel workbooks, if `Rag.NET.Parsers.Office`
+> is installed) parse as QA pairs.** `UseQAPairsChunking()` registers `QAPairsDocumentParser` via
+> `AddParser<QAPairsDocumentParser>(replacesTypeNames: [...])`, declaring a deliberate override
+> against core's `CsvDocumentParser` (`text/csv`) and, by type name so this package takes no
+> compile-time dependency on the optional one, `Rag.NET.Parsers.Office`'s `ExcelDocumentParser`
+> (`…spreadsheetml.sheet`). That is the override doing its job, not a bug: a caller who asked for
+> QA-pairs chunking wants that parser to win, and `AddParser<TParser>(replaces:)` removes the
+> replaced parser's registration rather than merely silencing the conflict, so the override
+> actually wins parser selection instead of losing to whichever built-in registered first. It is
+> also the *opposite* of the previous default, where the collision was undetected and core's
+> `CsvDocumentParser` silently won every time — see [Parsers — content-type ownership and the
+> claim model](../guide/ingestion.md#content-type-ownership-and-the-claim-model). Pass
+> `registerParser: false` to `UseQAPairsChunking()` to take the chunking strategy without the
+> parser or its override.
+
 ---
 
 ## Retrieval

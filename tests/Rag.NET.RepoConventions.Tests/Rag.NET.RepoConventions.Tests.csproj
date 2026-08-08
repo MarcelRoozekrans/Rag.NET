@@ -4,10 +4,14 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <!-- Deliberately references no project in this repository. These tests assert on the repository
-       as it sits on disk — csproj files, source files, workflow files — so a ProjectReference would
-       add build coupling without adding anything they can observe. It also keeps this project out of
-       the container-fixture scan in TestProjectTierTests; see the comment there. -->
+  <!-- Most of these tests assert on the repository as it sits on disk — csproj files, source
+       files, workflow files — so most of them need no ProjectReference. ParserClaimCoverageTests
+       is the exception: it has to call IDeclaresContentTypes.ContentTypes and CanParse on the
+       actual parser types, which only a ProjectReference can hand it. The references below are
+       deliberately narrow — the six packages that implement IDeclaresContentTypes today, plus
+       Rag.NET.Abstractions for the interface and ContentTypeMap themselves — and deliberately
+       exclude Rag.NET.Testing, so this project stays out of the container-fixture scan in
+       TestProjectTierTests; see the comment there. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
@@ -15,6 +19,16 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Audio\Rag.NET.Parsers.Audio.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Epub\Rag.NET.Parsers.Epub.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Html\Rag.NET.Parsers.Html.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Office\Rag.NET.Parsers.Office.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Vision\Rag.NET.Parsers.Vision.csproj" />
   </ItemGroup>
 
 </Project>

@@ -10,12 +10,15 @@ namespace Rag.NET.Parsers.Vision;
 public partial class ImageDocumentParser(
     IChatClient chatClient,
     ImageDescriptionOptions options,
-    ILogger<ImageDocumentParser>? logger = null) : IDocumentParser
+    ILogger<ImageDocumentParser>? logger = null) : IDocumentParser, IDeclaresContentTypes
 {
     private static readonly HashSet<string> SupportedTypes = new(StringComparer.Ordinal)
     {
         "image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp", "image/bmp",
     };
+
+    /// <inheritdoc/>
+    public static IReadOnlyCollection<string> ContentTypes => SupportedTypes;
 
     private readonly ILogger<ImageDocumentParser> _logger =
         logger ?? NullLogger<ImageDocumentParser>.Instance;
