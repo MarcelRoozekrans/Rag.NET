@@ -13,13 +13,9 @@ public static class ServiceCollectionExtensions
     /// <returns>A <see cref="McpServerBuilder"/> for further configuration.</returns>
     public static McpServerBuilder AddRagNetMcpServer(this IServiceCollection services)
     {
-        var builder = new McpServerBuilder(services);
+        var server = services.AddMcpServer()
+                              .WithTools<RagMcpTools>();
 
-        services.AddMcpServer()
-                .WithTools<RagMcpTools>();
-
-        services.AddSingleton(builder.Options);
-
-        return builder;
+        return new McpServerBuilder(services, server);
     }
 }

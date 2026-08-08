@@ -3,7 +3,7 @@
 // This host is configured, not edited. Its pipeline (chat client, embedding generator,
 // vector store) is wired from an `appsettings.json` next to the working directory, or from
 // environment variables — see the sample `appsettings.json` shipped with this package and
-// this project's README. WebApplication.CreateBuilder(args) already layers appsettings.json,
+// this project's README. Both host builders used below already layer appsettings.json,
 // environment variables, and the command line, so no extra configuration source is added here.
 //
 // The bounded provider set this wiring supports: any OpenAI-compatible chat/embedding endpoint
@@ -22,36 +22,53 @@ var transport = ParseArg(args, "--transport") ?? "stdio";
 var port = int.TryParse(ParseArg(args, "--port"), System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : 5050;
 var apiKey = ParseArg(args, "--api-key") ?? Environment.GetEnvironmentVariable("RAGNET_MCP_API_KEY");
 
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.AddRagNetPipelineFromConfiguration(builder.Configuration);
-
-var mcpBuilder = builder.Services.AddRagNetMcpServer();
-
+// The two transports need different hosts, not just different MCP builder calls: HTTP needs
+// Kestrel to accept connections, but stdio must NOT start a web server at all — an MCP stdio
+// client owns this process's stdin/stdout, and a stray Kestrel listener on the default port was
+// exactly the silent-failure this tool shipped with (see the package's README).
 if (string.Equals(transport, "http", StringComparison.OrdinalIgnoreCase))
 {
-    // Configure ASP.NET Core to listen on the requested port.
-    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
-
-    // Register HTTP (Streamable HTTP / SSE) transport.
-    // app.MapMcp() below wires up the actual endpoints.
-    mcpBuilder.WithHttpTransport(port);
-
-    if (apiKey is not null)
-    {
-        mcpBuilder.WithApiKey(apiKey);
-    }
+    await RunHttpAsync(args, port, apiKey).ConfigureAwait(false);
 }
 else
 {
-    // Default: stdio transport — used when launched by an MCP client (e.g. Claude Desktop).
-    mcpBuilder.WithStdioTransport();
+    await RunStdioAsync(args).ConfigureAwait(false);
 }
 
-var app = builder.Build();
+// ---------------------------------------------------------------------------
+// Transports
+// ---------------------------------------------------------------------------
 
-if (string.Equals(transport, "http", StringComparison.OrdinalIgnoreCase))
+static async Task RunHttpAsync(string[] args, int port, string? apiKey)
 {
+    var builder = WebApplication.CreateBuilder(args);
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
+    builder.Services.AddRagNetPipelineFromConfiguration(builder.Configuration);
+
+    // Register the real HTTP (Streamable HTTP / SSE) transport. This extension lives in
+    // ModelContextProtocol.AspNetCore, which Rag.NET.Mcp deliberately does not reference — so
+    // it is called here, through the SDK builder Rag.NET.Mcp exposes via McpServerBuilder.Server,
+    // rather than through a wrapper that package cannot honestly provide.
+    builder.Services.AddRagNetMcpServer().Server.WithHttpTransport();
+
+    var app = builder.Build();
+
+    if (apiKey is not null)
+    {
+        app.Use(async (context, next) =>
+        {
+            if (!context.Request.Headers.TryGetValue("X-Api-Key", out var suppliedKey)
+                || !string.Equals(suppliedKey.ToString(), apiKey, StringComparison.Ordinal))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
+
+            await next(context).ConfigureAwait(false);
+        });
+    }
+
     // Map MCP Streamable HTTP endpoints (also exposes legacy SSE at /sse and /message).
     app.MapMcp("/mcp");
 
@@ -63,10 +80,27 @@ if (string.Equals(transport, "http", StringComparison.OrdinalIgnoreCase))
 
     await app.RunAsync().ConfigureAwait(false);
 }
-else
+
+static async Task RunStdioAsync(string[] args)
 {
-    // Stdio transport: RunAsync blocks and processes messages from stdin/stdout.
-    await app.RunAsync().ConfigureAwait(false);
+    // A plain generic host — no Kestrel, no HTTP listener. Used when launched by an MCP client
+    // (e.g. Claude Desktop), which is the default and the common case.
+    var builder = Host.CreateApplicationBuilder(args);
+
+    // Stdout is the MCP protocol channel for stdio transport; nothing else may write to it.
+    // The default console logger writes to stdout, so every log line — including the host's own
+    // "Now listening on..." banner from a web host — would corrupt the JSON-RPC stream a real
+    // client is reading. This does not add a second console provider: AddConsole registers its
+    // provider with TryAddEnumerable, so a second call only layers this option onto the one the
+    // default host builder already added.
+    builder.Logging.AddConsole(options => options.LogToStandardErrorThreshold = LogLevel.Trace);
+
+    builder.Services.AddRagNetPipelineFromConfiguration(builder.Configuration);
+    builder.Services.AddRagNetMcpServer().WithStdioTransport();
+
+    var host = builder.Build();
+
+    await host.RunAsync().ConfigureAwait(false);
 }
 
 // ---------------------------------------------------------------------------

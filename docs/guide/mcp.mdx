@@ -59,14 +59,28 @@ builder.Services.AddRagNet(rag => rag
     .UsePgVector("Host=localhost;Database=ragdb;Username=postgres;Password=secret",
                  vectorDimensions: 1536));
 
-// 3. Add MCP server on top — resolves IRagPipeline from the same DI container
-builder.Services
-    .AddRagNetMcpServer()
-    .WithStdioTransport()        // for Claude Desktop (subprocess)
-    .WithHttpTransport(5050)     // for multi-client HTTP/SSE
-    .WithApiKey("your-secret");  // HTTP transport auth (omit for stdio)
+// 3. Add MCP server on top — resolves IRagPipeline from the same DI container.
+// Rag.NET.Mcp does not reference ModelContextProtocol.AspNetCore (that would force an ASP.NET
+// Core dependency on every stdio-only consumer), so HTTP transport is configured through the
+// SDK's own builder, exposed as McpServerBuilder.Server:
+var mcp = builder.Services.AddRagNetMcpServer();
+mcp.Server.WithHttpTransport();  // for multi-client HTTP/SSE
+// mcp.WithStdioTransport();     // use this instead for Claude Desktop (subprocess)
 
 var app = builder.Build();
+
+// API-key auth for HTTP is your own middleware — Rag.NET.Mcp only wires the transport.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Headers["X-Api-Key"] != "your-secret")
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+
+    await next(context);
+});
+
 app.MapMcp("/mcp");
 await app.RunAsync();
 ```
