@@ -564,7 +564,7 @@ public sealed record IngestionResult
 
 ## Performance notes
 
-See [benchmarks](benchmarks.md) for detailed measurements. Key takeaways:
+See [benchmarks](../reference/benchmarks.md) for detailed measurements. Key takeaways:
 
 - Parsing and chunking of a 50 KB document completes in under 400 µs (mocked embedder).
 - Real ingestion time is dominated by the embedding API call, typically 50–500 ms per batch.

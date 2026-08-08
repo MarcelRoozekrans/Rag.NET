@@ -103,7 +103,7 @@ else
     Console.WriteLine($"Ingestion failed: {result.Error}");
 ```
 
-The `ContentType` value drives parser selection. Omitting it defaults to `text/plain`. Tags are propagated into every chunk's `Metadata` dictionary and can be used for [metadata filtering](retrieval.md#metadata-filtering) at query time.
+The `ContentType` value drives parser selection. Omitting it defaults to `text/plain`. Tags are propagated into every chunk's `Metadata` dictionary and can be used for [metadata filtering](guide/retrieval.md#metadata-filtering) at query time.
 
 ### Re-ingesting a document
 
@@ -242,8 +242,8 @@ services.AddRagNet(rag => rag
 
 ## Next steps
 
-- [Architecture](architecture.md) — understand how the pipeline works internally
-- [Chunking](chunking.md) — choose the right strategy for your content type
-- [Retrieval](retrieval.md) — enable hybrid search, metadata filtering, and score thresholds
-- [Post-Retrieval](post-retrieval.md) — improve answer quality with reordering and redundancy filtering
-- [Observability](observability.md) — add logging, tracing, and resilience
+- [Architecture](guide/architecture.md) — understand how the pipeline works internally
+- [Chunking](guide/chunking.md) — choose the right strategy for your content type
+- [Retrieval](guide/retrieval.md) — enable hybrid search, metadata filtering, and score thresholds
+- [Post-Retrieval](guide/post-retrieval.md) — improve answer quality with reordering and redundancy filtering
+- [Observability](guide/observability.md) — add logging, tracing, and resilience
