@@ -412,6 +412,22 @@ future reader can tell the difference between "never existed" and "dealt with".
   confirming that shape is intended (the Cl100kBase vocabulary and MCP stack dominate it) —
   small, but it must be a decision rather than a default before the tool is published.
   → **Phase 4.6** (which owns `Rag.NET.Mcp.Tool`'s first tests), owed before **6.3** publishes.
+  **Decided and re-measured 2026-08-08 (Phase 4.6).** The 1.87 MB figure is superseded: the tool
+  now carries the providers it needs to actually work, and packs at **4.97 MB, 55 entries** — 2.7×
+  the previous shape. Every increment is traceable to the design's bounded provider set
+  (`docs/plans/2026-08-08-executable-configuration-design.md` §1.1–§1.2), uncompressed:
+  **`OpenAI.dll` 4.98 MB**, the Qdrant stack (`Qdrant.Client` + `Google.Protobuf` +
+  `Grpc.Net.Client`) ~2.0 MB, **`Npgsql` 1.41 MB** for PgVector, on top of the pre-existing
+  `ModelContextProtocol.Core` and Cl100kBase vocabulary (~1.75 MB together). **This shape is
+  intended.** `OpenAI.dll` alone is the largest single item and is unavoidable given §1.1's
+  decision to standardise on one OpenAI-compatible client — that one dependency is what buys
+  OpenAI, Azure OpenAI, OpenRouter, Ollama and LM Studio rather than four separate providers, and
+  the alternative measured here is the shape the phase started from: 1.87 MB of tool that could
+  not register a pipeline, could not register a transport, and logged over its own protocol
+  stream. A working 5 MB tool is the better package. Anything beyond the bounded set is served by
+  hosting `Rag.NET.Mcp` directly (§1.3) rather than by growing this closure further — which is the
+  line that must hold, since the original 19 MB was reached one reasonable-looking reference at a
+  time.
 - **GoogleDrive's fourth field mask has no test** (found by Phase 4.10, `b3f026c`, 2026-08-05):
   widening `CreatedAt`/`UpdatedAt` support touched four identical field-selection sites — whole-drive
   `Files.List`, folder-traversal `Files.List`, and both pages of `Changes.List` — and three are
