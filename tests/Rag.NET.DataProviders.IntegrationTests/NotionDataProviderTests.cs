@@ -66,7 +66,9 @@ public sealed class NotionDataProviderTests
         // Every request to the Notion API must carry an Accept: application/json header.
         Assert.All(logEntries, entry =>
         {
-            var headers = entry.RequestMessage.Headers;
+            var request = entry.RequestMessage;
+            Assert.NotNull(request);
+            var headers = request.Headers;
             Assert.NotNull(headers);
             Assert.True(headers.ContainsKey("Accept"), "Accept header missing");
             Assert.Contains("application/json", headers["Accept"]);
@@ -89,7 +91,9 @@ public sealed class NotionDataProviderTests
         // Every request must carry the required Notion-Version header.
         Assert.All(logEntries, entry =>
         {
-            var headers = entry.RequestMessage.Headers;
+            var request = entry.RequestMessage;
+            Assert.NotNull(request);
+            var headers = request.Headers;
             Assert.NotNull(headers);
             Assert.True(headers.ContainsKey("Notion-Version"), "Notion-Version header missing");
             Assert.Contains("2022-06-28", headers["Notion-Version"]);

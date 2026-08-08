@@ -301,9 +301,11 @@ public sealed class AzureDocumentIntelligenceOcrEngineTests
         string? url = null;
         foreach (var entry in _fixture.Server.LogEntries)
         {
-            if (entry.RequestMessage.Url.Contains(":analyze", StringComparison.Ordinal))
+            var request = entry.RequestMessage;
+            Assert.NotNull(request);
+            if (request.Url.Contains(":analyze", StringComparison.Ordinal))
             {
-                url = entry.RequestMessage.Url;
+                url = request.Url;
             }
         }
 

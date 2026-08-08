@@ -72,7 +72,9 @@ public sealed class ConfluenceDataProviderTests
         // Every request to the Confluence API must carry an Accept: application/json header.
         Assert.All(logEntries, entry =>
         {
-            var headers = entry.RequestMessage.Headers;
+            var request = entry.RequestMessage;
+            Assert.NotNull(request);
+            var headers = request.Headers;
             Assert.NotNull(headers);
             Assert.True(headers.ContainsKey("Accept"), "Accept header missing");
             Assert.Contains("application/json", headers["Accept"]);
@@ -143,7 +145,10 @@ public sealed class ConfluenceDataProviderTests
         // Verify the /search endpoint was actually called.
         var logEntries = _fixture.Server.LogEntries.ToList();
         Assert.Contains(logEntries, entry =>
-            entry.RequestMessage.AbsolutePath.Contains("/wiki/rest/api/content/search",
-                StringComparison.Ordinal));
+        {
+            var request = entry.RequestMessage;
+            Assert.NotNull(request);
+            return request.AbsolutePath.Contains("/wiki/rest/api/content/search", StringComparison.Ordinal);
+        });
     }
 }

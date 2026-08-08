@@ -70,7 +70,9 @@ public sealed class JiraDataProviderTests
         // Every request to the Jira API must carry an Accept: application/json header.
         Assert.All(logEntries, entry =>
         {
-            var headers = entry.RequestMessage.Headers;
+            var request = entry.RequestMessage;
+            Assert.NotNull(request);
+            var headers = request.Headers;
             Assert.NotNull(headers);
             Assert.True(headers.ContainsKey("Accept"), "Accept header missing");
             Assert.Contains("application/json", headers["Accept"]);
@@ -102,8 +104,9 @@ public sealed class JiraDataProviderTests
         // The JQL query sent to the Jira search endpoint must contain an "updated" filter.
         Assert.Contains(logEntries, entry =>
         {
-            var query = entry.RequestMessage.RawQuery ?? string.Empty;
-            return query.Contains("updated", StringComparison.OrdinalIgnoreCase);
+            var request = entry.RequestMessage;
+            Assert.NotNull(request);
+            return request.RawQuery.Contains("updated", StringComparison.OrdinalIgnoreCase);
         });
     }
 }
