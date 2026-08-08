@@ -20,6 +20,11 @@
       "allowedVersions": "<4.0.0"
     },
     {
+      "description": "Microsoft.ML.Tokenizers and .Data.Cl100kBase are held below 2.x because v2 cannot be taken without widening every published package's dependency contract. Nothing fails to compile — the build fails on NU1903, a known high-severity vulnerability in Microsoft.Bcl.Memory 9.0.4. Tokenizers 2.0.0's own net8.0 group depends only on Google.Protobuf and is clean; the vulnerable chain arrives through Data.Cl100kBase, which ships netstandard2.0 ONLY and in 2.0.0 flattens Tokenizers' netstandard2.0 closure into its own dependencies, so net10.0 consumers inherit what the net8.0 asset would have avoided. Overriding a transitive needs CentralPackageTransitivePinningEnabled (a direct PackageReference is not available: the three projects referencing Cl100kBase do not use Bcl.Memory in code, so NU1510 rejects it). Enabling it works and was measured — but it promotes pinned transitives into packages' declared nuspec dependencies, which broke DependencyClosureTests.MergedPackagesDeclareOnlyWhatTheirSourcesDeclared: Rag.NET.Parsers.Office began declaring Microsoft.Extensions.AI.Abstractions, which none of its source packages declared. That guard exists to stop consumers silently paying for dependencies, and a tokenizer bump does not justify widening it across 69 packages. Revisit when Data.Cl100kBase ships a net8.0 asset, or when its netstandard2.0 closure no longer carries a vulnerable Bcl.Memory.",
+      "matchPackageNames": ["Microsoft.ML.Tokenizers", "Microsoft.ML.Tokenizers.Data.Cl100kBase"],
+      "allowedVersions": "<2.0.0"
+    },
+    {
       "description": "Microsoft.Graph and Microsoft.Kiota.Abstractions must move together: Graph pins a Kiota major internally, so bumping Graph alone produces a PR that cannot restore. Renovate's first Graph v6 PR (#26) failed exactly this way with NU1605 on every project — Graph 6.2.0 wants Kiota >= 2.0.0 while the repository pinned 1.22.0.",
       "matchPackageNames": ["Microsoft.Graph", "Microsoft.Kiota.Abstractions"],
       "groupName": "microsoft-graph"
