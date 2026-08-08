@@ -1,15 +1,21 @@
 // Rag.NET MCP Tool — dotnet global tool host
 //
-// This program is a host scaffold. It does NOT register an IRagPipeline by itself
-// because the actual pipeline depends on the user's choice of embedding generator,
-// vector store, and chat client. To make this tool functional you must either:
+// This host is configured, not edited. Its pipeline (chat client, embedding generator,
+// vector store) is wired from an `appsettings.json` next to the working directory, or from
+// environment variables — see the sample `appsettings.json` shipped with this package and
+// this project's README. WebApplication.CreateBuilder(args) already layers appsettings.json,
+// environment variables, and the command line, so no extra configuration source is added here.
 //
-//   1. Edit this file after install and add your pipeline registrations
-//      (e.g. builder.Services.AddRagNetPipeline(...).WithQdrant(...).WithOpenAI(...))
-//   2. Or use the Rag.NET.Mcp library directly in your own application.
+// The bounded provider set this wiring supports: any OpenAI-compatible chat/embedding endpoint
+// (OpenAI, Azure OpenAI, OpenRouter, Ollama, LM Studio), and InMemory, Qdrant, or PgVector for
+// the vector store. A misconfigured or unsupported setting fails at startup with a message that
+// names the setting and the configuration key that fixes it.
 //
-// See https://github.com/rag-net/Rag.NET for configuration examples.
+// Need a provider outside that set (Weaviate, Pinecone, Chroma, Azure AI Search, ONNX
+// embeddings, a bespoke IChatClient)? Host Rag.NET.Mcp directly in your own application and
+// register whatever you like — see https://github.com/rag-net/Rag.NET for examples.
 
+using Rag.NET.Hosting.DependencyInjection;
 using Rag.NET.Mcp.DependencyInjection;
 
 var transport = ParseArg(args, "--transport") ?? "stdio";
@@ -18,13 +24,8 @@ var apiKey = ParseArg(args, "--api-key") ?? Environment.GetEnvironmentVariable("
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Register Rag.NET MCP tools (rag_retrieve, rag_ask, rag_ingest).
-// NOTE: IRagPipeline must be registered in DI for these tools to work at runtime.
-// Add your pipeline registrations here, for example:
-//   builder.Services.AddRagNetPipeline()
-//       .WithOpenAIEmbeddings(...)
-//       .WithQdrant(...)
-//       .WithOpenAIChatClient(...);
+builder.Services.AddRagNetPipelineFromConfiguration(builder.Configuration);
+
 var mcpBuilder = builder.Services.AddRagNetMcpServer();
 
 if (string.Equals(transport, "http", StringComparison.OrdinalIgnoreCase))
