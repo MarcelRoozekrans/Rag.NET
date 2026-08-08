@@ -55,8 +55,8 @@
     <PackageVersion Include="Microsoft.Extensions.VectorData.Abstractions" Version="10.1.0" />
     <PackageVersion Include="Microsoft.Graph" Version="6.2.0" />
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.28.0" />
-    <PackageVersion Include="Microsoft.ML.Tokenizers" Version="0.22.0" />
-    <PackageVersion Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="0.22.0" />
+    <PackageVersion Include="Microsoft.ML.Tokenizers" Version="1.0.3" />
+    <PackageVersion Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="1.0.3" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageVersion Include="Microsoft.SemanticKernel" Version="1.78.0" />
     <PackageVersion Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.74.0-preview" />
