@@ -3,10 +3,13 @@ using System.Globalization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenAI;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Hosting.Configuration;
+using Rag.NET.Hosting.Logging;
 using Rag.NET.PgVector;
 using Rag.NET.Qdrant;
 using Rag.NET.Storage;
@@ -42,6 +45,12 @@ public static class ServiceCollectionExtensions
     /// number the endpoint actually returns. That is only knowable by embedding something, which
     /// startup must not do. A genuine mismatch — the value is positive and configured, but wrong
     /// for the model — surfaces as a vector-store failure at first ingest, not here.
+    /// <para>
+    /// When <c>RagNet:VectorStore:Kind</c> resolves to <c>InMemory</c> — set explicitly or left
+    /// unset, both of which default to it — resolving <see cref="Rag.NET.Abstractions.IVectorStore"/>
+    /// logs a warning naming the consequence (every ingested document is lost when the process
+    /// exits) and the fix (<c>Qdrant</c> or <c>PgVector</c>). See <see cref="BuildDefaultInMemoryVectorStore"/>.
+    /// </para>
     /// </remarks>
     public static IServiceCollection AddRagNetPipelineFromConfiguration(
         this IServiceCollection services,
@@ -254,7 +263,28 @@ public static class ServiceCollectionExtensions
         }
         else
         {
-            rag.Services.AddSingleton<IVectorStore>(new InMemoryVectorStore());
+            rag.Services.AddSingleton<IVectorStore>(BuildDefaultInMemoryVectorStore);
         }
+    }
+
+    /// <summary>
+    /// Builds the <c>InMemory</c> default and warns while doing it. This method exists at
+    /// registration time only as a factory delegate — <c>AddRagNetPipelineFromConfiguration</c>
+    /// runs before the service provider is built, so there is no <see cref="ILogger"/> to log
+    /// through yet. Deferring the warning into the singleton factory means it fires the moment
+    /// something actually resolves <see cref="IVectorStore"/> (typically while the host starts),
+    /// using whatever <see cref="ILoggerFactory"/> the host itself registered — the same
+    /// resolve-from-<see cref="IServiceProvider"/>-at-first-use shape as
+    /// <c>UseCostBudgeting</c>'s in-memory cost-ledger warning. Without a registered
+    /// <see cref="ILogger{TCategoryName}"/> (for example, a bare <see cref="ServiceCollection"/>
+    /// in a test with no logging configured), the warning is built and immediately discarded by
+    /// <see cref="NullLogger{T}"/> rather than throwing.
+    /// </summary>
+    private static InMemoryVectorStore BuildDefaultInMemoryVectorStore(IServiceProvider services)
+    {
+        var logger = services.GetService<ILogger<InMemoryVectorStore>>()
+            ?? NullLogger<InMemoryVectorStore>.Instance;
+        HostingLog.InMemoryVectorStoreIsTheDefault(logger);
+        return new InMemoryVectorStore();
     }
 }
