@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Security.AspNetCore\Rag.NET.Security.AspNetCore.csproj" />
+    <!-- UseRbac and RbacRetrievalGuard: the whole point of ClaimsPrincipalCallerContext is feeding
+         RBAC, so a test that only checks the DI registration shape would prove nothing about the one
+         thing this package exists to do. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Security\Rag.NET.Security.csproj" />
+    <!-- RagBuilder only, for UseRbac's generic constraint (TBuilder : IRagBuilder) — not AddRagNet,
+         which would pull in embeddings/vector-store wiring this package has nothing to do with. -->
+    <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <!-- Microsoft.Extensions.DependencyInjection and .Hosting are not referenced: the AspNetCore
+         framework reference below already ships both, and NU1510 is an error here. -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>
