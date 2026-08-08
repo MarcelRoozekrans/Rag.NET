@@ -54,25 +54,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   **Phase 4.3** as the owning slot** (assigned 2026-08-02 by the Milestone 4 replan's §5,
   replacing the bare milestone-as-deadline; the fix is small and local — a sealed hierarchy or a
   private constructor with two factory methods — so it needs a slot, not a phase of its own)
-- **No supported way to replace a built-in parser** (found while fixing the Phase 3.11 review's first
-  finding): `AddRagNETServices()` registers `TextDocumentParser` and `MarkdownDocumentParser` before
-  `configure?.Invoke(builder)` runs, so a user's own `text/plain` parser is always behind them in the
-  first-match dispatch and never wins. 3.11 made that **loud** — the conflict guard now declares
-  claims for both built-ins, so a user who declares `text/plain` gets a startup error. It did not
-  make it **resolvable**: the error names `AddRagNet()` as the other claimant, and that is not a call
-  anyone can remove.
-  The perverse incentive is the part worth recording. Declaring your claim honestly gets you
-  rejected; declaring nothing gets you the old silent failure, since `AddParser<T>()` alone still
-  registers and still loses. No capability was lost — undeclared, a user lands exactly where they
-  were before 3.11 — but the guard now points at a problem it offers no way out of.
-  The missing feature is parser *replacement*, not another opt-out: something like
-  `AddParser<T>(replaces: typeof(TextDocumentParser))`, or removing the built-in's `ServiceDescriptor`
-  and its claim together. Deliberately not designed here — 3.11 was a bug-fix phase and this is API
-  surface.
-  → **Phase 4.2** (re-pointed 2026-08-02 by the Milestone 4 replan, design §5, from "with 4.1":
-  parser *replacement* is API design on the registration path, and §5 groups it with the rest of
-  the connector-and-ingestion API work under 4.2, leaving 4.1 the packaging mechanics this entry
-  originally leaned on).
 - **A twice-seen, twice-unnamed test failure in `Rag.NET.Benchmarks.Quality.Tests`** (seen once
   during Phase 3.16, **not reproduced in 86 subsequent runs** — 26 solo, 45 under three-way
   concurrency, 15 under a concurrent full-solution build — then **seen a second time during the
@@ -388,26 +369,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   project by project, which is the same pass the crefs need — and it must land before **Phase
   6.3** either way: publishing 70 IntelliSense-less packages is a defect the packaging phase has
   now measured, not a style choice.
-- **`Rag.NET.Chunking.Templates` still ships `MimeKit`, `CsvHelper` and `ClosedXML`** (Phase
-  4.7's Task 10, **stopped rather than completed**, 2026-08-04 — recorded here because a task
-  that stops without a commit leaves no other trace): moving `EmailTemplateDocumentParser` and
-  `QAPairsDocumentParser` to parser packages cycles. Both parsers constructor-require Templates
-  option types (`EmailChunkingOptions`, `QAPairsChunkingOptions`) while Templates'
-  `UseEmailChunking`/`UseQAPairsChunking` register those parsers by compile-time type, so the
-  receiving parser package needs a reference back into Templates and Templates needs one out to
-  it. Every escape route violated a phase constraint: moving the option types with the parsers
-  changes public type homes the phase promised not to change, an interface seam adds public
-  surface, duplicating the types forks them. So a user wanting the Book template — which needs
-  nothing — still installs an email stack and a spreadsheet library, and
-  `UseEmailChunking(registerParser: false)` and its QAPairs twin remain the only seam. **The
-  dissolving hint, so the next owner starts ahead:** `Rag.NET.Parsers.Email`'s
-  `EmailDocumentParser` already claims `message/rfc822` and is strictly more capable than the
-  template duplicate, so retiring the duplicate removes the cycle outright — but which parser
-  owns `message/rfc822` is exactly the behaviour decision Phase 3.11 deliberately refused to
-  make for the user, and it needs a phase's scrutiny, not a slot.
-  → **Phase 4.2**, with the parser-replacement API design that phase already owns — the same
-  registration-path-ownership question, decided in the same design session; schedule-or-decline
-  there, and declined gets written here, not implied.
 - **`ZeroAlloc.ValueObjects` roots five `Microsoft.Extensions` packages in every Rag.NET
   package's closure** (measured in Phase 4.7 with `dotnet nuget why`, 2026-08-04, `e46fe26`):
   `Rag.NET.Abstractions` → `ZeroAlloc.ValueObjects` → `Microsoft.Extensions.Hosting.Abstractions`
@@ -442,19 +403,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   rather than trusted it. **Only the package-id-naming half remains open** →
   **Phase 4.5** (the docs-read-end-to-end pass that already owns the sidebar sweep and
   `docs.yml` — this is the same "nobody has read these pages against reality" work).
-- **`CostBudgetOptions.DatabasePath` survives as a property nothing reads** (created by
-  Phase 4.7's cost-ledger decision, `f2518d5`): the property stays in `Rag.NET.Abstractions`
-  (`CostBudgetOptions.cs`, default `"rag-cost-ledger.db"`), but no code consumes it —
-  `UseSqliteCostLedger()` takes its own `dbPath` parameter and never consults the option. The
-  stakes are higher than an options-shape question: a consumer who explicitly wrote
-  `o.DatabasePath = "spend.db"` asked for a specific persistent ledger, and until the phase's
-  adversarial-review fix their code compiled, passed validation, and silently got an in-memory
-  ledger whose spend resets on restart — budget enforcement quietly lost, with real money
-  behind it. That fix made a non-default `DatabasePath` a hard error from `UseCostBudgeting()`
-  naming `UseSqliteCostLedger(path)` as the replacement, so the loss is now loud; what remains
-  is retiring the write-only property itself (it still exists, still carries a default, and
-  can still be assigned its default value to no effect).
-  → **Phase 4.2** (Options Alignment & Validation), which owns deciding every option's home.
 - **`Rag.NET.Mcp.Tool`'s package shape needs one deliberate look before it publishes**
   (opened by the Phase 4.7 design as "19 MB, unexplained"; the phase's close explained it by
   measurement and shrank the question): a `PackAsTool` package ships its entire dependency
@@ -484,8 +432,111 @@ future reader can tell the difference between "never existed" and "dealt with".
   logic, not with the timestamp-channel work that happened to sit next to it twice now.
   → no phase currently owns the Slack or Microsoft Teams connectors' own fetch layer; stays
   unscheduled until one does, re-justified rather than silently dropped.
+- **`Rag.NET`'s pipeline options are not yet aligned on `IOptions` or validated with
+  `ZeroAlloc.Validation`** (`features.md:1117`, unchecked since the backlog was written; recorded
+  because Phase 4.2 no longer owns it): the Milestone 4 replan's design §5 routed "IOptions
+  Alignment + ZeroAlloc Validation for pipeline options" to Phase 4.2 under the name "Options
+  Alignment & Validation." Phase 4.2's own measurement (design §0) found five workstreams stacked
+  into that slot by four earlier phases and split two of them back out — documentation and
+  connectors — leaving "who owns a content type, and how that is declared" as the one subject the
+  phase actually built. The general `IOptions`/`ZeroAlloc.Validation` alignment was never one of
+  the five; it carried no design of its own, and none of the phase's seven tasks touches it. Phase
+  4.2 did close one options-home question inside its own scope — `CostBudgetOptions.DatabasePath`,
+  below — but that is a single property this phase happened to own, not the general alignment pass
+  the backlog row still describes.
+  → no phase currently owns the general `IOptions`/`ZeroAlloc.Validation` alignment; stays
+  unscheduled until one does, re-justified rather than silently carried under a phase number that
+  no longer means it.
+- **`AddParser<T>(replaces:, replacesTypeNames:)` cannot replace a factory-registered parser**
+  (found while implementing Phase 4.2's `RemoveReplacedParser`, 2026-08-08): both parameters match
+  on `ServiceDescriptor.ImplementationType`, which is `null` for every parser registered through
+  `AddSingleton<IDocumentParser>(sp => …)` rather than `AddSingleton<IDocumentParser, TParser>()`.
+  `Rag.NET.Parsers.Vision`, `.Email`, `.Archive` and this repository's own
+  `Rag.NET.Chunking.Templates` all register that way. Naming one of them in `replaces:` or
+  `replacesTypeNames:` removes nothing and throws nothing — it is a silent no-op indistinguishable
+  from naming a package that was never installed, which is the exact failure shape this whole
+  mechanism exists to remove. Documented on `RagBuilder.RemoveReplacedParser`'s own remarks rather
+  than fixed; the two replacements this repository ships today (`CsvDocumentParser`,
+  `ExcelDocumentParser`) both arrive through `AddParser<T>()` and are unaffected.
+  → no phase currently owns extending the replacement match beyond `ImplementationType` — the
+  options are resolving a provider to read the runtime type (the same "needs live instances"
+  problem `ParserClaim`'s own remarks describe) or a second, explicit removal key a factory
+  registration could supply; stays unscheduled until a phase touches parser registration internals
+  again, re-justified rather than silently dropped.
+- **The first `MakeGenericMethod` call in `src/`** (Phase 4.2's Task 3, 2026-08-08):
+  `RagBuilder.DeclareContentTypeClaims<TParser>` needs to invoke
+  `IDeclaresContentTypes.ContentTypes`, a static abstract interface member, on a `TParser` known
+  only at the `AddParser<TParser>()` call site with no constraint to `IDeclaresContentTypes` —
+  reachable only through a generic method built with `MethodInfo.MakeGenericMethod` once a runtime
+  check confirms the interface applies. No AOT or trim analyzer is enabled anywhere in this
+  repository and no package claims AOT compatibility, so nothing warns today. But
+  `MakeGenericMethod` is the textbook Native AOT failure mode, and the ROADMAP already lists
+  *Native AOT startup time* as a metric Phase 5.1 intends to measure — the first place this call
+  path's cost, if any, becomes visible. A reflection-free alternative exists — a second
+  `AddParser<TParser>()` overload constrained to `TParser : IDeclaresContentTypes`, which the
+  compiler binds automatically for every concrete caller — but it would silently fall back to the
+  reflective path for any generic-forwarding call (a helper that calls `AddParser<T>()` for a `T`
+  it only knows through its own type parameter), trading one silence for another rather than
+  removing it.
+  → **Phase 5.1** (Library Performance Comparison), the first phase that measures Native AOT
+  startup time and the first that would notice this path costing anything; re-justified rather
+  than fixed speculatively until it does.
+- **`ParserClaimCoverageTests` reads `ContentTypeMap`'s private `s_map` field by reflection**
+  (Phase 4.2's Task 4, 2026-08-08): `ContentTypeMap` exposes no public enumeration of the MIME
+  types it covers, only `FromFileName(extension)`, so the coverage test's "behaviour implies
+  declaration" direction reads the backing dictionary directly to build its check set. Renaming or
+  restructuring `s_map` breaks the test loudly — `ContentTypesInMap()` throws a named
+  `InvalidOperationException` naming the missing field rather than passing silently — so the
+  coupling fails safe, but it is real: a future refactor of `ContentTypeMap`'s storage shape has to
+  know this test reads inside it.
+  → no phase currently owns adding a public enumeration surface to `ContentTypeMap`; stays
+  unscheduled until one does, re-justified rather than silently dropped — the fail-loud property is
+  why this ranks lowest-urgency of the three debts recorded here.
 
 ### Closed
+
+- ~~**No supported way to replace a built-in parser**~~ (found while fixing the Phase 3.11
+  review's first finding) → closed 2026-08-08 in Phase 4.2 (Parser Registration Ownership),
+  **implemented**: `RagBuilder.AddParser<TParser>(replaces:, replacesTypeNames:)` removes the
+  named parser's `IDocumentParser` `ServiceDescriptor` and its `ParserClaim` together, rather than
+  only silencing the conflict check. Silencing alone would not have been enough — selection takes
+  the first registered parser whose `CanParse` matches, and built-ins register before `configure`
+  runs, so a "replacement" that left the old descriptor in place would still lose to it.
+  `replacesTypeNames` (a `string[]`) exists for a caller with no compile-time reference to the
+  parser it overrides — `Rag.NET.Chunking.Templates` naming `Rag.NET.Parsers.Office`'s
+  `ExcelDocumentParser`, which may not even be installed; a name matching nothing registered
+  removes nothing and is not an error, the shape "the package isn't installed" needs. Both match by
+  `Type.FullName`, not `Type.Name` — the same short-name reasoning `ParserClaim.ParserTypeName`
+  pins. **One debt this closure created rather than removed, recorded above**: the match is on
+  `ServiceDescriptor.ImplementationType`, which is `null` for a factory-registered parser, so
+  Vision, Email, Archive and Chunking.Templates' own factory registrations cannot be named here —
+  a silent no-op indistinguishable from an absent package.
+- ~~**`Rag.NET.Chunking.Templates` still ships `MimeKit`, `CsvHelper` and `ClosedXML`**~~ (Phase
+  4.7's Task 10, stopped rather than completed, 2026-08-04) → closed 2026-08-08 in Phase 4.2,
+  **partly implemented, and correctly not finished**. `message/rfc822` — `EmailTemplateDocumentParser`
+  duplicated `Rag.NET.Parsers.Email`'s strictly more capable `EmailDocumentParser`, and
+  `UseEmailChunking`'s own remarks already recorded that the chunking strategy "does not care which
+  parser produced" its sections — is retired outright: the type is deleted, `UseEmailChunking`'s
+  `registerParser` escape hatch goes with it, and `MimeKit` drops from the package, verified in the
+  packed nuspec's `<dependencies>` rather than trusted from the csproj (Phase 4.7's own lesson: a
+  floating reference freezes into the nuspec). **`text/csv` — kept, on purpose, not left over.**
+  `QAPairsDocumentParser` is not a duplicate of core's `CsvDocumentParser`: `QAPairsChunkingStrategy`
+  reads the answer out of `DocumentSection.Heading` as a documented internal contract with that
+  parser, so retiring it would break the feature. `CsvHelper` and `ClosedXML` stay for exactly that
+  reason. An earlier design proposed retiring both parsers on symmetry and claimed all three
+  dependencies would drop — that was wrong, and only `MimeKit` ever does. Phase 4.7's Task 10 is
+  therefore **partly complete**, not finished, and that is the honest final state rather than a
+  waypoint.
+- ~~**`CostBudgetOptions.DatabasePath` survives as a property nothing reads**~~ (created by Phase
+  4.7's cost-ledger decision, `f2518d5`) → closed 2026-08-08 in Phase 4.2, **implemented**: the
+  property, its `DefaultDatabasePath` constant, and the `UseCostBudgeting()` guard that turned a
+  non-default value into a runtime error are all removed together. A consumer who writes
+  `o.DatabasePath = "spend.db"` now gets a compiler error naming a property that does not exist,
+  which is strictly better than the runtime error it replaces — the mistake is caught before the
+  build, not after `UseCostBudgeting()` runs. The dangling `<see cref="CostBudgetOptions.DatabasePath"/>`
+  references the removal would otherwise have left in `RagBuilderExtensions.cs` were removed in the
+  same change, ahead of the documentation-generation phase that would have turned them into a
+  CS1574 build failure.
 
 - ~~**`BuildMetadata` drops `baseMetadata.CreatedAt`, so provider-ingested documents score as
   brand new**~~ (found in Phase 2.2; recorded until 2026-08-02 only in
@@ -864,6 +915,35 @@ future reader can tell the difference between "never existed" and "dealt with".
   call: neither chunking strategy takes options at all, so `UseEmailChunking(o => {
   o.IncludeHeaders = false; o.RegisterParser = false; })` compiled, ran, threw nothing and silently
   discarded `IncludeHeaders` — dropping the parser dropped its only reader.
+  **The "still open, and not scheduled" paragraph above is closed as of 2026-08-08, by Phase 4.2
+  (Parser Registration Ownership) — and its own first measurement was wrong in three ways, recorded
+  here because the wrong version was persuasive and nearly reached implementation** (design §1.1).
+  It is **not** "11 parsers covering ~22 content types declare nothing, two live silent
+  collisions." Measured: seven of those eleven — Audio, Epub, Html, Office (×3), Pdf — register
+  through `AddParser<T>()`, exactly the path this paragraph already named as the accepted,
+  documented limit; counting them again as a fresh gap double-charged the same fact. Only **one**
+  collision was live, `…spreadsheetml.sheet` between `ExcelDocumentParser` and
+  `QAPairsDocumentParser` — `CsvDocumentParser` carries no `[Singleton]` attribute and nothing
+  registers it by default, so its `text/csv` overlap is conditional on a caller adding it
+  explicitly, not universal. And a claimed third collision, `image/jpeg` between the two Vision
+  parsers, did not exist at all — the string in `VideoDocumentParser` is the MIME type of an
+  extracted video *frame* handed to `DataContent`, not a `CanParse` claim, and it was found by
+  grepping whole files rather than reading `CanParse` bodies. **The one genuine oversight was
+  Vision**: it registered two parsers through `AddSingleton<IDocumentParser>`, the same mechanism
+  Archive, Email and this repository's own Chunking.Templates use *with* claims, and declared none
+  — an inconsistency with its own peers, not the documented `AddParser<T>()` limit.
+  **What actually shipped, in the order the design required** (reversing it would have turned
+  `UseQAPairsChunking()` into a startup error for every user of `Rag.NET.Parsers.Office`):
+  `AddParser<T>(replaces:, replacesTypeNames:)` landed first as the override vocabulary;
+  `UseQAPairsChunking()` adopted it, declaring `text/csv` against `CsvDocumentParser` and
+  `…spreadsheetml.sheet` against `ExcelDocumentParser` by type *name*, so replacing an optional
+  package that may not be installed is a no-op rather than a compile-time dependency; and an
+  opt-in `IDeclaresContentTypes` interface lets a parser enumerate its own accepted types so
+  `AddParser<T>()` can declare claims for it automatically — adopted by all nine parsers that can
+  state their set honestly, closing Vision's oversight along with the rest, and held to `CanParse`
+  by a new convention test (`ParserClaimCoverageTests`) rather than left to drift. `CanParse`
+  itself is unchanged: a parser that cannot enumerate its types honestly simply does not opt in,
+  and remains exactly as undetected as this paragraph already said it would be.
 - ~~**Stack-recursive email traversal**~~ (Phase 2.1, Part C) → closed in 3.9, **implemented**.
   **Read the history before trusting the word "closed": this entry was closed once already, in
   3.6, as "re-justified, not implemented", on a premise that phase's own whole-phase review
@@ -1291,7 +1371,7 @@ one was found by a test. Every criterion below can be false, and something check
 service has a scrubbed, dated recording" — and `Release tagged v1.0` moved to **Milestone 6's**
 DoD, the recording criterion widened there to recording-or-recorded-reason; completing this
 milestone no longer tags anything, and every other criterion is unchanged):
-- [ ] All planned phases complete (6 of 11 as of 2026-08-05: 4.0, 4.1, 4.7, 4.8, 4.9, 4.10 — the phase list grew Phase 4.9, created and completed 2026-08-04 to fix the `BuildMetadata`/`CreatedAt` defect and correct the wrong "slot, not a phase" estimate that had routed it to 4.2, and Phase 4.10, created the same day and completed 2026-08-05 — the connector-timestamp-threading work 4.9 priced but did not do. Phases 4.2–4.6 remain pending, so this box stays open)
+- [ ] All planned phases complete (6 of 11 as of 2026-08-05: 4.0, 4.1, 4.7, 4.8, 4.9, 4.10 — the phase list grew Phase 4.9, created and completed 2026-08-04 to fix the `BuildMetadata`/`CreatedAt` defect and correct the wrong "slot, not a phase" estimate that had routed it to 4.2, and Phase 4.10, created the same day and completed 2026-08-05 — the connector-timestamp-threading work 4.9 priced but did not do. Phases 4.2–4.6 remain pending, so this box stays open. **This count is known stale beyond this note** — Phase 4.2 also closed, 2026-08-08, as Parser Registration Ownership, and 4.3, 4.4, 4.11 and 4.12 closed between 2026-08-05 and this line's last edit without it being updated; a full resync belongs to whichever phase next closes this milestone's DoD, not this line-item edit)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore
 - [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0). **The gate half holds as of 2026-08-03** (Phase 4.1): both `KnownUnsatisfiable` ledgers are empty, and every formerly-unsatisfiable gate is satisfiable by a fenced procedure in `docs/reference/ci.md` — `ENABLE_OCR` and `RAGNET_TESSDATA` by the `-p:EnableOcr=true` source-build procedure, **executed green on 2026-08-03** (the gated test's first run anywhere); `RAGNET_DOCINTEL_ENDPOINT`/`_KEY` by the `az` F0 free-tier provisioning procedure — written and satisfiable, deliberately not executed, the live run being Phase 6.1's. The box stays open on the all-projects half, checked at the milestone's close. **Corrected 2026-08-04 (Phase 4.8): the clause that used to end this note — "4.1's own workflow changes have not yet had a genuine Actions run" — is no longer true**; the last DoD criterion below now cites the run that made it false. This box stays open regardless: it needs every project passing on the tree at the milestone's close, and Phase 4.8's own tree has not itself been through Actions yet
 - [x] **Every `features.md` Done claim names code that exists** (`FeatureClaimTests`, Phase 4.0; **holding as of 2026-08-03**: both false claims were corrected at Milestone 3's close, `81163af` — `KnownFalseClaims` is empty and all 72 package claims across 53 Done sections are verified directly. Failing knowingly from 4.0's sweep until then, with the two claims allow-listed under owners → 4.4 and 4.1; both closed early instead, in the Closed debts list)
@@ -2037,9 +2117,103 @@ DoD's "all planned phases complete" tally above, which as of this phase's close 
 2026-08-06 — a pre-existing gap this phase found but did not fix, being documentation-only and out
 of that scope.
 
-### Phase 4.2: Options Alignment & Validation [status: pending]
-**Goal:** Align pipeline options on IOptions and validate them with ZeroAlloc.Validation.
-**Backlog items:** IOptions Alignment + ZeroAlloc Validation for pipeline options
+### Phase 4.2: Parser Registration Ownership [status: complete]
+**Goal:** Originally "Options Alignment & Validation." Arrived carrying five workstreams
+re-pointed into it by four earlier phases — parser replacement, `message/rfc822` ownership,
+options homes, connector deferrals, and repo-wide XML documentation — and the phase's own
+measurement (design §0) split two of them back out: documentation and connectors share nothing
+with the rest and needed their own scoping. What remained, and what this phase actually built, is
+one coherent subject: **who owns a content type, and how that is declared**, so that two parsers
+claiming one is either a loud startup error or an explicit, working override — never a silent one.
+The general `IOptions`/`ZeroAlloc.Validation` alignment the original name promised is **not** part
+of what shipped; see the open debt above.
+**Backlog items:** parser replacement (originally routed "with 4.1"), `message/rfc822` ownership
+(Phase 3.11's deliberate non-decision), options homes (`CostBudgetOptions.DatabasePath`) — three of
+the five re-pointed workstreams; documentation and connectors were split out, unscheduled.
+**Plan:** `docs/plans/2026-08-07-parser-registration-ownership-design.md` +
+`2026-08-07-parser-registration-ownership-implementation.md`
+**Completed:** 2026-08-08 (`cd07bedf`, `9cd89c73`, `0d735ddc`, `cec11537`, `590ce6fd`, `1668267e`,
+`5acb3740`).
+**The measurement that moved the phase, and its own first version was wrong.** The intended
+centrepiece was a convenience API for replacing a built-in parser. Measuring first found that
+`ParserClaim` — the guard that makes two parsers claiming one content type a startup error — is
+silent for most of this repository's parsers, and that the replacement API is the vocabulary that
+silence is missing, not a convenience layered on top of it. **The first pass at that measurement
+overstated it in three ways, corrected in design §1.1 rather than quietly rewritten, because the
+wrong version was persuasive and nearly reached implementation**: it counted "11 parsers, ~22
+content types, declare nothing" as a coverage hole, when seven of those eleven register through
+`AddParser<T>()`, a path `ParserClaim`'s own remarks already document as unable to declare
+anything — `CanParse` is a predicate, not an enumeration, and probing it against a guessed list of
+content types is "a worse mechanism than an undetected collision." It counted **two** live silent
+collisions, when `CsvDocumentParser` carries no `[Singleton]` attribute and nothing registers it by
+default, so its `text/csv` overlap with `QAPairsDocumentParser` is conditional on a caller adding
+it explicitly — only `…spreadsheetml.sheet`, between `ExcelDocumentParser` and
+`QAPairsDocumentParser`, was live for everyone. And it counted a third collision, `image/jpeg`
+between the two Vision parsers, that did not exist — the string in `VideoDocumentParser` is the
+MIME type of an extracted video *frame*, not a `CanParse` claim, found by grepping whole files
+rather than reading `CanParse` bodies. **The one genuine oversight the corrected measurement found:
+Vision.** It registers two parsers through `AddSingleton<IDocumentParser>`, the mechanism Archive,
+Email and this repository's own Chunking.Templates use *with* claims, and declared none — an
+inconsistency with its own peers, not the documented `AddParser<T>()` limit. The pattern behind all
+three overstatements was the same: a count taken from text matching, then reasoned about as though
+it had been read. *Grepping a file is not reading a method.*
+**Why the ordering is load-bearing (design §2).** Closing the coverage gap before QA-pairs chunking
+can declare an override would turn `UseQAPairsChunking()` into a startup error for anyone also
+using `Rag.NET.Parsers.Office` — the `…spreadsheetml.sheet` overlap is legitimate (a caller who
+asked for QA-pairs chunking wants that parser to win), but the claim model had no vocabulary for a
+deliberate override. So the seven tasks ran API-first: **Task 1** added
+`RagBuilder.AddParser<TParser>(replaces:, replacesTypeNames:)`, which removes the replaced parser's
+`IDocumentParser` descriptor and its `ParserClaim` together rather than only silencing the conflict
+— silencing alone would not have been enough, since selection takes the first registered match and
+built-ins register first. **Task 2** had `UseQAPairsChunking()` adopt it, declaring `text/csv`
+against `CsvDocumentParser` and `…spreadsheetml.sheet` against `ExcelDocumentParser` by type *name*
+(`replacesTypeNames`), so overriding a parser from an optional package that may not be installed is
+a no-op rather than a compile-time dependency on it. **The behaviour change this is**: enabling
+QA-pairs chunking now means plain CSVs (and Excel workbooks, with Office installed) are parsed as
+QA pairs, because that is what the override says — the opposite of the old default, where core's
+`CsvDocumentParser` silently won and `QAPairsDocumentParser` never ran. **Task 3** closed the
+coverage gap structurally rather than site by site: an opt-in `IDeclaresContentTypes` interface
+lets a parser enumerate the content types its own `CanParse` accepts, and `AddParser<TParser>()`
+declares one `ParserClaim` per type automatically when `TParser` implements it — adopted by all
+nine parsers that can state their set honestly (Audio, Epub, Html, Word, PowerPoint, Excel, Pdf,
+Image, Video), closing Vision's oversight along with the rest. `IDocumentParser` and `CanParse`
+themselves are unchanged; a parser that cannot enumerate its types honestly simply does not opt in
+and keeps today's documented invisibility. Declaring claims from a runtime type with no compile-time
+constraint needed this repository's first `MethodInfo.MakeGenericMethod` call — recorded as a new
+debt, not a defect (see below). **Task 4** added `ParserClaimCoverageTests`
+(`Rag.NET.RepoConventions.Tests`) holding Task 3's declarations to `CanParse` in both directions,
+plus the rule that no parser may claim `application/octet-stream` — watched red by deliberately
+mismatching one parser's declared list, confirmed the failure named that parser, then reverted.
+**Task 5** retired `EmailTemplateDocumentParser` outright: it duplicated `Rag.NET.Parsers.Email`'s
+strictly more capable `EmailDocumentParser`, and `UseEmailChunking`'s own remarks already recorded
+that the chunking strategy "does not care which parser produced" its sections. `UseEmailChunking`'s
+`registerParser` parameter is removed with it — **breaking change**: `.eml` ingestion alongside
+this chunking strategy now needs `Rag.NET.Parsers.Email` (`AddEmailParser()`) added separately —
+and `MimeKit` drops from `Rag.NET.Chunking.Templates`, verified in the packed nuspec's
+`<dependencies>` per Phase 4.7's own lesson that a floating reference freezes into the nuspec
+regardless of intent. `QAPairsDocumentParser` was deliberately not touched — `CsvHelper` and
+`ClosedXML` stay, because `QAPairsChunkingStrategy` reads the answer out of `DocumentSection.Heading`
+as a documented internal contract with that parser, and an earlier design that proposed retiring
+both templates on symmetry was wrong. **Phase 4.7's Task 10 is therefore partly complete, not
+finished** — only `MimeKit` drops. **Task 6** removed `CostBudgetOptions.DatabasePath`,
+`DefaultDatabasePath`, and the `UseCostBudgeting()` guard that turned a non-default value into a
+runtime error, together — after removal the compiler is the error, which is strictly better than
+the runtime one it replaces. **Task 7** (this entry, and the guide-page updates it references) is
+documentation only.
+**Three new debts found during implementation, all recorded above rather than fixed inline**:
+`AddParser<T>(replaces:)` cannot reach a factory-registered parser (`ImplementationType` is `null`
+for it) — the same silent-no-op shape this phase set out to remove, now narrowed rather than
+closed; the first `MakeGenericMethod` call in `src/`, with no AOT/trim analyzer enabled anywhere to
+have caught it, routed to Phase 5.1 as the first phase that measures Native AOT startup time; and
+`ParserClaimCoverageTests` reading `ContentTypeMap`'s private `s_map` field by reflection, because
+the map has no public enumeration surface — fails loudly if the field is renamed, but the coupling
+is real.
+**Definition-of-Done honesty.** This phase closes three of the five workstreams re-pointed into
+it — parser replacement, `message/rfc822` ownership, `CostBudgetOptions.DatabasePath` — and
+explicitly does **not** close the general `IOptions`/`ZeroAlloc.Validation` alignment its original
+name promised (`features.md:1117` stays unchecked; recorded as its own open debt above rather than
+implied done by this phase completing). Documentation and connectors were split out by design §0
+and are not this phase's to schedule.
 
 ### Phase 4.3: Structured Logging Enrichment [status: complete]
 **Goal:** Consistent scoped/structured logging across ingestion, retrieval, and answer generation.

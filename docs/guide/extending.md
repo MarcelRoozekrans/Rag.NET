@@ -108,7 +108,7 @@ services.AddRagNet(rag =>
 });
 ```
 
-Parsers are tried in registration order. Built-in parsers (Text, Markdown) are registered before your custom ones. If you need your parser to take priority over a built-in for a given content type, register it first by adding it directly to `services` before calling `AddRagNet`.
+Parsers are tried in registration order. Built-in parsers (Text, Markdown) are registered before your custom ones and both declare a `ParserClaim` for the content type they accept, so a custom parser that also declares a claim for `text/plain` or `text/markdown` — see [Ingestion — content-type ownership and the claim model](ingestion.md#content-type-ownership-and-the-claim-model) — is a startup error naming both parsers, not a silent loss to the built-in. The supported way to win that content type deliberately is `AddParser<XmlDocumentParser>(replaces: typeof(TextDocumentParser))`, which removes the built-in's registration and claim outright rather than merely racing it for priority. Registering directly against `services` before calling `AddRagNet` still changes selection order for a parser that declares no claim at all — the pipeline still tries parsers in registration order — but it is no substitute for `replaces:` against a parser that does declare one, since the claim guard fires regardless of registration order.
 
 ---
 

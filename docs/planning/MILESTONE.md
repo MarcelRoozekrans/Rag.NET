@@ -44,7 +44,13 @@ agree.
       2026-08-05) and Phase 4.4 (OpenTelemetry tracing and metrics, 2026-08-06) closed together off
       the same design and implementation plan — 4.3's own ROADMAP/MILESTONE entries were not
       written when its PR merged, corrected here rather than left silently stale. Phases 4.2, 4.5
-      and 4.6 remain pending, so this box stays open)
+      and 4.6 remain pending, so this box stays open. **This count is known stale beyond this
+      note**: Phase 4.2 closed 2026-08-08 as Parser Registration Ownership (see the ROADMAP entry —
+      the original "Options Alignment & Validation" scope was re-pointed and only partly absorbed;
+      the general `IOptions`/`ZeroAlloc.Validation` alignment remains its own open, unscheduled
+      debt), and Phase 4.12 (SystemPrompt coverage, issue #56) also closed since this line was last
+      updated. A full resync of this count belongs to whichever phase next closes this milestone's
+      DoD, not to a documentation-only phase editing one line item)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore (true on every phase close
       so far, most recently 2026-08-04; the box is ticked at the milestone's close, from a clean
       restore on that day's tree)
@@ -302,7 +308,9 @@ agree.
    dashboard JSON before committing it, and an unvalidated dashboard that looks authoritative is
    worse than none; recorded as debt rather than shipped untested (see the ROADMAP entry). Full
    entry in the ROADMAP.
-10. Phase 4.2 — Options Alignment & Validation [pending]
+10. Phase 4.2 — Parser Registration Ownership [complete, 2026-08-08] (retitled from "Options
+    Alignment & Validation" — see the ROADMAP entry for the re-scoping and the debt this leaves
+    open)
 11. Phase 4.5 — Sample Applications [pending]
 12. Phase 4.6 — Rag.NET CLI Tool [pending]
 

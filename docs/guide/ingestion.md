@@ -172,6 +172,74 @@ services.AddRagNet(rag => rag
     .AddParser<MyXmlParser>());
 ```
 
+### Content-type ownership and the claim model
+
+Two parsers can end up claiming the same content type — a package you added and a built-in, or two
+packages you added deliberately. `AddRagNet` detects that **before anything is resolved**: a
+registration that declares a `ParserClaim` for a content type another declared claimant already
+holds is an `InvalidOperationException` at startup, naming both parsers, both registration calls,
+and (when one exists) a way out — never silent content loss at ingestion time.
+
+**Not every parser declares a claim, and that is by design, not a gap.** `CanParse` is a predicate,
+not an enumeration — nothing can discover what an arbitrary parser accepts without probing it
+against a guessed list of content types, which is worse than an undetected collision. A parser can
+opt in to being seen by implementing `IDeclaresContentTypes` alongside `IDocumentParser`:
+
+```csharp
+public sealed class MyXmlParser : IDocumentParser, IDeclaresContentTypes
+{
+    public static IReadOnlyCollection<string> ContentTypes { get; } =
+        ["application/xml", "text/xml"];
+
+    public bool CanParse(string contentType) =>
+        ContentTypes.Contains(contentType, StringComparer.OrdinalIgnoreCase);
+
+    // ParseAsync(...) as usual
+}
+```
+
+When `TParser` implements `IDeclaresContentTypes`, `AddParser<TParser>()` declares one
+`ParserClaim` per reported type automatically. A parser that implements only `IDocumentParser` —
+most of the parsers this library ships, and any custom parser that does not opt in — declares
+nothing and stays invisible to the guard, exactly as before this interface existed; nothing about
+it needs to change to keep working.
+
+**A deliberate override is expressed with `AddParser<TParser>(replaces:, replacesTypeNames:)`,**
+which is different from silencing the conflict — it **removes** the replaced parser's
+`IDocumentParser` registration and its claim together:
+
+```csharp
+services.AddRagNet(rag => rag
+    .AddParser<MyCsvParser>(replaces: typeof(CsvDocumentParser)));
+```
+
+Removal, not just silencing, is load-bearing: parser selection takes the *first* registered parser
+whose `CanParse` matches, and built-in parsers register before your `configure` delegate runs. An
+override that only suppressed the conflict check would still lose selection to the parser it was
+supposed to replace. `replaces` matches by full type name, so replacing a parser you cannot
+reference at compile time — one from an optional package that may not even be installed — use
+`replacesTypeNames` instead:
+
+```csharp
+services.AddRagNet(rag => rag
+    .AddParser<MyExcelParser>(replacesTypeNames: ["Rag.NET.Parsers.Excel.ExcelDocumentParser"]));
+```
+
+A name (or type) that matches nothing currently registered removes nothing and is **not** an
+error — replacing a parser from a package you never installed is a no-op, which is exactly what an
+optional dependency needs. `Rag.NET.Chunking.Templates`'s `UseQAPairsChunking()` uses this to
+declare `QAPairsDocumentParser` as a deliberate override of core's `CsvDocumentParser` and, when
+`Rag.NET.Parsers.Office` is installed, its `ExcelDocumentParser` — see [Domain-Specific Chunking
+Templates](../reference/features.md#domain-specific-chunking-templates) for the resulting
+behaviour change.
+
+**One current limit, worth knowing before you reach for it:** `replaces`/`replacesTypeNames` can
+only remove a parser registered by concrete type (`AddParser<T>()`, or a `[Singleton]`-attributed
+built-in). A parser registered through a factory lambda —
+`services.AddSingleton<IDocumentParser>(sp => new MyParser(...))`, the pattern
+`Rag.NET.Parsers.Vision`, `.Email` and `.Archive` all use — cannot be named this way; naming one is
+a silent no-op indistinguishable from naming a package that was never installed.
+
 ### PDF: table extraction and OCR
 
 The PDF parser accepts `PdfParserOptions` via a configuring overload:
