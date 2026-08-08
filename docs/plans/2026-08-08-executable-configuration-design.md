@@ -83,15 +83,30 @@ only be tested by launching a process; one whose behaviour lives in a library me
 how `Rag.NET.Mcp.Tool` gets from `VerifiedBy: none` to `unit`, and it is the part the CLI reuses
 rather than reinventing.
 
+**Corrected 2026-08-08, while writing the plan.** An earlier draft of this section gave every store
+a single `ConnectionString`. It does not fit: `UsePgVector(connectionString, vectorDimensions, …)`
+takes one, but `UseQdrant(host, port, collectionName, vectorDimensions, …)` takes four separate
+values and no connection string at all. The settings are per-kind, not uniform.
+
 ```json
 {
   "RagNet": {
     "ChatClient":  { "Endpoint": "…", "ApiKey": "…", "Model": "…" },
-    "Embeddings":  { "Endpoint": "…", "ApiKey": "…", "Model": "…" },
-    "VectorStore": { "Kind": "InMemory | Qdrant | PgVector", "ConnectionString": "…" }
+    "Embeddings":  { "Endpoint": "…", "ApiKey": "…", "Model": "…", "VectorDimensions": 1536 },
+    "VectorStore": {
+      "Kind": "InMemory | Qdrant | PgVector",
+      "Qdrant":   { "Host": "…", "Port": 6334, "CollectionName": "…" },
+      "PgVector": { "ConnectionString": "…" }
+    }
   }
 }
 ```
+
+**`VectorDimensions` sits under `Embeddings`, not under the store**, because it is a property of the
+embedding model and every store merely has to agree with it — `nomic-embed-text` is 768,
+OpenAI's `text-embedding-3-small` is 1536, and the store parameters default to 1536 regardless of
+what the model actually produces. A mismatch is a runtime failure at the first upsert, far from its
+cause, which makes it §3's business.
 
 Environment variables come free with the standard configuration builder, which is what the package
 description already promises.
@@ -104,6 +119,17 @@ client calls a tool and gets an unresolvable-service error with no indication of
 
 Validation runs while building the host, names the missing or invalid setting, and names the
 configuration key that would fix it. Not "Unable to resolve service for type 'IRagPipeline'".
+
+It covers, at minimum: an unknown `VectorStore.Kind`; settings missing for the chosen kind
+(a `Qdrant` kind with no `Host`); and a missing chat or embeddings `Endpoint`/`Model`.
+
+**`VectorDimensions` is the one that cannot be validated at startup, and saying so is part of the
+design.** Whether the configured number matches what the endpoint actually returns is only knowable
+by embedding something, which startup must not do. What validation *can* do is refuse a value that
+is absent or non-positive, and make the number explicit in configuration rather than letting the
+store's `= 1536` default apply silently to a 768-dimension model. The remaining mismatch surfaces
+on first ingest — which is acceptable only because the setting is now visible; today it is not
+expressible at all.
 
 ## 4. What this phase corrects, beyond the code
 
