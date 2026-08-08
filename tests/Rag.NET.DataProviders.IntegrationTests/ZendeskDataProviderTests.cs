@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Zendesk;
 using Rag.NET.Testing;
+using WireMock;
+using WireMock.Logging;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using Xunit;
@@ -12,6 +14,18 @@ namespace Rag.NET.DataProviders.IntegrationTests;
 public sealed class ZendeskDataProviderTests
 {
     private readonly WireMockServerFixture _fixture;
+
+    /// <summary>
+    /// WireMock.Net v2 made <see cref="ILogEntry.RequestMessage"/> nullable. A captured log
+    /// entry with no request message means the test's premise is broken, so this asserts
+    /// loudly rather than letting callers dereference a possibly-null reference.
+    /// </summary>
+    private static IRequestMessage RequireRequest(ILogEntry entry)
+    {
+        var request = entry.RequestMessage;
+        Assert.NotNull(request);
+        return request;
+    }
 
     public ZendeskDataProviderTests(WireMockServerFixture fixture)
     {
@@ -78,7 +92,7 @@ public sealed class ZendeskDataProviderTests
         // Every request to the Zendesk API must carry an Accept: application/json header.
         Assert.All(logEntries, entry =>
         {
-            var headers = entry.RequestMessage.Headers;
+            var headers = RequireRequest(entry).Headers;
             Assert.NotNull(headers);
             Assert.True(headers.ContainsKey("Accept"), "Accept header missing");
             Assert.Contains("application/json", headers["Accept"]);
@@ -148,16 +162,14 @@ public sealed class ZendeskDataProviderTests
         Assert.Empty(results);
 
         var ticketRequests = _fixture.Server.LogEntries
-            .Where(e => e.RequestMessage.AbsolutePath.Contains(
+            .Where(e => RequireRequest(e).AbsolutePath.Contains(
                 "/api/v2/incremental/tickets/cursor.json", StringComparison.Ordinal))
             .ToList();
 
         Assert.Equal(2, ticketRequests.Count);
         Assert.Contains(ticketRequests, e =>
-            e.RequestMessage.RawQuery == null ||
-            !e.RequestMessage.RawQuery.Contains("cursor=", StringComparison.Ordinal));
+            !RequireRequest(e).RawQuery.Contains("cursor=", StringComparison.Ordinal));
         Assert.Contains(ticketRequests, e =>
-            e.RequestMessage.RawQuery != null &&
-            e.RequestMessage.RawQuery.Contains("cursor=cursor123", StringComparison.Ordinal));
+            RequireRequest(e).RawQuery.Contains("cursor=cursor123", StringComparison.Ordinal));
     }
 }

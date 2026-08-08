@@ -70,7 +70,9 @@ public sealed class AsanaDataProviderTests
         // Every request to the Asana API must carry an Accept: application/json header.
         Assert.All(logEntries, entry =>
         {
-            var headers = entry.RequestMessage.Headers;
+            var request = entry.RequestMessage;
+            Assert.NotNull(request);
+            var headers = request.Headers;
             Assert.NotNull(headers);
             Assert.True(headers.ContainsKey("Accept"), "Accept header missing");
             Assert.Contains("application/json", headers["Accept"]);
@@ -99,8 +101,11 @@ public sealed class AsanaDataProviderTests
 
         // At least one request to the tasks endpoint must carry the modified_since query param.
         Assert.Contains(logEntries, entry =>
-            entry.RequestMessage.AbsolutePath.Contains("/api/1.0/tasks", StringComparison.Ordinal)
-            && entry.RequestMessage.RawQuery != null
-            && entry.RequestMessage.RawQuery.Contains("modified_since", StringComparison.Ordinal));
+        {
+            var request = entry.RequestMessage;
+            Assert.NotNull(request);
+            return request.AbsolutePath.Contains("/api/1.0/tasks", StringComparison.Ordinal)
+                && request.RawQuery.Contains("modified_since", StringComparison.Ordinal);
+        });
     }
 }

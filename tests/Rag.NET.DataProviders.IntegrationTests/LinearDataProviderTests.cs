@@ -66,11 +66,13 @@ public sealed class LinearDataProviderTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         var entry = Assert.Single(_fixture.Server.LogEntries);
-        Assert.Equal("/graphql", entry.RequestMessage.AbsolutePath);
-        Assert.Equal("POST", entry.RequestMessage.Method);
+        var request = entry.RequestMessage;
+        Assert.NotNull(request);
+        Assert.Equal("/graphql", request.AbsolutePath);
+        Assert.Equal("POST", request.Method);
 
         // The GraphQL envelope carries the issues query document plus typed variables.
-        var body = entry.RequestMessage.Body;
+        var body = request.Body;
         Assert.NotNull(body);
         Assert.Contains("query Issues($first: Int!, $after: String, $filter: IssueFilter)", body, StringComparison.Ordinal);
         Assert.Contains("orderBy: updatedAt", body, StringComparison.Ordinal);
@@ -82,9 +84,9 @@ public sealed class LinearDataProviderTests
         Assert.DoesNotContain("updatedAt\":null", body, StringComparison.Ordinal);
 
         // Linear auth is the BARE api key — no Bearer prefix (see LinearDataProviderExtensions).
-        var headers = entry.RequestMessage.Headers;
+        var headers = request.Headers;
         Assert.NotNull(headers);
-        Assert.Equal("lin_api_test", Assert.Single(headers!["Authorization"]));
+        Assert.Equal("lin_api_test", Assert.Single(headers["Authorization"]));
     }
 
     [Fact]
@@ -135,10 +137,18 @@ public sealed class LinearDataProviderTests
         var requests = _fixture.Server.LogEntries.ToList();
         Assert.Equal(2, requests.Count);
         Assert.Contains(requests, e =>
-            e.RequestMessage.Body != null &&
-            !e.RequestMessage.Body.Contains("\"after\":", StringComparison.Ordinal));
+        {
+            var eRequest = e.RequestMessage;
+            Assert.NotNull(eRequest);
+            var body = eRequest.Body;
+            return body != null && !body.Contains("\"after\":", StringComparison.Ordinal);
+        });
         Assert.Contains(requests, e =>
-            e.RequestMessage.Body != null &&
-            e.RequestMessage.Body.Contains("\"after\":\"cursor123\"", StringComparison.Ordinal));
+        {
+            var eRequest = e.RequestMessage;
+            Assert.NotNull(eRequest);
+            var body = eRequest.Body;
+            return body != null && body.Contains("\"after\":\"cursor123\"", StringComparison.Ordinal);
+        });
     }
 }
