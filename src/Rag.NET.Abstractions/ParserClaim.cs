@@ -87,16 +87,25 @@ public sealed record ParserClaim(
     /// The parser type this registration deliberately overrode, if any. Recorded on
     /// <see cref="ReplacesParserTypeName"/> as a full type name — see that property's remarks.
     /// </param>
+    /// <param name="replacesTypeName">
+    /// The full type name of the parser this registration deliberately overrode, for callers that
+    /// cannot reference <paramref name="replaces"/> as a <see cref="Type"/> — a chunking-templates
+    /// package declaring an override against a parser that lives in an optional package it must not
+    /// take a compile-time dependency on, for instance. Ignored when <paramref name="replaces"/> is
+    /// set; the two exist for the same property because one caller has the <see cref="Type"/> and
+    /// the other only ever has its name.
+    /// </param>
     public static ParserClaim For<TParser>(
         string contentType,
         string registrationMethod,
         string? parserOptOut = null,
-        Type? replaces = null)
+        Type? replaces = null,
+        string? replacesTypeName = null)
         where TParser : IDocumentParser =>
         new(
             contentType,
             typeof(TParser).FullName ?? typeof(TParser).Name,
             registrationMethod,
             parserOptOut,
-            replaces?.FullName ?? replaces?.Name);
+            replaces?.FullName ?? replaces?.Name ?? replacesTypeName);
 }
