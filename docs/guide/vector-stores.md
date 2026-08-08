@@ -363,7 +363,7 @@ Stores chunks as Azure AI Search documents. Implements both `IVectorStore` and `
 
 ```csharp
 using Azure;
-using Rag.NET.VectorStores.AzureAISearch;
+using Rag.NET.AzureAISearch;
 
 services.AddRagNet(rag => rag
     .UseAzureAISearch(

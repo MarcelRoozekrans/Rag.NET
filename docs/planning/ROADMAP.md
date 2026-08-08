@@ -162,36 +162,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   the first is made: the procedure has not been executed, the live suite has still never run,
   and its hand-written cassettes remain unconfirmed against the real service — that is 6.1's,
   unchanged. Only the Azure half keeps this entry open.]
-- **Three pieces of house furniture this repository lacks** (recorded in the Phase 3.5 design as out
-  of scope, scheduled here so they do not stay open notes). All three exist in
-  `MarcelRoozekrans/AdoNet.Async` and none exists here:
-  - **`docs.yml`** — a Docusaurus site is already in the tree (`sidebars.ts`, `src/css/custom.css`,
-    the whole `docs/` directory) and **nothing publishes it**. Written docs that nobody can read are
-    the same shape of gap as tests that never run, which is what 3.5 was about; it was kept out of
-    3.5 because a test-coverage phase is the wrong place to acquire a publishing pipeline, not
-    because it is small.
-  - **`.commitlintrc.yml`** — this repository already writes conventional commits by convention;
-    nothing enforces it, and release-please in 4.1 will read those messages.
-  - **`renovate.json`** — no automated dependency updates at all.
-  → **owners assigned 2026-08-02 by the Milestone 4 replan: `docs.yml` → Phase 4.5** (design §5 —
-  with the sidebar sweep, when the docs get read end to end), **`.commitlintrc.yml` and
-  `renovate.json` → Phase 4.1** (the commitlint pairing this entry already argued, and dependency
-  automation is the same release-plumbing pass; §5 is silent on renovate, so that half is the
-  replan's assignment rather than the design's).
-  [**The two 4.1 halves shipped 2026-08-03** (`1217791`), each with its limits measured rather
-  than assumed: `.commitlintrc.yml` was run against all **1,506** existing commits before being
-  allowed to fail anything — stock config-conventional rejects 184 of them, the tuned rules
-  (`bench` type allowed, `subject-case` and `body-max-line-length` off, each deviation counted
-  against history, not guessed) still reject 70, none newer than 2026-07-29 — so the gating job
-  lints only a pull request's base-to-head range and existing history is deliberately unlinted.
-  `renovate.json` is `config:recommended` plus forced semantic commits, validated with
-  `renovate-config-validator`, and recorded as **inert until the Renovate GitHub App is enabled
-  on the repository** — a hosted service reading the file, not a workflow anything here can run.
-  Only `docs.yml` keeps this entry open → Phase 4.5. [**Extended, still inert, 2026-08-04 (Phase
-  4.8):** `renovate.json` gained a `packageRules` entry batching patch/minor bumps into one PR a
-  week and leaving majors ungrouped and unscheduled — one PR per major, the shape the phase's own
-  Qdrant trigger argued for. Re-validated with `renovate-config-validator` the same day. Still
-  inert for the same reason: the app is still not enabled.]
 - **The ablation table's reranker row permutes only the set it is evaluated on** (found in Phase
   3.15 while writing up the table — **a design flaw in that phase's own plan, not a defect in the
   code**, and the entry says so because the two get fixed differently). The plan set the reranker
@@ -320,22 +290,6 @@ future reader can tell the difference between "never existed" and "dealt with".
   criterion holds it [now **Phase 6.1**, Milestone 6 — re-pointed 2026-08-03 at the v1.0
   postponement, with the recording criterion, which moved there as
   recording-or-recorded-reason].
-- **Two packages have never been exercised by any test at all** (declared honestly by Phase 4.0's
-  `<VerifiedBy>` ledger, 2026-08-02): `Rag.NET.Mcp.Tool` (a host scaffold no test references) and
-  `Rag.NET.Security.AspNetCore` (two types, zero test references). Both declare `VerifiedBy=none`,
-  which the ledger's release gate — "no package declares `none`" — turns into a v1.0 blocker
-  without failing today's build, because punishing an honest `none` is how a ledger becomes
-  fiction.
-  → **`Rag.NET.Mcp.Tool` → Phase 4.6** (the tooling phase — the same first-tests-for-an-executable
-  shape as the CLI) and **`Rag.NET.Security.AspNetCore` → Phase 4.5** (the samples are the first
-  thing that will host ASP.NET middleware end to end, and its first tests belong with that work).
-  Assignments made at 4.0's close, not in design §5, which predates the ledger's findings; the
-  release gate holds either way.
-  **The `Rag.NET.Mcp.Tool` half closed 2026-08-08 in Phase 4.6** (`8762c181`): its argument
-  parsing (`ProgramArguments`) and `X-Api-Key` authorization decision (`ApiKeyAuthorization`)
-  moved to named `internal` types, `Rag.NET.Mcp.Tool.Tests` (16) covers both, and its entry in
-  `PackageVerificationTests.PackagesAllowedToDeclareNone` is removed in the same commit —
-  `VerifiedBy=unit`. **Only `Rag.NET.Security.AspNetCore` → Phase 4.5 remains open.**
 - **61 of 71 packages have only ever been exercised against fakes** (measured by Phase 4.0's
   ledger, 2026-08-02: `unit` 61, `container` 8, `recorded` 0, `live` 0, `none` 2). Not a defect
   list — the *shape* of the risk: `VerifiedBy=unit` is the state late chunking was in for five
@@ -533,9 +487,89 @@ future reader can tell the difference between "never existed" and "dealt with".
   handlers and argument parsing are genuinely covered; the host wiring around them is not.
   → **Phase 6.2** (Raise the Floor on Unit-Only Packages), which already owns auditing every
   `unit`-verified package's coverage before the ledger can call it more than "exercised at all".
+- **Nothing compiles documentation code snippets** (found in Phase 4.5, 2026-08-08, while
+  following `docs/getting-started.md` to build `samples/Rag.NET.QuickStart`): two of that page's
+  six numbered steps did not compile against the pinned packages — a wrong
+  `Microsoft.Extensions.AI.OpenAI` API and a package id used as a namespace — and every existing
+  guard passed regardless, `docs.yml` included, because `docs.yml` checks links, not code. A
+  Markdown code fence is prose to every tool in this repository; nothing ever tries to build it.
+  → no phase currently owns a doc-snippet compilation checker; stays unscheduled until one does,
+  re-justified rather than silently dropped.
+- **`npm audit` reports 25 vulnerabilities (6 moderate, 19 high)** (measured 2026-08-08 in Phase
+  4.5, after the Docusaurus 3.7.0 → 3.10.2 upgrade — the number the design's own text predicted,
+  "24 (12/12)", is stale; this is the actual post-upgrade count). All in the site's build-time
+  npm dependency tree — webpack-dev-server's transitive chain among them — not in anything shipped
+  to a Rag.NET consumer; recorded as deliberate debt for that reason, not fixed reflexively.
+  → no phase currently owns an npm audit remediation pass; stays unscheduled until one does.
+- **`docs/index.md`'s Quick Links point at `docs/plans/` as inline code, not a Markdown link**
+  (found in Phase 4.5, 2026-08-08): `docs/plans/` is not part of the published site (Task 2 of this
+  phase's own plan established that a relative link into it can never resolve), and because the
+  reference is rendered as `` `docs/plans/` `` rather than `[text](docs/plans/)`, no link checker
+  — including this phase's own `docs.yml` — has anything to flag. A reader following it from the
+  published site finds nothing.
+  → no phase currently owns rewording this reference (to a GitHub URL, or dropping it, per Task
+  2's precedent for the same class of link elsewhere); stays unscheduled until one does.
+- **`onBrokenMarkdownLinks` is a deprecated Docusaurus config key** (found in Phase 4.5,
+  2026-08-08, present since the Docusaurus 3.10.2 upgrade): `docusaurus.config.ts` sets
+  `onBrokenMarkdownLinks` directly; Docusaurus 3.10 wants it under
+  `markdown.hooks.onBrokenMarkdownLinks` instead and prints a deprecation warning on every build.
+  Cosmetic — the build still succeeds and still hard-fails on a genuinely broken Markdown link —
+  but a warning nobody silences tends to become the warning nobody notices.
+  → no phase currently owns migrating the config key; stays unscheduled until one does.
 
 ### Closed
 
+- ~~**Two packages have never been exercised by any test at all**~~ (declared honestly by Phase
+  4.0's `<VerifiedBy>` ledger, 2026-08-02): `Rag.NET.Mcp.Tool` (a host scaffold no test
+  references) and `Rag.NET.Security.AspNetCore` (two types, zero test references). Both declared
+  `VerifiedBy=none`, which the ledger's release gate — "no package declares `none`" — turns into a
+  release blocker without failing the build, because punishing an honest `none` is how a ledger
+  becomes fiction. Owners assigned at Phase 4.0's close: `Rag.NET.Mcp.Tool` → Phase 4.6,
+  `Rag.NET.Security.AspNetCore` → Phase 4.5. **The `Rag.NET.Mcp.Tool` half closed 2026-08-08 in
+  Phase 4.6** (`8762c181`): its argument parsing (`ProgramArguments`) and `X-Api-Key`
+  authorization decision (`ApiKeyAuthorization`) moved to named `internal` types,
+  `Rag.NET.Mcp.Tool.Tests` (16) covers both, `VerifiedBy=unit`. **Three real defects were found
+  by running the tool** — no pipeline registered, no transport registered (stdio silently started
+  a bare Kestrel server instead of speaking MCP), and logging over stdout, the exact channel MCP
+  JSON-RPC travels on — see Phase 4.6's own entry for the full account. **The
+  `Rag.NET.Security.AspNetCore` half closed 2026-08-08 in Phase 4.5** (`398c595f`):
+  `tests/Rag.NET.Security.AspNetCore.Tests` drives both of the package's types — `GetRoles()` and
+  `AddRagNetAspNetCoreSecurity()`/`UseRbac()` — through real ASP.NET Core primitives
+  (`HttpContextAccessor`, `DefaultHttpContext`, a real `TestServer` pipeline), including 16
+  concurrent requests with distinct roles to prove per-request resolution rather than a
+  cached/shared value, and both negative-path tests were verified to fail on the defects they
+  target before the fix. **Unlike Phase 4.6's package, no production defect was found here** — the
+  two types do what their names say. `VerifiedBy=unit`, ledger entry removed in the same commit.
+  **This was the last package at `none`**: `NoPackageIsVerifiedByNothing`'s skip condition is now
+  never true — `Rag.NET.RepoConventions.Tests` went from 48 passing + 1 skip to **49 passing, 0
+  skipped**, confirmed by an independent re-run of `PackageVerificationTests` at Phase 4.5's close.
+- ~~**Three pieces of house furniture this repository lacks**~~ (recorded in the Phase 3.5 design as
+  out of scope; all three exist in `MarcelRoozekrans/AdoNet.Async` and none existed here: `docs.yml`,
+  `.commitlintrc.yml`, `renovate.json`) → **closed 2026-08-08 in Phase 4.5**, the last of the three
+  to ship. Owners assigned 2026-08-02 by the Milestone 4 replan: `docs.yml` → Phase 4.5 (design
+  §5 — with the sidebar sweep, when the docs get read end to end); `.commitlintrc.yml` and
+  `renovate.json` → Phase 4.1. **The two 4.1 halves shipped 2026-08-03** (`1217791`):
+  `.commitlintrc.yml` was run against all 1,506 existing commits before being allowed to fail
+  anything — stock config-conventional rejects 184, the tuned rules still reject 70, none newer
+  than 2026-07-29 — so the gating job lints only a pull request's base-to-head range;
+  `renovate.json` is `config:recommended` plus forced semantic commits, validated with
+  `renovate-config-validator`, and gained a `packageRules` entry at Phase 4.8 (2026-08-04,
+  re-validated the same day) batching patch/minor bumps weekly and leaving majors ungrouped.
+  **Recorded inert through Phase 4.8, and that note went stale without anyone correcting it**: the
+  Renovate GitHub App is enabled and has been opening PRs against this repository since
+  2026-08-05 — five `renovate/*` branches live at this closure (`box.v2-10.x`,
+  `major-ml-dotnet-monorepo`, `pinecone.client-4.x`, `wiremock.net-2.x`,
+  `zeroalloc.mediator.generator-5.x`), several already merged, including a major bump
+  (`zeroalloc.valueobjects` to v2, PR #54). Corrected here and in `docs/reference/ci.md`'s
+  Renovate section, both of which had carried the stale claim forward. **`docs.yml` — the half
+  that kept this entry open — closed 2026-08-08 in Phase 4.5**: builds the Docusaurus site on
+  every pull request (`npm ci && npm run build`), modelled on `ci.yml`'s job shape and confirmed
+  to fire on a normal PR trigger. Deployment is deliberately not part of it — the site is
+  configured for `rag-net.github.io/Rag.NET/` (`organizationName: 'rag-net'`), the repository is
+  `MarcelRoozekrans/Rag.NET`, the `RAG-Net` GitHub org exists but does not hold this repository,
+  and GitHub Pages is enabled nowhere for it (the Pages API answers 404) — a real decision this
+  phase does not have grounds to make, recorded rather than guessed at by "fixing"
+  `organizationName` to a plausible-but-unverified value.
 - ~~**No supported way to replace a built-in parser**~~ (found while fixing the Phase 3.11
   review's first finding) → closed 2026-08-08 in Phase 4.2 (Parser Registration Ownership),
   **implemented**: `RagBuilder.AddParser<TParser>(replaces:, replacesTypeNames:)` removes the
@@ -1412,11 +1446,25 @@ one was found by a test. Every criterion below can be false, and something check
 service has a scrubbed, dated recording" — and `Release tagged v1.0` moved to **Milestone 6's**
 DoD, the recording criterion widened there to recording-or-recorded-reason; completing this
 milestone no longer tags anything, and every other criterion is unchanged):
-- [ ] All planned phases complete (6 of 11 as of 2026-08-05: 4.0, 4.1, 4.7, 4.8, 4.9, 4.10 — the phase list grew Phase 4.9, created and completed 2026-08-04 to fix the `BuildMetadata`/`CreatedAt` defect and correct the wrong "slot, not a phase" estimate that had routed it to 4.2, and Phase 4.10, created the same day and completed 2026-08-05 — the connector-timestamp-threading work 4.9 priced but did not do. Phases 4.2–4.6 remain pending, so this box stays open. **This count is known stale beyond this note** — Phase 4.2 also closed, 2026-08-08, as Parser Registration Ownership, and 4.3, 4.4, 4.11 and 4.12 closed between 2026-08-05 and this line's last edit without it being updated; a full resync belongs to whichever phase next closes this milestone's DoD, not this line-item edit)
+- [x] All planned phases complete (**resynced 2026-08-08, by the phase that closes this box**: 13
+  of 13 — 4.0 through 4.12 — are `[status: complete]`, confirmed by re-reading every phase header
+  in this file rather than trusting the stale count below. **Phase 4.5** (Sample Applications) was
+  the last one pending; its own entry below records what closed it: the doc-site build repair,
+  `docs.yml`, `samples/Rag.NET.QuickStart`, and `Rag.NET.Security.AspNetCore` off `VerifiedBy:
+  none`. History, kept rather than deleted: 6 of 11 as of 2026-08-05 (4.0, 4.1, 4.7, 4.8, 4.9,
+  4.10 — the phase list grew 4.9 and 4.10 that week), then went stale by four more closures — 4.2
+  (2026-08-08), 4.3, 4.4, 4.11 and 4.12 — none of which updated this line, exactly the gap this
+  resync exists to close)
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore
 - [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0). **The gate half holds as of 2026-08-03** (Phase 4.1): both `KnownUnsatisfiable` ledgers are empty, and every formerly-unsatisfiable gate is satisfiable by a fenced procedure in `docs/reference/ci.md` — `ENABLE_OCR` and `RAGNET_TESSDATA` by the `-p:EnableOcr=true` source-build procedure, **executed green on 2026-08-03** (the gated test's first run anywhere); `RAGNET_DOCINTEL_ENDPOINT`/`_KEY` by the `az` F0 free-tier provisioning procedure — written and satisfiable, deliberately not executed, the live run being Phase 6.1's. The box stays open on the all-projects half, checked at the milestone's close. **Corrected 2026-08-04 (Phase 4.8): the clause that used to end this note — "4.1's own workflow changes have not yet had a genuine Actions run" — is no longer true**; the last DoD criterion below now cites the run that made it false. This box stays open regardless: it needs every project passing on the tree at the milestone's close, and Phase 4.8's own tree has not itself been through Actions yet
 - [x] **Every `features.md` Done claim names code that exists** (`FeatureClaimTests`, Phase 4.0; **holding as of 2026-08-03**: both false claims were corrected at Milestone 3's close, `81163af` — `KnownFalseClaims` is empty and all 72 package claims across 53 Done sections are verified directly. Failing knowingly from 4.0's sweep until then, with the two claims allow-listed under owners → 4.4 and 4.1; both closed early instead, in the Closed debts list)
-- [ ] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0; **failing today, honestly**: `Rag.NET.Security.AspNetCore` → 4.5. `Rag.NET.Mcp.Tool` closed 2026-08-08 in Phase 4.6 — `VerifiedBy=unit`, see the debts list above)
+- [x] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0. **Closed
+  2026-08-08 in Phase 4.5**: `Rag.NET.Security.AspNetCore` moved to `VerifiedBy: unit` — the last
+  package at `none`, `Rag.NET.Mcp.Tool` having closed 2026-08-08 in Phase 4.6. **Verified rather
+  than assumed**: `PackageVerificationTests` re-run at this close — 49 passing, 0 skipped;
+  `PackagesAllowedToDeclareNone` is empty; `NoPackageIsVerifiedByNothing` is now a plain passing
+  assertion rather than a reported skip, exactly the state its own doc comment says the Definition
+  of Done requires. See the debts list above for what each closure found)
 - [x] CI pipeline builds, tests, and produces NuGet packages (the build-and-test half has been green since Phase 3.5; the pack half shipped in Phase 4.1 — `pack-validate` packs every package [all 70 at the time; **66** since Phase 4.7's decomposition, 2026-08-04, with `ExpectedPackageCount` moved by stated arithmetic], validates them as a failing test step and pushes them to a local feed twice on every push, `publish-nuget` gated to 6.3. **Ticked 2026-08-04 (Phase 4.8), on the evidence this box asked for rather than the wiring**: PR #18 — Phase 4.1's own branch — ran `ci.yml` for real and gated its own merge on it: `commitlint`, `pack-validate` and both `build-test` legs all green (run **30828032049**, 2026-08-03). Every push to `main` since has run the identical pipeline for real, including the case this repository's own record predicted would eventually happen: the Qdrant `SearchAsync` break went red on a genuine `build-test` run on `main` (**30919869612**, 2026-08-04, no commit involved) and the fix went green on the next one (**30926805555**). The pipeline has now executed, repeatedly, against real pushes — this criterion is about the mechanism, and the mechanism is proven. What it does **not** cover: Phase 4.8's own tree has never itself been through Actions — this branch is unpushed, and the honest gap moves to the DoD's all-projects criterion above, not this one)
 
 **What these guards do not fix** (design §7, stated so the milestone does not claim more than it
@@ -1497,7 +1545,9 @@ validation, the real 409-skip and `.snupkg` delivery are exercised for real exac
 (`docs/reference/ci.md` § "What the rehearsal cannot prove"); (2) `release-please.yml` is the
 one genuinely unexercisable path — its only observable effects *are* the release — gated
 dispatch-only, procedure fenced in ci.md, pinned by `WorkflowWiringTests`; (3) `renovate.json`
-is inert until the Renovate app is enabled — a hosted service, not a runnable workflow; (4) on
+is inert until the Renovate app is enabled — a hosted service, not a runnable workflow [**stale by
+2026-08-08, Phase 4.5**: the app is enabled and has been opening PRs since 2026-08-05 — see the
+closed "Three pieces of house furniture" debt entry above]; (4) on
 feature branches the prerelease number does **not** increment per commit — this whole branch
 packed as `0.1.0-nuget-packaging.1` — only `main`'s `preview.N` counts up, which is the number
 6.3 depends on; (5) the DOCINTEL gates are satisfiable, not exercised (their entry above); and
@@ -1734,7 +1784,11 @@ API equivalent to fence — the one gate on this page with no runnable procedure
 rather than papered over. **Two claims recorded separately, not conflated:** *dependency pinning
 is delivered and provable* — the empty 156-line diff, above; *upgrade automation is configured
 and unexercised* — `renovate.json` has never proposed a PR, because the app has never been
-enabled. Only the first is demonstrated by any work in this repository to date.
+enabled. Only the first is demonstrated by any work in this repository to date. [**Stale by
+2026-08-08, Phase 4.5:** the app is enabled and has been opening PRs since 2026-08-05 — five
+`renovate/*` branches live at that correction, several already merged, including a major bump.
+Both claims are now demonstrated; see the closed "Three pieces of house furniture" debt entry
+above for the evidence.]
 **What this does not buy, stated plainly:** pinning does not prevent deprecations. `SearchAsync`
 would still have gone obsolete in 1.18.1 whether the reference was pinned or not. What changes is
 *how the repository finds out* — a Renovate PR whose CI goes red, reviewed on the owner's
@@ -2501,9 +2555,129 @@ re-run the container-gated suites (no local Docker daemon in this session) and d
 have re-verified them independently. Full solution build: 0 warnings, 0 errors (re-verified by
 this closing pass, `--no-incremental`).
 
-### Phase 4.5: Sample Applications [status: pending]
-**Goal:** End-to-end runnable samples covering the main library scenarios.
+### Phase 4.5: Sample Applications [status: complete]
+**Goal:** End-to-end runnable samples covering the main library scenarios — which turned out to
+need the documentation site to build first, since a sample is only honest if it follows docs a
+reader can actually reach.
 **Backlog items:** Sample Applications
+**Plan:** `docs/plans/2026-08-08-docs-site-and-samples-design.md` + `2026-08-08-docs-site-and-samples-implementation.md`
+**Completed:** 2026-08-08 (**the documentation site did not build, for two independent reasons,
+and nothing had ever reported it.** `@docusaurus/core` 3.7.0's `webpack: ^5.95.0` caret resolved
+to 5.109.2, whose tightened `ProgressPlugin` schema rejects options Docusaurus itself still
+passes — and there was no lockfile, so this arrived on any fresh `npm install`, not just this one.
+Separately, 25 links across 7 pages pointed at paths that do not exist (`guide/*` and
+`reference/*` prefixes dropped, one link into the unpublished `docs/plans/`). **No CI job had ever
+built the site** — that is why neither defect was known, and why acquiring `docs.yml` mattered
+more than fixing either one: a repair with no guard rots back to exactly this state. Fixed in
+order: upgraded Docusaurus 3.7.0 → 3.10.2 (clears the `ProgressPlugin` schema mismatch), committed
+`package-lock.json` (there was none — `npm ci` could not run at all before this), fixed all 25
+links (`onBrokenLinks` left at its hard-fail default throughout — the one forbidden move this
+phase's own plan named was weakening it to `'warn'`), then added `docs.yml` to build the site on
+every pull request, modelled on `ci.yml`'s job shape and confirmed to fire on a normal PR trigger
+rather than shipped inert. **Deployment is deliberately not part of it**: the site is configured
+for `rag-net.github.io/Rag.NET/`, the repository is `MarcelRoozekrans/Rag.NET`, the `RAG-Net`
+GitHub org exists but does not hold this repository, and GitHub Pages is enabled nowhere for it
+(the Pages API answers 404) — `organizationName` was left visibly wrong rather than "fixed" to a
+plausible-but-unverified value, a decision this phase does not have grounds to make. Closes the
+`docs.yml` debt open since 2026-08-02 — see the closed "Three pieces of house furniture" entry
+above, which also carries the correction this phase made to that entry's stale renovate note: the
+Renovate GitHub App is enabled and has been opening PRs since 2026-08-05, not "still inert" as
+Phase 4.8 last recorded it.
+
+**Samples:** `samples/Rag.NET.Sample` was the only sample, for 69 packages. Added
+`samples/Rag.NET.QuickStart`, driven by `Rag.NET.Hosting`'s `AddRagNetPipelineFromConfiguration`
+rather than hand-registering `IChatClient`/`IEmbeddingGenerator`/`IVectorStore`, so it reuses
+Phase 4.6's own startup validation instead of re-implementing it, and follows
+`docs/getting-started.md`'s flow end to end (ingest, re-ingest with `Overwrite`, retrieve, ask, ask
+streaming, delete). Defaults to a local Ollama endpoint and the in-memory store, needing no API
+key; `RagNet__*` environment variables switch it to OpenAI. Registered in `Rag.NET.slnx`,
+`IsPackable=false` like its sibling — `dotnet pack` still produces exactly 69 packages.
+**Following the getting-started page while building this is what surfaced the documentation
+defects below** — the phase's charter, and the finding worth more than the sample itself.
+
+**Documentation defects found and fixed, all re-verified against the pinned packages before
+editing, not taken on trust:**
+1. `docs/getting-started.md` step 2 — `OpenAIClient.AsChatClient(...)`/`.AsEmbeddingGenerator(...)`
+   do not exist on `Microsoft.Extensions.AI.OpenAI` 10.8.3 (CS1061). Fixed to the real chain,
+   `.GetChatClient(model).AsIChatClient()` / `.GetEmbeddingClient(model).AsIEmbeddingGenerator()`
+   — the pattern `Rag.NET.Hosting`, `Rag.NET.Cli`, `Rag.NET.Mcp.Tool` and `Rag.NET.Sample` already
+   use.
+2. `docs/getting-started.md` step 3 and `docs/guide/vector-stores.md`'s Azure AI Search example —
+   `using Rag.NET.VectorStores.PgVector;` / `using Rag.NET.VectorStores.AzureAISearch;` name the
+   **package id**, not the namespace (CS0234); the namespaces are `Rag.NET.PgVector` and
+   `Rag.NET.AzureAISearch`. Both fixed; every other `using Rag.NET.*` line in `docs/` (excluding
+   the unpublished `docs/plans/`) was checked against its package's actual namespace declarations
+   in `src/` — `choosing-packages.md`'s `Rag.NET.DataProviders.SharePoint`/`Rag.NET.Qdrant` and
+   every other occurrence already matched; no further instances of this defect exist.
+3. **A third compile defect this phase found, not previously reported**: even with (1) and (2)
+   fixed, `getting-started.md`'s step 1 package list (`Rag.NET`, a vector store, a parser) is
+   missing `Microsoft.Extensions.DependencyInjection`, `Microsoft.Extensions.AI` and
+   `Microsoft.Extensions.AI.OpenAI` — `Rag.NET` itself references only the `Abstractions` split of
+   the AI package, so `ServiceCollection`, `AddChatClient`/`AddEmbeddingGenerator`, and any OpenAI
+   client type are all unavailable without installing them explicitly, exactly as
+   `samples/Rag.NET.Sample`'s own csproj already does. Verified by compiling the whole
+   getting-started flow (steps 1 through 8, plus the SharePoint/Qdrant worked example in
+   `choosing-packages.md`) against `ProjectReference`s to the real `src/` projects in a throwaway
+   project — 0 errors after adding the three packages to step 1, and choosing-packages.md's own
+   snippet compiled unmodified.
+4. `docs/guide/choosing-packages.md` said "Rag.NET ships as 66 packages" — stale; the real count
+   is **69** (`ExpectedPackageCount`, `Rag.NET.PackageValidation.Tests`, and an actual
+   `dotnet pack` at this close). Phase 4.6 added `Rag.NET.Hosting` and `Rag.NET.Cli` after that
+   line was written. The same stale count, found by the same sweep, appeared four more times in
+   `docs/reference/ci.md` ("packs the 70 shippable packages", "70 `.nupkg` plus 70 `.snupkg`", "a
+   push that dies partway through 70 packages", "none of the 70 IDs is reserved") — all describing
+   `ci.yml`'s current behaviour in the present tense, not a dated historical record, so all four
+   corrected to 69 as well. (`docs/planning/ROADMAP.md`'s own historical "70 packages, at the
+   time" notes inside already-closed phase entries were left alone — those are dated records of
+   what was true then, not live claims.)
+5. `docs/reference/ci.md`'s Renovate section carried the same stale "inert until the Renovate
+   GitHub App is enabled" claim as the ROADMAP debt entry above — corrected with the same
+   evidence (five `renovate/*` branches, PRs merged since 2026-08-05).
+
+No further instances of `.AsChatClient(`/`.AsEmbeddingGenerator(` exist anywhere under `docs/`
+outside `docs/plans/` (which is not part of the published site — Task 2 of this phase's plan
+established that a link into it can never resolve, for the same reason its code is not verified
+here). `npm run build` re-run after every documentation edit in this phase: still succeeds, 0
+broken links, the only warning being the pre-existing `onBrokenMarkdownLinks` deprecation notice
+(recorded as a debt below).
+
+**`Rag.NET.Security.AspNetCore` off `VerifiedBy: none`** (`398c595f`) — see the closed "Two
+packages have never been exercised by any test at all" debt entry above for the full account.
+Unlike Phase 4.6's `Rag.NET.Mcp.Tool`, running the package's tests found **no production defect**:
+the two types do what their names say. **This was the last package at `none`** — the release gate
+this milestone's Definition of Done has required since Phase 4.0 is now genuinely satisfied, and
+the DoD box above is ticked on that verified evidence, not assumed.
+
+**New debts recorded, all with origin and no owning phase yet — see the follow-up debts list at
+the top of this file for the full entries:** nothing compiles documentation code snippets, so two
+of getting-started's six numbered steps were broken and every existing guard (including this
+phase's own `docs.yml`) passed anyway; `npm audit` reports 25 vulnerabilities (6 moderate, 19
+high) in the site's build-time tooling, measured after the Docusaurus upgrade; `docs/index.md`'s
+Quick Links point at `docs/plans/` as inline code rather than a Markdown link, so no link checker
+catches that it resolves to nothing published; and `onBrokenMarkdownLinks` is a deprecated config
+key (`markdown.hooks.onBrokenMarkdownLinks` is its replacement), a cosmetic warning on every build.
+
+**Counts:** `Rag.NET.Tests` **1180**, unchanged (this phase touched documentation and one new test
+project, not `Rag.NET.Tests` itself). `Rag.NET.RepoConventions.Tests` **48 + 1 skip → 49 passing, 0
+skipped** (the `Rag.NET.Security.AspNetCore` closure — confirmed by an independent re-run at this
+close, not carried over from the commit message). `Rag.NET.PackageValidation.Tests` **20**,
+unchanged in count; **69 packages** produced by a real `dotnet pack` at this close (69 `.nupkg`,
+69 `.snupkg`, counted directly), matching `ExpectedPackageCount`.
+**Full solution build re-run at this close:** `dotnet build Rag.NET.slnx -c Release
+--no-incremental` — 0 warnings, 0 errors. `npm run build` — succeeds. Docker/secrets/LLM-gated
+test tiers were **not** re-run in this session (no local Docker daemon confirmed, no secrets
+configured) — the milestone DoD's "All test projects passing" box stays open for that reason,
+recorded rather than assumed clean, and "Full solution builds 0 warnings / 0 errors" is left open
+on the same conservative basis even though this phase's own `--no-incremental` run came back
+clean: a milestone-close verification deserves its own dedicated pass, not a side effect of a
+documentation phase's rebuild.
+
+**Closes:** the `docs.yml` half of the "Three pieces of house furniture" debt (the whole entry now
+closed, above); the `Rag.NET.Security.AspNetCore` half of the "two packages never exercised" debt
+(the whole entry now closed, above); Milestone 4's "No package declares `VerifiedBy=none`" DoD box
+(ticked above, verified); Milestone 4's "All planned phases complete" DoD box (ticked above,
+resynced — this was the 13th and last of 4.0–4.12). **Opens:** four new debts, listed above and in
+the follow-up debts list, none silently absorbed.)
 
 ### Phase 4.6: Rag.NET CLI Tool [status: complete]
 **Goal:** `dotnet tool` for ingest/query/evaluate against a configured pipeline.
