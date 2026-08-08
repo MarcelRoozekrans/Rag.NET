@@ -153,6 +153,64 @@ Ship a **sample `appsettings.json`** showing every supported kind, and confirm i
 
 ---
 
+## Task 5a: Make the transport registration real (added 2026-08-08)
+
+**Files:**
+- Modify: `src/Rag.NET.Mcp/DependencyInjection/McpServerBuilder.cs`
+- Modify: `src/Rag.NET.Mcp/DependencyInjection/ServiceCollectionExtensions.cs`
+- Possibly: `src/Rag.NET.Mcp.Tool/Program.cs`
+- Test: `tests/Rag.NET.Mcp.Tests/`
+
+**Not in the original plan. Found by running the tool during Task 5** — the first time anything
+ever had, which `VerifiedBy: none` had guaranteed.
+
+`McpServerBuilder.WithStdioTransport()` and `WithHttpTransport(port)` **are no-ops.** They set
+fields on an `McpTransportOptions` singleton that **nothing reads** — verified: zero references
+outside its own declaration. Nothing anywhere calls the MCP SDK's real transport registration.
+
+Observed by running the built executable:
+
+- **HTTP** throws at `app.MapMcp()` — *"You must call WithHttpTransport()"*.
+- **stdio — the default, and what every MCP client uses — silently starts a bare Kestrel web
+  server on port 5000 instead of speaking MCP over stdio.**
+
+So even with Tasks 1-3's pipeline correctly wired, the tool still does not do the one thing it
+exists to do. **This is a larger defect than the one this phase was created for**, and the phase's
+deliverable — a tool that works when configured — is not met without it.
+
+### The constraint that probably caused it
+
+`Rag.NET.Mcp` references **`ModelContextProtocol`**; `Rag.NET.Mcp.Tool` references
+**`ModelContextProtocol.AspNetCore`**. `WithStdioServerTransport()` is available to the library;
+the real `WithHttpTransport()` extension is **not** — it lives in the ASP.NET Core package the
+library deliberately does not reference. Flags-nobody-reads was very likely the workaround.
+
+So the two halves differ:
+
+- **stdio** can be delegated from the library directly.
+- **HTTP** cannot, without `Rag.NET.Mcp` taking an ASP.NET Core dependency — which would be the
+  same mistake as putting provider references in it (design §1.3).
+
+`AddRagNetMcpServer()` currently **discards** the `IMcpServerBuilder` that `services.AddMcpServer()`
+returns. Exposing it is the obvious way to let the tool call the ASP.NET-only extension itself.
+**Choose a shape, and say why** — this is a public API decision on `Rag.NET.Mcp`, not a detail.
+
+### Non-negotiable
+
+**A transport method that silently does nothing must become impossible.** If a transport cannot be
+configured from where it is called, that must be a compile error or a loud throw — never a
+fluent call that returns `this` and changes nothing.
+
+### Testing
+
+Assert the SDK actually received the transport registration, not that our own flag was set —
+**asserting the flag is what created this bug.** If the SDK's registration is not observable,
+say so and describe what you asserted instead.
+
+**Expect `Rag.NET.Mcp.Tests` to change.** State the arithmetic.
+
+---
+
 ## Task 6: Decide the package shape
 
 **Files:** `docs/planning/ROADMAP.md` (the debt entry at ~line 410)
