@@ -15,6 +15,11 @@
       "schedule": ["before 6am on monday"]
     },
     {
+      "description": "Box.V2 10.x is not an upgrade of Box.V2 3.x — the package id was reused for the 'Official Box .Net Generated SDK', a different library with a different namespace root (Box.Sdk.Gen). It also ships lib/net462 ONLY, compiled against the net462 assets of Microsoft.Extensions.DependencyInjection/Http, which carry Framework-only assembly versions (8.0.0.1, 8.0.0.2). A net10.0 project always resolves those packages' modern-TFM assets, versioned 8.0.0.0, so the assembly identity Box.V2.dll binds against cannot exist for any TFM compatible with net10.0. Verified empirically, not inferred: constructing `new BoxClient(new BoxDeveloperTokenAuth(...))` in a throwaway net10.0 console app throws FileNotFoundException for 'Microsoft.Extensions.Http, Version=8.0.0.1' before any network call. No PackageVersion change can resolve that, so the major is pinned out rather than left to reopen a PR that cannot pass. Revisit if Box ships a genuinely multi-targeted asset (netstandard2.0 or net8.0+); re-run that same 10-minute construction check before investing in the rewrite.",
+      "matchPackageNames": ["Box.V2"],
+      "allowedVersions": "<10.0.0"
+    },
+    {
       "description": "Microsoft.Graph and Microsoft.Kiota.Abstractions must move together: Graph pins a Kiota major internally, so bumping Graph alone produces a PR that cannot restore. Renovate's first Graph v6 PR (#26) failed exactly this way with NU1605 on every project — Graph 6.2.0 wants Kiota >= 2.0.0 while the repository pinned 1.22.0.",
       "matchPackageNames": ["Microsoft.Graph", "Microsoft.Kiota.Abstractions"],
       "groupName": "microsoft-graph"
