@@ -9,6 +9,7 @@ using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Api.Contracts;
 using Rag.NET.Api.DependencyInjection;
+using Rag.NET.Mediator;
 using Rag.NET.Mediator.Requests;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -28,7 +29,7 @@ public sealed class RagApiIntegrationTests : IAsyncLifetime
     {
         var pipeline = Substitute.For<IRagPipeline>();
 
-        var mediator = Substitute.For<IMediator>();
+        var mediator = Substitute.For<IRagMediator>();
 #pragma warning disable EPS06 // ValueTask struct copy — intentional test double setup via NSubstitute
         mediator.Send(Arg.Any<RetrieveQuery>(), Arg.Any<CancellationToken>())
             .Returns(_ => new ValueTask<Result<IReadOnlyList<SearchResult>, RagError>>(
