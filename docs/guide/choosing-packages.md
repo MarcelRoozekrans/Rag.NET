@@ -6,7 +6,7 @@ sidebar_position: 4
 
 # Choosing Packages
 
-Rag.NET ships as 66 packages, and a working pipeline needs two or three of them. This page
+Rag.NET ships as 69 packages, and a working pipeline needs two or three of them. This page
 exists because the catalogue does not say which — the packages compose transitively, so most
 of what a pipeline uses arrives on its own, and the only decisions you actually make are the
 ones this page walks through.

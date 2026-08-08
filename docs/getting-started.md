@@ -24,7 +24,12 @@ flowchart LR
 dotnet add package Rag.NET
 dotnet add package Rag.NET.VectorStores.PgVector          # or Rag.NET.VectorStores.Qdrant / Rag.NET.VectorStores.AzureAISearch
 dotnet add package Rag.NET.Parsers.Pdf       # add as many format parsers as you need
+dotnet add package Microsoft.Extensions.DependencyInjection
+dotnet add package Microsoft.Extensions.AI
+dotnet add package Microsoft.Extensions.AI.OpenAI          # or your provider's Microsoft.Extensions.AI integration
 ```
+
+`Rag.NET` itself depends only on the `Microsoft.Extensions.AI` *abstractions* — the concrete `ServiceCollection`, `AddChatClient`/`AddEmbeddingGenerator`, and a provider client (here, OpenAI's) come from these three packages and need adding explicitly.
 
 Not sure which packages your scenario needs — or whether you need more than these?
 [Choosing packages](guide/choosing-packages.md) walks through the decisions and what
@@ -37,13 +42,15 @@ Rag.NET consumes two standard `Microsoft.Extensions.AI` abstractions. Register t
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.AI;
+using OpenAI;
 
 var services = new ServiceCollection();
 
 // Example using the OpenAI provider (Microsoft.Extensions.AI.OpenAI)
-services.AddChatClient(new OpenAIClient("sk-...").AsChatClient("gpt-4o"));
+services.AddChatClient(
+    new OpenAIClient("sk-...").GetChatClient("gpt-4o").AsIChatClient());
 services.AddEmbeddingGenerator(
-    new OpenAIClient("sk-...").AsEmbeddingGenerator("text-embedding-3-small"));
+    new OpenAIClient("sk-...").GetEmbeddingClient("text-embedding-3-small").AsIEmbeddingGenerator());
 ```
 
 Any provider that implements `IChatClient` and `IEmbeddingGenerator<string, Embedding<float>>` works — Ollama, Azure OpenAI, and others are drop-in replacements.
@@ -52,7 +59,7 @@ Any provider that implements `IChatClient` and `IEmbeddingGenerator<string, Embe
 
 ```csharp
 using Rag.NET.DependencyInjection;
-using Rag.NET.VectorStores.PgVector;
+using Rag.NET.PgVector;
 using Rag.NET.Parsers.Pdf;
 
 services.AddRagNet(rag => rag
@@ -103,7 +110,7 @@ else
     Console.WriteLine($"Ingestion failed: {result.Error}");
 ```
 
-The `ContentType` value drives parser selection. Omitting it defaults to `text/plain`. Tags are propagated into every chunk's `Metadata` dictionary and can be used for [metadata filtering](retrieval.md#metadata-filtering) at query time.
+The `ContentType` value drives parser selection. Omitting it defaults to `text/plain`. Tags are propagated into every chunk's `Metadata` dictionary and can be used for [metadata filtering](guide/retrieval.md#metadata-filtering) at query time.
 
 ### Re-ingesting a document
 
@@ -242,8 +249,8 @@ services.AddRagNet(rag => rag
 
 ## Next steps
 
-- [Architecture](architecture.md) — understand how the pipeline works internally
-- [Chunking](chunking.md) — choose the right strategy for your content type
-- [Retrieval](retrieval.md) — enable hybrid search, metadata filtering, and score thresholds
-- [Post-Retrieval](post-retrieval.md) — improve answer quality with reordering and redundancy filtering
-- [Observability](observability.md) — add logging, tracing, and resilience
+- [Architecture](guide/architecture.md) — understand how the pipeline works internally
+- [Chunking](guide/chunking.md) — choose the right strategy for your content type
+- [Retrieval](guide/retrieval.md) — enable hybrid search, metadata filtering, and score thresholds
+- [Post-Retrieval](guide/post-retrieval.md) — improve answer quality with reordering and redundancy filtering
+- [Observability](guide/observability.md) — add logging, tracing, and resilience

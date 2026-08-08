@@ -7,7 +7,7 @@
 
 **Date read:** 2026-08-02
 **Phase:** 3.14, Task 3 — recorded **before** any comparator entrant was written
-**Design:** [`docs/plans/2026-08-02-library-comparison-design.md`](../plans/2026-08-02-library-comparison-design.md) §4
+**Design:** [`docs/plans/2026-08-02-library-comparison-design.md`](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/docs/plans/2026-08-02-library-comparison-design.md) §4
 
 The Phase 3.14 comparison runs each library **at its own defaults**, with one matched element: the
 embedder is pinned to `all-MiniLM-L6-v2` for every entrant (design §2). "Default" is not

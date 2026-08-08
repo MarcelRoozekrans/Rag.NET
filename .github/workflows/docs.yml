@@ -1,0 +1,110 @@
+name: Docs
+
+# Builds the documentation site on every pull request. That is the whole point: a broken link or a
+# dependency drift becomes a red check on the change that caused it, instead of a discovery months
+# later. No CI job did this before Phase 4.5 — see docs/plans/2026-08-08-docs-site-and-samples-design.md
+# §0 for the two independent ways the site was broken while every other check stayed green.
+#
+# Deployment is deliberately not wired here: the site is configured for `rag-net.github.io/Rag.NET/`
+# (docusaurus.config.ts's organizationName: rag-net), the repository is MarcelRoozekrans/Rag.NET,
+# and GitHub Pages is not enabled anywhere. That is a decision this workflow does not make; §2 of
+# the design records the evidence.
+#
+# Path-filtered on purpose, the same way ci.yml is not: ci.yml builds and tests .NET on every push
+# and pull request unconditionally, because nothing in this repository is safely "code-only" against
+# a 64-project solution. This site is a genuinely separate deliverable — package.json, the docs/
+# tree and the site config are the entire input to `npm run build`, and .NET source changes cannot
+# affect it. Filtering means a PR touching only src/ or tests/ does not pay for a Node install and a
+# webpack build it cannot have broken, while a PR touching docs/, package.json or the site config
+# still gets the check that exists specifically to catch drift in those files.
+on:
+  push:
+    branches: [main]
+    paths:
+      # docs/ is the site's content, and holds far more than markdown (React/MDX components,
+      # front-matter-adjacent assets), so the pattern is deliberately not narrowed to *.md.
+      - "docs/**"
+      - "package.json"
+      - "package-lock.json"
+      - "docusaurus.config.ts"
+      - "sidebars.ts"
+      - "babel.config.js"
+      - "tsconfig.json"
+      # src/css is Docusaurus's customCss (docusaurus.config.ts), not the .NET source tree — this
+      # repository's src/ is 99% .NET projects (each with its own package README.md, irrelevant to
+      # this build) and happens to hold the site's one customisation point alongside them.
+      - "src/css/**"
+      # src/pages, src/theme and static/ do not exist yet, but are Docusaurus's own conventional
+      # locations for custom pages, swizzled components and static assets — listed so that adding
+      # any of them starts being covered by this check on the same commit, not the next one.
+      - "src/pages/**"
+      - "src/theme/**"
+      - "static/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "package.json"
+      - "package-lock.json"
+      - "docusaurus.config.ts"
+      - "sidebars.ts"
+      - "babel.config.js"
+      - "tsconfig.json"
+      - "src/css/**"
+      - "src/pages/**"
+      - "src/theme/**"
+      - "static/**"
+      - ".github/workflows/docs.yml"
+  # Same reasoning as ci.yml: GitHub does not trigger workflows for a push carrying more than 1,000
+  # commits, so this is what lets a re-run happen after a flake or a runner outage without an empty
+  # commit, and it is what would let this workflow be started at all if the path filters above ever
+  # needed to be re-validated against history without a matching push.
+  workflow_dispatch:
+
+# Same shape as ci.yml: without cancel-in-progress, three pushes to a branch queue three complete
+# builds, and the first two are already irrelevant before they start.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# This job reads the repository and nothing else. The default is repository-configurable and
+# therefore not a default at all, so it is stated here — the same rule ci.yml follows.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Generous for a build measured in minutes, far below the 360-minute default — the same
+    # reasoning as ci.yml's timeout: a hung install or a hung webpack compile should be reported
+    # promptly, not silently burn runner time.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Pinned explicitly rather than left to the runner default. This entire phase exists because
+      # a floating transitive dependency (@docusaurus/core's unpinned `webpack: ^5.95.0`) broke the
+      # build at a time nobody chose; a floating Node default on the runner image is the same shape
+      # of risk one layer up. 24 matches ci.yml's commitlint job and the version this repair was
+      # verified against (docs/plans/2026-08-08-docs-site-and-samples-implementation.md's Tech
+      # Stack line): Node 24, npm.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # Works because Task 1 committed package-lock.json — before that there was no lockfile and
+      # `npm ci` had nothing to install from. This is also what gives the Docusaurus 3.10.2 upgrade
+      # a shelf life: without a committed lockfile, the next fresh install picks new transitive
+      # versions again and the same class of break recurs.
+      - name: Install
+        run: npm ci
+
+      # Fails on broken internal links: docusaurus.config.ts sets `onBrokenLinks: 'throw'`, its
+      # default and the setting Task 2 kept — the design forbids weakening it to 'warn'. This step
+      # must not be softened with `continue-on-error`; a green build over broken links is the exact
+      # defect this phase exists to remove.
+      - name: Build
+        run: npm run build

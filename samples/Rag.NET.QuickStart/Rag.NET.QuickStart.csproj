@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Rag.NET.QuickStart</RootNamespace>
+    <!-- Not shippable: a demo, not a package. Without this the SDK default packed it into
+         every solution pack with a placeholder description. PackabilityTests guards it. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Deliberately just Rag.NET.Hosting: AddRagNetPipelineFromConfiguration wires the chat
+         client, embedding generator, and vector store from configuration (with startup
+         validation that names the setting and the config key), so this sample carries no
+         provider or vector-store package reference of its own — the point of the demo is that
+         Rag.NET.Hosting is enough. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Hosting\Rag.NET.Hosting.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="documents\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

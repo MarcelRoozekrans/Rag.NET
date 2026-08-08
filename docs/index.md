@@ -16,26 +16,27 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 |------|---------------|
 | [Why RAG?](why-rag.md) | What RAG is, the problem it solves, and when Rag.NET is the right tool |
 | [Getting Started](getting-started.md) | Dependency injection setup, ingesting a document, and running a Q&A loop |
-| [Architecture](architecture.md) | Pipeline internals, data-flow diagram, all interfaces and core models |
-| [Ingestion](ingestion.md) | Parsers, `DocumentMetadata`, `IngestionOptions`, progress reporting |
-| [Data Providers](data-providers.md) | Cloud storage and web connectors; OAuth token management; delta ingestion |
-| [Chunking](chunking.md) | `FixedSize`, `Recursive`, and `TokenAware` strategies with trade-off table |
-| [Retrieval](retrieval.md) | `RetrievalOptions`, semantic search, hybrid BM25+RRF search, metadata filtering |
-| [Post-Retrieval](post-retrieval.md) | Lost-in-the-Middle reordering and redundancy filtering |
-| [Conversational Memory](memory.md) | In-session history trimming, token-budget management, and persistent cross-session recall |
-| [Vector Stores](vector-stores.md) | pgvector, Qdrant, Azure AI Search; hybrid search support matrix |
-| [Evaluation](evaluation.md) | `EmbeddingDistanceEvaluator`, `EvaluationSample`, score interpretation |
-| [Observability](observability.md) | `ILogger` structured logging, OpenTelemetry `ActivitySource`, Polly resilience |
-| [Extending](extending.md) | Implementing `IDocumentParser`, `IVectorStore`, `IChunkingStrategy` |
-| [Mediator](mediator.md) | Dispatching ingest/retrieve/delete commands via `Rag.NET.Mediator` and ZeroAlloc.Mediator |
-| [OSS Libraries](oss-libraries.md) | Every open-source dependency used, where it is used, and why |
+| [Architecture](guide/architecture.md) | Pipeline internals, data-flow diagram, all interfaces and core models |
+| [Ingestion](guide/ingestion.md) | Parsers, `DocumentMetadata`, `IngestionOptions`, progress reporting |
+| [Data Providers](guide/data-providers.md) | Cloud storage and web connectors; OAuth token management; delta ingestion |
+| [Chunking](guide/chunking.md) | `FixedSize`, `Recursive`, and `TokenAware` strategies with trade-off table |
+| [Retrieval](guide/retrieval.md) | `RetrievalOptions`, semantic search, hybrid BM25+RRF search, metadata filtering |
+| [Post-Retrieval](guide/post-retrieval.md) | Lost-in-the-Middle reordering and redundancy filtering |
+| [Conversational Memory](guide/memory.md) | In-session history trimming, token-budget management, and persistent cross-session recall |
+| [Vector Stores](guide/vector-stores.md) | pgvector, Qdrant, Azure AI Search; hybrid search support matrix |
+| [Evaluation](guide/evaluation.md) | `EmbeddingDistanceEvaluator`, `EvaluationSample`, score interpretation |
+| [Observability](guide/observability.md) | `ILogger` structured logging, OpenTelemetry `ActivitySource`, Polly resilience |
+| [Extending](guide/extending.md) | Implementing `IDocumentParser`, `IVectorStore`, `IChunkingStrategy` |
+| [Mediator](guide/mediator.md) | Dispatching ingest/retrieve/delete commands via `Rag.NET.Mediator` and ZeroAlloc.Mediator |
+| [OSS Libraries](reference/oss-libraries.md) | Every open-source dependency used, where it is used, and why |
 | [Answer Engines](answer-engines.md) | MapReduce, Refine, and Dispatching answer engine strategies |
 | [Query Techniques](query-techniques.md) | HyDE and Multi-Query retrieval expansion |
 
 ## Quick links
 
-- Sample application: `samples/Rag.NET.Sample` — interactive console app with Ollama and OpenAI support
-- Benchmark results: [benchmarks.md](benchmarks.md)
+- Sample applications: `samples/Rag.NET.Sample` — interactive console app (PgVector, Ollama/OpenAI)
+  — and `samples/Rag.NET.QuickStart` — a config-driven walkthrough built on `Rag.NET.Hosting`
+- Benchmark results: [benchmarks.md](reference/benchmarks.md)
 - Feature roadmap and design notes: `docs/plans/`
 - GitHub README: covers the quick-start and package list
 

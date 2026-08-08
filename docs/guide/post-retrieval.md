@@ -126,7 +126,7 @@ var response = await pipeline.AskAsync("question", new RagOptions
 
 The re-embedding call dominates the cost. For a batch of 10 chunks, expect 10–50 ms depending on your embedding provider. The cosine similarity loop is O(accepted × candidates) — quadratic in `TopK` — but is CPU-only and typically under 1 ms for `TopK <= 20`.
 
-See [benchmarks](benchmarks.md#redundancy-filter) for measured values.
+See [benchmarks](../reference/benchmarks.md#redundancy-filter) for measured values.
 
 ### API reference
 
