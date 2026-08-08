@@ -10,11 +10,53 @@ required.
 dotnet tool install -g Rag.NET.Mcp.Tool
 ```
 
-## Setup
+## Configure
 
-The tool reads its pipeline configuration (embedding provider, vector store, chat client)
-from an `appsettings.json` next to the working directory, with environment variables
-overriding individual values — the standard .NET configuration layering.
+The tool wires its pipeline — chat client, embedding generator, vector store — from an
+`appsettings.json` next to its working directory, or from environment variables (using `__`
+as the section separator, e.g. `RagNet__ChatClient__ApiKey`) — the standard .NET
+configuration layering `WebApplication.CreateBuilder(args)` already provides. A sample
+`appsettings.sample.json`, showing every supported `VectorStore:Kind`, ships alongside the
+installed binaries; copy it to `appsettings.json` and fill in real values.
+
+```json
+{
+  "RagNet": {
+    "ChatClient": {
+      "Endpoint": "https://api.openai.com/v1",
+      "ApiKey": "…",
+      "Model": "gpt-4o-mini"
+    },
+    "Embeddings": {
+      "Endpoint": "https://api.openai.com/v1",
+      "ApiKey": "…",
+      "Model": "text-embedding-3-small",
+      "VectorDimensions": 1536
+    },
+    "VectorStore": {
+      "Kind": "InMemory | Qdrant | PgVector",
+      "Qdrant": { "Host": "…", "Port": 6334, "CollectionName": "…" },
+      "PgVector": { "ConnectionString": "…" }
+    }
+  }
+}
+```
+
+The chat client and embedding generator both go through one OpenAI-compatible endpoint —
+that covers OpenAI, Azure OpenAI, OpenRouter, Ollama, and LM Studio, since they all speak the
+same wire API. The vector store is one of three kinds: `InMemory` (the default, zero setup,
+but **every ingested document is lost when the process exits** — a warning is logged at
+startup), `Qdrant`, or `PgVector`.
+
+A misconfigured setting — an unrecognised `Kind`, a missing `Endpoint`/`Model`, an absent or
+non-positive `VectorDimensions` — fails at startup with a message naming both the setting and
+the configuration key that fixes it, rather than failing the first time an MCP client calls a
+tool.
+
+Need a provider outside that set — Weaviate, Pinecone, Chroma, Azure AI Search, ONNX
+embeddings, or a bespoke `IChatClient`? Host the `Rag.NET.Mcp` library directly in your own
+application and register whatever you like; this tool covers the bounded, OpenAI-compatible
+set above and nothing wider.
 
 ## Run
 

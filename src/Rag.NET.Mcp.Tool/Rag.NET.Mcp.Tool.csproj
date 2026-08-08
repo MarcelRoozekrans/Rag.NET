@@ -10,15 +10,40 @@
          emitted a codeless "packaging has been disabled" advisory and produced nothing.
          PackabilityTests guards the pairing. -->
     <IsPackable>true</IsPackable>
-    <Description>Self-contained MCP server for Rag.NET. Configure via appsettings.json or environment variables.</Description>
+    <Description>Self-contained MCP server for Rag.NET, configured entirely via appsettings.json or environment variables — an OpenAI-compatible chat/embedding endpoint plus InMemory, Qdrant, or PgVector.</Description>
     <PackageTags>$(PackageTags);mcp;model-context-protocol;dotnet-tool</PackageTags>
-    <!-- No test anywhere runs this host: it is a Program.cs scaffold that no test project
-         references. Honest state, recorded; getting it above none is later Milestone 4 work. -->
-    <VerifiedBy>none</VerifiedBy>
+    <!-- unit: Rag.NET.Mcp.Tool.Tests exercises the argument parsing (ProgramArguments) and the
+         X-Api-Key authorization decision (ApiKeyAuthorization) that Program.cs delegates to —
+         both pulled into named internal types for exactly this reason, since a top-level
+         program's local functions compile private and are unreachable from a test assembly.
+         What `unit` does NOT cover: choosing between the stdio and HTTP hosts, and actually
+         running either one — those are launching a process or a Kestrel listener, not a
+         computation, and are not exercised here. See ProgramArguments' remarks. -->
+    <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Mcp.Tool.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Rag.NET.Mcp\Rag.NET.Mcp.csproj" />
+    <ProjectReference Include="..\Rag.NET.Hosting\Rag.NET.Hosting.csproj" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Sample configuration showing every supported RagNet:VectorStore:Kind. The SDK already
+         includes *.json under Content by default (Microsoft.NET.Sdk.Web); Update, not Include,
+         avoids NETSDK1022's duplicate-item error. CopyToOutputDirectory is the load-bearing part
+         for a PackAsTool package: it puts the file in the published output, which is what
+         "dotnet tool install -g" actually extracts (tools/<tfm>/any/, next to the installed
+         binaries) — the content/ and contentFiles/ entries the SDK also packs by default are not
+         extracted for a global tool at all. Confirmed against the packed .nupkg, not assumed. -->
+    <Content Update="appsettings.sample.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 </Project>

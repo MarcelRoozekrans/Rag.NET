@@ -331,6 +331,11 @@ future reader can tell the difference between "never existed" and "dealt with".
   thing that will host ASP.NET middleware end to end, and its first tests belong with that work).
   Assignments made at 4.0's close, not in design §5, which predates the ledger's findings; the
   release gate holds either way.
+  **The `Rag.NET.Mcp.Tool` half closed 2026-08-08 in Phase 4.6** (`8762c181`): its argument
+  parsing (`ProgramArguments`) and `X-Api-Key` authorization decision (`ApiKeyAuthorization`)
+  moved to named `internal` types, `Rag.NET.Mcp.Tool.Tests` (16) covers both, and its entry in
+  `PackageVerificationTests.PackagesAllowedToDeclareNone` is removed in the same commit —
+  `VerifiedBy=unit`. **Only `Rag.NET.Security.AspNetCore` → Phase 4.5 remains open.**
 - **61 of 71 packages have only ever been exercised against fakes** (measured by Phase 4.0's
   ledger, 2026-08-02: `unit` 61, `container` 8, `recorded` 0, `live` 0, `none` 2). Not a defect
   list — the *shape* of the risk: `VerifiedBy=unit` is the state late chunking was in for five
@@ -412,6 +417,22 @@ future reader can tell the difference between "never existed" and "dealt with".
   confirming that shape is intended (the Cl100kBase vocabulary and MCP stack dominate it) —
   small, but it must be a decision rather than a default before the tool is published.
   → **Phase 4.6** (which owns `Rag.NET.Mcp.Tool`'s first tests), owed before **6.3** publishes.
+  **Decided and re-measured 2026-08-08 (Phase 4.6).** The 1.87 MB figure is superseded: the tool
+  now carries the providers it needs to actually work, and packs at **4.97 MB, 55 entries** — 2.7×
+  the previous shape. Every increment is traceable to the design's bounded provider set
+  (`docs/plans/2026-08-08-executable-configuration-design.md` §1.1–§1.2), uncompressed:
+  **`OpenAI.dll` 4.98 MB**, the Qdrant stack (`Qdrant.Client` + `Google.Protobuf` +
+  `Grpc.Net.Client`) ~2.0 MB, **`Npgsql` 1.41 MB** for PgVector, on top of the pre-existing
+  `ModelContextProtocol.Core` and Cl100kBase vocabulary (~1.75 MB together). **This shape is
+  intended.** `OpenAI.dll` alone is the largest single item and is unavoidable given §1.1's
+  decision to standardise on one OpenAI-compatible client — that one dependency is what buys
+  OpenAI, Azure OpenAI, OpenRouter, Ollama and LM Studio rather than four separate providers, and
+  the alternative measured here is the shape the phase started from: 1.87 MB of tool that could
+  not register a pipeline, could not register a transport, and logged over its own protocol
+  stream. A working 5 MB tool is the better package. Anything beyond the bounded set is served by
+  hosting `Rag.NET.Mcp` directly (§1.3) rather than by growing this closure further — which is the
+  line that must hold, since the original 19 MB was reached one reasonable-looking reference at a
+  time.
 - **GoogleDrive's fourth field mask has no test** (found by Phase 4.10, `b3f026c`, 2026-08-05):
   widening `CreatedAt`/`UpdatedAt` support touched four identical field-selection sites — whole-drive
   `Files.List`, folder-traversal `Files.List`, and both pages of `Changes.List` — and three are
@@ -492,6 +513,26 @@ future reader can tell the difference between "never existed" and "dealt with".
   → no phase currently owns adding a public enumeration surface to `ContentTypeMap`; stays
   unscheduled until one does, re-justified rather than silently dropped — the fail-loud property is
   why this ranks lowest-urgency of the three debts recorded here.
+- **`ragnet evaluate` is not implemented** (Phase 4.6, `2c2e6d61`, 2026-08-08 — deferred
+  deliberately, not half-built): `Rag.NET.Evaluation`'s evaluators (`EmbeddingDistanceEvaluator`,
+  `LlmJudgeEvaluator`) score `EvaluationSample` instances that already carry a *predicted* answer,
+  and `AddRagNetPipelineFromConfiguration` registers no `IRagEvaluator`. A working command needs a
+  dataset file format this repository does not have anywhere — nothing parses a set of
+  question/reference pairs into the shape an evaluator scores — plus an evaluator-selection
+  decision, neither of which is a thin call onto an existing seam the way `ingest`/`query` are.
+  Running `ragnet evaluate` prints this reason to stderr and exits non-zero rather than
+  half-working.
+  → no phase currently owns designing a dataset file format for `Rag.NET.Evaluation`; stays
+  unscheduled until one does, re-justified rather than silently dropped — Milestone 5's evaluation
+  work is the closest existing candidate, but none of its four phases scopes this.
+- **`Rag.NET.Cli`'s and `Rag.NET.Mcp.Tool`'s `VerifiedBy=unit` excludes host selection and
+  process-level behaviour** (Phase 4.6, 2026-08-08, documented in each package's own csproj
+  remark rather than only here): choosing between the CLI's ingest/query host and
+  `Rag.NET.Mcp.Tool`'s stdio-vs-HTTP host, and actually running either one, is launching a process
+  or a Kestrel listener — not a computation a unit test asserts on. Both packages' command
+  handlers and argument parsing are genuinely covered; the host wiring around them is not.
+  → **Phase 6.2** (Raise the Floor on Unit-Only Packages), which already owns auditing every
+  `unit`-verified package's coverage before the ledger can call it more than "exercised at all".
 
 ### Closed
 
@@ -1375,7 +1416,7 @@ milestone no longer tags anything, and every other criterion is unchanged):
 - [ ] Full solution builds 0 warnings / 0 errors from a clean restore
 - [ ] All test projects passing — **and no test is gated behind a condition nothing satisfies** (`TestGateTests`, Phase 4.0). **The gate half holds as of 2026-08-03** (Phase 4.1): both `KnownUnsatisfiable` ledgers are empty, and every formerly-unsatisfiable gate is satisfiable by a fenced procedure in `docs/reference/ci.md` — `ENABLE_OCR` and `RAGNET_TESSDATA` by the `-p:EnableOcr=true` source-build procedure, **executed green on 2026-08-03** (the gated test's first run anywhere); `RAGNET_DOCINTEL_ENDPOINT`/`_KEY` by the `az` F0 free-tier provisioning procedure — written and satisfiable, deliberately not executed, the live run being Phase 6.1's. The box stays open on the all-projects half, checked at the milestone's close. **Corrected 2026-08-04 (Phase 4.8): the clause that used to end this note — "4.1's own workflow changes have not yet had a genuine Actions run" — is no longer true**; the last DoD criterion below now cites the run that made it false. This box stays open regardless: it needs every project passing on the tree at the milestone's close, and Phase 4.8's own tree has not itself been through Actions yet
 - [x] **Every `features.md` Done claim names code that exists** (`FeatureClaimTests`, Phase 4.0; **holding as of 2026-08-03**: both false claims were corrected at Milestone 3's close, `81163af` — `KnownFalseClaims` is empty and all 72 package claims across 53 Done sections are verified directly. Failing knowingly from 4.0's sweep until then, with the two claims allow-listed under owners → 4.4 and 4.1; both closed early instead, in the Closed debts list)
-- [ ] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0; **failing today, honestly**: `Rag.NET.Mcp.Tool` → 4.6, `Rag.NET.Security.AspNetCore` → 4.5)
+- [ ] **No package declares `VerifiedBy=none`** (the ledger's release gate, Phase 4.0; **failing today, honestly**: `Rag.NET.Security.AspNetCore` → 4.5. `Rag.NET.Mcp.Tool` closed 2026-08-08 in Phase 4.6 — `VerifiedBy=unit`, see the debts list above)
 - [x] CI pipeline builds, tests, and produces NuGet packages (the build-and-test half has been green since Phase 3.5; the pack half shipped in Phase 4.1 — `pack-validate` packs every package [all 70 at the time; **66** since Phase 4.7's decomposition, 2026-08-04, with `ExpectedPackageCount` moved by stated arithmetic], validates them as a failing test step and pushes them to a local feed twice on every push, `publish-nuget` gated to 6.3. **Ticked 2026-08-04 (Phase 4.8), on the evidence this box asked for rather than the wiring**: PR #18 — Phase 4.1's own branch — ran `ci.yml` for real and gated its own merge on it: `commitlint`, `pack-validate` and both `build-test` legs all green (run **30828032049**, 2026-08-03). Every push to `main` since has run the identical pipeline for real, including the case this repository's own record predicted would eventually happen: the Qdrant `SearchAsync` break went red on a genuine `build-test` run on `main` (**30919869612**, 2026-08-04, no commit involved) and the fix went green on the next one (**30926805555**). The pipeline has now executed, repeatedly, against real pushes — this criterion is about the mechanism, and the mechanism is proven. What it does **not** cover: Phase 4.8's own tree has never itself been through Actions — this branch is unpushed, and the honest gap moves to the DoD's all-projects criterion above, not this one)
 
 **What these guards do not fix** (design §7, stated so the milestone does not claim more than it
@@ -2464,9 +2505,131 @@ this closing pass, `--no-incremental`).
 **Goal:** End-to-end runnable samples covering the main library scenarios.
 **Backlog items:** Sample Applications
 
-### Phase 4.6: Rag.NET CLI Tool [status: pending]
+### Phase 4.6: Rag.NET CLI Tool [status: complete]
 **Goal:** `dotnet tool` for ingest/query/evaluate against a configured pipeline.
 **Backlog items:** Rag.NET CLI Tool
+**Plan:** `docs/plans/2026-08-08-executable-configuration-design.md` + `2026-08-08-executable-configuration-implementation.md`
+**Completed:** 2026-08-08 (**scoped as "build a CLI"; became "make an executable configurable" the
+moment the repository's one existing `dotnet tool` was measured before writing a second one.**
+`Rag.NET.Mcp.Tool` could not work as published, in three separate ways, all hidden behind
+`<VerifiedBy>none</VerifiedBy>`: **(1) no pipeline** — `RagMcpTools(IRagPipeline)` needs one from
+DI, `AddRagNetMcpServer()` never registered one, and `IConfiguration` appeared nowhere in either
+project, so every MCP tool call failed; **(2) no transport** —
+`McpServerBuilder.WithStdioTransport()`/`WithHttpTransport()` set fields on an
+`McpTransportOptions` singleton nothing read: HTTP threw at `app.MapMcp()`, and stdio — the
+default, and what every MCP client uses — silently started a bare Kestrel web server instead of
+speaking MCP; **(3) logging to stdout**, the exact channel MCP JSON-RPC travels on, so even a
+fixed transport would have had its protocol stream corrupted by log lines. `WithApiKey()` was
+equally fake — nothing read it either. **All three were found by running the tool**, which nobody
+had ever done — the ledger was doing its job by recording an honest `none`; nothing was reading
+the record. That is this phase's transferable lesson, not the three bugs individually.
+
+Three decisions collapse the provider matrix rather than widening it (design §1): one
+OpenAI-compatible client (`Microsoft.Extensions.AI.OpenAI`) covers OpenAI, Azure OpenAI,
+OpenRouter, Ollama and LM Studio; a bounded three-kind vector-store set (`InMemory`, `Qdrant`,
+`PgVector`) with real fixtures in this repository; anything else is served by hosting
+`Rag.NET.Mcp` directly, stated as the designed answer rather than an apology (§1.3).
+
+**Task 1 (`802ef0ea`) adds `Rag.NET.Hosting`, a new, deliberately non-packable seam package** —
+`AddRagNetPipelineFromConfiguration(IServiceCollection, IConfiguration)` binds a `RagNet` section
+(`ChatClient`, `Embeddings`, `VectorStore`; `VectorDimensions` sits under `Embeddings`, not the
+store, because it is a property of the embedding model every store must agree with) and registers
+a full `IRagPipeline`. **Not in `Rag.NET.Mcp`** — that package is what a user references to host
+MCP tools in their own application (design §1.3's path), and putting Qdrant, PgVector and
+`Microsoft.Extensions.AI.OpenAI` into it would force those on every such user, the 19 MB mistake
+in miniature and the exact thing Phase 4.7 existed to undo. `Rag.NET.Mcp.Tool` references
+`Rag.NET.Hosting`; so does the CLI; `Rag.NET.Mcp` does not. Ships at `VerifiedBy: unit` with tests
+in the same commit — a new package arriving at `none` is what this phase exists to stop repeating.
+
+**Task 2 (`8cdba242`)** makes a misconfigured tool fail while the host is being built rather than
+the first time an MCP client invokes a tool and hits an unresolvable-service error: every
+validation message names both the setting and the `RagNet:…` key that fixes it (an unknown
+`VectorStore.Kind`, missing kind-specific settings, a missing chat/embeddings endpoint or model,
+an absent/non-positive `VectorDimensions`), aggregated into one exception rather than a
+one-error-at-a-time loop. What cannot be validated — whether the configured `VectorDimensions`
+matches what the endpoint actually returns — is documented rather than faked; that mismatch
+surfaces as a vector-store failure at first ingest.
+
+**Task 3 (`29591b5d`)** makes the `InMemory` default loud: resolving `IVectorStore` for an
+explicit or defaulted `InMemory` kind logs a warning naming the consequence (every ingested
+document is lost when the process exits) and the fix. The guard against repeating exactly the
+silence `UseCostBudgeting()`'s in-memory cost ledger already cost this repository once, with real
+money behind it.
+
+**Task 4 (`8762c181`) moves `Rag.NET.Mcp.Tool` off `VerifiedBy: none`** — see the debts list
+above for the ledger arithmetic. What `VerifiedBy: unit` does **not** cover, stated rather than
+implied: choosing between the stdio and HTTP hosts, and actually running either one — launching a
+process or a Kestrel listener is not a unit-testable computation.
+
+**Task 5 (`11dc7810`) wires `Program.cs` to the seam** and deletes the impossible header comment
+("Edit this file after install") — it cannot be followed; the file is compiled into the installed
+tool. Replaced with what is true now: configure via `appsettings.json` or environment variables,
+host `Rag.NET.Mcp` yourself for providers outside the bounded set. A sample `appsettings.json`
+ships alongside the installed binaries, confirmed by unzipping the packed `.nupkg` rather than
+assumed — Phase 4.7's own "intent and artefact differ" lesson, applied again. **Running the built
+tool for the first time — this task, not a separate audit — is what found Task 5a.**
+
+**Task 5a (`9dd5b4e6`, a `BREAKING CHANGE`, not in the original plan) makes transport registration
+real.** `AddRagNetMcpServer()` now returns the SDK's own `IMcpServerBuilder` as
+`McpServerBuilder.Server`; `WithStdioTransport()` calls the SDK's `WithStdioServerTransport()`
+directly (available through `Rag.NET.Mcp`'s existing `ModelContextProtocol` reference), while the
+real `WithHttpTransport()` — living in `ModelContextProtocol.AspNetCore`, which `Rag.NET.Mcp`
+deliberately does not reference — is called by the consumer through `.Server` instead of through a
+wrapper that package cannot honestly provide. The broken no-op methods are deleted outright rather
+than left as a silent trap, meeting the plan's non-negotiable: **a transport method that silently
+does nothing must become impossible — met by making it a compile error** for any caller still
+relying on them. `Program.cs`'s stdio path also moved off `WebApplication` (which was starting
+Kestrel even for stdio) onto a plain `Host.CreateApplicationBuilder` host, with console logging
+redirected to stderr. Verified by running the built `ragnet-mcp.exe` directly: stdio produced
+exactly one JSON-RPC response line on stdout with all logging on stderr and no port bound; HTTP's
+`/mcp` returned 200, and the `X-Api-Key` middleware genuinely rejected/accepted requests. Tests
+assert what the SDK registered into `IServiceCollection`, not the package's own flag — asserting
+the flag is exactly what let the original bug ship undetected.
+
+**Task 6 (`55da2827`) decided the package shape** — recorded in full above, in this same debts
+list: re-measured at **4.97 MB, 55 entries**, 2.7× the pre-repair 1.87 MB, and judged intended.
+
+**Task 7 (`2c2e6d61`) builds `Rag.NET.Cli`, the second consumer of the seam, not a second
+scaffold**: `ragnet ingest <path> [--overwrite]` and `ragnet query "<question>" [--top-k N]`
+against a pipeline built by `AddRagNetPipelineFromConfiguration` — the same configuration, the
+same startup validation, the same `InMemory` warning. Command handlers (`CliArguments`,
+`IngestCommand`, `QueryCommand`) are `internal` types reachable from `Rag.NET.Cli.Tests` via
+`InternalsVisibleTo`, pure computations over an already-resolved `IRagPipeline` — the same shape
+`Rag.NET.Mcp.Tool`'s `ProgramArguments` established, for the same reason: a top-level program's
+local functions compile `private` onto its generated `Program` class and are unreachable from any
+test assembly. Ships at `VerifiedBy: unit` with 35 tests **landing in this same commit**, not
+added later — the arriving-at-`none` mistake this phase exists to stop repeating. `Rag.NET.Cli` is
+plain `Microsoft.NET.Sdk`, not `.Sdk.Web`: it never accepts an inbound connection, so there is no
+reason to carry the ASP.NET Core shared framework. Added to `Rag.NET.slnx`, confirmed present.
+`ragnet evaluate` prints its deferral reason to stderr and exits non-zero rather than half-working
+— see the new debt below. The published package total moved **66 → 67**
+(`ExpectedPackageCount`, `Rag.NET.PackageValidation.Tests`); `Rag.NET.Hosting` is deliberately
+**not** packable — an internal wiring seam, referenced by `ProjectReference`, never published.
+
+**Two traps recorded for whoever next copies this phase's pattern, neither a defect in what
+shipped:** `Host.CreateApplicationBuilder(args)` throws on positional arguments — the default
+command-line configuration provider expects `--key value` pairs, so `Rag.NET.Cli`'s `Program.cs`
+deliberately builds with `HostApplicationBuilderSettings` and `Args` left unset, keeping its own
+bare-path/unquoted-question arguments out of that provider entirely while appsettings.json and
+environment variables still layer in normally. And ErrorProne.NET's EPC13 flags any type named
+`Result`, regardless of namespace — not just `Rag.NET`'s own `Result<T, TError>` — which is why
+`IngestCommand`/`QueryCommand` return an `Outcome`, not a `Result`, a repo-wide gotcha rather than
+a local naming choice.
+
+**Counts:** `Rag.NET.Hosting.Tests` **27**, `Rag.NET.Mcp.Tests` **11** (Task 5a rewrote these to
+assert what the SDK registered, not the package's own flag), `Rag.NET.Mcp.Tool.Tests` **16**,
+`Rag.NET.Cli.Tests` **35** — four new or newly-tested projects; `Rag.NET.Tests` **1180** and
+`Rag.NET.RepoConventions.Tests` **48 + 1 skip**, both unchanged baselines throughout.
+
+**Closes:** the `Rag.NET.Mcp.Tool` half of the "two packages never exercised" debt (only
+`Rag.NET.Security.AspNetCore` → 4.5 remains open, both above) and the `Rag.NET.Mcp.Tool` package
+shape debt (decided at Task 6, above). **Opens, and left open with a stated reason:** `ragnet
+evaluate` needs a dataset file format that does not exist anywhere in this repository yet, and
+`Rag.NET.Cli`/`Rag.NET.Mcp.Tool`'s `unit` coverage does not reach host selection or process-level
+behaviour — both recorded above, neither faked closed here. **No Definition-of-Done box is ticked
+by this entry**: Milestone 4's "All planned phases complete" stays open (4.5 remains pending) and
+"No package declares `VerifiedBy=none`" stays open (`Rag.NET.Security.AspNetCore`) — both updated
+above to say so rather than left stale.)
 
 ## Milestone 5: Evaluation Depth [status: pending]
 **Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:

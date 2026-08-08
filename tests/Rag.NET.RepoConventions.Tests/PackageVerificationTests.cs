@@ -64,13 +64,6 @@ public sealed class PackageVerificationTests
     private static readonly Dictionary<string, string> PackagesAllowedToDeclareNone =
         new(StringComparer.Ordinal)
         {
-            // Host scaffold for the MCP tool: an executable entry point no test project
-            // references, found so by Phase 4.0's ledger sweep. Owned by Phase 4.6, which
-            // builds out the MCP tool host and brings its first tests with it.
-            ["Rag.NET.Mcp.Tool"] =
-                "host scaffold no test project references; Phase 4.6 owns bringing it above " +
-                "none.",
-
             // Two types and zero test references, found so by Phase 4.0's ledger sweep.
             // Owned by Phase 4.5, the security hardening pass.
             ["Rag.NET.Security.AspNetCore"] =

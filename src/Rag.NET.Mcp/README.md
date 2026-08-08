@@ -34,13 +34,33 @@ using var host = builder.Build();
 
 ## Example
 
-For multiple concurrent clients, serve HTTP/SSE with API-key auth instead of stdio:
+For multiple concurrent clients, serve HTTP/SSE instead of stdio. `Rag.NET.Mcp` deliberately does
+not reference `ModelContextProtocol.AspNetCore` — taking that dependency would force it on every
+consumer hosting MCP tools in a non-web process — so HTTP transport is configured through the
+`IMcpServerBuilder` the MCP SDK itself returns, exposed here as `McpServerBuilder.Server`. Add
+`ModelContextProtocol.AspNetCore` to your own project to reach it:
 
 ```csharp
 builder.Services
     .AddRagNetMcpServer()
-    .WithHttpTransport(5050)
-    .WithApiKey("your-secret");
+    .Server
+    .WithHttpTransport();
+
+var app = builder.Build();
+
+// API-key auth is your own middleware; Rag.NET.Mcp only wires the transport.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Headers["X-Api-Key"] != "your-secret")
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+
+    await next(context);
+});
+
+app.MapMcp("/mcp");
 ```
 
 Claude Desktop configuration for the stdio variant:

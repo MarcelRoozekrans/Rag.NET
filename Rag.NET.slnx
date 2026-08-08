@@ -68,6 +68,8 @@
     <Project Path="src/Rag.NET.WebSearch.Tavily/Rag.NET.WebSearch.Tavily.csproj" />
     <Project Path="src/Rag.NET.Benchmarks.Quality/Rag.NET.Benchmarks.Quality.csproj" />
     <Project Path="src/Rag.NET.Telemetry/Rag.NET.Telemetry.csproj" />
+    <Project Path="src/Rag.NET.Hosting/Rag.NET.Hosting.csproj" />
+    <Project Path="src/Rag.NET.Cli/Rag.NET.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Security.IntegrationTests/Rag.NET.Security.IntegrationTests.csproj" />
@@ -90,6 +92,7 @@
     <Project Path="tests/Rag.NET.VectorStores.Pinecone.Tests/Rag.NET.VectorStores.Pinecone.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Html.Tests/Rag.NET.Parsers.Html.Tests.csproj" />
     <Project Path="tests/Rag.NET.Mcp.Tests/Rag.NET.Mcp.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Mcp.Tool.Tests/Rag.NET.Mcp.Tool.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Audio.Tests/Rag.NET.Parsers.Audio.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Archive.Tests/Rag.NET.Parsers.Archive.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Email.Tests/Rag.NET.Parsers.Email.Tests.csproj" />
@@ -138,6 +141,8 @@
     <Project Path="tests/Rag.NET.Benchmarks.Quality.Tests/Rag.NET.Benchmarks.Quality.Tests.csproj" />
     <Project Path="tests/Rag.NET.Benchmarks.Quality.IntegrationTests/Rag.NET.Benchmarks.Quality.IntegrationTests.csproj" />
     <Project Path="tests/Rag.NET.Telemetry.Tests/Rag.NET.Telemetry.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Hosting.Tests/Rag.NET.Hosting.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Cli.Tests/Rag.NET.Cli.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />

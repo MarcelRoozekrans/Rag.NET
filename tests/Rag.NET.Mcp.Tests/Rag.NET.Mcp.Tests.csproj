@@ -13,5 +13,9 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
     <PackageReference Include="NSubstitute" />
+    <!-- Test-only: proves McpServerBuilder.Server is the real SDK builder by calling the actual
+         ASP.NET Core WithHttpTransport() extension through it. Rag.NET.Mcp itself must not take
+         this dependency (design §1.3): this is the test project, not the shipped package. -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>
 </Project>
