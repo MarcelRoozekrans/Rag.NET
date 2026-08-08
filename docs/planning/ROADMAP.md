@@ -1,4 +1,4 @@
-# Project Roadmap
+﻿# Project Roadmap
 
 Backlog source: the unchecked items in `docs/reference/features.md` (31 items as of 2026-07-24).
 Every backlog item is assigned to exactly one phase below. When a phase completes, tick the
@@ -290,6 +290,25 @@ future reader can tell the difference between "never existed" and "dealt with".
   criterion holds it [now **Phase 6.1**, Milestone 6 — re-pointed 2026-08-03 at the v1.0
   postponement, with the recording criterion, which moved there as
   recording-or-recorded-reason].
+- **The official Pinecone .NET SDK is abandoned** (found 2026-08-08 while triaging Renovate #38).
+  `pinecone-io/pinecone-dotnet-client` was **archived by its owner on 2026-07-03** — read-only, no
+  further releases, and no migration guidance published. The 4.x incompatibility this repository
+  already recorded on 2026-07-26 ("the 4.x control-plane models cannot deserialize Pinecone Local's
+  responses") is upstream's own **open** issue #54, filed against 4.0.2 with `pinecone-local`, and
+  it will not be fixed. Re-verified rather than assumed: v4 needs only a three-line
+  `CreateIndexRequestMetric` → `MetricType` rename to compile, but its `Index` model marks
+  `vector_type` required and **no published emulator image sends it** — `:latest` and the newest
+  tag `v1.0.0.rc0` both fail all 12 container-backed tests identically (`v0.6.0` and `v0.7.0` are
+  the only others, all 17 months old). `Pinecone.Client` 3.1.0 works and is fully tested, so it
+  stays, and `renovate.json` now pins `<4.0.0` so the PR stops reopening. **The real question is
+  not the version.** A connector resting on an archived SDK has three futures — stay on 3.1.0
+  indefinitely, hand-roll against Pinecone's REST API (the connector needs few endpoints), or drop
+  Pinecone support — and that is a decision, not a dependency bump. The one third-party
+  alternative found, `searchpioneer/pinecone-dotnet-client` (`Pinecone.Grpc 1.0.0-alpha1`), is a
+  four-commit alpha roughly three years old and is not a candidate.
+  → **unscheduled**, and deliberately so: nothing is broken today, and choosing between those
+  three futures needs more evidence about how much Pinecone matters to this library than exists
+  now.
 - **61 of 71 packages have only ever been exercised against fakes** (measured by Phase 4.0's
   ledger, 2026-08-02: `unit` 61, `container` 8, `recorded` 0, `live` 0, `none` 2). Not a defect
   list — the *shape* of the risk: `VerifiedBy=unit` is the state late chunking was in for five

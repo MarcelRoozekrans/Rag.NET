@@ -15,6 +15,11 @@
       "schedule": ["before 6am on monday"]
     },
     {
+      "description": "Pinecone.Client is pinned below 4.x because v4 cannot be tested and will never be fixed. v4 retires CreateIndexRequestMetric for MetricType — a three-line rename that compiles — but its Index model marks vector_type as a required JSON property and no published ghcr.io/pinecone-io/pinecone-local image sends it; verified against :latest and the newest tag v1.0.0.rc0 (v0.6.0 and v0.7.0 are the only others, all 17 months old), where all 12 container-backed tests fail identically. This is upstream's own known bug, pinecone-io/pinecone-dotnet-client issue #54, and that repository was ARCHIVED by its owner on 2026-07-03 — read-only, issue still open, no fix coming and no migration guidance published. 3.1.0 works and is fully tested, so it stays. Do not lift this pin expecting a patch release; the wider question is what replaces an abandoned SDK, and that needs a decision rather than a version bump.",
+      "matchPackageNames": ["Pinecone.Client"],
+      "allowedVersions": "<4.0.0"
+    },
+    {
       "description": "Microsoft.Graph and Microsoft.Kiota.Abstractions must move together: Graph pins a Kiota major internally, so bumping Graph alone produces a PR that cannot restore. Renovate's first Graph v6 PR (#26) failed exactly this way with NU1605 on every project — Graph 6.2.0 wants Kiota >= 2.0.0 while the repository pinned 1.22.0.",
       "matchPackageNames": ["Microsoft.Graph", "Microsoft.Kiota.Abstractions"],
       "groupName": "microsoft-graph"
