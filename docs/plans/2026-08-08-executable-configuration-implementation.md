@@ -1,10 +1,10 @@
-# Making an Executable Configurable and Testable — Implementation Plan
+﻿# Making an Executable Configurable and Testable — Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Make `Rag.NET.Mcp.Tool` actually work — configured from `appsettings.json`, validated at startup, and tested — then build the `ragnet` CLI on the same seam.
 
-**Architecture:** Pipeline wiring moves out of `Program.cs` into `Rag.NET.Mcp` as an `IConfiguration`-taking extension. That is the seam: it makes an executable's behaviour testable without launching a process, and the CLI reuses it rather than reinventing it.
+**Architecture:** Pipeline wiring moves out of `Program.cs` into a new `Rag.NET.Hosting` package as an `IConfiguration`-taking extension. That is the seam: it makes an executable's behaviour testable without launching a process, and the CLI reuses it rather than reinventing it.
 
 **Tech Stack:** .NET 10, `Microsoft.Extensions.AI.OpenAI` (pinned 10.8.3), `Microsoft.Extensions.Configuration`, xUnit v3.
 
@@ -38,13 +38,25 @@ It is documented two impossible ways: the **package description** promises `apps
 
 ---
 
-## Task 1: The seam — configuration-driven wiring in the library
+## Task 1: The seam — configuration-driven wiring in its own package
 
 **Files:**
-- Create: `src/Rag.NET.Mcp/DependencyInjection/RagNetConfiguration.cs` (options types)
-- Modify: `src/Rag.NET.Mcp/DependencyInjection/ServiceCollectionExtensions.cs`
-- Modify: `src/Rag.NET.Mcp/Rag.NET.Mcp.csproj` (add the provider references from the bounded set)
-- Test: `tests/Rag.NET.Mcp.Tests/`
+- Create: `src/Rag.NET.Hosting/` — **a new package**: options types plus the wiring extension
+- Create: `tests/Rag.NET.Hosting.Tests/`
+- Modify: `Rag.NET.slnx` — add both, and **confirm they are there before committing**
+
+**The wiring does NOT go in `Rag.NET.Mcp`.** That was an error in an earlier draft of this plan.
+`Rag.NET.Mcp` is what a user references to host MCP tools in their own application — the design's
+§1.3 path for providers outside the bounded set. Putting Qdrant, PgVector and
+`Microsoft.Extensions.AI.OpenAI` into it would force those on every such user, which is the 19 MB
+mistake in miniature and the exact thing Phase 4.7 existed to undo.
+
+A separate `Rag.NET.Hosting` package holds the configuration types and the wiring. `Rag.NET.Mcp.Tool`
+references it; Task 7's CLI references it; `Rag.NET.Mcp` does not.
+
+**A new package must satisfy the packaging conventions** — `RepoConventions` enforces a `README.md`,
+a `<Description>`, and a `<VerifiedBy>`. It ships at **`unit`**, with tests in the same commit; a new
+package arriving at `none` is what this phase exists to stop repeating.
 
 **This task is the phase.** Everything else depends on behaviour living in a library method that takes `IConfiguration`, rather than in `Program.cs` where only a launched process can reach it.
 
@@ -77,7 +89,7 @@ Add an extension — name it to match the repo's conventions, e.g. `AddRagNetPip
 ## Task 2: Startup validation that names the setting and the key
 
 **Files:** same as Task 1
-**Test:** `tests/Rag.NET.Mcp.Tests/`
+**Test:** `tests/Rag.NET.Hosting.Tests/`
 
 Today's defect is that everything looks fine until an MCP client calls a tool and gets `Unable to resolve service for type 'IRagPipeline'`. **Validating lazily would move the failure, not fix it.**
 
@@ -99,7 +111,7 @@ Validation runs while the host is built and covers at least:
 ## Task 3: Make the `InMemory` default loud
 
 **Files:** same
-**Test:** `tests/Rag.NET.Mcp.Tests/`
+**Test:** `tests/Rag.NET.Hosting.Tests/`
 
 `InMemory` data vanishes on restart. **This repository has already paid for exactly this silence**: `UseCostBudgeting()` defaulted to an in-memory cost ledger whose spend reset on restart, with real money behind it.
 
@@ -195,7 +207,7 @@ In `ROADMAP.md`, record honestly:
 ```bash
 dotnet build Rag.NET.slnx -c Release --no-incremental
 dotnet test tests/Rag.NET.Tests
-dotnet test tests/Rag.NET.Mcp.Tests
+dotnet test tests/Rag.NET.Hosting.Tests
 dotnet test tests/Rag.NET.RepoConventions.Tests
 ```
 
