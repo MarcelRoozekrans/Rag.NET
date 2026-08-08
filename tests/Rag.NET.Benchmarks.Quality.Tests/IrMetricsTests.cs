@@ -1,4 +1,4 @@
-using Rag.NET.Benchmarks.Quality;
+﻿using Rag.NET.Benchmarks.Quality;
 using Xunit;
 
 namespace Rag.NET.Benchmarks.Quality.Tests;
@@ -357,6 +357,105 @@ public sealed class IrMetricsTests
             IrMetrics.Recall(["d1"], Binary("d1"), k: 0));
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             IrMetrics.ReciprocalRank(["d1"], Binary("d1"), k: -1));
+    }
+
+    // ---------------------------------------------------------------------------
+    // Precision@k and average precision — Phase 5.4. Each of the three denominator
+    // decisions gets a case that fails under the alternative, per the design.
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public void Precision_DividesByK_NotByWhatWasRetrieved()
+    {
+        // The whole run is 3 documents, all relevant, evaluated at k = 10.
+        // /k gives 3/10 = 0.3. Dividing by min(k, retrieved) would give 3/3 = 1.0 —
+        // perfect precision from a system that returned almost nothing.
+        var score = IrMetrics.Precision(["d1", "d2", "d3"], Binary("d1", "d2", "d3"), k: 10);
+
+        Assert.Equal(0.3, score, Places);
+    }
+
+    [Fact]
+    public void Precision_CountsOnlyWithinTheCutoff()
+    {
+        // Relevant at ranks 1 and 5; k = 3 sees only the first. 1/3 = 0.33333.
+        var score = IrMetrics.Precision(["d1", "x", "y", "z", "d2"], Binary("d1", "d2"), k: 3);
+
+        Assert.Equal(1.0 / 3.0, score, Places);
+    }
+
+    [Fact]
+    public void Precision_TreatsAGradeOfZeroAsIrrelevant()
+    {
+        // d2 is judged 0 — a statement that it does not answer the query, not an absence
+        // of judgement. Only d1 counts: 1/2 = 0.5.
+        var score = IrMetrics.Precision(["d1", "d2"], Graded(("d1", 3), ("d2", 0)), k: 2);
+
+        Assert.Equal(0.5, score, Places);
+    }
+
+    [Fact]
+    public void AveragePrecision_DividesByMinOfKAndRelevant_SoAPerfectRankingReachesOne()
+    {
+        // 20 relevant documents, k = 10, and the top 10 are all relevant.
+        // Precision is 1.0 at every one of those ranks, so the sum is 10.
+        // min(k, |relevant|) = 10 gives 10/10 = 1.0.
+        // Dividing by |relevant| = 20 would give 0.5 — unreachable perfection.
+        var relevant = Enumerable.Range(1, 20).Select(i => $"d{i}").ToArray();
+        var ranked = relevant.Take(10).ToArray();
+
+        var score = IrMetrics.AveragePrecision(ranked, Binary(relevant), k: 10);
+
+        Assert.Equal(1.0, score, Places);
+    }
+
+    [Fact]
+    public void AveragePrecision_AveragesPrecisionAtEachRelevantRank()
+    {
+        // Relevant at ranks 1 and 3 of ["d1", "x", "d2"], two relevant judged.
+        //   rank 1: 1st relevant found, precision 1/1 = 1.0
+        //   rank 3: 2nd relevant found, precision 2/3 = 0.66667
+        // sum = 1.66667, divided by min(10, 2) = 2 -> 0.83333
+        var score = IrMetrics.AveragePrecision(["d1", "x", "d2"], Binary("d1", "d2"), k: 10);
+
+        Assert.Equal((1.0 + 2.0 / 3.0) / 2.0, score, Places);
+    }
+
+    [Fact]
+    public void AveragePrecision_NothingRelevantJudged_IsZero()
+    {
+        // No positive judgement: there is nothing to average. Evaluate excludes such a
+        // query from the mean rather than letting this zero into it.
+        var score = IrMetrics.AveragePrecision(["d1"], Graded(("d1", 0)), k: 10);
+
+        Assert.Equal(0, score, Places);
+    }
+
+    [Fact]
+    public void Evaluate_PrecisionAndMap_UseTheSameJudgedQueryExclusionAsTheOthers()
+    {
+        // q1 is judged and retrieved perfectly. q2 is judged but retrieved nothing —
+        // a real zero that belongs in the mean. q3 has only a zero grade, so it is
+        // excluded entirely and must not divide anything.
+        var runs = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+        {
+            ["q1"] = ["d1"],
+        };
+        var qrels = new Dictionary<string, IReadOnlyDictionary<string, int>>(StringComparer.Ordinal)
+        {
+            ["q1"] = Binary("d1"),
+            ["q2"] = Binary("d9"),
+            ["q3"] = Graded(("d5", 0)),
+        };
+
+        var evaluation = IrMetrics.Evaluate(runs, qrels, k: 10);
+
+        // Two evaluated queries, not three: q3 carries no positive judgement.
+        Assert.Equal(2, evaluation.EvaluatedQueryCount);
+        // q1 precision = 1/10 = 0.1 (one relevant document, denominator k), q2 = 0.
+        Assert.Equal(0.05, evaluation.Precision, Places);
+        // q1 AP = 1.0 (perfect at min(10, 1) = 1), q2 = 0. Mean = 0.5.
+        Assert.Equal(0.5, evaluation.MeanAveragePrecision, Places);
     }
 
     private static IReadOnlyDictionary<string, int> Binary(params string[] relevantDocumentIds)

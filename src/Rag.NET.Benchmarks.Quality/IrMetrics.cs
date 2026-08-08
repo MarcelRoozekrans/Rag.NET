@@ -1,7 +1,8 @@
-namespace Rag.NET.Benchmarks.Quality;
+﻿namespace Rag.NET.Benchmarks.Quality;
 
 /// <summary>
-/// Native information-retrieval metrics — nDCG@k, Recall@k and reciprocal rank — computed over
+/// Native information-retrieval metrics — nDCG@k, Recall@k, reciprocal rank, Precision@k and
+/// average precision — computed over
 /// <b>document</b> rankings and TREC-style relevance judgements.
 /// <para>
 /// Native rather than delegated to <c>pytrec_eval</c> or a NuGet equivalent, and pinned in
@@ -36,6 +37,13 @@ namespace Rag.NET.Benchmarks.Quality;
 /// Recall@k's denominator is <c>|relevant|</c> — the exact opposite of IDCG's cap. Four relevant
 /// documents at <c>k = 2</c> means Recall@2 can be at most 0.5, while nDCG@2 can still be 1.0. The
 /// two rules look interchangeable and are not, which is why they are tested separately.
+/// </para>
+/// <para>
+/// <see cref="Precision"/> and <see cref="AveragePrecision"/> add two more denominators to that list,
+/// and they disagree with each other on purpose: precision divides by <c>k</c> so a run returning
+/// three documents at <c>k = 10</c> cannot score 1.0, while average precision divides by
+/// <c>min(k, |relevant|)</c> so a perfect ranking can. Each method's own remarks say why, and each
+/// rule has a test that fails under the alternative.
 /// </para>
 /// </summary>
 public static class IrMetrics
@@ -181,6 +189,100 @@ public static class IrMetrics
     /// divisor: retrieval returned nothing for a query that has an answer, and dropping it would let
     /// a harness that lost half its queries still report a healthy mean.
     /// </remarks>
+    /// <summary>
+    /// Precision at <paramref name="k"/> for one query: the fraction of the top <paramref name="k"/>
+    /// ranks holding a positively judged document.
+    /// </summary>
+    /// <param name="rankedDocumentIds">The retrieved document ids, best first, document-level and deduplicated.</param>
+    /// <param name="relevance">This query's judgements. A grade of zero is irrelevant, exactly as elsewhere here.</param>
+    /// <param name="k">The rank cutoff. Must be positive.</param>
+    /// <returns>A value in <c>[0, 1]</c>.</returns>
+    /// <remarks>
+    /// <b>The denominator is <paramref name="k"/>, not the number of documents actually retrieved.</b>
+    /// A run returning three documents at <c>k = 10</c> therefore scores at most 0.3. Dividing by
+    /// <c>min(k, retrieved)</c> would score that same run 1.0 — reading as perfect precision from a
+    /// system that returned almost nothing — and would make the number depend on how much each system
+    /// happened to return, which is precisely what makes cross-system comparison meaningless. Published
+    /// baselines mean <c>/k</c>.
+    /// <para>
+    /// Binary, at <c>grade &gt; 0</c>. <see cref="NormalizedDiscountedCumulativeGain"/>'s
+    /// <c>2^rel - 1</c> has no meaning here, and inventing a separate threshold would let one graded
+    /// dataset mean different things to two metrics in the same <see cref="IrEvaluation"/>.
+    /// </para>
+    /// </remarks>
+    public static double Precision(
+        IReadOnlyList<string> rankedDocumentIds,
+        IReadOnlyDictionary<string, int> relevance,
+        int k)
+    {
+        ArgumentNullException.ThrowIfNull(rankedDocumentIds);
+        ArgumentNullException.ThrowIfNull(relevance);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(k);
+
+        var limit = Math.Min(k, rankedDocumentIds.Count);
+        var found = 0;
+        for (var rank = 0; rank < limit; rank++)
+        {
+            if (GradeOf(rankedDocumentIds[rank], relevance) > 0)
+            {
+                found++;
+            }
+        }
+
+        return (double)found / k;
+    }
+
+    /// <summary>
+    /// Average precision at <paramref name="k"/> for one query: precision measured at each rank that
+    /// holds a relevant document, averaged. <see cref="Evaluate"/>'s mean of this across queries is MAP.
+    /// </summary>
+    /// <param name="rankedDocumentIds">The retrieved document ids, best first, document-level and deduplicated.</param>
+    /// <param name="relevance">This query's judgements. A grade of zero is irrelevant.</param>
+    /// <param name="k">The rank cutoff. Must be positive.</param>
+    /// <returns>A value in <c>[0, 1]</c>, or 0 when nothing relevant was judged.</returns>
+    /// <remarks>
+    /// <b>The denominator is <c>min(k, |relevant|)</c>, not <c>|relevant|</c>.</b> TREC's unbounded
+    /// <c>map</c> divides by every relevant document, which against a query with 20 of them evaluated
+    /// at <c>k = 10</c> caps average precision at 0.5 — a metric that cannot reach 1.0 at its own cutoff
+    /// even from a perfect ranking. Every metric in this class is explicitly <c>@k</c>, and a ceiling
+    /// that moves with a query's judgement count is the same silent scaling this type's remarks warn
+    /// about for IDCG.
+    /// <para>
+    /// <b>This makes an external MAP baseline non-comparable when a dataset judges more than
+    /// <paramref name="k"/> documents per query.</b> A phase quoting a published MAP must establish
+    /// which denominator the source used before treating the two as the same quantity.
+    /// </para>
+    /// </remarks>
+    public static double AveragePrecision(
+        IReadOnlyList<string> rankedDocumentIds,
+        IReadOnlyDictionary<string, int> relevance,
+        int k)
+    {
+        ArgumentNullException.ThrowIfNull(rankedDocumentIds);
+        ArgumentNullException.ThrowIfNull(relevance);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(k);
+
+        var relevantCount = CountRelevant(relevance);
+        if (relevantCount == 0)
+        {
+            return 0;
+        }
+
+        var limit = Math.Min(k, rankedDocumentIds.Count);
+        var found = 0;
+        double sum = 0;
+        for (var rank = 0; rank < limit; rank++)
+        {
+            if (GradeOf(rankedDocumentIds[rank], relevance) > 0)
+            {
+                found++;
+                sum += (double)found / (rank + 1);
+            }
+        }
+
+        return sum / Math.Min(k, relevantCount);
+    }
+
     public static IrEvaluation Evaluate(
         IReadOnlyDictionary<string, IReadOnlyList<string>> runs,
         IReadOnlyDictionary<string, IReadOnlyDictionary<string, int>> qrels,
@@ -193,6 +295,8 @@ public static class IrMetrics
         double ndcg = 0;
         double recall = 0;
         double reciprocalRank = 0;
+        double precision = 0;
+        double averagePrecision = 0;
         var evaluated = 0;
         var judgedWithARun = 0;
 
@@ -217,6 +321,10 @@ public static class IrMetrics
             ndcg += NormalizedDiscountedCumulativeGain(ranked, relevance, k);
             recall += Recall(ranked, relevance, k);
             reciprocalRank += ReciprocalRank(ranked, relevance, k);
+            // Same loop, same divisor, no skip of their own: four means over different
+            // denominators would be mutually incomparable while every one looked fine.
+            precision += Precision(ranked, relevance, k);
+            averagePrecision += AveragePrecision(ranked, relevance, k);
         }
 
         if (evaluated == 0)
@@ -231,6 +339,8 @@ public static class IrMetrics
             ndcg / evaluated,
             recall / evaluated,
             reciprocalRank / evaluated,
+            precision / evaluated,
+            averagePrecision / evaluated,
             k,
             evaluated,
             runs.Count - judgedWithARun);
