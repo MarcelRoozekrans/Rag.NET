@@ -1,21 +1,16 @@
-using Box.V2;
-using Box.V2.Config;
-using Box.V2.Models;
+using Box.Sdk.Gen;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Box;
 using Rag.NET.DataProviders.Testing;
 using Xunit;
+using BoxFile = Box.Sdk.Gen.Schemas.File;
 
 namespace Rag.NET.DataProviders.Box.Tests;
 
 public sealed class BoxDataProviderTests
 {
-    private static BoxClient MakeBoxClient()
-    {
-        var config = new BoxConfig("clientId", "clientSecret", new Uri("https://localhost"));
-        return new BoxClient(config);
-    }
+    private static BoxClient MakeBoxClient() => new(new BoxDeveloperTokenAuth("fake-token"));
 
     [Fact]
     public void Constructor_NullClient_Throws()
@@ -59,9 +54,10 @@ public sealed class BoxDataProviderTests
     // -----------------------------------------------------------------------
     // Metadata — the exact keys and values this connector emits
     //
-    // BoxClient is a concrete type with no injectable transport, so GetFilesAsync cannot be
-    // driven without hitting the network. These tests call the internal ToHandle that both
-    // enumeration paths funnel through, which is where the metadata is actually built.
+    // ToHandle/MapChangeStatus are pinned directly (as before the migration) so the emitted
+    // metadata keys stay exact regardless of what the enumeration loops around them do. The
+    // enumeration loops themselves are now covered separately below, through a fake
+    // INetworkClient — see the "Enumeration" region.
     // -----------------------------------------------------------------------
 
     [Fact]
@@ -113,22 +109,23 @@ public sealed class BoxDataProviderTests
 
     /// <summary>
     /// Phase 4.10 Task 6: the full-run field selection was widened with <c>created_at</c>/
-    /// <c>modified_at</c>, and <c>ToHandle</c> now forwards <c>BoxItem.CreatedAt</c>/
-    /// <c>ModifiedAt</c> onto the typed <see cref="FileHandle.CreatedAt"/>/
-    /// <see cref="FileHandle.UpdatedAt"/> channel.
+    /// <c>modified_at</c>, and <c>ToHandle</c> now forwards the SDK's <c>DateTimeOffset?</c>
+    /// <c>File.CreatedAt</c>/<c>ModifiedAt</c> onto the typed
+    /// <see cref="FileHandle.CreatedAt"/>/<see cref="FileHandle.UpdatedAt"/> channel (as
+    /// <c>DateTime?</c>, via <c>UtcDateTime</c>).
     /// </summary>
     [Fact]
     public void ToHandle_SourceWithTimestamps_PopulatesTypedCreatedAndUpdatedAt()
     {
-        // BoxItem.CreatedAt/ModifiedAt have private setters (Box.V2 populates them only via its
-        // own Newtonsoft deserialization), so a source object is built the same way the SDK
-        // builds one — deserializing the wire JSON — rather than via an object initializer.
-        const string json = """
-            { "id": "file-1", "name": "readme.md",
-              "created_at": "2026-01-01T09:00:00Z", "modified_at": "2026-02-01T10:30:00Z" }
-            """;
+        // Box.Sdk.Gen's File exposes public setters (unlike the 3.x SDK's BoxItem, which forced
+        // a Newtonsoft round-trip to populate CreatedAt/ModifiedAt), so it is built directly.
         var sut = new BoxDataProvider(MakeBoxClient());
-        var source = Newtonsoft.Json.JsonConvert.DeserializeObject<BoxFile>(json)!;
+        var source = new BoxFile("file-1")
+        {
+            Name = "readme.md",
+            CreatedAt = new DateTimeOffset(2026, 1, 1, 9, 0, 0, TimeSpan.Zero),
+            ModifiedAt = new DateTimeOffset(2026, 2, 1, 10, 30, 0, TimeSpan.Zero),
+        };
 
         var handle = sut.ToHandle(
             "file-1", "readme.md", "sha1-abc", folderId: "folder-42", changeStatus: null,
@@ -188,5 +185,125 @@ public sealed class BoxDataProviderTests
 
         Assert.Null(handle.Metadata);
         MetadataContract.AssertValid(handle.Metadata, handle.Id);
+    }
+
+    // -----------------------------------------------------------------------
+    // Enumeration — GetFullHandlesAsync/GetDeltaHandlesAsync via a fake INetworkClient
+    //
+    // Box.Sdk.Gen.BoxClient accepts a NetworkSession built with WithNetworkClient(INetworkClient),
+    // a one-method FetchAsync(FetchOptions) -> Task<FetchResponse> seam. That makes the recursive
+    // folder traversal, its pagination, the delta stream's chunking/cursor advance, and the event
+    // filter reachable end-to-end from GetFilesAsync — none of this was drivable under the 3.x
+    // SDK's concrete BoxClient (see the note atop the metadata region above).
+    // -----------------------------------------------------------------------
+
+    [Fact]
+    public async Task GetFilesAsync_FullRun_RecursesFoldersAndPaginates()
+    {
+        var client = FakeBoxNetworkClient.MakeClient(FullRunResponses);
+        var sut = new BoxDataProvider(client);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results);
+        Assert.Equal(2, results.Count);
+        var f1 = results.Single(r => string.Equals(r.Value.Id, "f1", StringComparison.Ordinal)).Value;
+        var f2 = results.Single(r => string.Equals(r.Value.Id, "f2", StringComparison.Ordinal)).Value;
+        Assert.Equal("0", f1.Metadata!["folder_id"]);
+        Assert.Equal("d1", f2.Metadata!["folder_id"]);
+        Assert.Equal(new DateTime(2026, 1, 1, 9, 0, 0, DateTimeKind.Utc), f1.CreatedAt);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_FullRun_DownloadsForwardToDownloadsManager()
+    {
+        var client = FakeBoxNetworkClient.MakeClient(FullRunResponses);
+        var sut = new BoxDataProvider(client);
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var f1 = results.Single(r => string.Equals(r.Value.Id, "f1", StringComparison.Ordinal)).Value;
+
+        await using var stream = await f1.OpenContentAsync(TestContext.Current.CancellationToken);
+        using var reader = new StreamReader(stream);
+
+        Assert.Equal("content-of-f1", await reader.ReadToEndAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_DeltaRun_FiltersEventsAndAdvancesCursor()
+    {
+        var opts = new BoxOptions { DeltaToken = "0" };
+        var client = FakeBoxNetworkClient.MakeClient(DeltaRunResponses);
+        var sut = new BoxDataProvider(client, opts);
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        MetadataContract.AssertAll(results);
+        var ids = results.Select(r => (string)r.Value.Id).ToList();
+        // g4 (DOWNLOAD event) and the user-sourced event are filtered out entirely.
+        Assert.Equal(["g1", "g2", "g3"], ids);
+        var g1 = results[0].Value;
+        var g2 = results[1].Value;
+        Assert.Null(g1.Metadata); // UPLOAD is undeterminable — no change_status tag
+        Assert.Equal("added", g2.Metadata!["change_status"]); // COPY
+    }
+
+    private static FetchResponse FullRunResponses(FetchOptions options)
+    {
+        if (options.Url.EndsWith("/folders/0/items", StringComparison.Ordinal))
+        {
+            return string.Equals(options.Parameters!["offset"], "0", StringComparison.Ordinal)
+                ? FakeBoxNetworkClient.Json("""
+                    { "total_count": 2, "offset": 0, "limit": 100, "entries": [
+                        { "type": "file", "id": "f1", "name": "a.txt", "sha1": "sha1-a",
+                          "created_at": "2026-01-01T09:00:00Z", "modified_at": "2026-01-02T09:00:00Z" }
+                      ] }
+                    """)
+                : FakeBoxNetworkClient.Json("""
+                    { "total_count": 2, "offset": 1, "limit": 100, "entries": [
+                        { "type": "folder", "id": "d1", "name": "sub" }
+                      ] }
+                    """);
+        }
+        if (options.Url.EndsWith("/folders/d1/items", StringComparison.Ordinal))
+        {
+            return FakeBoxNetworkClient.Json("""
+                { "total_count": 1, "offset": 0, "limit": 100, "entries": [
+                    { "type": "file", "id": "f2", "name": "b.txt", "sha1": "sha1-b" }
+                  ] }
+                """);
+        }
+        if (options.Url.EndsWith("/files/f1/content", StringComparison.Ordinal))
+            return FakeBoxNetworkClient.Content("content-of-f1");
+
+        throw new InvalidOperationException($"Unexpected request: {options.Url}");
+    }
+
+    private static FetchResponse DeltaRunResponses(FetchOptions options)
+    {
+        if (!options.Url.EndsWith("/events", StringComparison.Ordinal))
+            throw new InvalidOperationException($"Unexpected request: {options.Url}");
+
+        return string.Equals(options.Parameters!["stream_position"], "0", StringComparison.Ordinal)
+            ? FakeBoxNetworkClient.Json("""
+                { "chunk_size": 100, "next_stream_position": 500, "entries": [
+                    { "event_type": "UPLOAD", "event_id": "e1",
+                      "source": { "type": "file", "id": "g1", "name": "g1.txt", "sha1": "sha1-g1" } },
+                    { "event_type": "COPY", "event_id": "e2",
+                      "source": { "type": "file", "id": "g2", "name": "g2.txt", "sha1": "sha1-g2" } },
+                    { "event_type": "DOWNLOAD", "event_id": "e3",
+                      "source": { "type": "file", "id": "g4", "name": "g4.txt" } },
+                    { "event_type": "UPLOAD", "event_id": "e4",
+                      "source": { "type": "user", "id": "u1", "name": "Someone" } }
+                  ] }
+                """)
+            : FakeBoxNetworkClient.Json("""
+                { "chunk_size": 1, "next_stream_position": "999", "entries": [
+                    { "event_type": "UPLOAD", "event_id": "e5",
+                      "source": { "type": "file", "id": "g3", "name": "g3.txt", "sha1": "sha1-g3" } }
+                  ] }
+                """);
     }
 }

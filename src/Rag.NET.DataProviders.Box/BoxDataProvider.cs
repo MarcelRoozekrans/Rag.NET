@@ -1,9 +1,12 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
-using Box.V2;
-using Box.V2.Models;
+using Box.Sdk.Gen;
+using Box.Sdk.Gen.Managers;
+using Box.Sdk.Gen.Schemas;
 using Rag.NET.DataProviders;
 using Rag.NET.Models;
 using ZeroAlloc.Results;
+using BoxFile = Box.Sdk.Gen.Schemas.File;
 
 namespace Rag.NET.DataProviders.Box;
 
@@ -42,33 +45,55 @@ public sealed class BoxDataProvider : FileContentProviderBase
             cancellationToken.ThrowIfCancellationRequested();
             var folderId = stack.Pop();
             long offset = 0;
-            const int limit = 100;
+            const long limit = 100;
 
             while (true)
             {
-                var items = await _client.FoldersManager.GetFolderItemsAsync(
-                    folderId, limit, (int)offset,
-                    fields: ["id", "name", "type", "sha1", "created_at", "modified_at"])
-                    .ConfigureAwait(false);
-
-                for (int i = 0; i < items.Entries.Count; i++)
-                {
-                    var item = items.Entries[i];
-                    cancellationToken.ThrowIfCancellationRequested();
-                    if (string.Equals(item.Type, "folder", StringComparison.Ordinal))
+                var items = await _client.Folders.GetFolderItemsAsync(
+                    folderId,
+                    new GetFolderItemsQueryParams
                     {
-                        stack.Push(item.Id);
-                        continue;
-                    }
+                        Fields = ["id", "name", "type", "sha1", "created_at", "modified_at"],
+                        Offset = offset,
+                        Limit = limit,
+                    }).ConfigureAwait(false);
 
-                    yield return Result<FileHandle, RagError>.Success(ToHandle(
-                        item.Id, item.Name, (item as BoxFile)?.Sha1,
-                        folderId: folderId, changeStatus: null, source: item));
-                }
+                var entries = items.Entries ?? [];
+                foreach (var handle in FullPageHandles(entries, folderId, stack))
+                    yield return handle;
 
-                offset += items.Entries.Count;
-                if (offset >= items.TotalCount) break;
+                offset += entries.Count;
+                if (items.TotalCount is null || offset >= items.TotalCount) break;
             }
+        }
+    }
+
+    /// <summary>
+    /// Splits one page of folder items into stack pushes (subfolders) and yieldable handles
+    /// (files and web links), synchronously — kept out of the async iterator body so the
+    /// enumeration loop above stays within MA0051's line budget.
+    /// </summary>
+    private IEnumerable<Result<FileHandle, RagError>> FullPageHandles(
+        IReadOnlyList<Item> entries, string folderId, Stack<string> stack)
+    {
+        foreach (var item in entries)
+        {
+            if (item.FolderMini is { } folder)
+            {
+                stack.Push(folder.Id);
+                continue;
+            }
+
+            // Item is a closed union of FileFull/FolderMini/WebLink. A web link has no
+            // downloadable content and no sha1, but is still surfaced the way the pre-migration
+            // connector surfaced it — id/name only, source left null so timestamps stay unset.
+            var id = item.FileFull?.Id ?? item.WebLink?.Id;
+            var name = item.FileFull?.Name ?? item.WebLink?.Name;
+            if (id is null || name is null) continue;
+
+            yield return Result<FileHandle, RagError>.Success(ToHandle(
+                id, name, item.FileFull?.Sha1,
+                folderId: folderId, changeStatus: null, source: item.FileFull));
         }
     }
 
@@ -76,32 +101,47 @@ public sealed class BoxDataProvider : FileContentProviderBase
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var streamPosition = _options.DeltaToken!;
-        const int limit = 100;
+        const long limit = 100;
 
         while (true)
         {
-            var events = await _client.EventsManager.UserEventsAsync(
-                limit: limit, streamPosition: streamPosition)
-                .ConfigureAwait(false);
+            var events = await _client.Events.GetEventsAsync(new GetEventsQueryParams
+            {
+                StreamPosition = streamPosition,
+                Limit = limit,
+            }).ConfigureAwait(false);
 
             if (events.Entries is not null)
             {
-                for (int i = 0; i < events.Entries.Count; i++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var ev = events.Entries[i];
-                    if (ev.Source is not BoxFile file) continue;
-                    if (!string.Equals(ev.EventType, "UPLOAD", StringComparison.Ordinal)
-                     && !string.Equals(ev.EventType, "COPY",   StringComparison.Ordinal)) continue;
-
-                    yield return Result<FileHandle, RagError>.Success(ToHandle(
-                        file.Id, file.Name, file.Sha1,
-                        folderId: null, MapChangeStatus(ev.EventType), source: file));
-                }
+                foreach (var handle in DeltaPageHandles(events.Entries, cancellationToken))
+                    yield return handle;
             }
 
-            if (events.ChunkSize < limit) break; // no more events
-            streamPosition = events.NextStreamPosition ?? streamPosition;
+            if ((events.ChunkSize ?? 0) < limit) break; // no more events
+            streamPosition = events.NextStreamPosition?.StringVal
+                ?? events.NextStreamPosition?.LongVal?.ToString(CultureInfo.InvariantCulture)
+                ?? streamPosition;
+        }
+    }
+
+    /// <summary>
+    /// Filters and maps one page of events, synchronously — same MA0051 reasoning as
+    /// <see cref="FullPageHandles"/>.
+    /// </summary>
+    private IEnumerable<Result<FileHandle, RagError>> DeltaPageHandles(
+        IReadOnlyList<Event> entries, CancellationToken cancellationToken)
+    {
+        foreach (var ev in entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ev.Source?.File is not { Name: { } fileName } file) continue;
+            var eventType = ev.EventType?.StringValue;
+            if (!string.Equals(eventType, "UPLOAD", StringComparison.Ordinal)
+             && !string.Equals(eventType, "COPY", StringComparison.Ordinal)) continue;
+
+            yield return Result<FileHandle, RagError>.Success(ToHandle(
+                file.Id, fileName, file.Sha1,
+                folderId: null, MapChangeStatus(eventType), source: file));
         }
     }
 
@@ -113,28 +153,31 @@ public sealed class BoxDataProvider : FileContentProviderBase
     /// Metadata emitted: <c>folder_id</c> on the full run only, and <c>change_status</c> on the
     /// delta run only. <paramref name="source"/>'s <c>CreatedAt</c>/<c>ModifiedAt</c> are
     /// forwarded onto the typed <see cref="FileHandle.CreatedAt"/>/<see cref="FileHandle.UpdatedAt"/>
-    /// channel on both runs — already typed <c>DateTime?</c> on <c>BoxItem</c>, so no string
-    /// parsing is involved. <paramref name="source"/> is taken as the reference-typed
-    /// <c>BoxItem</c> itself, rather than two separate <c>DateTime?</c> scalar parameters, because
-    /// passing <c>Nullable&lt;DateTime&gt;</c> by value here trips ErrorProne.NET's EPS05 (pass
-    /// large readonly structs by <c>in</c>) while adding <c>in</c> then trips Roslynator's RCS1242
-    /// (don't pass non-readonly structs by readonly reference) — the two analyzers disagree on
-    /// <c>DateTime</c>, and a reference-typed parameter sidesteps the conflict entirely.
+    /// channel on both runs, converted from the SDK's <c>DateTimeOffset?</c> via
+    /// <c>UtcDateTime</c> to match <see cref="FileHandle"/>'s <c>DateTime?</c> channel.
+    /// <paramref name="source"/> is taken as the reference-typed Box SDK <c>File</c> itself,
+    /// rather than two separate <c>DateTimeOffset?</c> scalar parameters, because passing
+    /// <c>Nullable&lt;DateTimeOffset&gt;</c> by value here trips ErrorProne.NET's EPS05 (pass
+    /// large readonly structs by <c>in</c>) while adding <c>in</c> then trips Roslynator's
+    /// RCS1242 (don't pass non-readonly structs by readonly reference) — the two analyzers
+    /// disagree, and a reference-typed parameter sidesteps the conflict entirely. <c>File</c> is
+    /// the type both call sites can supply: the full run's <c>FileFull</c> derives from it, and
+    /// the delta run's <c>EventSourceResource.File</c> already returns it.
     /// <para>
-    /// The delta run <i>could</i> supply <c>folder_id</c>: <c>BoxItem.Parent</c> is present on the
+    /// The delta run <i>could</i> supply <c>folder_id</c>: <c>File.Parent</c> is present on the
     /// events source object, and the events call passes no field selection at all, so nothing
     /// restricts it. This code simply does not read it today. (The
     /// <c>fields: ["id","name","type","sha1","created_at","modified_at"]</c> selection is on the
     /// <i>full</i> traversal's <c>GetFolderItemsAsync</c> call and has no bearing on the delta
     /// path — the events call already returns <c>created_at</c>/<c>modified_at</c> unrestricted.)
     /// </para>
-    /// <para><b>Internal for testing.</b> <c>BoxClient</c> is a concrete type with no injectable
-    /// transport, so the enumeration paths cannot be driven from a unit test; this is the seam
-    /// that pins the emitted keys.</para>
+    /// <para><b>Internal for testing.</b> Pinned directly so the emitted metadata keys stay
+    /// exact, alongside the <see cref="GetFilesAsync"/>-level enumeration tests that now drive
+    /// this through a fake <c>INetworkClient</c> (see the test project).</para>
     /// </remarks>
     internal FileHandle ToHandle(
         string id, string name, string? sha1, string? folderId, string? changeStatus,
-        BoxItem? source = null)
+        BoxFile? source = null)
     {
         Dictionary<string, string>? metadata = null;
         if (folderId is not null || changeStatus is not null)
@@ -151,12 +194,12 @@ public sealed class BoxDataProvider : FileContentProviderBase
             OpenContentAsync: async ct =>
             {
                 ct.ThrowIfCancellationRequested();
-                return await _client.FilesManager.DownloadAsync(id, null)
-                    .ConfigureAwait(false);
+                return await _client.Downloads.DownloadFileAsync(id).ConfigureAwait(false)
+                    ?? throw new InvalidOperationException($"Box returned no content stream for '{id}'.");
             },
             Metadata:         metadata,
-            CreatedAt:        source?.CreatedAt,
-            UpdatedAt:        source?.ModifiedAt);
+            CreatedAt:        source?.CreatedAt?.UtcDateTime,
+            UpdatedAt:        source?.ModifiedAt?.UtcDateTime);
     }
 
     /// <summary>
@@ -173,17 +216,21 @@ public sealed class BoxDataProvider : FileContentProviderBase
     /// prescribes omitting a field the connector cannot determine, and a sparse-but-true tag is
     /// worth more than a dense half-false one.
     /// <para>
-    /// This <i>is</i> resolvable: <c>BoxFile</c> carries <c>SequenceId</c> and
-    /// <c>VersionNumber</c>, <c>ev.Source</c> is already a <c>BoxFile</c>, and the events call
-    /// passes no field selection that would strip them. It is left undone only because whether
-    /// the API populates them on the user-events payload could not be confirmed against a real
-    /// response — the SDK declaring a property is not evidence the wire carries it. Confirm that
-    /// and <c>SequenceId == "0"</c> → <c>added</c>, otherwise <c>modified</c>, is the fix.
+    /// This <i>is</i> resolvable: <c>File</c> carries <c>SequenceId</c>, <c>ev.Source.File</c> is
+    /// already a <c>File</c>, and the events call passes no field selection that would strip it.
+    /// It is left undone only because whether the API populates it on the user-events payload
+    /// could not be confirmed against a real response — the SDK declaring a property is not
+    /// evidence the wire carries it. Confirm that and <c>SequenceId == "0"</c> → <c>added</c>,
+    /// otherwise <c>modified</c>, is the fix.
     /// </para></item>
     /// <item>Anything else → <see langword="null"/>, and the key is omitted. Unreachable today:
     /// the delta loop only lets <c>UPLOAD</c> and <c>COPY</c> through.</item>
     /// </list>
-    /// <para><b>Internal for testing</b>, for the same reason as <see cref="ToHandle"/>.</para>
+    /// <para><b>Internal for testing</b>, for the same reason as <see cref="ToHandle"/>. This
+    /// still takes the raw wire string (<c>"UPLOAD"</c>/<c>"COPY"</c>) rather than the SDK's
+    /// <c>StringEnum&lt;EventEventTypeField&gt;</c> — <c>StringEnum.StringValue</c> already
+    /// carries that exact string, so callers unwrap once at the call site and this stays a pure
+    /// string map, testable without constructing SDK model types.</para>
     /// </summary>
     internal static string? MapChangeStatus(string? eventType) => eventType switch
     {

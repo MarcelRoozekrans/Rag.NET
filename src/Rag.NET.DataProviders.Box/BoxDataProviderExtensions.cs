@@ -1,9 +1,6 @@
-using Box.V2;
-using Box.V2.Config;
-using Box.V2.JWTAuth;
+using Box.Sdk.Gen;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DataProviders;
-
 
 namespace Rag.NET.DataProviders.Box;
 
@@ -23,10 +20,9 @@ public static class BoxDataProviderExtensions
         configure?.Invoke(opts);
         return services.AddSingleton<IFileContentProvider>(_ =>
         {
-            var config  = BoxConfig.CreateFromJsonString(jwtConfigJson);
-            var session = new BoxJWTAuth(config);
-            var token   = session.AdminToken();
-            var client  = session.AdminClient(token);
+            var config = JwtConfig.FromConfigJsonString(jwtConfigJson);
+            var auth   = new BoxJwtAuth(config);
+            var client = new BoxClient(auth);
             return new BoxDataProvider(client, opts);
         });
     }
