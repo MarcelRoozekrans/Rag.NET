@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Rag.NET.Cli</RootNamespace>
+    <PackageId>Rag.NET.Cli</PackageId>
+    <ToolCommandName>ragnet</ToolCommandName>
+    <PackAsTool>true</PackAsTool>
+    <!-- Load-bearing, mirroring Rag.NET.Mcp.Tool's own note: this repo's root Directory.Build.props
+         defaults every project's IsPackable to false, and a PackAsTool project must restate it
+         explicitly here or `dotnet pack` silently produces nothing for it — a codeless "packaging
+         has been disabled" advisory instead of a package. PackabilityTests guards the pairing. -->
+    <IsPackable>true</IsPackable>
+    <Description>Command-line tool for Rag.NET (`ragnet`): ingest a file or directory into, and retrieve chunks from, a configured pipeline — appsettings.json or environment variables, the same seam Rag.NET.Mcp.Tool uses.</Description>
+    <PackageTags>$(PackageTags);cli;dotnet-tool</PackageTags>
+    <!-- unit: Rag.NET.Cli.Tests exercises CliArguments' parsing and IngestCommand/QueryCommand
+         against a fake IRagPipeline, no process launched. Program.cs itself stays thin (parse,
+         build the host, dispatch to those two) and is not exercised directly — the same split
+         Rag.NET.Mcp.Tool's own VerifiedBy note describes for its ProgramArguments/
+         ApiKeyAuthorization pair. -->
+    <VerifiedBy>unit</VerifiedBy>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Cli.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Deliberately Microsoft.NET.Sdk, not Microsoft.NET.Sdk.Web: this CLI never accepts an
+         inbound connection — no Kestrel, no MVC/minimal-API surface, no HTTP transport at all —
+         so pulling in the ASP.NET Core shared framework reference would add weight for a
+         capability this tool never uses. Microsoft.Extensions.Hosting's plain generic host below
+         supplies everything actually needed: configuration layering (appsettings.json,
+         environment variables) and DI. -->
+    <ProjectReference Include="..\Rag.NET.Hosting\Rag.NET.Hosting.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Sample configuration, same shape as Rag.NET.Mcp.Tool's — see that project's csproj comment
+         for why Update (not Include) plus CopyToOutputDirectory is what a PackAsTool package
+         actually needs: `dotnet tool install -g` extracts tools/<tfm>/any/, not content/. -->
+    <Content Update="appsettings.sample.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

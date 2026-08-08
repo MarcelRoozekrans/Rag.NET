@@ -69,6 +69,7 @@
     <Project Path="src/Rag.NET.Benchmarks.Quality/Rag.NET.Benchmarks.Quality.csproj" />
     <Project Path="src/Rag.NET.Telemetry/Rag.NET.Telemetry.csproj" />
     <Project Path="src/Rag.NET.Hosting/Rag.NET.Hosting.csproj" />
+    <Project Path="src/Rag.NET.Cli/Rag.NET.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Rag.NET.Security.IntegrationTests/Rag.NET.Security.IntegrationTests.csproj" />
@@ -141,6 +142,7 @@
     <Project Path="tests/Rag.NET.Benchmarks.Quality.IntegrationTests/Rag.NET.Benchmarks.Quality.IntegrationTests.csproj" />
     <Project Path="tests/Rag.NET.Telemetry.Tests/Rag.NET.Telemetry.Tests.csproj" />
     <Project Path="tests/Rag.NET.Hosting.Tests/Rag.NET.Hosting.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Cli.Tests/Rag.NET.Cli.Tests.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/Rag.NET.Sample/Rag.NET.Sample.csproj" />
