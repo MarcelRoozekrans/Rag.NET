@@ -110,4 +110,79 @@ public class PipelineRetrieverValidationTests
         var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
         Assert.Contains(error.Failures, f => f.PropertyName.Contains("MmrLambda", StringComparison.OrdinalIgnoreCase));
     }
+
+    // The checks below were added with DocumentedConstraintGuardTests, which proves a constraint
+    // is enforced *somewhere* but not that the enforcement is correct. These pin the behaviour:
+    // out-of-range values must be rejected, and the boundaries must stay inclusive.
+
+    [Theory]
+    [InlineData(-0.1f)]
+    [InlineData(1.1f)]
+    public async Task RetrieveAsync_CragScoreThresholdOutOfRange_ReturnsValidationFailed(float threshold)
+    {
+        var sut = CreateSut();
+        var options = new RetrievalOptions { CragScoreThreshold = threshold };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(
+            error.Failures,
+            f => f.PropertyName.Contains("CragScoreThreshold", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(1.0f)]
+    public async Task RetrieveAsync_CragScoreThresholdAtBoundary_Succeeds(float threshold)
+    {
+        var sut = CreateSut();
+
+        var result = await sut.RetrieveAsync(
+            "query",
+            new RetrievalOptions { CragScoreThreshold = threshold },
+            TestContext.Current.CancellationToken);
+
+        // An exclusive bound here would silently disable CRAG at 0 and fire it on every query
+        // at 1 — the two values a caller is most likely to reach for.
+        Assert.True(result.IsSuccess);
+    }
+
+    [Theory]
+    [InlineData(-0.1f, 0.5f, "DenseWeight")]
+    [InlineData(1.1f, 0.5f, "DenseWeight")]
+    [InlineData(0.5f, -0.1f, "Bm25Weight")]
+    [InlineData(0.5f, 1.1f, "Bm25Weight")]
+    public async Task RetrieveAsync_EnsembleWeightOutOfRange_ReturnsValidationFailed(
+        float dense, float bm25, string expectedProperty)
+    {
+        var sut = CreateSut();
+        var options = new RetrievalOptions
+        {
+            EnsembleOptions = new EnsembleOptions { DenseWeight = dense, Bm25Weight = bm25 },
+        };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(
+            error.Failures,
+            f => f.PropertyName.Contains(expectedProperty, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_NoEnsembleOptions_SkipsWeightValidation()
+    {
+        var sut = CreateSut();
+
+        // EnsembleOptions is nullable and unset by default; validating a null must not throw.
+        var result = await sut.RetrieveAsync(
+            "query",
+            new RetrievalOptions { EnsembleOptions = null },
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsSuccess);
+    }
 }
