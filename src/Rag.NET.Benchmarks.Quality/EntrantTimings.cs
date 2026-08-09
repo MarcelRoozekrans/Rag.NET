@@ -22,10 +22,12 @@ namespace Rag.NET.Benchmarks.Quality;
 /// embedder construction, not the run-file write.
 /// <para>
 /// <b>This is index construction with embedding already paid for</b>, not "the cost of indexing".
-/// Every entrant embeds through a warm vector cache, because a shared pinned embedder is the only
-/// way the five stacks are comparable at all; so what this measures is the work each library does
-/// around the embeddings, which is the part that differs between them.
-/// <paramref name="EmbeddingCacheMisses"/> is how a reader tells whether that held.
+/// Every entrant embeds through the vector cache, because a shared pinned embedder is the only
+/// way the five stacks are comparable at all — and every vector the run needs is prefetched into
+/// memory before the span starts, so embedding <b>and its disk I/O</b> are excluded by
+/// construction. The exclusion is not pedantry: with one cache-file read per text inside the
+/// span, identical runs differed by up to 23x on OS page-cache state alone. What remains is the
+/// work each library does around the embeddings, which is the part that differs between them.
 /// </para>
 /// </param>
 /// <param name="QueryLatenciesMilliseconds">
@@ -39,14 +41,16 @@ namespace Rag.NET.Benchmarks.Quality;
 /// </para>
 /// </param>
 /// <param name="EmbeddingCacheHits">
-/// Embedding-cache hits over the whole run. Reported beside the misses so the ratio, rather than a
-/// sentence someone wrote later, says whether the cache was warm.
+/// Embedding-cache hits over the whole run — counted during the untimed prefetch pass, once per
+/// requested text, so they say what the disk really held. Reported beside the misses so the
+/// ratio, rather than a sentence someone wrote later, says whether the cache was warm.
 /// </param>
 /// <param name="EmbeddingCacheMisses">
-/// Embedding-cache misses over the whole run. <b>A non-zero value means
-/// <paramref name="IndexingSeconds"/> includes embedding time and is not comparable with a warm
-/// run's.</b> Carried in the data rather than in prose precisely because it changes what the
-/// indexing figure means, and a run measuring something else must be visibly different rather than
+/// Embedding-cache misses over the whole run. Misses can only occur in the untimed prefetch pass
+/// — a harness refuses a cold cache unless warming was explicitly requested, and the timed spans
+/// serve from memory — so <paramref name="IndexingSeconds"/> stays embedding-free either way;
+/// <b>a non-zero value still marks a run that paid model time no warm run paid</b>, carried in
+/// the data rather than in prose so a run that warmed the cache is visibly different rather than
 /// footnoted.
 /// </param>
 /// <param name="UnitCount">

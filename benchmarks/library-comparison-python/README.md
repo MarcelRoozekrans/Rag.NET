@@ -33,14 +33,28 @@ rem     --filter "DisplayName~DumpsEachBatteryInputsVector"
 uv run python identity_check.py %RAGNET_BEIR_CACHE%\identity-battery   # all six must be OK
 uv run python run_entrant.py scifact langchain              # then produce run files
 uv run python run_entrant.py arguana llamaindex             # etc.
+uv run python run_entrant.py fiqa haystack --warm-cache     # first run on a cold vector cache
 ```
 
-**Run the entrants from a working directory that is not this project directory** (e.g.
-`cd %RAGNET_BEIR_CACHE% && set PYTHONPATH=<this dir> && uv run --project <this dir> python
-<this dir>/run_entrant.py …`): nltk 3.10.1, which LlamaIndex's `SentenceSplitter` imports, ships a
-security shim (`nltk/inisec.py`) that refuses any nltk-initiated import resolving under the
-current working directory — and `.venv/` lives under this directory, so from here it blocks its
-own dependencies.
+`run_entrant.py` is runnable from **any** working directory, this one included. That took
+deliberate work: nltk 3.10.1, which LlamaIndex's `SentenceSplitter` imports, ships a security
+shim (`nltk/inisec.py`) that refuses any nltk-initiated import resolving under the current
+working directory — and `.venv/` lives under this directory, so any cwd that is an ancestor of
+`.venv/` (this directory, or the repository root) would make nltk block its own dependencies
+(`regex`). The script therefore puts its own directory on `sys.path`, absolutises the `RAGNET_*`
+environment variables, and moves itself to a neutral cwd before any library is imported —
+nothing it does means anything by its working directory.
+
+**Timed spans never read the vector cache from disk.** Each run makes an untimed prefetch pass
+first — a rehearsal `entrant.build` discovers the exact chunk texts the library will embed, and
+the judged query texts are prefetched directly — reading every needed vector into memory; the
+timed passes are then served from that memory only. The indexing figure is the library building
+an index from vectors it already has, **not "the cost of indexing"**: with one cache-file read
+per text inside the span, identical runs differed by up to 23x on OS page-cache state alone
+(55.2 s cold vs 2.4 s hot, SciFact/LangChain, same code and corpus). A text the cache does not
+hold is a **cold cache** and fails loudly, naming the count — pass `--warm-cache` to let the
+prefetch pass embed and store the misses, still outside every timed span. The timings sidecar's
+hit/miss counts always describe the prefetch pass, i.e. what the disk really held.
 
 `identity_check.py` must pass before any entrant row is trusted: it compares the Python-side
 embedder against vectors `OnnxEmbeddingGenerator` itself produced, over a six-string battery

@@ -211,6 +211,82 @@ public sealed class EmbeddingCacheTests : IDisposable
     }
 
     [Fact]
+    public async Task Prefetch_ServesEveryLaterLookupFromMemory_EvenAfterTheFilesAreGone()
+    {
+        var seeded = await new EmbeddingCache(_root, "model-a")
+            .GetOrAddAsync([Text, "other"], new RecordingEmbedder(1f).EmbedAsync, Ct);
+
+        var cache = new EmbeddingCache(_root, "model-a");
+        cache.Prefetch([Text, "other"]);
+
+        // Deleting the entries proves the timed-path lookups cannot be touching disk: a cache
+        // that still read files here would miss and call the exploding embedder.
+        foreach (var file in EntryFiles())
+        {
+            File.Delete(file);
+        }
+
+        var vectors = await cache.GetOrAddAsync([Text, "other"], Explode, Ct);
+
+        Assert.Equal(seeded[0], vectors[0]);
+        Assert.Equal(seeded[1], vectors[1]);
+
+        // The counters moved at prefetch time — once per occurrence, what the disk really held —
+        // and the in-memory serving did not move them again, so a sidecar's counts stay the
+        // counts a pre-prefetch run would have reported.
+        Assert.Equal(2L, cache.Hits);
+        Assert.Equal(0L, cache.Misses);
+    }
+
+    [Fact]
+    public async Task Prefetch_CountsARepeatedText_OncePerOccurrence()
+    {
+        _ = await new EmbeddingCache(_root, "model-a")
+            .GetOrAddAsync([Text], new RecordingEmbedder(1f).EmbedAsync, Ct);
+
+        var cache = new EmbeddingCache(_root, "model-a");
+        cache.Prefetch([Text, Text]);
+
+        Assert.Equal(2L, cache.Hits);
+        Assert.Equal(0L, cache.Misses);
+    }
+
+    [Fact]
+    public async Task Prefetch_WithTextsNotCached_Throws_NamingTheCount_RatherThanEmbedding()
+    {
+        // A cold cache must fail loudly: silently embedding during a prefetch would pay model
+        // and disk costs no other run paid, one level above the spans the prefetch protects.
+        _ = await new EmbeddingCache(_root, "model-a")
+            .GetOrAddAsync([Text], new RecordingEmbedder(1f).EmbedAsync, Ct);
+
+        var cache = new EmbeddingCache(_root, "model-a");
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => cache.Prefetch([Text, "never embedded", "also never embedded"]));
+
+        Assert.Contains("2 of the 3", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(1L, cache.Hits);
+        Assert.Equal(2L, cache.Misses);
+    }
+
+    [Fact]
+    public async Task GetOrAddAsync_AfterPrefetch_RefusesATextThePrefetchNeverSaw()
+    {
+        _ = await new EmbeddingCache(_root, "model-a")
+            .GetOrAddAsync([Text, "other"], new RecordingEmbedder(1f).EmbedAsync, Ct);
+
+        var cache = new EmbeddingCache(_root, "model-a");
+        cache.Prefetch([Text]);
+
+        // "other" IS on disk — refusing anyway is the point. After a prefetch, a lookup that
+        // fell back to disk would put file I/O back inside the timed span the prefetch exists
+        // to keep it out of.
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => cache.GetOrAddAsync(["other"], Explode, Ct));
+
+        Assert.Contains("1 of the 1", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Constructor_RejectsABlankModelIdentity()
     {
         // A blank identity is the same failure as no identity at all: every model shares one key

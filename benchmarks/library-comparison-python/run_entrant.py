@@ -2,7 +2,13 @@
 
 Usage::
 
-    uv run python run_entrant.py <scifact|arguana|fiqa> <langchain|llamaindex|haystack>
+    uv run python run_entrant.py <scifact|arguana|fiqa> <langchain|llamaindex|haystack> \\
+        [--warm-cache]
+
+Runnable from **any** working directory, this one included -- the bootstrap below moves the
+process to a neutral cwd before anything imports nltk. ``--warm-cache`` permits the untimed
+prefetch pass to embed and store texts the vector cache does not hold yet; without it a cold
+cache fails loudly instead of quietly paying model and disk costs no other run paid.
 
 Environment: ``RAGNET_BEIR_CACHE`` (extracted datasets, and where ``runs/`` and the Python
 vector cache live), ``RAGNET_ONNX_EMBED_MODEL`` and ``RAGNET_ONNX_EMBED_VOCAB`` (the pinned
@@ -30,24 +36,57 @@ the run file): ``time.perf_counter()`` around ``entrant.build`` only for indexin
 ``retrieve`` call only per query -- never around ``top_documents``, which is harness protocol
 identical across entrants, and never around a process. The elapsed line below is derived from
 those spans rather than measured separately, so the print and the sidecar cannot drift apart.
+
+**Every vector a timed span needs is prefetched into memory first** -- a rehearsal
+``entrant.build`` discovers the exact chunk texts the library will embed, the judged query texts
+are prefetched directly, and only then do the timed passes run, served from memory
+(``VectorCache.prefetch`` / ``serve``). The indexing figure is therefore **not "the cost of
+indexing"**: it is the library building an index from vectors it already has, with embedding and
+its disk I/O excluded by construction. Before this, one cache-file read per text sat inside the
+span, and identical runs differed by up to 23x on OS page-cache state alone (55.2 s cold vs
+2.4 s hot on SciFact/LangChain) -- a figure about run order, not about any library. The sidecar's
+hit/miss counts describe the prefetch pass, i.e. what the disk really held.
 """
 
 from __future__ import annotations
 
 import os
 import sys
-import time
+import tempfile
 from pathlib import Path
 
-import entrant_haystack
-import entrant_langchain
-import entrant_llamaindex
-import timings
-from beir_data import load_dataset
-from doc_ranking import top_documents
-from pinned_embedder import PYTHON_MODEL_IDENTITY, PinnedEmbedder
-from trec_run import write
-from vector_cache import VectorCache
+# ---------------------------------------------------------------------------------------------
+# Import bootstrap, BEFORE the entrant imports below pull in the libraries.
+#
+# nltk >= 3.10 (imported by LlamaIndex's SentenceSplitter) installs a guard (nltk/inisec.py,
+# a CWE-427 mitigation) that blocks any nltk-initiated import resolving under the current
+# working directory. This project's ``.venv`` lives under this directory, so any cwd that is an
+# ancestor of ``.venv`` -- this directory, or the repository root -- makes nltk block its own
+# dependencies (``regex``). Nothing in this script means anything by its cwd (every path comes
+# from an environment variable, absolutised here first), so move to a neutral one before any
+# library is imported. The sys.path insert keeps the sibling modules importable when the
+# interpreter was started with ``-P``/``PYTHONSAFEPATH``, which drop the script directory.
+# ---------------------------------------------------------------------------------------------
+_SCRIPT_DIRECTORY = Path(__file__).resolve().parent
+if str(_SCRIPT_DIRECTORY) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIRECTORY))
+for _variable in ("RAGNET_BEIR_CACHE", "RAGNET_ONNX_EMBED_MODEL", "RAGNET_ONNX_EMBED_VOCAB"):
+    _value = os.environ.get(_variable)
+    if _value:
+        os.environ[_variable] = str(Path(_value).resolve())
+os.chdir(tempfile.gettempdir())
+
+import time  # noqa: E402
+
+import entrant_haystack  # noqa: E402
+import entrant_langchain  # noqa: E402
+import entrant_llamaindex  # noqa: E402
+import timings  # noqa: E402
+from beir_data import load_dataset  # noqa: E402
+from doc_ranking import top_documents  # noqa: E402
+from pinned_embedder import PYTHON_MODEL_IDENTITY, PinnedEmbedder  # noqa: E402
+from trec_run import write  # noqa: E402
+from vector_cache import VectorCache  # noqa: E402
 
 CUTOFF = 10  # BeirHarness.Cutoff: the rank cutoff the published figures are quoted at
 
@@ -58,12 +97,14 @@ ENTRANTS = {
 
 
 def main() -> int:
-    if len(sys.argv) != 3 or sys.argv[1] not in ("scifact", "arguana", "fiqa") \
-            or sys.argv[2] not in ENTRANTS:
+    arguments = [argument for argument in sys.argv[1:] if argument != "--warm-cache"]
+    warm_cache = len(arguments) != len(sys.argv) - 1
+    if len(arguments) != 2 or arguments[0] not in ("scifact", "arguana", "fiqa") \
+            or arguments[1] not in ENTRANTS:
         print(__doc__)
         return 2
 
-    dataset_name, entrant_name = sys.argv[1], sys.argv[2]
+    dataset_name, entrant_name = arguments
     cache_directory = _required_env("RAGNET_BEIR_CACHE")
     model_path = _required_env("RAGNET_ONNX_EMBED_MODEL")
     vocab_path = _required_env("RAGNET_ONNX_EMBED_VOCAB")
@@ -71,17 +112,29 @@ def main() -> int:
     entrant = ENTRANTS[entrant_name]
     dataset = load_dataset(cache_directory, dataset_name)
     descriptor = dataset.descriptor
+    judged = dataset.judged_queries()
 
     embedder = PinnedEmbedder(model_path, vocab_path)
     cache = VectorCache(
         Path(cache_directory) / "embeddings-python", PYTHON_MODEL_IDENTITY)
 
+    # The prefetch pass, untimed: a rehearsal build discovers the exact chunk texts this
+    # library will embed and reads their vectors into memory; the judged query texts are known
+    # up front and prefetched directly. All disk I/O the run needs happens here, before any
+    # clock starts. A text with no cache entry raises (cold cache) unless --warm-cache was
+    # given, in which case it is embedded and stored here -- still outside every span.
+    warm_embed = embedder.embed if warm_cache else None
+    entrant.build(dataset.documents, lambda texts: cache.prefetch(texts, warm_embed))
+    cache.prefetch([query.text for query in judged], warm_embed)
+
     def embed_many(texts: list[str]):
-        return cache.get_or_embed(texts, embedder.embed)
+        return cache.serve(texts)
 
     # perf_counter, not monotonic: the higher-resolution clock, and per-query spans are small.
     # The span brackets entrant.build ONLY -- dataset loading, embedder construction and the
-    # run-file write are the harness's own cost, not the library's.
+    # run-file write are the harness's own cost, not the library's. Embedding is served from
+    # the prefetched memory map, so what this measures is the library building an index from
+    # vectors it already has: NOT "the cost of indexing", by construction.
     indexing_started = time.perf_counter()
     retrieve, max_units_per_document, unit_count = entrant.build(dataset.documents, embed_many)
     indexing_seconds = time.perf_counter() - indexing_started
@@ -92,10 +145,12 @@ def main() -> int:
 
     runs: dict[str, list[tuple[str, float]]] = {}
     query_latencies_milliseconds: dict[str, float] = {}
-    for query in dataset.judged_queries():
+    for query in judged:
         # The span brackets the library's retrieval ONLY. top_documents (pooling and the
         # self-exclusion) is harness protocol, deliberately identical across entrants, so timing
-        # it would smear the same constant into five different libraries' latency columns.
+        # it would smear the same constant into five different libraries' latency columns. The
+        # query embedding inside the span resolves from the prefetched memory map -- the span
+        # holds the library's search, with no disk read to inherit the page cache's state.
         query_started = time.perf_counter()
         hits = retrieve(query.text, depth)
         query_latencies_milliseconds[query.id] = (time.perf_counter() - query_started) * 1000.0
@@ -128,7 +183,8 @@ def main() -> int:
     print(f"  {len(runs)} judged queries retrieved; self-exclusion check: "
           f"{self_lines} query-id = document-id lines "
           f"({'protocol requires 0' if excludes_self else 'dataset does not self-exclude'})")
-    print(f"  cache: {cache.hits} hits, {cache.misses} misses; "
+    print(f"  cache: {cache.hits} hits, {cache.misses} misses (prefetch pass; timed spans "
+          "serve from memory); "
           f"indexing {indexing_seconds:.1f} s + retrieval {retrieval_seconds:.1f} s (self-timed)")
     print(f"  run file: {run_file}")
     print(f"  timings sidecar: {timings.path_for(run_file)}")

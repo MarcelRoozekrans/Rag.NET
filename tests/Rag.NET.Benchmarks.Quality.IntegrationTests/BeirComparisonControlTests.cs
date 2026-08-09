@@ -80,10 +80,14 @@ public sealed class BeirComparisonControlTests
 
         using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
         var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
-        // The cache counters bracket the whole run, so the sidecar can say whether the indexing
-        // figure was measured with embedding already paid for. The timing spans themselves live
-        // in the harness, around the same operations every entrant brackets: index construction,
-        // and each retrieval call with pooling outside.
+        // The cache counters bracket the whole run, and they move in the harness's untimed
+        // prefetch: RetrieveScoredRunsAsync reads every needed vector into memory before either
+        // span starts, so the sidecar's hits/misses describe what the disk held while the timed
+        // spans never touch it. The indexing figure is index construction with embedding (and
+        // its I/O) already paid for — deliberately not "the cost of indexing", because one disk
+        // read per text inside the span measured the OS page cache, not the entrant. The spans
+        // themselves live in the harness, around the same operations every entrant brackets:
+        // index construction, and each retrieval call with pooling outside.
         var hitsBefore = embeddings.Hits;
         var missesBefore = embeddings.Misses;
         var measured = await BeirHarness.RetrieveScoredRunsAsync(

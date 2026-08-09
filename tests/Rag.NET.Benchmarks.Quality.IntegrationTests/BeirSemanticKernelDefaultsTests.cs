@@ -134,16 +134,19 @@ public sealed class BeirSemanticKernelDefaultsTests
             (texts, token) => BeirHarness.EmbedAsync(generator, embeddings, texts, token));
 
         // The same spans the Python harness brackets (run_entrant.py): index construction only,
-        // then each retrieval call only — never dataset loading, never the run-file write, never
-        // the writer-side cut. The cache counters are read around the whole run, so the sidecar
-        // says whether the indexing figure was measured with embedding already paid for.
+        // then each retrieval call only. Every vector the run will need is prefetched into
+        // memory before either span starts, so the indexing figure is SK building its store
+        // from vectors it already has — not "the cost of indexing"; embedding and its disk I/O
+        // are excluded by construction, and the sidecar's hit/miss counts describe the untimed
+        // prefetch, i.e. what the disk really held. A cold cache fails loudly there.
         var hitsBefore = embeddings.Hits;
         var missesBefore = embeddings.Misses;
+        var judged = BeirHarness.JudgedQueries(dataset);
+        PrefetchEveryVectorTheRunWillNeed(embeddings, dataset.Documents, judged);
         var indexingStartedAt = Stopwatch.GetTimestamp();
         using var collection = SemanticKernelEntrant.CreateCollection(recorder);
         await SemanticKernelEntrant.IndexAsync(collection, dataset.Documents, ct);
         var indexingSeconds = Stopwatch.GetElapsedTime(indexingStartedAt).TotalSeconds;
-        var judged = BeirHarness.JudgedQueries(dataset);
         var (runs, queryLatencies) = await SemanticKernelEntrant.RetrieveAsync(
             collection, judged, descriptor.ExcludesSelfRetrievedDocument, ct);
 
@@ -169,6 +172,31 @@ public sealed class BeirSemanticKernelDefaultsTests
         BeirReproduction.AssertReproduces(
             datasetName, BeirProtocol.SemanticKernel,
             evaluation.NormalizedDiscountedCumulativeGain, _output);
+    }
+
+    /// <summary>
+    /// Reads every vector the run will need — one per corpus document and one per judged query,
+    /// the exact texts Semantic Kernel embeds through the recorder — from disk into the cache's
+    /// memory, before any timed span starts. All the run's cache I/O happens here; a cold cache
+    /// fails loudly in <see cref="EmbeddingCache.Prefetch"/> rather than being timed.
+    /// </summary>
+    private static void PrefetchEveryVectorTheRunWillNeed(
+        EmbeddingCache embeddings,
+        IReadOnlyList<BeirDocument> documents,
+        IReadOnlyList<BeirQuery> judged)
+    {
+        var texts = new string[documents.Count + judged.Count];
+        for (var i = 0; i < documents.Count; i++)
+        {
+            texts[i] = documents[i].RetrievalText;
+        }
+
+        for (var i = 0; i < judged.Count; i++)
+        {
+            texts[documents.Count + i] = judged[i].Text;
+        }
+
+        embeddings.Prefetch(texts);
     }
 
     /// <summary>The pinned generator called directly, in the shape the recorder's source takes.</summary>
