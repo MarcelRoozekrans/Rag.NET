@@ -438,7 +438,138 @@ public sealed class TimingsSidecarTests : IDisposable
         Assert.Contains(SidecarPath, ex.Message, StringComparison.Ordinal);
     }
 
+    // ------------------------------------------------------- the pairing with the run file
+
+    [Fact]
+    public void ReadPaired_ReturnsTheTimingsWhenTheTagAndQueryIdsAgree()
+    {
+        WriteRunFile("tag", "q-1", "q-2");
+        TimingsSidecar.Write(RunPath, Timings(("q-1", 4.25), ("q-2", 3.5)));
+
+        var timings = TimingsSidecar.ReadPaired(RunPath);
+
+        Assert.Equal("tag", timings.RunTag, StringComparer.Ordinal);
+        Assert.Equal(4.25, timings.QueryLatenciesMilliseconds["q-1"]);
+    }
+
+    [Fact]
+    public void ReadPaired_AMissingSidecarRefusesRatherThanReturningNothing()
+    {
+        // The refuse-on-miss rule the opted-in BEIR cases already use for a missing run file. A
+        // cost measurement that returned nothing when the sidecar was absent would read as a pass,
+        // and this repository has shipped inert green tests before.
+        WriteRunFile("tag", "q-1");
+
+        var ex = Assert.Throws<FileNotFoundException>(() => TimingsSidecar.ReadPaired(RunPath));
+
+        Assert.Contains(SidecarPath, ex.Message, StringComparison.Ordinal);
+        // Named, not merely implied: the run file's path is a prefix of the sidecar's, so asserting
+        // on the path alone would pass against the runtime's own "could not find file" message.
+        Assert.Contains("refuse-on-miss", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReadPaired_AMissingRunFileIsBlamedOnTheRunFileNotTheSidecar()
+    {
+        // Both absent means the entrant never ran. Naming the sidecar there would send whoever
+        // reads it looking for a timing bug in a run that does not exist.
+        var ex = Assert.Throws<FileNotFoundException>(() => TimingsSidecar.ReadPaired(RunPath));
+
+        Assert.Contains(RunPath, ex.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(SidecarPath, ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReadPaired_ADisagreeingRunTagFailsLoudlyNamingBothTags()
+    {
+        // The pairing error that produces a complete, plausible, wrong row: one entrant's latencies
+        // published under another's name, with every number present and every number attributed to
+        // the wrong library.
+        WriteRunFile("langchain-core-1.5.3", "q-1");
+        TimingsSidecar.Write(RunPath, Timings(("q-1", 4.25)) with { RunTag = "haystack-ai-3.0.0" });
+
+        var ex = Assert.Throws<InvalidDataException>(() => TimingsSidecar.ReadPaired(RunPath));
+
+        Assert.Contains("langchain-core-1.5.3", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("haystack-ai-3.0.0", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReadPaired_AQueryRankedButNotTimedFailsLoudlyNamingIt()
+    {
+        // A sidecar short of a query is a percentile over a subset. It reads as a faster entrant if
+        // the untimed queries were the slow ones, which is exactly the correlation to expect when
+        // an entrant stops timing partway through.
+        WriteRunFile("tag", "q-1", "q-2");
+        TimingsSidecar.Write(RunPath, Timings(("q-1", 4.25)));
+
+        var ex = Assert.Throws<InvalidDataException>(() => TimingsSidecar.ReadPaired(RunPath));
+
+        Assert.Contains("q-2", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReadPaired_AQueryTimedButNotRankedFailsLoudlyNamingIt()
+    {
+        // The other direction: latencies for queries this run file never answered, which is a
+        // sidecar left over from a different dataset or a different query split.
+        WriteRunFile("tag", "q-1");
+        TimingsSidecar.Write(RunPath, Timings(("q-1", 4.25), ("q-9", 3.5)));
+
+        var ex = Assert.Throws<InvalidDataException>(() => TimingsSidecar.ReadPaired(RunPath));
+
+        Assert.Contains("q-9", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReadPaired_AQueryThatRetrievedNothingStillHasToBeTimed()
+    {
+        // TrecRunFile keeps a query that retrieved nothing as a present, empty ranking — so it is
+        // one of the run's queries and it cost time. An entrant that timed only the queries with
+        // results would drop its own worst-case retrievals out of the samples.
+        TrecRunFile.Write(
+            RunPath,
+            new Dictionary<string, IReadOnlyList<ScoredDocument>>(StringComparer.Ordinal)
+            {
+                ["q-1"] = [new ScoredDocument("doc-1", 0.9)],
+                ["q-empty"] = [],
+            },
+            "tag");
+        TimingsSidecar.Write(RunPath, Timings(("q-1", 4.25)));
+
+        var ex = Assert.Throws<InvalidDataException>(() => TimingsSidecar.ReadPaired(RunPath));
+
+        Assert.Contains("q-empty", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReadPaired_AMalformedRunFileFailsThroughTrecRunFilesOwnChecks()
+    {
+        // The pairing does not get its own lenient parser: the run file is read by the reader every
+        // published quality figure goes through, so a file this accepts is a file that scores.
+        File.WriteAllText(RunPath, "q-1 Q0 doc-1 1 0.9\n");
+        TimingsSidecar.Write(RunPath, Timings(("q-1", 4.25)));
+
+        var ex = Assert.Throws<InvalidDataException>(() => TimingsSidecar.ReadPaired(RunPath));
+
+        Assert.Contains(RunPath, ex.Message, StringComparison.Ordinal);
+        Assert.Contains("line 1", ex.Message, StringComparison.Ordinal);
+    }
+
     // -------------------------------------------------------------------- sidecar fixtures
+
+    /// <summary>A run file tagged <paramref name="runTag"/> ranking one document per query.</summary>
+    private void WriteRunFile(string runTag, params string[] queryIds)
+    {
+        var runs = new Dictionary<string, IReadOnlyList<ScoredDocument>>(StringComparer.Ordinal);
+        foreach (var queryId in queryIds)
+        {
+            runs[queryId] = [new ScoredDocument("doc-" + queryId, 0.9)];
+        }
+
+        TrecRunFile.Write(RunPath, runs, runTag);
+    }
+
 
     /// <summary>A well-formed sidecar.</summary>
     private static string Valid() => Json(ValidFields);

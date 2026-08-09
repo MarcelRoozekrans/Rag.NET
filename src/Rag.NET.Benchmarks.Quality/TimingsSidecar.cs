@@ -16,6 +16,13 @@ namespace Rag.NET.Benchmarks.Quality;
 /// number is wrong. <see cref="PathFor"/> is the only way to name one.
 /// </para>
 /// <para>
+/// <b>The pairing is checked, not assumed.</b> A shared path prefix says the two files sit
+/// together, not that they describe the same run, so <see cref="ReadPaired"/> makes them agree on
+/// the run tag and on the exact set of query ids — and refuses a missing sidecar rather than
+/// skipping, because an opted-in cost measurement that skipped when its data was absent would read
+/// as a pass.
+/// </para>
+/// <para>
 /// <b>Named fields, not positions.</b> Unlike the TREC run file, this format is ours and is read
 /// only by us, so it is JSON: a positional format silently misreads when a field is added or
 /// reordered, and this file's whole purpose is to be trusted about which number is which.
@@ -161,6 +168,155 @@ public static class TimingsSidecar
             ReadCount(root, EmbeddingCacheMissesField, sidecarPath, minimum: 0),
             ReadCount(root, UnitCountField, sidecarPath, minimum: 1),
             ReadCount(root, MaxUnitsPerDocumentField, sidecarPath, minimum: 1));
+    }
+
+    /// <summary>
+    /// Reads the sidecar beside a run file <b>and proves the two describe the same run</b> — same
+    /// entrant, same queries.
+    /// <para>
+    /// A run file and a sidecar that disagree are worse than a missing sidecar, because they look
+    /// fine: every cell is populated, and the latencies belong to another entrant, another dataset
+    /// or another query split. Both halves of the check are things only the pair can show —
+    /// neither file is self-evidently wrong on its own.
+    /// </para>
+    /// </summary>
+    /// <param name="runFilePath">
+    /// The run file. It is read in full by <see cref="TrecRunFile.Read"/> — the same reader every
+    /// published quality figure goes through — so a pair this accepts is a pair that scores.
+    /// </param>
+    /// <returns>The entrant's timings, checked against the run file beside them.</returns>
+    /// <exception cref="FileNotFoundException">
+    /// The run file is absent (nothing ran), or the run file is present and its sidecar is not.
+    /// <b>Absent is a failure, not a skip</b> — the <c>refuse-on-miss</c> rule the opted-in BEIR
+    /// cases already apply to a missing run file. An opted-in cost measurement that skipped when
+    /// the sidecar was gone would read as a pass.
+    /// </exception>
+    /// <exception cref="InvalidDataException">
+    /// The run file is malformed, the two disagree about the run tag, or they disagree about the
+    /// set of query ids.
+    /// </exception>
+    public static EntrantTimings ReadPaired(string runFilePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(runFilePath);
+
+        // The run file first: if neither file exists, the entrant never ran, and naming the
+        // sidecar would send a reader looking for a timing bug in a run that does not exist.
+        var runs = TrecRunFile.Read(runFilePath);
+        var runTag = ReadRunTag(runFilePath);
+
+        var sidecarPath = PathFor(runFilePath);
+        if (!File.Exists(sidecarPath))
+        {
+            throw new FileNotFoundException(
+                $"'{runFilePath}' exists but '{sidecarPath}' does not, so the entrant ran and " +
+                "emitted no timings. This is a failure and not a skip — the refuse-on-miss rule " +
+                "the opted-in BEIR cases already apply to a missing run file — because an " +
+                "opted-in cost measurement that skipped when its data was absent would read as a " +
+                "pass. Re-run the entrant that produced the run file; it writes both.",
+                sidecarPath);
+        }
+
+        var timings = Read(runFilePath);
+        RequireSameRunTag(runTag, timings.RunTag, runFilePath, sidecarPath);
+        RequireSameQueries(runs, timings.QueryLatenciesMilliseconds, runFilePath, sidecarPath);
+        return timings;
+    }
+
+    /// <summary>
+    /// The run file's tag, from its first ranked line. Reading one line is enough because
+    /// <see cref="TrecRunFile.Read"/> has already refused any file whose tag changes partway
+    /// through — so by here there is only one tag to find.
+    /// </summary>
+    private static string ReadRunTag(string runFilePath)
+    {
+        foreach (var line in File.ReadLines(runFilePath))
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            var fields = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            return fields[^1];
+        }
+
+        throw new InvalidDataException(
+            $"'{runFilePath}' has no run lines, so it carries no run tag to check the sidecar " +
+            "against.");
+    }
+
+    private static void RequireSameRunTag(
+        string runFileTag, string sidecarTag, string runFilePath, string sidecarPath)
+    {
+        if (!string.Equals(runFileTag, sidecarTag, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"'{runFilePath}' is tagged '{runFileTag}' but '{sidecarPath}' beside it is " +
+                $"tagged '{sidecarTag}'. This is the pairing error that produces a complete, " +
+                "plausible, wrong row: one library's latencies published under another's name, " +
+                "with nothing missing and nothing to notice.");
+        }
+    }
+
+    private static void RequireSameQueries(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> runs,
+        IReadOnlyDictionary<string, double> latencies,
+        string runFilePath,
+        string sidecarPath)
+    {
+        var ranked = Missing(runs.Keys, latencies.ContainsKey);
+        if (ranked.Count > 0)
+        {
+            throw new InvalidDataException(
+                $"'{runFilePath}' answers {Describe(ranked)} that '{sidecarPath}' does not time. " +
+                "A sidecar short of a query yields a percentile over a subset, and it reads as a " +
+                "faster entrant whenever the untimed queries were the slow ones — which is " +
+                "exactly what to expect when an entrant stops timing partway through. A query " +
+                "that retrieved nothing still cost time and still needs a sample.");
+        }
+
+        var timed = Missing(latencies.Keys, runs.ContainsKey);
+        if (timed.Count > 0)
+        {
+            throw new InvalidDataException(
+                $"'{sidecarPath}' times {Describe(timed)} that '{runFilePath}' never answers. " +
+                "The sidecar is measuring a query set this run file does not have — a leftover " +
+                "from another dataset or another qrels split.");
+        }
+    }
+
+    /// <summary>The ids not present on the other side, in ordinal order so the message is stable.</summary>
+    private static List<string> Missing(IEnumerable<string> queryIds, Func<string, bool> isPresent)
+    {
+        var missing = new List<string>();
+        foreach (var queryId in queryIds)
+        {
+            if (!isPresent(queryId))
+            {
+                missing.Add(queryId);
+            }
+        }
+
+        missing.Sort(StringComparer.Ordinal);
+        return missing;
+    }
+
+    /// <summary>
+    /// The count with the first few ids named. Bounded because a wholly mismatched pair differs by
+    /// every query, and a message listing 1,406 ids says less than one listing three and a count.
+    /// </summary>
+    private static string Describe(List<string> queryIds)
+    {
+        const int Shown = 3;
+        var named = string.Join("', '", queryIds.GetRange(0, Math.Min(Shown, queryIds.Count)));
+        var more = queryIds.Count > Shown
+            ? $" and {(queryIds.Count - Shown).ToString(CultureInfo.InvariantCulture)} more"
+            : "";
+        var counted = queryIds.Count == 1
+            ? "1 query"
+            : $"{queryIds.Count.ToString(CultureInfo.InvariantCulture)} queries";
+
+        return $"{counted} — '{named}'{more} —";
     }
 
     // ------------------------------------------------------------------------------- writing
