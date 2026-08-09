@@ -2917,7 +2917,7 @@ shape, though that box is still here doing its share):
 > everything a user installs; the harness half does not, and repeating the constraint
 > unqualified would be false.
 
-### Phase 5.1: Library Performance Comparison [status: measurement landed 2026-08-09; publication blocked on a decision]
+### Phase 5.1: Library Performance Comparison [status: measurement landed 2026-08-09; §6 decided — publication is the remaining work]
 **Goal:** Compare **cost** across the Phase 3.14 comparators — indexing throughput (docs/sec),
 query latency p50/p99, allocations per query, Native AOT startup time, RSS. (Not a features.md
 row — the only item the handover proposes that Phase 3.14 did not touch; it calls this table
@@ -2983,6 +2983,20 @@ Three findings, each of which the decision should weigh:
   library one**, while the per-query latency rows — both bracketing the retrieval call and
   excluding pooling — are clean. So the two rows are not equally publishable, and §6's decision
   may reasonably differ between them.
+
+**§6 decided 2026-08-09: split by row.** Latency (p50/p99) publishes as a **cross-ecosystem**
+table, because those spans genuinely bracket the same work with the boundary excluded. Indexing
+publishes **per ecosystem, labelled non-comparable**, the way the `+BM25 hybrid` row is labelled
+internal — because of the third finding above. The decision follows the evidence per row rather
+than applying one rule to both, which is what the third finding made possible; before it, the
+choice looked like a single call about the whole table.
+
+This is the first cross-ecosystem cost figure this repository will publish, and it is exactly what
+3.14 declined to publish — so the latency table must carry, on the page, what §2.2 already states:
+that interpreter and runtime startup are excluded by construction, that allocations-per-query and
+AOT startup are .NET-only and publish as an internal table, and that every row comes from one
+machine in one session with the caches warm. **Remaining work is publication only**; the
+measurement, the percentile definition and the boundary guard all landed.
 
 ### Phase 5.2: Multi-Hop Retrieval [status: pending]
 **Goal:** Measure multi-hop retrieval — HotpotQA, MuSiQue, 2WikiMultiHopQA, MultiHop-RAG. (Not a
