@@ -61,7 +61,7 @@ var response = await pipeline.AskAsync("What is RAG?", new RagOptions
     ConversationHistory = history,
 });
 history.Add(new(ChatRole.User,      "What is RAG?"));
-history.Add(new(ChatRole.Assistant, response.Text));
+history.Add(new(ChatRole.Assistant, response.Answer));
 
 // Second turn — memory trims history before the LLM call
 var response2 = await pipeline.AskAsync("Can you give an example?", new RagOptions
@@ -127,7 +127,7 @@ var response = await pipeline.AskAsync("Explain the refund policy", new RagOptio
 var memory = serviceProvider.GetRequiredService<IConversationMemory>();
 await memory.StoreAsync(
     userMessage:      "Explain the refund policy",
-    assistantMessage: response.Text,
+    assistantMessage: response.Answer,
     sessionId:        "user-42-session-1");
 ```
 
