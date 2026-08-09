@@ -131,6 +131,31 @@ public sealed partial class TestProject
         Path.Combine(FindRepositoryRoot(), ".github", "workflows", fileName);
 
     /// <summary>
+    /// Enumerates every C# source file under one top-level directory of the repository, skipping
+    /// build output — the one shared walk for every guard that scans raw source
+    /// (<see cref="TestGateTests"/>, <see cref="DocumentedConstraintGuardTests"/>,
+    /// <see cref="InertValidatorGuardTests"/>), so the guards cannot disagree about which files
+    /// exist.
+    /// </summary>
+    /// <param name="topDirectory">The top-level directory to walk, <c>src</c> or <c>tests</c>.</param>
+    /// <returns>Repository-relative (forward-slash) and absolute paths, in directory order.</returns>
+    public static IEnumerable<(string RelativePath, string FullPath)> EnumerateSourceFiles(string topDirectory)
+    {
+        var root = FindRepositoryRoot();
+
+        foreach (var file in Directory.EnumerateFiles(
+            Path.Combine(root, topDirectory), "*.cs", SearchOption.AllDirectories))
+        {
+            var relativePath = NormalisePath(Path.GetRelativePath(root, file));
+            if (!relativePath.Contains("/bin/", StringComparison.Ordinal) &&
+                !relativePath.Contains("/obj/", StringComparison.Ordinal))
+            {
+                yield return (relativePath, file);
+            }
+        }
+    }
+
+    /// <summary>
     /// Reads a workflow file as the commands it will run: comment lines removed, shell line
     /// continuations joined, runs of whitespace collapsed to one space.
     /// </summary>

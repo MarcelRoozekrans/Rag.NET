@@ -174,6 +174,13 @@ public sealed class OnnxTokenEmbeddingGenerator : ITokenEmbeddingGenerator, IDis
         var windows = TokenWindowStitcher.Windows(
             ids.Length, _options.MaxTokens - SpecialTokensPerWindow, _options.WindowOverlapTokens);
 
+        // Guards the invariant the incremental CopyWindow loop below cannot see on its own:
+        // every row of the stitched matrix must be written by some window, or it silently stays
+        // zero-filled. Windows() satisfies this by construction today; checking it here keeps
+        // "by construction" from decaying into "by assumption" — before this call the check
+        // lived behind Stitch, which only tests reach (issue #90).
+        TokenWindowStitcher.ValidateCoverage(windows, ids.Length);
+
         float[]? stitched = null;
         var dimension = 0;
         for (var w = 0; w < windows.Count; w++)

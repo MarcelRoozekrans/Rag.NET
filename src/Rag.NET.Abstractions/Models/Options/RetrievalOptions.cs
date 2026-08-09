@@ -4,8 +4,9 @@ using ZeroAlloc.Specification;
 namespace Rag.NET.Models.Options;
 
 // Note: [Validate] is intentionally absent. The ZeroAlloc.Validation source generator
-// does not support record types. Validation for TopK, RedundancyThreshold, and MmrLambda
-// is applied manually in PipelineRetriever.RetrieveAsync.
+// does not support record types. Validation for TopK, RedundancyThreshold, MmrLambda,
+// CragScoreThreshold, and the EnsembleOptions weights is applied manually in
+// PipelineRetriever.RetrieveAsync.
 /// <summary>
 /// Per-call overrides for <c>IRetriever.RetrieveAsync</c>. Unset properties fall back to whatever
 /// the pipeline was configured with at startup.
@@ -155,7 +156,8 @@ public sealed record RetrievalOptions
 
     /// <summary>
     /// Minimum fraction of results classified as relevant before CRAG triggers web fallback.
-    /// Range: 0.0–1.0. Default <c>0.5</c>.
+    /// Range: 0.0–1.0 — <c>PipelineRetriever</c> rejects a value outside that range with a
+    /// validation failure. Default <c>0.5</c>.
     /// </summary>
     public float CragScoreThreshold { get; init; } = 0.5f;
 

@@ -6,7 +6,10 @@ namespace Rag.NET.Models.Options;
 /// </summary>
 public sealed class MultiQueryOptions
 {
-    /// <summary>Number of alternative query phrasings to generate. Must be at least 1.</summary>
+    /// <summary>
+    /// Number of alternative query phrasings to generate. Must be at least 1; enforced by
+    /// <c>UseMultiQueryRetrieval</c> at registration time.
+    /// </summary>
     public int VariantCount { get; set; } = 3;
 
     /// <summary>

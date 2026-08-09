@@ -128,9 +128,12 @@ internal static class TokenWindowStitcher
     /// <summary>
     /// Windows must start at token 0, advance contiguously or overlapping (no gaps), and end
     /// exactly at <paramref name="totalTokens"/> — otherwise some stitched rows would silently
-    /// stay zero-filled.
+    /// stay zero-filled. Internal rather than private so the production stitching path
+    /// (<c>OnnxTokenEmbeddingGenerator.RunWindowedAsync</c>, which folds windows in with
+    /// <see cref="CopyWindow"/> and never calls <see cref="Stitch"/>) can run the same check:
+    /// the issue #90 audit found this guard reachable only from tests, which protected nothing.
     /// </summary>
-    private static void ValidateCoverage(IReadOnlyList<(int Start, int End)> windows, int totalTokens)
+    internal static void ValidateCoverage(IReadOnlyList<(int Start, int End)> windows, int totalTokens)
     {
         if (totalTokens == 0 && windows.Count == 0)
             return;

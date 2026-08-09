@@ -11,7 +11,10 @@ public sealed class VideoDescriptionOptions
     public string Prompt { get; set; } =
         "Describe this video frame in detail, noting any visible text, actions, or context. File: {fileName}, timestamp: {timestamp}s";
 
-    /// <summary>FFmpeg scene detection sensitivity (0.0–1.0). Lower = more scenes detected.</summary>
+    /// <summary>
+    /// FFmpeg scene detection sensitivity (0.0–1.0); <c>UseVideoDescription</c> rejects a value
+    /// outside that range at registration time. Lower = more scenes detected.
+    /// </summary>
     public double SceneChangeThreshold { get; set; } = 0.3;
 
     /// <summary>Maximum number of scenes to extract per video. Evenly-spaced subset taken if over cap.</summary>
