@@ -21,9 +21,10 @@ namespace Rag.NET.PackageValidation.Tests;
 /// <remarks>
 /// <para>
 /// <b>The extraction rule</b>, stated so a future reader can judge whether the guard is real.
-/// From each <c>```csharp</c> fence, after stripping <c>/* */</c> blocks and line comments whose
+/// From each <c>```csharp</c> fence, after stripping <c>/* */</c> blocks, line comments whose
 /// <c>//</c> is at line start or preceded by whitespace (so <c>https://</c> inside strings
-/// survives), four shapes are extracted and each must resolve:
+/// survives), and string-literal text (see below), four shapes are extracted and each must
+/// resolve:
 /// <list type="number">
 /// <item><c>using X.Y.Z;</c> — X.Y.Z must be a namespace (or namespace prefix) some resolvable
 /// assembly declares; <c>using static X.Y.T;</c> — X.Y a namespace, T a public type.</item>
@@ -36,30 +37,79 @@ namespace Rag.NET.PackageValidation.Tests;
 /// leading-dot fluent continuation (<c>.UseXxx(…)</c>) checks every PascalCase segment against
 /// the public member names of the resolvable set; the final segment, when followed by
 /// <c>(</c>, must be a public method name — extension methods resolve here, being public
-/// static methods.</item>
+/// static methods. (Docs-only exception: see below.)</item>
 /// <item>Assignments <c>Name = …</c> where Name is PascalCase (not <c>==</c>/<c>=&gt;</c>) —
 /// the object-initializer shape — Name must be a public member name.</item>
 /// </list>
+/// A type (or generic argument, or static-member declaring type) is also considered resolved when
+/// its simple name was declared by a <c>class</c>/<c>record</c>/<c>struct</c>/<c>interface</c>
+/// elsewhere on the same page (a README's every fence; a docs page's every fence) — a
+/// "here's how to implement your own X" tutorial that declares the type it then registers is
+/// correct documentation, and is the dominant shape of the extending/ingestion guides. Only the
+/// name travels; the declared type's own members are not verified (the same trust already
+/// extended to a namespace-qualified chain's later segments).
+/// </para>
+/// <para>
+/// <b>String literals</b> are blanked before the shapes above ever see them — quoted
+/// (<c>"..."</c>), verbatim (<c>@"..."</c>, a doubled <c>""</c> an escaped quote), and raw
+/// (<c>"""..."""</c>, three or more opening quotes) alike, plain or interpolated. Without this a
+/// connection string's <c>AccountKey=...</c> matches the object-initializer assignment shape —
+/// the same false positive stripping comments already exists to prevent, just for a different
+/// piece of the lexical grammar. An interpolated string's <c>{expr}</c> holes are copied through
+/// unblanked, because they are real code
+/// (<c>$"Stored {result.Value.ChunksStored} chunks"</c> is exactly how getting-started.md's own
+/// example reads) — with <c>{{</c>/<c>}}</c> recognised as an escaped literal brace, not a hole.
+/// A hole containing its own nested string literal is not specially handled: a stated
+/// simplification, since none of this repository's docs do that.
 /// </para>
 /// <para>
 /// <b>The resolvable set</b> is built from a caller-supplied list of produced packages (their own
 /// closure for a README, every produced package for docs): the assemblies each ships (<c>lib/</c>
-/// and <c>tools/</c>), each package's external nuspec dependencies read from the NuGet
-/// global-packages cache at the declared minimum version (nearest cached version when that exact
-/// one is absent — a cache miss narrows the resolvable surface and can only make the check
-/// stricter), the shared runtime framework, and any <c>frameworkReference</c> shared frameworks
-/// the nuspecs name. Assemblies are read with <see cref="MetadataReader"/> straight from the
-/// package zip: no assembly loading, no package code execution, no file locking, and no resolver
-/// closure to break on external types — the reasons it was preferred over
-/// <c>MetadataLoadContext</c>, which needs every transitive reference materialized on disk.
+/// and <c>tools/</c>), the <em>full transitive closure</em> of each package's external nuspec
+/// dependencies — not just the one hop a produced package's own nuspec lists, but recursively
+/// walking each external dependency's own cached nuspec too, which is what makes
+/// <c>AzureKeyCredential</c> (Azure.Core, reached only via Azure.Search.Documents) and Polly's
+/// resilience types (Polly.Core, reached only via Microsoft.Extensions.Resilience) resolvable —
+/// read from the NuGet global-packages cache at the declared minimum version (nearest cached
+/// version when that exact one is absent — a cache miss narrows the resolvable surface and can
+/// only make the check stricter), the shared runtime framework, and any
+/// <c>frameworkReference</c> shared frameworks the nuspecs name. Assemblies are read with
+/// <see cref="MetadataReader"/> straight from the package zip: no assembly loading, no package
+/// code execution, no file locking, and no resolver closure to break on external types — the
+/// reasons it was preferred over <c>MetadataLoadContext</c>, which needs every transitive
+/// reference materialized on disk.
+/// </para>
+/// <para>
+/// <b>Docs-only exception.</b> A <em>read</em> through a dotted chain off a lowercase local
+/// (<c>settings.SharePointDeltaToken</c>) — including the same shape written as an assignment
+/// statement rather than a read (<c>settings.ExchangeDeltaToken = token;</c>, indistinguishable
+/// from an object-initializer assignment without knowing <c>settings</c> is not being constructed
+/// here) — is, by the rule above, checked against the resolvable set's member names regardless of
+/// what the local's real type is. Sound for a README's terser examples, but docs are full of
+/// chains off a reader's own, undeclared configuration object, which the type-declaration
+/// leniency above cannot help with (nothing declares <c>settings</c>'s type at all).
+/// <see cref="DocsCodeExamplesTests"/> disables both via <c>checkLowercaseLocalChains: false</c>;
+/// <see cref="PackageReadmeTests"/> leaves them on. Deliberately narrow: only a non-call member
+/// <em>read</em> is skipped — a trailing <em>call</em> through the same kind of chain
+/// (<c>services.AddStackExchangeRedisCache(…)</c>, compact rather than a fluent leading-dot
+/// continuation) stays checked, because that shape is how most single-statement registration
+/// calls in these docs are written at all; disabling it would have stopped checking far more than
+/// the settings-object pattern this exists for. What this gives up, stated plainly: a typo'd
+/// property/field <em>read</em> through a lowercase local — a hypothetical
+/// <c>result.Vlaue.ChunksStored</c>, or <c>options.MaxChunkSize = 600</c> misspelled — would no
+/// longer be flagged in docs. Builder fluent chains (<c>.UseXxx(…)</c>, a leading-dot
+/// continuation) are a different shape and are unaffected regardless, including a
+/// lowercase-named builder parameter's own leading-dot continuations
+/// (<c>b => b.UseHybridSearch()</c>) — which is the shape every defect this guard has actually
+/// found so far took.
 /// </para>
 /// <para>
 /// <b>Deliberately unchecked</b> (they need semantic analysis, not name existence): lowercase
 /// identifiers, bare PascalCase identifiers outside the shapes above (named arguments like
-/// <c>Question:</c>), segments after a namespace-qualified head, nested or dotted generic
-/// arguments, and whether members sit on the <em>right</em> type when a simple name exists on
-/// several. Recorded as possible later strengthening, deliberately not built now: compiling each
-/// fence against the package's actual assemblies.
+/// <c>Question:</c>), segments after a namespace-qualified or locally-declared-type head, nested
+/// or dotted generic arguments, and whether members sit on the <em>right</em> type when a simple
+/// name exists on several. Recorded as possible later strengthening, deliberately not built now:
+/// compiling each fence against the package's actual assemblies.
 /// </para>
 /// </remarks>
 internal static partial class ApiSurfaceCatalog
@@ -144,6 +194,192 @@ internal static partial class ApiSurfaceCatalog
         return index < 0 ? line : line[..index];
     }
 
+    /// <summary>
+    /// Blanks the literal text of every string literal — see the class remarks for why and for
+    /// what an interpolation hole keeps. Runs after <see cref="StripCodeComments"/>, not before:
+    /// that order lets the comment stripper's existing <c>https://</c> carve-out do its job
+    /// first, before a string's content is touched, rather than needing a second copy of the
+    /// same reasoning here.
+    /// </summary>
+    /// <param name="code">Comment-stripped fence code.</param>
+    /// <returns>The code with string-literal text blanked.</returns>
+    internal static string StripStringLiterals(string code)
+    {
+        var builder = new StringBuilder(code.Length);
+        var i = 0;
+        while (i < code.Length)
+        {
+            var header = ReadStringHeader(code, i);
+            if (header is null)
+            {
+                _ = builder.Append(code[i]);
+                i++;
+                continue;
+            }
+
+            i = header.Value.Interpolated
+                ? AppendInterpolatedString(code, i, header.Value, builder)
+                : AppendPlainString(code, i, header.Value, builder);
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>A string literal's opening marker, already consumed.</summary>
+    /// <param name="PrefixLength">Characters from the literal's first character (a <c>$</c>,
+    /// <c>@</c>, or <c>"</c>) through its last opening quote, inclusive.</param>
+    /// <param name="Verbatim">Whether an <c>@</c> prefix was present (doubled-quote escaping).</param>
+    /// <param name="Interpolated">Whether a <c>$</c> prefix was present (has <c>{expr}</c> holes).</param>
+    /// <param name="QuoteRunLength">1 for a quoted or verbatim string; 3+ for a raw string, the
+    /// number of quotes that closes it.</param>
+    private readonly record struct StringHeader(
+        int PrefixLength, bool Verbatim, bool Interpolated, int QuoteRunLength);
+
+    private static StringHeader? ReadStringHeader(string code, int i)
+    {
+        var j = i;
+        var interpolated = false;
+        var verbatim = false;
+        while (j < code.Length && (code[j] == '$' || code[j] == '@'))
+        {
+            interpolated |= code[j] == '$';
+            verbatim |= code[j] == '@';
+            j++;
+        }
+
+        if (j >= code.Length || code[j] != '"')
+        {
+            return null; // A bare `@` (a verbatim identifier, `@class`) or `$` — not a string.
+        }
+
+        var run = 0;
+        while (j + run < code.Length && code[j + run] == '"')
+        {
+            run++;
+        }
+
+        return run >= 3
+            ? new StringHeader(j + run - i, verbatim, interpolated, run)
+            : new StringHeader(j + 1 - i, verbatim, interpolated, 1);
+    }
+
+    private static int AppendPlainString(string code, int start, StringHeader header, StringBuilder builder)
+    {
+        _ = builder.Append(' ');
+        return FindStringEnd(code, start + header.PrefixLength, header);
+    }
+
+    private static int FindStringEnd(string code, int i, StringHeader header)
+    {
+        while (i < code.Length)
+        {
+            if (IsClosingQuoteRun(code, i, header, out var length))
+            {
+                return i + length;
+            }
+
+            i += LiteralCharacterLength(code, i, header);
+        }
+
+        return i; // Unterminated (a malformed fence); stop at end rather than loop forever.
+    }
+
+    /// <summary>
+    /// Same scan as <see cref="FindStringEnd"/>, except an interpolation hole (<c>{expr}</c>, not
+    /// a <c>{{</c>/<c>}}</c> escape) is copied through unblanked and brace-depth tracked so a hole
+    /// containing its own <c>{</c>/<c>}</c> (an object initializer, say) does not end the hole
+    /// early — see the class remarks for what this does not attempt.
+    /// </summary>
+    private static int AppendInterpolatedString(
+        string code, int start, StringHeader header, StringBuilder builder)
+    {
+        var i = start + header.PrefixLength;
+        _ = builder.Append(' ');
+        var holeDepth = 0;
+
+        while (i < code.Length)
+        {
+            if (holeDepth > 0)
+            {
+                holeDepth += code[i] switch { '{' => 1, '}' => -1, _ => 0 };
+                _ = builder.Append(code[i]);
+                i++;
+                continue;
+            }
+
+            if (IsClosingQuoteRun(code, i, header, out var length))
+            {
+                return i + length;
+            }
+
+            if (Matches(code, i, "{{") || Matches(code, i, "}}"))
+            {
+                i += 2; // An escaped literal brace, not a hole.
+                continue;
+            }
+
+            if (code[i] == '{')
+            {
+                holeDepth = 1;
+                _ = builder.Append('{');
+                i++;
+                continue;
+            }
+
+            i += LiteralCharacterLength(code, i, header);
+        }
+
+        return i;
+    }
+
+    private static bool IsClosingQuoteRun(string code, int i, StringHeader header, out int length)
+    {
+        length = 0;
+        if (code[i] != '"')
+        {
+            return false;
+        }
+
+        if (header.QuoteRunLength >= 3)
+        {
+            var run = 0;
+            while (i + run < code.Length && code[i + run] == '"')
+            {
+                run++;
+            }
+
+            length = run;
+            return run >= header.QuoteRunLength;
+        }
+
+        if (header.Verbatim && Matches(code, i, "\"\""))
+        {
+            return false; // A doubled quote is an escaped literal quote, not the terminator.
+        }
+
+        length = 1;
+        return true;
+    }
+
+    private static int LiteralCharacterLength(string code, int i, StringHeader header)
+    {
+        if (header.Verbatim && Matches(code, i, "\"\""))
+        {
+            return 2;
+        }
+
+        if (!header.Verbatim && header.QuoteRunLength < 3 && code[i] == '\\')
+        {
+            return Math.Min(2, code.Length - i);
+        }
+
+        return 1;
+    }
+
+    private static bool Matches(string code, int i, string token) =>
+        i + token.Length <= code.Length &&
+        string.CompareOrdinal(code, i, token, 0, token.Length) == 0;
+
     // ---- Reference extraction ------------------------------------------------------------------
 
     /// <summary>
@@ -153,16 +389,85 @@ internal static partial class ApiSurfaceCatalog
     /// </summary>
     /// <param name="fence">The fence's code text.</param>
     /// <param name="catalog">The resolvable set.</param>
+    /// <param name="locallyDeclaredTypes">Type names declared by a <c>class</c>/<c>record</c>/
+    /// <c>struct</c>/<c>interface</c> elsewhere on the same page — see the class remarks. Null or
+    /// empty checks every type reference against <paramref name="catalog"/> only.</param>
+    /// <param name="checkLowercaseLocalChains">Whether a dotted chain off a lowercase local is
+    /// checked at all — see the docs-only exception in the class remarks. True (the README
+    /// behaviour) for every caller except <see cref="DocsCodeExamplesTests"/>.</param>
     /// <returns>The extracted references.</returns>
-    internal static List<ApiReference> ExtractReferences(string fence, CatalogSet catalog)
+    internal static List<ApiReference> ExtractReferences(
+        string fence,
+        CatalogSet catalog,
+        IReadOnlySet<string>? locallyDeclaredTypes = null,
+        bool checkLowercaseLocalChains = true)
     {
         var references = new List<ApiReference>();
-        var code = StripCodeComments(fence);
+        var code = StripCommentsAndStringLiterals(fence);
         code = ExtractUsingDirectives(code, references);
         AddObjectCreationReferences(code, references);
-        AddInitializerReferences(code, references);
-        AddChainReferences(code, catalog, references);
-        return references;
+        AddInitializerReferences(code, references, checkLowercaseLocalChains);
+        AddChainReferences(code, catalog, references, checkLowercaseLocalChains);
+        return FilterLocallyDeclaredTypes(references, locallyDeclaredTypes);
+    }
+
+    /// <summary>
+    /// Collects the simple names of every <c>class</c>/<c>record</c>/<c>struct</c>/<c>interface</c>
+    /// declared in the given code — a caller concatenates every fence on a page first, since a
+    /// page commonly declares a type in one fence (an implementation walkthrough) and uses it in
+    /// a later one (its registration) — see the class remarks.
+    /// </summary>
+    /// <param name="code">One or more fences' code text.</param>
+    /// <returns>The declared simple type names.</returns>
+    internal static HashSet<string> ExtractDeclaredTypeNames(string code)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match match in TypeDeclaration().Matches(StripCommentsAndStringLiterals(code)))
+        {
+            _ = names.Add(match.Groups["name"].Value);
+        }
+
+        return names;
+    }
+
+    private static string StripCommentsAndStringLiterals(string code) =>
+        StripStringLiterals(StripCodeComments(code));
+
+    /// <summary>
+    /// Drops a <see cref="ReferenceKind.Type"/> or <see cref="ReferenceKind.StaticMember"/>
+    /// reference whose type name was declared locally — see the class remarks. Only these two
+    /// kinds name a type directly; a <see cref="ReferenceKind.MemberAccess"/> or
+    /// <see cref="ReferenceKind.MethodCall"/> off a locally-declared type's instance is not
+    /// recognisable as such without knowing which local variables hold one, so it is still
+    /// checked against the resolvable set — a stated miss matching the class's other
+    /// segments-after-a-known-head leniencies, never a false failure.
+    /// </summary>
+    private static List<ApiReference> FilterLocallyDeclaredTypes(
+        List<ApiReference> references, IReadOnlySet<string>? locallyDeclaredTypes)
+    {
+        if (locallyDeclaredTypes is null || locallyDeclaredTypes.Count == 0)
+        {
+            return references;
+        }
+
+        var kept = new List<ApiReference>(references.Count);
+        foreach (var reference in references)
+        {
+            if (reference.Kind == ReferenceKind.Type && locallyDeclaredTypes.Contains(reference.Name))
+            {
+                continue;
+            }
+
+            if (reference.Kind == ReferenceKind.StaticMember &&
+                locallyDeclaredTypes.Contains(reference.DeclaringType!))
+            {
+                continue;
+            }
+
+            kept.Add(reference);
+        }
+
+        return kept;
     }
 
     private static string ExtractUsingDirectives(string code, List<ApiReference> references)
@@ -201,16 +506,28 @@ internal static partial class ApiSurfaceCatalog
         }
     }
 
-    private static void AddInitializerReferences(string code, List<ApiReference> references)
+    private static void AddInitializerReferences(
+        string code, List<ApiReference> references, bool checkLowercaseLocalChains)
     {
         foreach (Match match in InitializerAssignment().Matches(code))
         {
+            var receiver = match.Groups["receiver"].Value;
+            if (!checkLowercaseLocalChains && receiver.Length > 0 && char.IsLower(receiver[0]))
+            {
+                // Docs-only exception (see the class remarks): `settings.ExchangeDeltaToken =
+                // token;` is the same lowercase-local-chain shape as a read
+                // (`settings.SharePointDeltaToken`), just at the assignment statement level
+                // rather than inside a `new T { ... }` initializer — this regex cannot tell the
+                // two apart without the receiver check.
+                continue;
+            }
+
             references.Add(new ApiReference(ReferenceKind.MemberAccess, match.Groups["name"].Value));
         }
     }
 
     private static void AddChainReferences(
-        string code, CatalogSet catalog, List<ApiReference> references)
+        string code, CatalogSet catalog, List<ApiReference> references, bool checkLowercaseLocalChains)
     {
         foreach (Match match in DottedChain().Matches(code))
         {
@@ -224,6 +541,7 @@ internal static partial class ApiSurfaceCatalog
             }
 
             var first = 0;
+            var skipReadsOnLowercaseReceiver = false;
             if (!leadingDot && char.IsUpper(segments[0][0]))
             {
                 if (catalog.HasNamespacePrefix(segments[0]))
@@ -242,6 +560,14 @@ internal static partial class ApiSurfaceCatalog
             else if (!leadingDot)
             {
                 first = 1; // Lowercase receiver; its own name is a local, not an API.
+
+                // Docs-only exception (see the class remarks): a *read* through a lowercase
+                // local (settings.SharePointDeltaToken) goes unchecked, since a docs page is
+                // full of chains off a reader's own, undeclared object. A trailing *call*
+                // (services.AddStackExchangeRedisCache(…)) is a different, much more common
+                // shape — it is how a compact (non-fluent, no leading-dot) registration call
+                // reads at all — and stays checked either way.
+                skipReadsOnLowercaseReceiver = !checkLowercaseLocalChains;
             }
 
             for (var i = first; i < segments.Length; i++)
@@ -252,6 +578,11 @@ internal static partial class ApiSurfaceCatalog
                 }
 
                 var isCall = match.Groups["open"].Success && i == segments.Length - 1;
+                if (!isCall && skipReadsOnLowercaseReceiver)
+                {
+                    continue;
+                }
+
                 references.Add(new ApiReference(
                     isCall ? ReferenceKind.MethodCall : ReferenceKind.MemberAccess, segments[i]));
             }
@@ -484,30 +815,20 @@ internal static partial class ApiSurfaceCatalog
     internal static CatalogSet BuildCatalogFromPackages(
         IEnumerable<string> packages, Dictionary<string, string> byId)
     {
+        var packageList = packages as IReadOnlyCollection<string> ?? packages.ToList();
         var parts = new List<ApiCatalog>();
-        var externalDependencies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var frameworkNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var package in packages)
+        foreach (var package in packageList)
         {
             parts.Add(PackageCatalogs.GetOrAdd(package, HarvestPackageAssemblies));
-            var nuspec = ProducedPackageTests.ReadNuspec(package);
-
-            foreach (var (dependencyId, version) in ReadDependencies(nuspec))
-            {
-                if (!byId.ContainsKey(dependencyId))
-                {
-                    _ = externalDependencies.TryAdd(dependencyId, version);
-                }
-            }
-
-            foreach (var frameworkName in ReadFrameworkReferences(nuspec))
+            foreach (var frameworkName in ReadFrameworkReferences(ProducedPackageTests.ReadNuspec(package)))
             {
                 _ = frameworkNames.Add(frameworkName);
             }
         }
 
-        foreach (var (dependencyId, version) in externalDependencies)
+        foreach (var (dependencyId, version) in CollectExternalDependencyClosure(packageList, byId))
         {
             parts.Add(ExternalCatalogs.GetOrAdd(
                 $"{dependencyId}/{version}", _ => HarvestExternalDependency(dependencyId, version)));
@@ -520,6 +841,87 @@ internal static partial class ApiSurfaceCatalog
         }
 
         return new CatalogSet(parts);
+    }
+
+    /// <summary>
+    /// Walks the full transitive closure of external (non-produced) dependencies: the given
+    /// produced packages' own nuspec dependencies, then each external dependency's own cached
+    /// nuspec for further dependencies, recursively — not the one hop a produced package's own
+    /// nuspec lists. See the class remarks for why (<c>AzureKeyCredential</c>, Polly's resilience
+    /// types).
+    /// </summary>
+    /// <param name="packages">The produced packages to start from.</param>
+    /// <param name="byId">Every produced package, keyed by nuspec id — so a dependency that is
+    /// itself a produced package is not walked as though it were external; it is already covered
+    /// by its own entry in <paramref name="packages"/>.</param>
+    /// <returns>Every external dependency id reached, at the first version encountered for it.</returns>
+    private static List<(string Id, string Version)> CollectExternalDependencyClosure(
+        IEnumerable<string> packages, Dictionary<string, string> byId)
+    {
+        var versions = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var queue = new Queue<(string Id, string Version)>();
+
+        foreach (var package in packages)
+        {
+            EnqueueExternalDependencies(ProducedPackageTests.ReadNuspec(package), byId, versions, queue);
+        }
+
+        while (queue.Count > 0)
+        {
+            var (id, version) = queue.Dequeue();
+            var nuspec = ReadCachedNuspec(id, version);
+            if (nuspec is not null)
+            {
+                EnqueueExternalDependencies(nuspec, byId, versions, queue);
+            }
+        }
+
+        return versions.Select(pair => (pair.Key, pair.Value)).ToList();
+    }
+
+    private static void EnqueueExternalDependencies(
+        XDocument nuspec,
+        Dictionary<string, string> byId,
+        Dictionary<string, string> versions,
+        Queue<(string Id, string Version)> queue)
+    {
+        foreach (var (id, version) in ReadDependencies(nuspec))
+        {
+            if (byId.ContainsKey(id))
+            {
+                continue; // An in-repository package; already covered by its own entry.
+            }
+
+            if (versions.TryAdd(id, version))
+            {
+                queue.Enqueue((id, version));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Reads an external package's own nuspec from the NuGet global-packages cache, at the
+    /// declared version or (a cache miss narrowing the resolvable surface, never wrongly
+    /// widening it) the nearest cached one — the same fallback <see cref="HarvestExternalDependency"/>
+    /// uses for the package's assemblies, so the dependency graph and the assemblies it names come
+    /// from the same on-disk version.
+    /// </summary>
+    private static XDocument? ReadCachedNuspec(string id, string version)
+    {
+        var packageRoot = Path.Combine(GlobalPackagesRoot(), id.ToLowerInvariant());
+        if (!Directory.Exists(packageRoot))
+        {
+            return null;
+        }
+
+        var directory = Path.Combine(packageRoot, version);
+        if (!Directory.Exists(directory))
+        {
+            directory = NewestVersionDirectory(packageRoot) ?? directory;
+        }
+
+        var nuspecPath = Path.Combine(directory, $"{id.ToLowerInvariant()}.nuspec");
+        return File.Exists(nuspecPath) ? XDocument.Load(nuspecPath) : null;
     }
 
     private static ApiCatalog HarvestPackageAssemblies(string packagePath)
@@ -875,7 +1277,7 @@ internal static partial class ApiSurfaceCatalog
     private static partial Regex DottedChain();
 
     [GeneratedRegex(
-        @"\b(?<name>[A-Z]\w*)\s*=(?![=>])",
+        @"(?:(?<receiver>[A-Za-z_]\w*)\.)?\b(?<name>[A-Z]\w*)\s*=(?![=>])",
         RegexOptions.ExplicitCapture,
         matchTimeoutMilliseconds: RegexTimeout)]
     private static partial Regex InitializerAssignment();
@@ -885,6 +1287,19 @@ internal static partial class ApiSurfaceCatalog
         RegexOptions.Singleline,
         matchTimeoutMilliseconds: RegexTimeout)]
     private static partial Regex BlockComment();
+
+    /// <summary>
+    /// A type declaration header: <c>class</c>/<c>interface</c>/<c>struct</c>/<c>record</c>,
+    /// optionally <c>record class</c>/<c>record struct</c>, then the declared simple name. Modifiers
+    /// (<c>public</c>, <c>sealed</c>, attributes, …) are not matched — the keyword anchor alone is
+    /// enough since nothing else in a fence legitimately follows one of these keywords with a
+    /// PascalCase identifier.
+    /// </summary>
+    [GeneratedRegex(
+        @"\b(?:class|interface|struct|record)(?:\s+(?:class|struct))?\s+(?<name>[A-Z]\w*)",
+        RegexOptions.ExplicitCapture,
+        matchTimeoutMilliseconds: RegexTimeout)]
+    private static partial Regex TypeDeclaration();
 
     // ---- The reference and catalog shapes ----------------------------------------------------
 

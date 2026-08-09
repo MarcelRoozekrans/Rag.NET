@@ -711,9 +711,10 @@ services.AddRagNet(b => b
         o.MaxLength = 512;
     }));
 
-// Option 2: Custom implementation (e.g., Cohere, Jina)
+// Option 2: A custom IReranker implementation — Rag.NET.Reranking.Cohere's CohereReranker
+// shown here; write your own IReranker for other providers (e.g. Jina)
 services.AddRagNet(b => b
-    .UseReranking<MyCohereReranker>());
+    .UseReranking<CohereReranker>());
 ```
 
 ### How it works

@@ -181,12 +181,14 @@ public sealed partial class PackageReadmeTests
         var catalog = ResolutionCatalogs.GetOrAdd(packagePath, path => ApiSurfaceCatalog.BuildCatalogFromPackages(
             ApiSurfaceCatalog.CollectProducedClosure(path, byId), byId));
         var own = OwnCatalogs.GetOrAdd(packagePath, HarvestOwnAssembly);
+        var declaredTypes = ApiSurfaceCatalog.ExtractDeclaredTypeNames(
+            string.Concat(fences.Select(fence => fence.Code)));
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var touchesOwnApi = false;
 
         foreach (var fence in fences)
         {
-            foreach (var reference in ApiSurfaceCatalog.ExtractReferences(fence.Code, catalog))
+            foreach (var reference in ApiSurfaceCatalog.ExtractReferences(fence.Code, catalog, declaredTypes))
             {
                 var failure = ApiSurfaceCatalog.ResolveFailure(reference, catalog);
                 if (failure is not null && seen.Add(failure))
