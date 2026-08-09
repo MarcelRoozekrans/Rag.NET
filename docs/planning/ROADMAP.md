@@ -2917,7 +2917,7 @@ shape, though that box is still here doing its share):
 > everything a user installs; the harness half does not, and repeating the constraint
 > unqualified would be false.
 
-### Phase 5.1: Library Performance Comparison [status: measurement landed 2026-08-09; publication blocked on a decision]
+### Phase 5.1: Library Performance Comparison [status: measurement landed 2026-08-09; §6 decided — publication is the remaining work]
 **Goal:** Compare **cost** across the Phase 3.14 comparators — indexing throughput (docs/sec),
 query latency p50/p99, allocations per query, Native AOT startup time, RSS. (Not a features.md
 row — the only item the handover proposes that Phase 3.14 did not touch; it calls this table
@@ -2984,6 +2984,20 @@ Three findings, each of which the decision should weigh:
   excluding pooling — are clean. So the two rows are not equally publishable, and §6's decision
   may reasonably differ between them.
 
+**§6 decided 2026-08-09: split by row.** Latency (p50/p99) publishes as a **cross-ecosystem**
+table, because those spans genuinely bracket the same work with the boundary excluded. Indexing
+publishes **per ecosystem, labelled non-comparable**, the way the `+BM25 hybrid` row is labelled
+internal — because of the third finding above. The decision follows the evidence per row rather
+than applying one rule to both, which is what the third finding made possible; before it, the
+choice looked like a single call about the whole table.
+
+This is the first cross-ecosystem cost figure this repository will publish, and it is exactly what
+3.14 declined to publish — so the latency table must carry, on the page, what §2.2 already states:
+that interpreter and runtime startup are excluded by construction, that allocations-per-query and
+AOT startup are .NET-only and publish as an internal table, and that every row comes from one
+machine in one session with the caches warm. **Remaining work is publication only**; the
+measurement, the percentile definition and the boundary guard all landed.
+
 ### Phase 5.2: Multi-Hop Retrieval [status: pending]
 **Goal:** Measure multi-hop retrieval — HotpotQA, MuSiQue, 2WikiMultiHopQA, MultiHop-RAG. (Not a
 features.md row — evaluation depth past single-hop BEIR.)
@@ -2999,6 +3013,47 @@ which is what makes it the one to trust when the numbers disagree.
 
 Every dataset lands under the Milestone 3 checklist the DoD names — descriptor, budget timing,
 published reference where one exists, licence from upstream, reproduction pin.
+
+**Licence and shape determinations, from primary sources, 2026-08-09.** The licence was the
+gating item; the *shape* finding turned out to matter more.
+
+| Dataset | Licence (upstream) | Retrieval corpus | Verdict |
+|---|---|---|---|
+| HotpotQA | **CC BY-SA 4.0**, verified | **A real shared corpus — 5.23M docs.** Already a BEIR dataset | **clear to land**, at a cost |
+| MultiHop-RAG | **ODC-BY**, verified | **A real shared corpus — 609 news articles**, 2,556 queries | **clear to land** |
+| MuSiQue | **CC BY 4.0**, verified from the LICENSE file | **None.** 20 candidate paragraphs per question | **needs new infrastructure** |
+| 2WikiMultiHopQA | **Unclear** — Apache-2.0 covers the *repo*; the data sits on unlicensed Dropbox zips | **None.** 10 paragraphs per question | **blocked + needs infrastructure** |
+
+**The shape finding reshapes this phase.** Two of the four do not ship a retrieval corpus at all —
+they ship per-question candidate paragraphs. Running them corpus-style means *constructing* a
+corpus by pooling and deduplicating those paragraphs and assigning stable document ids, which is
+new infrastructure and, more importantly, **a decision that determines whose published numbers you
+can compare against**: every retrieval-stage figure for MuSiQue and 2Wiki (HippoRAG, IRCoT) is on
+the authors' own 1,000-question pooled corpus, so the figures are comparable only if that exact
+construction is reproduced. Corpus construction is not a preliminary here; it is the experiment.
+
+Two corrections to this entry's own framing:
+
+- **MuSiQue is described above as the one to trust when the numbers disagree. That still holds on
+  quality grounds — but it is the least reproducible of the four.** No tags, no releases, no DOI;
+  distribution is a bare Google Drive file id. The best pin available is the repo commit plus a
+  recorded SHA256 of the downloaded zip.
+- **HotpotQA is the easiest to land and the most expensive to run.** It is already in BEIR format
+  with binary qrels and a published BM25 nDCG@10 of 0.603, so no adapter is needed — but its
+  corpus is 5.23M documents, orders of magnitude beyond anything the harness has run. Subsetting
+  would make it affordable and would simultaneously break comparability with the published figure,
+  which is the whole reason to run it.
+
+**All four use binary judgements** — supporting-paragraph flags, supporting-fact sentence ids,
+evidence triples, evidence sets. The form of each was checked rather than inferred from how the
+dataset is usually described, on the FiQA precedent. So none of them exercises the graded path;
+TREC-COVID in 5.3 remains the only real candidate for that.
+
+On the evidence, **MultiHop-RAG is the one to land first**: a genuine shared corpus small enough to
+run, a verified licence, a clean HuggingFace revision pin, and retrieval-stage reference figures
+(Hits@10, MRR@10, MAP@10) rather than answer-level ones. Its only work is deriving document-level
+qrels from per-query evidence lists, plus a policy for the **301 null queries** that have no answer
+and no evidence — which is a real decision, not a detail, since they are 12% of the query set.
 
 ### Phase 5.3: Deferred Datasets — NFCorpus, TREC-COVID, EnronQA [status: pending]
 **Goal:** Land the three datasets the evaluation programme still lacks, together: the small hard
@@ -3025,10 +3080,52 @@ exists rather than a debts list.)
   test**, which no BEIR dataset offers. Its anti-contamination argument is also worth keeping: a
   model cannot have memorised someone's inbox, unlike NaturalQuestions or TriviaQA.
 
+  **Correction, 2026-08-09: "CC BY 4.0" is wrong, and it is wrong in an instructive way.** That
+  badge is the **arXiv submission licence for the paper**, not a licence for the dataset. The
+  dataset has **no declared licence anywhere**: the HuggingFace repo `MichaelR207/enron_qa_0922`
+  has no licence tag and no LICENSE file, and the paper's full text states none. (An MIT tag that
+  turns up in searches belongs to a *derivative*, `weaviate/hard-questions-enronqa`.) The other
+  four claims — 103,638 emails, 528,304 QA pairs, 150 inboxes, the arXiv id — all **verified**
+  against the paper. So the handover was right about everything checkable from the paper and wrong
+  about the one thing that required looking somewhere else, which is the same shape as the
+  FiQA-qrels error: a plausible claim, repeated, never traced to its source.
+
 Each arrives under the full Milestone 3 per-dataset checklist — descriptor, `BeirRunBudget`
 timing, revision-pinned published reference where one exists, licence determination from
 upstream, `BeirReproduction` pin — which is precisely the list Milestone 3's close said none of
 them had, and declined them over.
+
+**Licence determinations, from primary sources, 2026-08-09.** This was the checklist item gating
+the whole phase, so it was done first and separately from any implementation.
+
+| Dataset | Licence (upstream) | Pin | BM25 reference | Verdict |
+|---|---|---|---|---|
+| NFCorpus | **Academic use only** ([Heidelberg](https://www.cl.uni-heidelberg.de/statnlpgroup/nfcorpus/)); underlying NutritionFacts.org content is **CC BY-NC 4.0** | HF `b5026a0e…`; BEIR zip MD5 `a89dba18…` | nDCG@10 **0.325** | **needs a decision** |
+| TREC-COVID | Corpus: **CORD-19 agreement — "text and data mining only"** ([LICENSE](https://github.com/allenai/cord19/blob/master/LICENSE)); qrels: NIST, unstated | HF `7e16fde3…`; BEIR zip MD5 `ce62140c…` | nDCG@10 **0.656** | **clear to land** |
+| EnronQA | **None declared** — see the correction above | HF `c0b3a919…` | Recall@5 87.5 (BM25) / 59.3 (ColBERTv2) | **blocked** |
+
+Three things worth carrying forward:
+
+- **TREC-COVID's graded-relevance claim survives scrutiny, unlike FiQA's.** NIST states it
+  verbatim — *"judgment is 0 for not relevant, 1 for partially relevant, and 2 for fully
+  relevant"* — and the BEIR qrels preview shows 0, 1 **and 2**. So it genuinely would be the
+  first dataset to exercise `IrMetrics`' `2^rel − 1` path, and the Milestone 5 DoD criterion that
+  depends on a graded dataset has a real candidate rather than a mistaken one. Its TDM-only
+  corpus licence permits exactly what this repo does — cache locally, benchmark, publish figures —
+  and forbids redistribution, which this repo does not do.
+- **Do not cite the BEIR HuggingFace cards as licences.** Both `BeIR/nfcorpus` and
+  `BeIR/trec-covid` are tagged `cc-by-sa-4.0`, and both tags are contradicted by upstream —
+  BEIR's own paper admits *"the authors of 4 out of the 19 datasets (NFCorpus, FiQA-2018, Quora,
+  Climate-Fever) do not report the dataset license."* The tag is a blanket repo tag, not a
+  determination. This is the third time in two days that a convenient secondary source has been
+  wrong where the primary one was clear.
+- **Nothing upstream offers a semantic version for any of the three.** HF revision hashes plus
+  BEIR zip MD5s are the only pins that exist, so that is what `BeirReproduction` must pin.
+
+NFCorpus is the one needing a call: "academic use only" plus CC BY-NC underlying content is
+almost certainly satisfied by benchmarking and publishing figures, but this is an open-source
+library that commercial users consume, and the restriction should be documented rather than
+waved through.
 
 ### Phase 5.4: Precision@k and MAP [status: implemented 2026-08-09, #75]
 **Goal:** Add `Precision@k` and `MAP` to `IrMetrics`. (Not a features.md row — two missing IR
