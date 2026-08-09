@@ -249,7 +249,7 @@ public static class BeirHarness
 
         using var store = new InMemoryVectorStore();
         await IndexAsync(generator, embeddings, store, units, cancellationToken);
-        var (runs, pooledQueries) = await RetrieveAsync(
+        var (runs, pooledQueries, _) = await RetrieveAsync(
             row, generator, embeddings, store, JudgedQueries(dataset), descriptor, maxPerDocument,
             cancellationToken);
 
@@ -268,7 +268,9 @@ public static class BeirHarness
     /// <summary>
     /// Embeds and indexes <paramref name="units"/>, retrieves for every judged query with
     /// <paramref name="row"/>, and returns the <b>scored</b> document rankings instead of scoring
-    /// them — the shape <see cref="TrecRunFile.Write"/> takes.
+    /// them — the shape <see cref="TrecRunFile.Write"/> takes — with the entrant's self-measured
+    /// timings: indexing wall-clock around <see cref="IndexAsync"/> only, one latency per query
+    /// around the row's retrieval only.
     /// </summary>
     /// <param name="descriptor">The dataset, for its retrieval protocol.</param>
     /// <param name="dataset">The loaded corpus, queries and qrels.</param>
@@ -277,7 +279,7 @@ public static class BeirHarness
     /// <param name="generator">The embedder.</param>
     /// <param name="embeddings">The vector cache; every embed call goes through it.</param>
     /// <param name="cancellationToken">Cancels the run.</param>
-    /// <returns>Rankings by query id, best first, each document with its pooled score.</returns>
+    /// <returns>The rankings with the timings measured while producing them.</returns>
     /// <remarks>
     /// Exists for the library comparison's control row (<see cref="BeirComparisonControlTests"/>),
     /// whose metric must come from a run file read back from disk rather than from these rankings
@@ -286,16 +288,21 @@ public static class BeirHarness
     /// the rankings this returns are the rankings the parity figures were measured on,
     /// self-exclusion and tie-breaking included. A control retrieving through a second copy of the
     /// path would measure the copy.
+    /// <para>
+    /// The indexing span brackets embed-through-cache and store <b>only</b> — the same operations
+    /// the Python harness brackets as <c>entrant.build</c>. Dataset loading and unit preparation
+    /// stay outside; under the parity protocol unit preparation is a projection that allocates one
+    /// <see cref="TextChunk"/> per document and nothing else.
+    /// </para>
     /// </remarks>
-    public static async Task<IReadOnlyDictionary<string, IReadOnlyList<ScoredDocument>>>
-        RetrieveScoredRunsAsync(
-            BeirDatasetDescriptor descriptor,
-            BeirDataset dataset,
-            IReadOnlyList<TextChunk> units,
-            AblationRow row,
-            OnnxEmbeddingGenerator generator,
-            EmbeddingCache embeddings,
-            CancellationToken cancellationToken)
+    public static async Task<TimedScoredRuns> RetrieveScoredRunsAsync(
+        BeirDatasetDescriptor descriptor,
+        BeirDataset dataset,
+        IReadOnlyList<TextChunk> units,
+        AblationRow row,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(dataset);
@@ -306,12 +313,14 @@ public static class BeirHarness
         var (maxPerDocument, _) = SummariseUnits(units);
 
         using var store = new InMemoryVectorStore();
+        var indexingStartedAt = Stopwatch.GetTimestamp();
         await IndexAsync(generator, embeddings, store, units, cancellationToken);
-        var (runs, _) = await RetrieveAsync(
+        var indexingSeconds = Stopwatch.GetElapsedTime(indexingStartedAt).TotalSeconds;
+        var (runs, _, latencies) = await RetrieveAsync(
             row, generator, embeddings, store, JudgedQueries(dataset), descriptor, maxPerDocument,
             cancellationToken);
 
-        return runs;
+        return new TimedScoredRuns(runs, indexingSeconds, latencies, units.Count, maxPerDocument);
     }
 
     /// <summary>
@@ -470,8 +479,15 @@ public static class BeirHarness
     /// The exclusion is BEIR's own: <c>DenseRetrievalExactSearch.search</c> pushes a hit only
     /// <c>if corpus_id != query_id</c>, and MTEB exposes it as <c>ignore_identical_ids</c>.
     /// </para>
+    /// <para>
+    /// Each query's latency spans <b>the row's retrieval only</b> — embed-through-cache and
+    /// search, the operations the Python harness brackets as its entrants' <c>retrieve</c> call.
+    /// The pooled-query bookkeeping and <see cref="DocumentRanking.TopDocuments"/> stay outside
+    /// the span: pooling is harness protocol, deliberately identical across entrants.
+    /// </para>
     /// </remarks>
-    private static async Task<(IReadOnlyDictionary<string, IReadOnlyList<ScoredDocument>> Runs, int PooledQueries)>
+    private static async Task<(IReadOnlyDictionary<string, IReadOnlyList<ScoredDocument>> Runs,
+        int PooledQueries, IReadOnlyDictionary<string, double> QueryLatenciesMilliseconds)>
         RetrieveAsync(
             AblationRow row,
             OnnxEmbeddingGenerator generator,
@@ -485,6 +501,7 @@ public static class BeirHarness
         var excludesSelf = descriptor.ExcludesSelfRetrievedDocument;
         var runs = new Dictionary<string, IReadOnlyList<ScoredDocument>>(
             queries.Count, StringComparer.Ordinal);
+        var latencies = new Dictionary<string, double>(queries.Count, StringComparer.Ordinal);
         var options = new SearchOptions
         {
             TopK = (Cutoff + (excludesSelf ? 1 : 0)) * maxUnitsPerDocument,
@@ -493,8 +510,10 @@ public static class BeirHarness
         var pooledQueries = 0;
         for (var i = 0; i < queries.Count; i++)
         {
+            var startedAt = Stopwatch.GetTimestamp();
             var hits = await row.RetrieveAsync(
                 queries[i], generator, embeddings, store, options, cancellationToken);
+            latencies[queries[i].Id] = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
 
             // The same excluded id goes to both, and it has to. DocumentRanking drops the
             // excluded document's chunks BEFORE it pools, so a query whose only repeated
@@ -513,7 +532,7 @@ public static class BeirHarness
                 hits, Cutoff, excludedDocumentId);
         }
 
-        return (runs, pooledQueries);
+        return (runs, pooledQueries, latencies);
     }
 
     /// <summary>

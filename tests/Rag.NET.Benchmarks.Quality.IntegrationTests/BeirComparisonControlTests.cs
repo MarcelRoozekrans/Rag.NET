@@ -80,15 +80,26 @@ public sealed class BeirComparisonControlTests
 
         using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
         var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
-        var scoredRuns = await BeirHarness.RetrieveScoredRunsAsync(
+        // The cache counters bracket the whole run, so the sidecar can say whether the indexing
+        // figure was measured with embedding already paid for. The timing spans themselves live
+        // in the harness, around the same operations every entrant brackets: index construction,
+        // and each retrieval call with pooling outside.
+        var hitsBefore = embeddings.Hits;
+        var missesBefore = embeddings.Misses;
+        var measured = await BeirHarness.RetrieveScoredRunsAsync(
             descriptor, dataset, BeirHarness.OneChunkPerDocument(dataset.Documents),
             AblationRow.Dense, generator, embeddings, ct);
 
         var runFilePath = RunFilePath(cacheDirectory, datasetName);
-        TrecRunFile.Write(runFilePath, scoredRuns, RunTag);
+        TrecRunFile.Write(runFilePath, measured.Runs, RunTag);
+        TimingsSidecar.Write(runFilePath, new EntrantTimings(
+            RunTag, measured.IndexingSeconds, measured.QueryLatenciesMilliseconds,
+            checked((int)(embeddings.Hits - hitsBefore)),
+            checked((int)(embeddings.Misses - missesBefore)),
+            measured.UnitCount, measured.MaxUnitsPerDocument));
         var readBack = TrecRunFile.Read(runFilePath);
 
-        AssertRoundTripPreservedEveryRanking(scoredRuns, readBack);
+        AssertRoundTripPreservedEveryRanking(measured.Runs, readBack);
 
         var evaluation = IrMetrics.Evaluate(readBack, dataset.Qrels, BeirHarness.Cutoff);
         _output.WriteLine(Describe(descriptor, runFilePath, evaluation));
