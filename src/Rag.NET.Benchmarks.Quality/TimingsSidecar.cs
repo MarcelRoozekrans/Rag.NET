@@ -73,16 +73,39 @@ public static class TimingsSidecar
         QueryLatenciesField,
     ];
 
-    /// <summary>Gets the sidecar path belonging to a run file.</summary>
+    /// <summary>Gets the sidecar path belonging to a run file — its first run's, see the overload.</summary>
     /// <param name="runFilePath">The run file the timings were measured alongside.</param>
     /// <returns>
     /// The run file's path with <see cref="FileSuffix"/> appended. Derived rather than supplied,
     /// so a run file and a sidecar cannot be paired by accident — see the class remarks.
     /// </returns>
-    public static string PathFor(string runFilePath)
+    public static string PathFor(string runFilePath) => PathFor(runFilePath, runIndex: 1);
+
+    /// <summary>Gets the sidecar path belonging to one repeat run of a run file.</summary>
+    /// <param name="runFilePath">The run file the timings were measured alongside.</param>
+    /// <param name="runIndex">
+    /// Which repeat this is, 1-based. Repeats exist because no cost figure may be published from a
+    /// single run — <see cref="CostReproducibility"/> compares them — and without an index every
+    /// repeat would overwrite the last, leaving the gate one sidecar where it needs at least two.
+    /// </param>
+    /// <returns>
+    /// For run 1, the historical unindexed name — <c>&lt;run-file&gt;.timings.json</c> — so a
+    /// single-run pairing stays exactly where every existing reader looks. For run <c>N ≥ 2</c>,
+    /// <c>&lt;run-file&gt;.timings.N.json</c>: the same convention extended with the index before
+    /// the extension, never a second format, so the family shares the run file's visible name and
+    /// sorts together in a directory listing.
+    /// </returns>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="runIndex"/> is below 1 — "run 0" would silently alias run 1 under any
+    /// convention that maps both onto a real path.
+    /// </exception>
+    public static string PathFor(string runFilePath, int runIndex)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(runFilePath);
-        return runFilePath + FileSuffix;
+        ArgumentOutOfRangeException.ThrowIfLessThan(runIndex, 1);
+        return runIndex == 1
+            ? runFilePath + FileSuffix
+            : runFilePath + ".timings." + runIndex.ToString(CultureInfo.InvariantCulture) + ".json";
     }
 
     /// <summary>
@@ -100,7 +123,25 @@ public static class TimingsSidecar
     /// negative or non-finite, a count is negative, the unit counts are not positive, or the run
     /// tag or a query id carries whitespace or a character JSON would have to escape.
     /// </exception>
-    public static void Write(string runFilePath, EntrantTimings timings)
+    public static void Write(string runFilePath, EntrantTimings timings) =>
+        Write(runFilePath, timings, runIndex: 1);
+
+    /// <summary>
+    /// Writes one repeat run's self-measured timings beside its run file — <see cref="Write(string, EntrantTimings)"/>
+    /// with the sidecar at <see cref="PathFor(string, int)"/> of <paramref name="runIndex"/>, so
+    /// repeat runs accumulate instead of overwriting and <see cref="CostReproducibility"/> has
+    /// something to compare.
+    /// </summary>
+    /// <param name="runFilePath">
+    /// The run file these timings belong to; the run file itself is neither read nor written here.
+    /// </param>
+    /// <param name="timings">What the entrant measured about itself on this repeat.</param>
+    /// <param name="runIndex">Which repeat this is, 1-based — see <see cref="PathFor(string, int)"/>.</param>
+    /// <exception cref="ArgumentException">
+    /// The timings are unwritable, exactly as <see cref="Write(string, EntrantTimings)"/> refuses them.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runIndex"/> is below 1.</exception>
+    public static void Write(string runFilePath, EntrantTimings timings, int runIndex)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(runFilePath);
         ArgumentNullException.ThrowIfNull(timings);
@@ -126,7 +167,7 @@ public static class TimingsSidecar
         AppendNumber(content, MaxUnitsPerDocumentField, Number(timings.MaxUnitsPerDocument));
         AppendLatencies(content, queryIds, timings.QueryLatenciesMilliseconds);
 
-        File.WriteAllText(PathFor(runFilePath), content.ToString());
+        File.WriteAllText(PathFor(runFilePath, runIndex), content.ToString());
     }
 
     /// <summary>Reads the sidecar beside a run file back to the samples the entrant measured.</summary>
@@ -143,11 +184,24 @@ public static class TimingsSidecar
     /// names the file, and a latency failure names the query, because the alternative to failing
     /// is a quietly different percentile.
     /// </exception>
-    public static EntrantTimings Read(string runFilePath)
+    public static EntrantTimings Read(string runFilePath) => Read(runFilePath, runIndex: 1);
+
+    /// <summary>
+    /// Reads one repeat run's sidecar back — <see cref="Read(string)"/> against the sidecar at
+    /// <see cref="PathFor(string, int)"/> of <paramref name="runIndex"/>.
+    /// </summary>
+    /// <param name="runFilePath">The run file whose repeat sidecar to read.</param>
+    /// <param name="runIndex">Which repeat to read, 1-based — see <see cref="PathFor(string, int)"/>.</param>
+    /// <returns>That repeat's timings, as <see cref="Read(string)"/> returns them.</returns>
+    /// <exception cref="InvalidDataException">
+    /// The sidecar is malformed, in any of the ways <see cref="Read(string)"/> refuses.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runIndex"/> is below 1.</exception>
+    public static EntrantTimings Read(string runFilePath, int runIndex)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(runFilePath);
 
-        var sidecarPath = PathFor(runFilePath);
+        var sidecarPath = PathFor(runFilePath, runIndex);
         using var document = Parse(File.ReadAllText(sidecarPath), sidecarPath);
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object)
@@ -195,7 +249,29 @@ public static class TimingsSidecar
     /// The run file is malformed, the two disagree about the run tag, or they disagree about the
     /// set of query ids.
     /// </exception>
-    public static EntrantTimings ReadPaired(string runFilePath)
+    public static EntrantTimings ReadPaired(string runFilePath) =>
+        ReadPaired(runFilePath, runIndex: 1);
+
+    /// <summary>
+    /// Reads one repeat run's sidecar and proves it describes the run file beside it —
+    /// <see cref="ReadPaired(string)"/> against the sidecar at <see cref="PathFor(string, int)"/>
+    /// of <paramref name="runIndex"/>. Every repeat gets the full pairing check, not just the
+    /// first: a repeat whose sidecar came from another entrant is exactly as wrong as a first run
+    /// whose sidecar did.
+    /// </summary>
+    /// <param name="runFilePath">The run file, read in full by <see cref="TrecRunFile.Read"/>.</param>
+    /// <param name="runIndex">Which repeat to read, 1-based — see <see cref="PathFor(string, int)"/>.</param>
+    /// <returns>That repeat's timings, checked against the run file beside them.</returns>
+    /// <exception cref="FileNotFoundException">
+    /// The run file is absent, or the repeat's sidecar is — a failure and not a skip, exactly as
+    /// <see cref="ReadPaired(string)"/> refuses, naming the indexed path so the message says which
+    /// repeat is missing.
+    /// </exception>
+    /// <exception cref="InvalidDataException">
+    /// The run file is malformed, or the pair disagree about the run tag or the query ids.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="runIndex"/> is below 1.</exception>
+    public static EntrantTimings ReadPaired(string runFilePath, int runIndex)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(runFilePath);
 
@@ -204,7 +280,7 @@ public static class TimingsSidecar
         var runs = TrecRunFile.Read(runFilePath);
         var runTag = ReadRunTag(runFilePath);
 
-        var sidecarPath = PathFor(runFilePath);
+        var sidecarPath = PathFor(runFilePath, runIndex);
         if (!File.Exists(sidecarPath))
         {
             throw new FileNotFoundException(
@@ -216,7 +292,7 @@ public static class TimingsSidecar
                 sidecarPath);
         }
 
-        var timings = Read(runFilePath);
+        var timings = Read(runFilePath, runIndex);
         RequireSameRunTag(runTag, timings.RunTag, runFilePath, sidecarPath);
         RequireSameQueries(runs, timings.QueryLatenciesMilliseconds, runFilePath, sidecarPath);
         return timings;

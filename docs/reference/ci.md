@@ -214,6 +214,36 @@ RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.Integration
   --filter "DisplayName~BeirRealChunkingTests&DisplayName~arguana"
 ```
 
+**`RAGNET_BEIR_RUN_INDEX` — repeat runs, for the cost measurement only.** Phase 5.1 publishes no
+cost figure from a single run: `CostReproducibility` compares repeats and refuses a figure whose
+runs disagree beyond its bar. Each entrant therefore has to be measured more than once, and the
+variable says which repeat this invocation is writing, so run 2's timings sidecar lands beside
+run 1's instead of overwriting it. It defaults to `1`, and **throws** on anything that is not a
+positive integer rather than falling back — a silent fallback would overwrite run 1 with what the
+operator meant to be run 2, and the gate would then compare a run against itself and report
+perfect agreement.
+
+`nightly.yml` does not set it, deliberately: one run per night is a run the gate cannot judge, and
+a nightly that produced ungated figures would be worse than one that produces none. This is a
+developer procedure, run twice by hand on one machine in one session, which is what the design's
+comparability rule requires anyway. To measure both .NET entrants twice:
+
+```bash
+for i in 1 2; do
+  RAGNET_BEIR_LONG_RUNS=1 RAGNET_BEIR_RUN_INDEX=$i \
+    dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
+    --filter "FullyQualifiedName~BeirComparisonControlTests"
+done
+```
+
+The Python entrants take the same index as `--run-index`:
+
+```bash
+for i in 1 2; do
+  uv run python run_entrant.py scifact langchain --run-index $i
+done
+```
+
 **The reranked ablation cells additionally need the cross-encoder, which the nightly deliberately
 does not provision.** It used to: the job fetched, SHA-256-checked and cached the ~87 MB
 `cross-encoder/ms-marco-MiniLM-L6-v2` export on every cold run — and both genuine runs on the

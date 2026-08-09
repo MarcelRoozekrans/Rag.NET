@@ -28,6 +28,15 @@ namespace Rag.NET.Benchmarks.Quality;
 /// <b>never in the repository</b>. They are derived data for a corpus that is itself not vendored,
 /// they are megabytes per dataset, and a checked-in vector is a vector nobody re-derives.
 /// </para>
+/// <para>
+/// <b>Timed measurements must not read this cache from disk.</b> One entry read costs ~10 ms with
+/// a cold OS page cache and ~0.7 ms with a hot one, and one read per text inside an indexing span
+/// made identical comparison runs differ by up to 23x on run order alone — a figure about the
+/// page cache, not about any library. <see cref="Prefetch"/> reads every vector a run will need
+/// into memory before any span starts; after it, <see cref="GetOrAddAsync"/> answers from that
+/// memory only and refuses texts the prefetch never saw, so no timed span can touch disk or an
+/// embedder by construction.
+/// </para>
 /// </summary>
 public sealed class EmbeddingCache
 {
@@ -51,6 +60,7 @@ public sealed class EmbeddingCache
     private readonly string _directory;
     private readonly string _modelIdentity;
     private readonly ILogger<EmbeddingCache>? _logger;
+    private Dictionary<string, float[]>? _prefetched;
     private long _hits;
     private long _misses;
 
@@ -89,7 +99,9 @@ public sealed class EmbeddingCache
     public long Misses => Interlocked.Read(ref _misses);
 
     /// <summary>
-    /// Returns a vector for every text, embedding only the ones not already stored.
+    /// Returns a vector for every text, embedding only the ones not already stored. After
+    /// <see cref="Prefetch"/>, answers come from memory only — no disk, no embedder — and a text
+    /// the prefetch never saw throws rather than quietly reading disk inside a timed span.
     /// </summary>
     /// <param name="texts">The texts, in the order vectors are wanted back in.</param>
     /// <param name="embedAsync">
@@ -110,6 +122,11 @@ public sealed class EmbeddingCache
     {
         ArgumentNullException.ThrowIfNull(texts);
         ArgumentNullException.ThrowIfNull(embedAsync);
+
+        if (_prefetched is not null)
+        {
+            return ServeFromMemory(_prefetched, texts);
+        }
 
         var keys = new string[texts.Count];
         var results = new float[texts.Count][];
@@ -144,6 +161,97 @@ public sealed class EmbeddingCache
         if (_logger is not null)
         {
             BeirLog.EmbeddingCacheBatch(_logger, _modelIdentity, hitCount, texts.Count - hitCount);
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Reads every one of <paramref name="texts"/>' vectors from disk into memory, so every later
+    /// <see cref="GetOrAddAsync"/> call is answered without touching disk or any embedder.
+    /// </summary>
+    /// <param name="texts">
+    /// Every text the run will embed — corpus units <b>and</b> query texts, since query embedding
+    /// also goes through this cache and sits inside the retrieval span.
+    /// </param>
+    /// <exception cref="InvalidOperationException">
+    /// One or more texts have no entry: the cache is <b>cold</b> for this corpus. Timed spans
+    /// serve vectors from memory and never embed, so embedding here would silently reintroduce
+    /// the very cost — model inference and file I/O — the prefetch exists to exclude; warm the
+    /// cache first (the parity measurement embeds the same texts through this cache) and re-run.
+    /// </exception>
+    /// <remarks>
+    /// This is the only disk access a comparison run performs against the cache, and it runs
+    /// before any timed span starts. The hit and miss counters move here, once per occurrence,
+    /// exactly as a <see cref="GetOrAddAsync"/> lookup would have counted them — so a sidecar's
+    /// counts still describe what the disk really held, not the in-memory serving.
+    /// </remarks>
+    public void Prefetch(IReadOnlyList<string> texts)
+    {
+        ArgumentNullException.ThrowIfNull(texts);
+
+        _prefetched ??= new Dictionary<string, float[]>(StringComparer.Ordinal);
+        var missing = 0;
+        for (var i = 0; i < texts.Count; i++)
+        {
+            var key = ComputeKey(texts[i]);
+            if (_prefetched.ContainsKey(key))
+            {
+                _ = Interlocked.Increment(ref _hits);
+                continue;
+            }
+
+            var cached = TryRead(key);
+            if (cached is null)
+            {
+                _ = Interlocked.Increment(ref _misses);
+                missing++;
+                continue;
+            }
+
+            _prefetched[key] = cached;
+            _ = Interlocked.Increment(ref _hits);
+        }
+
+        if (missing > 0)
+        {
+            throw new InvalidOperationException(
+                $"{missing} of the {texts.Count} texts to prefetch have no entry under " +
+                $"'{_directory}' (identity '{_modelIdentity}'): the cache is cold. Timed spans " +
+                "serve vectors from memory and never embed — embedding here would reintroduce " +
+                "the model and disk cost the prefetch exists to exclude — so warm the cache " +
+                "first (the parity measurement embeds the same texts through this cache).");
+        }
+    }
+
+    /// <summary>
+    /// Answers one batch from the prefetched map, refusing any text the prefetch never saw —
+    /// even one whose entry exists on disk, because a disk read inside a timed span is exactly
+    /// what prefetching exists to exclude. Counters do not move here; they described the disk
+    /// once, at prefetch time.
+    /// </summary>
+    private IReadOnlyList<float[]> ServeFromMemory(
+        Dictionary<string, float[]> prefetched, IReadOnlyList<string> texts)
+    {
+        var results = new float[texts.Count][];
+        var missing = 0;
+        for (var i = 0; i < texts.Count; i++)
+        {
+            if (prefetched.TryGetValue(ComputeKey(texts[i]), out var vector))
+            {
+                results[i] = vector;
+                continue;
+            }
+
+            missing++;
+        }
+
+        if (missing > 0)
+        {
+            throw new InvalidOperationException(
+                $"{missing} of the {texts.Count} texts in this batch were never prefetched. " +
+                "Every text a timed span embeds must be covered by the prefetch; serving it " +
+                "from disk or an embedder here would put I/O back inside the span.");
         }
 
         return results;

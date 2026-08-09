@@ -92,6 +92,75 @@ public sealed class TimingsSidecarTests : IDisposable
         Assert.Equal(SidecarPath, TimingsSidecar.PathFor(RunPath), StringComparer.Ordinal);
     }
 
+    // ------------------------------------------------------------- repeat runs, by run index
+
+    [Fact]
+    public void PathFor_RunIndexOne_IsTheUnindexedPath()
+    {
+        // The first run keeps the historical name, so a single-run pairing stays exactly where
+        // every existing reader — ReadPaired, the Python fixture test — already looks.
+        Assert.Equal(TimingsSidecar.PathFor(RunPath), TimingsSidecar.PathFor(RunPath, 1), StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public void PathFor_ALaterRunIndex_PutsTheIndexBeforeTheJsonExtension()
+    {
+        // Same convention extended, not a second format: the run file's own name stays visible,
+        // and the family sorts together in a directory listing.
+        Assert.Equal(RunPath + ".timings.2.json", TimingsSidecar.PathFor(RunPath, 2), StringComparer.Ordinal);
+        Assert.Equal(RunPath + ".timings.10.json", TimingsSidecar.PathFor(RunPath, 10), StringComparer.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void PathFor_RejectsANonPositiveRunIndex(int runIndex)
+    {
+        // Run indices are 1-based: "run 0" would silently alias run 1 under any convention that
+        // maps both to a real path, and a negative index is a loop written backwards.
+        _ = Assert.Throws<ArgumentOutOfRangeException>(() => TimingsSidecar.PathFor(RunPath, runIndex));
+    }
+
+    [Fact]
+    public void WriteAndRead_WithARunIndex_KeepEveryRepeatOnDisk()
+    {
+        // The reason the index exists: without it a repeat run overwrites the last, and the
+        // reproducibility gate has one sidecar where it needs at least two.
+        TimingsSidecar.Write(RunPath, Timings(("q-1", 4.25)), runIndex: 1);
+        TimingsSidecar.Write(RunPath, Timings(("q-1", 5.0)) with { IndexingSeconds = 2.4 }, runIndex: 2);
+
+        Assert.True(File.Exists(SidecarPath));
+        Assert.True(File.Exists(RunPath + ".timings.2.json"));
+        Assert.Equal(12.5, TimingsSidecar.Read(RunPath, 1).IndexingSeconds);
+        Assert.Equal(2.4, TimingsSidecar.Read(RunPath, 2).IndexingSeconds);
+    }
+
+    [Fact]
+    public void ReadPaired_WithARunIndex_ChecksTheIndexedSidecarAgainstTheRunFile()
+    {
+        // Every repeat gets the full pairing check, not just the first: a repeat whose sidecar
+        // came from another entrant is exactly as wrong as a first run whose sidecar did.
+        WriteRunFile("tag", "q-1");
+        TimingsSidecar.Write(RunPath, Timings(("q-1", 4.25)) with { RunTag = "other" }, runIndex: 2);
+
+        var ex = Assert.Throws<InvalidDataException>(() => TimingsSidecar.ReadPaired(RunPath, 2));
+
+        Assert.Contains("other", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ReadPaired_AMissingIndexedSidecarNamesTheIndexedPath()
+    {
+        // The refuse-on-miss failure has to point at the repeat that is absent, not at the first
+        // run's sidecar — the two differ only in the index, and that is the whole message.
+        WriteRunFile("tag", "q-1");
+        TimingsSidecar.Write(RunPath, Timings(("q-1", 4.25)));
+
+        var ex = Assert.Throws<FileNotFoundException>(() => TimingsSidecar.ReadPaired(RunPath, 2));
+
+        Assert.Contains(RunPath + ".timings.2.json", ex.Message, StringComparison.Ordinal);
+    }
+
     // ----------------------------------------------------------------------------- writing
 
     [Fact]

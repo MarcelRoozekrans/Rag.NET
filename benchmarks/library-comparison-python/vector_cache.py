@@ -15,6 +15,16 @@ directory AND different identity salt).
 Entry layout (``EmbeddingCache``): 8-byte magic ``RAGNETE1``, the 32-byte key digest, an int32
 dimension, then the float32 vector, all little-endian. Anything that does not agree -- magic,
 digest, dimension, length -- is a miss, never a partial answer.
+
+**Timed spans never read this cache from disk.** One ``.vec`` read costs ~10 ms with a cold OS
+page cache and ~0.7 ms with a hot one, and one read per text inside an indexing span made
+identical runs differ by up to 23x on run order alone -- a figure about the page cache, not the
+library. So the harness ``prefetch``\\ es every vector a run will need into memory before any
+timing starts, and the timed passes call ``serve``, which answers from that memory only and
+refuses anything the prefetch never saw. A text with no entry at prefetch time is a **cold
+cache** and raises rather than silently embedding (which would put the confound back one level
+up); embedding during prefetch happens only on an explicit ``--warm-cache`` run, and the
+hit/miss counters always describe what the disk really held.
 """
 
 from __future__ import annotations
@@ -43,6 +53,7 @@ class VectorCache:
     def __init__(self, directory: str | Path, model_identity: str) -> None:
         self._directory = Path(directory)
         self._model_identity = model_identity
+        self._prefetched: dict[str, np.ndarray] = {}
         self.hits = 0
         self.misses = 0
 
@@ -100,6 +111,50 @@ class VectorCache:
                     results[slot] = vector
 
         return results  # type: ignore[return-value]
+
+    def prefetch(self, texts: list[str], embed=None) -> list[np.ndarray]:
+        """Reads every text's vector from disk into memory, BEFORE any timing starts.
+
+        This is the only method that touches disk during a measured run, and it runs outside
+        every timed span. Texts with no entry mean the cache is **cold** for this corpus:
+        without ``embed`` that raises, naming the count, because silently embedding here would
+        hide that this run paid model and disk costs no other run paid. Passing ``embed`` (the
+        explicit ``--warm-cache`` path) embeds and stores the misses instead -- loudly counted
+        in ``misses``, so the sidecar still says what the disk really held.
+
+        Returns one vector per text so it can stand in as the rehearsal pass's embed callback;
+        hit/miss counters move here, once per occurrence, exactly as ``get_or_embed`` counted.
+        """
+        if embed is None:
+            def embed(missing_texts):
+                raise RuntimeError(
+                    f"{len(missing_texts)} of the {len(texts)} texts in this prefetch batch "
+                    f"have no entry under {self._directory} (identity "
+                    f"{self._model_identity!r}): the vector cache is cold. Timed spans serve "
+                    "vectors from memory and never embed -- embedding here would reintroduce "
+                    "the very cost the prefetch excludes -- so warm the cache explicitly with "
+                    "--warm-cache and re-run.")
+
+        vectors = self.get_or_embed(texts, embed)
+        for text, vector in zip(texts, vectors):
+            self._prefetched[compute_key(self._model_identity, text)] = vector
+        return vectors
+
+    def serve(self, texts: list[str]) -> list[np.ndarray]:
+        """One prefetched vector per text, from memory only -- what the timed spans call.
+
+        Deliberately refuses any text ``prefetch`` never saw, even if its entry exists on
+        disk: a disk read inside a timed span is exactly what prefetching exists to exclude.
+        Counters do not move here; they described the disk once, at prefetch time.
+        """
+        keys = [compute_key(self._model_identity, text) for text in texts]
+        missing = sum(1 for key in keys if key not in self._prefetched)
+        if missing:
+            raise RuntimeError(
+                f"{missing} of the {len(texts)} texts in this batch were never prefetched. "
+                "Every text a timed span embeds must be covered by the prefetch pass; serving "
+                "it from disk or the model here would put I/O back inside the span.")
+        return [self._prefetched[key] for key in keys]
 
 
 def _try_parse(data: bytes, key: str) -> np.ndarray | None:
