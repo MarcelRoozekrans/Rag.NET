@@ -29,8 +29,13 @@
 ///     failure rather than as a harness bug.
 ///   </item>
 ///   <item>
-///     <b>Gain is <c>2^rel - 1</c>.</b> SciFact is binary, where that reduces to 1, but FiQA and
-///     TREC-COVID are graded and a boolean gain would silently misrank them instead of failing.
+///     <b>Gain is <c>2^rel - 1</c>.</b> SciFact is binary, where that reduces to 1. So is FiQA —
+///     <b>verified 2026-08-09 by reading the cached archive</b>, not inferred: every row of
+///     <c>fiqa/qrels/{train,test,dev}.tsv</c> scores exactly 1 (14,166 / 1,706 / 1,238 rows, no
+///     other value). An earlier version of this sentence claimed FiQA was graded; it was wrong,
+///     and the check that settled it is recorded in the roadmap. TREC-COVID <i>is</i> graded, and
+///     a boolean gain would silently misrank it instead of failing — but it has not been run, so
+///     <b>this path has a graded fixture and has still never scored a graded dataset.</b>
 ///   </item>
 /// </list>
 /// <para>
