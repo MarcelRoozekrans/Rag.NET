@@ -1,4 +1,4 @@
-namespace Rag.NET.Benchmarks.Quality;
+﻿namespace Rag.NET.Benchmarks.Quality;
 
 /// <summary>
 /// The result of one <see cref="IrMetrics.Evaluate"/> run: the means, the cutoff they were computed
@@ -33,6 +33,8 @@ public sealed record IrEvaluation(
     double NormalizedDiscountedCumulativeGain,
     double Recall,
     double MeanReciprocalRank,
+    double Precision,
+    double MeanAveragePrecision,
     int Cutoff,
     int EvaluatedQueryCount,
     int ExcludedQueryCount);
