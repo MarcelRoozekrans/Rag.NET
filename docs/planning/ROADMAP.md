@@ -2917,7 +2917,7 @@ shape, though that box is still here doing its share):
 > everything a user installs; the harness half does not, and repeating the constraint
 > unqualified would be false.
 
-### Phase 5.1: Library Performance Comparison [status: pending]
+### Phase 5.1: Library Performance Comparison [status: measurement landed 2026-08-09; publication blocked on a decision]
 **Goal:** Compare **cost** across the Phase 3.14 comparators — indexing throughput (docs/sec),
 query latency p50/p99, allocations per query, Native AOT startup time, RSS. (Not a features.md
 row — the only item the handover proposes that Phase 3.14 did not touch; it calls this table
@@ -2940,6 +2940,49 @@ mechanism that genuinely removes the boundary from the measurement (each ecosyst
 in-process on its own side of the run-file boundary, the boundary excluded), or per-ecosystem
 tables labelled non-comparable, the way the `+BM25 hybrid` row is labelled internal. Publishing
 quietly what 3.14 refused to publish is the failure mode; the DoD's confound criterion holds it.
+
+**2026-08-09 — the measurement half landed; nothing is published.** Design:
+`docs/plans/2026-08-09-library-cost-comparison-design.md`. Plan:
+`docs/plans/2026-08-09-library-cost-comparison-implementation.md`.
+
+The hazard above dissolves once measured properly, and the reason is architectural: **there is no
+subprocess in the measured path.** Python entrants are run out of band and emit a run file and
+nothing else; the .NET side reads that file back. 3.14's boundary is a *file*, not a pipe. So each
+ecosystem now times itself in-process on its own side of it and emits a **timings sidecar**
+(`<run-file>.timings.json`) carrying raw per-query latencies — never its own percentiles, because
+an entrant reporting its own p99 would let five definitions of "p99" into one table.
+`LatencyStatistics` computes them once, nearest-rank, for everyone. A guard scans `benchmarks/`
+and the BEIR integration tests and fails any file that both times and launches a subprocess — the
+design's central claim, checked rather than asserted. A **Python-written format fixture** is read
+back by the .NET reader in a test, because the two sides disagreeing about the format is the risk
+nothing else would have caught.
+
+**What was left explicitly unbuilt: the table.** The design's §6 asks for an explicit choice
+between a cross-ecosystem latency table and per-ecosystem tables labelled non-comparable, and says
+in as many words that it must not be inherited from a design document. Everything above is
+required identically under both, so it was built; the table was not, and merging the design was
+not treated as making the choice.
+
+Three findings, each of which the decision should weigh:
+
+- **The old `elapsed` was not a latency measurement.** One `time.monotonic()` span covering
+  `entrant.build`, the whole query loop, the run-file write *and* the self-line re-read of the
+  file's bytes — printed, never emitted as data. It conflated indexing with query latency. Any
+  figure derived from it would have been wrong in a way no test could have shown.
+- **Indexing is measured with the embedding cache warm**, so it is index construction with
+  embedding already paid for — not "the cost of indexing", which is mostly embedding. Defensible,
+  and the only thing measurable consistently across entrants sharing one pinned embedder, but the
+  sidecar now carries the cache hit/miss counts so a cold run is visibly different *in the data*
+  rather than in a caveat someone might write later.
+- **A second confound the design did not identify, and the more serious one: the indexing spans do
+  not bracket the same work.** `entrant.build` includes each Python library's own chunker, while
+  the .NET rows receive their units pre-built — `BeirHarness.OneChunkPerDocument(...)` is called by
+  the *caller* and passed in, so it sits outside the span. That asymmetry is not incidental: it is
+  the parity protocol 3.14 chose so that *quality* would be comparable. The consequence is that
+  **a cross-ecosystem indexing row would partly measure a protocol difference rather than a
+  library one**, while the per-query latency rows — both bracketing the retrieval call and
+  excluding pooling — are clean. So the two rows are not equally publishable, and §6's decision
+  may reasonably differ between them.
 
 ### Phase 5.2: Multi-Hop Retrieval [status: pending]
 **Goal:** Measure multi-hop retrieval — HotpotQA, MuSiQue, 2WikiMultiHopQA, MultiHop-RAG. (Not a
@@ -2987,7 +3030,7 @@ timing, revision-pinned published reference where one exists, licence determinat
 upstream, `BeirReproduction` pin — which is precisely the list Milestone 3's close said none of
 them had, and declined them over.
 
-### Phase 5.4: Precision@k and MAP [status: pending]
+### Phase 5.4: Precision@k and MAP [status: implemented 2026-08-09, #75]
 **Goal:** Add `Precision@k` and `MAP` to `IrMetrics`. (Not a features.md row — two missing IR
 metrics.)
 
@@ -3000,6 +3043,19 @@ against a published figure stated in either metric — 5.3's EnronQA baselines o
 suites are the plausible triggers — but it is recorded as a phase anyway so the work has an
 owner, rather than becoming a slot nobody owns: this list's own history says an unowned small
 task is how a debt turns into an open note.
+
+**Closed 2026-08-09 (#75).** `Precision` and `AveragePrecision` landed with hand-computed pinned
+values, and `IrEvaluation` gained `Precision` and `MeanAveragePrecision` **appended**, so the
+positional reads of every existing caller still mean what they meant. The predicted subtlety was
+the real one: MAP's denominator is `min(k, relevantCount)`, matching `Evaluate`'s judged-query
+rule rather than dividing by `k`.
+
+A contradiction found while pinning the values, and settled separately in **#77**: this file and
+`IrMetrics`' doc comment disagreed about whether FiQA is graded. It is **binary** — verified by
+reading every qrels row rather than by sampling: train 14,166, test 1,706 and dev 1,238 rows all
+score 1. The doc comment was wrong; `2^rel − 1` still has no graded dataset to exercise it, so
+the Milestone 5 DoD criterion that depends on one remains open and is now recorded honestly
+instead of resting on a dataset that would never have exercised it.
 
 ### Phase 5.5: Tier 3 Suites [status: recorded — deliberately not scheduled]
 **Candidates, with the handover's reasoning kept:** CRAG (Meta, KDD Cup 2024 — the handover's
