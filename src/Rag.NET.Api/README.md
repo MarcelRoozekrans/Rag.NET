@@ -29,6 +29,13 @@ app.MapRagNetApi();
 app.Run();
 ```
 
+Authentication is an explicit decision: `AddRagNetApi` throws at startup when
+`RagApiOptions.ApiKeys` is empty, unless you opt out deliberately with
+`o.AllowAnonymous = true` (for example behind a trusted gateway that authenticates
+upstream). Setting both at once is rejected as a contradiction. The middleware also
+fails closed at request time — if the options end up with no keys and no opt-out,
+requests get `401` rather than an accidentally open API.
+
 ## Example
 
 Event-driven ingestion via the webhook endpoint — callers authenticate with an
@@ -43,6 +50,11 @@ builder.Services.AddRagNetWebhooks(o =>
 app.UseRagNetApiAuthentication();
 app.MapRagNetWebhooks(); // POST /rag/webhooks/ingest
 ```
+
+The webhook route prefix is exempted from API-key auth (the HMAC signature replaces the
+key). `MapRagNetApi()` refuses to start if that exemption would also cover any of the
+API's own routes — a `WebhookOptions.RoutePrefix` such as `"/rag"` that is a parent of
+`/rag/ingest` throws at mapping time instead of silently disabling authentication.
 
 ```bash
 curl -X POST https://localhost:5001/rag/webhooks/ingest \

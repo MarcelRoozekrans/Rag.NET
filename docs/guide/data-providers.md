@@ -661,7 +661,7 @@ app.UseRagNetApiAuthentication();
 app.MapRagNetWebhooks(); // POST /rag/webhooks/ingest
 ```
 
-Webhook requests are authenticated by an HMAC-SHA256 signature over the **raw request body**, hex-encoded in the signature header (a GitHub-style `sha256=` prefix is tolerated; the comparison is timing-safe). The webhook route prefix is exempted from `ApiKeyMiddleware` — the signature replaces the API key for webhook callers, while all other API routes keep requiring the key.
+Webhook requests are authenticated by an HMAC-SHA256 signature over the **raw request body**, hex-encoded in the signature header (a GitHub-style `sha256=` prefix is tolerated; the comparison is timing-safe). The webhook route prefix is exempted from `ApiKeyMiddleware` — the signature replaces the API key for webhook callers, while all other API routes keep requiring the key. `MapRagNetApi()` guards that boundary at mapping time: a `RoutePrefix` that is a parent of any of the API's own routes (e.g. `"/rag"`, which would exempt `/rag/ingest`) throws instead of silently disabling API-key auth on those routes.
 
 The built-in `GenericWebhookPayloadParser` accepts a single object or an array of:
 

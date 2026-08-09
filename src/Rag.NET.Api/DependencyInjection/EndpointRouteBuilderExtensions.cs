@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Rag.NET.Abstractions;
+using Rag.NET.Api.Authentication;
 using Rag.NET.Api.Contracts;
 using Rag.NET.Api.Mapping;
 using Rag.NET.Api.Webhooks;
@@ -29,58 +31,107 @@ public static class EndpointRouteBuilderExtensions
         var options = app.ServiceProvider.GetService<RagApiOptions>() ?? new RagApiOptions();
         var prefix = options.RoutePrefix.TrimEnd('/');
 
-        app.MapPost($"{prefix}/ingest", async (IngestRequest req, IRagMediator mediator, CancellationToken ct) =>
-        {
-            var docId = req.DocumentId ?? Guid.NewGuid().ToString();
-            var metadata = new DocumentMetadata
-            {
-                DocumentId = new DocumentId(docId),
-                FileName = req.FileName ?? "document.txt",
-                ContentType = req.ContentType,
-                Tags = req.Tags ?? new Dictionary<string, string>(StringComparer.Ordinal)
-            };
-            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(req.Content));
-            var result = await mediator.Send(new IngestCommand(stream, metadata), ct).ConfigureAwait(false);
-            return result.IsSuccess
-                ? Results.Ok(new IngestResponse(result.Value.DocumentId.ToString(), result.Value.ChunksStored))
-                : MapRagError(result.Error);
-        });
+        // The single source of the mapped paths: the guard below checks exactly the strings
+        // that are mapped, so any future exemption source is caught, not just webhooks.
+        var ingest = $"{prefix}/ingest";
+        var retrieve = $"{prefix}/retrieve";
+        var ask = $"{prefix}/ask";
+        var askStream = $"{prefix}/ask/stream";
+        var deleteDocument = $"{prefix}/documents/{{documentId}}";
+        ThrowIfAnyApiRouteIsAuthExempt(
+            app.ServiceProvider, [ingest, retrieve, ask, askStream, deleteDocument]);
 
-        app.MapPost($"{prefix}/retrieve", async (RetrieveRequest req, IRagMediator mediator, CancellationToken ct) =>
-        {
-            var retrievalOptions = new RetrievalOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
-            var result = await mediator.Send(new RetrieveQuery(req.Query, retrievalOptions), ct).ConfigureAwait(false);
-            return result.IsSuccess
-                ? Results.Ok(new RetrieveResponse(result.Value.Select(SearchResultMapper.ToDto).ToList()))
-                : MapRagError(result.Error);
-        });
-
-        app.MapPost($"{prefix}/ask", async (AskRequest req, IRagPipeline pipeline, CancellationToken ct) =>
-        {
-            var ragOptions = new RagOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
-            var result = await pipeline.AskAsync(req.Query, ragOptions, ct).ConfigureAwait(false);
-            return Results.Ok(new AskResponse(result.Answer, result.Sources.Select(SearchResultMapper.ToDto).ToList()));
-        });
-
-        app.MapGet($"{prefix}/ask/stream", async (string query, IRagPipeline pipeline, HttpContext ctx, CancellationToken ct) =>
-        {
-            ctx.Response.ContentType = "text/event-stream";
-            await foreach (var update in pipeline.AskStreamingAsync(query, cancellationToken: ct).ConfigureAwait(false))
-            {
-                if (update.TextDelta is not null)
-                    await ctx.Response.WriteAsync($"data: {update.TextDelta}\n\n", ct).ConfigureAwait(false);
-            }
-        });
-
-        app.MapDelete($"{prefix}/documents/{{documentId}}", async (string documentId, IRagMediator mediator, CancellationToken ct) =>
-        {
-            var deleteResult = await mediator.Send(new DeleteCommand(new DocumentId(documentId)), ct).ConfigureAwait(false);
-            return deleteResult.IsSuccess
-                ? Results.NoContent()
-                : MapRagError(deleteResult.Error);
-        });
+        app.MapPost(ingest, HandleIngestAsync);
+        app.MapPost(retrieve, HandleRetrieveAsync);
+        app.MapPost(ask, HandleAskAsync);
+        app.MapGet(askStream, HandleAskStreamAsync);
+        app.MapDelete(deleteDocument, HandleDeleteDocumentAsync);
 
         return app;
+    }
+
+    /// <summary>
+    /// The mapping-time collision guard: an <see cref="ApiKeyOptions.ExemptPathPrefixes"/>
+    /// entry that is a parent of an API route (segment-wise, exactly as
+    /// <c>ApiKeyMiddleware.IsExempt</c> matches at request time) would silently disable
+    /// API-key auth on that route. <c>AddRagNetWebhooks</c> cannot detect this — the API's
+    /// route prefix is not chosen until <see cref="MapRagNetApi"/> runs — so the check lives
+    /// here, where both values are finally known, and inspects the actual paths being mapped.
+    /// </summary>
+    private static void ThrowIfAnyApiRouteIsAuthExempt(IServiceProvider services, string[] apiRoutes)
+    {
+        var exemptPrefixes = services.GetService<IOptions<ApiKeyOptions>>()?.Value.ExemptPathPrefixes ?? [];
+        foreach (var exemptPrefix in exemptPrefixes)
+        {
+            foreach (var route in apiRoutes)
+            {
+                if (new PathString(route).StartsWithSegments(exemptPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        $"ApiKeyOptions.ExemptPathPrefixes contains \"{exemptPrefix}\", which would exempt " +
+                        $"the API route \"{route}\" from API-key authentication. An exempt prefix (e.g. " +
+                        "WebhookOptions.RoutePrefix from AddRagNetWebhooks) must not be a parent of the API's " +
+                        "own routes — choose a prefix that does not cover them, such as the default " +
+                        "\"/rag/webhooks\" or one outside the API prefix entirely.");
+                }
+            }
+        }
+    }
+
+    private static async Task<IResult> HandleIngestAsync(
+        IngestRequest req, IRagMediator mediator, CancellationToken ct)
+    {
+        var docId = req.DocumentId ?? Guid.NewGuid().ToString();
+        var metadata = new DocumentMetadata
+        {
+            DocumentId = new DocumentId(docId),
+            FileName = req.FileName ?? "document.txt",
+            ContentType = req.ContentType,
+            Tags = req.Tags ?? new Dictionary<string, string>(StringComparer.Ordinal)
+        };
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(req.Content));
+        var result = await mediator.Send(new IngestCommand(stream, metadata), ct).ConfigureAwait(false);
+        return result.IsSuccess
+            ? Results.Ok(new IngestResponse(result.Value.DocumentId.ToString(), result.Value.ChunksStored))
+            : MapRagError(result.Error);
+    }
+
+    private static async Task<IResult> HandleRetrieveAsync(
+        RetrieveRequest req, IRagMediator mediator, CancellationToken ct)
+    {
+        var retrievalOptions = new RetrievalOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
+        var result = await mediator.Send(new RetrieveQuery(req.Query, retrievalOptions), ct).ConfigureAwait(false);
+        return result.IsSuccess
+            ? Results.Ok(new RetrieveResponse(result.Value.Select(SearchResultMapper.ToDto).ToList()))
+            : MapRagError(result.Error);
+    }
+
+    private static async Task<IResult> HandleAskAsync(
+        AskRequest req, IRagPipeline pipeline, CancellationToken ct)
+    {
+        var ragOptions = new RagOptions { TopK = req.TopK, UseHybridSearch = req.UseHybridSearch };
+        var result = await pipeline.AskAsync(req.Query, ragOptions, ct).ConfigureAwait(false);
+        return Results.Ok(new AskResponse(result.Answer, result.Sources.Select(SearchResultMapper.ToDto).ToList()));
+    }
+
+    private static async Task HandleAskStreamAsync(
+        string query, IRagPipeline pipeline, HttpContext ctx, CancellationToken ct)
+    {
+        ctx.Response.ContentType = "text/event-stream";
+        await foreach (var update in pipeline.AskStreamingAsync(query, cancellationToken: ct).ConfigureAwait(false))
+        {
+            if (update.TextDelta is not null)
+                await ctx.Response.WriteAsync($"data: {update.TextDelta}\n\n", ct).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<IResult> HandleDeleteDocumentAsync(
+        string documentId, IRagMediator mediator, CancellationToken ct)
+    {
+        var deleteResult = await mediator.Send(new DeleteCommand(new DocumentId(documentId)), ct).ConfigureAwait(false);
+        return deleteResult.IsSuccess
+            ? Results.NoContent()
+            : MapRagError(deleteResult.Error);
     }
 
     /// <summary>
