@@ -2991,6 +2991,73 @@ internal — because of the third finding above. The decision follows the eviden
 than applying one rule to both, which is what the third finding made possible; before it, the
 choice looked like a single call about the whole table.
 
+**2026-08-09, later the same day — the first real run found the measurement was fiction, and the
+third finding above is retracted.**
+
+The harness was run for the first time. **Every timed span contained disk I/O**: both embedding
+caches read one file per text (`VectorCache.try_read` → `path.read_bytes()`;
+`EmbeddingCache.File.ReadAllBytes`), ~5,500 reads inside the indexing span. Identical runs
+therefore differed by **23×** on OS page-cache state alone — LangChain SciFact indexing measured
+**55.2 s** cold and **2.4 s** hot, same corpus, same code, same 5,505 hits / 0 misses.
+
+**This retracts the "LlamaIndex indexes 14× faster than LangChain" reading recorded above.** It
+was an artefact of run order: LangChain ran first against a cold page cache, LlamaIndex third
+against a hot one. After the fix the ordering **reverses** — LangChain 0.86–0.87 s, LlamaIndex
+2.30–3.70 s. No library conclusion survived from the pre-fix numbers, and none should have been
+drawn from a single run.
+
+Fixed by prefetching every vector the run needs into memory **before any clock starts**, on both
+sides, with a cold cache failing loudly rather than quietly paying costs no other run paid.
+Verified by the experiment that matters: LangChain indexed 2.1 s, a full `--no-incremental`
+Release rebuild churned the page cache, and it then indexed **1.3 s** — the perturbation that was
+previously worth 23× is now worth nothing.
+
+**The guard that would have caught it: `CostReproducibility`.** No cost figure may come from a
+single run. Two or more repeats, a hard failure above **3×** on indexing seconds or p50, and the
+spread is **always reported even when it passes** — an arbitrary threshold that quietly passes at
+1.9× is the kind that gets ignored, so the visible spread is the real protection and the bar is a
+backstop. The bar is set from measured numbers: 1.4× honest back-to-back jitter, 2.2× when
+deliberately disturbed, 23× for the defect. **p99 is reported but deliberately not gated** — at
+these sample counts it rides on one to three tail samples, and two healthy LlamaIndex runs
+differed 2.6× from tail noise alone.
+
+Two further defects surfaced while running it:
+
+- **The LlamaIndex entrant was broken on `main`** and nothing could have reported it. nltk 3.10.1
+  began blocking any nltk-initiated import resolving under the working directory, and `.venv`
+  lives under the project directory, so the entrant failed for any normal invocation. A dependency
+  update had silently removed one of the five comparators; these runs are manual and gated, so no
+  check could fail. `run_entrant.py` now bootstraps its own `sys.path` and a neutral cwd.
+- **The gate could only judge the Python rows.** Both .NET entrants called the non-indexed
+  `TimingsSidecar.Write`, so a second run overwrote the first and there was nothing to compare —
+  a guard covering half the data while reading as coverage. `RAGNET_BEIR_RUN_INDEX` fixes it, and
+  `RepoConventions`' `EveryGateVariableIsSatisfiableSomewhereWrittenDown` caught the new variable
+  being undocumented within one test run.
+
+**First gated measurement — SciFact, two runs per entrant, all five passing.** Spreads shown
+because the point is that they are shown:
+
+| Entrant | Indexing | p50 | p99 |
+|---|---|---|---|
+| `ragnet-control` | 0.02–0.03 s (×1.71) | 5.6–9.5 ms | 9.5–10.7 ms |
+| `semantic-kernel` | 0.04–0.05 s (×1.14) | 2.6–3.1 ms | 3.5–4.5 ms |
+| `langchain` | 0.86–0.87 s (×1.01) | 96.3–109.2 ms | 140.3–163.9 ms |
+| `llamaindex` | 2.30–3.70 s (×1.61) | 90.7–102.8 ms | 186.2–193.7 ms |
+| `haystack` | 1.15–1.21 s (×1.06) | 104.5–108.1 ms | 181.0–215.0 ms |
+
+**The caveat that must travel with the latency column, or it misleads.** The ~20× gap is a
+comparison of **default in-memory stores**, and for the Python entrants the default is a
+reference implementation nobody runs in production — LangChain's `InMemoryVectorStore` and
+LlamaIndex's `SimpleVectorStore` scan candidates in Python-level loops. *"LangChain is 20× slower"*
+is false; *"LangChain's default in-memory store is 20× slower than Rag.NET's"* is what was
+measured. 3.14's "at their defaults" protocol is what makes the row meaningful and is also what
+makes the unqualified claim wrong, so the qualification belongs in the table, not a footnote.
+
+**Still not published, and now for a second reason.** Only SciFact is measured; ArguAna and FiQA
+have no repeat runs. And every figure above comes from a shared machine that was in use during
+the runs — the gate makes that visible rather than fatal, but §2.2 requires one machine in one
+session, so the page must say which machine and that it was not idle.
+
 This is the first cross-ecosystem cost figure this repository will publish, and it is exactly what
 3.14 declined to publish — so the latency table must carry, on the page, what §2.2 already states:
 that interpreter and runtime startup are excluded by construction, that allocations-per-query and
