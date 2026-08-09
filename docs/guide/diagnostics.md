@@ -219,7 +219,7 @@ app.Run();
 
 **Authentication comes from the application, not from the endpoint.** `ApiKeyMiddleware` guards the whole pipeline: every path is checked unless it starts with one of `ApiKeyOptions.ExemptPathPrefixes`, which is how the webhook route — authenticated by an HMAC signature over its own body instead — opts out. The trace routes carry no alternative authentication of their own, so:
 
-- Call `app.UseRagNetApiAuthentication()` with at least one API key configured, and the routes are behind it.
+- Call `app.UseRagNetApiAuthentication()` with at least one API key configured, and the routes are behind it. The middleware fails closed: behind it with no keys configured and no explicit `AllowAnonymous` opt-out, every request is refused with `401` rather than served open.
 - **Do not add the trace prefix to `ExemptPathPrefixes`.** Doing so serves captured content to anyone.
 - Map these routes into an application with no authentication and they are as open as everything else in it.
 

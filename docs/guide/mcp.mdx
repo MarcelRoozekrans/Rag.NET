@@ -302,6 +302,8 @@ Add Rag.NET as an MCP server in Claude Desktop's config file.
 | HTTP/SSE | `X-Api-Key` header; configure `ApiKeys` array for rotation and per-client revocation |
 | gRPC | `x-api-key` metadata header; validated by a server-side interceptor |
 
+Both `AddRagNetApi` and `AddRagNetGrpcApi` require an explicit authentication decision at registration: configure at least one key, or opt out deliberately with `AllowAnonymous = true` (e.g. behind a trusted gateway). Registering with an empty `ApiKeys` and no opt-out throws at startup, and setting both at once is rejected as a contradiction. At request time the middleware/interceptor fail closed — no keys and no opt-out means the request is refused, never silently served.
+
 Multiple keys are supported for rotation without downtime:
 
 ```csharp

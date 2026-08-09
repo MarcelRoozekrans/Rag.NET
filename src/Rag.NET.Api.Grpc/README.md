@@ -28,6 +28,13 @@ app.MapRagNetGrpcApi();
 app.Run();
 ```
 
+Authentication is an explicit decision: `AddRagNetGrpcApi` throws at startup when
+`RagGrpcApiOptions.ApiKeys` is empty, unless you opt out deliberately with
+`o.AllowAnonymous = true` (for example behind a trusted gateway that authenticates
+upstream). Setting both at once is rejected as a contradiction. The interceptor also
+fails closed at call time — if the options end up with no keys and no opt-out, calls
+are refused with `Unauthenticated` rather than an accidentally open service.
+
 ## Example
 
 Any gRPC client can call the service; pair it with the `Rag.NET.Api.Grpc.Client` package

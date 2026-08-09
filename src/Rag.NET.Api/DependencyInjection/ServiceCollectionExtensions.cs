@@ -8,6 +8,19 @@ namespace Rag.NET.Api.DependencyInjection;
 
 public static class ServiceCollectionExtensions
 {
+    /// <summary>
+    /// Registers the REST API. Authentication must be decided explicitly: configure at least
+    /// one key in <see cref="RagApiOptions.ApiKeys"/>, or opt out with
+    /// <see cref="RagApiOptions.AllowAnonymous"/> — neither (an accidentally open API) and
+    /// both (a contradiction) fail here, so misconfiguration fails at registration time.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configure">Configures <see cref="RagApiOptions"/>.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when <see cref="RagApiOptions.ApiKeys"/> is empty while
+    /// <see cref="RagApiOptions.AllowAnonymous"/> is <see langword="false"/>, and when both
+    /// are set at once.
+    /// </exception>
     public static IServiceCollection AddRagNetApi(
         this IServiceCollection services,
         Action<RagApiOptions>? configure = null)
@@ -15,8 +28,29 @@ public static class ServiceCollectionExtensions
         var options = new RagApiOptions();
         configure?.Invoke(options);
 
+        if (options.ApiKeys.Length == 0 && !options.AllowAnonymous)
+        {
+            throw new InvalidOperationException(
+                "AddRagNetApi: RagApiOptions.ApiKeys is empty and RagApiOptions.AllowAnonymous is false — " +
+                "this would serve every endpoint unauthenticated by accident. Either configure at least one " +
+                "key (o => o.ApiKeys = [\"...\"]) or opt out of authentication explicitly " +
+                "(o => o.AllowAnonymous = true).");
+        }
+
+        if (options.ApiKeys.Length > 0 && options.AllowAnonymous)
+        {
+            throw new InvalidOperationException(
+                "AddRagNetApi: RagApiOptions.AllowAnonymous is true but RagApiOptions.ApiKeys is non-empty — " +
+                "the two contradict each other. Remove AllowAnonymous to require a key, or remove the keys " +
+                "to serve anonymously.");
+        }
+
         services.AddSingleton(options);
-        services.Configure<ApiKeyOptions>(o => o.ApiKeys = options.ApiKeys);
+        services.Configure<ApiKeyOptions>(o =>
+        {
+            o.ApiKeys = options.ApiKeys;
+            o.AllowAnonymous = options.AllowAnonymous;
+        });
 
         return services;
     }
