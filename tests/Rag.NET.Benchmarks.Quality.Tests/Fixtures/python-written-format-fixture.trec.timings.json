@@ -1,0 +1,13 @@
+{
+  "runTag": "format-fixture-not-a-measurement",
+  "indexingSeconds": 4.25,
+  "embeddingCacheHits": 7,
+  "embeddingCacheMisses": 3,
+  "unitCount": 5,
+  "maxUnitsPerDocument": 2,
+  "queryLatenciesMilliseconds": {
+    "q-1": 0.125,
+    "q-10": 3.5,
+    "q-2": 12.25
+  }
+}

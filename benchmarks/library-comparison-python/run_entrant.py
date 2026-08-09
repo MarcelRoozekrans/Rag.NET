@@ -24,6 +24,12 @@ After writing, the run file's own bytes are re-read and checked: zero lines pair
 document sharing its id (on ArguAna, 1,298 of 1,406 queries are byte-identical to their own
 corpus document, so zero is not achievable by accident). **Nothing here computes a metric** --
 scoring happens on the .NET side, through ``TrecRunFile.Read`` and ``IrMetrics``.
+
+The entrant also **times itself, in its own runtime** (``timings.py`` writes the sidecar beside
+the run file): ``time.perf_counter()`` around ``entrant.build`` only for indexing, and around the
+``retrieve`` call only per query -- never around ``top_documents``, which is harness protocol
+identical across entrants, and never around a process. The elapsed line below is derived from
+those spans rather than measured separately, so the print and the sidecar cannot drift apart.
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ from pathlib import Path
 import entrant_haystack
 import entrant_langchain
 import entrant_llamaindex
+import timings
 from beir_data import load_dataset
 from doc_ranking import top_documents
 from pinned_embedder import PYTHON_MODEL_IDENTITY, PinnedEmbedder
@@ -72,16 +79,26 @@ def main() -> int:
     def embed_many(texts: list[str]):
         return cache.get_or_embed(texts, embedder.embed)
 
-    started = time.monotonic()
+    # perf_counter, not monotonic: the higher-resolution clock, and per-query spans are small.
+    # The span brackets entrant.build ONLY -- dataset loading, embedder construction and the
+    # run-file write are the harness's own cost, not the library's.
+    indexing_started = time.perf_counter()
     retrieve, max_units_per_document, unit_count = entrant.build(dataset.documents, embed_many)
+    indexing_seconds = time.perf_counter() - indexing_started
 
     # BeirHarness.RetrieveAsync's TopK rule, verbatim.
     excludes_self = descriptor.excludes_self_retrieved_document
     depth = (CUTOFF + (1 if excludes_self else 0)) * max_units_per_document
 
     runs: dict[str, list[tuple[str, float]]] = {}
+    query_latencies_milliseconds: dict[str, float] = {}
     for query in dataset.judged_queries():
+        # The span brackets the library's retrieval ONLY. top_documents (pooling and the
+        # self-exclusion) is harness protocol, deliberately identical across entrants, so timing
+        # it would smear the same constant into five different libraries' latency columns.
+        query_started = time.perf_counter()
         hits = retrieve(query.text, depth)
+        query_latencies_milliseconds[query.id] = (time.perf_counter() - query_started) * 1000.0
         excluded = query.id if excludes_self else None
         runs[query.id] = top_documents(hits, CUTOFF, excluded)
 
@@ -89,9 +106,20 @@ def main() -> int:
     runs_directory.mkdir(parents=True, exist_ok=True)
     run_file = runs_directory / f"{dataset_name}-{entrant_name}.trec"
     write(run_file, runs, entrant.RUN_TAG)
+    timings.write(
+        run_file,
+        run_tag=entrant.RUN_TAG,
+        indexing_seconds=indexing_seconds,
+        query_latencies_milliseconds=query_latencies_milliseconds,
+        embedding_cache_hits=cache.hits,
+        embedding_cache_misses=cache.misses,
+        unit_count=unit_count,
+        max_units_per_document=max_units_per_document)
 
     self_lines = _verify_no_self_lines(run_file)
-    elapsed = time.monotonic() - started
+    # Derived from the measured spans rather than timed separately, so this line and the sidecar
+    # cannot drift apart. It deliberately no longer covers loading or file I/O.
+    retrieval_seconds = sum(query_latencies_milliseconds.values()) / 1000.0
 
     print(f"{dataset_name} {entrant.NAME.upper()} AT ITS DEFAULTS ({entrant.RUN_TAG})")
     print(f"  {entrant.DESCRIPTION}")
@@ -100,8 +128,10 @@ def main() -> int:
     print(f"  {len(runs)} judged queries retrieved; self-exclusion check: "
           f"{self_lines} query-id = document-id lines "
           f"({'protocol requires 0' if excludes_self else 'dataset does not self-exclude'})")
-    print(f"  cache: {cache.hits} hits, {cache.misses} misses; elapsed {elapsed:.1f} s")
+    print(f"  cache: {cache.hits} hits, {cache.misses} misses; "
+          f"indexing {indexing_seconds:.1f} s + retrieval {retrieval_seconds:.1f} s (self-timed)")
     print(f"  run file: {run_file}")
+    print(f"  timings sidecar: {timings.path_for(run_file)}")
 
     if excludes_self and self_lines != 0:
         print("SELF-EXCLUSION FAILED: the run file holds pre-exclusion rankings.")

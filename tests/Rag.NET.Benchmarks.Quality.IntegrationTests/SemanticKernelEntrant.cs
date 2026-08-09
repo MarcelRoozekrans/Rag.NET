@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.VectorData;
 using Microsoft.SemanticKernel.Connectors.InMemory;
@@ -167,6 +168,13 @@ public static class SemanticKernelEntrant
     /// Retrieves for every query through Semantic Kernel's <c>SearchAsync</c> — which embeds the
     /// query text through the collection's registered generator — and cuts each result to the run
     /// file's ranking with <see cref="TopDocuments"/>.
+    /// <para>
+    /// Each query's latency spans <b>the library's retrieval only</b>: the <c>SearchAsync</c>
+    /// enumeration, hit collection included, exactly the operation the Python harness brackets as
+    /// its entrants' <c>retrieve</c> call. <see cref="TopDocuments"/> stays outside the span —
+    /// the cut is harness protocol, deliberately identical across entrants, and timing it would
+    /// smear the same constant into every entrant's latency column.
+    /// </para>
     /// </summary>
     /// <param name="collection">The indexed collection.</param>
     /// <param name="queries">The judged queries.</param>
@@ -174,8 +182,12 @@ public static class SemanticKernelEntrant
     /// Whether the dataset's protocol drops the document sharing the query's id.
     /// </param>
     /// <param name="cancellationToken">Cancels the retrieval.</param>
-    /// <returns>Rankings by query id, best first — the shape <see cref="TrecRunFile.Write"/> takes.</returns>
-    public static async Task<IReadOnlyDictionary<string, IReadOnlyList<ScoredDocument>>> RetrieveAsync(
+    /// <returns>
+    /// Rankings by query id, best first — the shape <see cref="TrecRunFile.Write"/> takes — with
+    /// one raw latency per query in milliseconds, the shape <see cref="EntrantTimings"/> carries.
+    /// </returns>
+    public static async Task<(IReadOnlyDictionary<string, IReadOnlyList<ScoredDocument>> Runs,
+        IReadOnlyDictionary<string, double> QueryLatenciesMilliseconds)> RetrieveAsync(
         InMemoryCollection<string, CorpusRecord> collection,
         IReadOnlyList<BeirQuery> queries,
         bool excludesSelfRetrievedDocument,
@@ -187,21 +199,24 @@ public static class SemanticKernelEntrant
         var depth = RetrievalDepth(excludesSelfRetrievedDocument);
         var runs = new Dictionary<string, IReadOnlyList<ScoredDocument>>(
             queries.Count, StringComparer.Ordinal);
+        var latencies = new Dictionary<string, double>(queries.Count, StringComparer.Ordinal);
         for (var i = 0; i < queries.Count; i++)
         {
             var query = queries[i];
             var hits = new List<ScoredDocument>(depth);
+            var startedAt = Stopwatch.GetTimestamp();
             await foreach (var result in collection.SearchAsync(
                 query.Text, depth, options: null, cancellationToken))
             {
                 hits.Add(new ScoredDocument(result.Record.Id, RequireScore(result, query.Id)));
             }
 
+            latencies[query.Id] = Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds;
             runs[query.Id] = TopDocuments(
                 hits, BeirHarness.Cutoff, excludesSelfRetrievedDocument ? query.Id : null);
         }
 
-        return runs;
+        return (runs, latencies);
     }
 
     /// <summary>
