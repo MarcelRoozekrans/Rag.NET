@@ -711,9 +711,10 @@ services.AddRagNet(b => b
         o.MaxLength = 512;
     }));
 
-// Option 2: Custom implementation (e.g., Cohere, Jina)
+// Option 2: A custom IReranker implementation — Rag.NET.Reranking.Cohere's CohereReranker
+// shown here; write your own IReranker for other providers (e.g. Jina)
 services.AddRagNet(b => b
-    .UseReranking<MyCohereReranker>());
+    .UseReranking<CohereReranker>());
 ```
 
 ### How it works
@@ -1016,10 +1017,11 @@ By default, `InMemoryBm25Index` and `InMemoryParentChunkStore` are process-scope
 
 ```csharp
 services.AddRagNet(b => b
-    .UseHybridSearch()              // optional — enables BM25 index
     .UseParentDocumentRetrieval()   // optional — enables parent chunk store
     .UseSqlitePersistence("rag-data.db", collectionName: "my-docs"));
 ```
+
+`AddRagNet` always registers a BM25 index (`InMemoryBm25Index` by default, `SqliteBm25Index` once `UseSqlitePersistence` runs) — `UseHybridSearch` is not a registration-time call but the per-request `RetrievalOptions.UseHybridSearch = true` (or `RagOptions.UseHybridSearch = true`) described above; set it on the call, not the builder.
 
 `collectionName` is the stale-data guard: if the registered name does not match what is stored in the SQLite file (e.g., after switching to a new vector store), all persisted rows are wiped before loading. Omit `collectionName` to skip this check.
 
