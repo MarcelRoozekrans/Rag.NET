@@ -208,6 +208,16 @@ future reader can tell the difference between "never existed" and "dealt with".
   `IrMetrics`' own doc comment is wrong and gets corrected when this is picked up. Either way one
   sentence must change, and this paragraph exists so whoever runs TREC-COVID first knows which
   check comes before the run.
+  **Settled 2026-08-09 by reading the archive, and this entry was the one that was right.**
+  `fiqa/qrels/{train,test,dev}.tsv` from the pinned BEIR URL score **exactly 1 on every row** —
+  14,166 / 1,706 / 1,238 rows, no other value, nothing unparsable. **FiQA is binary.** So the
+  `2^rel − 1` path still has a graded fixture and has **never scored a graded dataset**, exactly as
+  this entry claimed, and `IrMetrics.cs`'s doc comment — which asserted FiQA was graded — was the
+  wrong sentence and has been corrected with the counts inline. TREC-COVID remains the first
+  graded dataset and remains unrun, so the Milestone 5 DoD criterion it feeds is still open. The
+  audit's own guess ("BEIR's published FiQA-2018 qrels are binary, which favours this entry") was
+  right, but it was recorded as unverified and stayed that way through four phases that could have
+  read one file — which is the more useful lesson than the answer.
   → **stays in Milestone 3's scope** (re-pointed 2026-08-02 by the Milestone 4 replan, design §5,
   which refuses to smuggle it into 4: run or explicitly declined before Milestone 3 closes, and
   declined gets written here, not implied). **And a correction to the design's own §5:** it routed
