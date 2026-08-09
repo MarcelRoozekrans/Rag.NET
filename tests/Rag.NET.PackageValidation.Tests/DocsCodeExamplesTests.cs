@@ -57,6 +57,24 @@ namespace Rag.NET.PackageValidation.Tests;
 /// <c>artifacts/packages</c> means nothing has packed and the test skips, and
 /// <see cref="WorkflowWiringTests"/> pins ci.yml so that skip cannot rot into permanent green.
 /// </para>
+/// <para>
+/// <b>What this does not catch, demonstrated rather than theorised.</b> Resolution is by
+/// <i>name</i>: a member reference passes when something in the shipped surface declares that
+/// name. It does not know which type an expression has, because that needs a compiler rather than
+/// a catalogue. So <c>response.Text</c> passed for months in <c>docs/guide/memory.md</c> —
+/// <c>IRagPipeline.AskAsync</c> returns <see cref="Rag.NET.Models.RagResponse"/>, whose property
+/// is <c>Answer</c>, but <c>Text</c> exists on <c>TextChunk</c> and <c>DocumentSection</c>, so the
+/// name resolved and the snippet still would not compile. It was found by a user in issue #56,
+/// after this guard had already run green over that exact file.
+/// </para>
+/// <para>
+/// The honest summary is that this catches <i>names that exist nowhere</i> — a renamed or deleted
+/// API, a package id used as a namespace, a method invented for a tutorial — and not <i>names on
+/// the wrong type</i>. Closing that gap means compiling each fence against the packages, which is
+/// a different and much larger tool; it is worth building only if wrong-type references turn out
+/// to be common, and one instance is not evidence of that. Recorded so the next person reads this
+/// guard's green as the narrower claim it is.
+/// </para>
 /// </remarks>
 public sealed class DocsCodeExamplesTests
 {
