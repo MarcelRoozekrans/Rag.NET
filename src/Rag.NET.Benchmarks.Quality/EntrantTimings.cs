@@ -5,10 +5,10 @@ namespace Rag.NET.Benchmarks.Quality;
 /// beside the <see cref="TrecRunFile"/> it was measured alongside.
 /// <para>
 /// <b>Raw samples only — no statistic is stored here.</b> Every field is something a single
-/// entrant observed about itself in its own runtime; p50 and p99 are computed afterwards, once,
-/// for every entrant. An entrant that reported its own percentile would put its own definition of
-/// "p99" into a table alongside four other definitions, and the resulting column would be
-/// unreadable while looking fine.
+/// entrant observed about itself in its own runtime; p50 and p99 are computed afterwards by
+/// <see cref="LatencyStatistics"/>, once, for every entrant. An entrant that reported its own
+/// percentile would put its own definition of "p99" into a table alongside four other definitions,
+/// and the resulting column would be unreadable while looking fine.
 /// </para>
 /// </summary>
 /// <param name="RunTag">
