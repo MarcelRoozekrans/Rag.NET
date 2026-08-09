@@ -29,6 +29,14 @@ namespace Rag.NET.Benchmarks.Quality;
 /// span, identical runs differed by up to 23x on OS page-cache state alone. What remains is the
 /// work each library does around the embeddings, which is the part that differs between them.
 /// </para>
+/// <para>
+/// <b>One known bias, between ecosystems:</b> the Python harness discovers its chunk texts with
+/// an untimed rehearsal build, so its timed build is the second in the process — warmed — while
+/// the .NET rows need no rehearsal and time a first build; the bias pushes Python's figure down
+/// relative to .NET's. It is acceptable because all three Python entrants get identical
+/// treatment and indexing publishes per ecosystem, never cross-ecosystem — the roadmap's §6
+/// decision.
+/// </para>
 /// </param>
 /// <param name="QueryLatenciesMilliseconds">
 /// Milliseconds per retrieval call, one entry per judged query, keyed by query id — the library's

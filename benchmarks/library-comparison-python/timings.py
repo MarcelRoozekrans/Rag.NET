@@ -32,9 +32,20 @@ from pathlib import Path
 FILE_SUFFIX = ".timings.json"
 
 
-def path_for(run_file: str | Path) -> Path:
-    """The sidecar path belonging to a run file: its own path with ``FILE_SUFFIX`` appended."""
-    return Path(str(run_file) + FILE_SUFFIX)
+def path_for(run_file: str | Path, run_index: int = 1) -> Path:
+    """The sidecar path belonging to one repeat run of a run file.
+
+    Run 1 keeps the historical unindexed name -- ``<run-file>.timings.json`` -- so a single-run
+    pairing stays where every existing reader looks; run ``N >= 2`` becomes
+    ``<run-file>.timings.N.json``, the same convention extended with an index (exactly as
+    ``TimingsSidecar.PathFor`` extends it), never a second format. Repeats exist because no cost
+    figure may be published from a single run: the .NET ``CostReproducibility`` gate compares
+    them, and without the index every repeat would overwrite the last.
+    """
+    _require_run_index(run_index)
+    if run_index == 1:
+        return Path(str(run_file) + FILE_SUFFIX)
+    return Path(f"{run_file}.timings.{run_index}.json")
 
 
 def write(
@@ -47,12 +58,15 @@ def write(
     embedding_cache_misses: int,
     unit_count: int,
     max_units_per_document: int,
+    run_index: int = 1,
 ) -> None:
     """Writes one entrant's self-measured timings beside its run file.
 
     ``indexing_seconds`` brackets ``entrant.build`` only; each latency brackets the entrant's
     ``retrieve`` call only -- pooling is harness protocol, identical across entrants, and stays
-    outside every span.
+    outside every span. ``run_index`` says which repeat run this is (``path_for`` derives the
+    sidecar's name from it), so repeats accumulate for the .NET reproducibility gate instead of
+    overwriting each other.
     """
     _require_token(run_tag, "run tag")
     _require_span(indexing_seconds, "indexing wall-clock")
@@ -84,7 +98,15 @@ def write(
         lines.append(f'    "{query_id}": {query_latencies_milliseconds[query_id]!r}{separator}')
     lines.append("  }\n}\n")
 
-    path_for(run_file).write_bytes("".join(lines).encode("utf-8"))
+    path_for(run_file, run_index).write_bytes("".join(lines).encode("utf-8"))
+
+
+def _require_run_index(run_index: int) -> None:
+    if isinstance(run_index, bool) or not isinstance(run_index, int) or run_index < 1:
+        raise ValueError(
+            f"The run index is {run_index!r}, not an integer of at least 1. Run indices are "
+            "1-based, exactly as TimingsSidecar.PathFor counts them: a run 0 would silently "
+            "alias run 1 under any convention that maps both onto a real path.")
 
 
 def _require_token(value: str, what: str) -> None:

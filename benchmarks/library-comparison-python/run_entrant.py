@@ -3,12 +3,16 @@
 Usage::
 
     uv run python run_entrant.py <scifact|arguana|fiqa> <langchain|llamaindex|haystack> \\
-        [--warm-cache]
+        [--warm-cache] [--run-index N]
 
 Runnable from **any** working directory, this one included -- the bootstrap below moves the
 process to a neutral cwd before anything imports nltk. ``--warm-cache`` permits the untimed
 prefetch pass to embed and store texts the vector cache does not hold yet; without it a cold
 cache fails loudly instead of quietly paying model and disk costs no other run paid.
+``--run-index N`` (default 1) names which repeat run this is: the sidecar lands at
+``timings.path_for(run_file, N)`` so repeats accumulate instead of overwriting -- no cost figure
+may be published from a single run, and the .NET side's ``CostReproducibility`` gate compares
+the repeats and publishes their spread.
 
 Environment: ``RAGNET_BEIR_CACHE`` (extracted datasets, and where ``runs/`` and the Python
 vector cache live), ``RAGNET_ONNX_EMBED_MODEL`` and ``RAGNET_ONNX_EMBED_VOCAB`` (the pinned
@@ -46,6 +50,14 @@ its disk I/O excluded by construction. Before this, one cache-file read per text
 span, and identical runs differed by up to 23x on OS page-cache state alone (55.2 s cold vs
 2.4 s hot on SciFact/LangChain) -- a figure about run order, not about any library. The sidecar's
 hit/miss counts describe the prefetch pass, i.e. what the disk really held.
+
+**A known bias the rehearsal introduces, stated rather than left implicit:** the timed build is
+the *second* ``entrant.build`` in this process -- warmed by the rehearsal -- while the .NET rows
+need no rehearsal and time a first build, so the bias pushes every Python indexing figure down
+relative to .NET's. It is acceptable because all three Python entrants get identical treatment
+and indexing publishes per ecosystem, never cross-ecosystem (the roadmap's §6 decision); the
+rehearsal itself cannot go, because the chunk texts to prefetch are library-specific and
+unknowable up front.
 """
 
 from __future__ import annotations
@@ -99,7 +111,9 @@ ENTRANTS = {
 def main() -> int:
     arguments = [argument for argument in sys.argv[1:] if argument != "--warm-cache"]
     warm_cache = len(arguments) != len(sys.argv) - 1
-    if len(arguments) != 2 or arguments[0] not in ("scifact", "arguana", "fiqa") \
+    arguments, run_index = _take_run_index(arguments)
+    if run_index < 1 or len(arguments) != 2 \
+            or arguments[0] not in ("scifact", "arguana", "fiqa") \
             or arguments[1] not in ENTRANTS:
         print(__doc__)
         return 2
@@ -169,7 +183,8 @@ def main() -> int:
         embedding_cache_hits=cache.hits,
         embedding_cache_misses=cache.misses,
         unit_count=unit_count,
-        max_units_per_document=max_units_per_document)
+        max_units_per_document=max_units_per_document,
+        run_index=run_index)
 
     self_lines = _verify_no_self_lines(run_file)
     # Derived from the measured spans rather than timed separately, so this line and the sidecar
@@ -187,12 +202,26 @@ def main() -> int:
           "serve from memory); "
           f"indexing {indexing_seconds:.1f} s + retrieval {retrieval_seconds:.1f} s (self-timed)")
     print(f"  run file: {run_file}")
-    print(f"  timings sidecar: {timings.path_for(run_file)}")
+    print(f"  timings sidecar: {timings.path_for(run_file, run_index)} (run {run_index})")
 
     if excludes_self and self_lines != 0:
         print("SELF-EXCLUSION FAILED: the run file holds pre-exclusion rankings.")
         return 1
     return 0
+
+
+def _take_run_index(arguments: list[str]) -> tuple[list[str], int]:
+    """Pops ``--run-index N`` off the argument list, defaulting to run 1.
+
+    Returns 0 as the index when the flag is present but its value is missing or not a positive
+    integer, so ``main`` prints the usage text instead of half-running with a guessed index.
+    """
+    if "--run-index" not in arguments:
+        return arguments, 1
+    position = arguments.index("--run-index")
+    value = arguments[position + 1] if position + 1 < len(arguments) else ""
+    remaining = arguments[:position] + arguments[position + 2:]
+    return remaining, int(value) if value.isdigit() and int(value) >= 1 else 0
 
 
 def _verify_no_self_lines(run_file: Path) -> int:
