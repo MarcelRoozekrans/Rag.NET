@@ -96,11 +96,14 @@ public sealed class BeirComparisonControlTests
 
         var runFilePath = RunFilePath(cacheDirectory, datasetName);
         TrecRunFile.Write(runFilePath, measured.Runs, RunTag);
-        TimingsSidecar.Write(runFilePath, new EntrantTimings(
-            RunTag, measured.IndexingSeconds, measured.QueryLatenciesMilliseconds,
-            checked((int)(embeddings.Hits - hitsBefore)),
-            checked((int)(embeddings.Misses - missesBefore)),
-            measured.UnitCount, measured.MaxUnitsPerDocument));
+        TimingsSidecar.Write(
+            runFilePath,
+            new EntrantTimings(
+                RunTag, measured.IndexingSeconds, measured.QueryLatenciesMilliseconds,
+                checked((int)(embeddings.Hits - hitsBefore)),
+                checked((int)(embeddings.Misses - missesBefore)),
+                measured.UnitCount, measured.MaxUnitsPerDocument),
+            BeirHarness.RunIndex);
         var readBack = TrecRunFile.Read(runFilePath);
 
         AssertRoundTripPreservedEveryRanking(measured.Runs, readBack);

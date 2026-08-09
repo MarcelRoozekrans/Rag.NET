@@ -341,9 +341,12 @@ public sealed class BeirSemanticKernelDefaultsTests
         int embeddingCacheHits,
         int embeddingCacheMisses,
         int unitCount) =>
-        TimingsSidecar.Write(runFilePath, new EntrantTimings(
-            RunTag, indexingSeconds, queryLatenciesMilliseconds,
-            embeddingCacheHits, embeddingCacheMisses, unitCount, MaxUnitsPerDocument: 1));
+        TimingsSidecar.Write(
+            runFilePath,
+            new EntrantTimings(
+                RunTag, indexingSeconds, queryLatenciesMilliseconds,
+                embeddingCacheHits, embeddingCacheMisses, unitCount, MaxUnitsPerDocument: 1),
+            BeirHarness.RunIndex);
 
     /// <summary>
     /// The raw per-query spans summed, for the human-readable line only — derived from the

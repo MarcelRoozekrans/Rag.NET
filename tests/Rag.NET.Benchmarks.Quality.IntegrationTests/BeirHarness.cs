@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Microsoft.Extensions.AI;
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Embeddings.Onnx;
@@ -89,6 +90,49 @@ public static class BeirHarness
     {
         cacheDirectory = BeirDatasetCache.ResolveCacheDirectoryFromEnvironment() ?? string.Empty;
         return cacheDirectory.Length > 0;
+    }
+
+    /// <summary>The environment variable naming which repeat run this invocation is.</summary>
+    public const string RunIndexVariable = "RAGNET_BEIR_RUN_INDEX";
+
+    /// <summary>
+    /// Which repeat run this invocation writes, 1-based; <c>1</c> unless
+    /// <see cref="RunIndexVariable"/> says otherwise.
+    /// <para>
+    /// <b>Without this the .NET rows could not be reproducibility-checked at all.</b> No cost
+    /// figure may be published from a single run — <see cref="CostReproducibility"/> compares
+    /// repeats — but a test that always wrote run 1 would overwrite its own previous sidecar, so
+    /// the gate would have had nothing to compare and would have applied to the Python rows only.
+    /// A guard that covers half the data reads as a guard; this repository has shipped that shape
+    /// before, so the variable exists to make the .NET side feedable rather than exempt.
+    /// </para>
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The variable is set to something that is not a positive integer. Falling back to 1 would
+    /// silently overwrite run 1 with what the operator meant to be run 2, and the gate would then
+    /// compare a run against itself and report perfect reproducibility.
+    /// </exception>
+    public static int RunIndex
+    {
+        get
+        {
+            var raw = Environment.GetEnvironmentVariable(RunIndexVariable);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return 1;
+            }
+
+            if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var index)
+                || index < 1)
+            {
+                throw new InvalidOperationException(
+                    $"{RunIndexVariable} is '{raw}', which is not a positive integer. Defaulting " +
+                    "to 1 would overwrite the previous run's sidecar, and CostReproducibility " +
+                    "would then compare a run against itself and report perfect agreement.");
+            }
+
+            return index;
+        }
     }
 
     /// <summary>Reports whether the model, vocab and dataset cache are all present.</summary>
