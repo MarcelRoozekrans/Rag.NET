@@ -42,6 +42,72 @@ public class WeaviateVectorStoreTests
     }
 
     [Fact]
+    public async Task StoreAndSearch_TypedMetadata_KindsSurviveRoundTrip()
+    {
+        // A number reading back as the string "3" is the flattening bug the typed metadata
+        // design removes (#91) — so the assertion is on Kind, not on textual form.
+        var reviewedAt = new DateTimeOffset(2026, 5, 4, 12, 0, 0, TimeSpan.Zero);
+        using var store = CreateStore(UniqueClassName());
+        await store.StoreAsync(
+            [
+                Chunk("doc-typed", 0, "typed metadata chunk", [1.0f, 0.0f, 0.0f],
+                    new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                    {
+                        ["page"] = 3,
+                        ["rating"] = 4.5,
+                        ["published"] = true,
+                        ["reviewed_at"] = reviewedAt,
+                        ["source"] = "unit",
+                    }),
+            ],
+            TestContext.Current.CancellationToken);
+
+        var results = await store.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 1 },
+            TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(results).Chunk.Metadata;
+        Assert.Equal(MetadataValueKind.Number, metadata["page"].Kind);
+        Assert.Equal(3d, metadata["page"].NumberValue);
+        Assert.Equal(4.5, metadata["rating"].NumberValue);
+        Assert.Equal(MetadataValueKind.Boolean, metadata["published"].Kind);
+        Assert.True(metadata["published"].BooleanValue);
+        Assert.Equal(MetadataValueKind.DateTimeOffset, metadata["reviewed_at"].Kind);
+        Assert.Equal(reviewedAt, metadata["reviewed_at"].DateTimeOffsetValue);
+        Assert.Equal(MetadataValueKind.String, metadata["source"].Kind);
+    }
+
+    [Fact]
+    public async Task Search_NumericMetadataFilter_Filters()
+    {
+        using var store = CreateStore(UniqueClassName());
+        // The chunk nearest the query vector is on page 4 and TopK = 1, so only a
+        // server-side numeric filter (valueNumber where operand) can return the farther
+        // page-3 chunk.
+        await store.StoreAsync(
+            [
+                Chunk("doc-p4", 0, "page four chunk", [1.0f, 0.0f, 0.0f],
+                    new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["page"] = 4 }),
+                Chunk("doc-p3", 0, "page three chunk", [0.8f, 0.6f, 0.0f],
+                    new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["page"] = 3 }),
+            ],
+            TestContext.Current.CancellationToken);
+
+        var results = await store.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions
+            {
+                TopK = 1,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["page"] = 3 },
+            },
+            TestContext.Current.CancellationToken);
+
+        var hit = Assert.Single(results);
+        Assert.Equal("page three chunk", hit.Chunk.Text);
+    }
+
+    [Fact]
     public async Task Search_IdenticalVector_ScoreNearOne()
     {
         using var store = CreateStore(UniqueClassName());

@@ -434,12 +434,35 @@ public sealed class AzureAISearchVectorStore : IVectorStore, IHybridSearchable, 
 
     private static MetadataValue ReadEntryValue(SearchDocument entry)
     {
-        if (entry.TryGetValue("numberValue", out var number) && number is double d)
-            return d;
+        // The SDK's dynamic deserializer maps a JSON number to int/long/double by shape, and
+        // Edm.Double serialises whole numbers without a fractional part — so 3.0 written to
+        // numberValue can come back as an int 3. Accept every numeric shape, not just double.
+        if (entry.TryGetValue("numberValue", out var number))
+        {
+            switch (number)
+            {
+                case double d: return d;
+                case float f: return (double)f;
+                case int i: return (double)i;
+                case long l: return (double)l;
+            }
+        }
         if (entry.TryGetValue("boolValue", out var boolean) && boolean is bool b)
             return b;
-        if (entry.TryGetValue("dateValue", out var date) && date is DateTimeOffset dto)
-            return dto;
+        // Edm.DateTimeOffset usually deserialises to DateTimeOffset, but a service (or the
+        // local simulator) can hand the ISO-8601 text back as a plain string — same instant,
+        // different shape. Parse it rather than letting a real date degrade to a string kind.
+        if (entry.TryGetValue("dateValue", out var date))
+        {
+            if (date is DateTimeOffset dto)
+                return dto;
+            if (date is string dateText && DateTimeOffset.TryParse(
+                    dateText,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind,
+                    out var parsed))
+                return parsed;
+        }
         // The SDK's dynamic deserializer turns ISO-8601-looking strings into DateTimeOffset even
         // in stringValue; normalise such a value back to its textual form rather than dropping it.
         if (entry.TryGetValue("stringValue", out var text) && text is not null)
