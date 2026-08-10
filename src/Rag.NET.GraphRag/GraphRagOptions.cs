@@ -13,10 +13,31 @@ public sealed class GraphRagOptions
     /// <summary>Number of follow-up "did I miss anything?" LLM passes per chunk. Default: 1.</summary>
     public int GleaningPasses { get; set; } = 1;
 
-    /// <summary>Constrain entity extraction to these types. Null = open extraction. Default: null.</summary>
+    /// <summary>
+    /// Constrain entity extraction to these types. Null = open extraction. Default: null.
+    /// <para>
+    /// Enforced in two layers: the allowed list is substituted into
+    /// <see cref="EntityExtractionPrompt"/>'s <c>{entity_types}</c> placeholder, and any entity
+    /// the LLM still returns with a type outside the list is dropped (compared
+    /// case-insensitively) before it reaches the graph store or the embedded chunks. The filter
+    /// also applies to gleaning passes and to user-supplied prompts without the placeholder.
+    /// An empty array behaves like null (open extraction) rather than silently dropping
+    /// every entity.
+    /// </para>
+    /// </summary>
     public string[]? EntityTypes { get; set; }
 
-    /// <summary>Constrain relationship extraction to these types. Null = open. Default: null.</summary>
+    /// <summary>
+    /// Constrain relationship extraction to these types. Null = open. Default: null.
+    /// <para>
+    /// The extraction schema expresses a relationship's kind through its <c>description</c>
+    /// (a concise verb phrase), so the constraint applies to that field: the allowed list is
+    /// substituted into <see cref="EntityExtractionPrompt"/>'s <c>{relationship_types}</c>
+    /// placeholder, and any relationship whose description falls outside the list is dropped
+    /// (compared case-insensitively) before storage — including gleaning output and
+    /// user-supplied prompts without the placeholder. An empty array behaves like null.
+    /// </para>
+    /// </summary>
     public string[]? RelationshipTypes { get; set; }
 
     /// <summary>
@@ -33,15 +54,22 @@ public sealed class GraphRagOptions
     [GreaterThan(0)]
     public int MaxEntityDescriptionLength { get; set; } = 500;
 
-    /// <summary>LLM prompt template for entity/relationship extraction. {text} is replaced with chunk text.</summary>
+    /// <summary>
+    /// LLM prompt template for entity/relationship extraction. {text} is replaced with chunk
+    /// text. {entity_types} and {relationship_types} are replaced with type guidance derived
+    /// from <see cref="EntityTypes"/> and <see cref="RelationshipTypes"/> — the open-extraction
+    /// guidance when they are null, the allowed list when they are set. A custom template
+    /// without those placeholders still gets the constraint: out-of-list extractions are
+    /// filtered after the LLM responds.
+    /// </summary>
     public string EntityExtractionPrompt { get; set; } = """
         Extract all entities and relationships from the following text.
         Return a JSON object with two arrays:
         - "entities": [{"name": "...", "type": "...", "description": "..."}]
         - "relationships": [{"source": "...", "target": "...", "description": "...", "weight": 1.0}]
 
-        Entity types should be general categories like: Person, Organization, Location, Event, Concept, Technology, Document.
-        Relationship descriptions should be concise verb phrases.
+        {entity_types}
+        {relationship_types}
         Extract ALL entities and relationships, even minor ones.
 
         Text:

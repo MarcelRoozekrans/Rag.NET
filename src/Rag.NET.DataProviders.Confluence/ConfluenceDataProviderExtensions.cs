@@ -33,11 +33,17 @@ public static class ConfluenceDataProviderExtensions
         var opts = new ConfluenceOptions { BaseUrl = baseUrl, Email = email };
         configure?.Invoke(opts);
 
-        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{email}:{apiToken}"));
+        // The options object is the single source of truth from here on: a configure callback
+        // that changed BaseUrl or Email changes the HttpClient this method sets up (issue #108
+        // found the raw parameters being used instead, silently ignoring the callback).
+        ArgumentException.ThrowIfNullOrWhiteSpace(opts.BaseUrl, nameof(configure));
+        ArgumentException.ThrowIfNullOrWhiteSpace(opts.Email, nameof(configure));
+
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{opts.Email}:{apiToken}"));
 
         services.AddIConfluenceApi(options =>
             {
-                options.BaseAddress = new Uri(baseUrl);
+                options.BaseAddress = new Uri(opts.BaseUrl);
                 options.UseSerializer<ZeroAlloc.Rest.SystemTextJson.SystemTextJsonSerializer>();
             })
             .ConfigureHttpClient(client =>

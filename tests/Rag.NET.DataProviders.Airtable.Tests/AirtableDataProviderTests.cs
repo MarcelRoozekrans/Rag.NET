@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using AirtableApiClient;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Rag.NET.DataProviders;
 using Rag.NET.DataProviders.Airtable;
@@ -113,13 +114,16 @@ public sealed class AirtableDataProviderTests
     }
 
     [Fact]
-    public async Task GetFilesAsync_DeltaWithLastModifiedField_UsesFilterFormula()
+    public async Task GetFilesAsync_DeltaWithLastModifiedField_ScopesFormulaToTheNamedField()
     {
+        // Issue #108: the field name's null-ness was consumed but its value discarded — an
+        // argument-less LAST_MODIFIED_TIME() tracks every field. The formula must reference
+        // the configured field.
         var client = Substitute.For<IAirtableClient>();
         client.ListRecordsAsync(
                 "Tasks",
                 null,
-                "LAST_MODIFIED_TIME()>'2026-03-01T00:00:00Z'",
+                "LAST_MODIFIED_TIME({Modified})>'2026-03-01T00:00:00Z'",
                 null,
                 Arg.Any<CancellationToken>())
             .Returns(MakeResponse([]));
@@ -140,9 +144,95 @@ public sealed class AirtableDataProviderTests
         await client.Received(1).ListRecordsAsync(
             "Tasks",
             null,
-            "LAST_MODIFIED_TIME()>'2026-03-01T00:00:00Z'",
+            "LAST_MODIFIED_TIME({Modified})>'2026-03-01T00:00:00Z'",
             null,
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_FieldNameWithSpaces_IsReferencedVerbatim()
+    {
+        var client = Substitute.For<IAirtableClient>();
+        client.ListRecordsAsync(
+                Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(MakeResponse([]));
+
+        var opts = new AirtableOptions
+        {
+            BaseId                = "appTEST",
+            TableName             = "Tasks",
+            LastModifiedFieldName = "Last Modified Time",
+            DeltaToken            = "2026-03-01T00:00:00Z"
+        };
+        var sut = MakeProvider(client, opts);
+
+        await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        await client.Received(1).ListRecordsAsync(
+            "Tasks",
+            null,
+            "LAST_MODIFIED_TIME({Last Modified Time})>'2026-03-01T00:00:00Z'",
+            null,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("Bad{Field")]
+    [InlineData("Bad}Field")]
+    public void Constructor_FieldNameWithBraces_Throws(string fieldName)
+    {
+        // Airtable's formula grammar has no escape for braces inside a {Field} reference, so a
+        // brace would truncate the reference or splice into the formula — rejected instead.
+        var ex = Assert.Throws<ArgumentException>(() => MakeProvider(
+            Substitute.For<IAirtableClient>(),
+            new AirtableOptions
+            {
+                BaseId                = "appTEST",
+                TableName             = "Tasks",
+                LastModifiedFieldName = fieldName,
+                DeltaToken            = "2026-03-01T00:00:00Z"
+            }));
+
+        Assert.Contains("braces", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddAirtableDataProvider_ConfigureCallbackSettingFieldName_ReachesTheProvider()
+    {
+        // The configure callback can set LastModifiedFieldName (it is deliberately not
+        // init-only). Observable through the provider's own construction-time validation:
+        // a brace-containing field name from the callback must throw when the provider is
+        // resolved, proving the configured value is the one the provider filters with.
+        var services = new ServiceCollection();
+        services.AddAirtableDataProvider(
+            "appTEST", "Tasks", "patTEST",
+            o => o.LastModifiedFieldName = "Broken{Field");
+
+        using var sp = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<ArgumentException>(sp.GetRequiredService<IFileContentProvider>);
+        Assert.Contains("braces", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Constructor_DeltaTokenWithQuote_ThrowsWhenFormulaWouldUseIt()
+    {
+        // The token is interpolated inside single quotes; a quote in it would splice into the
+        // formula. Only rejected when LastModifiedFieldName is set — without it no formula is
+        // ever built and the token is an opaque cursor like every other connector's.
+        var ex = Assert.Throws<ArgumentException>(() => MakeProvider(
+            Substitute.For<IAirtableClient>(),
+            new AirtableOptions
+            {
+                BaseId                = "appTEST",
+                TableName             = "Tasks",
+                LastModifiedFieldName = "Modified",
+                DeltaToken            = "2026-03-01'OR'1"
+            }));
+
+        Assert.Contains("DeltaToken", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

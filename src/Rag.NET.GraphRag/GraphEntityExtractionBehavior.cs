@@ -86,7 +86,7 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
     {
         var chunkId = $"{chunk.DocumentId}_{chunk.ChunkIndex}";
 
-        var prompt = _options.EntityExtractionPrompt.Replace("{text}", chunk.Text);
+        var prompt = BuildExtractionPrompt(chunk.Text);
         var extraction = await ExtractAsync(client, prompt, ct).ConfigureAwait(false);
         if (extraction is null) return;
 
@@ -96,7 +96,7 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         await PerformGleaningAsync(client, chunk.Text, entities, relationships, ct).ConfigureAwait(false);
 
         var graphEntities = ConvertEntities(entities, documentId, chunkId);
-        var graphRelationships = ConvertRelationships(relationships, documentId);
+        var graphRelationships = ConvertRelationships(relationships, _options.RelationshipTypes, documentId);
 
         if (graphEntities.Count > 0)
         {
@@ -109,6 +109,52 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
             await _graphStore.AddRelationshipsAsync(graphRelationships, ct).ConfigureAwait(false);
             allRelationships.AddRange(graphRelationships);
         }
+    }
+
+    /// <summary>
+    /// Renders the extraction prompt: type-guidance placeholders first, chunk text last, so a
+    /// chunk that happens to contain a placeholder token is never re-substituted.
+    /// </summary>
+    private string BuildExtractionPrompt(string chunkText)
+    {
+        return _options.EntityExtractionPrompt
+            .Replace("{entity_types}", EntityTypeGuidance())
+            .Replace("{relationship_types}", RelationshipTypeGuidance())
+            .Replace("{text}", chunkText);
+    }
+
+    private string EntityTypeGuidance()
+    {
+        return _options.EntityTypes is { Length: > 0 } types
+            ? $"Entity \"type\" must be exactly one of: {string.Join(", ", types)}. " +
+              "Do not extract entities of any other type."
+            : "Entity types should be general categories like: Person, Organization, Location, Event, Concept, Technology, Document.";
+    }
+
+    private string RelationshipTypeGuidance()
+    {
+        return _options.RelationshipTypes is { Length: > 0 } types
+            ? $"Relationship \"description\" must be exactly one of: {string.Join(", ", types)}. " +
+              "Do not extract relationships of any other kind."
+            : "Relationship descriptions should be concise verb phrases.";
+    }
+
+    /// <summary>
+    /// The enforcement half of <see cref="GraphRagOptions.EntityTypes"/> and
+    /// <see cref="GraphRagOptions.RelationshipTypes"/>: prompting steers the LLM, this filter
+    /// guarantees the contract. Case-insensitive because LLMs do not reproduce casing reliably.
+    /// A null or empty list allows everything.
+    /// </summary>
+    private static bool IsAllowedType(string[]? allowed, string value)
+    {
+        if (allowed is not { Length: > 0 }) return true;
+
+        foreach (var candidate in allowed)
+        {
+            if (string.Equals(candidate, value, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+
+        return false;
     }
 
     private async Task PerformGleaningAsync(
@@ -147,6 +193,7 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         {
             var e = entities[i];
             if (string.IsNullOrWhiteSpace(e.Name)) continue;
+            if (!IsAllowedType(_options.EntityTypes, e.Type)) continue;
             result.Add(new GraphEntity(e.Name, e.Type, TruncateDescription(e.Description))
             {
                 SourceDocumentId = documentId,
@@ -158,13 +205,14 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
     }
 
     private static List<GraphRelationship> ConvertRelationships(
-        List<ExtractedRelationship> relationships, string documentId)
+        List<ExtractedRelationship> relationships, string[]? allowedTypes, string documentId)
     {
         var result = new List<GraphRelationship>(relationships.Count);
         for (var i = 0; i < relationships.Count; i++)
         {
             var r = relationships[i];
             if (string.IsNullOrWhiteSpace(r.Source) || string.IsNullOrWhiteSpace(r.Target)) continue;
+            if (!IsAllowedType(allowedTypes, r.Description)) continue;
             result.Add(new GraphRelationship(r.Source, r.Target, r.Description, r.Weight)
             {
                 SourceDocumentId = documentId,

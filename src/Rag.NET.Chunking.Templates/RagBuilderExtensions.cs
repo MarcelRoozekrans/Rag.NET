@@ -160,7 +160,8 @@ public static class RagBuilderExtensions
         configure?.Invoke(opts);
         builder.Services.AddSingleton(opts);
 
-        builder.Services.AddSingleton<EmailChunkingStrategy>();
+        builder.Services.AddSingleton<EmailChunkingStrategy>(sp =>
+            new EmailChunkingStrategy(sp.GetRequiredService<EmailChunkingOptions>()));
         builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<EmailChunkingStrategy>());
         builder.Services.AddSingleton<IChunkingStrategy>(sp => sp.GetRequiredService<EmailChunkingStrategy>());
         return builder;
