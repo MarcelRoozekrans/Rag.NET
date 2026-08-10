@@ -48,6 +48,22 @@ var result = await pipeline.IngestFromProviderAsync(myProvider, new ProviderId("
 
 **`[EnumeratorCancellation]` goes on your implementation, not the interface.** That is a C# requirement rather than an API choice: the attribute tells the compiler which parameter carries the token when it rewrites your iterator, and it cannot be inherited from an interface declaration. Omit it and the compiler warns (`CS8425`) and cancellation stops flowing into your loop.
 
+### Why the IDs are types, not strings
+
+`ProviderId`, `DocumentId`, `EntryId` and `SessionId` are value objects, and they convert in one direction only:
+
+```csharp
+ProviderId id = new("my-corpus");   // or: (ProviderId)"my-corpus"
+string raw = id;                     // implicit — always works
+ProviderId back = "my-corpus";       // does not compile, on purpose
+```
+
+**Out is implicit, in is explicit.** Unwrapping to a string always succeeds, so logging, dictionary keys and comparisons stay unceremonious. Wrapping one has to be written down.
+
+That asymmetry is the whole point. These are all `string` underneath, so if the conversion ran both ways implicitly the compiler would happily accept a filename, a user's input, or another id's value anywhere one of them is expected — and the type would document intent rather than enforce it. Every one of them also rejects null and empty in its constructor, and an implicit conversion would move that exception to a line you never wrote.
+
+It costs a `new` at the call site. That is the price of the compiler catching the mix-up instead of the vector store.
+
 ---
 
 ## Shared options (`CloudStorageOptions`)
