@@ -309,25 +309,48 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         }
     }
 
+    /// <summary>
+    /// Pulls the JSON object out of a chat response, whatever the model wrapped it in.
+    /// <para>
+    /// <b>This handles a preamble, which is the common case and used to be fatal.</b> The previous
+    /// version stripped a fence only when the response <i>started</i> with one, so a reply opening
+    /// "Here is the extracted information in JSON format:" — which is what a capable model
+    /// actually returns — was passed whole to the deserializer, threw, and was caught into a
+    /// <see langword="null"/> result. The document then produced no entities, ingestion reported
+    /// success, and the graph stayed empty with nothing in the logs but one warning per chunk.
+    /// Measured against llama-3.3-70b: every response took that shape, so GraphRAG extracted
+    /// nothing at all and had done since it shipped.
+    /// </para>
+    /// <para>
+    /// Order matters. A fenced block is preferred when present, because prose around it may itself
+    /// contain braces; only without a fence does the brace scan apply, and it takes the outermost
+    /// pair so a nested object cannot truncate the result.
+    /// </para>
+    /// </summary>
     private static string ExtractJson(string text)
     {
         var trimmed = text.Trim();
-        if (trimmed.StartsWith("```", StringComparison.Ordinal))
-        {
-            var firstNewline = trimmed.IndexOf('\n');
-            if (firstNewline >= 0)
-            {
-                trimmed = trimmed[(firstNewline + 1)..];
-            }
 
-            var lastFence = trimmed.LastIndexOf("```", StringComparison.Ordinal);
-            if (lastFence >= 0)
+        var openingFence = trimmed.IndexOf("```", StringComparison.Ordinal);
+        if (openingFence >= 0)
+        {
+            var afterFence = trimmed.IndexOf('\n', openingFence);
+            if (afterFence >= 0)
             {
-                trimmed = trimmed[..lastFence];
+                var body = trimmed[(afterFence + 1)..];
+                var closingFence = body.LastIndexOf("```", StringComparison.Ordinal);
+                return (closingFence >= 0 ? body[..closingFence] : body).Trim();
             }
         }
 
-        return trimmed.Trim();
+        var firstBrace = trimmed.IndexOf('{', StringComparison.Ordinal);
+        var lastBrace = trimmed.LastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace)
+        {
+            return trimmed[firstBrace..(lastBrace + 1)];
+        }
+
+        return trimmed;
     }
 
     private string TruncateDescription(string description)
