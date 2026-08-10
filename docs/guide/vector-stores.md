@@ -110,7 +110,7 @@ public interface IVectorStore
 
 ### Typed metadata
 
-Chunk metadata values are typed (`MetadataValue`: string, number, boolean, or date — see the [ingestion guide](./ingestion.md#chunk-metadata)), and every store persists the type: a `page` written as the number `3` is stored as a number, read back as a number, and filtered as a number. `MetadataFilter` takes the same typed values, so a numeric filter is a numeric comparison in the store, not a string match:
+Chunk metadata values are typed (`MetadataValue`: string, number, boolean, or date — see the [ingestion guide](./ingestion.md#typed-metadata-values)), and every store persists the type: a `page` written as the number `3` is stored as a number, read back as a number, and filtered as a number. `MetadataFilter` takes the same typed values, so a numeric filter is a numeric comparison in the store, not a string match:
 
 ```csharp
 var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
