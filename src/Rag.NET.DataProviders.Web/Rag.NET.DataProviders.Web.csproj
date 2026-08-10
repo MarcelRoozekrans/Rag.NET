@@ -11,6 +11,22 @@
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
     <ProjectReference Include="..\Rag.NET.DataProviders\Rag.NET.DataProviders.csproj" />
     <PackageReference Include="AngleSharp" />
+
+    <!-- Bans HttpClient.GetStringAsync in this package only. It resolves the declared charset and
+         throws on one .NET does not register (issue #123) — and that exception is not an
+         HttpRequestException, so the catch blocks here never saw it. The replacement is the
+         GetStringWithCharsetFallbackAsync extension, whose name is close enough that reaching for
+         the wrong one is a plausible slip; this makes the slip a build error rather than a crash
+         against somebody's server, and shows it in the editor rather than at test time.
+         Scoped to this package deliberately: the hazard is fetching text from third-party servers
+         whose headers nobody controls, and elsewhere GetStringAsync is fine. Suggested by StefH
+         in review of #126. WebProviderCharsetGuardTests pins this wiring, because an analyzer
+         whose AdditionalFiles entry is deleted silently stops banning anything. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <AdditionalFiles Include="BannedSymbols.txt" />
   </ItemGroup>
 
 </Project>
