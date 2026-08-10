@@ -50,7 +50,7 @@ Two packages:
 2. Map: LLM answers the query per batch of reports
 3. Reduce: LLM combines partial answers into a final response
 
-**Auto Mode** — `GraphRagRetrievalMode.Auto` exists on the options enum, but LLM-driven routing is not implemented; see the note under Retrieval Options.
+**Which search runs is decided by the behaviors you register**, not by a setting. Add `GraphLocalSearchBehavior`, `GraphGlobalSearchBehavior`, or both; each runs on the chunks it recognises.
 
 ## Quick Start
 
@@ -62,7 +62,7 @@ Two packages:
 services.AddRagNet(
     configure: rag => rag.UseGraphRag(
         options => { options.GleaningPasses = 1; },
-        retrieval: options => { options.Mode = GraphRagRetrievalMode.Local; },
+        retrieval: options => { options.LocalSearchDepth = 1; },
         graph: store => store.UseSqlite("graphrag.db")),
     ingestion: p => p
         .Add<GraphEntityExtractionBehavior>(after: typeof(EmbeddingBehavior))
@@ -98,7 +98,6 @@ rag.UseGraphRag(options =>
 ```csharp
 rag.UseGraphRag(retrieval: options =>
 {
-    options.Mode = GraphRagRetrievalMode.Local;  // See note below — not currently consulted
     options.LocalSearchDepth = 1;                 // Hop depth — must be greater than 0
     options.LocalTopEntities = 10;                // Starting entities — must be greater than 0
     options.PageRankWeight = 0.3;                 // PageRank vs similarity blend — range 0.0–1.0, finite
@@ -109,7 +108,7 @@ rag.UseGraphRag(retrieval: options =>
 
 These are validated at registration too. `LocalSearchDepth` or `LocalTopEntities` at zero would silently disable local graph search; a `PageRankWeight` outside `[0, 1]` would give one blend term a negative coefficient; `GlobalBatchSize = 0` would hang global search in an infinite batching loop.
 
-> **Note — `Mode` is not currently consulted.** Which search runs is decided by which behaviors you add to the retrieval pipeline (`GraphLocalSearchBehavior`, `GraphGlobalSearchBehavior`), not by this property: each registered behavior runs unconditionally on the chunks it recognises. `GraphRagRetrievalMode.Auto` routing (LLM query classification) is not implemented.
+> **Which search runs is a registration decision, not a setting.** Add `GraphLocalSearchBehavior`, `GraphGlobalSearchBehavior`, or both to the retrieval pipeline; each runs on the chunks it recognises. There is deliberately no `Mode` property — one existed until 0.1.0, was never read by any behavior, and is described in issue #104.
 
 ### Graph Store
 
@@ -142,9 +141,9 @@ The behavior:
 4. Reduce phase: LLM combines all partial answers
 5. Prepends the single synthesized answer to the remaining results
 
-### Auto Mode
+### Automatic routing
 
-Not implemented. `GraphRagRetrievalMode.Auto` is declared on the enum for LLM-driven routing — classify the query as "specific/factual" (→ Local) or "broad/thematic" (→ Global) — but no shipped behavior reads `Mode`, so setting it changes nothing today.
+Not implemented, and not declared. Routing a query to Local or Global by classifying it as specific/factual versus broad/thematic is a real feature and a real cost — an extra LLM call per query — so it will arrive as one, with a benchmark behind it, rather than as an enum member that does nothing. Register the behaviors you want in the meantime.
 
 ## Cost and Performance
 

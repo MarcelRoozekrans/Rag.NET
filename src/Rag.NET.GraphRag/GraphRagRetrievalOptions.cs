@@ -7,9 +7,6 @@ namespace Rag.NET.GraphRag;
 [Validate]
 public sealed class GraphRagRetrievalOptions
 {
-    /// <summary>Search mode. Default: Local.</summary>
-    public GraphRagRetrievalMode Mode { get; set; } = GraphRagRetrievalMode.Local;
-
     /// <summary>
     /// Hop depth for local entity traversal. Default: 1.
     /// <para>
