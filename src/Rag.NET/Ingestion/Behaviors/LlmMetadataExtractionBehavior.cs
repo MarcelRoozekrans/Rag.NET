@@ -69,7 +69,10 @@ public sealed class LlmMetadataExtractionBehavior : IIngestionBehavior
             var prompt = BuildPrompt(text);
             ChatMessage[] messages = [new(ChatRole.User, prompt)];
             var response = await ChatClient!.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
-            var json = response.Text ?? "{}";
+
+            // Fenced or preambled replies used to land here whole and fail every chunk's
+            // extraction; the per-chunk warning was the only trace.
+            var json = LlmJsonExtractor.Extract(response.Text ?? "{}", LlmJsonPayloadKind.Object);
 
             var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
             if (parsed is null)

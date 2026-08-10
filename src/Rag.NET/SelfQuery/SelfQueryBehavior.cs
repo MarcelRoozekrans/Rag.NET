@@ -59,7 +59,10 @@ public sealed class SelfQueryBehavior : IRetrievalBehavior
             var prompt = BuildPrompt(question);
             ChatMessage[] messages = [new(ChatRole.User, prompt)];
             var response = await ChatClient!.GetResponseAsync(messages, cancellationToken: ct).ConfigureAwait(false);
-            var json = response.Text ?? "{}";
+
+            // Fenced or preambled replies used to land here whole, throw, and disable self-query
+            // for the request with only a warning to show for it.
+            var json = LlmJsonExtractor.Extract(response.Text ?? "{}", LlmJsonPayloadKind.Object);
 
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;

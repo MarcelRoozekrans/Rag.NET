@@ -50,6 +50,23 @@ public class SelfAssessmentConfidenceScorerTests
     }
 
     [Theory]
+    [InlineData("Here is my assessment:\n```\n0.42\n```")]
+    [InlineData("Sure! Here you go:\n```json\n0.42\n```")]
+    [InlineData("```\n0.42\n```\nLet me know if you need anything else.")]
+    public async Task ScoreAsync_PreambleOrProseAroundAFencedNumber_Parsed(string reply)
+    {
+        // The old strip ran only when the reply STARTED with a fence, so a preamble before it
+        // failed open to 1.0 on every sentence — FLARE never re-retrieved, silently. Prose
+        // without a fence still fails open: scavenging a digit out of a sentence is a guess.
+        SetupReply(reply);
+
+        var score = await _sut.ScoreAsync("s", "p", [MakeSource("ctx")],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0.42, score, precision: 10);
+    }
+
+    [Theory]
     [InlineData("1.7", 1.0)]
     [InlineData("-0.3", 0.0)]
     public async Task ScoreAsync_OutOfRange_Clamped(string reply, double expected)

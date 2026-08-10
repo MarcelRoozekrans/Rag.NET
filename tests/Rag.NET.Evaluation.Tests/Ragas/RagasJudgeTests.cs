@@ -137,6 +137,24 @@ public sealed class RagasJudgeTests
         Assert.Equal(new[] { "one", "two" }, result.Items);
     }
 
+    [Theory]
+    [InlineData("Here are the claims in JSON format:\n\n```\n[\"one\",\"two\"]\n```")]
+    [InlineData("Sure! Here you go:\n\n```json\n[\"one\",\"two\"]\n```")]
+    [InlineData("```\n[\"one\",\"two\"]\n```\n\nLet me know if you need anything else.")]
+    public async Task ExtractListAsync_PreambleOrProseAroundAFence_ParsesItems(string reply)
+    {
+        // A fence states the model's intent as clearly as a fence-only reply does; the old strip
+        // required the reply to START and END with one, so the commonest decoration — a sentence
+        // before the fence — excluded the sample. This widens fence handling only: bare JSON
+        // inside prose stays rejected (see MalformedJson_ReportsFailureInsteadOfEmpty).
+        var judge = Judge(new RoutingChatClient([], fallback: reply));
+
+        var result = await judge.ExtractListAsync("sys", "user", TestContext.Current.CancellationToken);
+
+        Assert.True(result.Parsed);
+        Assert.Equal(new[] { "one", "two" }, result.Items);
+    }
+
     [Fact]
     public async Task ExtractListAsync_EmptyReply_ReportsFailure()
     {

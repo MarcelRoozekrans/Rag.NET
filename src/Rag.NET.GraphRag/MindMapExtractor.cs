@@ -97,12 +97,16 @@ public sealed partial class MindMapExtractor
             await PersistAsync(child, node.Title, documentId, ct).ConfigureAwait(false);
     }
 
-    private MindMapNode? TryParse(string? json)
+    private MindMapNode? TryParse(string? response)
     {
-        if (string.IsNullOrWhiteSpace(json))
+        if (string.IsNullOrWhiteSpace(response))
             return null;
         try
         {
+            // Models routinely fence the tree and open with "Here is the mind map:" despite the
+            // prompt. This site had no fence handling at all, so every such reply became the
+            // empty root below — the same silent-empty shape as the GraphRAG entity outage.
+            var json = LlmJsonExtractor.Extract(response, LlmJsonPayloadKind.Object);
             return JsonSerializer.Deserialize<MindMapNode>(json, s_jsonOptions);
         }
         catch (JsonException ex)

@@ -46,9 +46,15 @@ public sealed class SelfAssessmentConfidenceScorer(
                     cancellationToken)
                 .ConfigureAwait(false);
 
+            // FencedOnly: the payload is a bare number, so there is no bracket to scan for, and
+            // scavenging a digit out of prose ("The score is 0.8") would be a guess. A fence is
+            // honoured wherever it sits — the old local strip required the reply to START with
+            // one, so "Here is my assessment:\n```\n0.8\n```" failed open to 1.0 every call.
             var raw = response.Text;
             if (!string.IsNullOrWhiteSpace(raw) &&
-                double.TryParse(StripCodeFence(raw), NumberStyles.Float, CultureInfo.InvariantCulture, out var score))
+                double.TryParse(
+                    LlmJsonExtractor.Extract(raw, LlmJsonPayloadKind.FencedOnly),
+                    NumberStyles.Float, CultureInfo.InvariantCulture, out var score))
             {
                 return Math.Clamp(score, 0.0, 1.0);
             }
@@ -103,21 +109,4 @@ public sealed class SelfAssessmentConfidenceScorer(
         return sb.Length <= ContextCharBudget ? sb.ToString() : sb.ToString(0, ContextCharBudget);
     }
 
-    /// <summary>
-    /// Strips a surrounding markdown code fence (<c>```json ... ```</c> or <c>``` ... ```</c>)
-    /// if present — models sometimes fence the number despite the JSON-only instruction.
-    /// </summary>
-    private static string StripCodeFence(string text)
-    {
-        var json = text.Trim();
-        if (json.StartsWith("```", StringComparison.Ordinal))
-        {
-            var firstNewline = json.IndexOf('\n');
-            var lastFence = json.LastIndexOf("```", StringComparison.Ordinal);
-            if (firstNewline >= 0 && lastFence > firstNewline)
-                json = json[(firstNewline + 1)..lastFence].Trim();
-        }
-
-        return json;
-    }
 }

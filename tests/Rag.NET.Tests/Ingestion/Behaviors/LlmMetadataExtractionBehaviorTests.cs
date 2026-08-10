@@ -91,6 +91,46 @@ public class LlmMetadataExtractionBehaviorTests
         Assert.Equal<MetadataValue>("2024", chunk.Metadata["year"]);
     }
 
+    private const string TagPayload = """{"topic":"security","year":"2024"}""";
+
+    public static TheoryData<string, string> WrappedResponseShapes() => new()
+    {
+        { "preamble then unlabelled fence", $"Here is the extracted metadata in JSON format:\n\n```\n{TagPayload}\n```" },
+        { "preamble then labelled fence", $"Sure! Here you go:\n\n```json\n{TagPayload}\n```" },
+        { "preamble then bare json", $"Here is the JSON:\n\n{TagPayload}" },
+        { "labelled fence only", $"```json\n{TagPayload}\n```" },
+        { "fence then trailing prose", $"```\n{TagPayload}\n```\n\nLet me know if you need anything else." },
+    };
+
+    [Theory]
+    [MemberData(nameof(WrappedResponseShapes))]
+    public async Task WhenLlmWrapsTheJson_TagsStillLand(string shape, string response)
+    {
+        // This site had no fence handling: every one of these shapes failed to deserialize and
+        // left every chunk untagged, with a per-chunk warning as the only trace.
+        var ct = TestContext.Current.CancellationToken;
+        var chatClient = Substitute.For<IChatClient>();
+        chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, response)]));
+
+        var sut = new LlmMetadataExtractionBehavior
+        {
+            ChatClient = chatClient,
+            ExtractionOptions = new LlmMetadataExtractionOptions()
+        };
+        var chunk = MakeChunk("some security document");
+        var ctx = MakeContext(chunk);
+
+        await sut.HandleAsync(ctx, ct, StubNext);
+
+        Assert.True(
+            chunk.Metadata.ContainsKey("topic"),
+            $"The '{shape}' response produced no tags. The JSON inside it is valid, so parsing " +
+            "failed to find it and the chunk silently stayed untagged.");
+        Assert.Equal<MetadataValue>("security", chunk.Metadata["topic"]);
+        Assert.Equal<MetadataValue>("2024", chunk.Metadata["year"]);
+    }
+
     // ── Schema-guided: unknown keys ignored ───────────────────────────────────
 
     [Fact]

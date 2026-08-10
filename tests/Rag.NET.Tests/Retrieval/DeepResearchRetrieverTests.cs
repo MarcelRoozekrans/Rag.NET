@@ -146,6 +146,47 @@ public class DeepResearchRetrieverTests
             .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
+    private const string InsufficientPayload = """{"sufficient":false,"subQueries":["sub1"]}""";
+
+    public static TheoryData<string, string> WrappedResponseShapes() => new()
+    {
+        { "preamble then unlabelled fence", $"Here is my assessment in JSON format:\n\n```\n{InsufficientPayload}\n```" },
+        { "preamble then labelled fence", $"Sure! Here you go:\n\n```json\n{InsufficientPayload}\n```" },
+        { "preamble then bare json", $"Here is the JSON:\n\n{InsufficientPayload}" },
+        { "labelled fence only", $"```json\n{InsufficientPayload}\n```" },
+        { "fence then trailing prose", $"```\n{InsufficientPayload}\n```\n\nLet me know if you need anything else." },
+    };
+
+    [Theory]
+    [MemberData(nameof(WrappedResponseShapes))]
+    public async Task WhenLlmWrapsTheVerdict_DeepeningStillHappens(string shape, string response)
+    {
+        // ResponseFormat = Json is a request, not a guarantee. Against a provider that ignores
+        // it, every wrapped verdict used to throw, be caught as "sufficient", and silently turn
+        // the whole feature into a passthrough of the inner retriever.
+        var ct = TestContext.Current.CancellationToken;
+        var inner = Substitute.For<IRetriever>();
+        var chatClient = Substitute.For<IChatClient>();
+        inner.RetrieveAsync("q",    Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc1", 0)));
+        inner.RetrieveAsync("sub1", Arg.Any<RetrievalOptions?>(), ct).Returns(Ok(MakeResult("doc2", 0)));
+        chatClient
+            .GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, response)),
+                new ChatResponse(new ChatMessage(ChatRole.Assistant, "{\"sufficient\":true,\"subQueries\":[]}")));
+
+        var sut = new DeepResearchRetriever(inner, chatClient, new DeepResearchOptions());
+        var result = await sut.RetrieveAsync("q", null, ct);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(
+            result.Value.Count == 2,
+            $"The '{shape}' verdict did not trigger a sub-query. The JSON inside it is valid and " +
+            "says insufficient, so parsing failed to find it and deep research silently became a " +
+            "passthrough.");
+        _ = await inner.Received(1).RetrieveAsync("sub1", Arg.Any<RetrievalOptions?>(), ct);
+    }
+
     [Fact]
     public async Task MalformedLlmJson_TreatedAsSufficient_Passthrough()
     {
