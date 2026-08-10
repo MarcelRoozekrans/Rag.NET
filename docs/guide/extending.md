@@ -162,11 +162,10 @@ public sealed class SearchOptions
     public int TopK                                    { get; set; } = 5;
     public double MinScore                             { get; set; } = 0.0;
     public IDictionary<string, string>? MetadataFilter { get; set; }
-    public bool UseHybridSearch                        { get; set; }
 }
 ```
 
-Your `SearchAsync` should apply `TopK`, `MinScore`, and `MetadataFilter`. Ignore `UseHybridSearch` — the pipeline resolves the hybrid path via `IHybridSearchable` before calling `SearchAsync`.
+Your `SearchAsync` should apply `TopK`, `MinScore`, and `MetadataFilter`. Hybrid routing never reaches it — the pipeline resolves the hybrid path via `IHybridSearchable` before calling `SearchAsync`.
 
 ### Optional: `IHybridSearchable`
 
@@ -183,7 +182,7 @@ public interface IHybridSearchable
 }
 ```
 
-The pipeline will prefer `HybridSearchAsync` over the in-memory BM25 fallback when both interfaces are implemented.
+The pipeline prefers `HybridSearchAsync` over the in-memory BM25 fallback when both interfaces are implemented **and** the call configures nothing native fusion cannot express: no sparse (SPLADE) arm would run, no `EnsembleOptions` is supplied, and `MinScore` is `0.0`. Otherwise client-side RRF fusion runs so the configured weights and threshold semantics apply — see [Retrieval — How the hybrid path is selected](retrieval.md#how-the-hybrid-path-is-selected).
 
 ### Optional: `ICollectionManageable`
 
