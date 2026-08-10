@@ -27,7 +27,12 @@ namespace Rag.NET.RepoConventions.Tests;
 /// when <c>&lt;Type&gt;Validator</c> appears anywhere under <c>src/</c> (the generated class
 /// itself lives in build output, which the scan skips, so any remaining mention is a use). A
 /// manual validation method counts as called when its name is invoked on a line under
-/// <c>src/</c> that is not its own declaration.
+/// <c>src/</c> that is not its own declaration. A method marked <c>[CustomValidation]</c> in
+/// a <c>[Validate]</c> file is exempt from the manual-method gate: its caller is the generated
+/// validator itself, which lives in build output the scan skips — and whether <em>that</em>
+/// validator runs in production is
+/// <see cref="EveryGeneratedValidatorIsInvokedInProduction"/>'s subject, so the check is not
+/// lost, only attributed where it belongs.
 /// </para>
 /// <para>
 /// <b>What this deliberately does NOT catch — do not mistake it for coverage.</b> It sees
@@ -128,6 +133,25 @@ public sealed partial class InertValidatorGuardTests
             "about to fail falsely, so fix the detection rather than ledgering the fallout.");
     }
 
+    /// <summary>
+    /// Pins the <c>[CustomValidation]</c> exemption from both sides, on live examples: the
+    /// marking must be seen where it exists (otherwise <c>ValidateOverlapFitsChunk</c> — whose
+    /// only caller is the generated <c>ChunkingOptionsValidator</c> in build output — fails the
+    /// manual-method gate falsely), and it must not leak onto ordinary methods (otherwise the
+    /// gate goes vacuously green over an exempted inventory).
+    /// </summary>
+    [Fact]
+    public void TheScanSeesCustomValidationMethodsAsGeneratorInvoked()
+    {
+        var inventory = ScanProduction();
+
+        Assert.Contains(inventory.Methods, m =>
+            string.Equals(m.Name, "ValidateOverlapFitsChunk", StringComparison.Ordinal) && m.GeneratorInvoked);
+
+        Assert.Contains(inventory.Methods, m =>
+            string.Equals(m.Name, "ValidateRequest", StringComparison.Ordinal) && !m.GeneratorInvoked);
+    }
+
     [Fact]
     public void EveryGeneratedValidatorIsInvokedInProduction()
     {
@@ -160,7 +184,8 @@ public sealed partial class InertValidatorGuardTests
 
         foreach (var method in inventory.Methods)
         {
-            if (ValidatorsAllowedToHaveNoProductionCaller.ContainsKey(method.Key))
+            if (method.GeneratorInvoked ||
+                ValidatorsAllowedToHaveNoProductionCaller.ContainsKey(method.Key))
             {
                 continue;
             }
@@ -314,18 +339,51 @@ public sealed partial class InertValidatorGuardTests
                 }
             }
 
-            for (var i = 0; i < lines.Length; i++)
-            {
-                var declaration = MethodDeclaration().Match(lines[i]);
-                if (declaration.Success)
-                {
-                    inventory.Methods.Add(new ValidationMethod(
-                        relativePath, i + 1, declaration.Groups["name"].Value));
-                }
-            }
+            CollectMethods(relativePath, lines, ValidateAttribute().IsMatch(text), inventory.Methods);
         }
 
         return inventory;
+    }
+
+    /// <summary>
+    /// Collects manual validation-method declarations, marking each whose immediately preceding
+    /// attribute lines carry <c>[CustomValidation]</c> in a <c>[Validate]</c> file — those are
+    /// invoked by the generated validator (build output the scan skips), so the manual-method
+    /// gate must not demand a textual call site for them. Blank lines (including stripped
+    /// comments) and further attribute lines keep the marking attached; any other code line
+    /// breaks it, so an unattributed method never inherits the exemption.
+    /// </summary>
+    /// <param name="relativePath">The file, relative to the repository root.</param>
+    /// <param name="lines">The file's comment-stripped lines.</param>
+    /// <param name="fileHasValidate">Whether the file marks a type with <c>[Validate]</c>.</param>
+    /// <param name="methods">Receives each declaration found.</param>
+    private static void CollectMethods(
+        string relativePath, string[] lines, bool fileHasValidate, List<ValidationMethod> methods)
+    {
+        var pendingCustomValidation = false;
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var declaration = MethodDeclaration().Match(lines[i]);
+            if (declaration.Success)
+            {
+                methods.Add(new ValidationMethod(
+                    relativePath, i + 1, declaration.Groups["name"].Value,
+                    pendingCustomValidation && fileHasValidate));
+                pendingCustomValidation = false;
+                continue;
+            }
+
+            var trimmed = lines[i].TrimStart();
+            if (trimmed.StartsWith('['))
+            {
+                pendingCustomValidation |= trimmed.Contains("[CustomValidation]", StringComparison.Ordinal);
+            }
+            else if (trimmed.Length > 0)
+            {
+                pendingCustomValidation = false;
+            }
+        }
     }
 
     private static string[] StripCommentLines(string[] lines)
@@ -368,7 +426,11 @@ public sealed partial class InertValidatorGuardTests
     /// <param name="RelativePath">The declaring file, relative to the repository root.</param>
     /// <param name="Line">The declaration's 1-based line.</param>
     /// <param name="Name">The method name.</param>
-    private sealed record ValidationMethod(string RelativePath, int Line, string Name)
+    /// <param name="GeneratorInvoked">
+    /// Whether the method is <c>[CustomValidation]</c>-marked in a <c>[Validate]</c> file, so
+    /// its caller is the generated validator rather than a line the scan can see.
+    /// </param>
+    private sealed record ValidationMethod(string RelativePath, int Line, string Name, bool GeneratorInvoked)
     {
         /// <summary>Gets the ledger key, <c>RelativePath:Name</c>.</summary>
         public string Key => $"{RelativePath}:{Name}";
