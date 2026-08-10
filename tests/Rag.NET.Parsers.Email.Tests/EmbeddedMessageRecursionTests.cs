@@ -288,7 +288,7 @@ public class EmbeddedMessageRecursionTests
         Assert.DoesNotContain(received.Tags, t => t.Key.StartsWith("__rag_email", StringComparison.Ordinal));
 
         // The caller's own dictionary is what reaches stored chunk metadata; it must be untouched.
-        Assert.Equal(["source"], callerTags.Keys);
+        Assert.Equal(["source"], callerTags.Keys, StringComparer.Ordinal);
     }
 
     // ── Fixtures ─────────────────────────────────────────────────────────────

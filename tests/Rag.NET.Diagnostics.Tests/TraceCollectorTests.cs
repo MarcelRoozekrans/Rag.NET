@@ -266,7 +266,7 @@ public sealed class TraceCollectorTests
         // Without this the hash cannot do the one job it is kept for: telling repeated questions
         // apart while retaining none of them.
         Assert.Equal(byId["a"], byId["b"]);
-        Assert.NotEqual(byId["a"], byId["c"]);
+        Assert.NotEqual(byId["a"], byId["c"], StringComparer.Ordinal);
     }
 
     [Fact]

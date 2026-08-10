@@ -115,7 +115,12 @@ public sealed class CorrectiveRagBehavior : IRetrievalBehavior
         return (float)matchingResults / results.Count;
     }
 
+    // Ordinal stated rather than defaulted (MA0002). A collection expression cannot carry a
+    // comparer. Casing is already settled by ToLowerInvariant below, so the set never had to
+    // fold case itself and Ordinal preserves the previous behaviour exactly.
     private static HashSet<string> Tokenize(string text) =>
-        [.. text.Split([' ', '.', ',', '!', '?', ';', ':'], StringSplitOptions.RemoveEmptyEntries)
-               .Select(t => t.ToLowerInvariant())];
+        new(
+            text.Split([' ', '.', ',', '!', '?', ';', ':'], StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => t.ToLowerInvariant()),
+            StringComparer.Ordinal);
 }

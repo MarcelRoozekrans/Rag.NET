@@ -58,7 +58,7 @@ public class PdfTableExtractorTests
         // Prose words come back in reading order: Y band, then X.
         Assert.Equal(
             new[] { "aa", "bb", "cc", "dd", "ee", "ff", "gg", "hh", "ii" },
-            prose.Select(w => w.Text).ToList());
+            prose.Select(w => w.Text).ToList(), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public class PdfTableExtractorTests
         Assert.Equal(60, table.TopY);
         Assert.Equal(
             new[] { "p1", "p2", "p3", "p4", "q1", "q2", "q3", "q4" },
-            prose.Select(w => w.Text).ToList());
+            prose.Select(w => w.Text).ToList(), StringComparer.Ordinal);
     }
 
     [Fact]

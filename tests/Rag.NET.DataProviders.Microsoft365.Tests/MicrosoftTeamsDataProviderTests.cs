@@ -276,8 +276,8 @@ public sealed class MicrosoftTeamsDataProviderTests
 
         Assert.Equal(2, entries.Count);
         var fileNames = entries.Select(e => e.Value.FileName).OrderBy(n => n, StringComparer.Ordinal).ToList();
-        Assert.Contains("chan-1-2026-03-01.md", fileNames);
-        Assert.Contains("chan-1-2026-03-02.md", fileNames);
+        Assert.Contains("chan-1-2026-03-01.md", fileNames, StringComparer.Ordinal);
+        Assert.Contains("chan-1-2026-03-02.md", fileNames, StringComparer.Ordinal);
     }
 
     [Fact]

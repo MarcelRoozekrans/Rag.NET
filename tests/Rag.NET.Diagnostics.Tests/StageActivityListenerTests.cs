@@ -75,7 +75,7 @@ public sealed class StageActivityListenerTests
         var trace = Assert.Single(buffer.Snapshot());
 
         string[] expected = ["ragnet.embed", "ragnet.retrieve"];
-        Assert.Equal(expected, trace.Stages.Select(s => s.Name));
+        Assert.Equal(expected, trace.Stages.Select(s => s.Name), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public sealed class StageActivityListenerTests
         var trace = Assert.Single(buffer.Snapshot());
 
         string[] expected = ["ragnet.retrieve", "ragnet.query"];
-        Assert.Equal(expected, trace.Stages.Select(s => s.Name));
+        Assert.Equal(expected, trace.Stages.Select(s => s.Name), StringComparer.Ordinal);
     }
 
     [Fact]

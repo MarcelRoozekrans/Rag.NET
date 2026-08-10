@@ -70,7 +70,7 @@ public sealed class DocumentRankingTests
     {
         var top = DocumentRanking.TopDocuments(ChunkHeavyRival(), k: 3);
 
-        Assert.Equal(["doc-long", "doc-b", "doc-c"], top.Select(static document => document.DocumentId));
+        Assert.Equal(["doc-long", "doc-b", "doc-c"], top.Select(static document => document.DocumentId), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public sealed class DocumentRankingTests
 
         var top = DocumentRanking.TopDocuments(hits, k: 2);
 
-        Assert.Equal(["doc-late", "doc-early"], top.Select(static document => document.DocumentId));
+        Assert.Equal(["doc-late", "doc-early"], top.Select(static document => document.DocumentId), StringComparer.Ordinal);
         Assert.Equal(0.99, top[0].Score, Places);
     }
 
@@ -147,7 +147,7 @@ public sealed class DocumentRankingTests
     {
         var top = DocumentRanking.TopDocuments(ChunkHeavyRival(), k: 10);
 
-        Assert.Equal(["doc-long", "doc-b", "doc-c", "doc-d"], top.Select(static document => document.DocumentId));
+        Assert.Equal(["doc-long", "doc-b", "doc-c", "doc-d"], top.Select(static document => document.DocumentId), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -166,10 +166,10 @@ public sealed class DocumentRankingTests
         var first = DocumentRanking.TopDocuments(hits, k: 3);
         var second = DocumentRanking.TopDocuments(hits, k: 3);
 
-        Assert.Equal(["doc-a", "doc-b", "doc-c"], first.Select(static document => document.DocumentId));
+        Assert.Equal(["doc-a", "doc-b", "doc-c"], first.Select(static document => document.DocumentId), StringComparer.Ordinal);
         Assert.Equal(
             first.Select(static document => document.DocumentId),
-            second.Select(static document => document.DocumentId));
+            second.Select(static document => document.DocumentId), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -195,7 +195,7 @@ public sealed class DocumentRankingTests
 
         Assert.Equal(
             DocumentRanking.TopDocuments(hits, k: 3).Select(static document => document.DocumentId),
-            DocumentRanking.TopDocumentIds(hits, k: 3));
+            DocumentRanking.TopDocumentIds(hits, k: 3), StringComparer.Ordinal);
     }
 
     [Fact]

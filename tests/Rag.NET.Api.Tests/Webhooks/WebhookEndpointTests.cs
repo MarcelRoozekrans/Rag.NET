@@ -172,7 +172,7 @@ public sealed class WebhookEndpointTests
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.Equal(3, await ReadEnqueuedCountAsync(response));
-        Assert.Equal(["doc-1", "doc-2", "doc-3"], queue.Enqueued.Select(j => j.Metadata.DocumentId.Value));
+        Assert.Equal(["doc-1", "doc-2", "doc-3"], queue.Enqueued.Select(j => j.Metadata.DocumentId.Value), StringComparer.Ordinal);
     }
 
     [Fact]

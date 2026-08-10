@@ -134,7 +134,7 @@ public class EvaluationDatasetBuilderTests
 
         var sample = Assert.Single(dataset.Samples);
         Assert.NotEmpty(sample.ReferenceAnswer);
-        Assert.NotEqual(sample.Question, sample.ReferenceAnswer);
+        Assert.NotEqual(sample.Question, sample.ReferenceAnswer, StringComparer.Ordinal);
     }
 
     [Fact]

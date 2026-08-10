@@ -358,7 +358,7 @@ public sealed class TimingsSidecarTests : IDisposable
 
         var read = TimingsSidecar.Read(RunPath);
 
-        Assert.Equal(["q-1", "q-2"], read.QueryLatenciesMilliseconds.Keys.Order(StringComparer.Ordinal));
+        Assert.Equal(["q-1", "q-2"], read.QueryLatenciesMilliseconds.Keys.Order(StringComparer.Ordinal), StringComparer.Ordinal);
     }
 
     // ------------------------------------------------------------------------------ reading

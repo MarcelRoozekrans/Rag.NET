@@ -29,7 +29,7 @@ public class RateLimitedDecoratorTests
         var result = await sut.GetResponseAsync(AnyMessages(), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("ok", result.Text);
-        Assert.Equal(new[] { "acquire", "inner" }, log);
+        Assert.Equal(new[] { "acquire", "inner" }, log, StringComparer.Ordinal);
         Assert.Equal(1, limiter.LastPermits);
     }
 
@@ -107,7 +107,7 @@ public class RateLimitedDecoratorTests
 
         Assert.Equal(2, updates.Count);
         Assert.Equal(1, limiter.AcquireCount); // one permit covers the whole stream
-        Assert.Equal(new[] { "acquire", "inner" }, log);
+        Assert.Equal(new[] { "acquire", "inner" }, log, StringComparer.Ordinal);
     }
 
     // ── Chat: delegation and ownership ───────────────────────────────────────
@@ -158,7 +158,7 @@ public class RateLimitedDecoratorTests
         Assert.Equal(3, result.Count);
         Assert.Equal(1, limiter.AcquireCount); // per request, not per value
         Assert.Equal(1, limiter.LastPermits);
-        Assert.Equal(new[] { "acquire", "inner" }, log);
+        Assert.Equal(new[] { "acquire", "inner" }, log, StringComparer.Ordinal);
     }
 
     [Fact]

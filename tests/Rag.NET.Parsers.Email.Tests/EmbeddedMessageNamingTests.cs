@@ -91,7 +91,7 @@ public class EmbeddedMessageNamingTests
         string subject, string expected, string beforePhase36)
     {
         Assert.Equal(expected, Name(subject));
-        Assert.NotEqual(beforePhase36, Name(subject));
+        Assert.NotEqual(beforePhase36, Name(subject), StringComparer.Ordinal);
     }
 
     [Fact]

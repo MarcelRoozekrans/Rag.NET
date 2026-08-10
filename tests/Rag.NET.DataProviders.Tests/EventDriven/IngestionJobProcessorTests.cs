@@ -129,7 +129,7 @@ public sealed class IngestionJobProcessorTests
             await sut.StopAsync(ct);
         }
 
-        Assert.Equal(["doc-1", "doc-2", "doc-3"], calls.Select(c => c.DocumentId));
+        Assert.Equal(["doc-1", "doc-2", "doc-3"], calls.Select(c => c.DocumentId), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public sealed class IngestionJobProcessorTests
             await sut.StopAsync(ct);
         }
 
-        Assert.Equal(["doc-1", "doc-2", "doc-3"], calls.Select(c => c.DocumentId));
+        Assert.Equal(["doc-1", "doc-2", "doc-3"], calls.Select(c => c.DocumentId), StringComparer.Ordinal);
     }
 
     [Fact]

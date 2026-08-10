@@ -178,6 +178,6 @@ public sealed class WebCrawlerDataProviderTests
             .GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.DoesNotContain(entries, e => e.Value.Id.Value.Contains("/private/"));
+        Assert.DoesNotContain(entries, e => e.Value.Id.Value.Contains("/private/", StringComparison.Ordinal));
     }
 }

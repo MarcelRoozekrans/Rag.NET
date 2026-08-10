@@ -155,9 +155,9 @@ public class CSharpChunkingStrategyTests
         var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
         var names = chunks.Select(c => c.Metadata["csharp.name"]).ToList();
 
-        Assert.Contains("Outer", names);
-        Assert.Contains("Inner", names);
-        Assert.Contains("InnerMethod", names);
+        Assert.Contains("Outer", names, StringComparer.Ordinal);
+        Assert.Contains("Inner", names, StringComparer.Ordinal);
+        Assert.Contains("InnerMethod", names, StringComparer.Ordinal);
     }
 
     [Fact]

@@ -77,7 +77,7 @@ public sealed class ConfluenceDataProviderTests
             var headers = request.Headers;
             Assert.NotNull(headers);
             Assert.True(headers.ContainsKey("Accept"), "Accept header missing");
-            Assert.Contains("application/json", headers["Accept"]);
+            Assert.Contains("application/json", headers["Accept"], StringComparer.Ordinal);
         });
     }
 

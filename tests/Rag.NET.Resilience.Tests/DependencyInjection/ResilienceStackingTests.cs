@@ -83,7 +83,7 @@ public class ResilienceStackingTests
         // Cheapest gate first: ledger read (budget gate) → permit acquire → provider call,
         // then the post-call usage record. A blown budget would consume no permit; a
         // throttled call would start no fallback sequence.
-        Assert.Equal(new[] { "ledger-read:Day", "limiter-acquire", "provider-primary", "ledger-record" }, log);
+        Assert.Equal(new[] { "ledger-read:Day", "limiter-acquire", "provider-primary", "ledger-record" }, log, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -111,6 +111,6 @@ public class ResilienceStackingTests
         await Assert.ThrowsAsync<Rag.NET.Models.BudgetExceededException>(() =>
             client.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")], cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.Equal(new[] { "ledger-read:Day" }, log); // no permit consumed, no provider touched
+        Assert.Equal(new[] { "ledger-read:Day" }, log, StringComparer.Ordinal); // no permit consumed, no provider touched
     }
 }

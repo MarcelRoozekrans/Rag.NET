@@ -71,7 +71,7 @@ public sealed class NotionDataProviderTests
             var headers = request.Headers;
             Assert.NotNull(headers);
             Assert.True(headers.ContainsKey("Accept"), "Accept header missing");
-            Assert.Contains("application/json", headers["Accept"]);
+            Assert.Contains("application/json", headers["Accept"], StringComparer.Ordinal);
         });
     }
 
@@ -96,7 +96,7 @@ public sealed class NotionDataProviderTests
             var headers = request.Headers;
             Assert.NotNull(headers);
             Assert.True(headers.ContainsKey("Notion-Version"), "Notion-Version header missing");
-            Assert.Contains("2022-06-28", headers["Notion-Version"]);
+            Assert.Contains("2022-06-28", headers["Notion-Version"], StringComparer.Ordinal);
         });
     }
 

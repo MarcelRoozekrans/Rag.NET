@@ -346,7 +346,7 @@ public sealed class ExchangeMailDataProviderTests
 
         Assert.Equal(3, entries.Count);
         string[] expectedIds = ["inbox/msg-1", "inbox/msg-2", "archive/msg-a1"];
-        Assert.Equal(expectedIds, entries.Select(e => e.Value.Id.Value).ToList());
+        Assert.Equal(expectedIds, entries.Select(e => e.Value.Id.Value).ToList(), StringComparer.Ordinal);
         Assert.False(sut.CompletedFullTraversal);
         // Cap fired in the LAST folder: the token is that folder's last-seen
         // receivedDateTime (2026-01-01), NOT the global max (inbox, 2026-03-01) —

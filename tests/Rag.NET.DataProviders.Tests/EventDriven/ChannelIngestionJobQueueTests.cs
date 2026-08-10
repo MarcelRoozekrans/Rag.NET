@@ -44,7 +44,7 @@ public sealed class ChannelIngestionJobQueueTests
 
         var items = await DequeueAsync(queue, 3, ct);
 
-        Assert.Equal(["doc-a", "doc-b", "doc-c"], items.Select(j => j.Metadata.DocumentId.Value));
+        Assert.Equal(["doc-a", "doc-b", "doc-c"], items.Select(j => j.Metadata.DocumentId.Value), StringComparer.Ordinal);
     }
 
     [Fact]

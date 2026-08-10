@@ -34,7 +34,7 @@ public sealed class DiagnosticsRetrievalBehaviorTests
 
         // Structure, under default options: which chunks came back and what they scored.
         string[] expectedDocuments = ["doc-a", "doc-b"];
-        Assert.Equal(expectedDocuments, trace.Chunks.Select(c => c.DocumentId));
+        Assert.Equal(expectedDocuments, trace.Chunks.Select(c => c.DocumentId), StringComparer.Ordinal);
         Assert.Equal(3, trace.Chunks[1].ChunkIndex);
         Assert.Equal(0.91, trace.Chunks[0].Score);
         Assert.NotEmpty(trace.QueryHash);

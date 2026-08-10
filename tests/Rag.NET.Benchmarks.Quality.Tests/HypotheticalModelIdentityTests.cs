@@ -45,6 +45,6 @@ public sealed class HypotheticalModelIdentityTests
         // Temperature is in the key because it changes the output distribution: a run resampled
         // at another temperature must regenerate, not silently reuse the old run's text.
         Assert.NotEqual(
-            HypotheticalModelIdentity.For(0.8f), HypotheticalModelIdentity.For(0f));
+            HypotheticalModelIdentity.For(0.8f), HypotheticalModelIdentity.For(0f), StringComparer.Ordinal);
     }
 }

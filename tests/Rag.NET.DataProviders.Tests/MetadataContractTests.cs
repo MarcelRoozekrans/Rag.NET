@@ -106,7 +106,7 @@ public sealed class MetadataContractTests
     public void ReservedKeys_AreExactlyTheEightFromTheDesign()
         => Assert.Equal(
             ["_parentKey", "allowed_roles", "created_at", "document_id", "file_name", "provider_id", "trust_level", "updated_at"],
-            ReservedMetadataKeys.All.Order(StringComparer.Ordinal));
+            ReservedMetadataKeys.All.Order(StringComparer.Ordinal), StringComparer.Ordinal);
 
     // --- rule: no null or empty values ---
 
