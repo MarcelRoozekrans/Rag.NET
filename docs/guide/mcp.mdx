@@ -300,9 +300,17 @@ Add Rag.NET as an MCP server in Claude Desktop's config file.
 |---|---|
 | stdio | None — process boundary is the security boundary |
 | HTTP/SSE | `X-Api-Key` header; configure `ApiKeys` array for rotation and per-client revocation |
+| MCP over HTTP (`ragnet-mcp --transport http`) | `X-Api-Key` header; `--api-key` or `RAGNET_MCP_API_KEY`, or `--allow-anonymous` to opt out deliberately |
 | gRPC | `x-api-key` metadata header; validated by a server-side interceptor |
 
 Both `AddRagNetApi` and `AddRagNetGrpcApi` require an explicit authentication decision at registration: configure at least one key, or opt out deliberately with `AllowAnonymous = true` (e.g. behind a trusted gateway). Registering with an empty `ApiKeys` and no opt-out throws at startup, and setting both at once is rejected as a contradiction. At request time the middleware/interceptor fail closed — no keys and no opt-out means the request is refused, never silently served.
+
+`ragnet-mcp --transport http` follows the same rule and **refuses to start** without one of the
+two: it exposes ingest, retrieve and ask, and binds every interface rather than loopback. Building
+your own MCP server on `Rag.NET.Mcp` instead? `McpApiKeyAuthorization.IsAuthorized` is the same
+decision the tool uses — the middleware is yours to write, because it is ASP.NET Core and that
+package deliberately does not reference a web framework, but the comparison is not something to
+reimplement.
 
 Multiple keys are supported for rotation without downtime:
 
