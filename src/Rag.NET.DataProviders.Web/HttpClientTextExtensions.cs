@@ -3,7 +3,8 @@ using System.Text;
 namespace Rag.NET.DataProviders.Web;
 
 /// <summary>
-/// Fetches a URL as text, tolerating a declared charset this runtime cannot resolve.
+/// <see cref="HttpClient"/> text reads that tolerate a declared charset this runtime cannot
+/// resolve.
 /// <para>
 /// <b>Why this exists rather than <c>HttpClient.GetStringAsync</c>.</b> That method reads the
 /// charset out of <c>Content-Type</c> and hands it to <see cref="Encoding.GetEncoding(string)"/>.
@@ -30,15 +31,24 @@ namespace Rag.NET.DataProviders.Web;
 /// the header and the fallback.
 /// </para>
 /// </summary>
-internal static class HttpTextReader
+internal static class HttpClientTextExtensions
 {
-    /// <summary>Fetches <paramref name="url"/> and decodes the body as text.</summary>
+    /// <summary>
+    /// Fetches <paramref name="url"/> and decodes the body as text, falling back to UTF-8 when
+    /// the declared charset cannot be resolved.
+    /// <para>
+    /// <b>Named to be unmistakable, not convenient.</b> An extension method called
+    /// <c>GetStringAsync</c> would be silently shadowed — C# binds the instance method first — so
+    /// a caller reaching for it out of habit would get <see cref="HttpClient"/>'s own version
+    /// back, and with it the crash this exists to prevent. The long name is the point.
+    /// </para>
+    /// </summary>
     /// <exception cref="HttpRequestException">
     /// The request failed or returned a non-success status — the same exception, from the same
     /// cause, that <c>GetStringAsync</c> raised, so existing handlers keep working unchanged.
     /// </exception>
-    public static async Task<string> GetStringAsync(
-        HttpClient httpClient, string url, CancellationToken cancellationToken)
+    public static async Task<string> GetStringWithCharsetFallbackAsync(
+        this HttpClient httpClient, string url, CancellationToken cancellationToken)
     {
         using var response = await httpClient
             .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
