@@ -31,7 +31,7 @@ namespace Rag.NET.RepoConventions.Tests;
 /// <see cref="TheScanSeesEveryShapeEnforcementTakes"/>: a ZeroAlloc validation attribute on
 /// the property in a <c>[Validate]</c> class (the generated validator's production invocation
 /// is <see cref="InertValidatorGuardTests"/>' subject); a member-access comparison of the
-/// property against something (<c>options.MmrLambda &lt; 0.0f</c>); a
+/// property against something (<c>options.VariantCount &lt; 1</c>); a
 /// <c>ThrowIf*</c> helper naming the property; <c>Math.Clamp</c> over the property; or
 /// <c>nameof(Property)</c> in the declaring file, the shape of a self-validating setter's
 /// throw message. Comment lines are stripped before evidence is searched, so prose cannot
@@ -83,13 +83,25 @@ public sealed partial class DocumentedConstraintGuardTests
     private static readonly Dictionary<string, string> ConstraintsAllowedToRemainUnenforced =
         new(StringComparer.Ordinal)
         {
-            // Empty on purpose. When this guard first ran, every red property turned out to be
-            // either a genuine defect (the issue #90 four — CragScoreThreshold, DenseWeight,
-            // Bm25Weight, VariantCount — plus SceneChangeThreshold, all fixed on the branch
-            // that added this file) or a detection gap worth closing instead
-            // (FallbackChainOptions.PerClientTimeout was enforced via a nullable-pattern
-            // extraction the scan could not yet see — the scan was widened rather than the
-            // finding ledgered). Prefer that order: fix, then widen, then ledger.
+            // Kept nearly empty on purpose. When this guard first ran, every red property
+            // turned out to be either a genuine defect (the issue #90 four —
+            // CragScoreThreshold, DenseWeight, Bm25Weight, VariantCount — plus
+            // SceneChangeThreshold, all fixed on the branch that added this file) or a
+            // detection gap worth closing instead (FallbackChainOptions.PerClientTimeout was
+            // enforced via a nullable-pattern extraction the scan could not yet see — the scan
+            // was widened rather than the finding ledgered). Prefer that order: fix, then
+            // widen, then ledger.
+            ["RagOptions.RedundancyThreshold"] =
+                "Enforced, but across a type boundary the scan cannot attribute: " +
+                "RagPipeline.BuildRetrievalOptions copies it verbatim into " +
+                "RetrievalOptions.RedundancyThreshold, whose [InclusiveBetween] attribute the " +
+                "generated RetrievalOptionsValidator applies on every retrieval " +
+                "(PipelineRetriever.RetrieveAsync). Until issue #100 that validator was a " +
+                "manual comparison block in PipelineRetriever, and this property rode on " +
+                "shared-name credit for it — the enforcement moved, the credit could not " +
+                "follow. Every consuming path (RagPipeline directly, or via " +
+                "PromptHardeningAnswerEngineDecorator's RagOptions copy) reaches retrieval " +
+                "through BuildRetrievalOptions, so no unvalidated path remains.",
         };
 
     [Fact]
@@ -147,7 +159,8 @@ public sealed partial class DocumentedConstraintGuardTests
     /// <param name="shape">How the enforcement is written, for the failure message.</param>
     [Theory]
     [InlineData("ChunkingOptions", "MaxChunkSize", "a ZeroAlloc [GreaterThan] attribute in a [Validate] class")]
-    [InlineData("RetrievalOptions", "RedundancyThreshold", "a member-access comparison in PipelineRetriever.Validate")]
+    [InlineData("RetrievalOptions", "RedundancyThreshold", "a ZeroAlloc [InclusiveBetween] attribute in a [Validate] record")]
+    [InlineData("MultiQueryOptions", "VariantCount", "a member-access comparison in UseMultiQueryRetrieval (RagBuilderExtensions)")]
     [InlineData("CostBudgetOptions", "InputPricePerMTokens", "a ThrowIf* helper naming the property")]
     [InlineData("ShadowPipelineOptions", "SampleRate", "a self-validating setter whose throw message uses nameof")]
     [InlineData("FallbackChainOptions", "PerClientTimeout", "a nullable pattern extraction ('is { } t && t <= …') compared in the same expression")]
@@ -309,8 +322,8 @@ public sealed partial class DocumentedConstraintGuardTests
             }
 
             // Plain comments neither carry claims nor break attachment — and they must never
-            // reach the type matcher: RetrievalOptions.cs has a comment ending in "record
-            // types.", which would otherwise rename the type to "types".
+            // reach the type matcher: RetrievalOptions.cs once carried a comment ending in
+            // "record types.", which would otherwise have renamed the type to "types".
             if (trimmed.StartsWith("//", StringComparison.Ordinal))
             {
                 continue;
@@ -506,7 +519,7 @@ public sealed partial class DocumentedConstraintGuardTests
     /// <summary>Matches a ZeroAlloc numeric validation attribute on a property declaration.</summary>
     /// <returns>The compiled matcher.</returns>
     [GeneratedRegex(
-        @"\[(?:GreaterThan|GreaterThanOrEqual|LessThan|LessThanOrEqual|Range|InRange|Between|Min|Max)\(",
+        @"\[(?:GreaterThan|GreaterThanOrEqual|LessThan|LessThanOrEqual|InclusiveBetween|ExclusiveBetween|Range|InRange|Between|Min|Max)\(",
         RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex ValidationAttribute();
 
