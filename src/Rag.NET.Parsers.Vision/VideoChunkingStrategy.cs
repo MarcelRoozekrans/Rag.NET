@@ -34,7 +34,7 @@ public sealed class VideoChunkingStrategy : IDocumentChunkingStrategy, IChunking
             Text = section.Text,
             DocumentId = section.DocumentId,
             ChunkIndex = index,
-            Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["template"] = "video",
                 ["source_type"] = "video",

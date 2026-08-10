@@ -38,7 +38,7 @@ public class LegalChunkingStrategyTests
 
         var chunks = await ChunkAsync(sut, sections);
 
-        Assert.All(chunks, c => Assert.Equal("legal", c.Metadata["template"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("legal", c.Metadata["template"]));
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class LegalChunkingStrategyTests
         var chunks = await ChunkAsync(sut, sections);
 
         var chunk = Assert.Single(chunks);
-        Assert.Equal("1. General Provisions", chunk.Metadata["clause"]);
+        Assert.Equal<MetadataValue>("1. General Provisions", chunk.Metadata["clause"]);
     }
 
     [Fact]

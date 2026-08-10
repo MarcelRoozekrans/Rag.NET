@@ -309,9 +309,11 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
             embeddings[i] = chunks[i].Embedding.ToArray();
             documents[i] = chunk.Text;
 
+            // Chroma metadata values are natively typed (str/int/float/bool) but exclude
+            // objects, so dates ride as sentinel-prefixed ISO strings and are decoded on read.
             var metadata = new Dictionary<string, object?>(chunk.Metadata.Count + 2, StringComparer.Ordinal);
             foreach (var kvp in chunk.Metadata)
-                metadata[kvp.Key] = kvp.Value;
+                metadata[kvp.Key] = ToChromaValue(kvp.Value);
             // Written last so the reserved keys always win over same-named chunk metadata.
             metadata["document_id"] = (string)chunk.DocumentId;
             metadata["chunk_index"] = chunk.ChunkIndex;
@@ -327,8 +329,14 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         };
     }
 
-    /// <summary>Chroma where filter: <c>$eq</c> per key, <c>$and</c>-composed for two or more keys.</summary>
-    private static Dictionary<string, object?>? BuildWhereFilter(IDictionary<string, string>? metadataFilter)
+    /// <summary>
+    /// Chroma where filter: typed <c>$eq</c> per key, <c>$and</c>-composed for two or more keys.
+    /// The <c>$eq</c> operand carries the same native type <see cref="ToChromaValue"/> stored, so
+    /// a Number filter matches a stored number and never a same-looking string. Metadata stored
+    /// before values carried types is all strings, so non-string filters do not match it until
+    /// re-ingested.
+    /// </summary>
+    private static Dictionary<string, object?>? BuildWhereFilter(IDictionary<string, MetadataValue>? metadataFilter)
     {
         if (metadataFilter is not { Count: > 0 })
             return null;
@@ -356,8 +364,17 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
         return new Dictionary<string, object?>(StringComparer.Ordinal) { ["$and"] = operands };
     }
 
-    private static Dictionary<string, string> EqualityClause(string value) =>
-        new(StringComparer.Ordinal) { ["$eq"] = value };
+    private static Dictionary<string, object?> EqualityClause(MetadataValue value) =>
+        new(StringComparer.Ordinal) { ["$eq"] = ToChromaValue(value) };
+
+    /// <summary>The native Chroma metadata value for one metadata value, keeping its type.</summary>
+    private static object? ToChromaValue(MetadataValue value) => value.Kind switch
+    {
+        MetadataValueKind.Number => value.NumberValue,
+        MetadataValueKind.Boolean => value.BooleanValue,
+        MetadataValueKind.DateTimeOffset => MetadataDateFormat.EncodeSentinel(value.DateTimeOffsetValue),
+        _ => value.StringValue,
+    };
 
     private static IReadOnlyList<SearchResult> MapResults(ChromaQueryResponse response, double minScore)
     {
@@ -421,14 +438,12 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
                 $"Chroma record '{recordId}' is missing its document_id/chunk_index metadata.");
         }
 
-        var chunkMetadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        var chunkMetadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         foreach (var kvp in metadata)
         {
             if (kvp.Key is "document_id" or "chunk_index")
                 continue;
-            chunkMetadata[kvp.Key] = kvp.Value.ValueKind == JsonValueKind.String
-                ? kvp.Value.GetString()!
-                : kvp.Value.GetRawText();
+            chunkMetadata[kvp.Key] = FromChromaValue(kvp.Value);
         }
 
         return new SearchResult
@@ -443,6 +458,21 @@ public sealed class ChromaVectorStore : IVectorStore, ICollectionManageable, IDi
             Score = score,
         };
     }
+
+    /// <summary>
+    /// Maps a Chroma metadata value back to a <see cref="MetadataValue"/> with its kind: JSON
+    /// numbers and booleans directly, sentinel-encoded strings to dates, all other strings —
+    /// including every value stored before metadata carried types — as strings.
+    /// </summary>
+    private static MetadataValue FromChromaValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Number => value.GetDouble(),
+        JsonValueKind.True => true,
+        JsonValueKind.False => false,
+        JsonValueKind.String when MetadataDateFormat.TryDecodeSentinel(value.GetString()!, out var date) => date,
+        JsonValueKind.String => value.GetString()!,
+        _ => value.GetRawText(),
+    };
 
     /// <summary>
     /// <paramref name="operation"/> must name the collection it acted on (the collection

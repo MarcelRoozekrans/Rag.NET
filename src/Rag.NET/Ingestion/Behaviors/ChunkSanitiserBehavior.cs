@@ -24,7 +24,7 @@ public sealed class ChunkSanitiserBehavior : IIngestionBehavior
         for (var i = 0; i < ctx.Chunks.Count; i++)
         {
             var text = ctx.Chunks[i].Text;
-            var metadata = (IReadOnlyDictionary<string, string>)ctx.Chunks[i].Metadata;
+            var metadata = (IReadOnlyDictionary<string, MetadataValue>)ctx.Chunks[i].Metadata;
             foreach (var sanitiser in sanitiserList)
                 text = sanitiser.Sanitise(text, metadata);
             if (!ReferenceEquals(text, ctx.Chunks[i].Text))

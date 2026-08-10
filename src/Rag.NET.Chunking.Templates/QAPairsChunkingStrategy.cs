@@ -24,7 +24,7 @@ public sealed class QAPairsChunkingStrategy : IDocumentChunkingStrategy
                 Text = section.Text,
                 DocumentId = section.DocumentId,
                 ChunkIndex = index++,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                 {
                     ["template"] = "qa_pairs",
                     ["answer"] = section.Heading ?? string.Empty,

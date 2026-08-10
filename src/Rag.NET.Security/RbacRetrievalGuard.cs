@@ -36,7 +36,7 @@ public sealed partial class RbacRetrievalGuard(
                 continue;
             }
 
-            var allowedRoles = allowedRolesRaw.Split(',',
+            var allowedRoles = allowedRolesRaw.ToString().Split(',',
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             var hasAccess = false;
             foreach (var callerRole in callerRoles)

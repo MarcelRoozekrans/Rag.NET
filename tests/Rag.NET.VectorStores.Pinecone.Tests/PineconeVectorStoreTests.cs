@@ -108,7 +108,7 @@ public class PineconeVectorStoreTests
             Assert.Equal("cats are great pets", results[0].Chunk.Text);
             Assert.Equal("doc-rt", (string)results[0].Chunk.DocumentId);
             Assert.Equal(0, results[0].Chunk.ChunkIndex);
-            Assert.Equal("unit", results[0].Chunk.Metadata["source"]);
+            Assert.Equal<MetadataValue>("unit", results[0].Chunk.Metadata["source"]);
             Assert.Equal("dogs are loyal friends", results[1].Chunk.Text);
             Assert.True(results[0].Score > results[1].Score, "nearest result must rank first");
             // Native cosine similarity: identical vector scores ~1 — no conversion applied.
@@ -514,14 +514,14 @@ public class PineconeVectorStoreTests
         int chunkIndex,
         string text,
         float[] embedding,
-        Dictionary<string, string>? metadata = null) => new()
+        Dictionary<string, MetadataValue>? metadata = null) => new()
     {
         Chunk = new TextChunk
         {
             Text = text,
             DocumentId = new DocumentId(documentId),
             ChunkIndex = chunkIndex,
-            Metadata = metadata ?? new Dictionary<string, string>(StringComparer.Ordinal),
+            Metadata = metadata ?? new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
         },
         Embedding = embedding,
     };
@@ -539,9 +539,9 @@ public class PineconeVectorStoreTests
         return new SparseVector { Indices = indices, Values = values };
     }
 
-    private static Dictionary<string, string> Meta(params (string Key, string Value)[] entries)
+    private static Dictionary<string, MetadataValue> Meta(params (string Key, string Value)[] entries)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         foreach (var (key, value) in entries)
             metadata[key] = value;
         return metadata;

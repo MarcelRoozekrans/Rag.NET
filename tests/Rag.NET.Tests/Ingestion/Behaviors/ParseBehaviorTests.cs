@@ -160,9 +160,9 @@ public class ParseBehaviorTests
 
         await sut.HandleAsync(ctx, ct, StubNext);
 
-        Assert.Equal("My Section", chunk.Metadata["heading"]);
-        Assert.Equal("2", chunk.Metadata["heading_level"]);
-        Assert.Equal("My Section", chunk.Metadata["heading_breadcrumb"]);
+        Assert.Equal<MetadataValue>("My Section", chunk.Metadata["heading"]);
+        Assert.Equal<MetadataValue>("2", chunk.Metadata["heading_level"]);
+        Assert.Equal<MetadataValue>("My Section", chunk.Metadata["heading_breadcrumb"]);
     }
 
     [Fact]
@@ -203,8 +203,8 @@ public class ParseBehaviorTests
 
         await sut.HandleAsync(ctx, ct, StubNext);
 
-        Assert.Equal("Intro", h1Chunk.Metadata["heading_breadcrumb"]);
-        Assert.Equal("Intro > Details", h2Chunk.Metadata["heading_breadcrumb"]);
+        Assert.Equal<MetadataValue>("Intro", h1Chunk.Metadata["heading_breadcrumb"]);
+        Assert.Equal<MetadataValue>("Intro > Details", h2Chunk.Metadata["heading_breadcrumb"]);
     }
 
     [Fact]
@@ -257,8 +257,8 @@ public class ParseBehaviorTests
         await sut.HandleAsync(ctx, ct, StubNext);
 
         // chunkC should have "B > C", not "A > C"
-        Assert.Equal("B > C", chunkC.Metadata["heading_breadcrumb"]);
-        Assert.Equal("C", chunkC.Metadata["heading"]);
+        Assert.Equal<MetadataValue>("B > C", chunkC.Metadata["heading_breadcrumb"]);
+        Assert.Equal<MetadataValue>("C", chunkC.Metadata["heading"]);
     }
 
     [Fact]

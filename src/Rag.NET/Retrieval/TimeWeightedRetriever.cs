@@ -106,8 +106,19 @@ public sealed class TimeWeightedRetriever : IRetriever
         if (!chunk.Metadata.TryGetValue(key, out var raw))
             return false;
 
-        if (DateTime.TryParse(raw, null, DateTimeStyles.RoundtripKind, out timestamp))
+        // The framework writes these keys as ISO-8601 strings (see MetadataBehavior), but a
+        // caller-supplied value may already be a typed date — honour it directly.
+        if (raw.Kind == MetadataValueKind.DateTimeOffset)
+        {
+            timestamp = raw.DateTimeOffsetValue.UtcDateTime;
             return true;
+        }
+
+        if (raw.Kind == MetadataValueKind.String
+            && DateTime.TryParse(raw.StringValue, null, DateTimeStyles.RoundtripKind, out timestamp))
+        {
+            return true;
+        }
 
         _logger?.LogWarning("Chunk {DocumentId}[{ChunkIndex}] has unparseable \"{Key}\" value \"{Value}\"; skipping",
             chunk.DocumentId, chunk.ChunkIndex, key, raw);

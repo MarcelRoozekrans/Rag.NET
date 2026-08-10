@@ -1,4 +1,5 @@
 using Rag.NET.Caching;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Xunit;
 
@@ -68,7 +69,7 @@ public class CacheKeyGeneratorTests
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions());
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions
         {
-            MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["dept"] = "eng" }
+            MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["dept"] = "eng" }
         });
         Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
@@ -157,8 +158,8 @@ public class CacheKeyGeneratorTests
     [Fact]
     public void ForResult_MetadataFilterOrderDoesNotAffectKey()
     {
-        var filter1 = new Dictionary<string, string>(StringComparer.Ordinal) { ["a"] = "1", ["b"] = "2" };
-        var filter2 = new Dictionary<string, string>(StringComparer.Ordinal) { ["b"] = "2", ["a"] = "1" };
+        var filter1 = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["a"] = "1", ["b"] = "2" };
+        var filter2 = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["b"] = "2", ["a"] = "1" };
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { MetadataFilter = filter1 });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { MetadataFilter = filter2 });
         Assert.Equal(key1, key2);

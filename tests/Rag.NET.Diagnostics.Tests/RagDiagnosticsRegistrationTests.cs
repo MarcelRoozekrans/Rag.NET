@@ -194,7 +194,7 @@ public sealed class RagDiagnosticsRegistrationTests
 
     private sealed class PassThroughChunkSanitiser : IChunkSanitiser
     {
-        public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata) => text;
+        public string Sanitise(string text, IReadOnlyDictionary<string, MetadataValue> metadata) => text;
     }
 
     private sealed class PassThroughQuerySanitiser : IQuerySanitiser

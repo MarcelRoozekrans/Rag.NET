@@ -42,7 +42,7 @@ public sealed class GraphGlobalSearchBehavior(
         for (var i = 0; i < results.Count; i++)
         {
             if (results[i].Chunk.Metadata.TryGetValue("graph_type", out var gt)
-                && string.Equals(gt, "community_report", StringComparison.Ordinal))
+                && gt == "community_report")
             {
                 communities.Add(results[i]);
             }
@@ -132,7 +132,7 @@ public sealed class GraphGlobalSearchBehavior(
                 Text = synthesizedText,
                 DocumentId = new DocumentId("graph-global-search"),
                 ChunkIndex = -1,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                 {
                     ["graph_type"] = "global_answer",
                 },

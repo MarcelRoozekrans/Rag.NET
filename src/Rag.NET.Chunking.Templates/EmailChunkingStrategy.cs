@@ -80,7 +80,7 @@ public sealed class EmailChunkingStrategy : IDocumentChunkingStrategy, IChunking
             Text = section.Text,
             DocumentId = section.DocumentId,
             ChunkIndex = index,
-            Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["template"] = "email",
                 ["part"] = section.Heading ?? "body",

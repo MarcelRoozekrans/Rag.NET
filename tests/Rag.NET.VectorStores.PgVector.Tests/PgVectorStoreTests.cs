@@ -139,7 +139,7 @@ public class PgVectorStoreTests : IAsyncLifetime
                 Chunk = new TextChunk
                 {
                     Text = "engineering doc", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" },
                 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
             },
@@ -148,7 +148,7 @@ public class PgVectorStoreTests : IAsyncLifetime
                 Chunk = new TextChunk
                 {
                     Text = "marketing doc", DocumentId = new DocumentId("doc-2"), ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "marketing" },
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "marketing" },
                 },
                 Embedding = new float[] { 0.9f, 0.1f, 0.0f },
             },
@@ -161,7 +161,7 @@ public class PgVectorStoreTests : IAsyncLifetime
             new SearchOptions
             {
                 TopK = 10,
-                MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" },
             },
             TestContext.Current.CancellationToken);
 
@@ -201,7 +201,7 @@ public class PgVectorStoreTests : IAsyncLifetime
     public async Task StoreAsync_SameChunkTwice_ReplacesInsteadOfDuplicating()
     {
         // Isolated from the other facts on this shared table by a unique metadata marker.
-        var marker = new Dictionary<string, string>(StringComparer.Ordinal) { ["upsert_probe"] = "a" };
+        var marker = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["upsert_probe"] = "a" };
 
         await _sut.StoreAsync(
             [
@@ -525,7 +525,7 @@ public class PgVectorStoreTests : IAsyncLifetime
             new SearchOptions
             {
                 TopK = 10,
-                MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["tag"] = "needle" },
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["tag"] = "needle" },
             },
             TestContext.Current.CancellationToken);
 

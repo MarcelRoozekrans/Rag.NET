@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
+using Rag.NET.Models;
 
 namespace Rag.NET.Diagnostics.Internal;
 
@@ -49,7 +50,7 @@ internal sealed partial class TracingChunkSanitiser : IChunkSanitiser
     }
 
     /// <inheritdoc/>
-    public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata)
+    public string Sanitise(string text, IReadOnlyDictionary<string, MetadataValue> metadata)
     {
         var sanitised = _inner.Sanitise(text, metadata);
 

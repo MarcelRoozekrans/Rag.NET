@@ -87,8 +87,8 @@ public class LlmMetadataExtractionBehaviorTests
 
         await sut.HandleAsync(ctx, ct, StubNext);
 
-        Assert.Equal("security", chunk.Metadata["topic"]);
-        Assert.Equal("2024", chunk.Metadata["year"]);
+        Assert.Equal<MetadataValue>("security", chunk.Metadata["topic"]);
+        Assert.Equal<MetadataValue>("2024", chunk.Metadata["year"]);
     }
 
     // ── Schema-guided: unknown keys ignored ───────────────────────────────────

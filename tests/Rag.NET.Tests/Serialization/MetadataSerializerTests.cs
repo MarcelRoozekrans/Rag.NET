@@ -46,12 +46,12 @@ public class MetadataSerializerTests
     [Fact]
     public void SerializeMetadata_Roundtrip_PreservesData()
     {
-        var dict = new Dictionary<string, string>(StringComparer.Ordinal) { ["key1"] = "value1" };
+        var dict = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["key1"] = "value1" };
 
         var json = MetadataSerializer.SerializeMetadata(dict);
         var roundtrip = MetadataSerializer.DeserializeMetadata(json);
 
         Assert.True(roundtrip.IsSuccess);
-        Assert.Equal("value1", roundtrip.Value["key1"]);
+        Assert.Equal<MetadataValue>("value1", roundtrip.Value["key1"]);
     }
 }

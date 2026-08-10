@@ -243,7 +243,7 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
                     Text = entity.Description,
                     DocumentId = ctx.Metadata.DocumentId,
                     ChunkIndex = -(i + 1),
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                     {
                         ["graph_type"] = "entity",
                         ["graph_entity_name"] = entity.Name,
@@ -276,7 +276,7 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
                     Text = rel.Description,
                     DocumentId = ctx.Metadata.DocumentId,
                     ChunkIndex = -(entityCount + i + 1),
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                     {
                         ["graph_type"] = "relationship",
                         ["graph_source_entity"] = rel.SourceEntity,

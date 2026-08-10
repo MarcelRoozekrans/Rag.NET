@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BenchmarkDotNet.Attributes;
 using Rag.NET;
+using Rag.NET.Models;
 
 namespace Rag.NET.Benchmarks;
 
@@ -13,19 +14,21 @@ namespace Rag.NET.Benchmarks;
 [MemoryDiagnoser]
 public class MetadataSerializerBenchmarks
 {
-    private Dictionary<string, string> _metadata = null!;
+    private Dictionary<string, MetadataValue> _metadata = null!;
     private string _json = null!;
 
     [GlobalSetup]
     public void Setup()
     {
-        _metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        _metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["source"]      = "confluence",
             ["documentId"]  = "abc-123",
             ["title"]       = "Getting started with Rag.NET",
             ["author"]      = "jane.doe@example.com",
             ["createdAt"]   = "2026-01-15T08:30:00Z",
+            ["page"]        = 3,
+            ["reviewed"]    = true,
         };
         _json = MetadataSerializer.SerializeMetadata(_metadata);
     }
@@ -43,13 +46,13 @@ public class MetadataSerializerBenchmarks
     // --- Deserialize ---
 
     [Benchmark]
-    public IDictionary<string, string>? Deserialize_Reflection()
-        => JsonSerializer.Deserialize<Dictionary<string, string>>(_json);
+    public IDictionary<string, MetadataValue>? Deserialize_Reflection()
+        => JsonSerializer.Deserialize<Dictionary<string, MetadataValue>>(_json);
 
     [Benchmark]
-    public IDictionary<string, string> Deserialize_SourceGen()
+    public IDictionary<string, MetadataValue> Deserialize_SourceGen()
     {
         var result = MetadataSerializer.DeserializeMetadata(_json);
-        return result.IsSuccess ? result.Value : new Dictionary<string, string>(StringComparer.Ordinal);
+        return result.IsSuccess ? result.Value : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
     }
 }

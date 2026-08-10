@@ -58,7 +58,7 @@ public class RaptorIngestionBehaviorTests
         Assert.NotEmpty(summaryChunks);
         Assert.All(summaryChunks, sc =>
         {
-            Assert.Equal("1", sc.Chunk.Metadata["raptor_level"]);
+            Assert.Equal<MetadataValue>("1", sc.Chunk.Metadata["raptor_level"]);
             Assert.True(sc.Chunk.Metadata.ContainsKey("raptor_cluster_id"));
             Assert.True(sc.Chunk.Metadata.ContainsKey("raptor_child_ids"));
         });
@@ -95,7 +95,7 @@ public class RaptorIngestionBehaviorTests
 
         var maxLevel = ctx.EmbeddedChunks
             .Where(ec => ec.Chunk.Metadata.ContainsKey("raptor_level"))
-            .Select(ec => int.Parse(ec.Chunk.Metadata["raptor_level"], System.Globalization.CultureInfo.InvariantCulture))
+            .Select(ec => int.Parse(ec.Chunk.Metadata["raptor_level"].ToString(), System.Globalization.CultureInfo.InvariantCulture))
             .DefaultIfEmpty(0)
             .Max();
 

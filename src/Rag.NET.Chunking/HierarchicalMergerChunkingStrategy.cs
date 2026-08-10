@@ -120,7 +120,7 @@ public sealed class HierarchicalMergerChunkingStrategy(HierarchicalMergerOptions
             ? $"{heading}\n\n{bodyText}"
             : bodyText;
 
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (heading.Length > 0)
         {
             metadata["heading"] = heading;

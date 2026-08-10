@@ -185,10 +185,10 @@ public class PgVectorSparseVectorStoreTests : IAsyncLifetime
 
         var engineering = MakeChunk(
             docId1, 0, "engineering doc",
-            metadata: new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" });
+            metadata: new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" });
         var marketing = MakeChunk(
             docId2, 0, "marketing doc",
-            metadata: new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "marketing" });
+            metadata: new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "marketing" });
 
         try
         {
@@ -204,7 +204,7 @@ public class PgVectorSparseVectorStoreTests : IAsyncLifetime
                 new SearchOptions
                 {
                     TopK = 10,
-                    MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal)
+                    MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                     {
                         ["department"] = "engineering",
                     },
@@ -332,14 +332,14 @@ public class PgVectorSparseVectorStoreTests : IAsyncLifetime
         int chunkIndex,
         string text,
         float[]? embedding = null,
-        Dictionary<string, string>? metadata = null) => new()
+        Dictionary<string, MetadataValue>? metadata = null) => new()
         {
             Chunk = new TextChunk
             {
                 Text = text,
                 DocumentId = new DocumentId(docId),
                 ChunkIndex = chunkIndex,
-                Metadata = metadata ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                Metadata = metadata ?? new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
             },
             Embedding = embedding ?? new float[] { 1.0f, 0.0f, 0.0f },
         };

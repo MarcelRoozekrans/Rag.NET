@@ -195,7 +195,7 @@ public sealed class SqliteBm25Index : IBm25Index
             var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(6));
             var metadata = metadataResult.IsSuccess
                            ? metadataResult.Value
-                           : new Dictionary<string, string>(StringComparer.Ordinal);
+                           : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 
             var chunk = new TextChunk
             {

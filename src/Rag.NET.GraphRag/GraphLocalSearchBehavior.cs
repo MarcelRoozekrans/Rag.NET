@@ -36,7 +36,7 @@ public sealed class GraphLocalSearchBehavior(
     {
         return results
             .Where(r => r.Chunk.Metadata.TryGetValue("graph_type", out var gt)
-                        && string.Equals(gt, "entity", StringComparison.Ordinal))
+                        && gt == "entity")
             .OrderByDescending(r => r.Score)
             .Take(options.LocalTopEntities)
             .ToList();
@@ -49,9 +49,10 @@ public sealed class GraphLocalSearchBehavior(
 
         for (var idx = 0; idx < entityResults.Count; idx++)
         {
-            if (!entityResults[idx].Chunk.Metadata.TryGetValue("graph_entity_name", out var name))
+            if (!entityResults[idx].Chunk.Metadata.TryGetValue("graph_entity_name", out var nameValue))
                 continue;
 
+            var name = nameValue.ToString();
             var neighbors = await graphStore.GetNeighborsAsync(name, options.LocalSearchDepth, ct).ConfigureAwait(false);
             for (var i = 0; i < neighbors.Count; i++)
                 pageRankByName[neighbors[i].Name] = neighbors[i].PageRankScore;
@@ -91,9 +92,9 @@ public sealed class GraphLocalSearchBehavior(
     private double ComputeScore(SearchResult result, Dictionary<string, double> pageRankByName)
     {
         if (result.Chunk.Metadata.TryGetValue("graph_type", out var graphType)
-            && string.Equals(graphType, "entity", StringComparison.Ordinal)
+            && graphType == "entity"
             && result.Chunk.Metadata.TryGetValue("graph_entity_name", out var eName)
-            && pageRankByName.TryGetValue(eName, out var pageRank))
+            && pageRankByName.TryGetValue(eName.ToString(), out var pageRank))
         {
             return (1 - options.PageRankWeight) * result.Score + options.PageRankWeight * pageRank;
         }

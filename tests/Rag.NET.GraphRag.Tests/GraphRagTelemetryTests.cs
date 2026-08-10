@@ -88,7 +88,7 @@ public sealed class GraphRagTelemetryTests : IAsyncDisposable
             Chunk = new TextChunk
             {
                 Text = "Alice", DocumentId = new DocumentId("doc1"), ChunkIndex = 0,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                 {
                     ["graph_type"] = "entity",
                     ["graph_entity_name"] = "Alice",

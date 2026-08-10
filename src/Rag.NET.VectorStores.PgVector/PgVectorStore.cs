@@ -845,14 +845,14 @@ public partial class PgVectorStore : IVectorStore, ICollectionManageable, IDispo
         var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(3));
         var metadata = metadataResult.IsSuccess
             ? metadataResult.Value
-            : new Dictionary<string, string>(StringComparer.Ordinal);
+            : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 
         return new TextChunk
         {
             DocumentId = new DocumentId(reader.GetString(0)),
             ChunkIndex = reader.GetInt32(1),
             Text = reader.GetString(2),
-            Metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal),
+            Metadata = metadata,
         };
     }
 

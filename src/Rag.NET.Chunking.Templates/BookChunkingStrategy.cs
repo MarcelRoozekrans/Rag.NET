@@ -54,9 +54,9 @@ public sealed class BookChunkingStrategy : IDocumentChunkingStrategy, IChunkingS
         {
             chunk.Metadata["template"] = "book";
             // Track the top-level (level-1) heading as the chapter for all sub-chunks
-            if (chunk.Metadata.TryGetValue("heading_level", out var lvl) && string.Equals(lvl, "1", StringComparison.Ordinal)
+            if (chunk.Metadata.TryGetValue("heading_level", out var lvl) && lvl == "1"
                 && chunk.Metadata.TryGetValue("heading", out var h))
-                currentChapter = h;
+                currentChapter = h.ToString();
             if (currentChapter.Length > 0)
                 chunk.Metadata["chapter"] = currentChapter;
             yield return chunk;

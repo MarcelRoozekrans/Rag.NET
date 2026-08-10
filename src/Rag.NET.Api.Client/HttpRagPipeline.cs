@@ -132,7 +132,9 @@ public sealed class HttpRagPipeline : IRagPipeline
                 Text = dto.Text,
                 DocumentId = new DocumentId(dto.DocumentId),
                 ChunkIndex = dto.ChunkIndex,
-                Metadata = dto.Metadata.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal)
+                // The REST wire format carries metadata as strings, so everything read through
+                // the HTTP client is String-kind — same as data stored before values had types.
+                Metadata = dto.Metadata.ToDictionary(kv => kv.Key, kv => (MetadataValue)kv.Value, StringComparer.Ordinal)
             }
         };
 }

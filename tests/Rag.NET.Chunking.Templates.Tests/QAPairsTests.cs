@@ -73,8 +73,8 @@ public class QAPairsTests
 
         var single = Assert.Single(chunks);
         Assert.Equal("What is Paris?", single.Text);
-        Assert.Equal("Capital of France", single.Metadata["answer"]);
-        Assert.Equal("qa_pairs", single.Metadata["template"]);
+        Assert.Equal<MetadataValue>("Capital of France", single.Metadata["answer"]);
+        Assert.Equal<MetadataValue>("qa_pairs", single.Metadata["template"]);
     }
 
     [Fact]

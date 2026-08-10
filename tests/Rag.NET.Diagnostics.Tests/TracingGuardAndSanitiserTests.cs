@@ -204,8 +204,8 @@ public sealed class TracingGuardAndSanitiserTests
     /// <see cref="ReadOnlyDictionary{TKey,TValue}"/> rather than a <see cref="Dictionary{TKey,TValue}"/>
     /// assigned to the interface: the latter boxes its struct enumerator, which HLQ001 rejects.
     /// </remarks>
-    private static readonly IReadOnlyDictionary<string, string> EmptyMetadata =
-        ReadOnlyDictionary<string, string>.Empty;
+    private static readonly IReadOnlyDictionary<string, MetadataValue> EmptyMetadata =
+        ReadOnlyDictionary<string, MetadataValue>.Empty;
 
     private static TraceCollector CollectorWith(RagTraceOptions options, out TraceRingBuffer buffer)
     {
@@ -282,6 +282,6 @@ public sealed class TracingGuardAndSanitiserTests
 
     private sealed class RedactingChunkSanitiser : IChunkSanitiser
     {
-        public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata) => "[REDACTED]";
+        public string Sanitise(string text, IReadOnlyDictionary<string, MetadataValue> metadata) => "[REDACTED]";
     }
 }

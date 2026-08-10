@@ -86,7 +86,7 @@ public class RaptorBenchmarks
         for (int i = 0; i < count; i++)
         {
             int raptorLevel = i % 3; // 0 = leaf, 1 = level-1 summary, 2 = level-2 summary
-            var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+            var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
             if (raptorLevel > 0)
             {
                 metadata["raptor_level"] = raptorLevel.ToString(CultureInfo.InvariantCulture);

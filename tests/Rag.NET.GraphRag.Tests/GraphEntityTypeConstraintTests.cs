@@ -98,10 +98,10 @@ public sealed class GraphEntityTypeConstraintTests : IAsyncDisposable
 
         var entityChunks = ctx.EmbeddedChunks
             .Where(ec => ec.Chunk.Metadata.TryGetValue("graph_type", out var t) &&
-                         string.Equals(t, "entity", StringComparison.Ordinal))
+                         t == "entity")
             .ToList();
         var chunk = Assert.Single(entityChunks);
-        Assert.Equal("Aspirin", chunk.Chunk.Metadata["graph_entity_name"]);
+        Assert.Equal<MetadataValue>("Aspirin", chunk.Chunk.Metadata["graph_entity_name"]);
     }
 
     [Fact]

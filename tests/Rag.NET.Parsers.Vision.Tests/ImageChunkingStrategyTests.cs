@@ -28,9 +28,9 @@ public class ImageChunkingStrategyTests
         await foreach (var c in strategy.ChunkDocumentAsync(sections, new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(c);
 
-        Assert.All(chunks, c => Assert.Equal("image", c.Metadata["template"]));
-        Assert.All(chunks, c => Assert.Equal("image", c.Metadata["source_type"]));
-        Assert.All(chunks, c => Assert.Equal("image_description", c.Metadata["part"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("image", c.Metadata["template"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("image", c.Metadata["source_type"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("image_description", c.Metadata["part"]));
     }
 
     [Fact]
@@ -47,9 +47,9 @@ public class ImageChunkingStrategyTests
             chunks.Add(c);
 
         Assert.Single(chunks);
-        Assert.Equal("image", chunks[0].Metadata["template"]);
-        Assert.Equal("image", chunks[0].Metadata["source_type"]);
-        Assert.Equal("image_description", chunks[0].Metadata["part"]);
+        Assert.Equal<MetadataValue>("image", chunks[0].Metadata["template"]);
+        Assert.Equal<MetadataValue>("image", chunks[0].Metadata["source_type"]);
+        Assert.Equal<MetadataValue>("image_description", chunks[0].Metadata["part"]);
         Assert.Equal("A pie chart.", chunks[0].Text);
     }
 }

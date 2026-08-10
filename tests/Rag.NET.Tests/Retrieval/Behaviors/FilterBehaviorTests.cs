@@ -57,13 +57,13 @@ public class FilterBehaviorTests
         var r1 = new SearchResult
         {
             Chunk = new TextChunk { Text = "t", DocumentId = new DocumentId("d1"), ChunkIndex = 0,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["lang"] = "en" } },
+                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["lang"] = "en" } },
             Score = 0.9
         };
         var r2 = new SearchResult
         {
             Chunk = new TextChunk { Text = "t", DocumentId = new DocumentId("d2"), ChunkIndex = 0,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["lang"] = "fr" } },
+                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["lang"] = "fr" } },
             Score = 0.9
         };
         var results = new List<SearchResult> { r1, r2 };

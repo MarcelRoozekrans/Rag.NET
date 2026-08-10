@@ -1,4 +1,5 @@
 using Rag.NET.Abstractions;
+using Rag.NET.Models;
 using Rag.NET.Models.Options;
 
 namespace Rag.NET.Cli;
@@ -46,5 +47,5 @@ internal static class QueryCommand
     public sealed record Outcome(string Query, IReadOnlyList<ResultItem> Results);
 
     /// <summary>One retrieved chunk, the score it was found with, and its metadata.</summary>
-    public sealed record ResultItem(string Text, double Score, IDictionary<string, string> Metadata);
+    public sealed record ResultItem(string Text, double Score, IDictionary<string, MetadataValue> Metadata);
 }

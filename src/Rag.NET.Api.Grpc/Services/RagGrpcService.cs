@@ -104,8 +104,11 @@ internal sealed class RagGrpcService(IRagPipeline pipeline) : RagService.RagServ
             ChunkIndex = r.Chunk.ChunkIndex,
             Score = r.Score
         };
+        // The gRPC wire format still carries metadata as strings (ToString is lossless as text
+        // but drops the kind); a typed proto map is follow-up work tracked with the
+        // typed-metadata change.
         foreach (var kvp in r.Chunk.Metadata)
-            proto.Metadata[kvp.Key] = kvp.Value;
+            proto.Metadata[kvp.Key] = kvp.Value.ToString();
         return proto;
     }
 }

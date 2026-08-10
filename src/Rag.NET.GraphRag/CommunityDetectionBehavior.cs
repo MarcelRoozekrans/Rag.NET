@@ -156,7 +156,7 @@ public sealed class CommunityDetectionBehavior(
                     Text = community.ReportSummary ?? string.Empty,
                     DocumentId = ctx.Metadata.DocumentId,
                     ChunkIndex = -(ctx.EmbeddedChunks.Count + 1),
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                     {
                         ["graph_type"] = "community_report",
                         ["community_id"] = community.Id.ToString(CultureInfo.InvariantCulture),

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Rag.NET.Abstractions;
+using Rag.NET.Models;
 using Rag.NET.WebSearch.Tavily;
 using ZeroAlloc.Results;
 using Xunit;
@@ -40,7 +41,7 @@ public class TavilyWebSearchTests
         Assert.Equal("content one", results[0].Chunk.Text);
         Assert.Equal("https://example.com/1", results[0].Chunk.DocumentId.Value);
         Assert.Equal(0.9, results[0].Score);
-        Assert.Equal("tavily", results[0].Chunk.Metadata["source"]);
+        Assert.Equal<MetadataValue>("tavily", results[0].Chunk.Metadata["source"]);
     }
 
     [Fact]

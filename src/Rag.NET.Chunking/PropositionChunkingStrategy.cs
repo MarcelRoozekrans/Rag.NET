@@ -210,7 +210,7 @@ public sealed partial class PropositionChunkingStrategy(
             // ParentDocumentIngestionBehavior maps child chunks to parents via child.StartPosition.
             StartPosition = start,
             EndPosition = end,
-            Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["parent.start"] = start.ToString(CultureInfo.InvariantCulture),
                 ["parent.end"] = end.ToString(CultureInfo.InvariantCulture),

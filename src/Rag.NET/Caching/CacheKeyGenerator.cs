@@ -32,7 +32,10 @@ internal static class CacheKeyGenerator
             var sortedKeys = options.MetadataFilter.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray();
             foreach (var key in sortedKeys)
             {
-                sb.Append('|').Append(key).Append('=').Append(options.MetadataFilter[key]);
+                // Kind is part of the key: a Number 3 and a String "3" filter must not share
+                // a cache entry — they match different chunks.
+                var value = options.MetadataFilter[key];
+                sb.Append('|').Append(key).Append('=').Append((int)value.Kind).Append(':').Append(value.ToString());
             }
         }
 

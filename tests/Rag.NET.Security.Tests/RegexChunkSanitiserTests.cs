@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Rag.NET.Models;
 using Rag.NET.Security;
 using Xunit;
 
@@ -16,10 +17,10 @@ public class RegexChunkSanitiserTests
             => Entries.Add((logLevel, formatter(state, exception)));
     }
 
-    private static readonly Dictionary<string, string> NoMeta =
+    private static readonly Dictionary<string, MetadataValue> NoMeta =
         new(StringComparer.Ordinal);
 
-    private static readonly Dictionary<string, string> WithFileName =
+    private static readonly Dictionary<string, MetadataValue> WithFileName =
         new(StringComparer.Ordinal) { ["file_name"] = "doc.pdf" };
 
     private static RegexChunkSanitiser Sut() =>

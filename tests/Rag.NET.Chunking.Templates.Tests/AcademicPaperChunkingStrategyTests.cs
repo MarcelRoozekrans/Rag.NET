@@ -56,7 +56,7 @@ public class AcademicPaperChunkingStrategyTests
         var chunks = await ChunkAsync(sut, sections);
 
         var abstractChunk = Assert.Single(chunks, c =>
-            c.Metadata.TryGetValue("section_type", out var t) && string.Equals(t, "abstract", StringComparison.Ordinal));
+            c.Metadata.TryGetValue("section_type", out var t) && t == "abstract");
         Assert.Contains("temperature effects", abstractChunk.Text, StringComparison.Ordinal);
     }
 
@@ -87,7 +87,7 @@ public class AcademicPaperChunkingStrategyTests
 
         var chunks = await ChunkAsync(sut, sections);
 
-        Assert.All(chunks, c => Assert.Equal("academic_paper", c.Metadata["template"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("academic_paper", c.Metadata["template"]));
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class AcademicPaperChunkingStrategyTests
         await foreach (var chunk in sut.ChunkAsync(section, new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(chunk);
 
-        Assert.All(chunks, c => Assert.Equal("academic_paper", c.Metadata["template"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("academic_paper", c.Metadata["template"]));
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class AcademicPaperChunkingStrategyTests
 
         Assert.DoesNotContain(chunks, c =>
             c.Metadata.TryGetValue("section_type", out var t) &&
-            string.Equals(t, "abstract", StringComparison.Ordinal));
+            t == "abstract");
     }
 
     [Fact]
@@ -135,6 +135,6 @@ public class AcademicPaperChunkingStrategyTests
         Assert.NotEmpty(chunks);
         Assert.DoesNotContain(chunks, c =>
             c.Metadata.TryGetValue("section_type", out var t) &&
-            string.Equals(t, "abstract", StringComparison.Ordinal));
+            t == "abstract");
     }
 }

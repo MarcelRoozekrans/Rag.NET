@@ -57,5 +57,11 @@ public sealed record TextChunk
     /// time-weighted re-scoring. Never <see langword="null"/>; absent metadata is an empty
     /// dictionary, not a missing one.
     /// </summary>
-    public IDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+    /// <remarks>
+    /// Values carry their type (<see cref="MetadataValue.Kind"/>), and every store persists and
+    /// filters on that type — <c>Metadata["page"] = 3</c> is a number a store can compare
+    /// numerically, not the string <c>"3"</c>. Writing plain strings/numbers/bools/dates works
+    /// unchanged via <see cref="MetadataValue"/>'s implicit conversions.
+    /// </remarks>
+    public IDictionary<string, MetadataValue> Metadata { get; init; } = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 }

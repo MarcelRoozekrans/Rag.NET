@@ -164,15 +164,15 @@ public class GraphEntityExtractionBehaviorTests : IAsyncDisposable
         await sut.HandleAsync(ctx, TestContext.Current.CancellationToken,
             (c, ct) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
 
-        var entityChunks = ctx.EmbeddedChunks.Where(ec => ec.Chunk.Metadata.TryGetValue("graph_type", out var t) && string.Equals(t, "entity", StringComparison.Ordinal)).ToList();
+        var entityChunks = ctx.EmbeddedChunks.Where(ec => ec.Chunk.Metadata.TryGetValue("graph_type", out var t) && t == "entity").ToList();
         Assert.Single(entityChunks);
-        Assert.Equal("Microsoft", entityChunks[0].Chunk.Metadata["graph_entity_name"]);
-        Assert.Equal("Organization", entityChunks[0].Chunk.Metadata["graph_entity_type"]);
+        Assert.Equal<MetadataValue>("Microsoft", entityChunks[0].Chunk.Metadata["graph_entity_name"]);
+        Assert.Equal<MetadataValue>("Organization", entityChunks[0].Chunk.Metadata["graph_entity_type"]);
 
-        var relChunks = ctx.EmbeddedChunks.Where(ec => ec.Chunk.Metadata.TryGetValue("graph_type", out var t) && string.Equals(t, "relationship", StringComparison.Ordinal)).ToList();
+        var relChunks = ctx.EmbeddedChunks.Where(ec => ec.Chunk.Metadata.TryGetValue("graph_type", out var t) && t == "relationship").ToList();
         Assert.Single(relChunks);
-        Assert.Equal("Microsoft", relChunks[0].Chunk.Metadata["graph_source_entity"]);
-        Assert.Equal("GraphRAG", relChunks[0].Chunk.Metadata["graph_target_entity"]);
+        Assert.Equal<MetadataValue>("Microsoft", relChunks[0].Chunk.Metadata["graph_source_entity"]);
+        Assert.Equal<MetadataValue>("GraphRAG", relChunks[0].Chunk.Metadata["graph_target_entity"]);
     }
 
     [Fact]

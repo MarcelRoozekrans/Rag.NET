@@ -159,7 +159,7 @@ public class GraphGlobalSearchBehaviorTests
         // First result should be the synthesized answer with score 1.0
         Assert.Equal(1.0, actual[0].Score);
         Assert.Equal("synthesized final answer", actual[0].Chunk.Text);
-        Assert.Equal("global_answer", actual[0].Chunk.Metadata["graph_type"]);
+        Assert.Equal<MetadataValue>("global_answer", actual[0].Chunk.Metadata["graph_type"]);
 
         // The regular result should follow
         Assert.Equal(2, actual.Count);
@@ -204,7 +204,7 @@ public class GraphGlobalSearchBehaviorTests
                     Text = $"Community report {i} about various topics",
                     DocumentId = new DocumentId($"community-{i}"),
                     ChunkIndex = i,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                     {
                         ["graph_type"] = "community_report",
                     },

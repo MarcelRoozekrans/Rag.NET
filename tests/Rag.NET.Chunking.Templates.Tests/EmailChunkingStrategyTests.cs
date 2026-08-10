@@ -27,7 +27,7 @@ public class EmailChunkingStrategyTests
         await foreach (var c in strategy.ChunkDocumentAsync(sections, new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(c);
 
-        Assert.All(chunks, c => Assert.Equal("email", c.Metadata["template"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("email", c.Metadata["template"]));
     }
 
     [Fact]
@@ -42,8 +42,8 @@ public class EmailChunkingStrategyTests
         await foreach (var c in strategy.ChunkDocumentAsync(sections, new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(c);
 
-        Assert.Equal("headers", chunks[0].Metadata["part"]);
-        Assert.Equal("body", chunks[1].Metadata["part"]);
+        Assert.Equal<MetadataValue>("headers", chunks[0].Metadata["part"]);
+        Assert.Equal<MetadataValue>("body", chunks[1].Metadata["part"]);
     }
 
     [Fact]
@@ -57,7 +57,7 @@ public class EmailChunkingStrategyTests
         await foreach (var c in strategy.ChunkDocumentAsync(sections, new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(c);
 
-        Assert.Equal("attachment:report.txt", chunks[0].Metadata["part"]);
+        Assert.Equal<MetadataValue>("attachment:report.txt", chunks[0].Metadata["part"]);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class EmailChunkingStrategyTests
         await foreach (var c in strategy.ChunkDocumentAsync(sections, new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(c);
 
-        Assert.Equal("body", chunks[0].Metadata["part"]);
+        Assert.Equal<MetadataValue>("body", chunks[0].Metadata["part"]);
     }
 
     [Fact]
@@ -84,8 +84,8 @@ public class EmailChunkingStrategyTests
             chunks.Add(c);
 
         Assert.Single(chunks);
-        Assert.Equal("email", chunks[0].Metadata["template"]);
-        Assert.Equal("body", chunks[0].Metadata["part"]);
+        Assert.Equal<MetadataValue>("email", chunks[0].Metadata["template"]);
+        Assert.Equal<MetadataValue>("body", chunks[0].Metadata["part"]);
     }
 
     // ── EmailChunkingOptions filters (issue #108: both flags were documented but dead) ──
@@ -118,7 +118,7 @@ public class EmailChunkingStrategyTests
         var chunks = await ChunkAllAsync(strategy, FullEmail());
 
         Assert.Equal(2, chunks.Count);
-        Assert.DoesNotContain(chunks, c => string.Equals(c.Metadata["part"], "headers", StringComparison.Ordinal));
+        Assert.DoesNotContain(chunks, c => c.Metadata["part"] == "headers");
         // ChunkIndex stays gapless so downstream unique-index guarantees hold.
         Assert.Equal([0, 1], chunks.Select(c => c.ChunkIndex));
     }
@@ -131,7 +131,7 @@ public class EmailChunkingStrategyTests
         var chunks = await ChunkAllAsync(strategy, FullEmail());
 
         Assert.Equal(2, chunks.Count);
-        Assert.DoesNotContain(chunks, c => c.Metadata["part"].StartsWith("attachment:", StringComparison.Ordinal));
+        Assert.DoesNotContain(chunks, c => c.Metadata["part"].StringValue.StartsWith("attachment:", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -156,7 +156,7 @@ public class EmailChunkingStrategyTests
         var chunks = await ChunkAllAsync(strategy, FullEmail());
 
         var chunk = Assert.Single(chunks);
-        Assert.Equal("body", chunk.Metadata["part"]);
+        Assert.Equal<MetadataValue>("body", chunk.Metadata["part"]);
     }
 
     [Fact]

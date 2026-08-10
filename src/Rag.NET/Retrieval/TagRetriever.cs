@@ -71,8 +71,8 @@ public sealed class TagRetriever : IRetriever
 
             // Merge into caller's existing MetadataFilter — caller's entries win (TryAdd)
             var filter = options.MetadataFilter is not null
-                ? new Dictionary<string, string>(options.MetadataFilter, StringComparer.Ordinal)
-                : new Dictionary<string, string>(StringComparer.Ordinal);
+                ? new Dictionary<string, MetadataValue>(options.MetadataFilter, StringComparer.Ordinal)
+                : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 
             foreach (var (key, value) in injected)
                 filter.TryAdd(key, value);

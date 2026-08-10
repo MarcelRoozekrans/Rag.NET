@@ -266,7 +266,7 @@ public class SecurityPipelineTests : IAsyncLifetime
             Assert.True(retrieveResult.IsSuccess, $"RetrieveAsync failed: {retrieveResult}");
             Assert.DoesNotContain(retrieveResult.Value, c =>
                 c.Chunk.Metadata.TryGetValue("allowed_roles", out var r) &&
-                r.Contains("admin", StringComparison.OrdinalIgnoreCase));
+                r.StringValue.Contains("admin", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {

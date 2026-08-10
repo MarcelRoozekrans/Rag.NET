@@ -53,7 +53,7 @@ public sealed class AcademicPaperChunkingStrategy : IDocumentChunkingStrategy, I
                 Text = abstractSection.Text,
                 DocumentId = abstractSection.DocumentId,
                 ChunkIndex = 0,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                 {
                     ["template"] = "academic_paper",
                     ["section_type"] = "abstract",
@@ -75,7 +75,7 @@ public sealed class AcademicPaperChunkingStrategy : IDocumentChunkingStrategy, I
             yield return chunk with
             {
                 ChunkIndex = chunkIndex++,
-                Metadata = new Dictionary<string, string>(chunk.Metadata, StringComparer.Ordinal)
+                Metadata = new Dictionary<string, MetadataValue>(chunk.Metadata, StringComparer.Ordinal)
                 {
                     ["template"] = "academic_paper",
                     ["section_type"] = "body",
@@ -93,7 +93,7 @@ public sealed class AcademicPaperChunkingStrategy : IDocumentChunkingStrategy, I
         {
             yield return chunk with
             {
-                Metadata = new Dictionary<string, string>(chunk.Metadata, StringComparer.Ordinal)
+                Metadata = new Dictionary<string, MetadataValue>(chunk.Metadata, StringComparer.Ordinal)
                 {
                     ["template"] = "academic_paper",
                     ["section_type"] = "body",

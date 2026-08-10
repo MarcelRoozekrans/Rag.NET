@@ -119,7 +119,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
                 Chunk = new TextChunk
                 {
                     Text = "engineering doc", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" },
                 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
             },
@@ -128,7 +128,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
                 Chunk = new TextChunk
                 {
                     Text = "marketing doc", DocumentId = new DocumentId("doc-2"), ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "marketing" },
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "marketing" },
                 },
                 Embedding = new float[] { 0.9f, 0.1f, 0.0f },
             },
@@ -141,7 +141,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
             new SearchOptions
             {
                 TopK = 10,
-                MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" },
             },
             TestContext.Current.CancellationToken);
 

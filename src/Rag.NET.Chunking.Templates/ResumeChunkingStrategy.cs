@@ -97,7 +97,7 @@ public sealed partial class ResumeChunkingStrategy(
             Text = text,
             DocumentId = docId,
             ChunkIndex = index,
-            Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["template"] = "resume",
                 ["section"] = section,

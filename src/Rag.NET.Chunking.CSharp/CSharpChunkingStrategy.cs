@@ -80,7 +80,7 @@ public sealed partial class CSharpChunkingStrategy : IChunkingStrategy
             if (string.IsNullOrWhiteSpace(text))
                 continue;
 
-            var chunkMetadata = new Dictionary<string, string>(StringComparer.Ordinal);
+            var chunkMetadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
             foreach (var kv in metadata)
                 chunkMetadata[kv.Key] = kv.Value;
 

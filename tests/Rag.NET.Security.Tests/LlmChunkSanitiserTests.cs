@@ -1,6 +1,7 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using Rag.NET.Models;
 using Rag.NET.Security;
 using Xunit;
 
@@ -8,7 +9,7 @@ namespace Rag.NET.Security.Tests;
 
 public class LlmChunkSanitiserTests
 {
-    private static readonly Dictionary<string, string> Meta =
+    private static readonly Dictionary<string, MetadataValue> Meta =
         new(StringComparer.Ordinal) { ["file_name"] = "doc.pdf" };
 
     private static IChatClient FakeClient(string response)
@@ -60,6 +61,6 @@ public class LlmChunkSanitiserTests
         client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
               .Returns<ChatResponse>(_ => throw new OperationCanceledException("cancelled"));
         var sut = new LlmChunkSanitiser(client, NullLogger<LlmChunkSanitiser>.Instance);
-        Assert.Throws<OperationCanceledException>(() => sut.Sanitise("any text", new Dictionary<string, string>(StringComparer.Ordinal)));
+        Assert.Throws<OperationCanceledException>(() => sut.Sanitise("any text", new Dictionary<string, MetadataValue>(StringComparer.Ordinal)));
     }
 }

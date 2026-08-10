@@ -78,13 +78,13 @@ public class CSharpChunkingStrategyTests
             """;
 
         var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
-        var methodChunk = chunks.Single(c => c.Metadata.TryGetValue("csharp.kind", out var k) && string.Equals(k, "method", StringComparison.Ordinal));
+        var methodChunk = chunks.Single(c => c.Metadata.TryGetValue("csharp.kind", out var k) && k == "method");
 
-        Assert.Equal("MyApp.Core", methodChunk.Metadata["csharp.namespace"]);
-        Assert.Equal("Greeter", methodChunk.Metadata["csharp.type"]);
-        Assert.Equal("Greet", methodChunk.Metadata["csharp.name"]);
-        Assert.Equal("method", methodChunk.Metadata["csharp.kind"]);
-        Assert.Equal("public", methodChunk.Metadata["csharp.accessibility"]);
+        Assert.Equal<MetadataValue>("MyApp.Core", methodChunk.Metadata["csharp.namespace"]);
+        Assert.Equal<MetadataValue>("Greeter", methodChunk.Metadata["csharp.type"]);
+        Assert.Equal<MetadataValue>("Greet", methodChunk.Metadata["csharp.name"]);
+        Assert.Equal<MetadataValue>("method", methodChunk.Metadata["csharp.kind"]);
+        Assert.Equal<MetadataValue>("public", methodChunk.Metadata["csharp.accessibility"]);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class CSharpChunkingStrategyTests
 
         var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
         Assert.DoesNotContain(chunks, c =>
-            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "Private", StringComparison.Ordinal));
+            c.Metadata.TryGetValue("csharp.name", out var n) && n == "Private");
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class CSharpChunkingStrategyTests
             .ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Contains(chunks, c =>
-            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "Private", StringComparison.Ordinal));
+            c.Metadata.TryGetValue("csharp.name", out var n) && n == "Private");
     }
 
     [Fact]
@@ -134,9 +134,9 @@ public class CSharpChunkingStrategyTests
 
         var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
         var greet = chunks.Single(c =>
-            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "Greet", StringComparison.Ordinal));
+            c.Metadata.TryGetValue("csharp.name", out var n) && n == "Greet");
 
-        Assert.Equal("Says hello to the given name.", greet.Metadata["csharp.summary"]);
+        Assert.Equal<MetadataValue>("Says hello to the given name.", greet.Metadata["csharp.summary"]);
     }
 
     [Fact]
@@ -155,9 +155,9 @@ public class CSharpChunkingStrategyTests
         var chunks = await Strategy().ChunkAsync(Section(source), DefaultOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
         var names = chunks.Select(c => c.Metadata["csharp.name"]).ToList();
 
-        Assert.Contains("Outer", names, StringComparer.Ordinal);
-        Assert.Contains("Inner", names, StringComparer.Ordinal);
-        Assert.Contains("InnerMethod", names, StringComparer.Ordinal);
+        Assert.Contains((MetadataValue)"Outer", names);
+        Assert.Contains((MetadataValue)"Inner", names);
+        Assert.Contains((MetadataValue)"InnerMethod", names);
     }
 
     [Fact]
@@ -176,7 +176,7 @@ public class CSharpChunkingStrategyTests
             .ChunkAsync(Section(source), DefaultOptions, ct).ToListAsync(ct);
 
         Assert.DoesNotContain(chunks, c =>
-            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "Internal", StringComparison.Ordinal));
+            c.Metadata.TryGetValue("csharp.name", out var n) && n == "Internal");
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class CSharpChunkingStrategyTests
             .ChunkAsync(Section(source), DefaultOptions, ct).ToListAsync(ct);
 
         var method = chunks.Single(c =>
-            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "Add", StringComparison.Ordinal));
+            c.Metadata.TryGetValue("csharp.name", out var n) && n == "Add");
 
         Assert.DoesNotContain("return a + b", method.Text, StringComparison.Ordinal);
     }
@@ -242,8 +242,8 @@ public class CSharpChunkingStrategyTests
         var tinyOptions = new ChunkingOptions { MaxChunkSize = 50 };
         var chunks = await Strategy().ChunkAsync(Section(source), tinyOptions, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
         var huge = chunks.Single(c =>
-            c.Metadata.TryGetValue("csharp.name", out var n) && string.Equals(n, "HugeMethod", StringComparison.Ordinal));
+            c.Metadata.TryGetValue("csharp.name", out var n) && n == "HugeMethod");
 
-        Assert.Equal("true", huge.Metadata["csharp.oversized"]);
+        Assert.Equal<MetadataValue>("true", huge.Metadata["csharp.oversized"]);
     }
 }
