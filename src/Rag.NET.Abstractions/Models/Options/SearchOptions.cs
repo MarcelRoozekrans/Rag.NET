@@ -27,11 +27,4 @@ public sealed class SearchOptions
     /// written as a number, not the string <c>"3"</c>.
     /// </summary>
     public IDictionary<string, MetadataValue>? MetadataFilter { get; set; }
-
-    /// <summary>
-    /// Requests dense+sparse hybrid search instead of dense-only. Only meaningful for a store
-    /// that also implements <see cref="Rag.NET.Abstractions.IHybridSearchable"/>; a plain
-    /// <see cref="Rag.NET.Abstractions.IVectorStore"/> ignores it.
-    /// </summary>
-    public bool UseHybridSearch { get; set; }
 }

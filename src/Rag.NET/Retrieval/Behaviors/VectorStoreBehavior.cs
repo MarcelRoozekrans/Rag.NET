@@ -22,7 +22,6 @@ public sealed class VectorStoreBehavior : IRetrievalBehavior
             TopK = opts.TopK,
             MinScore = opts.MinScore,
             MetadataFilter = opts.MetadataFilter,
-            UseHybridSearch = opts.UseHybridSearch,
         };
 
         var queryVector = await QueryVectorResolver.ResolveAsync(opts, ctx.Query, Embedder, ct).ConfigureAwait(false);

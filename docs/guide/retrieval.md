@@ -90,7 +90,7 @@ public sealed record SearchResult
 
 `Score` semantics depend on the search mode:
 - **Semantic (pure dense):** cosine similarity in `[0, 1]` (pgvector: `1 - cosine_distance`).
-- **Hybrid via `IHybridSearchable`:** the score comes from the backend (Azure AI Search uses its own BM25+vector fusion score, not bounded to `[0, 1]`; Weaviate returns a relative-score-fusion value in `[0, 1]`).
+- **Hybrid via `IHybridSearchable`:** the score comes from the backend (Azure AI Search returns [RRF values](https://learn.microsoft.com/azure/search/hybrid-search-ranking), about `1/60` per fused query; Weaviate returns a relative-score-fusion value in `[0, 1]`).
 - **Hybrid via in-memory BM25 fallback:** Reciprocal Rank Fusion score, typically in `(0, 0.05]`.
 
 ## Semantic search
@@ -121,13 +121,15 @@ var results = await pipeline.RetrieveAsync("ISO 27001 compliance checklist", new
 
 ### How the hybrid path is selected
 
-The pipeline inspects the registered `IVectorStore` at retrieval time:
+The pipeline inspects the registered `IVectorStore` at retrieval time and dispatches to the store's native server-side hybrid query **only when the call configures nothing native fusion cannot express** — a native backend call cannot apply `EnsembleOptions` weights, cannot run a sparse (SPLADE) arm, and would apply `MinScore` to its own fusion-score scale instead of the dense arm's similarity scale:
 
 ```mermaid
 flowchart TD
     Q["UseHybridSearch = true"] --> CHECK{IVectorStore implements<br>IHybridSearchable?}
-    CHECK -- yes --> NATIVE["HybridSearchAsync()<br>backend handles fusion natively<br>e.g. Azure AI Search"]
-    CHECK -- no --> FALLBACK["Dense search + in-memory BM25<br>run concurrently"]
+    CHECK -- yes --> EXPR{"Nothing configured beyond<br>what native can express?<br>(no sparse arm, no EnsembleOptions,<br>MinScore = 0)"}
+    CHECK -- no --> FALLBACK["Dense search + in-memory BM25<br>(+ sparse arm when active)<br>run concurrently"]
+    EXPR -- yes --> NATIVE["HybridSearchAsync()<br>backend handles fusion natively<br>e.g. Azure AI Search, Weaviate"]
+    EXPR -- no --> FALLBACK
     FALLBACK --> RRF["RRF merge<br>Reciprocal Rank Fusion"]
 
     style FALLBACK fill:#e8f4fd,stroke:#4a90d9
@@ -136,10 +138,13 @@ flowchart TD
 
 | Condition | Behaviour |
 |-----------|-----------|
-| `IVectorStore` also implements `IHybridSearchable` | Calls `HybridSearchAsync` — the backend handles fusion natively |
-| `IVectorStore` does not implement `IHybridSearchable` | Dense search and in-memory BM25 run concurrently; results merged via Reciprocal Rank Fusion |
+| Store implements `IHybridSearchable`, **and** no sparse arm would run, **and** `EnsembleOptions` is not supplied, **and** `MinScore` is `0.0` | Calls `HybridSearchAsync` — the backend handles fusion natively in a single call; scores are on the backend's fusion scale |
+| Store implements `IHybridSearchable`, but the call supplies `EnsembleOptions` (even default-valued), a non-zero `MinScore`, or a sparse arm would run | Client-side fusion, so the configured weights, threshold semantics, and sparse arm all apply |
+| Store does not implement `IHybridSearchable` | Dense search and in-memory BM25 (and, when active, sparse) run concurrently; results merged via Reciprocal Rank Fusion |
 
-Azure AI Search and Weaviate implement `IHybridSearchable` and perform server-side BM25+vector fusion. pgvector and Qdrant do not; they fall back to the in-memory BM25 index maintained by `RagPipeline`.
+Azure AI Search and Weaviate implement `IHybridSearchable` and perform server-side BM25+vector fusion. pgvector and Qdrant do not; they fall back to the in-memory BM25 index maintained by `RagPipeline`. The probe is on the registered `IVectorStore` instance itself — a decorator that does not forward `IHybridSearchable` (e.g. `ResilientVectorStore`, `FederatedVectorStore`) keeps the client-side path.
+
+Which path served a query is observable without a debugger: the `ragnet.retrieve` activity carries a `retrieval.hybrid.path` tag (`native` or `client`), and the native path logs a debug event `ensemble_native_hybrid` naming the store. The two paths return scores on different scales (the backend's fusion scale vs. client-side RRF values around `0.016`), so telling them apart matters when reading scores.
 
 ### In-memory BM25 index
 
@@ -1014,7 +1019,7 @@ Read the output before changing anything:
 
 > **`MinScore` is an absolute floor, and it is easy to set too high.** It is a raw similarity from the embedding model, not a percentage or a calibrated confidence, and the value that means "clearly relevant" differs per model. In a measured example (`nomic-embed-text`, `tests/Rag.NET.E2ETests/AddressRetrievalReproTests.cs`) a chunk reading `Address: Keizersgracht 123, 1015 CJ Amsterdam` scored **0.525** against the query *"What is my address?"* — clearing a `MinScore` of `0.5` by 0.025 — while a decoy reading *"delivery addresses cannot be changed"* scored **0.640** and outranked it. Start at `0.0` and raise it only once you have looked at real scores for your own model and corpus.
 
-> **`MinScore` means something different under hybrid search.** With `UseHybridSearch = true`, `EnsembleBehavior` passes `MinScore` to the **dense arm only**. BM25 hits bypass it entirely, so a chunk below the floor can still be returned if it matches a query keyword. The results are then re-scored by reciprocal rank fusion, so the `Score` you get back is an RRF value — on the order of `0.016`, not a similarity — and comparing it against your own `MinScore` will not make sense. Treat `Score` as ordinal whenever hybrid search is on; see `IScoreScaleAware` and `ScoreScale.OpaqueRanking`.
+> **`MinScore` means something different under hybrid search.** With `UseHybridSearch = true`, a non-zero `MinScore` forces the client-side fusion path (a native backend would apply it to its own fusion-score scale — on Azure AI Search that scale is RRF values around `0.016`, so a similarity-tuned threshold would silently empty the results). On that client-side path, `EnsembleBehavior` passes `MinScore` to the dense and sparse arms against their own score scales; BM25 hits bypass it entirely, so a chunk below the floor can still be returned if it matches a query keyword. The results are then re-scored by reciprocal rank fusion, so the `Score` you get back is an RRF value — on the order of `0.016`, not a similarity — and comparing it against your own `MinScore` will not make sense. Treat `Score` as ordinal whenever hybrid search is on; see `IScoreScaleAware` and `ScoreScale.OpaqueRanking`.
 
 ## SQLite Persistence
 

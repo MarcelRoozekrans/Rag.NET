@@ -106,7 +106,7 @@ public interface IVectorStore
 }
 ```
 
-`SearchOptions` carries `TopK`, `MinScore`, `MetadataFilter`, and `UseHybridSearch`. The `UseHybridSearch` flag in `SearchOptions` is used by `IHybridSearchable` implementations; stores that do not implement that interface ignore it (the pipeline handles routing before calling `SearchAsync`).
+`SearchOptions` carries `TopK`, `MinScore`, and `MetadataFilter`. Hybrid routing is not part of it: the pipeline decides between `SearchAsync` and `IHybridSearchable.HybridSearchAsync` *before* calling the store (see [Retrieval — How the hybrid path is selected](retrieval.md#how-the-hybrid-path-is-selected)), so a store implementation never sees a hybrid flag.
 
 ### Typed metadata
 
@@ -415,7 +415,7 @@ await store!.InitializeAsync();
 
 ### Native hybrid search
 
-When `UseHybridSearch = true` and `AzureAISearchVectorStore` is registered, the pipeline calls `HybridSearchAsync` directly. This issues a single Azure AI Search request with both a full-text query and a vectorised query, letting the service perform BM25+vector fusion:
+When `UseHybridSearch = true`, `AzureAISearchVectorStore` is registered, and the call configures nothing the backend cannot express — no sparse (SPLADE) arm would run, no `EnsembleOptions`, `MinScore` left at `0.0` — the pipeline calls `HybridSearchAsync`. This issues a single Azure AI Search request with both a full-text query and a vectorised query, letting the service perform BM25+vector fusion (the [dispatch rule](retrieval.md#how-the-hybrid-path-is-selected) in full):
 
 ```csharp
 var results = await pipeline.RetrieveAsync("ISO 27001 audit requirements", new RetrievalOptions
@@ -425,7 +425,7 @@ var results = await pipeline.RetrieveAsync("ISO 27001 audit requirements", new R
 });
 ```
 
-The returned scores are Azure AI Search's internal BM25+vector fusion scores, not cosine similarities. They are positive and unbounded above; `SearchOptions.MinScore` is still applied to them store-side, but tune it against these fusion scores rather than reusing a cosine threshold. This is the hybrid path only — plain `SearchAsync` issues a pure vector query whose score is a bounded function of the similarity metric, which is why the store is treated as similarity-scaled (see [Score scale](#score-scale-iscorescaleaware)).
+The returned scores are Azure AI Search's own hybrid fusion values — [Reciprocal Rank Fusion](https://learn.microsoft.com/azure/search/hybrid-search-ranking): each fused query contributes at most about `1/60`, so a two-arm hybrid score tops out around `0.033`. Not cosine similarities, and exactly why a configured `MinScore` keeps the client-side path: a similarity-tuned threshold applied store-side to RRF values would silently return nothing. Callers invoking `HybridSearchAsync` directly should tune `SearchOptions.MinScore` against the RRF scale or leave it at `0.0`. This is the hybrid path only — plain `SearchAsync` issues a pure vector query whose score is a bounded function of the similarity metric, which is why the store is treated as similarity-scaled (see [Score scale](#score-scale-iscorescaleaware)).
 
 ### Metadata filtering
 
@@ -513,7 +513,7 @@ Dense search maps Weaviate's cosine `distance` (0 = identical … 2 = opposite) 
 
 ### Native hybrid search
 
-When `UseHybridSearch = true`, the pipeline calls `HybridSearchAsync` directly — a single GraphQL `hybrid: {query, vector}` request lets Weaviate fuse BM25 and vector rankings server-side, so a chunk that matches only by keyword is still found. See [Retrieval — Hybrid search](retrieval.md#hybrid-search-bm25--vector).
+When `UseHybridSearch = true` and the call configures nothing the backend cannot express — no sparse (SPLADE) arm would run, no `EnsembleOptions`, `MinScore` left at `0.0` — the pipeline calls `HybridSearchAsync`: a single GraphQL `hybrid: {query, vector}` request lets Weaviate fuse BM25 and vector rankings server-side, so a chunk that matches only by keyword is still found. The returned scores are Weaviate's relative-score-fusion values in `[0, 1]`, not cosine similarities. See [Retrieval — How the hybrid path is selected](retrieval.md#how-the-hybrid-path-is-selected) for the dispatch rule in full.
 
 ### Metadata filtering and auto-schema
 
@@ -741,7 +741,7 @@ At least two stores are required (validated at registration). Store factories re
 
 The declaration describes `IVectorStore.SearchAsync` — the interface `IScoreScaleAware` sits on — not any capability method the store also happens to offer. Consumers probe with `store is IScoreScaleAware { ScoreScale: ScoreScale.OpaqueRanking }`. Every other store in the library is unchanged and continues to be treated as similarity-scaled, so `SearchOptions.MinScore` on the retrieval path behaves exactly as before; the probe currently affects persistent conversation memory only.
 
-Azure AI Search was evaluated and deliberately left undeclared (i.e. similarity): its `SearchAsync` issues a pure vector query, whose `@search.score` is a bounded monotone function of the similarity metric and is thresholdable. Its **hybrid** scores (`HybridSearchAsync`) are a different matter — positive and unbounded — but no consumer thresholds them with a fixed cut-off, and `IScoreScaleAware` describes the dense path only.
+Azure AI Search was evaluated and deliberately left undeclared (i.e. similarity): its `SearchAsync` issues a pure vector query, whose `@search.score` is a bounded monotone function of the similarity metric and is thresholdable. Its **hybrid** scores (`HybridSearchAsync`) are a different matter — RRF values around `1/60` per fused query — but `IScoreScaleAware` describes the dense path only, and the pipeline's hybrid dispatch never applies a non-zero `MinScore` to them (a configured `MinScore` keeps the client-side path).
 
 ### Limitations
 

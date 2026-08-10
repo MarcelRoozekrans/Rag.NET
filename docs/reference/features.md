@@ -207,7 +207,7 @@ Combine results from multiple retrievers (e.g., BM25 + dense vector) using Recip
 
 **Why:** RRF consistently outperforms individual retrievers by combining rank signals.
 
-**Status:** ✅ Done
+**Status:** ✅ Done. `EnsembleBehavior` fuses dense/BM25/(sparse) arms client-side with weighted RRF. Since native-hybrid dispatch landed, a store implementing `IHybridSearchable` (Azure AI Search, Weaviate) serves the hybrid call server-side instead **when nothing native fusion cannot express is configured** — supplying `EnsembleOptions`, a non-zero `MinScore`, or an active sparse arm keeps the client-side ensemble. The chosen path is observable via the `retrieval.hybrid.path` activity tag.
 
 ---
 
