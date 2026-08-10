@@ -42,6 +42,21 @@
       "allowedVersions": "<2.0.0"
     },
     {
+      "description": "Microsoft.SemanticKernel is held below 1.79.0 because 1.79.0 moved to Microsoft.Extensions.VectorData.Abstractions >= 10.5.2, and 10.5.0 removed VectorSearchFilter — a type Microsoft.SemanticKernel.Connectors.InMemory still binds to. SK and that connector must therefore move together, and the connector cannot move: 1.74.0-preview is the newest ever published, so it is stale upstream rather than merely behind. Verified by inspecting the assemblies (VectorSearchFilter is present in 10.1.0, absent from 10.5.0 onwards) and the nuspecs (SK.Abstractions requires 10.1.0 through 1.78.0, and 10.5.2 from 1.79.0). Restore succeeded either way; the break appeared only at runtime as TypeLoadException, and only in the gated Phase 5.1 cost benchmark, where the Semantic Kernel entrant failed all three measurement rounds while every other entrant ran. Nothing else exercises this, so nothing else could have reported it. VectorData.Abstractions is pinned to 10.1.0 alongside for the same reason; it has exactly one consumer, Rag.NET.Benchmarks.Quality.IntegrationTests, and no published package depends on either, so neither pin costs anything shipped. Lift both when Connectors.InMemory publishes against 10.5.0 or later.",
+      "matchPackageNames": ["Microsoft.SemanticKernel", "Microsoft.SemanticKernel.Connectors.InMemory", "Microsoft.Extensions.VectorData.Abstractions"],
+      "groupName": "semantic-kernel"
+    },
+    {
+      "description": "Held with the semantic-kernel group above: 10.5.0 removed VectorSearchFilter, which Connectors.InMemory 1.74.0-preview still binds to.",
+      "matchPackageNames": ["Microsoft.Extensions.VectorData.Abstractions"],
+      "allowedVersions": "<10.5.0"
+    },
+    {
+      "description": "Held with the semantic-kernel group above: 1.79.0 requires VectorData.Abstractions >= 10.5.2, which no longer carries the type its own InMemory connector needs.",
+      "matchPackageNames": ["Microsoft.SemanticKernel"],
+      "allowedVersions": "<1.79.0"
+    },
+    {
       "description": "Microsoft.Graph and Microsoft.Kiota.Abstractions must move together: Graph pins a Kiota major internally, so bumping Graph alone produces a PR that cannot restore. Renovate's first Graph v6 PR (#26) failed exactly this way with NU1605 on every project — Graph 6.2.0 wants Kiota >= 2.0.0 while the repository pinned 1.22.0.",
       "matchPackageNames": ["Microsoft.Graph", "Microsoft.Kiota.Abstractions"],
       "groupName": "microsoft-graph"

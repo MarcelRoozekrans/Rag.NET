@@ -53,13 +53,13 @@
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Resilience" Version="10.8.0" />
-    <PackageVersion Include="Microsoft.Extensions.VectorData.Abstractions" Version="10.8.2" />
+    <PackageVersion Include="Microsoft.Extensions.VectorData.Abstractions" Version="10.1.0" />
     <PackageVersion Include="Microsoft.Graph" Version="6.5.0" />
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.28.0" />
     <PackageVersion Include="Microsoft.ML.Tokenizers" Version="1.0.3" />
     <PackageVersion Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" Version="1.0.3" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
-    <PackageVersion Include="Microsoft.SemanticKernel" Version="1.79.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel" Version="1.78.0" />
     <PackageVersion Include="Microsoft.SemanticKernel.Connectors.InMemory" Version="1.74.0-preview" />
     <PackageVersion Include="MimeKit" Version="4.17.0" />
     <PackageVersion Include="ModelContextProtocol" Version="2.1.0" />
