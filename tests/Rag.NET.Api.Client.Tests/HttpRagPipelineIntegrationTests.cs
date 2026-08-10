@@ -169,7 +169,7 @@ public sealed class HttpRagPipelineIntegrationTests : IAsyncLifetime
             deltas.Add(update.TextDelta);
         }
 
-        Assert.Contains("Hello", deltas);
-        Assert.Contains(" World", deltas);
+        Assert.Contains("Hello", deltas, StringComparer.Ordinal);
+        Assert.Contains(" World", deltas, StringComparer.Ordinal);
     }
 }

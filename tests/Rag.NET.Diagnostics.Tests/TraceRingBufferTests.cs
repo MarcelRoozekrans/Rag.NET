@@ -19,7 +19,7 @@ public sealed class TraceRingBufferTests
         // Newest first, oldest evicted. A debugger is read immediately after the request,
         // so recency is the ordering that matters.
         string[] expected = ["trace-4", "trace-3", "trace-2"];
-        Assert.Equal(expected, buffer.Snapshot().Select(t => t.TraceId));
+        Assert.Equal(expected, buffer.Snapshot().Select(t => t.TraceId), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -30,7 +30,7 @@ public sealed class TraceRingBufferTests
         buffer.Add(TraceWithId("b"));
 
         string[] expected = ["b", "a"];
-        Assert.Equal(expected, buffer.Snapshot().Select(t => t.TraceId));
+        Assert.Equal(expected, buffer.Snapshot().Select(t => t.TraceId), StringComparer.Ordinal);
     }
 
     [Fact]

@@ -56,7 +56,7 @@ public class RagTelemetrySourceCrossAssemblyTests
             .Select(a => a.OperationName)
             .ToList();
 
-        Assert.Contains("cross-assembly.core", names);
-        Assert.Contains("cross-assembly.probe", names);
+        Assert.Contains("cross-assembly.core", names, StringComparer.Ordinal);
+        Assert.Contains("cross-assembly.probe", names, StringComparer.Ordinal);
     }
 }

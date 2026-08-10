@@ -9,14 +9,17 @@ namespace Rag.NET.Parsers.Audio;
 
 public class AudioDocumentParser : IDocumentParser, IDeclaresContentTypes
 {
-    private static readonly HashSet<string> SupportedTypes =
-    [
+    // Ordinal stated rather than defaulted (MA0002). A collection expression cannot carry a
+    // comparer, so the set is constructed explicitly. Ordinal is what HashSet<string> already
+    // used, so behaviour is unchanged -- these are IANA media types compared verbatim.
+    private static readonly HashSet<string> SupportedTypes = new(StringComparer.Ordinal)
+    {
         "audio/wav",
         "audio/mpeg",
         "audio/flac",
         "audio/ogg",
         "audio/mp4",
-    ];
+    };
 
     /// <inheritdoc/>
     public static IReadOnlyCollection<string> ContentTypes => SupportedTypes;

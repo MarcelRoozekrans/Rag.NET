@@ -128,9 +128,9 @@ public class ParseBehaviorTests
 
         await sut.HandleAsync(ctx, ct, StubNext);
 
-        Assert.DoesNotContain("heading", chunk.Metadata.Keys);
-        Assert.DoesNotContain("heading_level", chunk.Metadata.Keys);
-        Assert.DoesNotContain("heading_breadcrumb", chunk.Metadata.Keys);
+        Assert.DoesNotContain("heading", chunk.Metadata.Keys, StringComparer.Ordinal);
+        Assert.DoesNotContain("heading_level", chunk.Metadata.Keys, StringComparer.Ordinal);
+        Assert.DoesNotContain("heading_breadcrumb", chunk.Metadata.Keys, StringComparer.Ordinal);
     }
 
     [Fact]

@@ -125,7 +125,7 @@ public sealed class LocalFilesDataProviderTests : IDisposable
 
         var sut = new LocalFilesDataProvider(_dir, new LocalFilesOptions
         {
-            Filter = path => !path.Contains("skip"),
+            Filter = path => !path.Contains("skip", StringComparison.Ordinal),
         });
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);

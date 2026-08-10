@@ -113,7 +113,7 @@ public class CostTrackingChatClientTests
 
         await sut.GetResponseAsync(Messages("hi"), cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(new[] { "ledger-read:Month", "ledger-record" }, log);
+        Assert.Equal(new[] { "ledger-read:Month", "ledger-record" }, log, StringComparer.Ordinal);
     }
 
     // ── Recording: provider usage vs estimation ──────────────────────────────

@@ -67,7 +67,7 @@ public sealed class TraceCommitTests
         Assert.Equal(Answer, trace.Answer);
 
         string[] expectedStages = ["ragnet.retrieve", "ragnet.ask", "ragnet.query"];
-        Assert.Equal(expectedStages, trace.Stages.Select(s => s.Name));
+        Assert.Equal(expectedStages, trace.Stages.Select(s => s.Name), StringComparer.Ordinal);
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public sealed class TraceCommitTests
         // trace at one identifiable moment — see AFanOutRetrieveOnlyCall_* for the case that made
         // leaving it out wrong rather than merely redundant.
         string[] expectedStages = ["ragnet.retrieve", "ragnet.query"];
-        Assert.Equal(expectedStages, trace.Stages.Select(s => s.Name));
+        Assert.Equal(expectedStages, trace.Stages.Select(s => s.Name), StringComparer.Ordinal);
 
         // And nothing is left half-assembled: the ceiling bounds a leak, it does not excuse one.
         Assert.Null(collector.Current(trace.TraceId));
@@ -122,11 +122,11 @@ public sealed class TraceCommitTests
         var trace = Assert.Single(buffer.Snapshot());
 
         string[] expectedStages = ["ragnet.retrieve", "ragnet.retrieve", "ragnet.retrieve", "ragnet.query"];
-        Assert.Equal(expectedStages, trace.Stages.Select(s => s.Name));
+        Assert.Equal(expectedStages, trace.Stages.Select(s => s.Name), StringComparer.Ordinal);
 
         // Every retrieval's chunks are in the one trace rather than scattered across three.
         string[] expectedChunks = [Query, "sub-question 1", "sub-question 2"];
-        Assert.Equal(expectedChunks, trace.Chunks.Select(c => c.DocumentId));
+        Assert.Equal(expectedChunks, trace.Chunks.Select(c => c.DocumentId), StringComparer.Ordinal);
 
         // The headline question is the one the user asked, not the last sub-query the fan-out
         // generated. Chunks accumulate across retrievals; the query does not. Getting this wrong
@@ -225,7 +225,7 @@ public sealed class TraceCommitTests
         var trace = Assert.Single(buffer.Snapshot());
 
         string[] expectedStages = ["ragnet.retrieve", "ragnet.ask", "ragnet.query"];
-        Assert.Equal(expectedStages, trace.Stages.Select(s => s.Name));
+        Assert.Equal(expectedStages, trace.Stages.Select(s => s.Name), StringComparer.Ordinal);
         Assert.Equal(Query, trace.Query);
         Assert.Single(trace.Chunks);
 

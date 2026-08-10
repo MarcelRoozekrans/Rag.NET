@@ -19,7 +19,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForEmbedding("hello");
         var key2 = CacheKeyGenerator.ForEmbedding("world");
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("query", new RetrievalOptions { TopK = 5 });
         var key2 = CacheKeyGenerator.ForResult("query", new RetrievalOptions { TopK = 10 });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public class CacheKeyGeneratorTests
         var opts = new RetrievalOptions();
         var key1 = CacheKeyGenerator.ForResult("query1", opts);
         var key2 = CacheKeyGenerator.ForResult("query2", opts);
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public class CacheKeyGeneratorTests
         {
             MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["dept"] = "eng" }
         });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Theory]
@@ -79,7 +79,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { MinScore = score1 });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { MinScore = score2 });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseHybridSearch = false });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseHybridSearch = true });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseRedundancyFilter = false });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseRedundancyFilter = true });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseMultiQuery = false });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseMultiQuery = true });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseReranking = false });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseReranking = true });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseHyde = false });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseHyde = true });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -127,7 +127,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { CandidateCount = 10 });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { CandidateCount = 20 });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { RedundancyThreshold = 0.9f });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { RedundancyThreshold = 0.8f });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseLostInTheMiddleReordering = false });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseLostInTheMiddleReordering = true });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public class CacheKeyGeneratorTests
     {
         var key1 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseParentDocument = false });
         var key2 = CacheKeyGenerator.ForResult("q", new RetrievalOptions { UseParentDocument = true });
-        Assert.NotEqual(key1, key2);
+        Assert.NotEqual(key1, key2, StringComparer.Ordinal);
     }
 
     [Fact]

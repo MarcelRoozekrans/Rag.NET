@@ -142,7 +142,7 @@ public class ZipDocumentParserTests
 
         var sections = await parser.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
 
-        Assert.Equal([NotesText, PageText], sections.Select(s => s.Text));
+        Assert.Equal([NotesText, PageText], sections.Select(s => s.Text), StringComparer.Ordinal);
 
         // Stamped once, by this parser, across every entry — the entry parsers each numbered their
         // own section 0.
@@ -175,7 +175,7 @@ public class ZipDocumentParserTests
 
         var sections = await parser.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
 
-        Assert.Equal([NotesText], sections.Select(s => s.Text));
+        Assert.Equal([NotesText], sections.Select(s => s.Text), StringComparer.Ordinal);
         var received = Assert.Single(text.ReceivedMetadata);
 
         // The '/' in the entry name is sanitised out — hygiene, because this name reaches metadata.
@@ -233,7 +233,7 @@ public class ZipDocumentParserTests
 
         var sections = await parser.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
 
-        Assert.Equal([NotesText], sections.Select(s => s.Text));
+        Assert.Equal([NotesText], sections.Select(s => s.Text), StringComparer.Ordinal);
         var received = Assert.Single(text.ReceivedMetadata);
         Assert.Equal("text/plain", received.ContentType);
 
@@ -259,7 +259,7 @@ public class ZipDocumentParserTests
 
         var sections = await parser.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
 
-        Assert.Equal([NotesText], sections.Select(s => s.Text));
+        Assert.Equal([NotesText], sections.Select(s => s.Text), StringComparer.Ordinal);
         Assert.Contains(
             logger.Warnings,
             w => w.Contains("application/octet-stream", StringComparison.Ordinal) &&
@@ -285,7 +285,7 @@ public class ZipDocumentParserTests
 
         var sections = await parser.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
 
-        Assert.Equal(["first", "last"], sections.Select(s => s.Text));
+        Assert.Equal(["first", "last"], sections.Select(s => s.Text), StringComparer.Ordinal);
         Assert.Equal([0, 1], sections.Select(s => s.SectionIndex));
         Assert.Contains(
             logger.Warnings,
@@ -312,7 +312,7 @@ public class ZipDocumentParserTests
 
         Assert.Equal(
             [ThrowingParser.YieldedText, ThrowingParser.YieldedText, "last"],
-            sections.Select(s => s.Text));
+            sections.Select(s => s.Text), StringComparer.Ordinal);
         Assert.Equal([0, 1, 2], sections.Select(s => s.SectionIndex));
     }
 
@@ -376,7 +376,7 @@ public class ZipDocumentParserTests
 
         var sections = await parser.ParseAsync(stream, CreateMetadata(), ct).ToListAsync(ct);
 
-        Assert.Equal(["a", "b"], sections.Select(s => s.Text));
+        Assert.Equal(["a", "b"], sections.Select(s => s.Text), StringComparer.Ordinal);
     }
 
     // ── The byte bounds, through the parser rather than the stream ───────────

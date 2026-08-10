@@ -98,7 +98,7 @@ public sealed class BeirLoaderTests : IDisposable
     {
         var documents = BeirLoader.LoadCorpus(At("scifact/corpus.jsonl"));
 
-        Assert.Equal(["doc-1", "doc-2", "doc-3"], documents.Select(static document => document.Id));
+        Assert.Equal(["doc-1", "doc-2", "doc-3"], documents.Select(static document => document.Id), StringComparer.Ordinal);
         Assert.Equal("Cerebral white matter", documents[0].Title, StringComparer.Ordinal);
         Assert.Equal("Alterations of the architecture.", documents[0].Text, StringComparer.Ordinal);
     }
@@ -139,7 +139,7 @@ public sealed class BeirLoaderTests : IDisposable
     {
         var queries = BeirLoader.LoadQueries(At("scifact/queries.jsonl"));
 
-        Assert.Equal(["q-1", "q-2"], queries.Select(static query => query.Id));
+        Assert.Equal(["q-1", "q-2"], queries.Select(static query => query.Id), StringComparer.Ordinal);
         Assert.Equal(
             "0-dimensional biomaterials lack inductive properties.", queries[0].Text, StringComparer.Ordinal);
     }

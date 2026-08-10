@@ -245,8 +245,8 @@ public class ReindexStaleTests
             versionStore, embedder, vectorStore, dataManager, cancellationToken: ct);
 
         Assert.Equal(2, result.Reindexed.Count);
-        Assert.Contains("doc-1", result.Reindexed);
-        Assert.Contains("doc-3", result.Reindexed);
+        Assert.Contains("doc-1", result.Reindexed, StringComparer.Ordinal);
+        Assert.Contains("doc-3", result.Reindexed, StringComparer.Ordinal);
         var failure = Assert.Single(result.Failed);
         Assert.Equal("doc-2", failure.DocumentId);
         Assert.Contains("chunks boom", failure.Error, StringComparison.Ordinal);
