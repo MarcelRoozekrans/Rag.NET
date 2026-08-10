@@ -1,8 +1,10 @@
 using Microsoft.Extensions.AI;
+using ZeroAlloc.Validation;
 
 namespace Rag.NET.GraphRag;
 
 /// <summary>Configuration for GraphRAG ingestion behaviors.</summary>
+[Validate]
 public sealed class GraphRagOptions
 {
     /// <summary>Toggle GraphRAG on/off. Default: true.</summary>
@@ -17,7 +19,18 @@ public sealed class GraphRagOptions
     /// <summary>Constrain relationship extraction to these types. Null = open. Default: null.</summary>
     public string[]? RelationshipTypes { get; set; }
 
-    /// <summary>Trigger LLM summarization when accumulated entity description exceeds this length. Default: 500.</summary>
+    /// <summary>
+    /// Trigger LLM summarization when accumulated entity description exceeds this length. Default: 500.
+    /// <para>
+    /// Must be greater than 0 — enforced by the validation attribute, which
+    /// <c>UseGraphRag</c> runs through the generated <c>GraphRagOptionsValidator</c> at
+    /// registration. <c>GraphEntityExtractionBehavior</c> truncates descriptions with
+    /// <c>description[..MaxEntityDescriptionLength]</c>, so a negative threshold throws
+    /// mid-ingestion on the first extracted entity, and zero silently truncates every entity
+    /// description to the empty string.
+    /// </para>
+    /// </summary>
+    [GreaterThan(0)]
     public int MaxEntityDescriptionLength { get; set; } = 500;
 
     /// <summary>LLM prompt template for entity/relationship extraction. {text} is replaced with chunk text.</summary>

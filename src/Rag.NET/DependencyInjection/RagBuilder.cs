@@ -67,26 +67,42 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// <see cref="ChunkingOptions.MaxChunkSize"/> — the generated validator covers both, the
     /// second through <see cref="ChunkingOptions.ValidateOverlapFitsChunk"/>.
     /// </exception>
-    private static void ValidateChunkingOptions(ChunkingOptions options)
-    {
-        var result = new ChunkingOptionsValidator().Validate(options);
-        if (!result.IsValid)
-        {
-            // Projected by index into an array, the shape PipelineIngestor.MapFailures uses:
-            // ValidationFailure is a non-readonly struct, so enumerating it by value trips EPS06
-            // on the hidden copy, while a bare indexed loop over the span trips HLQ013.
-            var failures = result.Failures;
-            var described = new string[failures.Length];
-            for (var i = 0; i < failures.Length; i++)
-            {
-                described[i] = $"{failures[i].PropertyName} — {failures[i].ErrorMessage}";
-            }
+    private static void ValidateChunkingOptions(ChunkingOptions options) =>
+        ThrowIfInvalid(new ChunkingOptionsValidator().Validate(options), nameof(options), "chunking");
 
-            throw new ArgumentException(
-                "The chunking options configured here are invalid: " +
-                string.Join("; ", described),
-                nameof(options));
+    /// <summary>
+    /// Rejects any invalid options object at the line that configured it, with a stack trace
+    /// pointing at the caller's registration rather than at some later call that happens to
+    /// consume the singleton — the lesson of issue #90, applied uniformly to every options
+    /// type a <c>Use*</c> method registers (see <see cref="ValidateChunkingOptions"/> for the
+    /// original case).
+    /// </summary>
+    /// <param name="result">The generated validator's verdict on the configured options.</param>
+    /// <param name="paramName">The caller's options parameter, for <see cref="ArgumentException.ParamName"/>.</param>
+    /// <param name="description">What was being configured, for the failure message.</param>
+    /// <exception cref="ArgumentException">The options violate a declared constraint.</exception>
+    private static void ThrowIfInvalid(
+        ZeroAlloc.Validation.ValidationResult result, string paramName, string description)
+    {
+        if (result.IsValid)
+        {
+            return;
         }
+
+        // Projected by index into an array, the shape PipelineIngestor.MapFailures uses:
+        // ValidationFailure is a non-readonly struct, so enumerating it by value trips EPS06
+        // on the hidden copy, while a bare indexed loop over the span trips HLQ013.
+        var failures = result.Failures;
+        var described = new string[failures.Length];
+        for (var i = 0; i < failures.Length; i++)
+        {
+            described[i] = $"{failures[i].PropertyName} — {failures[i].ErrorMessage}";
+        }
+
+        throw new ArgumentException(
+            $"The {description} options configured here are invalid: " +
+            string.Join("; ", described),
+            paramName);
     }
 
     /// <summary>
@@ -301,9 +317,16 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// delegate has no effect.
     /// </remarks>
     /// <param name="options">Optional options; defaults to <see cref="DeepResearchOptions"/> defaults.</param>
+    /// <exception cref="ArgumentException">
+    /// <see cref="DeepResearchOptions.MaxDepth"/> or <see cref="DeepResearchOptions.SubQueryCount"/>
+    /// is not positive — the generated <c>DeepResearchOptionsValidator</c> rejects the
+    /// registration at the configuring line, per the constraints documented on those properties.
+    /// </exception>
     public RagBuilder UseDeepResearch(DeepResearchOptions? options = null)
     {
-        Services.AddSingleton(options ?? new DeepResearchOptions());
+        var effective = options ?? new DeepResearchOptions();
+        ThrowIfInvalid(new DeepResearchOptionsValidator().Validate(effective), nameof(options), "deep-research");
+        Services.AddSingleton(effective);
         return this;
     }
 
@@ -319,9 +342,17 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// When both <c>UseDeepResearch</c> and <c>UseTagRetrieval</c> are configured,
     /// the stacking order is <c>TagRetriever → DeepResearchRetriever → PipelineRetriever</c>.
     /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// <see cref="TagRetrievalOptions.TopK"/> is not positive, or
+    /// <see cref="TagRetrievalOptions.MinScore"/> is outside the cosine range — the generated
+    /// <c>TagRetrievalOptionsValidator</c> rejects the registration at the configuring line,
+    /// per the constraints documented on those properties.
+    /// </exception>
     public RagBuilder UseTagRetrieval(TagRetrievalOptions? options = null)
     {
-        Services.AddSingleton(options ?? new TagRetrievalOptions());
+        var effective = options ?? new TagRetrievalOptions();
+        ThrowIfInvalid(new TagRetrievalOptionsValidator().Validate(effective), nameof(options), "tag-retrieval");
+        Services.AddSingleton(effective);
         Services.TryAddSingleton<ITagIndex, InMemoryTagIndex>();
         return this;
     }
@@ -340,9 +371,16 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// <c>TagRetriever → TimeWeightedRetriever → DeepResearchRetriever → PipelineRetriever</c>.
     /// Per-call opt-out: pass <c>new RetrievalOptions { UseTimeWeighting = false }</c>.
     /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// <see cref="TimeWeightedOptions.DecayRate"/> is negative or not finite — the generated
+    /// <c>TimeWeightedOptionsValidator</c> rejects the registration at the configuring line,
+    /// per the constraint documented on that property.
+    /// </exception>
     public RagBuilder UseTimeWeighting(TimeWeightedOptions? options = null)
     {
-        Services.AddSingleton(options ?? new TimeWeightedOptions());
+        var effective = options ?? new TimeWeightedOptions();
+        ThrowIfInvalid(new TimeWeightedOptionsValidator().Validate(effective), nameof(options), "time-weighting");
+        Services.AddSingleton(effective);
         return this;
     }
 

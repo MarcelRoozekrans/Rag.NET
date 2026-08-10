@@ -159,6 +159,7 @@ public sealed partial class DocumentedConstraintGuardTests
     /// <param name="shape">How the enforcement is written, for the failure message.</param>
     [Theory]
     [InlineData("ChunkingOptions", "MaxChunkSize", "a ZeroAlloc [GreaterThan] attribute in a [Validate] class")]
+    [InlineData("TimeWeightedOptions", "DecayRate", "a ZeroAlloc [GreaterThanOrEqualTo] attribute in a [Validate] class")]
     [InlineData("RetrievalOptions", "RedundancyThreshold", "a ZeroAlloc [InclusiveBetween] attribute in a [Validate] record")]
     [InlineData("MultiQueryOptions", "VariantCount", "a member-access comparison in UseMultiQueryRetrieval (RagBuilderExtensions)")]
     [InlineData("CostBudgetOptions", "InputPricePerMTokens", "a ThrowIf* helper naming the property")]
@@ -517,9 +518,16 @@ public sealed partial class DocumentedConstraintGuardTests
     private static partial Regex ConstraintClaim();
 
     /// <summary>Matches a ZeroAlloc numeric validation attribute on a property declaration.</summary>
+    /// <remarks>
+    /// The <c>OrEqualTo</c> forms are spelled out because the alternation requires an opening
+    /// parenthesis immediately after the name: the earlier <c>GreaterThanOrEqual</c> branch
+    /// could never match ZeroAlloc's actual <c>[GreaterThanOrEqualTo(…)]</c> — the stray
+    /// <c>To</c> broke it — so a property enforced that way earned no attribute credit until
+    /// this was widened (the same widening <c>[InclusiveBetween]</c> once needed).
+    /// </remarks>
     /// <returns>The compiled matcher.</returns>
     [GeneratedRegex(
-        @"\[(?:GreaterThan|GreaterThanOrEqual|LessThan|LessThanOrEqual|InclusiveBetween|ExclusiveBetween|Range|InRange|Between|Min|Max)\(",
+        @"\[(?:GreaterThan|GreaterThanOrEqualTo|LessThan|LessThanOrEqualTo|InclusiveBetween|ExclusiveBetween|Range|InRange|Between|Min|Max)\(",
         RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex ValidationAttribute();
 

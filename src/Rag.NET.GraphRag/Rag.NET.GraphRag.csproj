@@ -19,6 +19,11 @@
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
     <ProjectReference Include="..\Rag.NET.Graph\Rag.NET.Graph.csproj" />
+    <!-- The runtime library flows transitively through Rag.NET, but the generator is
+         PrivateAssets="all" there and analyzers do not flow — [Validate] on this package's
+         options types emits nothing without a direct generator reference. -->
+    <PackageReference Include="ZeroAlloc.Validation" />
+    <PackageReference Include="ZeroAlloc.Validation.Generator" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>
 
 </Project>
