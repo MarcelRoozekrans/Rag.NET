@@ -244,6 +244,22 @@ for i in 1 2; do
 done
 ```
 
+**`RAGNET_COST_MATRIX_RUNS` — gating a finished sweep and dumping the publishable tables.** Once
+every cell has been measured `N` times, `CostMatrixDumpTests` runs `CostReproducibility` over all
+of them and prints the two tables the roadmap's §6 authorised: latency cross-ecosystem, index
+construction per ecosystem. The variable says how many repeats to read, so it is also what refuses
+a dump the data cannot support — below `2` it **throws** rather than skipping, because there is no
+one-run table to fall back to:
+
+```bash
+RAGNET_COST_MATRIX_RUNS=3 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
+  --no-build --filter "DisplayName~DumpsTheGatedCostMatrix"
+```
+
+A cell whose sidecars are missing or whose spread is past the bar **fails** and is named, along
+with every other failing cell, instead of dropping out of the table — a matrix that quietly prints
+eleven rows where twelve were measured reads exactly like a complete one.
+
 **The reranked ablation cells additionally need the cross-encoder, which the nightly deliberately
 does not provision.** It used to: the job fetched, SHA-256-checked and cached the ~87 MB
 `cross-encoder/ms-marco-MiniLM-L6-v2` export on every cold run — and both genuine runs on the

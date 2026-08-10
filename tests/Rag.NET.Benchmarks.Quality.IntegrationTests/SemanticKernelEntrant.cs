@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Reflection;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.VectorData;
+using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.Connectors.InMemory;
 using Rag.NET.Benchmarks.Quality;
 
@@ -45,11 +47,64 @@ public static class SemanticKernelEntrant
     public const int EmbeddingDimension = 384;
 
     /// <summary>
+    /// The Semantic Kernel version this process actually loaded, read off the assembly.
+    /// <para>
+    /// <b>Read rather than written down, because the written-down one was wrong.</b> The run tag
+    /// used to be the literal <c>"semantic-kernel-1.78.0"</c>, promising in its own documentation
+    /// to name "the exact version measured" with nothing holding it to that. Renovate's #119 moved
+    /// the package to 1.79.0 and the literal stayed, so every run file the entrant would have
+    /// written from then on named a version it had not run. Deriving it makes the drift
+    /// impossible instead of merely detectable.
+    /// </para>
+    /// <para>
+    /// The build metadata after <c>+</c> is dropped — it is the upstream commit, not the version a
+    /// reader can install — and the prerelease label after <c>-</c> is kept, because
+    /// <c>1.74.0-preview</c> and <c>1.74.0</c> are different packages.
+    /// </para>
+    /// </summary>
+    public static string LoadedVersion { get; } = ReadLoadedVersion();
+
+    /// <summary>
+    /// The last field of every line the entrant writes: the library and the exact version
+    /// measured, so a published run file names its entrant without a legend.
+    /// </summary>
+    public static string RunTag { get; } = "semantic-kernel-" + LoadedVersion;
+
+    /// <summary>
     /// Documents per <c>UpsertAsync</c> call — the same working-set bound as
     /// <c>BeirHarness.SlabSize</c>, and only a bound: the pinned generator pools excluding padding,
     /// so no batch size can change a document's vector.
     /// </summary>
     private const int SlabSize = 512;
+
+    /// <summary>
+    /// The loaded <c>Microsoft.SemanticKernel</c> assembly's informational version, without its
+    /// build metadata.
+    /// </summary>
+    /// <returns>A version string such as <c>1.78.0</c>.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// The assembly carries no informational version. Falling back to the four-part assembly
+    /// version would quietly publish <c>1.78.0.0</c>, and falling back to a literal would restore
+    /// exactly the drift this replaced — so a run that cannot name its version writes no run file.
+    /// </exception>
+    private static string ReadLoadedVersion()
+    {
+        var assembly = typeof(Kernel).Assembly;
+        var informational = assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+
+        if (string.IsNullOrWhiteSpace(informational))
+        {
+            throw new InvalidOperationException(
+                $"'{assembly.GetName().Name}' carries no AssemblyInformationalVersionAttribute, " +
+                "so the entrant cannot name the version it is measuring. Every run file's last " +
+                "field is that name, and a run file that misnames its entrant is worse than one " +
+                "that does not exist.");
+        }
+
+        var buildMetadata = informational.IndexOf('+', StringComparison.Ordinal);
+        return buildMetadata < 0 ? informational : informational[..buildMetadata];
+    }
 
     /// <summary>
     /// One corpus document as Semantic Kernel stores it: the BEIR document id as the key and the

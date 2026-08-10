@@ -38,10 +38,11 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 public sealed class BeirSemanticKernelDefaultsTests
 {
     /// <summary>
-    /// The last field of every line the entrant writes: the library and the exact version
-    /// measured, so a published run file names its entrant without a legend.
+    /// The last field of every line the entrant writes — derived from the assembly actually
+    /// loaded, never written down here; see <see cref="SemanticKernelEntrant.LoadedVersion"/> for
+    /// the run files the written-down one would have misnamed.
     /// </summary>
-    private const string RunTag = "semantic-kernel-1.78.0";
+    private static string RunTag => SemanticKernelEntrant.RunTag;
 
     /// <summary>A sentence that appears in no BEIR corpus, embedded on both sides of the check.</summary>
     private const string KnownText =
