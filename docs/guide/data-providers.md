@@ -11,7 +11,7 @@ Data providers are connectors that enumerate remote files and stream their conte
 
 ```csharp
 // Typical usage: provider registered in DI, pipeline receives it via injection
-var result = await pipeline.IngestFromProviderAsync(provider, "my-corpus",
+var result = await pipeline.IngestFromProviderAsync(provider, new ProviderId("my-corpus"),
     hashStore: sp.GetRequiredService<IContentHashStore>(),
     cleanupMode: CleanupMode.Full);
 
@@ -19,6 +19,34 @@ Console.WriteLine($"Ingested: {result.Ingested}, Skipped: {result.Skipped}, Dele
 ```
 
 The pipeline compares each file's ETag against the content hash store. Files whose ETag is unchanged since the last run are skipped automatically — no re-embedding, no re-storing.
+
+### Writing your own provider
+
+Implement `IFileContentProvider` and yield one `FileEntry` per document. Nothing else is required — no base metadata, no registration ceremony:
+
+```csharp
+public sealed class MyProvider : IFileContentProvider
+{
+    public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        yield return Result<FileEntry, RagError>.Success(new FileEntry(
+            new EntryId("field-guide"),
+            "field-guide.pdf",
+            ct => Task.FromResult<Stream>(File.OpenRead(@"C:\docs\field-guide.pdf")),
+            ETag: "v1",
+            ContentType: "application/pdf"));
+    }
+}
+
+var result = await pipeline.IngestFromProviderAsync(myProvider, new ProviderId("combined"));
+```
+
+**Set `ContentType` per entry** when your provider yields more than one kind of file — it selects the parser, and a batch-level default cannot describe a provider serving both PDFs and Markdown. Leave it `null` and the pipeline resolves the type itself.
+
+**`baseMetadata` is optional and usually unnecessary.** `DocumentId` and `FileName` come from each `FileEntry`, so passing a batch-level `DocumentMetadata` just to declare a content type means inventing values the pipeline immediately overwrites. Use `ContentType` on the entry instead.
+
+**`[EnumeratorCancellation]` goes on your implementation, not the interface.** That is a C# requirement rather than an API choice: the attribute tells the compiler which parameter carries the token when it rewrites your iterator, and it cannot be inherited from an interface declaration. Omit it and the compiler warns (`CS8425`) and cancellation stops flowing into your loop.
 
 ---
 
