@@ -1000,4 +1000,112 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Single(result.Errors);
         Assert.IsType<RagError.HttpFailed>(result.Errors[0]);
     }
+
+    /// <summary>
+    /// Issue #95: a provider must be able to declare each entry's content type itself.
+    /// <para>
+    /// Before <see cref="FileEntry.ContentType"/> existed the only source was the batch-level
+    /// <c>baseMetadata</c>, whose <c>DocumentId</c> and <c>FileName</c> are <c>required</c> — so
+    /// declaring "these are PDFs" meant inventing an id and a filename the pipeline overwrites
+    /// per entry. It also allowed one content type per call, which a provider yielding a PDF and
+    /// a Markdown file cannot live with.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_EntryContentTypes_ReachDocumentsIndependently()
+    {
+        var captured = CaptureIngestedMetadata();
+
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-pdf"),
+                    FileName: "guide.pdf",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
+                    ContentType: "application/pdf")),
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-md"),
+                    FileName: "notes.md",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
+                    ContentType: "text/markdown")),
+            }.ToAsyncEnumerable());
+
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, captured.Count);
+        Assert.Contains(captured, m => string.Equals(m.ContentType, "application/pdf", StringComparison.Ordinal));
+        Assert.Contains(captured, m => string.Equals(m.ContentType, "text/markdown", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The entry wins over the batch default, matching how <c>Tags</c> and the timestamps already
+    /// resolve — otherwise a caller could not override a batch default for one awkward file.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_EntryContentType_OverridesBaseMetadata()
+    {
+        var captured = CaptureIngestedMetadata();
+
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-1"),
+                    FileName: "notes.md",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
+                    ContentType: "text/markdown")),
+            }.ToAsyncEnumerable());
+
+        await _pipeline.IngestFromProviderAsync(
+            provider,
+            new ProviderId("prov"),
+            baseMetadata: new DocumentMetadata
+            {
+                DocumentId = new DocumentId("ignored"),
+                FileName = "ignored.pdf",
+                ContentType = "application/pdf",
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(captured);
+        Assert.Equal("text/markdown", metadata.ContentType);
+    }
+
+    /// <summary>
+    /// A provider that does not know its content type still says nothing and the batch-level
+    /// default applies — #95's fix adds a way to be specific without removing the old one.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_NoEntryContentType_FallsBackToBaseMetadata()
+    {
+        var captured = CaptureIngestedMetadata();
+
+        var provider = Substitute.For<IFileContentProvider>();
+        provider.GetFilesAsync(Arg.Any<CancellationToken>())
+            .Returns(new[]
+            {
+                Result<FileEntry, RagError>.Success(new FileEntry(
+                    Id: new EntryId("id-1"),
+                    FileName: "doc.bin",
+                    OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())))),
+            }.ToAsyncEnumerable());
+
+        await _pipeline.IngestFromProviderAsync(
+            provider,
+            new ProviderId("prov"),
+            baseMetadata: new DocumentMetadata
+            {
+                DocumentId = new DocumentId("ignored"),
+                FileName = "ignored.txt",
+                ContentType = "application/pdf",
+            },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(captured);
+        Assert.Equal("application/pdf", metadata.ContentType);
+    }
 }
