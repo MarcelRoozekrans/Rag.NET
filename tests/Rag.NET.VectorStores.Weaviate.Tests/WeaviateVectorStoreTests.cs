@@ -108,6 +108,35 @@ public class WeaviateVectorStoreTests
     }
 
     [Fact]
+    public async Task HybridSearch_FusesKeywordAndVectorArms()
+    {
+        // Three chunks arranged so only genuine two-arm fusion returns the right pair: the
+        // query vector is nearest "alpha", the BM25 text query matches only "zebra", and
+        // TopK = 2. A dense-only search returns alpha + one orthogonal filler; a keyword-only
+        // search returns just zebra. Scores pin the documented contract: Weaviate's
+        // relative-score-fusion value in [0, 1].
+        using var store = CreateStore(UniqueClassName());
+        await store.StoreAsync(
+            [
+                Chunk("doc-hybrid", 0, "alpha document", [1.0f, 0.0f, 0.0f]),
+                Chunk("doc-hybrid", 1, "middle document", [0.0f, 1.0f, 0.0f]),
+                Chunk("doc-hybrid", 2, "zebra document", [0.0f, 0.0f, 1.0f]),
+            ],
+            TestContext.Current.CancellationToken);
+
+        var results = await store.HybridSearchAsync(
+            "zebra",
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 2 },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, results.Count);
+        Assert.Contains(results, r => string.Equals(r.Chunk.Text, "alpha document", StringComparison.Ordinal));
+        Assert.Contains(results, r => string.Equals(r.Chunk.Text, "zebra document", StringComparison.Ordinal));
+        Assert.All(results, r => Assert.InRange(r.Score, 0.0, 1.0));
+    }
+
+    [Fact]
     public async Task Search_IdenticalVector_ScoreNearOne()
     {
         using var store = CreateStore(UniqueClassName());

@@ -104,6 +104,56 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task HybridSearch_FusesKeywordAndVectorArms()
+    {
+        // Three chunks arranged so only genuine two-arm fusion returns the right pair:
+        // the query vector is nearest "alpha", the text query matches only "zebra", and
+        // TopK = 2 — a dense-only search returns alpha + one orthogonal filler, a
+        // keyword-only search returns just zebra. Score magnitudes are deliberately not
+        // asserted: the local simulator's fusion arithmetic is not the real service's
+        // (the service documents hybrid scores as RRF values, ~1/60 per arm).
+        var docId = $"ais-{Guid.CreateVersion7():N}";
+        var chunks = new List<EmbeddedChunk>
+        {
+            new()
+            {
+                Chunk = new TextChunk { Text = "alpha document", DocumentId = new DocumentId(docId), ChunkIndex = 0 },
+                Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk { Text = "middle document", DocumentId = new DocumentId(docId), ChunkIndex = 1 },
+                Embedding = new float[] { 0.0f, 1.0f, 0.0f },
+            },
+            new()
+            {
+                Chunk = new TextChunk { Text = "zebra document", DocumentId = new DocumentId(docId), ChunkIndex = 2 },
+                Embedding = new float[] { 0.0f, 0.0f, 1.0f },
+            },
+        };
+
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+
+            var results = await _sut.HybridSearchAsync(
+                "zebra",
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 2 },
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(2, results.Count);
+            Assert.Contains(results, r => string.Equals(r.Chunk.Text, "alpha document", StringComparison.Ordinal));
+            Assert.Contains(results, r => string.Equals(r.Chunk.Text, "zebra document", StringComparison.Ordinal));
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task DeleteByDocumentId_RemovesAllChunksForDocument()
     {
         var docId = $"ais-{Guid.CreateVersion7():N}";
