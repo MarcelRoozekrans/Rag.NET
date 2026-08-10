@@ -166,7 +166,10 @@ public sealed partial class PropositionChunkingStrategy(
             return null;
         }
 
-        if (JsonNode.Parse(StripCodeFence(raw)) is not JsonArray array)
+        // A preamble before the fence used to reach JsonNode.Parse whole and throw, silently
+        // downgrading every passage to a fallback chunk; the shared extractor finds the array
+        // whatever the model wrapped it in.
+        if (JsonNode.Parse(LlmJsonExtractor.Extract(raw, LlmJsonPayloadKind.Array)) is not JsonArray array)
             return null;
 
         var propositions = new List<string>();
@@ -198,24 +201,6 @@ public sealed partial class PropositionChunkingStrategy(
                 "Return ONLY a JSON array of strings — no markdown, no commentary."),
             new(ChatRole.User, $"<content-{delim}>\n{passage}\n</content-{delim}>"),
         ];
-    }
-
-    /// <summary>
-    /// Strips a surrounding markdown code fence (<c>```json ... ```</c> or <c>``` ... ```</c>)
-    /// if present — models sometimes fence the array despite the no-markdown instruction.
-    /// </summary>
-    private static string StripCodeFence(string text)
-    {
-        var json = text.Trim();
-        if (json.StartsWith("```", StringComparison.Ordinal))
-        {
-            var firstNewline = json.IndexOf('\n');
-            var lastFence = json.LastIndexOf("```", StringComparison.Ordinal);
-            if (firstNewline >= 0 && lastFence > firstNewline)
-                json = json[(firstNewline + 1)..lastFence].Trim();
-        }
-
-        return json;
     }
 
     /// <summary>

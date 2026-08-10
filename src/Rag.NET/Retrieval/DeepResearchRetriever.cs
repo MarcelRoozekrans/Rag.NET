@@ -96,12 +96,21 @@ public sealed class DeepResearchRetriever : IRetriever
                 new ChatOptions { ResponseFormat = ChatResponseFormat.Json },
                 cancellationToken).ConfigureAwait(false);
 
-            var json = response.Text ?? "{}";
+            // ResponseFormat = Json above is a request, not a guarantee — providers that ignore
+            // it return fenced or preambled JSON, which used to fail below on every call.
+            var json = LlmJsonExtractor.Extract(response.Text ?? "{}", LlmJsonPayloadKind.Object);
             return JsonSerializer.Deserialize<SufficiencyResponse>(json, _jsonOptions)
                    ?? new SufficiencyResponse(true, []);
         }
         catch (OperationCanceledException) { throw; }
-        catch (JsonException) { return new SufficiencyResponse(true, []); }
+        catch (JsonException ex)
+        {
+            // Fail-open on purpose: deep research is an enhancement over the inner retriever's
+            // results, which are already in hand. But an unreadable verdict on every call means
+            // the feature is silently off, so it must at least be visible in the logs.
+            _logger?.LogWarning(ex, "Sufficiency check response was not readable JSON; treating as sufficient.");
+            return new SufficiencyResponse(true, []);
+        }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "Sufficiency check failed; treating as sufficient.");
