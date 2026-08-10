@@ -35,7 +35,13 @@ public sealed class ParentDocumentIngestionBehavior : IIngestionBehavior
 
         RequireUsableParentChunking(parentChunkingOptions, ParentOptions);
 
-        var parser = Parsers.First(p => p.CanParse(ctx.Metadata.ContentType ?? "text/plain"));
+        // FirstOrDefault plus an explicit throw, matching ParseBehavior: First() surfaces the
+        // identical "nothing parses this" condition as a bare InvalidOperationException, which
+        // PipelineIngestor does not map to RagError.NoParserFound, so only one of the two paths
+        // was catchable as the documented error (issue #130).
+        var parentContentType = DocumentContentTypeResolver.Resolve(ctx.Metadata);
+        var parser = Parsers.FirstOrDefault(p => p.CanParse(parentContentType))
+            ?? throw new NoParserFoundException(parentContentType);
         var parentBoundaries = new List<(int start, int end)>();
         var parentIndex = 0;
 

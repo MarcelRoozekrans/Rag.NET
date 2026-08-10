@@ -41,9 +41,17 @@ namespace Rag.NET.DataProviders;
 /// just to say "these are PDFs" (issue #95).
 /// </para>
 /// <para>
-/// <see langword="null"/> falls back to the batch-level value, and then to the pipeline's own
-/// content-type resolution — so a provider that has no idea what it is serving can still say
-/// nothing and let the parsers decide.
+/// <see langword="null"/> falls back to the batch-level value, then to the extension in
+/// <paramref name="FileName"/>, and finally to <c>text/plain</c>. So a provider yielding
+/// recognisable filenames can leave this unset — but one yielding <c>document-1</c> or
+/// <c>.bin</c> cannot: an unrecognised extension is parsed as text, and a PDF read as text
+/// becomes garbage that is chunked, embedded and stored without an error. Set it whenever the
+/// filename would not give the type away.
+/// </para>
+/// <para>
+/// This paragraph described a resolution step that did not exist when it was written in #127 —
+/// nothing read the filename, so <see langword="null"/> meant <c>text/plain</c> immediately.
+/// Issue #130 corrected both the code and the claim.
 /// </para>
 /// </param>
 public sealed record FileEntry(
