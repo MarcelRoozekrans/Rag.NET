@@ -60,6 +60,34 @@ public class MindMapExtractorTests
         Assert.Equal("Learning with labeled data.", result.Children[0].Summary);
     }
 
+    public static TheoryData<string, string> WrappedResponseShapes() => new()
+    {
+        { "preamble then unlabelled fence", $"Here is the mind map in JSON format:\n\n```\n{ValidJson}\n```" },
+        { "preamble then labelled fence", $"Sure! Here you go:\n\n```json\n{ValidJson}\n```" },
+        { "preamble then bare json", $"Here is the mind map:\n\n{ValidJson}" },
+        { "labelled fence only", $"```json\n{ValidJson}\n```" },
+        { "fence then trailing prose", $"```\n{ValidJson}\n```\n\nLet me know if you need more detail." },
+    };
+
+    [Theory]
+    [MemberData(nameof(WrappedResponseShapes))]
+    public async Task ExtractAsync_EveryShapeAModelActuallyReturns_YieldsTheTree(string shape, string response)
+    {
+        // This site had no fence handling at all: any of these shapes deserialized the whole
+        // reply, threw, and was swallowed into the empty root — indistinguishable from a
+        // document with nothing to map, which is how the GraphRAG entity outage stayed hidden.
+        SetupChatClient(response);
+        var sut = CreateSut();
+
+        var result = await sut.ExtractAsync("Some text about ML.", "doc-1", TestContext.Current.CancellationToken);
+
+        Assert.True(
+            string.Equals("Machine Learning", result.Title, StringComparison.Ordinal),
+            $"The '{shape}' response produced an empty root. The JSON inside it is valid, so the " +
+            "extractor failed to find it and the failure was swallowed into an empty tree.");
+        Assert.Equal(2, result.Children.Count);
+    }
+
     [Fact]
     public async Task ExtractAsync_MalformedJson_ReturnsEmptyRoot()
     {
