@@ -62,10 +62,10 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// <see cref="ChunkingOptions"/> can reach the container without passing through this method.
     /// </para>
     /// </summary>
-    /// <exception cref="ArgumentException">A property is out of range.</exception>
-    /// <exception cref="InvalidOperationException">
-    /// <see cref="ChunkingOptions.Overlap"/> is not smaller than
-    /// <see cref="ChunkingOptions.MaxChunkSize"/>.
+    /// <exception cref="ArgumentException">
+    /// A property is out of range, or <see cref="ChunkingOptions.Overlap"/> is not smaller than
+    /// <see cref="ChunkingOptions.MaxChunkSize"/> — the generated validator covers both, the
+    /// second through <see cref="ChunkingOptions.ValidateOverlapFitsChunk"/>.
     /// </exception>
     private static void ValidateChunkingOptions(ChunkingOptions options)
     {
@@ -87,9 +87,6 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
                 string.Join("; ", described),
                 nameof(options));
         }
-
-        // Cross-property, so the generated validator cannot see it.
-        options.Validate();
     }
 
     /// <summary>
@@ -121,7 +118,7 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
                 Overlap = options.ParentOverlap,
             });
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        catch (ArgumentException ex)
         {
             throw new ArgumentException(
                 "ParentDocumentOptions describes a chunking pass that cannot run: " + ex.Message +

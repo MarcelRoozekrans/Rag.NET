@@ -31,31 +31,40 @@ public sealed class ChunkingOptions
     [GreaterThanOrEqualTo(0)] public int Overlap { get; set; } = 50;
 
     /// <summary>
-    /// Throws when the two properties are individually valid but contradict each other.
+    /// Reports the two properties being individually valid but contradicting each other.
     /// <para>
-    /// The generated <c>ChunkingOptionsValidator</c> checks each property alone, so it cannot see
-    /// that <see cref="Overlap"/> must be smaller than <see cref="MaxChunkSize"/>. Callers run
-    /// both: the attribute validator first, then this.
+    /// A <c>[CustomValidation]</c> method rather than a separate public <c>Validate()</c> the
+    /// caller has to remember: it runs inside the generated <c>ChunkingOptionsValidator</c>, so
+    /// <b>every</b> existing caller enforces it without changing. That distinction is the whole
+    /// point — the first version of this fix was a separate method, and
+    /// <c>PipelineIngestor</c> called the generated validator without it, so the ingestion path
+    /// silently did not enforce this rule at all. A check you only get by remembering to call it
+    /// is the defect shape this repository keeps finding.
     /// </para>
     /// <para>
-    /// This exists because the three strategies disagreed about an oversized overlap and none of
+    /// It exists because the three strategies disagreed about an oversized overlap and none of
     /// them said so: <c>TokenAwareChunkingStrategy</c> threw, <c>FixedSizeChunkingStrategy</c>
     /// silently degraded to no overlap at all, and <c>RecursiveChunkingStrategy</c> capped it.
     /// One configuration, three behaviours, no error. Rejecting it once, up front, is the only
     /// answer that means the same thing everywhere.
     /// </para>
     /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// <see cref="Overlap"/> is not smaller than <see cref="MaxChunkSize"/>.
-    /// </exception>
-    public void Validate()
+    /// <returns>One failure when <see cref="Overlap"/> is not smaller than <see cref="MaxChunkSize"/>.</returns>
+    // Fully qualified: Rag.NET.Models.ValidationFailure is a different type in scope here, and
+    // the generator's ZV0013 rejects the method outright if the return type resolves to it.
+    [CustomValidation]
+    public IEnumerable<ZeroAlloc.Validation.ValidationFailure> ValidateOverlapFitsChunk()
     {
         if (Overlap >= MaxChunkSize)
         {
-            throw new InvalidOperationException(
-                $"Overlap ({Overlap}) must be smaller than MaxChunkSize ({MaxChunkSize}). An " +
-                "overlap at least as large as the chunk re-reads everything the previous chunk " +
-                "covered, so chunking cannot advance through the document.");
+            yield return new ZeroAlloc.Validation.ValidationFailure
+            {
+                PropertyName = nameof(Overlap),
+                ErrorMessage =
+                    $"Overlap ({Overlap}) must be smaller than MaxChunkSize ({MaxChunkSize}). " +
+                    "An overlap at least as large as the chunk re-reads everything the previous " +
+                    "chunk covered, so chunking cannot advance through the document.",
+            };
         }
     }
 }

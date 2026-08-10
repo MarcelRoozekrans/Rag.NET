@@ -88,7 +88,5 @@ public sealed class ParentDocumentIngestionBehavior : IIngestionBehavior
                 $"ParentOverlap={parentOptions.ParentOverlap}. Both must be at least 0, and " +
                 "ParentChunkSize must be greater than 0.");
         }
-
-        parentChunkingOptions.Validate();
     }
 }

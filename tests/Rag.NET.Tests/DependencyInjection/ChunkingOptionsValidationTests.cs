@@ -71,10 +71,12 @@ public class ChunkingOptionsValidationTests
     {
         var services = NewServices();
 
-        // Cross-property, so the generated validator cannot see it. Before this, the three
-        // strategies disagreed: TokenAware threw, FixedSize silently degraded to no overlap,
-        // Recursive capped it.
-        var ex = Assert.Throws<InvalidOperationException>(() =>
+        // Cross-property, and it reports as an ordinary validation failure rather than a special
+        // case: ChunkingOptions.ValidateOverlapFitsChunk is a [CustomValidation] method, so the
+        // generated validator raises it and every caller enforces it without knowing it exists.
+        // Before this, the three strategies disagreed — TokenAware threw, FixedSize silently
+        // degraded to no overlap, Recursive capped it.
+        var ex = Assert.Throws<ArgumentException>(() =>
             services.AddRagNet(rag => rag.UseChunkingStrategy<RecursiveChunkingStrategy>(o =>
             {
                 o.MaxChunkSize = 100;
@@ -121,6 +123,29 @@ public class ChunkingOptionsValidationTests
         // "last parent" fallback, so retrieval answers from the wrong part of the document.
         _ = Assert.Throws<ArgumentException>(() =>
             services.AddRagNet(rag => rag.UseParentDocumentRetrieval(o => o.ParentOverlap = -50)));
+    }
+
+    [Fact]
+    public void TheGeneratedValidatorItselfEnforcesTheCrossPropertyRule()
+    {
+        // The reason ValidateOverlapFitsChunk is a [CustomValidation] method and not a separate
+        // public Validate() the caller has to remember. The first version of this fix was the
+        // latter, and PipelineIngestor called the generated validator without it — so the
+        // ingestion path did not enforce this rule at all. Anyone holding only the validator
+        // must get the same answer as the builder.
+        var result = new ChunkingOptionsValidator()
+            .Validate(new ChunkingOptions { MaxChunkSize = 100, Overlap = 100 });
+
+        Assert.False(result.IsValid);
+
+        var failures = result.Failures;
+        var reported = new string[failures.Length];
+        for (var i = 0; i < failures.Length; i++)
+        {
+            reported[i] = failures[i].PropertyName;
+        }
+
+        Assert.Contains(nameof(ChunkingOptions.Overlap), reported, StringComparer.Ordinal);
     }
 
     [Fact]
