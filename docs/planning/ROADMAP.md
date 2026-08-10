@@ -3078,6 +3078,47 @@ genuinely open is that **no benchmark has ever measured it**, and multi-hop is w
 earn or lose its keep. **MuSiQue is described as the hardest and least gameable of the four**,
 which is what makes it the one to trust when the numbers disagree.
 
+**2026-08-10 — "no benchmark has ever measured it" stopped being a scheduling note and became a
+correctness problem.** The dead-settings sweep (#108) found, in `Rag.NET.GraphRag` alone:
+
+- **`GraphRagOptions.EntityTypes` and `.RelationshipTypes` did nothing.** Documented as
+  constraining extraction; the two declarations were the only occurrences in `src/`. Every run
+  since the package shipped used open extraction regardless of configuration. Implemented in
+  #112.
+- **`GraphRagRetrievalOptions.Mode` is never read**, and `GraphRagRetrievalMode.Auto` — documented
+  as *"LLM classifies the query and routes to Local or Global automatically"* — has no
+  implementation. Which search runs depends on which behaviors are registered. Open as #104.
+- Three more settings would have silently disabled or corrupted search (`LocalSearchDepth` or
+  `LocalTopEntities` at zero; `PageRankWeight` outside `[0, 1]` giving one blend term a negative
+  coefficient; `GlobalBatchSize` at zero hanging global search in an infinite batching loop).
+  Validated in #103.
+
+**None of that could have survived a benchmark run**, and none of it was found by tests, review or
+use — it was found by asking which public settings are never read. A package marked `✅ Done`,
+carrying a `Rag.NET.GraphRag` NuGet package about to be published, had three documented behaviours
+that did not exist.
+
+So this phase's GraphRAG item is no longer "measure it to see whether it earns its keep". It is
+**"establish that it works at all"**, and the two questions want different things:
+
+1. **Does it function?** A small, cheap, deterministic run that proves entity extraction, community
+   detection and both search paths produce sensible output on a known corpus. This does not need
+   MuSiQue, a published baseline, or a comparable number — it needs to exist and to fail loudly if
+   the pipeline stops working. It is also what would have caught all three defects above.
+2. **Does it help?** The comparative question the phase was written for: GraphRAG against the dense
+   baseline on multi-hop, where the mechanism should show lift if it is going to.
+
+**(1) should not wait for (2).** MultiHop-RAG is the cheapest honest home for it — 609 articles and
+a real shared corpus, per the licence table below — where HotpotQA's 5.23M-document corpus makes
+the comparative run expensive enough to keep deferring. Landing (1) against MultiHop-RAG turns
+GraphRAG from "shipped and unverified" into "shipped and exercised", which is the claim
+`features.md` is currently making on its behalf.
+
+**Until (1) exists, `features.md`'s GraphRAG row overstates what is known.** Not because the code
+is wrong — #103 and #112 fixed what was found — but because nothing has ever run it end to end,
+and today is the second time this repository has learned that "it is implemented" and "it works"
+are different claims.
+
 Every dataset lands under the Milestone 3 checklist the DoD names — descriptor, budget timing,
 published reference where one exists, licence from upstream, reproduction pin.
 
