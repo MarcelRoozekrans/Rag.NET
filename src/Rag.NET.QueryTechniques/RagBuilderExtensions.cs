@@ -28,6 +28,11 @@ public static class RagBuilderExtensions
     {
         var options = new MultiQueryOptions();
         configure?.Invoke(options);
+        if (options.VariantCount < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(configure),
+                $"{nameof(MultiQueryOptions)}.{nameof(MultiQueryOptions.VariantCount)} ({options.VariantCount}) must be at least 1.");
+        }
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<IQueryExpander, LlmQueryExpander>();
         return builder;

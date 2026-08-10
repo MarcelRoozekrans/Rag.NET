@@ -333,10 +333,9 @@ public sealed partial class TestGateTests
     /// </remarks>
     private static GateInventory ScanRepository()
     {
-        var root = TestProject.FindRepositoryRoot();
         var inventory = new GateInventory();
 
-        foreach (var (relativePath, fullPath) in EnumerateSourceFiles(root, "tests"))
+        foreach (var (relativePath, fullPath) in EnumerateSourceFiles("tests"))
         {
             var text = File.ReadAllText(fullPath);
             inventory.SkipCallCount += SkipGateCall().Count(text);
@@ -345,7 +344,7 @@ public sealed partial class TestGateTests
             AddSkipAttributeSites(inventory, relativePath, text);
         }
 
-        foreach (var (relativePath, fullPath) in EnumerateSourceFiles(root, "src"))
+        foreach (var (relativePath, fullPath) in EnumerateSourceFiles("src"))
         {
             AddSymbols(inventory, relativePath, File.ReadAllText(fullPath));
         }
@@ -545,18 +544,10 @@ public sealed partial class TestGateTests
         return false;
     }
 
-    private static IEnumerable<(string RelativePath, string FullPath)> EnumerateSourceFiles(
-        string root, string topDirectory)
+    private static IEnumerable<(string RelativePath, string FullPath)> EnumerateSourceFiles(string topDirectory)
     {
-        foreach (var file in Directory.EnumerateFiles(
-            Path.Combine(root, topDirectory), "*.cs", SearchOption.AllDirectories))
+        foreach (var (relativePath, fullPath) in TestProject.EnumerateSourceFiles(topDirectory))
         {
-            var relativePath = Path.GetRelativePath(root, file).Replace('\\', '/');
-            if (IsBuildOutput(relativePath))
-            {
-                continue;
-            }
-
             // The one self-exemption, and it is load-bearing: this file names the recorded gate
             // variables as exact string literals, so scanning it would count the ledger itself as
             // a gate read — and a staleness entry that satisfies its own "still read by a gate"
@@ -566,7 +557,7 @@ public sealed partial class TestGateTests
                 continue;
             }
 
-            yield return (relativePath, file);
+            yield return (relativePath, fullPath);
         }
     }
 

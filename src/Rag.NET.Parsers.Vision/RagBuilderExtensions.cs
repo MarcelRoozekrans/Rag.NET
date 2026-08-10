@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -55,6 +56,12 @@ public static class RagBuilderExtensions
     {
         var opts = new VideoDescriptionOptions();
         configure?.Invoke(opts);
+        if (opts.SceneChangeThreshold is < 0.0 or > 1.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(configure),
+                $"{nameof(VideoDescriptionOptions)}.{nameof(VideoDescriptionOptions.SceneChangeThreshold)} " +
+                $"({opts.SceneChangeThreshold.ToString(CultureInfo.InvariantCulture)}) must be within 0.0–1.0.");
+        }
         builder.Services.AddSingleton(opts);
         builder.Services.AddSingleton<VideoDocumentParser>(sp =>
             new VideoDocumentParser(
