@@ -16,6 +16,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Parsers.Pdf\Rag.NET.Parsers.Pdf.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <!-- Page-attribution tests chunk a real two-page PDF with the hierarchical merger. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Chunking\Rag.NET.Chunking.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />

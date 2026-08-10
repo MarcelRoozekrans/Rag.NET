@@ -42,6 +42,8 @@ public sealed partial class ReservedMetadataKeyGuardTests
         "_parentKey",
         "allowed_roles",
         "trust_level",
+        "page",
+        "page_end",
     ];
 
     /// <summary>

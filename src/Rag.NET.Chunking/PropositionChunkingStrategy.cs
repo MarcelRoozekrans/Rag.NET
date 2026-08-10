@@ -34,7 +34,7 @@ public sealed partial class PropositionChunkingStrategy(
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var (text, docId) = await ConcatenateSectionsAsync(sections, cancellationToken).ConfigureAwait(false);
+        var (text, docId, sectionSpans) = await ConcatenateSectionsAsync(sections, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(text))
             yield break;
 
@@ -44,6 +44,7 @@ public sealed partial class PropositionChunkingStrategy(
         foreach (var (passage, start) in SplitIntoPassages(text))
         {
             var end = start + passage.Length;
+            var pages = PageRangeForSpan(sectionSpans, start, end);
 
             // yield return cannot appear inside try-with-catch, so the LLM call + parse are
             // isolated in a helper; a null/empty result signals fallback to the passage chunk.
@@ -60,15 +61,17 @@ public sealed partial class PropositionChunkingStrategy(
 
             if (propositions is null || propositions.Count == 0)
             {
-                yield return MakeChunk(passage.Trim(), docId, chunkIndex++, start, end, "passage");
+                yield return MakeChunk(passage.Trim(), docId, chunkIndex++, start, end, "passage", pages);
                 continue;
             }
 
             if (options.EmitParentPassages)
-                yield return MakeChunk(passage.Trim(), docId, chunkIndex++, start, end, "passage");
+                yield return MakeChunk(passage.Trim(), docId, chunkIndex++, start, end, "passage", pages);
 
+            // Propositions are LLM rewrites without a span of their own; they carry their
+            // source passage's page range, the same provenance StartPosition/EndPosition record.
             foreach (var proposition in propositions)
-                yield return MakeChunk(proposition, docId, chunkIndex++, start, end, "proposition");
+                yield return MakeChunk(proposition, docId, chunkIndex++, start, end, "proposition", pages);
         }
     }
 
@@ -88,20 +91,44 @@ public sealed partial class PropositionChunkingStrategy(
         yield return section;
     }
 
-    private static async Task<(string Text, DocumentId Id)> ConcatenateSectionsAsync(
+    private static async Task<(string Text, DocumentId Id, List<SectionSpan> Spans)> ConcatenateSectionsAsync(
         IAsyncEnumerable<DocumentSection> sections,
         CancellationToken cancellationToken)
     {
         var fullText = new StringBuilder();
+        var spans = new List<SectionSpan>();
         DocumentId? docId = null;
         await foreach (var section in sections.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
             docId ??= section.DocumentId;
             if (fullText.Length > 0) fullText.Append("\n\n");
+            var start = fullText.Length;
             fullText.Append(section.Text);
+            spans.Add(new SectionSpan(start, fullText.Length, section.PageNumber));
         }
 
-        return (fullText.ToString(), docId ?? new DocumentId("unknown"));
+        return (fullText.ToString(), docId ?? new DocumentId("unknown"), spans);
+    }
+
+    /// <summary>Where one section landed in the concatenated text, and which page it came from.</summary>
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Auto)]
+    private readonly record struct SectionSpan(int Start, int End, int? Page);
+
+    /// <summary>
+    /// Page range of the passage <c>[start..end)</c>: min/max page over every section span it
+    /// overlaps, ignoring sections without a page number (the mixed-run policy documented on
+    /// <see cref="ReservedMetadataKeys.PageEnd"/>).
+    /// </summary>
+    private static PageRange PageRangeForSpan(List<SectionSpan> spans, int start, int end)
+    {
+        var pages = PageRange.Empty;
+        foreach (ref readonly var span in System.Runtime.InteropServices.CollectionsMarshal.AsSpan(spans))
+        {
+            if (span.Start < end && span.End > start)
+                pages = pages.Fold(span.Page);
+        }
+
+        return pages;
     }
 
     /// <summary>
@@ -199,8 +226,18 @@ public sealed partial class PropositionChunkingStrategy(
     private static string? TryGetString(JsonNode? node) =>
         node is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
-    private static TextChunk MakeChunk(string text, DocumentId docId, int index, int start, int end, string kind) =>
-        new()
+    private static TextChunk MakeChunk(
+        string text, DocumentId docId, int index, int start, int end, string kind, in PageRange pages)
+    {
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+        {
+            ["parent.start"] = start.ToString(CultureInfo.InvariantCulture),
+            ["parent.end"] = end.ToString(CultureInfo.InvariantCulture),
+            ["chunk.kind"] = kind,
+        };
+        pages.WriteTo(metadata);
+
+        return new TextChunk
         {
             Text = text,
             DocumentId = docId,
@@ -210,13 +247,9 @@ public sealed partial class PropositionChunkingStrategy(
             // ParentDocumentIngestionBehavior maps child chunks to parents via child.StartPosition.
             StartPosition = start,
             EndPosition = end,
-            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
-            {
-                ["parent.start"] = start.ToString(CultureInfo.InvariantCulture),
-                ["parent.end"] = end.ToString(CultureInfo.InvariantCulture),
-                ["chunk.kind"] = kind,
-            },
+            Metadata = metadata,
         };
+    }
 
     [LoggerMessage(EventId = 155577360, EventName = "log_proposition_extraction_failure", Level = LogLevel.Warning,
         Message = "Proposition extraction LLM call or JSON parse failed for document {DocumentId}; falling back to passage chunk.")]

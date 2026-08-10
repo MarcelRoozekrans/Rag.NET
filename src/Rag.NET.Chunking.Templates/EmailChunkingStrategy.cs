@@ -74,16 +74,21 @@ public sealed class EmailChunkingStrategy : IDocumentChunkingStrategy, IChunking
         return true;
     }
 
-    private static TextChunk MakeChunk(DocumentSection section, int index) =>
-        new()
+    private static TextChunk MakeChunk(DocumentSection section, int index)
+    {
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+        {
+            ["template"] = "email",
+            ["part"] = section.Heading ?? "body",
+        };
+        PageMetadata.Write(metadata, section.PageNumber, section.PageNumber);
+
+        return new TextChunk
         {
             Text = section.Text,
             DocumentId = section.DocumentId,
             ChunkIndex = index,
-            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
-            {
-                ["template"] = "email",
-                ["part"] = section.Heading ?? "body",
-            },
+            Metadata = metadata,
         };
+    }
 }

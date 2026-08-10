@@ -48,16 +48,19 @@ public sealed class AcademicPaperChunkingStrategy : IDocumentChunkingStrategy, I
         if (abstractIndex >= 0 && _options.IncludeAbstract)
         {
             var abstractSection = allSections[abstractIndex];
+            var abstractMetadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["template"] = "academic_paper",
+                ["section_type"] = "abstract",
+            };
+            PageMetadata.Write(abstractMetadata, abstractSection.PageNumber, abstractSection.PageNumber);
+
             yield return new TextChunk
             {
                 Text = abstractSection.Text,
                 DocumentId = abstractSection.DocumentId,
                 ChunkIndex = 0,
-                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
-                {
-                    ["template"] = "academic_paper",
-                    ["section_type"] = "abstract",
-                },
+                Metadata = abstractMetadata,
             };
             startIndex = abstractIndex + 1;
         }

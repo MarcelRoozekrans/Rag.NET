@@ -81,6 +81,7 @@ public sealed class CodeChunkingStrategy : IChunkingStrategy
                 Text       = text,
                 DocumentId = section.DocumentId,
                 ChunkIndex = chunkIndex++,
+                Metadata   = PageMetadata.ForPage(section.PageNumber),
             };
         }
 

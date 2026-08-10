@@ -57,6 +57,7 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
                 ChunkIndex = chunkIndex++,
                 StartPosition = startPosition,
                 EndPosition = endPosition,
+                Metadata = PageMetadata.ForPage(section.PageNumber),
             };
 
             cursor = endPosition;
