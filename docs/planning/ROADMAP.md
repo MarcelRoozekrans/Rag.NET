@@ -2846,11 +2846,15 @@ every criterion below can be false, and something checks it — not the older "a
 shape, though that box is still here doing its share):
 - [ ] Phases 5.1–5.4 complete (5.5 deliberately schedules nothing and is outside this box by
       design — see its entry)
-- [ ] **No cross-ecosystem latency figure is published without the confound statement beside
+- [x] **No cross-ecosystem latency figure is published without the confound statement beside
       it**: the results page states the mechanism that made in-process .NET and subprocess Python
       rows comparable, or publishes them per-ecosystem labelled non-comparable. A latency number
       on a page without that statement fails this criterion; the check is reading the page — the
       same check that held the `+BM25 hybrid` row to its label.
+      *(Met 2026-08-10. The published latency table is cross-ecosystem and carries the
+      default-in-memory-store caveat inline plus the startup exclusion; indexing publishes as two
+      per-ecosystem tables labelled non-comparable, with the reason — the Python spans include each
+      library's chunker and are warmed by an untimed rehearsal — stated between them.)*
 - [ ] **`IrMetrics`' graded gain has scored a real dataset**: at least one dataset whose qrels
       carry a grade above 1 has been through `Evaluate`, and the FiQA-qrels contradiction
       (`IrMetrics.cs:31-32` against the TREC-COVID debt entry) is settled by reading the cached
@@ -2917,7 +2921,7 @@ shape, though that box is still here doing its share):
 > everything a user installs; the harness half does not, and repeating the constraint
 > unqualified would be false.
 
-### Phase 5.1: Library Performance Comparison [status: measurement landed 2026-08-09; §6 decided — publication is the remaining work]
+### Phase 5.1: Library Performance Comparison [status: complete 2026-08-10 — full matrix gated and published]
 **Goal:** Compare **cost** across the Phase 3.14 comparators — indexing throughput (docs/sec),
 query latency p50/p99, allocations per query, Native AOT startup time, RSS. (Not a features.md
 row — the only item the handover proposes that Phase 3.14 did not touch; it calls this table
@@ -3064,6 +3068,47 @@ that interpreter and runtime startup are excluded by construction, that allocati
 AOT startup are .NET-only and publish as an internal table, and that every row comes from one
 machine in one session with the caches warm. **Remaining work is publication only**; the
 measurement, the percentile definition and the boundary guard all landed.
+
+**2026-08-10 — the full matrix ran on an idle machine, and both blockers above are cleared.**
+Twelve cells (SciFact and ArguAna × five entrants, FiQA × the two .NET entrants), three repeat runs
+each, round-major with the entrant order rotating so no entrant is always the coldest or the
+warmest. All 36 sidecars came through `CostReproducibility`; spreads were ×1.02–×1.17 on all but
+two, against a ×3 bar. **Published** to
+[the comparison page](../reference/library-comparison.md#cost-retrieval-latency-and-index-construction):
+latency cross-ecosystem, indexing per ecosystem, every figure a range.
+
+The idle machine visibly mattered — the SciFact figures above, taken while the machine was in use,
+were **3–5× slower and far less stable** than the same cells measured idle (control p50
+5.6–9.5 ms → 1.5–1.7 ms; LangChain 96.3–109.2 ms → 54.0–56.1 ms; control indexing ×1.71 → ×1.34).
+The table above is therefore superseded, not merely extended, and §2.2's "one machine, one session"
+rule is doing real work rather than ceremony.
+
+**The run was blocked by a defect the benchmark was the only thing that could find.** The Semantic
+Kernel entrant failed all three rounds with `TypeLoadException` on
+`Microsoft.Extensions.VectorData.VectorSearchFilter` while every other entrant ran. Renovate's #119
+had moved `Microsoft.SemanticKernel` 1.78.0 → 1.79.0, which requires VectorData ≥ 10.5.2 — and
+10.5.0 removed the type its own `Connectors.InMemory` still binds to. That connector cannot move:
+1.74.0-preview is the newest ever published. Restore succeeded and the build was clean, so the
+entrant sat broken on `main` through a full release cycle. Pinning VectorData was the wrong fix
+(NU1605 — 1.79.0 states the ≥ 10.5.2 floor); the pin belongs on the package that moved.
+
+Two guards followed, both for the same reason the defect survived:
+
+- **`SemanticKernelEntrantTests` ran on every push, passed throughout, and could never have caught
+  it.** All six cases exercise `RetrievalDepth` and `TopDocuments` — pure functions over
+  `ScoredDocument` that load no Semantic Kernel type. The only code touching the connector sat
+  behind `RAGNET_BEIR_LONG_RUNS` and an hour of corpus. `SemanticKernelConnectorLoadsTests` drives
+  create/upsert/search against a stub embedder in **169 ms, ungated**; verified by restoring 1.79.0
+  and watching it fail with the exact `TypeLoadException`.
+- **The run tag was a literal that had already gone stale.** `"semantic-kernel-1.78.0"` was
+  documented as naming "the exact version measured" with nothing enforcing it, so from #119 onwards
+  every run file it wrote would have named a version it had not run. It is now derived from the
+  loaded assembly — and cross-checked against the `Directory.Packages.props` pin, because this same
+  dependency graph proves an assembly can misname its package: **VectorData.Abstractions 10.1.0
+  ships an assembly whose informational version reads 1.74.0.**
+
+`CostMatrixDumpTests` gates every cell and emits the published tables, so the page cannot be
+rebuilt by hand from numbers nothing checked. **Phase 5.1 is complete.**
 
 ### Phase 5.2: Multi-Hop Retrieval [status: pending]
 **Goal:** Measure multi-hop retrieval — HotpotQA, MuSiQue, 2WikiMultiHopQA, MultiHop-RAG. (Not a

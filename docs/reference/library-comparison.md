@@ -6,7 +6,9 @@ title: Library Comparison
 # Library Comparison at Defaults
 
 **Five RAG libraries, two BEIR corpora, one pinned embedder, everything else at each library's own
-defaults.** Measured by Phase 3.14 (2026-08-02). The configuration every entrant ran at is recorded,
+defaults.** Quality measured by Phase 3.14 (2026-08-02); [cost](#cost-retrieval-latency-and-index-construction)
+— retrieval latency and index construction, three repeat runs per cell — by Phase 5.1 (2026-08-10).
+The configuration every entrant ran at is recorded,
 with source citations at pinned versions, in
 [the defaults page](./library-comparison-defaults.md) — written *before* any entrant existed, so the
 entrants were built to match the page rather than the page written to excuse the entrants. What
@@ -199,16 +201,89 @@ battery strings are bitwise identical: 384/384 floats equal, max |diff| = 0.0** 
 fixed **before any entrant ran**, so no number above contains it — but a comparison built without
 this check would, silently, on any corpus with accented text.
 
-## Wall clocks, for budgeting only
+## Cost: retrieval latency and index construction
 
-What producing each run file cost, on the development machine (Windows 11, CPU ONNX Runtime),
-SciFact / ArguAna: LangChain **121.7 s / 695.9 s**, LlamaIndex **45.2 s / 263.1 s**, Haystack
-**250.8 s / 404.7 s**; Semantic Kernel 2.1 s / 5.7 s and the control 56 s / 2 m 10 s with the
-.NET-side vectors already cached. **These are not throughput comparisons.** The runs shared a
-vector cache in sequence — LlamaIndex's chunks nearly all coincided with LangChain's, so its runs
-were served almost entirely from cache while LangChain's ArguAna run embedded cold — and the cache
-state per run is recorded in `BeirRunBudget`, not equalised. They are here so the next person can
-budget a re-run, nothing else.
+Measured by Phase 5.1 on **2026-08-10**, three repeat runs of every cell, on one otherwise idle
+machine in one session: Windows 11 (10.0.26200), Intel Core i9-12900HK (14C/20T), 64 GB, .NET
+10.0.302, CPU ONNX Runtime, CPython 3.14.5.
+
+**Every figure is a range, not a number, and that is the point.** No cost figure here comes from a
+single run. `CostReproducibility` reads the repeats and publishes the spread — smallest run,
+largest run, and their ratio — because a lone number picked from runs that disagreed is a claim the
+data does not make. This is not a formality: an earlier version of this harness had disk reads
+inside the timed spans, and identical runs differed by **23×** on OS page-cache state alone, with
+every single-run validation passing. Indexing and p50 additionally hard-fail above ×3; all twelve
+cells passed, with spreads of ×1.02–×1.17 for all but two.
+
+### Query latency, per retrieval call — comparable across ecosystems
+
+| Dataset | Entrant | p50 | p99 *(reported, never gated)* |
+|---|---|---|---|
+| SciFact | `ragnet-control` | **1.5–1.7 ms** (×1.17) | 2.1–7.2 ms (×3.35) |
+| SciFact | `semantic-kernel-1.78.0` | **0.7–1.2 ms** (×1.60) | 1.5–2.7 ms (×1.75) |
+| SciFact | `langchain-core-1.5.3` | 54.0–56.1 ms (×1.04) | 60.6–61.3 ms (×1.01) |
+| SciFact | `llama-index-core-0.14.23` | 65.7–68.6 ms (×1.04) | 73.9–78.6 ms (×1.06) |
+| SciFact | `haystack-ai-3.0.0` | 78.9–82.4 ms (×1.04) | 89.4–124.9 ms (×1.40) |
+| ArguAna | `ragnet-control` | **2.9–3.2 ms** (×1.11) | 3.8–4.5 ms (×1.18) |
+| ArguAna | `semantic-kernel-1.78.0` | **1.9–2.3 ms** (×1.25) | 9.7–10.2 ms (×1.05) |
+| ArguAna | `langchain-core-1.5.3` | 88.8–92.7 ms (×1.04) | 97.3–106.5 ms (×1.09) |
+| ArguAna | `llama-index-core-0.14.23` | 106.4–117.2 ms (×1.10) | 114.7–133.1 ms (×1.16) |
+| ArguAna | `haystack-ai-3.0.0` | 107.8–118.1 ms (×1.10) | 123.3–143.8 ms (×1.17) |
+| FiQA | `ragnet-control` | **18.9–21.7 ms** (×1.14) | 33.0–37.2 ms (×1.13) |
+| FiQA | `semantic-kernel-1.78.0` | **21.6–22.6 ms** (×1.04) | 34.8–40.8 ms (×1.17) |
+
+FiQA has no Python rows: no Python entrant has ever run that corpus, so its vector cache is cold,
+and a cold entrant would pay 57,638 documents of embedding no other row paid.
+
+**The caveat that must travel with this table, or it misleads.** This compares **default in-memory
+stores**, and for the Python entrants the default is a reference implementation nobody runs in
+production — LangChain's `InMemoryVectorStore` and LlamaIndex's `SimpleVectorStore` scan candidates
+in Python-level loops. *"LangChain is 40× slower"* is **false**; *"LangChain's default in-memory
+store is 40× slower than Rag.NET's default in-memory store"* is what was measured. The
+"at their defaults" protocol is what makes the row meaningful and is also exactly what makes the
+unqualified claim wrong.
+
+**p99 is reported and deliberately never gated.** At these query counts it rides on one to three
+tail samples, so it moves for reasons a defect-catching bar cannot distinguish from noise — the
+SciFact control's ×3.35 is that effect on the fastest entrant in the table, where a single 7 ms
+sample among 300 is enough. It is published anyway, so an unstable tail is visible rather than
+quietly dropped.
+
+### Index construction — per ecosystem, **not comparable across them**
+
+**.NET entrants** — units pre-built, so the span is store construction only:
+
+| Dataset | Entrant | Indexing |
+|---|---|---|
+| SciFact | `ragnet-control` | 0.01–0.02 s (×1.34) |
+| SciFact | `semantic-kernel-1.78.0` | 0.02–0.02 s (×1.07) |
+| ArguAna | `ragnet-control` | 0.02–0.02 s (×1.06) |
+| ArguAna | `semantic-kernel-1.78.0` | 0.05–0.05 s (×1.07) |
+| FiQA | `ragnet-control` | 0.09–0.09 s (×1.05) |
+| FiQA | `semantic-kernel-1.78.0` | 0.16–0.18 s (×1.12) |
+
+**Python entrants** — the span additionally includes each library's own chunker:
+
+| Dataset | Entrant | Indexing |
+|---|---|---|
+| SciFact | `langchain-core-1.5.3` | 0.45–0.49 s (×1.07) |
+| SciFact | `llama-index-core-0.14.23` | 1.52–1.56 s (×1.02) |
+| SciFact | `haystack-ai-3.0.0` | 0.85–0.96 s (×1.13) |
+| ArguAna | `langchain-core-1.5.3` | 0.74–0.75 s (×1.02) |
+| ArguAna | `llama-index-core-0.14.23` | 2.18–2.25 s (×1.03) |
+| ArguAna | `haystack-ai-3.0.0` | 1.30–1.42 s (×1.09) |
+
+**Two tables rather than one, on purpose.** The indexing spans do not bracket the same work: the
+Python entrants' spans include each library's own chunker, while the .NET rows receive their units
+pre-built — that asymmetry is the parity protocol that makes *quality* comparable — and the Python
+harness times a second, warmed build after an untimed rehearsal. Both biases push the same way, and
+neither is a library difference, so a cross-ecosystem indexing row would publish a protocol
+artefact as a result. Read down each table, never across.
+
+**This is index construction with embedding already paid for**, not "the cost of indexing". Every
+vector the run needs is prefetched into memory before any clock starts, on both sides, so embedding
+and its disk I/O are excluded by construction — which is what stopped the 23× defect and is also
+why these numbers are much smaller than an end-to-end ingest.
 
 ## Reproducing it
 
@@ -254,19 +329,49 @@ derived or third-party data and never are.
   figure on this page is pinned in `BeirReproduction` at ±0.005, so a re-run that drifts fails
   rather than silently republishing.
 
+- **Reproducing the cost tables** needs each cell measured more than once, then gated. Run every
+  entrant once per round rather than repeating one entrant back to back: two consecutive runs of
+  the same entrant see almost the same machine state, so they agree for the wrong reason and the
+  spread stops meaning anything. Then dump:
+
+  ```bash
+  for i in 1 2 3; do
+    for dataset in scifact arguana; do
+      for entrant in langchain llamaindex haystack; do
+        uv run python run_entrant.py "$dataset" "$entrant" --run-index $i
+      done
+    done
+    RAGNET_BEIR_LONG_RUNS=1 RAGNET_BEIR_RUN_INDEX=$i \
+      dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
+      --filter "FullyQualifiedName~BeirComparisonControlTests|FullyQualifiedName~BeirSemanticKernelDefaultsTests"
+  done
+  RAGNET_COST_MATRIX_RUNS=3 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests \
+    --filter "DisplayName~DumpsTheGatedCostMatrix" --logger "console;verbosity=detailed"
+  ```
+
+  The machine must be otherwise idle — every figure is a latency measurement, and a full Release
+  rebuild between two runs was on its own worth ×2.2 on indexing.
+
 ## What this table does not measure
 
-- **Not ingestion throughput, memory or cost.** The wall clocks above are budgeting figures with
-  unequal cache states; [Benchmarks](./benchmarks.md) is the speed page, and it covers only
-  Rag.NET.
+- **Not end-to-end ingestion throughput, and not memory.** The cost tables above measure retrieval
+  latency and index construction with embedding excluded by construction — not the cost of getting
+  a document from disk into a store, which is dominated by embedding and parsing on every entrant.
+  Allocations per query and AOT startup are .NET-only and stay on [Benchmarks](./benchmarks.md),
+  which covers only Rag.NET.
+- **Not interpreter or runtime startup.** Excluded on both sides by construction: every span
+  brackets a call in an already-warm process. A cold-start comparison would be a different
+  measurement and would favour neither ecosystem for the reason this one does.
 - **Not production suitability.** Operational maturity, ecosystem, hosting, security posture —
   none of it is in an nDCG.
 - **Not any library's ceiling.** Every entrant would score differently tuned — that is the point of
   a defaults table and also its limit. It measures the decisions a library makes on your behalf
   when you make none, and on corpora whose documents fit inside most default chunk sizes, those
   decisions mostly cancel out.
-- **Not FiQA.** Unrun for every entrant, at a derived ~1 h each; the empty entries in
-  `BeirReproduction` are waiting.
+- **Not FiQA quality, for any entrant.** The cost tables now include FiQA for the two .NET
+  entrants, but no entrant has been *scored* on it — the empty entries in `BeirReproduction` are
+  still waiting, at a derived ~1 h each. A corpus appearing in the cost section is not a corpus the
+  quality table covers.
 - **A dated measurement of pinned versions.** Every library here ships faster than this table
   re-measures. The dates and versions are on every figure so that staleness is visible rather than
   denied.
