@@ -188,7 +188,7 @@ public class IngestionBehaviorTests
             DocumentId = new DocumentId("doc-42"),
             FileName = "report.pdf",
             ContentType = "application/pdf",
-            Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+            Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["author"] = "Alice",
                 ["category"] = "finance",
@@ -219,7 +219,7 @@ public class IngestionBehaviorTests
         {
             DocumentId = new DocumentId("doc-1"),
             FileName = "test.txt",
-            Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+            Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["document_id"] = "should-not-overwrite",
             },

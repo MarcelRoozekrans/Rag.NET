@@ -18,12 +18,12 @@ public class EmbeddedMessageRecursionTests
 {
     private const string InnermostMarker = "INNERMOST-CHAIN-MARKER";
 
-    private static DocumentMetadata CreateMetadata(IDictionary<string, string>? tags = null) => new()
+    private static DocumentMetadata CreateMetadata(IDictionary<string, MetadataValue>? tags = null) => new()
     {
         DocumentId = new DocumentId("chain-1"),
         FileName = "outer.eml",
         ContentType = "message/rfc822",
-        Tags = tags ?? new Dictionary<string, string>(StringComparer.Ordinal),
+        Tags = tags ?? new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
     };
 
     // ── The alternating chain (Task C1) ──────────────────────────────────────
@@ -203,7 +203,7 @@ public class EmbeddedMessageRecursionTests
 
         // Reserved tags are attacker-reachable — DocumentMetadata.Tags can be populated from
         // remote data by a connector. A larger budget must be clamped back to the configured cap.
-        var hostileTags = new Dictionary<string, string>(StringComparer.Ordinal)
+        var hostileTags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["__rag_email_budget"] = "1000000",
         };
@@ -279,7 +279,7 @@ public class EmbeddedMessageRecursionTests
         var outer = await EmlFixtureBuilder.CreateAsync("Outer", "Outer body.",
             [("inner.msg", "application/vnd.ms-outlook", inner.ToArray())], ct);
 
-        var callerTags = new Dictionary<string, string>(StringComparer.Ordinal) { ["source"] = "unit-test" };
+        var callerTags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["source"] = "unit-test" };
         using var stream = new MemoryStream(outer);
         _ = await harness.Eml.ParseAsync(stream, CreateMetadata(callerTags), ct).ToListAsync(ct);
 

@@ -168,10 +168,10 @@ public sealed partial class ConfluenceDataProvider : FileContentProviderBase
     /// <see cref="ConfluenceOptions.SpaceKey"/> and is omitted when the run is unscoped: the
     /// API response itself does not carry the space, because the request does not expand it.
     /// </summary>
-    private Dictionary<string, string> BuildMetadata(ConfluencePage p)
+    private Dictionary<string, MetadataValue> BuildMetadata(ConfluencePage p)
     {
         // version is always present, so the dictionary is never empty and never null.
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["version"] = p.Version.Number.ToString(
                 System.Globalization.CultureInfo.InvariantCulture),

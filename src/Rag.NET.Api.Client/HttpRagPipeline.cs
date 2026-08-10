@@ -34,7 +34,10 @@ public sealed class HttpRagPipeline : IRagPipeline
             DocumentId = metadata.DocumentId,
             FileName = metadata.FileName,
             ContentType = metadata.ContentType,
-            Tags = metadata.Tags
+            // The REST wire contract still carries tags as strings (ToString is lossless as
+            // text but drops the kind); a typed JSON contract is follow-up work tracked with
+            // the typed-metadata change.
+            Tags = metadata.Tags.ToDictionary(kv => kv.Key, kv => kv.Value.ToString(), StringComparer.Ordinal)
         };
 
         var response = await _httpClient.PostAsJsonAsync("/rag/ingest", request, cancellationToken).ConfigureAwait(false);

@@ -102,9 +102,9 @@ public sealed partial class ZendeskArticlesDataProvider : FileContentProviderBas
     /// The article's filterable fields. <c>section_id</c> is the Help Center section the article
     /// lives in — already parsed off the wire and, until now, used nowhere.
     /// </summary>
-    private Dictionary<string, string> BuildMetadata(ZendeskArticle article)
+    private Dictionary<string, MetadataValue> BuildMetadata(ZendeskArticle article)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["article_id"] = article.Id.ToString(CultureInfo.InvariantCulture),
         };

@@ -67,7 +67,7 @@ static async Task IngestDocumentsAsync(IRagPipeline pipeline)
             DocumentId = new DocumentId(Path.GetFileNameWithoutExtension(file)),
             FileName = Path.GetFileName(file),
             ContentType = "text/markdown",
-            Tags = new Dictionary<string, string>(StringComparer.Ordinal) { ["source"] = "quickstart" },
+            Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["source"] = "quickstart" },
         };
 
         using var stream = File.OpenRead(file);

@@ -147,7 +147,7 @@ public sealed class SharePointDataProvider : FileContentProviderBase
         var capturedId = item.Id!;
         var parentPath = item.ParentReference?.Path;
 
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["drive_id"] = _options.DriveId,
         };

@@ -150,6 +150,73 @@ public sealed class IngestFromProviderTests : IDisposable
         Assert.Equal("report.pdf", capturedMetadata[0].FileName);
     }
 
+    /// <summary>
+    /// The question the typed-metadata design has to answer (#91): a custom data provider
+    /// submits a number, a boolean and a date on <see cref="FileEntry.Metadata"/> — every hop
+    /// (BuildMetadata → <see cref="DocumentMetadata.Tags"/> → <see cref="MetadataBehavior"/> →
+    /// <see cref="TextChunk.Metadata"/>) must keep the kind, because losing it at any hop
+    /// re-creates the stringly-typed flattening this design removes. Also pins that a
+    /// chunk-level value set before <see cref="MetadataBehavior"/> runs still wins over the
+    /// document tag (TryAdd precedence), typed or not.
+    /// </summary>
+    [Fact]
+    public async Task IngestFromProviderAsync_TypedEntryMetadata_SurvivesToChunkMetadataTyped()
+    {
+        var reviewedAt = new DateTimeOffset(2026, 5, 4, 12, 0, 0, TimeSpan.Zero);
+        var capturedMetadata = new List<DocumentMetadata>();
+        _pipeline.IngestAsync(Arg.Any<Stream>(), Arg.Do<DocumentMetadata>(m => capturedMetadata.Add(m)),
+            Arg.Any<IngestionOptions?>(), Arg.Any<IProgress<IngestionProgress>?>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IngestionResult, RagError>.Success(
+                new IngestionResult { DocumentId = new DocumentId("typed-1"), ChunksStored = 1 })));
+
+        var provider = MakeProviderWithMetadata(new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+        {
+            ["rating"] = 4.5,
+            ["revision"] = 7,
+            ["published"] = true,
+            ["reviewed_at"] = reviewedAt,
+        });
+        await _pipeline.IngestFromProviderAsync(provider, new ProviderId("crm"),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // First hop: the provider's values reach DocumentMetadata.Tags with their kinds intact.
+        var tags = Assert.Single(capturedMetadata).Tags;
+        Assert.Equal(MetadataValueKind.Number, tags["rating"].Kind);
+
+        // Last hop: the real MetadataBehavior merges the tags onto chunks, still typed.
+        var ctx = new IngestionContext
+        {
+            Stream = Stream.Null,
+            Metadata = capturedMetadata[0],
+            GetNextBm25DocId = () => 0,
+        };
+        ctx.Chunks.Add(new TextChunk { Text = "chunk", DocumentId = new DocumentId("typed-1"), ChunkIndex = 0 });
+        ctx.Chunks.Add(new TextChunk
+        {
+            Text = "chunk with its own value",
+            DocumentId = new DocumentId("typed-1"),
+            ChunkIndex = 1,
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["revision"] = "chunk-level" },
+        });
+        await new MetadataBehavior().HandleAsync(ctx, TestContext.Current.CancellationToken,
+            static (c, _) => ValueTask.FromResult(new IngestionResult
+            {
+                DocumentId = c.Metadata.DocumentId,
+                ChunksStored = 0,
+            }));
+
+        var merged = ctx.Chunks[0].Metadata;
+        Assert.Equal(MetadataValueKind.Number, merged["rating"].Kind);
+        Assert.Equal(4.5, merged["rating"].NumberValue);
+        Assert.Equal((MetadataValue)7, merged["revision"]);
+        Assert.True(merged["published"].BooleanValue);
+        Assert.Equal(reviewedAt, merged["reviewed_at"].DateTimeOffsetValue);
+        Assert.Equal((MetadataValue)"crm", merged[ReservedMetadataKeys.ProviderId]);
+
+        // TryAdd precedence: the chunk-level value survives; the document tag does not clobber it.
+        Assert.Equal((MetadataValue)"chunk-level", ctx.Chunks[1].Metadata["revision"]);
+    }
+
     [Fact]
     public async Task IngestFromProviderAsync_IngestThrows_AppendsToErrorsAndContinues()
     {
@@ -369,7 +436,7 @@ public sealed class IngestFromProviderTests : IDisposable
                     Id: new EntryId("id-1"),
                     FileName: "doc.txt",
                     OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
-                    Metadata: new Dictionary<string, string>(StringComparer.Ordinal)
+                    Metadata: new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                     {
                         ["source"]  = "entry-value",   // entry overrides base for "source"
                         ["extra"]   = "entry-extra",
@@ -380,7 +447,7 @@ public sealed class IngestFromProviderTests : IDisposable
         {
             DocumentId = new DocumentId("id-1"),
             FileName   = "base.pdf",
-            Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+            Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["source"]    = "base-value",
                 ["base-only"] = "base-only-value",
@@ -409,7 +476,7 @@ public sealed class IngestFromProviderTests : IDisposable
     {
         var capturedMetadata = CaptureIngestedMetadata();
         var provider = MakeProviderWithMetadata(
-            new Dictionary<string, string>(StringComparer.Ordinal) { ["extra"] = "entry-extra" });
+            new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["extra"] = "entry-extra" });
 
         var createdAt = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var baseMetadata = new DocumentMetadata
@@ -520,7 +587,7 @@ public sealed class IngestFromProviderTests : IDisposable
     /// One entry carrying <paramref name="metadata"/> — enough to prove a per-entry metadata
     /// rule, and single-entry so an escaping exception is unambiguous.
     /// </summary>
-    private static IFileContentProvider MakeProviderWithMetadata(IReadOnlyDictionary<string, string> metadata)
+    private static IFileContentProvider MakeProviderWithMetadata(IReadOnlyDictionary<string, MetadataValue> metadata)
     {
         var provider = Substitute.For<IFileContentProvider>();
         provider.GetFilesAsync(Arg.Any<CancellationToken>())
@@ -560,7 +627,7 @@ public sealed class IngestFromProviderTests : IDisposable
     public async Task BuildMetadata_EntryTagCollidingWithReservedKey_Throws(string reservedKey)
     {
         var provider = MakeProviderWithMetadata(
-            new Dictionary<string, string>(StringComparer.Ordinal) { [reservedKey] = "connector-value" });
+            new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { [reservedKey] = "connector-value" });
 
         var ex = await Assert.ThrowsAsync<ReservedMetadataKeyException>(() =>
             _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
@@ -580,7 +647,7 @@ public sealed class IngestFromProviderTests : IDisposable
     public async Task BuildMetadata_ReservedKeyCollision_IsNotDowngradedToAnEntryError()
     {
         var provider = MakeProviderWithMetadata(
-            new Dictionary<string, string>(StringComparer.Ordinal) { [ReservedMetadataKeys.CreatedAt] = "1999" });
+            new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { [ReservedMetadataKeys.CreatedAt] = "1999" });
 
         await Assert.ThrowsAsync<ReservedMetadataKeyException>(() =>
             _pipeline.IngestFromProviderAsync(provider, new ProviderId("prov"),
@@ -610,8 +677,8 @@ public sealed class IngestFromProviderTests : IDisposable
         for (var i = 0; i < total; i++)
         {
             var tags = i % 4 == 0
-                ? new Dictionary<string, string>(StringComparer.Ordinal) { [ReservedMetadataKeys.CreatedAt] = "1999" }
-                : new Dictionary<string, string>(StringComparer.Ordinal) { ["repo"] = "acme/widgets" };
+                ? new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { [ReservedMetadataKeys.CreatedAt] = "1999" }
+                : new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["repo"] = "acme/widgets" };
 
             entries.Add(Result<FileEntry, RagError>.Success(new FileEntry(
                 Id: new EntryId($"id-{i}"),
@@ -667,7 +734,7 @@ public sealed class IngestFromProviderTests : IDisposable
                 Id: new EntryId("id-clean"),
                 FileName: "clean.txt",
                 OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream("hi"u8.ToArray())),
-                Metadata: new Dictionary<string, string>(StringComparer.Ordinal) { ["repo"] = "acme/widgets" })),
+                Metadata: new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["repo"] = "acme/widgets" })),
             Result<FileEntry, RagError>.Success(new FileEntry(
                 Id: new EntryId("id-collide"),
                 FileName: "collide.txt",
@@ -677,7 +744,7 @@ public sealed class IngestFromProviderTests : IDisposable
                     await cleanIngested.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
                     return new MemoryStream("hi"u8.ToArray());
                 },
-                Metadata: new Dictionary<string, string>(StringComparer.Ordinal)
+                Metadata: new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                 {
                     [ReservedMetadataKeys.CreatedAt] = "1999",
                 })),
@@ -696,7 +763,7 @@ public sealed class IngestFromProviderTests : IDisposable
     public async Task BuildMetadata_NonReservedEntryTag_IsForwarded()
     {
         var captured = CaptureIngestedMetadata();
-        var provider = MakeProviderWithMetadata(new Dictionary<string, string>(StringComparer.Ordinal)
+        var provider = MakeProviderWithMetadata(new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["repo"] = "acme/widgets",
             ["change_status"] = "modified",
@@ -785,7 +852,7 @@ public sealed class IngestFromProviderTests : IDisposable
     [Fact]
     public async Task IngestFromProviderAsync_ConnectorCannotShadowProviderIdTag()
     {
-        var provider = MakeProviderWithMetadata(new Dictionary<string, string>(StringComparer.Ordinal)
+        var provider = MakeProviderWithMetadata(new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             [ReservedMetadataKeys.ProviderId] = "impostor",
         });
@@ -810,7 +877,7 @@ public sealed class IngestFromProviderTests : IDisposable
         {
             DocumentId = new DocumentId("id-1"),
             FileName = "base.pdf",
-            Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+            Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 [ReservedMetadataKeys.ProviderId] = "stale",
             },

@@ -77,7 +77,7 @@ public class MetadataBehaviorUpdatedAtTests
             DocumentId = new DocumentId("doc1"),
             FileName   = "doc1.txt",
             UpdatedAt  = DateTime.UtcNow,
-            Tags       = new Dictionary<string, string>(StringComparer.Ordinal)
+            Tags       = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["updated_at"] = "2020-01-01T00:00:00.0000000Z",
             },

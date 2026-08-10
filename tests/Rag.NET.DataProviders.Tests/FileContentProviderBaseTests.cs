@@ -25,7 +25,7 @@ public sealed class FileContentProviderBaseTests
         string id,
         string fileName,
         string? etag = null,
-        IReadOnlyDictionary<string, string>? metadata = null)
+        IReadOnlyDictionary<string, MetadataValue>? metadata = null)
         => new(id, fileName, etag, _ => Task.FromResult<Stream>(new MemoryStream()), metadata);
 
     private sealed class TestOptions : CloudStorageOptions { }
@@ -108,7 +108,7 @@ public sealed class FileContentProviderBaseTests
     [Fact]
     public async Task GetFilesAsync_MetadataIsForwardedFromHandle()
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["repo"] = "acme/widgets",
             ["change_status"] = "modified",

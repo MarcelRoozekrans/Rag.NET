@@ -74,7 +74,7 @@ public static class ContainerEntryDispatcher
             yield break;
 
         var metadata = context.Metadata;
-        var tags = new Dictionary<string, string>(metadata.Tags, StringComparer.Ordinal);
+        var tags = new Dictionary<string, MetadataValue>(metadata.Tags, StringComparer.Ordinal);
         if (isNestedContainer)
             context.StampChildTags(tags);
 

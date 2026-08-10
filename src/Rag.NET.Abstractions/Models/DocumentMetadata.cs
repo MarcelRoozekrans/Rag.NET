@@ -30,8 +30,11 @@ public sealed class DocumentMetadata
     /// silently shadows the framework's own value for that key rather than losing to it — unlike
     /// the data-provider connector path, nothing here rejects the collision. Never
     /// <see langword="null"/>; no tags is an empty dictionary, not a missing one.
+    /// Values are typed (<see cref="MetadataValue"/>) so a number or date supplied here reaches
+    /// the vector store as that type; string literals keep their shape via the implicit
+    /// conversion.
     /// </summary>
-    public IDictionary<string, string> Tags { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
+    public IDictionary<string, MetadataValue> Tags { get; init; } = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 
     /// <summary>
     /// Creation or publication timestamp, if known. <see langword="null"/> means the timestamp

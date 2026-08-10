@@ -123,7 +123,7 @@ public static class ServiceBusMessageTranslator
     /// needs: a redelivered message re-ingests rather than duplicates, with no per-message
     /// configuration to get wrong.
     /// </remarks>
-    private static IngestionJob BuildJob(string documentId, string content, Dictionary<string, string> tags) =>
+    private static IngestionJob BuildJob(string documentId, string content, Dictionary<string, MetadataValue> tags) =>
         new()
         {
             Content = Encoding.UTF8.GetBytes(content),
@@ -135,9 +135,9 @@ public static class ServiceBusMessageTranslator
             },
         };
 
-    private static bool TryReadTags(JsonElement root, out Dictionary<string, string> tags)
+    private static bool TryReadTags(JsonElement root, out Dictionary<string, MetadataValue> tags)
     {
-        tags = new Dictionary<string, string>(StringComparer.Ordinal);
+        tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (!root.TryGetProperty("metadata", out var metadata))
             return true;
 

@@ -157,7 +157,7 @@ public sealed class ContainerContext
     }
 
     /// <summary>Writes the reserved tags a dispatched nested container needs to continue the count.</summary>
-    public void StampChildTags(IDictionary<string, string> tags)
+    public void StampChildTags(IDictionary<string, MetadataValue> tags)
     {
         tags[DepthTag] = ChildDepth.ToString(CultureInfo.InvariantCulture);
         tags[BudgetTag] = Budget.Remaining.ToString(CultureInfo.InvariantCulture);
@@ -174,7 +174,7 @@ public sealed class ContainerContext
     /// <see cref="ContainerEntryDispatcher"/> contains that refusal, so this is the only place the
     /// parent learns of them.
     /// </remarks>
-    public void AdoptChildBudget(IDictionary<string, string> childTags)
+    public void AdoptChildBudget(IDictionary<string, MetadataValue> childTags)
     {
         Budget.SetRemaining(ReadTag(childTags, BudgetTag, Budget.Remaining));
         Bytes.SetSpent(ReadLongTag(childTags, BytesTag, Bytes.Spent));
@@ -185,12 +185,12 @@ public sealed class ContainerContext
         string.Equals(key, BudgetTag, StringComparison.Ordinal) ||
         string.Equals(key, BytesTag, StringComparison.Ordinal);
 
-    private static bool HasReservedTag(IDictionary<string, string> tags) =>
+    private static bool HasReservedTag(IDictionary<string, MetadataValue> tags) =>
         tags.ContainsKey(DepthTag) || tags.ContainsKey(BudgetTag) || tags.ContainsKey(BytesTag);
 
-    private static Dictionary<string, string> CopyWithoutReservedTags(IDictionary<string, string> tags)
+    private static Dictionary<string, MetadataValue> CopyWithoutReservedTags(IDictionary<string, MetadataValue> tags)
     {
-        var copy = new Dictionary<string, string>(tags.Count, StringComparer.Ordinal);
+        var copy = new Dictionary<string, MetadataValue>(tags.Count, StringComparer.Ordinal);
         foreach (var pair in tags)
         {
             if (!IsReservedTag(pair.Key))
@@ -200,16 +200,20 @@ public sealed class ContainerContext
         return copy;
     }
 
-    private static int ReadTag(IDictionary<string, string> tags, string key, int fallback) =>
+    // The reserved tags are framework-written as invariant strings, but the values remain
+    // attacker-reachable (a connector can populate Tags from remote data), so both readers
+    // parse the textual form defensively — MetadataValue.ToString is invariant for every kind —
+    // rather than trusting any carried numeric kind directly.
+    private static int ReadTag(IDictionary<string, MetadataValue> tags, string key, int fallback) =>
         tags.TryGetValue(key, out var raw) &&
-        int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) &&
+        int.TryParse(raw.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) &&
         value >= 0
             ? value
             : fallback;
 
-    private static long ReadLongTag(IDictionary<string, string> tags, string key, long fallback) =>
+    private static long ReadLongTag(IDictionary<string, MetadataValue> tags, string key, long fallback) =>
         tags.TryGetValue(key, out var raw) &&
-        long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) &&
+        long.TryParse(raw.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) &&
         value >= 0
             ? value
             : fallback;

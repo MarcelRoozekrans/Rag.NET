@@ -183,10 +183,10 @@ public sealed partial class JiraDataProvider : FileContentProviderBase
     /// into the Markdown body by <see cref="ToMarkdown"/>: the body drives semantic recall, the
     /// tags drive filtering, and neither substitutes for the other.
     /// </summary>
-    private static Dictionary<string, string>? BuildMetadata(JiraIssue issue)
+    private static Dictionary<string, MetadataValue>? BuildMetadata(JiraIssue issue)
     {
         var fields = issue.Fields;
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (!string.IsNullOrEmpty(issue.Key))          metadata["issue_key"]  = issue.Key;
         if (!string.IsNullOrEmpty(fields.Status.Name)) metadata["status"]     = fields.Status.Name;
         if (!string.IsNullOrEmpty(fields.Priority?.Name))

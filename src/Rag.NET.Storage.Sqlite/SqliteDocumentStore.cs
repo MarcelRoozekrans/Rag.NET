@@ -111,7 +111,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
                 var tagsResult = MetadataSerializer.DeserializeTags(reader.GetString(3));
                 var tags = tagsResult.IsSuccess
                            ? tagsResult.Value
-                           : new Dictionary<string, string>(StringComparer.Ordinal);
+                           : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
                 results.Add(new DocumentSummary
                 {
                     DocumentId  = new DocumentId(reader.GetString(0)),

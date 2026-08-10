@@ -20,7 +20,7 @@ internal sealed class RagGrpcService(IRagPipeline pipeline) : RagService.RagServ
             DocumentId = new DocumentId(docId),
             FileName = string.IsNullOrEmpty(request.FileName) ? "document.txt" : request.FileName,
             ContentType = string.IsNullOrEmpty(request.ContentType) ? null : request.ContentType,
-            Tags = new Dictionary<string, string>(request.Tags, StringComparer.Ordinal)
+            Tags = ToTags(request.Tags)
         };
 
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(request.Content));
@@ -93,6 +93,18 @@ internal sealed class RagGrpcService(IRagPipeline pipeline) : RagService.RagServ
     {
         await pipeline.DeleteAsync(request.DocumentId, context.CancellationToken).ConfigureAwait(false);
         return new DeleteResponse();
+    }
+
+    // The inbound side of the same wire contract as ToProto below: the proto map carries
+    // strings, so every tag arrives as a String-kind value. A typed proto map is follow-up
+    // work tracked with the typed-metadata change.
+    private static Dictionary<string, MetadataValue> ToTags(
+        Google.Protobuf.Collections.MapField<string, string> tags)
+    {
+        var result = new Dictionary<string, MetadataValue>(tags.Count, StringComparer.Ordinal);
+        foreach (var (key, value) in tags)
+            result[key] = value;
+        return result;
     }
 
     private static SearchResultProto ToProto(SearchResult r)

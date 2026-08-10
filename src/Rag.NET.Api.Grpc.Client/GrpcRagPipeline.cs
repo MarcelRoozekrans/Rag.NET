@@ -28,8 +28,11 @@ public sealed class GrpcRagPipeline(RagService.RagServiceClient grpcClient) : IR
             ContentType = metadata.ContentType ?? string.Empty
         };
 
+        // The gRPC wire format still carries tags as strings (ToString is lossless as text but
+        // drops the kind); a typed proto map is follow-up work tracked with the typed-metadata
+        // change.
         foreach (var (k, v) in metadata.Tags)
-            request.Tags[k] = v;
+            request.Tags[k] = v.ToString();
 
         var response = await grpcClient.IngestAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
 

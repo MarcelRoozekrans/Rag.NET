@@ -46,7 +46,7 @@ public class NestedContainerBudgetTests
         DocumentId = new DocumentId("nested-1"),
         FileName = "outer.zip",
         ContentType = "application/zip",
-        Tags = new Dictionary<string, string>(StringComparer.Ordinal),
+        Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
     };
 
     /// <summary>
@@ -261,7 +261,7 @@ public class NestedContainerBudgetTests
         DocumentId = new DocumentId("carrier-1"),
         FileName = "carrier.eml",
         ContentType = "message/rfc822",
-        Tags = new Dictionary<string, string>(StringComparer.Ordinal),
+        Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
     };
 
     /// <summary>

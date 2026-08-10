@@ -202,7 +202,7 @@ public sealed class OneDriveDataProvider : FileContentProviderBase
         var capturedDriveId = driveId;
         var parentPath = item.ParentReference?.Path;
 
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["drive_id"] = driveId,
         };

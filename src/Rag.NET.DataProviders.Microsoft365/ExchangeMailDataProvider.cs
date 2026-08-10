@@ -272,7 +272,7 @@ public sealed class ExchangeMailDataProvider : FileContentProviderBase
         var messageId = message.Id!;
         var fileName  = $"{FileNameSanitizer.Sanitize(message.Subject, $"message-{messageId}")}.eml";
 
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["folder"]          = folderId,
             ["has_attachments"] = message.HasAttachments == true ? "true" : "false",

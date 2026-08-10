@@ -89,9 +89,9 @@ public sealed class SitemapDataProvider : IFileContentProvider
     /// permits both a full W3C datetime and a bare date, and normalising would discard which
     /// precision the site actually published.
     /// </summary>
-    private static Dictionary<string, string>? BuildMetadata(string url, string? lastMod)
+    private static Dictionary<string, MetadataValue>? BuildMetadata(string url, string? lastMod)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (!string.IsNullOrEmpty(url))     metadata["url"]     = url;
         if (!string.IsNullOrEmpty(lastMod)) metadata["lastmod"] = lastMod;
         return metadata.Count == 0 ? null : metadata;

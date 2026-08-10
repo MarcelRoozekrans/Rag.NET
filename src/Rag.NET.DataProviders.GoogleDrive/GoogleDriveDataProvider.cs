@@ -190,10 +190,10 @@ public sealed class GoogleDriveDataProvider : FileContentProviderBase
     {
         var capturedId = id;
 
-        Dictionary<string, string>? metadata = null;
+        Dictionary<string, MetadataValue>? metadata = null;
         if (!string.IsNullOrEmpty(mimeType) || !string.IsNullOrEmpty(folderId))
         {
-            metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+            metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
             if (!string.IsNullOrEmpty(mimeType)) metadata["mime_type"] = mimeType;
             if (!string.IsNullOrEmpty(folderId)) metadata["folder_id"] = folderId;
         }

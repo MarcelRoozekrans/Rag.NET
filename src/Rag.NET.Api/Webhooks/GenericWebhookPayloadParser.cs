@@ -69,7 +69,7 @@ public sealed class GenericWebhookPayloadParser : IWebhookPayloadParser
         if (!TryGetNonEmptyString(element, "content", out var content))
             return false;
 
-        var tags = new Dictionary<string, string>(StringComparer.Ordinal);
+        var tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (element.TryGetProperty("metadata", out var metadata))
         {
             if (metadata.ValueKind != JsonValueKind.Object)

@@ -1,4 +1,5 @@
 using System.Globalization;
+using Rag.NET.Models;
 
 namespace Rag.NET;
 
@@ -20,7 +21,7 @@ namespace Rag.NET;
 /// the depth test that dictionary was adopted as the sink and mutated on every
 /// <see cref="Consume"/>.
 /// </remarks>
-public sealed class ContainerBudget(int remaining, IDictionary<string, string>? sink)
+public sealed class ContainerBudget(int remaining, IDictionary<string, MetadataValue>? sink)
 {
     /// <summary>Nested containers still allowed before <see cref="ContainerContext.TryEnterNested"/> starts refusing them.</summary>
     public int Remaining { get; private set; } = remaining;

@@ -55,7 +55,7 @@ public class MetadataBehaviorCreatedAtTests
             DocumentId = new DocumentId("doc1"),
             FileName   = "doc1.txt",
             CreatedAt  = DateTime.UtcNow,
-            Tags       = new Dictionary<string, string>(StringComparer.Ordinal)
+            Tags       = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["created_at"] = "2020-01-01T00:00:00.0000000Z",
             },

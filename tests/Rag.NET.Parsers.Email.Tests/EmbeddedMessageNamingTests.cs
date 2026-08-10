@@ -18,7 +18,7 @@ public class EmbeddedMessageNamingTests
         DocumentId = new DocumentId("naming-1"),
         FileName = "parent.eml",
         ContentType = "message/rfc822",
-        Tags = new Dictionary<string, string>(StringComparer.Ordinal),
+        Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
     };
 
     private static string Name(string? subject) =>

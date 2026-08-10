@@ -109,7 +109,7 @@ public sealed class DropboxDataProvider : FileContentProviderBase
         var capturedPath = file.PathLower!;
         var path = file.PathDisplay ?? capturedPath;
 
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["path"] = path,
         };

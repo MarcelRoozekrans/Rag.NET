@@ -95,7 +95,7 @@ public class EmbeddedMessageOrderingTests
     {
         DocumentId = new DocumentId("ordering-1"),
         FileName = fileName,
-        Tags = new Dictionary<string, string>(StringComparer.Ordinal),
+        Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
     };
 
     // ── Fixtures ─────────────────────────────────────────────────────────────
