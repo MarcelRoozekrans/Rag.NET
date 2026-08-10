@@ -50,7 +50,7 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
             string html;
             try
             {
-                html = await _httpClient.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+                html = await _httpClient.GetStringWithCharsetFallbackAsync(url, cancellationToken).ConfigureAwait(false);
             }
             catch (HttpRequestException)
             {
@@ -104,7 +104,7 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
         try
         {
             var robotsUrl = new Uri(seedUri, "/robots.txt").ToString();
-            var content = await _httpClient.GetStringAsync(robotsUrl, ct).ConfigureAwait(false);
+            var content = await _httpClient.GetStringWithCharsetFallbackAsync(robotsUrl, ct).ConfigureAwait(false);
             return ParseRobotsDisallowed(content);
         }
         catch (HttpRequestException)

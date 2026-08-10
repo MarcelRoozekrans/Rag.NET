@@ -36,7 +36,7 @@ public sealed class RssDataProvider : IFileContentProvider
     public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var xml = await _httpClient.GetStringAsync(_feedUrl, cancellationToken).ConfigureAwait(false);
+        var xml = await _httpClient.GetStringWithCharsetFallbackAsync(_feedUrl, cancellationToken).ConfigureAwait(false);
         var root = XDocument.Parse(xml).Root!;
 
         if (string.Equals(root.Name.LocalName, "feed", StringComparison.Ordinal))
