@@ -113,16 +113,10 @@ public sealed class LlmJudgeEvaluator(
         string rawText,
         IReadOnlyList<JudgeCriterion> activeCriteria)
     {
-        var json = rawText.Trim();
-
-        // Strip markdown code fence if present (```json ... ``` or ``` ... ```)
-        if (json.StartsWith("```", StringComparison.Ordinal))
-        {
-            var firstNewline = json.IndexOf('\n');
-            var lastFence = json.LastIndexOf("```", StringComparison.Ordinal);
-            if (firstNewline >= 0 && lastFence > firstNewline)
-                json = json[(firstNewline + 1)..lastFence].Trim();
-        }
+        // The local strip this replaces ran only when the response STARTED with a fence; a
+        // preamble made every judgement throw LlmJudgeException — loud, but wrong, because the
+        // JSON was right there behind the prose.
+        var json = LlmJsonExtractor.Extract(rawText, LlmJsonPayloadKind.Object);
 
         Dictionary<string, CriterionDto>? dto;
         try

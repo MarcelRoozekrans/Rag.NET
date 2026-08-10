@@ -191,6 +191,42 @@ public class LlmJudgeEvaluatorTests
         Assert.Equal(0.90, judgement.Criteria["relevance"].Score, precision: 10);
     }
 
+    private const string TwoCriteriaPayload =
+        """{"correctness":{"score":0.80,"reasoning":"Good."},"relevance":{"score":0.90,"reasoning":"Relevant."}}""";
+
+    public static TheoryData<string, string> WrappedResponseShapes() => new()
+    {
+        { "preamble then unlabelled fence", $"Here is my evaluation in JSON format:\n\n```\n{TwoCriteriaPayload}\n```" },
+        { "preamble then labelled fence", $"Sure! Here you go:\n\n```json\n{TwoCriteriaPayload}\n```" },
+        { "preamble then bare json", $"Here is the JSON:\n\n{TwoCriteriaPayload}" },
+        { "fence then trailing prose", $"```\n{TwoCriteriaPayload}\n```\n\nLet me know if you need anything else." },
+    };
+
+    [Theory]
+    [MemberData(nameof(WrappedResponseShapes))]
+    public async Task EvaluateAsync_WhenLlmWrapsTheJson_ScoresStillParse(string shape, string response)
+    {
+        // The old strip ran only when the response STARTED with a fence, so a preamble threw
+        // LlmJudgeException on every sample — loud, but wrong: the JSON was right there.
+        var client = MakeChatClient(response);
+        var sut = new LlmJudgeEvaluator(client);
+
+        var samples = new[]
+        {
+            new EvaluationSample("What is RAG?", "RAG is retrieval-augmented generation.", "RAG combines retrieval with LLM generation."),
+        };
+
+        var result = await sut.EvaluateAsync(samples, TestContext.Current.CancellationToken);
+
+        var judgement = Assert.Single(result.Samples);
+        Assert.True(
+            judgement.Criteria.ContainsKey("correctness"),
+            $"The '{shape}' response did not parse. The JSON inside it is valid, so the judge " +
+            "failed to find it.");
+        Assert.Equal(0.80, judgement.Criteria["correctness"].Score, precision: 10);
+        Assert.Equal(0.90, judgement.Criteria["relevance"].Score, precision: 10);
+    }
+
     [Fact]
     public async Task EvaluateAsync_MissingCriterionKey_ThrowsLlmJudgeException()
     {

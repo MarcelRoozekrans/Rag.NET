@@ -34,7 +34,10 @@ public sealed partial class ResumeChunkingStrategy(
             var response = await activeClient
                 .GetResponseAsync([new ChatMessage(ChatRole.User, prompt)], cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
-            parsed = JsonNode.Parse(response.Text ?? string.Empty);
+            // This site had no fence handling at all: any fenced or preambled reply threw and
+            // silently downgraded the whole résumé to one full-text chunk.
+            parsed = JsonNode.Parse(
+                LlmJsonExtractor.Extract(response.Text ?? string.Empty, LlmJsonPayloadKind.Object));
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)

@@ -83,6 +83,34 @@ public class ResumeChunkingStrategyTests
         Assert.All(chunks, c => Assert.Equal<MetadataValue>("resume", c.Metadata["template"]));
     }
 
+    public static TheoryData<string, string> WrappedResponseShapes() => new()
+    {
+        { "preamble then unlabelled fence", $"Here is the structured résumé in JSON format:\n\n```\n{ValidJson}\n```" },
+        { "preamble then labelled fence", $"Sure! Here you go:\n\n```json\n{ValidJson}\n```" },
+        { "preamble then bare json", $"Here is the JSON:\n\n{ValidJson}" },
+        { "labelled fence only", $"```json\n{ValidJson}\n```" },
+        { "fence then trailing prose", $"```\n{ValidJson}\n```\n\nLet me know if you need anything else." },
+    };
+
+    [Theory]
+    [MemberData(nameof(WrappedResponseShapes))]
+    public async Task ChunkDocumentAsync_WhenLlmWrapsTheJson_SectionsStillEmerge(string shape, string response)
+    {
+        // This site had no fence handling at all: any of these shapes threw in JsonNode.Parse
+        // and silently downgraded the whole résumé to a single full-text chunk.
+        var sut = new ResumeChunkingStrategy(MakeChatClient(response), new ResumeChunkingOptions());
+
+        var chunks = new List<TextChunk>();
+        await foreach (var c in sut.ChunkDocumentAsync(ToAsync(ResumeDoc()), new ChunkingOptions(), TestContext.Current.CancellationToken))
+            chunks.Add(c);
+
+        Assert.True(
+            chunks.Exists(c => c.Metadata.TryGetValue("section", out var s) && s == "work_history"),
+            $"The '{shape}' response produced no work_history chunk. The JSON inside it is " +
+            "valid, so parsing failed to find it and the résumé silently fell back to full text.");
+        Assert.Contains(chunks, c => c.Metadata.TryGetValue("section", out var s) && s == "contact_info");
+    }
+
     [Fact]
     public async Task ChunkDocumentAsync_FallsBackOnMalformedJson()
     {

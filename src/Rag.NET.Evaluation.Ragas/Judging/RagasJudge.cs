@@ -60,6 +60,15 @@ internal sealed class RagasJudge(
     }
 
     /// <summary>Asks for a JSON array of strings, distinguishing "empty" from "unreadable".</summary>
+    /// <remarks>
+    /// Extraction is <see cref="LlmJsonPayloadKind.FencedOnly"/> on purpose: a fence is honoured
+    /// wherever it sits — models emit fenced JSON constantly outside structured-output mode, and
+    /// a preamble before the fence is the common decoration — but no attempt is made to salvage
+    /// bare JSON out of prose by bracket-scanning. That would start scoring replies the model
+    /// never intended as JSON, which is guessing; rejecting them keeps the sample excluded
+    /// rather than wrongly scored. The bare-scan refusal is pinned by
+    /// <c>ExtractListAsync_MalformedJson_ReportsFailureInsteadOfEmpty</c>.
+    /// </remarks>
     /// <param name="systemPrompt">The instruction that asks for the array.</param>
     /// <param name="userPrompt">The material to extract from.</param>
     /// <param name="cancellationToken">Token to cancel the call.</param>
@@ -67,7 +76,7 @@ internal sealed class RagasJudge(
         string systemPrompt, string userPrompt, CancellationToken cancellationToken)
     {
         var reply = await _caller.CompleteAsync(systemPrompt, userPrompt, cancellationToken).ConfigureAwait(false);
-        var payload = StripCodeFence(reply);
+        var payload = LlmJsonExtractor.Extract(reply, LlmJsonPayloadKind.FencedOnly);
         if (string.IsNullOrWhiteSpace(payload))
             return ExtractionResult.Failed();
 
@@ -87,36 +96,6 @@ internal sealed class RagasJudge(
         {
             return ExtractionResult.Failed();
         }
-    }
-
-    /// <summary>
-    /// Removes a markdown fence wrapping the whole reply, if there is one.
-    /// </summary>
-    /// <remarks>
-    /// Models emit fenced JSON constantly outside structured-output mode. Rejecting it is honest —
-    /// the sample is excluded rather than wrongly scored — but against a fence-happy model it makes
-    /// most samples unscoreable and the metric report <c>null</c>, which reads as a broken library.
-    /// <para>
-    /// Deliberately narrow. No attempt is made to salvage JSON from the middle of a reply by
-    /// scanning for the first <c>[</c> and the last <c>]</c>: that would start scoring replies the
-    /// model never intended as JSON, which is guessing.
-    /// </para>
-    /// </remarks>
-    private static string StripCodeFence(string reply)
-    {
-        const string Fence = "```";
-
-        var trimmed = reply.Trim();
-        if (trimmed.Length <= (Fence.Length * 2) ||
-            !trimmed.StartsWith(Fence, StringComparison.Ordinal) ||
-            !trimmed.EndsWith(Fence, StringComparison.Ordinal))
-            return trimmed;
-
-        // Whatever sits between the opening fence and the first line break is the language tag,
-        // if any. Without a line break this is not the fenced shape we accept.
-        var inner = trimmed[Fence.Length..^Fence.Length];
-        var lineBreak = inner.IndexOf('\n');
-        return lineBreak < 0 ? trimmed : inner[(lineBreak + 1)..].Trim();
     }
 
     /// <summary>
