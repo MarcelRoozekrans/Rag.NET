@@ -43,7 +43,7 @@ public sealed class SitemapDataProvider : IFileContentProvider
         string url,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var xml = await _httpClient.GetStringAsync(url, cancellationToken).ConfigureAwait(false);
+        var xml = await HttpTextReader.GetStringAsync(_httpClient, url, cancellationToken).ConfigureAwait(false);
         var root = XDocument.Parse(xml).Root!;
 
         if (string.Equals(root.Name.LocalName, "sitemapindex", StringComparison.Ordinal))
