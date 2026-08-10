@@ -185,4 +185,169 @@ public class PipelineRetrieverValidationTests
 
         Assert.True(result.IsSuccess);
     }
+
+    // The tests below pin the move from the hand-written check block to the generated
+    // RetrievalOptionsValidator (issue #100), and the issue #94 properties it newly covers.
+
+    [Fact]
+    public async Task RetrieveAsync_MultipleInvalidValues_ReportsEveryFailureAtOnce()
+    {
+        // The replaced manual block early-returned on the first failure, so a caller with three
+        // bad values learned about one. The generated validator reports all of them.
+        var sut = CreateSut();
+        var options = new RetrievalOptions { TopK = 0, RedundancyThreshold = 1.1f, MmrLambda = -0.1f };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Equal(3, error.Failures.Count);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("TopK", StringComparison.Ordinal));
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("RedundancyThreshold", StringComparison.Ordinal));
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("MmrLambda", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task RetrieveAsync_NonPositiveCandidateCount_ReturnsValidationFailed(int candidateCount)
+    {
+        // Issue #94: RerankingBehavior overwrites the downstream TopK with CandidateCount, and
+        // the store returns [] for a non-positive limit — a validated TopK silently replaced by
+        // an unvalidated 0. Rejected here instead.
+        var sut = CreateSut();
+        var options = new RetrievalOptions { CandidateCount = candidateCount };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("CandidateCount", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task RetrieveAsync_NonPositiveMmrCandidateCount_ReturnsValidationFailed(int mmrCandidateCount)
+    {
+        var sut = CreateSut();
+        var options = new RetrievalOptions { MmrCandidateCount = mmrCandidateCount };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("MmrCandidateCount", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RetrieveAsync_NullCandidateCounts_Succeed()
+    {
+        // Null means "derive from TopK" and must pass. This is the nullable-int trap: a bare
+        // [GreaterThan(0)] on int? converts null to 0 and rejects it, so the attributes carry
+        // a When-condition that skips the bound when the value is unset.
+        var sut = CreateSut();
+        var options = new RetrievalOptions { CandidateCount = null, MmrCandidateCount = null };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(30)]
+    public async Task RetrieveAsync_PositiveCandidateCounts_Succeed(int count)
+    {
+        var sut = CreateSut();
+        var options = new RetrievalOptions { CandidateCount = count, MmrCandidateCount = count };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public async Task RetrieveAsync_NonFiniteMinScore_ReturnsValidationFailed(double minScore)
+    {
+        var sut = CreateSut();
+        var options = new RetrievalOptions { MinScore = minScore };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("MinScore", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(5.0)]
+    [InlineData(-1.0)]
+    public async Task RetrieveAsync_FiniteMinScoreOutsideZeroToOne_Succeeds(double minScore)
+    {
+        // Deliberate: inner-product stores return unbounded scores and OpaqueRanking stores
+        // return RRF values on another scale entirely, so only non-finite values are rejected.
+        // A zero-to-one bound here would reject legitimate configurations (issue #94).
+        var sut = CreateSut();
+        var options = new RetrievalOptions { MinScore = minScore };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsSuccess);
+    }
+
+    [Theory]
+    [InlineData(-0.1f)]
+    [InlineData(1.1f)]
+    public async Task RetrieveAsync_SparseWeightOutOfRange_ReturnsValidationFailed(float sparseWeight)
+    {
+        var sut = CreateSut();
+        var options = new RetrievalOptions
+        {
+            EnsembleOptions = new EnsembleOptions { SparseWeight = sparseWeight },
+        };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains("SparseWeight", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-60)]
+    public async Task RetrieveAsync_NonPositiveRrfK_ReturnsValidationFailed(int k)
+    {
+        // RrfMerger used to silently clamp a non-positive k to 1, so the configured value and
+        // the effective value disagreed with no signal — the issue #94 failure mode.
+        var sut = CreateSut();
+        var options = new RetrievalOptions { EnsembleOptions = new EnsembleOptions { K = k } };
+
+        var result = await sut.RetrieveAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccess);
+        var error = Assert.IsType<RagError.ValidationFailed>(result.Error);
+        Assert.Contains(error.Failures, f => f.PropertyName.Contains(".K", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RetrievalOptionsValidator_BadNestedWeight_ReportsThroughParentValidator()
+    {
+        // Proves the nested mechanism itself, not just the pipeline wiring: the generated
+        // RetrievalOptionsValidator takes the EnsembleOptionsValidator in its constructor and
+        // prefixes nested failures with the property name.
+        var validator = new RetrievalOptionsValidator(new EnsembleOptionsValidator());
+        var options = new RetrievalOptions { EnsembleOptions = new EnsembleOptions { DenseWeight = 1.5f } };
+
+        var result = validator.Validate(options);
+
+        Assert.False(result.IsValid);
+        var failures = result.Failures;
+        Assert.Equal(1, failures.Length);
+        Assert.Equal("EnsembleOptions.DenseWeight", failures[0].PropertyName);
+    }
 }

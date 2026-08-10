@@ -68,31 +68,35 @@ public sealed class PipelineRetriever : IRetriever
     }
 
     /// <summary>
-    /// Rejects per-call options that violate their documented numeric ranges, so a bad value
-    /// fails loudly here instead of silently skewing a pipeline stage. This is the manual
-    /// counterpart of a generated options validator (<c>RetrievalOptions</c> is a record, which
-    /// the ZeroAlloc generator does not support) and the enforcement site the doc comments on
-    /// <c>RetrievalOptions</c> and <c>EnsembleOptions</c> point at.
+    /// The generated validator for per-call options, with its nested
+    /// <c>EnsembleOptionsValidator</c>; both are stateless, so one instance serves every call.
+    /// This replaced a hand-written check block that early-returned on the first failure — the
+    /// generated validator reports every failure at once, and covers the properties the manual
+    /// block never remembered to (the candidate counts and <c>MinScore</c>, issue #94).
+    /// </summary>
+    private static readonly RetrievalOptionsValidator OptionsValidator =
+        new RetrievalOptionsValidator(new EnsembleOptionsValidator());
+
+    /// <summary>
+    /// Rejects per-call options that violate the constraints declared on
+    /// <see cref="RetrievalOptions"/> and <see cref="EnsembleOptions"/>, so a bad value fails
+    /// loudly here instead of silently skewing a pipeline stage. Failures are mapped into
+    /// <see cref="Models.ValidationFailure"/> the same way <c>PipelineIngestor.MapFailures</c>
+    /// does: the span hoisted into a local, then an indexed loop into an array —
+    /// <c>ValidationFailure</c> is a non-readonly struct, so enumerating the span by value
+    /// trips EPS06 and indexing the property result directly trips HLQ013.
     /// </summary>
     private static RagError? Validate(RetrievalOptions options)
     {
-        if (options.TopK <= 0)
-            return new RagError.ValidationFailed([new Models.ValidationFailure("TopK", "TopK must be greater than 0.")]);
-        if (options.RedundancyThreshold < 0.0f || options.RedundancyThreshold > 1.0f)
-            return new RagError.ValidationFailed([new Models.ValidationFailure("RedundancyThreshold", "RedundancyThreshold must be between 0.0 and 1.0.")]);
-        if (options.MmrLambda < 0.0f || options.MmrLambda > 1.0f)
-            return new RagError.ValidationFailed([new Models.ValidationFailure("MmrLambda", "MmrLambda must be between 0.0 and 1.0.")]);
-        if (options.CragScoreThreshold < 0.0f || options.CragScoreThreshold > 1.0f)
-            return new RagError.ValidationFailed([new Models.ValidationFailure("CragScoreThreshold", "CragScoreThreshold must be between 0.0 and 1.0.")]);
-        if (options.EnsembleOptions is { } ensemble)
-        {
-            if (ensemble.DenseWeight < 0.0f || ensemble.DenseWeight > 1.0f)
-                return new RagError.ValidationFailed([new Models.ValidationFailure("EnsembleOptions.DenseWeight", "EnsembleOptions.DenseWeight must be in the range [0, 1].")]);
-            if (ensemble.Bm25Weight < 0.0f || ensemble.Bm25Weight > 1.0f)
-                return new RagError.ValidationFailed([new Models.ValidationFailure("EnsembleOptions.Bm25Weight", "EnsembleOptions.Bm25Weight must be in the range [0, 1].")]);
-        }
+        var result = OptionsValidator.Validate(options);
+        if (result.IsValid)
+            return null;
 
-        return null;
+        var failures = result.Failures;
+        var mapped = new Models.ValidationFailure[failures.Length];
+        for (var i = 0; i < failures.Length; i++)
+            mapped[i] = new Models.ValidationFailure(failures[i].PropertyName, failures[i].ErrorMessage);
+        return new RagError.ValidationFailed(mapped);
     }
 
     /// <summary>
