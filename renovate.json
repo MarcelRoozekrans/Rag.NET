@@ -31,6 +31,16 @@
   "minimumReleaseAge": "3 days",
   "packageRules": [
     {
+      "description": "ASP.NET Core and EF Core ship one package major per .NET major, and that major is the ONLY framework it supports: Microsoft.EntityFrameworkCore 10.0.10 and Microsoft.AspNetCore.TestHost 10.0.10 each carry a single lib/net10.0. For these packages the major is a TARGET FRAMEWORK decision, not a dependency one — it changes when this repository moves to net11.0, not when the package ships. Renovate cannot see that, so it would offer AspNetCore 11 to a net10.0 project and the restore would fail with NU1202 before anything compiles. Blocking the major says so once, and needs no new rule per .NET release. This mirrors the rule in ZeroAlloc-Net/.github, but the reason differs and is worth stating: that org multi-targets and pins a version per TFM behind a Condition, so a bad bump breaks one leg. Every project here is single-TFM net10.0, so there is no leg to lose — a framework major simply stops the whole build until the target framework moves with it. Minor and patch updates flow normally, so 10.0.x keeps arriving. Deliberately NOT applied to Microsoft.Extensions.*, which is multi-targeted: Microsoft.Extensions.Http 10.0.10 ships net462 through net10.0, so constraining it would block upgrades that restore perfectly.",
+      "matchDatasources": ["nuget"],
+      "matchPackageNames": [
+        "/^Microsoft\\.AspNetCore($|\\.)/i",
+        "/^Microsoft\\.EntityFrameworkCore($|\\.)/i"
+      ],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
       "description": "Pinecone.Client is pinned below 4.x because v4 cannot be tested and will never be fixed. v4 retires CreateIndexRequestMetric for MetricType — a three-line rename that compiles — but its Index model marks vector_type as a required JSON property and no published ghcr.io/pinecone-io/pinecone-local image sends it; verified against :latest and the newest tag v1.0.0.rc0 (v0.6.0 and v0.7.0 are the only others, all 17 months old), where all 12 container-backed tests fail identically. This is upstream's own known bug, pinecone-io/pinecone-dotnet-client issue #54, and that repository was ARCHIVED by its owner on 2026-07-03 — read-only, issue still open, no fix coming and no migration guidance published. 3.1.0 works and is fully tested, so it stays. Do not lift this pin expecting a patch release; the wider question is what replaces an abandoned SDK, and that needs a decision rather than a version bump.",
       "matchPackageNames": ["Pinecone.Client"],
       "allowedVersions": "<4.0.0"
