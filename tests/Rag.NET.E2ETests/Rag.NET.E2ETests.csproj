@@ -15,6 +15,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.AnswerEngines\Rag.NET.AnswerEngines.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Graph\Rag.NET.Graph.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.GraphRag\Rag.NET.GraphRag.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.VectorStores.PgVector\Rag.NET.VectorStores.PgVector.csproj" />
     <ProjectReference Include="..\Rag.NET.Testing\Rag.NET.Testing.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
