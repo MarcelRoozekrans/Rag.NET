@@ -29,6 +29,23 @@ namespace Rag.NET.DataProviders;
 /// Optional last-modified timestamp forwarded to
 /// <see cref="Rag.NET.Models.DocumentMetadata.UpdatedAt"/>.
 /// </param>
+/// <param name="ContentType">
+/// This entry's media type — <c>application/pdf</c>, <c>text/markdown</c> — used to select a
+/// parser. Takes precedence over the <c>baseMetadata</c> passed to
+/// <c>IngestFromProviderAsync</c>, the same way <paramref name="Metadata"/> and the timestamps do.
+/// <para>
+/// Set it per entry when a provider yields more than one kind of file, which a batch-level
+/// default cannot express. Before this existed, the only way to declare a content type at all was
+/// that batch-level <c>DocumentMetadata</c> — and its <c>DocumentId</c> and <c>FileName</c> are
+/// <c>required</c>, so a caller had to invent values the pipeline immediately overwrote per entry
+/// just to say "these are PDFs" (issue #95).
+/// </para>
+/// <para>
+/// <see langword="null"/> falls back to the batch-level value, and then to the pipeline's own
+/// content-type resolution — so a provider that has no idea what it is serving can still say
+/// nothing and let the parsers decide.
+/// </para>
+/// </param>
 public sealed record FileEntry(
     EntryId Id,
     string FileName,
@@ -36,4 +53,5 @@ public sealed record FileEntry(
     string? ETag = null,
     IReadOnlyDictionary<string, MetadataValue>? Metadata = null,
     DateTime? CreatedAt = null,
-    DateTime? UpdatedAt = null);
+    DateTime? UpdatedAt = null,
+    string? ContentType = null);
