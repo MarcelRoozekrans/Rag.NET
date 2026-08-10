@@ -233,7 +233,7 @@ public sealed class LinearDataProvider : FileContentProviderBase
     {
         var markdown = ToMarkdown(issue);
 
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["url"] = issue.Url,
         };

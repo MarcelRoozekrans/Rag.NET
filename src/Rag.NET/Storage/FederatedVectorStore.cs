@@ -212,7 +212,7 @@ public sealed class FederatedVectorStore : IVectorStore, IScoreScaleAware
     /// </summary>
     private TextChunk TagSource(TextChunk chunk, int storeIndex)
     {
-        var metadata = new Dictionary<string, string>(chunk.Metadata, StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(chunk.Metadata, StringComparer.Ordinal)
         {
             [SourceStoreMetadataKey] = StoreLabel(storeIndex),
         };

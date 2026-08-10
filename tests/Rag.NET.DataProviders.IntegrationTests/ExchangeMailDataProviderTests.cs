@@ -103,7 +103,7 @@ public sealed class ExchangeMailDataProviderTests
         // Connector metadata flows into chunk tags.
         Assert.Contains(stored, r =>
             r.Chunk.Metadata.TryGetValue("folder", out var folder)
-            && string.Equals(folder, "inbox", StringComparison.Ordinal));
+            && folder == "inbox");
 
         // Watermark advanced to the max receivedDateTime for the caller to persist.
         Assert.Equal("2026-03-02T11:00:00.0000000+00:00", provider.GetDeltaToken());

@@ -230,11 +230,11 @@ public class FederatedVectorStoreTests
         var results = await federated.SearchAsync(QueryVector, new SearchOptions { TopK = 5 }, TestContext.Current.CancellationToken);
 
         var tagged = results.Single(r => string.Equals(r.Chunk.DocumentId, "docX", StringComparison.Ordinal));
-        Assert.Equal("alpha", tagged.Chunk.Metadata["source.store"]);
-        Assert.Equal("value", tagged.Chunk.Metadata["existing"]);
+        Assert.Equal<MetadataValue>("alpha", tagged.Chunk.Metadata["source.store"]);
+        Assert.Equal<MetadataValue>("value", tagged.Chunk.Metadata["existing"]);
 
         var fromB = results.Single(r => string.Equals(r.Chunk.DocumentId, "docZ", StringComparison.Ordinal));
-        Assert.Equal("beta", fromB.Chunk.Metadata["source.store"]);
+        Assert.Equal<MetadataValue>("beta", fromB.Chunk.Metadata["source.store"]);
 
         // The source store's chunk instance must not be mutated.
         Assert.False(original.Chunk.Metadata.ContainsKey("source.store"));
@@ -249,8 +249,8 @@ public class FederatedVectorStoreTests
 
         var results = await federated.SearchAsync(QueryVector, new SearchOptions { TopK = 5 }, TestContext.Current.CancellationToken);
 
-        Assert.Equal("0", results.Single(r => string.Equals(r.Chunk.DocumentId, "docX", StringComparison.Ordinal)).Chunk.Metadata["source.store"]);
-        Assert.Equal("1", results.Single(r => string.Equals(r.Chunk.DocumentId, "docZ", StringComparison.Ordinal)).Chunk.Metadata["source.store"]);
+        Assert.Equal<MetadataValue>("0", results.Single(r => string.Equals(r.Chunk.DocumentId, "docX", StringComparison.Ordinal)).Chunk.Metadata["source.store"]);
+        Assert.Equal<MetadataValue>("1", results.Single(r => string.Equals(r.Chunk.DocumentId, "docZ", StringComparison.Ordinal)).Chunk.Metadata["source.store"]);
     }
 
     // ── 6. Writes and deletes go to the primary store only ───────────────────

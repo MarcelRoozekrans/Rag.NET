@@ -189,7 +189,7 @@ public class GraphRagBenchmarks
         var results = new List<SearchResult>(count);
         for (int i = 0; i < count; i++)
         {
-            var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+            var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["graph_type"] = "entity",
                 ["graph_entity_name"] = $"Entity_{i}",
@@ -217,7 +217,7 @@ public class GraphRagBenchmarks
         var results = new List<SearchResult>(count);
         for (int i = 0; i < count; i++)
         {
-            var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+            var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["graph_type"] = "community_report",
                 ["graph_community_id"] = i.ToString(CultureInfo.InvariantCulture),

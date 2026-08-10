@@ -9,7 +9,7 @@ namespace Rag.NET.Tests.Ingestion.Behaviors;
 file sealed class CapturingChunkSanitiser : IChunkSanitiser
 {
     public List<string> Seen { get; } = [];
-    public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata)
+    public string Sanitise(string text, IReadOnlyDictionary<string, MetadataValue> metadata)
     {
         Seen.Add(text);
         return text.Replace("bad", "[REDACTED]", StringComparison.Ordinal);

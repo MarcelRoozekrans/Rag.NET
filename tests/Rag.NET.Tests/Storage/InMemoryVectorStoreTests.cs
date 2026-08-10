@@ -8,14 +8,14 @@ namespace Rag.NET.Tests.Storage;
 public class InMemoryVectorStoreTests
 {
     private static EmbeddedChunk MakeChunk(
-        string docId, int chunkIndex, float[] embedding, IDictionary<string, string>? metadata = null) => new()
+        string docId, int chunkIndex, float[] embedding, IDictionary<string, MetadataValue>? metadata = null) => new()
         {
             Chunk = new TextChunk
             {
                 Text = $"{docId}-{chunkIndex}",
                 DocumentId = new DocumentId(docId),
                 ChunkIndex = chunkIndex,
-                Metadata = metadata ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                Metadata = metadata ?? new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
             },
             Embedding = embedding,
         };
@@ -50,11 +50,11 @@ public class InMemoryVectorStoreTests
         await store.StoreAsync(
         [
             MakeChunk("doc-eng", 0, [1f, 0f],
-                new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" }),
+                new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" }),
             MakeChunk("doc-mkt", 0, [1f, 0f],
-                new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "marketing" }),
+                new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "marketing" }),
             MakeChunk("doc-far", 0, [0f, 1f],
-                new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" }),
+                new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" }),
         ], ct);
 
         var results = await store.SearchAsync(
@@ -63,7 +63,7 @@ public class InMemoryVectorStoreTests
             {
                 TopK = 10,
                 MinScore = 0.5,
-                MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" },
             },
             ct);
 

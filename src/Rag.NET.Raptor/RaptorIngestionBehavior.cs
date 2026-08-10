@@ -147,7 +147,7 @@ public sealed class RaptorIngestionBehavior(
                 Text = summaryText,
                 DocumentId = ctx.Metadata.DocumentId,
                 ChunkIndex = ctx.EmbeddedChunks.Count + summaryIndex,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                 {
                     ["raptor_level"] = level.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     ["raptor_cluster_id"] = clusterId.ToString(System.Globalization.CultureInfo.InvariantCulture),

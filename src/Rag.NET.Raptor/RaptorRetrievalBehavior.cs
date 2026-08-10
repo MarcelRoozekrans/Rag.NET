@@ -57,7 +57,8 @@ public sealed class RaptorRetrievalBehavior(RaptorRetrievalOptions options) : IR
     }
 
     private static int GetRaptorLevel(SearchResult r)
-        => r.Chunk.Metadata.TryGetValue("raptor_level", out var levelStr) && int.TryParse(levelStr, CultureInfo.InvariantCulture, out var level)
+        => r.Chunk.Metadata.TryGetValue("raptor_level", out var levelValue)
+           && int.TryParse(levelValue.ToString(), CultureInfo.InvariantCulture, out var level)
             ? level
             : 0;
 }

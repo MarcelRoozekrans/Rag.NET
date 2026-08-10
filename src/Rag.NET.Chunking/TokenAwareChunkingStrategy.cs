@@ -137,6 +137,7 @@ public sealed class TokenAwareChunkingStrategy : IChunkingStrategy
                     ChunkIndex = chunkIndex++,
                     StartPosition = position,
                     EndPosition = end,
+                    Metadata = PageMetadata.ForPage(section.PageNumber),
                 };
             }
 

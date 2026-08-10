@@ -1,4 +1,5 @@
 using System.Globalization;
+using Rag.NET.Models;
 
 namespace Rag.NET;
 
@@ -41,7 +42,7 @@ namespace Rag.NET;
 /// </remarks>
 /// <param name="spent">The bytes already spent when this context was entered.</param>
 /// <param name="sink">The child tag dictionary to write each addition back into, or <see langword="null"/>.</param>
-public sealed class ContainerByteBudget(long spent, IDictionary<string, string>? sink)
+public sealed class ContainerByteBudget(long spent, IDictionary<string, MetadataValue>? sink)
 {
     /// <summary>Gets the decompressed bytes this document has cost so far, across every container.</summary>
     public long Spent { get; private set; } = spent;

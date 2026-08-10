@@ -143,11 +143,11 @@ public sealed class SlackDataProvider : FileContentProviderBase
     /// semantic recall, the tags drive filtering.
     /// </para>
     /// </summary>
-    private static Dictionary<string, string> BuildMetadata(
+    private static Dictionary<string, MetadataValue> BuildMetadata(
         SlackChannel channel, string date, int messageCount)
     {
         // message_count is always present, so the dictionary is never empty and never null.
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["message_count"] = messageCount.ToString(CultureInfo.InvariantCulture),
         };

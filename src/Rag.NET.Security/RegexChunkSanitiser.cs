@@ -12,7 +12,7 @@ public sealed partial class RegexChunkSanitiser(
     private readonly ILogger<RegexChunkSanitiser> _logger =
         logger ?? NullLogger<RegexChunkSanitiser>.Instance;
 
-    public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata)
+    public string Sanitise(string text, IReadOnlyDictionary<string, MetadataValue> metadata)
     {
         if (text is null) return string.Empty;
 
@@ -21,7 +21,7 @@ public sealed partial class RegexChunkSanitiser(
 
         try
         {
-            var fileName = metadata.TryGetValue(ReservedMetadataKeys.FileName, out var fn) ? fn : "<unknown>";
+            var fileName = metadata.TryGetValue(ReservedMetadataKeys.FileName, out var fn) ? fn.ToString() : "<unknown>";
             var matchCount = 0;
             var result = InjectionPatterns.InjectionPattern().Replace(text, m =>
             {

@@ -48,6 +48,7 @@ public sealed class FixedSizeChunkingStrategy : IChunkingStrategy
                     ChunkIndex = chunkIndex++,
                     StartPosition = position,
                     EndPosition = end,
+                    Metadata = PageMetadata.ForPage(section.PageNumber),
                 };
             }
 

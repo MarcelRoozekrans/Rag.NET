@@ -28,13 +28,17 @@ public sealed class VideoChunkingStrategy : IDocumentChunkingStrategy, IChunking
     }
 #pragma warning restore CS1998
 
+    // The reserved page/page_end metadata stays absent deliberately: VideoDocumentParser
+    // overloads DocumentSection.PageNumber as a scene timestamp in seconds (surfaced below as
+    // timestamp_seconds), so writing it under a key documented as a 1-based page would present
+    // "page 42" for a 42-second scene.
     private static TextChunk MakeChunk(DocumentSection section, int index) =>
         new()
         {
             Text = section.Text,
             DocumentId = section.DocumentId,
             ChunkIndex = index,
-            Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["template"] = "video",
                 ["source_type"] = "video",

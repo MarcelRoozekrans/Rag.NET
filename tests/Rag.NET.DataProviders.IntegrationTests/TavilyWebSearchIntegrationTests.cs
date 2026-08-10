@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 using Rag.NET.Testing;
+using Rag.NET.Models;
 using Rag.NET.WebSearch.Tavily;
 using Xunit;
 
@@ -55,7 +56,7 @@ public sealed class TavilyWebSearchIntegrationTests
         Assert.All(results, r =>
         {
             Assert.NotNull(r.Chunk.Metadata);
-            Assert.Equal("tavily", r.Chunk.Metadata["source"]);
+            Assert.Equal<MetadataValue>("tavily", r.Chunk.Metadata["source"]);
             Assert.True(r.Chunk.Metadata.ContainsKey("title"));
             Assert.True(r.Chunk.Metadata.ContainsKey("url"));
         });

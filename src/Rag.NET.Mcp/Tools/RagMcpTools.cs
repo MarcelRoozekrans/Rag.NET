@@ -58,7 +58,7 @@ public sealed class RagMcpTools(IRagPipeline pipeline)
         var resolvedId = documentId ?? Guid.NewGuid().ToString();
         var resolvedFileName = fileName ?? $"{resolvedId}.txt";
 
-        var tagDict = new Dictionary<string, string>(StringComparer.Ordinal);
+        var tagDict = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (tags is not null)
         {
             foreach (var tag in tags)

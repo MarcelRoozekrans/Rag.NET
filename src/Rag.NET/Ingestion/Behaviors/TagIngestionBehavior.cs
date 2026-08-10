@@ -26,8 +26,12 @@ public sealed class TagIngestionBehavior : IIngestionBehavior
         if (TagIndex is null || Embedder is null || ctx.Metadata.Tags.Count == 0)
             return await next(ctx, ct).ConfigureAwait(false);
 
-        foreach (var (key, value) in ctx.Metadata.Tags)
+        foreach (var (key, tagValue) in ctx.Metadata.Tags)
         {
+            // The tag index matches natural-language queries against tag values semantically, so
+            // it stores the value's textual form; MetadataValue.ToString is invariant and
+            // lossless as text for every kind.
+            var value = tagValue.ToString();
             if (TagIndex.Contains(key, value))
                 continue;
 

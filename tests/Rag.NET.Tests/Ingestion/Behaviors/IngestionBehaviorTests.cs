@@ -188,7 +188,7 @@ public class IngestionBehaviorTests
             DocumentId = new DocumentId("doc-42"),
             FileName = "report.pdf",
             ContentType = "application/pdf",
-            Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+            Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["author"] = "Alice",
                 ["category"] = "finance",
@@ -204,10 +204,10 @@ public class IngestionBehaviorTests
 
         foreach (var chunk in ctx.Chunks)
         {
-            Assert.Equal("Alice", chunk.Metadata["author"]);
-            Assert.Equal("finance", chunk.Metadata["category"]);
-            Assert.Equal("doc-42", chunk.Metadata["document_id"]);
-            Assert.Equal("report.pdf", chunk.Metadata["file_name"]);
+            Assert.Equal<MetadataValue>("Alice", chunk.Metadata["author"]);
+            Assert.Equal<MetadataValue>("finance", chunk.Metadata["category"]);
+            Assert.Equal<MetadataValue>("doc-42", chunk.Metadata["document_id"]);
+            Assert.Equal<MetadataValue>("report.pdf", chunk.Metadata["file_name"]);
         }
     }
 
@@ -219,7 +219,7 @@ public class IngestionBehaviorTests
         {
             DocumentId = new DocumentId("doc-1"),
             FileName = "test.txt",
-            Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+            Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["document_id"] = "should-not-overwrite",
             },
@@ -235,7 +235,7 @@ public class IngestionBehaviorTests
         await sut.HandleAsync(ctx, ct, StubNext);
 
         // TryAdd should not overwrite pre-existing values
-        Assert.Equal("pre-existing", chunk.Metadata["document_id"]);
+        Assert.Equal<MetadataValue>("pre-existing", chunk.Metadata["document_id"]);
     }
 
     [Fact]

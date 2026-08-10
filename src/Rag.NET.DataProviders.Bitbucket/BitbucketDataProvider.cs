@@ -148,7 +148,7 @@ public sealed class BitbucketDataProvider : FileContentProviderBase
     /// </remarks>
     private FileHandle ToHandle(string path, string? etag, string? changeStatus)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["path"] = path,
             ["repo"] = _repoSlug,

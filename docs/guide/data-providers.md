@@ -881,11 +881,10 @@ Where a connector already renders a value into the Markdown body it emits (`**St
 | Rule | Detail |
 |-------|--------|
 | Keys are `snake_case` | Lowercase letters, digits and underscores; unprefixed, no leading or trailing underscore. |
-| Values are always `string` | The dictionary is `IReadOnlyDictionary<string, string>`. Numeric values (`depth`, `version`, `message_count`, `section_id`) are rendered with the invariant culture. |
-| Booleans are `"true"` / `"false"` | Lowercase literals. `bool.ToString()` yields `"True"`, which does not match ordinally in `HasTagSpec` — so the tag deliberately differs from the same value's rendering in the Markdown body. |
+| Values are typed (`MetadataValue`) | The dictionary is `IReadOnlyDictionary<string, MetadataValue>` — string, number, boolean or date, and the kind survives to `TextChunk.Metadata` and the vector store (see [Typed metadata](vector-stores.md#typed-metadata)). The built-in connectors currently emit their historical string renderings (numbers with the invariant culture, booleans as lowercase `"true"`/`"false"`), preserving what existing filters match; a custom connector is free to emit real numbers, booleans and dates. |
 | Timestamps a connector formats itself are ISO-8601 round-trip | `ToString("o", CultureInfo.InvariantCulture)`. Values passed through verbatim from a vendor API are **not** normalised — see the caveats below. |
-| Optional fields are omitted, never written empty | An empty tag value is indistinguishable from a real one at query time, so a connector leaves the key out entirely. |
-| The dictionary is ordinal | `new Dictionary<string, string>(StringComparer.Ordinal)`, matching `DocumentMetadata.Tags`. |
+| Optional fields are omitted, never written empty | An empty string tag value is indistinguishable from a real one at query time, so a connector leaves the key out entirely. (Numbers, booleans and dates always carry a real value.) |
+| The dictionary is ordinal | `new Dictionary<string, MetadataValue>(StringComparer.Ordinal)`, matching `DocumentMetadata.Tags`. |
 | Nothing to add → `null` | A connector with nothing to say returns `null`, not an empty dictionary — one representation, not two. |
 
 ### `provider_id`
@@ -936,7 +935,7 @@ A key in the **Always** column is still omitted if its source value comes back e
 
 ### Reserved keys
 
-Eight keys are written (or read) by the framework itself and must never be emitted by a connector:
+Ten keys are written (or read) by the framework itself and must never be emitted by a connector:
 
 | Key | Written by | Read by |
 |-----|-----------|---------|
@@ -948,8 +947,10 @@ Eight keys are written (or read) by the framework itself and must never be emitt
 | `_parentKey` | parent/child chunking | parent-document retrieval |
 | `allowed_roles` | *nobody* — supplied by the caller | `RbacRetrievalGuard` |
 | `trust_level` | *nobody* — supplied by the caller | `TrustLevelRetrievalGuard` |
+| `page` | the chunking strategies, from `DocumentSection.PageNumber` | consumers citing a chunk back to its source page |
+| `page_end` | the chunking strategies, together with `page` | consumers rendering a page range |
 
-`updated_at` joined this list in Phase 4.10, together with the migration of the five connectors that used to hand-write it as a plain tag (Asana, Jira, Notion, Zendesk Articles, Zendesk Tickets) — see [Timestamps](#timestamps-createdat-and-updatedat) below.
+`updated_at` joined this list in Phase 4.10, together with the migration of the five connectors that used to hand-write it as a plain tag (Asana, Jira, Notion, Zendesk Articles, Zendesk Tickets) — see [Timestamps](#timestamps-createdat-and-updatedat) below. `page`/`page_end` joined with the typed-metadata change (#91/#82) — see [Page attribution](ingestion.md#page-attribution).
 
 A connector that emits one of these throws `ReservedMetadataKeyException` out of `IngestFromProviderAsync`, naming the offending key, the provider id and the entry id.
 
@@ -963,7 +964,7 @@ Consequences worth knowing:
 
 ### Timestamps: CreatedAt and UpdatedAt
 
-Beside the string-tag `Metadata` dictionary, `FileHandle` and `FileEntry` each carry two optional typed fields — `CreatedAt` and `UpdatedAt`, both `DateTime?` — forwarded onto `DocumentMetadata.CreatedAt`/`UpdatedAt` when the entry survives filtering. `MetadataBehavior` turns whichever of the two is set into the reserved `created_at`/`updated_at` chunk tags (see [Reserved keys](#reserved-keys) above), and `TimeWeightedRetriever` reads them at query time — `updated_at` in preference to `created_at` — to rank fresher content higher. See [Retrieval — Time-Weighted Retrieval](retrieval.md#time-weighted-retrieval) for the full resolution order and why a modified timestamp outranks a creation one.
+Beside the typed `Metadata` dictionary, `FileHandle` and `FileEntry` each carry two optional typed fields — `CreatedAt` and `UpdatedAt`, both `DateTime?` — forwarded onto `DocumentMetadata.CreatedAt`/`UpdatedAt` when the entry survives filtering. `MetadataBehavior` turns whichever of the two is set into the reserved `created_at`/`updated_at` chunk tags (see [Reserved keys](#reserved-keys) above), and `TimeWeightedRetriever` reads them at query time — `updated_at` in preference to `created_at` — to rank fresher content higher. See [Retrieval — Time-Weighted Retrieval](retrieval.md#time-weighted-retrieval) for the full resolution order and why a modified timestamp outranks a creation one.
 
 Not every connector holds both concepts on the objects it fetches, and none fabricates the one it lacks — a connector with only a modification time sets `UpdatedAt` and leaves `CreatedAt` unset, never the other way around. Verified against each connector's source, not assumed:
 

@@ -268,18 +268,16 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
             map.Remove(key);
     }
 
-    private static bool MatchesFilter(TextChunk chunk, IDictionary<string, string>? filter)
+    private static bool MatchesFilter(TextChunk chunk, IDictionary<string, MetadataValue>? filter)
     {
         if (filter is null || filter.Count == 0)
             return true;
 
         foreach (var (key, value) in filter)
         {
-            if (!chunk.Metadata.TryGetValue(key, out var actual) ||
-                !string.Equals(actual, value, StringComparison.Ordinal))
-            {
+            // Typed equality: a Number 3 filter does not match a String "3" value.
+            if (!chunk.Metadata.TryGetValue(key, out var actual) || actual != value)
                 return false;
-            }
         }
 
         return true;

@@ -22,7 +22,7 @@ public sealed partial class PiiChunkSanitiser : IChunkSanitiser
             .ToArray();
     }
 
-    public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata)
+    public string Sanitise(string text, IReadOnlyDictionary<string, MetadataValue> metadata)
     {
         if (text is null) return string.Empty;
 
@@ -31,7 +31,7 @@ public sealed partial class PiiChunkSanitiser : IChunkSanitiser
 
         try
         {
-            var fileName = metadata.TryGetValue(ReservedMetadataKeys.FileName, out var fn) ? fn : "<unknown>";
+            var fileName = metadata.TryGetValue(ReservedMetadataKeys.FileName, out var fn) ? fn.ToString() : "<unknown>";
             var result = text;
             var matchCount = 0;
             foreach (var (regex, placeholder) in _compiled)

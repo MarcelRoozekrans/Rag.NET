@@ -33,7 +33,7 @@ public class RaptorRetrievalBehaviorTests
         var leaf = actual.First(r => !r.Chunk.Metadata.ContainsKey("raptor_level"));
         Assert.Equal(0.8, leaf.Score);
 
-        var summary = actual.First(r => r.Chunk.Metadata.ContainsKey("raptor_level") && string.Equals(r.Chunk.Metadata["raptor_level"], "1", StringComparison.Ordinal));
+        var summary = actual.First(r => r.Chunk.Metadata.ContainsKey("raptor_level") && r.Chunk.Metadata["raptor_level"] == "1");
         Assert.Equal(1.4, summary.Score, precision: 5);
     }
 
@@ -48,7 +48,7 @@ public class RaptorRetrievalBehaviorTests
         var actual = await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
 
         Assert.Single(actual);
-        Assert.Equal("1", actual[0].Chunk.Metadata["raptor_level"]);
+        Assert.Equal<MetadataValue>("1", actual[0].Chunk.Metadata["raptor_level"]);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class RaptorRetrievalBehaviorTests
         var actual = await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
 
         Assert.Equal(2, actual.Count); // leaf (level 0) + level 1
-        Assert.DoesNotContain(actual, r => r.Chunk.Metadata.TryGetValue("raptor_level", out var l) && string.Equals(l, "2", StringComparison.Ordinal));
+        Assert.DoesNotContain(actual, r => r.Chunk.Metadata.TryGetValue("raptor_level", out var l) && l == "2");
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class RaptorRetrievalBehaviorTests
                     Text = "bad metadata",
                     DocumentId = new DocumentId("doc"),
                     ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["raptor_level"] = "not-a-number" },
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["raptor_level"] = "not-a-number" },
                 },
                 Score = 0.5,
             },
@@ -155,7 +155,7 @@ public class RaptorRetrievalBehaviorTests
                 Text = "summary level 1",
                 DocumentId = new DocumentId("doc"),
                 ChunkIndex = 1,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["raptor_level"] = "1", ["raptor_cluster_id"] = "0", ["raptor_child_ids"] = "0" },
+                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["raptor_level"] = "1", ["raptor_cluster_id"] = "0", ["raptor_child_ids"] = "0" },
             },
             Score = 0.7,
         },
@@ -166,7 +166,7 @@ public class RaptorRetrievalBehaviorTests
                 Text = "summary level 2",
                 DocumentId = new DocumentId("doc"),
                 ChunkIndex = 2,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["raptor_level"] = "2", ["raptor_cluster_id"] = "0", ["raptor_child_ids"] = "1" },
+                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["raptor_level"] = "2", ["raptor_cluster_id"] = "0", ["raptor_child_ids"] = "1" },
             },
             Score = 0.6,
         },

@@ -84,7 +84,7 @@ public sealed class GitLabDataProvider : FileContentProviderBase
     private FileHandle ToHandle(
         IRepositoryClient repo, string path, string? etag, string? changeStatus)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["path"]    = path,
             ["project"] = _options.ProjectIdOrPath,

@@ -179,10 +179,10 @@ public sealed class BoxDataProvider : FileContentProviderBase
         string id, string name, string? sha1, string? folderId, string? changeStatus,
         BoxFile? source = null)
     {
-        Dictionary<string, string>? metadata = null;
+        Dictionary<string, MetadataValue>? metadata = null;
         if (folderId is not null || changeStatus is not null)
         {
-            metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+            metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
             if (folderId is not null)     metadata["folder_id"]     = folderId;
             if (changeStatus is not null) metadata["change_status"] = changeStatus;
         }

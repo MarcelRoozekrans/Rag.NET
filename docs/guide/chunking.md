@@ -297,6 +297,35 @@ exactly that long. To bound chunk size on top of the heading structure, add
 `UseSemanticRefinement()` (below), which sub-splits oversized chunks after this strategy has
 shaped them.
 
+## Page attribution (`page` / `page_end` metadata)
+
+Every strategy carries the source page through the chunking boundary: when a
+`DocumentSection` has a `PageNumber` (PDF pages, PowerPoint slides), the chunks produced from
+it get the reserved `page` and `page_end` metadata keys, written as **numbers**
+(`MetadataValueKind.Number`), so retrieval results can be cited back to a page and filtered
+numerically in every vector store.
+
+- **Per-section strategies** (fixed-size, recursive, token-aware, code, C#, late chunking,
+  and the per-section fallbacks) stamp both keys with the section's page: a chunk entirely
+  on page 3 is `page: 3, page_end: 3`. The keys are always written together — never a lone
+  `page` — so consumers render a range without probing for a missing half.
+- **Merging strategies** (`HierarchicalMergerChunkingStrategy` and the templates delegating to
+  it, `SemanticChunkingStrategy`'s document-level path, `PropositionChunkingStrategy`'s
+  passages) report the min/max across the sections a chunk was merged from: a chunk spanning
+  pages 3–4 is `page: 3, page_end: 4`. A run mixing paginated and unpaginated sections keeps
+  the pages that are present rather than dropping the whole range.
+- **Both keys are absent** (not null-valued) for non-paginated sources and where the origin
+  page is genuinely unknowable: `ResumeChunkingStrategy`'s LLM-extracted field chunks
+  (rewritten text with no source span; its full-text fallback does carry the document-wide
+  range) and `VideoChunkingStrategy` (its sections' `PageNumber` is a scene timestamp,
+  surfaced as `timestamp_seconds` metadata instead). Proposition chunks are also rewrites,
+  but they carry their source passage's span, so they inherit that passage's page range.
+- **Refinement** (`UseSemanticRefinement`) keeps the parent chunk's page range on every
+  sub-chunk — the narrowest span the re-split can still vouch for.
+
+The keys survive storage as numbers: all six vector stores persist and round-trip typed
+metadata — see [Vector stores](vector-stores.md#typed-metadata).
+
 ## Chunk refinement (`IChunkRefinementStrategy`)
 
 Chunk refinement is a post-processing pass that runs after chunking (both per-section and document-level paths). `SemanticChunkingStrategy` implements `IChunkRefinementStrategy` to sub-split oversized chunks at sentence boundaries.

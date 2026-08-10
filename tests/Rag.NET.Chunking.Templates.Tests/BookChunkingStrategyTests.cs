@@ -40,7 +40,7 @@ public class BookChunkingStrategyTests
 
         Assert.DoesNotContain(chunks, c =>
             c.Metadata.TryGetValue("heading", out var h) &&
-            h.Contains("Contents", StringComparison.OrdinalIgnoreCase));
+            h.StringValue.Contains("Contents", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -67,7 +67,7 @@ public class BookChunkingStrategyTests
 
         var chunks = await ChunkAsync(sut, sections);
 
-        Assert.All(chunks, c => Assert.Equal("book", c.Metadata["template"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("book", c.Metadata["template"]));
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class BookChunkingStrategyTests
 
         var chunks = await ChunkAsync(sut, sections);
 
-        Assert.All(chunks, c => Assert.Equal("Chapter 1", c.Metadata["chapter"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("Chapter 1", c.Metadata["chapter"]));
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class BookChunkingStrategyTests
 
         var chunks = await ChunkAsync(sut, sections);
 
-        Assert.All(chunks, c => Assert.Equal("Part One", c.Metadata["chapter"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("Part One", c.Metadata["chapter"]));
     }
 
     [Fact]
@@ -126,6 +126,6 @@ public class BookChunkingStrategyTests
 
         Assert.DoesNotContain(chunks, c =>
             c.Metadata.TryGetValue("heading", out var h) &&
-            h.Equals("Index", StringComparison.OrdinalIgnoreCase));
+            h.StringValue.Equals("Index", StringComparison.OrdinalIgnoreCase));
     }
 }

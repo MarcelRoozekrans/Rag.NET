@@ -33,7 +33,7 @@ internal static class MetadataContract
     /// <param name="context">
     /// Optional identifier (entry id, connector name) echoed into the failure message.
     /// </param>
-    public static void AssertValid(IReadOnlyDictionary<string, string>? metadata, string? context = null)
+    public static void AssertValid(IReadOnlyDictionary<string, MetadataValue>? metadata, string? context = null)
     {
         // null is the sanctioned "nothing to add" representation — the pipeline branches on it.
         if (metadata is null)
@@ -90,7 +90,7 @@ internal static class MetadataContract
 
     /// <summary>Rules about the dictionary itself rather than its contents.</summary>
     private static void CollectShapeViolations(
-        IReadOnlyDictionary<string, string> metadata, List<string> violations)
+        IReadOnlyDictionary<string, MetadataValue> metadata, List<string> violations)
     {
         if (metadata.Count == 0)
         {
@@ -101,22 +101,22 @@ internal static class MetadataContract
 
         // DocumentMetadata.Tags and BuildMetadata are ordinal; a mismatched comparer would make
         // lookups inconsistent between the connector and the pipeline.
-        if (metadata is not Dictionary<string, string> concrete)
+        if (metadata is not Dictionary<string, MetadataValue> concrete)
         {
             violations.Add(
                 $"the dictionary is a {metadata.GetType().Name}, whose comparer cannot be verified. " +
-                "Build it as new Dictionary<string, string>(StringComparer.Ordinal).");
+                "Build it as new Dictionary<string, MetadataValue>(StringComparer.Ordinal).");
         }
         else if (!ReferenceEquals(concrete.Comparer, StringComparer.Ordinal))
         {
             violations.Add(
                 $"the dictionary uses {concrete.Comparer.GetType().Name} rather than StringComparer.Ordinal. " +
-                "Build it as new Dictionary<string, string>(StringComparer.Ordinal).");
+                "Build it as new Dictionary<string, MetadataValue>(StringComparer.Ordinal).");
         }
     }
 
     /// <summary>Rules about a single key/value pair.</summary>
-    private static void CollectEntryViolations(string key, string value, List<string> violations)
+    private static void CollectEntryViolations(string key, MetadataValue value, List<string> violations)
     {
         if (ReservedMetadataKeys.IsReserved(key))
         {
@@ -133,7 +133,8 @@ internal static class MetadataContract
                 "with no leading or trailing underscore (a leading underscore is framework-internal).");
         }
 
-        if (string.IsNullOrEmpty(value))
+        // Only a string can be empty; a number, boolean or date always carries a real value.
+        if (value.Kind == MetadataValueKind.String && value.StringValue.Length == 0)
         {
             violations.Add(
                 $"key '{key}' has a null or empty value. Optional fields are omitted, never written " +

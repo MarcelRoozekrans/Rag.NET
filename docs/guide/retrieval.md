@@ -15,7 +15,7 @@ public sealed record RetrievalOptions
 {
     public int TopK                          { get; init; } = 5;
     public double MinScore                   { get; init; } = 0.0;
-    public IDictionary<string, string>? MetadataFilter { get; init; }
+    public IDictionary<string, MetadataValue>? MetadataFilter { get; init; }
     public ISpecification<SearchResult>? Filter { get; init; }
     public bool UseHybridSearch              { get; init; }
     public bool UseLostInTheMiddleReordering { get; init; }
@@ -60,7 +60,7 @@ var results = await pipeline.RetrieveAsync("What are the Q4 targets?", new Retri
     UseMultiQuery                 = true,
     UseReranking                  = true,
     CandidateCount                = 20,
-    MetadataFilter = new Dictionary<string, string>
+    MetadataFilter = new Dictionary<string, MetadataValue>
     {
         ["department"] = "finance",
     },
@@ -509,7 +509,7 @@ await pipeline.IngestAsync(stream, new DocumentMetadata
 {
     DocumentId = new DocumentId("report-q4"),
     FileName   = "report-q4.pdf",
-    Tags       = new Dictionary<string, string>
+    Tags       = new Dictionary<string, MetadataValue>
     {
         ["department"] = "finance",
         ["year"]       = "2024",
@@ -775,24 +775,25 @@ Download ONNX models from [Hugging Face](https://huggingface.co) and point `Mode
 
 ## Metadata filtering
 
-`MetadataFilter` is a dictionary of key-value pairs that must all match a chunk's `Metadata` for the chunk to be returned. This is an AND filter — all entries must match.
+`MetadataFilter` is a dictionary of key-value pairs that must all match a chunk's `Metadata` for the chunk to be returned. This is an AND filter — all entries must match. Values are typed (`MetadataValue`), and matching is kind-sensitive: a filter value written as the number `3` runs a numeric comparison in the store and does not match a stored string `"3"` (nor the reverse).
 
 ```csharp
 var results = await pipeline.RetrieveAsync("capital expenditure targets", new RetrievalOptions
 {
     TopK           = 5,
-    MetadataFilter = new Dictionary<string, string>
+    MetadataFilter = new Dictionary<string, MetadataValue>
     {
-        ["department"] = "finance",
-        ["year"]       = "2024",
+        ["department"] = "finance", // string match
+        ["page"]       = 3,         // numeric match against the reserved page metadata
     },
 });
 ```
 
-Metadata keys come from two sources:
+Metadata keys come from three sources:
 
 1. **`DocumentMetadata.Tags`** — set at ingestion time on the `DocumentMetadata` object.
 2. **Heading breadcrumbs** — injected automatically by the Markdown and HTML parsers.
+3. **Page attribution** — the reserved `page`/`page_end` number pair the chunking strategies write for paginated sources (see [Ingestion — Page attribution](ingestion.md#page-attribution)).
 
 Available heading metadata keys:
 
@@ -806,7 +807,7 @@ Available heading metadata keys:
 // Filter to chunks from a specific Markdown section
 var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 {
-    MetadataFilter = new Dictionary<string, string>
+    MetadataFilter = new Dictionary<string, MetadataValue>
     {
         ["heading_breadcrumb"] = "Chapter 1 > Section 2",
     },
@@ -873,7 +874,7 @@ public sealed class RagOptions
     public bool UseLostInTheMiddleReordering { get; set; }
     public bool UseRedundancyFilter          { get; set; }
     public float RedundancyThreshold         { get; set; } = 0.95f;
-    public IDictionary<string, string>? MetadataFilter  { get; set; }
+    public IDictionary<string, MetadataValue>? MetadataFilter  { get; set; }
     public string? SystemPrompt              { get; set; }
     public float? Temperature                { get; set; }
     public IList<ChatMessage>? ConversationHistory { get; set; }

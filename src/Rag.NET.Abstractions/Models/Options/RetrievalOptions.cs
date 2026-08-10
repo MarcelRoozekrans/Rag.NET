@@ -44,10 +44,11 @@ public sealed record RetrievalOptions
 
     /// <summary>
     /// Restricts retrieval to chunks whose metadata matches every key/value pair exactly
-    /// (ordinal string equality, AND semantics across pairs). <see langword="null"/> or an empty
-    /// dictionary means no filtering.
+    /// (typed equality — a number filter value matches a number, not its string form — with
+    /// ordinal comparison for strings and AND semantics across pairs). <see langword="null"/> or
+    /// an empty dictionary means no filtering.
     /// </summary>
-    public IDictionary<string, string>? MetadataFilter { get; init; }
+    public IDictionary<string, MetadataValue>? MetadataFilter { get; init; }
 
     /// <summary>
     /// Combines dense vector search with sparse/keyword search for this call, fused by

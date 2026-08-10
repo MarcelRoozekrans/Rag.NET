@@ -28,8 +28,8 @@ public class VideoChunkingStrategyTests
         await foreach (var c in strategy.ChunkDocumentAsync(sections, new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(c);
 
-        Assert.All(chunks, c => Assert.Equal("video", c.Metadata["template"]));
-        Assert.All(chunks, c => Assert.Equal("video", c.Metadata["source_type"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("video", c.Metadata["template"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("video", c.Metadata["source_type"]));
     }
 
     [Fact]
@@ -44,8 +44,8 @@ public class VideoChunkingStrategyTests
         await foreach (var c in strategy.ChunkDocumentAsync(sections, new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(c);
 
-        Assert.Equal("video_scene_0", chunks[0].Metadata["part"]);
-        Assert.Equal("video_scene_1", chunks[1].Metadata["part"]);
+        Assert.Equal<MetadataValue>("video_scene_0", chunks[0].Metadata["part"]);
+        Assert.Equal<MetadataValue>("video_scene_1", chunks[1].Metadata["part"]);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public class VideoChunkingStrategyTests
         await foreach (var c in strategy.ChunkDocumentAsync(sections, new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(c);
 
-        Assert.Equal("42", chunks[0].Metadata["timestamp_seconds"]);
+        Assert.Equal<MetadataValue>("42", chunks[0].Metadata["timestamp_seconds"]);
     }
 
     [Fact]
@@ -78,9 +78,9 @@ public class VideoChunkingStrategyTests
             chunks.Add(c);
 
         Assert.Single(chunks);
-        Assert.Equal("video", chunks[0].Metadata["template"]);
-        Assert.Equal("video", chunks[0].Metadata["source_type"]);
-        Assert.Equal("video_scene_0", chunks[0].Metadata["part"]);
-        Assert.Equal("5", chunks[0].Metadata["timestamp_seconds"]);
+        Assert.Equal<MetadataValue>("video", chunks[0].Metadata["template"]);
+        Assert.Equal<MetadataValue>("video", chunks[0].Metadata["source_type"]);
+        Assert.Equal<MetadataValue>("video_scene_0", chunks[0].Metadata["part"]);
+        Assert.Equal<MetadataValue>("5", chunks[0].Metadata["timestamp_seconds"]);
     }
 }

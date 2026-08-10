@@ -137,6 +137,61 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task StoreAndSearch_TypedMetadata_KindsSurviveRoundTrip()
+    {
+        // A number reading back as the string "3" is the flattening bug the typed metadata
+        // design removes (#91) — so the assertion is on Kind, not on textual form. The values
+        // travel through the metadata_entries Collection(Edm.ComplexType), one typed slot per
+        // kind, not through the legacy metadata JSON blob.
+        var reviewedAt = new DateTimeOffset(2026, 5, 4, 12, 0, 0, TimeSpan.Zero);
+        var docId = $"ais-{Guid.CreateVersion7():N}";
+        var chunks = new List<EmbeddedChunk>
+        {
+            new()
+            {
+                Chunk = new TextChunk
+                {
+                    Text = "typed metadata chunk", DocumentId = new DocumentId(docId), ChunkIndex = 0,
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                    {
+                        ["page"] = 3,
+                        ["rating"] = 4.5,
+                        ["published"] = true,
+                        ["reviewed_at"] = reviewedAt,
+                        ["source"] = "unit",
+                    },
+                },
+                Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+            },
+        };
+
+        try
+        {
+            await _sut.StoreAsync(chunks, TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+
+            var results = await _sut.SearchAsync(
+                new float[] { 1.0f, 0.0f, 0.0f },
+                new SearchOptions { TopK = 1 },
+                TestContext.Current.CancellationToken);
+
+            var metadata = Assert.Single(results).Chunk.Metadata;
+            Assert.Equal(MetadataValueKind.Number, metadata["page"].Kind);
+            Assert.Equal(3d, metadata["page"].NumberValue);
+            Assert.Equal(4.5, metadata["rating"].NumberValue);
+            Assert.Equal(MetadataValueKind.Boolean, metadata["published"].Kind);
+            Assert.True(metadata["published"].BooleanValue);
+            Assert.Equal(MetadataValueKind.DateTimeOffset, metadata["reviewed_at"].Kind);
+            Assert.Equal(reviewedAt, metadata["reviewed_at"].DateTimeOffsetValue);
+            Assert.Equal(MetadataValueKind.String, metadata["source"].Kind);
+        }
+        finally
+        {
+            await _sut.DeleteByDocumentIdAsync(docId, CancellationToken.None);
+        }
+    }
+
     [Fact(Skip = "azure-ai-search-simulator does not implement OData filter expressions")]
     public async Task Search_WithMetadataFilter_FiltersResults()
     {
@@ -149,7 +204,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
                 Chunk = new TextChunk
                 {
                     Text = "engineering doc", DocumentId = new DocumentId(docId1), ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" },
                 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
             },
@@ -158,7 +213,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
                 Chunk = new TextChunk
                 {
                     Text = "marketing doc", DocumentId = new DocumentId(docId2), ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "marketing" },
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "marketing" },
                 },
                 Embedding = new float[] { 0.9f, 0.1f, 0.0f },
             },
@@ -174,7 +229,7 @@ public class AzureAISearchVectorStoreTests : IAsyncLifetime
                 new SearchOptions
                 {
                     TopK = 10,
-                    MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                    MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" },
                 },
                 TestContext.Current.CancellationToken);
 

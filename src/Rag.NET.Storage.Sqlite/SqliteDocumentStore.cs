@@ -43,7 +43,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
         docCmd.Parameters.AddWithValue("$docId",       (string)metadata.DocumentId);
         docCmd.Parameters.AddWithValue("$fileName",    metadata.FileName);
         docCmd.Parameters.AddWithValue("$contentType", (object?)metadata.ContentType ?? DBNull.Value);
-        docCmd.Parameters.AddWithValue("$tagsJson",    MetadataSerializer.SerializeMetadata(metadata.Tags));
+        docCmd.Parameters.AddWithValue("$tagsJson",    MetadataSerializer.SerializeTags(metadata.Tags));
         docCmd.Parameters.AddWithValue("$ingestedAt",  now);
         docCmd.Parameters.AddWithValue("$chunkCount",  chunks.Count);
         docCmd.ExecuteNonQuery();
@@ -108,10 +108,10 @@ public sealed class SqliteDocumentStore : IRagDataManager
             var results = new List<DocumentSummary>();
             while (reader.Read())
             {
-                var tagsResult = MetadataSerializer.DeserializeMetadata(reader.GetString(3));
+                var tagsResult = MetadataSerializer.DeserializeTags(reader.GetString(3));
                 var tags = tagsResult.IsSuccess
                            ? tagsResult.Value
-                           : new Dictionary<string, string>(StringComparer.Ordinal);
+                           : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
                 results.Add(new DocumentSummary
                 {
                     DocumentId  = new DocumentId(reader.GetString(0)),
@@ -149,7 +149,7 @@ public sealed class SqliteDocumentStore : IRagDataManager
                 var metadataResult = MetadataSerializer.DeserializeMetadata(reader.GetString(4));
                 var metadata = metadataResult.IsSuccess
                                ? metadataResult.Value
-                               : new Dictionary<string, string>(StringComparer.Ordinal);
+                               : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
                 results.Add(new TextChunk
                 {
                     DocumentId    = new DocumentId(documentId),

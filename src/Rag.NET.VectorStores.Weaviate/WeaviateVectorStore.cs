@@ -324,14 +324,28 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
             ["metadata_json"] = MetadataSerializer.SerializeMetadata(chunk.Metadata),
         };
 
-        // Metadata keys become meta_-prefixed text properties via Weaviate auto-schema
-        // (enabled by default — verified: new properties are accepted without any env
-        // toggle), making them server-side filterable like Qdrant's meta_ payload fields.
+        // Metadata keys become meta_-prefixed properties via Weaviate auto-schema (enabled by
+        // default — verified: new properties are accepted without any env toggle), making them
+        // server-side filterable like Qdrant's meta_ payload fields. Values keep their type:
+        // numbers infer as `number`, booleans as `boolean`; dates ride as sentinel-prefixed
+        // ISO strings (auto-schema would otherwise infer plain `text` and lose the kind).
+        // NOTE for classes written before values carried types: their meta_* properties are
+        // all `text`, so storing a number/boolean under the same key now fails loudly in the
+        // batch response — recreate the class (re-ingesting) to type such keys.
         foreach (var kvp in chunk.Metadata)
-            properties[$"meta_{kvp.Key}"] = kvp.Value;
+            properties[$"meta_{kvp.Key}"] = ToPropertyValue(kvp.Value);
 
         return properties;
     }
+
+    /// <summary>The <c>meta_*</c> property value for one metadata value, keeping its type.</summary>
+    private static object? ToPropertyValue(MetadataValue value) => value.Kind switch
+    {
+        MetadataValueKind.Number => value.NumberValue,
+        MetadataValueKind.Boolean => value.BooleanValue,
+        MetadataValueKind.DateTimeOffset => MetadataDateFormat.EncodeSentinel(value.DateTimeOffsetValue),
+        _ => value.StringValue,
+    };
 
     private async Task<JsonElement> ExecuteGetQueryAsync(string query, CancellationToken cancellationToken)
     {
@@ -410,7 +424,7 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
     /// Corrupt <c>metadata_json</c> is backend corruption — the store posture is to throw
     /// naming the object, never to silently return the chunk with its metadata dropped.
     /// </summary>
-    private static Dictionary<string, string> DeserializeMetadataOrThrow(
+    private static Dictionary<string, MetadataValue> DeserializeMetadataOrThrow(
         JsonElement hit,
         string documentId,
         int chunkIndex)
@@ -456,7 +470,14 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
         return sb.ToString();
     }
 
-    private static string? BuildWhereArgument(IDictionary<string, string>? metadataFilter)
+    /// <summary>
+    /// Typed Equal conditions per filter pair: <c>valueNumber</c> for numbers,
+    /// <c>valueBoolean</c> for booleans, <c>valueText</c> for strings and (sentinel-encoded)
+    /// dates — matching exactly how <see cref="ToPropertyValue"/> stored them. Metadata stored
+    /// before values carried types is all text, so non-string filters do not match it until
+    /// re-ingested.
+    /// </summary>
+    private static string? BuildWhereArgument(IDictionary<string, MetadataValue>? metadataFilter)
     {
         if (metadataFilter is not { Count: > 0 })
             return null;
@@ -472,7 +493,7 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
                 sb.Append(", ");
             first = false;
             sb.Append("{path: [").Append(GraphQlString($"meta_{kvp.Key}"))
-              .Append("], operator: Equal, valueText: ").Append(GraphQlString(kvp.Value))
+              .Append("], operator: Equal, ").Append(WhereValueArgument(kvp.Value))
               .Append('}');
         }
 
@@ -480,6 +501,14 @@ public sealed class WeaviateVectorStore : IVectorStore, IHybridSearchable, IColl
             sb.Append("]}");
         return sb.ToString();
     }
+
+    private static string WhereValueArgument(MetadataValue value) => value.Kind switch
+    {
+        MetadataValueKind.Number => "valueNumber: " + value.NumberValue.ToString(CultureInfo.InvariantCulture),
+        MetadataValueKind.Boolean => "valueBoolean: " + (value.BooleanValue ? "true" : "false"),
+        MetadataValueKind.DateTimeOffset => "valueText: " + GraphQlString(MetadataDateFormat.EncodeSentinel(value.DateTimeOffsetValue)),
+        _ => "valueText: " + GraphQlString(value.StringValue),
+    };
 
     /// <summary>
     /// Vector literal for an inlined GraphQL query (variables are unsupported — see

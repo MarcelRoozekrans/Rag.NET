@@ -71,6 +71,7 @@ public sealed partial class SemanticChunkingStrategy(
                 ChunkIndex = 0,
                 StartPosition = 0,
                 EndPosition = sentences[0].Length,
+                Metadata = PageMetadata.ForPage(section.PageNumber),
             };
             yield break;
         }
@@ -83,8 +84,8 @@ public sealed partial class SemanticChunkingStrategy(
         var similarities = ComputeConsecutiveSimilarities(sentences, embeddings);
         var groups = GroupSentencesByBreakpoints(sentences, similarities);
 
-        MergeUndersizedGroups(groups);
-        SplitOversizedGroups(groups);
+        MergeUndersizedGroups(groups, static s => s.Length);
+        SplitOversizedGroups(groups, static s => s.Length);
 
         int chunkIndex = 0;
         int cursor = 0;
@@ -129,24 +130,32 @@ public sealed partial class SemanticChunkingStrategy(
 
         var groups = GroupSectionsByBreakpoints(sectionList, embeddings);
 
-        // Merge/split groups based on total text length — reuse sentence-level helpers via adapter
-        var textGroups = groups.ConvertAll(g => g.ConvertAll(s => s.Text));
-        MergeUndersizedGroups(textGroups);
-        SplitOversizedGroups(textGroups);
+        // Merge/split groups based on total text length — the same helpers as the sentence path,
+        // applied to the sections themselves so every group keeps the sections it was built from
+        // (and with them the source-page range each chunk reports).
+        MergeUndersizedGroups(groups, static s => s.Text.Length);
+        SplitOversizedGroups(groups, static s => s.Text.Length);
 
         var documentId = sectionList[0].DocumentId;
         int chunkIndex = 0;
 #pragma warning disable HLQ012 // Plain foreach is clearer here; no perf-critical path
-        foreach (var group in textGroups)
+        foreach (var group in groups)
         {
 #pragma warning restore HLQ012
             cancellationToken.ThrowIfCancellationRequested();
-            var text = string.Join("\n\n", group);
+            var text = string.Join("\n\n", group.ConvertAll(static s => s.Text));
             // GroupCharLength uses " " as separator (1 char) but we join with "\n\n" (2 chars).
             // This means MaxChunkSize is slightly under-enforced (by at most count-1 chars per group).
             // Acceptable: chunking constraints are heuristics, not hard limits.
             if (string.IsNullOrWhiteSpace(text))
                 continue;
+
+            var pages = PageRange.Empty;
+            foreach (ref readonly var section in System.Runtime.InteropServices.CollectionsMarshal.AsSpan(group))
+                pages = pages.Fold(section.PageNumber);
+
+            var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+            pages.WriteTo(metadata);
 
             yield return new TextChunk
             {
@@ -155,6 +164,7 @@ public sealed partial class SemanticChunkingStrategy(
                 ChunkIndex = chunkIndex++,
                 StartPosition = 0,
                 EndPosition = text.Length,
+                Metadata = metadata,
             };
         }
     }
@@ -173,12 +183,18 @@ public sealed partial class SemanticChunkingStrategy(
             }
 
             // Treat the oversized chunk text as a single-section document and re-split at
-            // sentence boundaries using the existing per-section path.
+            // sentence boundaries using the existing per-section path. The synthetic section
+            // has no page number, so each sub-chunk inherits the parent's page range — the
+            // narrowest span refinement can still vouch for.
             var syntheticSection = new DocumentSection { DocumentId = chunk.DocumentId, Text = chunk.Text };
 
             await foreach (var sub in ChunkAsync(syntheticSection, new ChunkingOptions(), cancellationToken)
                                .ConfigureAwait(false))
             {
+                if (chunk.Metadata.TryGetValue(ReservedMetadataKeys.Page, out var page))
+                    sub.Metadata[ReservedMetadataKeys.Page] = page;
+                if (chunk.Metadata.TryGetValue(ReservedMetadataKeys.PageEnd, out var pageEnd))
+                    sub.Metadata[ReservedMetadataKeys.PageEnd] = pageEnd;
                 yield return sub with { ChunkIndex = chunkIndex++ };
             }
         }
@@ -238,7 +254,7 @@ public sealed partial class SemanticChunkingStrategy(
         return groups;
     }
 
-    private void MergeUndersizedGroups(List<List<string>> groups)
+    private void MergeUndersizedGroups<T>(List<List<T>> groups, Func<T, int> lengthOf)
     {
         bool merged = true;
         while (merged && groups.Count > 1)
@@ -246,7 +262,7 @@ public sealed partial class SemanticChunkingStrategy(
             merged = false;
             for (int i = 0; i < groups.Count; i++)
             {
-                var groupLength = GroupCharLength(groups[i]);
+                var groupLength = GroupCharLength(groups[i], lengthOf);
                 if (groupLength >= _options.MinChunkSize)
                     continue;
 
@@ -257,7 +273,7 @@ public sealed partial class SemanticChunkingStrategy(
                 else if (i == groups.Count - 1)
                     neighborIndex = i - 1;
                 else
-                    neighborIndex = GroupCharLength(groups[i - 1]) <= GroupCharLength(groups[i + 1]) ? i - 1 : i + 1;
+                    neighborIndex = GroupCharLength(groups[i - 1], lengthOf) <= GroupCharLength(groups[i + 1], lengthOf) ? i - 1 : i + 1;
 
                 // Merge into the earlier index
                 int target = Math.Min(i, neighborIndex);
@@ -271,30 +287,31 @@ public sealed partial class SemanticChunkingStrategy(
         }
     }
 
-    private void SplitOversizedGroups(List<List<string>> groups)
+    private void SplitOversizedGroups<T>(List<List<T>> groups, Func<T, int> lengthOf)
     {
         for (int i = 0; i < groups.Count; i++)
         {
-            if (GroupCharLength(groups[i]) <= _options.MaxChunkSize)
+            if (GroupCharLength(groups[i], lengthOf) <= _options.MaxChunkSize)
                 continue;
 
-            var subGroups = new List<List<string>>();
-            var current = new List<string>();
+            var subGroups = new List<List<T>>();
+            var current = new List<T>();
             int currentLen = 0;
 
 #pragma warning disable HLQ012 // Plain foreach is clearer here; no perf-critical path
             foreach (var sentence in groups[i])
 #pragma warning restore HLQ012
             {
-                var addedLen = currentLen == 0 ? sentence.Length : sentence.Length + 1; // +1 for space join
+                var sentenceLength = lengthOf(sentence);
+                var addedLen = currentLen == 0 ? sentenceLength : sentenceLength + 1; // +1 for space join
                 if (current.Count > 0 && currentLen + addedLen > _options.MaxChunkSize)
                 {
                     subGroups.Add(current);
-                    current = new List<string>();
+                    current = new List<T>();
                     currentLen = 0;
                 }
                 current.Add(sentence);
-                currentLen += currentLen == 0 ? sentence.Length : addedLen;
+                currentLen += currentLen == 0 ? sentenceLength : addedLen;
             }
             if (current.Count > 0)
                 subGroups.Add(current);
@@ -306,8 +323,8 @@ public sealed partial class SemanticChunkingStrategy(
         }
     }
 
-    private static int GroupCharLength(List<string> group) =>
-        group.Sum(s => s.Length) + Math.Max(0, group.Count - 1); // spaces between sentences
+    private static int GroupCharLength<T>(List<T> group, Func<T, int> lengthOf) =>
+        group.Sum(lengthOf) + Math.Max(0, group.Count - 1); // spaces between sentences
 
     private static TextChunk? BuildChunk(DocumentSection section, List<string> group, int chunkIndex, int cursor)
     {
@@ -328,6 +345,7 @@ public sealed partial class SemanticChunkingStrategy(
             ChunkIndex = chunkIndex,
             StartPosition = startPos,
             EndPosition = endPos,
+            Metadata = PageMetadata.ForPage(section.PageNumber),
         };
     }
 }

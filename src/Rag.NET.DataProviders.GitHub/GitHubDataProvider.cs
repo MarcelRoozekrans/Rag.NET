@@ -88,7 +88,7 @@ public sealed class GitHubDataProvider : FileContentProviderBase
     /// </remarks>
     private FileHandle ToHandle(string path, string? sha, string? changeStatus)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["path"] = path,
             ["repo"] = _repoSlug,

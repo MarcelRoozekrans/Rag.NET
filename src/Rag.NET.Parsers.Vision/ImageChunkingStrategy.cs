@@ -27,17 +27,22 @@ public sealed class ImageChunkingStrategy : IDocumentChunkingStrategy, IChunking
     }
 #pragma warning restore CS1998
 
-    private static TextChunk MakeChunk(DocumentSection section, int index) =>
-        new()
+    private static TextChunk MakeChunk(DocumentSection section, int index)
+    {
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+        {
+            ["template"] = "image",
+            ["source_type"] = "image",
+            ["part"] = section.Heading ?? "image_description",
+        };
+        PageMetadata.Write(metadata, section.PageNumber, section.PageNumber);
+
+        return new TextChunk
         {
             Text = section.Text,
             DocumentId = section.DocumentId,
             ChunkIndex = index,
-            Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["template"] = "image",
-                ["source_type"] = "image",
-                ["part"] = section.Heading ?? "image_description",
-            },
+            Metadata = metadata,
         };
+    }
 }

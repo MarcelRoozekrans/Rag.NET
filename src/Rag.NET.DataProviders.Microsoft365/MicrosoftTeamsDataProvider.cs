@@ -275,11 +275,11 @@ public sealed partial class MicrosoftTeamsDataProvider : FileContentProviderBase
     /// The day document's filterable fields. Channel and date are <i>also</i> rendered into the
     /// Markdown heading: the body drives semantic recall, the tags drive filtering.
     /// </summary>
-    private static Dictionary<string, string> BuildMetadata(
+    private static Dictionary<string, MetadataValue> BuildMetadata(
         string teamId, string channelId, string channelName, string date, int messageCount)
     {
         // message_count is always present, so the dictionary is never empty and never null.
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["message_count"] = messageCount.ToString(
                 System.Globalization.CultureInfo.InvariantCulture),

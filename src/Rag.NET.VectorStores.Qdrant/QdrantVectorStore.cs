@@ -69,9 +69,14 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
                 },
             });
 
+            // Per-key native copies for server-side filtering; the serialized "metadata" field
+            // above stays the round-trip authority. Values keep their type: numbers become
+            // Qdrant doubles, booleans booleans; dates ride as sentinel-prefixed ISO strings
+            // (Qdrant's gRPC payload has no date type) so they never collide with a plain
+            // string that merely looks like a date.
             foreach (var kvp in chunk.Chunk.Metadata)
             {
-                points[^1].Payload[$"meta_{kvp.Key}"] = kvp.Value;
+                points[^1].Payload[$"meta_{kvp.Key}"] = ToPayloadValue(kvp.Value);
             }
         }
 
@@ -182,7 +187,22 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
             cancellationToken: cancellationToken).ConfigureAwait(false);
     }
 
-    private protected static Filter? BuildMetadataFilter(IDictionary<string, string>? metadataFilter)
+    /// <summary>The <c>meta_*</c> payload value for one metadata value, keeping its type.</summary>
+    private protected static Value ToPayloadValue(MetadataValue value) => value.Kind switch
+    {
+        MetadataValueKind.Number => value.NumberValue,
+        MetadataValueKind.Boolean => value.BooleanValue,
+        MetadataValueKind.DateTimeOffset => MetadataDateFormat.EncodeSentinel(value.DateTimeOffsetValue),
+        _ => value.StringValue,
+    };
+
+    /// <summary>
+    /// Typed equality conditions per filter pair. Strings and (sentinel-encoded) dates use
+    /// keyword match, booleans boolean match; numbers use a closed range (<c>gte = lte</c>)
+    /// because Qdrant's match condition has no double form. Metadata stored before values
+    /// carried types is all strings, so non-string filters do not match it until re-ingested.
+    /// </summary>
+    private protected static Filter? BuildMetadataFilter(IDictionary<string, MetadataValue>? metadataFilter)
     {
         if (metadataFilter is not { Count: > 0 })
             return null;
@@ -190,7 +210,18 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
         var filter = new Filter();
         foreach (var kvp in metadataFilter)
         {
-            filter.Must.Add(MatchKeyword($"meta_{kvp.Key}", kvp.Value));
+            var field = $"meta_{kvp.Key}";
+            filter.Must.Add(kvp.Value.Kind switch
+            {
+                MetadataValueKind.Number => Range(field, new global::Qdrant.Client.Grpc.Range
+                {
+                    Gte = kvp.Value.NumberValue,
+                    Lte = kvp.Value.NumberValue,
+                }),
+                MetadataValueKind.Boolean => Match(field, kvp.Value.BooleanValue),
+                MetadataValueKind.DateTimeOffset => MatchKeyword(field, MetadataDateFormat.EncodeSentinel(kvp.Value.DateTimeOffsetValue)),
+                _ => MatchKeyword(field, kvp.Value.StringValue),
+            });
         }
 
         return filter;
@@ -198,17 +229,17 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
 
     private protected static SearchResult MapScoredPoint(ScoredPoint point)
     {
-        Dictionary<string, string> metadata;
+        Dictionary<string, MetadataValue> metadata;
         if (point.Payload.TryGetValue("metadata", out var metaValue))
         {
             var metadataResult = MetadataSerializer.DeserializeMetadata(metaValue.StringValue);
             metadata = metadataResult.IsSuccess
                 ? metadataResult.Value
-                : new Dictionary<string, string>(StringComparer.Ordinal);
+                : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         }
         else
         {
-            metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+            metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         }
 
         return new SearchResult
@@ -218,7 +249,7 @@ public class QdrantVectorStore : IVectorStore, ICollectionManageable, IDisposabl
                 Text = point.Payload["text"].StringValue,
                 DocumentId = new DocumentId(point.Payload["document_id"].StringValue),
                 ChunkIndex = (int)point.Payload["chunk_index"].IntegerValue,
-                Metadata = new Dictionary<string, string>(metadata, StringComparer.Ordinal),
+                Metadata = metadata,
             },
             Score = point.Score,
         };

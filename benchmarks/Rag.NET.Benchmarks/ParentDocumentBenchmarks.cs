@@ -36,7 +36,7 @@ public class ParentDocumentBenchmarks
                 Text = $"child chunk {i}",
                 DocumentId = new DocumentId("doc1"),
                 ChunkIndex = i,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                 {
                     ["_parentKey"] = $"doc1:{i}"
                 }

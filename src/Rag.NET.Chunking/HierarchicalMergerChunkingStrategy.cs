@@ -46,6 +46,10 @@ public sealed class HierarchicalMergerChunkingStrategy(HierarchicalMergerOptions
         var currentLevel = int.MaxValue;
         var chunkIndex = 0;
         DocumentId? documentId = null;
+        // Page range of the sections merged into the current chunk: min/max of the page numbers
+        // that are present. Sections without a page (mixed sources) simply don't contribute —
+        // a chunk touching page 3 plus an unpaginated section is still findable on page 3.
+        var pages = PageRange.Empty;
 
         await foreach (var section in sections.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
@@ -56,11 +60,12 @@ public sealed class HierarchicalMergerChunkingStrategy(HierarchicalMergerOptions
             {
                 // Flush accumulated buffer as a chunk before starting the new heading
                 if (buffer.Length > 0 || currentHeading.Length > 0)
-                    yield return BuildChunk(documentId, chunkIndex++, currentHeading, currentLevel, buffer);
+                    yield return BuildChunk(documentId, chunkIndex++, currentHeading, currentLevel, buffer, pages);
 
                 currentHeading = section.Heading ?? StripMarkdownPrefix(section.Text);
                 currentLevel = level.Value;
                 buffer.Clear();
+                pages = PageRange.Empty.Fold(section.PageNumber);
             }
             else
             {
@@ -68,12 +73,13 @@ public sealed class HierarchicalMergerChunkingStrategy(HierarchicalMergerOptions
                 if (buffer.Length > 0)
                     buffer.AppendLine();
                 buffer.Append(section.Text.Trim());
+                pages = pages.Fold(section.PageNumber);
             }
         }
 
         // Flush the final accumulated chunk
         if (buffer.Length > 0 || currentHeading.Length > 0)
-            yield return BuildChunk(documentId ?? new DocumentId("unknown"), chunkIndex, currentHeading, currentLevel, buffer);
+            yield return BuildChunk(documentId ?? new DocumentId("unknown"), chunkIndex, currentHeading, currentLevel, buffer, pages);
     }
 
     /// <inheritdoc/>
@@ -90,6 +96,7 @@ public sealed class HierarchicalMergerChunkingStrategy(HierarchicalMergerOptions
                 Text = section.Text,
                 DocumentId = section.DocumentId,
                 ChunkIndex = section.SectionIndex,
+                Metadata = PageMetadata.ForPage(section.PageNumber),
             }
         ];
         return result.ToAsyncEnumerable();
@@ -113,20 +120,23 @@ public sealed class HierarchicalMergerChunkingStrategy(HierarchicalMergerOptions
         return null;
     }
 
-    private static TextChunk BuildChunk(DocumentId docId, int index, string heading, int level, StringBuilder body)
+    private static TextChunk BuildChunk(
+        DocumentId docId, int index, string heading, int level, StringBuilder body, in PageRange pages)
     {
         var bodyText = body.ToString().Trim();
         var text = heading.Length > 0
             ? $"{heading}\n\n{bodyText}"
             : bodyText;
 
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (heading.Length > 0)
         {
             metadata["heading"] = heading;
             if (level < int.MaxValue)
                 metadata["heading_level"] = level.ToString(CultureInfo.InvariantCulture);
         }
+
+        pages.WriteTo(metadata);
 
         return new TextChunk
         {

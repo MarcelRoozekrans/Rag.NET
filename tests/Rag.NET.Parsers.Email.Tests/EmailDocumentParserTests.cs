@@ -132,7 +132,7 @@ public class EmailDocumentParserTests
             DocumentId = new DocumentId("eml-1"),
             FileName = "test.eml",
             ContentType = "message/rfc822",
-            Tags = new Dictionary<string, string>(StringComparer.Ordinal) { ["source"] = "unit-test" },
+            Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["source"] = "unit-test" },
         };
         using var stream = await CreateEmlAsync(
             "With Attachment", "See attached.", htmlBody: null,

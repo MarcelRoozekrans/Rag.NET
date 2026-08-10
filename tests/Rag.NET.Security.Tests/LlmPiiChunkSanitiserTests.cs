@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using Rag.NET.Models;
 using Rag.NET.Security;
 using Xunit;
 
@@ -9,7 +10,7 @@ namespace Rag.NET.Security.Tests;
 
 public class LlmPiiChunkSanitiserTests
 {
-    private static readonly Dictionary<string, string> Meta =
+    private static readonly Dictionary<string, MetadataValue> Meta =
         new(StringComparer.Ordinal) { ["file_name"] = "test.txt" };
 
     private static IChatClient ClientReturning(string text)

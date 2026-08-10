@@ -87,7 +87,7 @@ public static class EndpointRouteBuilderExtensions
             DocumentId = new DocumentId(docId),
             FileName = req.FileName ?? "document.txt",
             ContentType = req.ContentType,
-            Tags = req.Tags ?? new Dictionary<string, string>(StringComparer.Ordinal)
+            Tags = ToTags(req.Tags)
         };
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(req.Content));
         var result = await mediator.Send(new IngestCommand(stream, metadata), ct).ConfigureAwait(false);
@@ -218,6 +218,21 @@ public static class EndpointRouteBuilderExtensions
     /// two cases preserve is whether an HTTP exchange happened at all.
     /// </para>
     /// </summary>
+    // The REST wire contract (IngestRequest.Tags) still carries strings, so every tag arrives
+    // as a String-kind value; a typed JSON contract is follow-up work tracked with the
+    // typed-metadata change.
+    private static Dictionary<string, MetadataValue> ToTags(IDictionary<string, string>? tags)
+    {
+        var result = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+        if (tags is not null)
+        {
+            foreach (var (key, value) in tags)
+                result[key] = value;
+        }
+
+        return result;
+    }
+
     private static IResult MapRagError(RagError err) => err switch
     {
         RagError.ValidationFailed v => Results.UnprocessableEntity(new { errors = v.Failures.Select(f => new { f.PropertyName, f.ErrorMessage }) }),

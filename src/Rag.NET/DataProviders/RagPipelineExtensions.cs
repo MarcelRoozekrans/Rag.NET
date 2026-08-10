@@ -287,7 +287,7 @@ public static class RagPipelineExtensions
     private static DocumentMetadata BuildMetadata(
         FileEntry entry, DocumentMetadata? baseMetadata, ProviderId providerId)
     {
-        var tags = new Dictionary<string, string>(StringComparer.Ordinal);
+        var tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 
         if (baseMetadata?.Tags is not null)
         {

@@ -86,9 +86,9 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
     /// is <c>"0"</c>), which lets a caller keep only shallow pages at query time. Built
     /// synchronously — assembling the dictionary inside the async iterator would trip HLQ012.
     /// </summary>
-    private static Dictionary<string, string> BuildMetadata(string url, int depth)
+    private static Dictionary<string, MetadataValue> BuildMetadata(string url, int depth)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["url"]   = url,
             ["depth"] = depth.ToString(CultureInfo.InvariantCulture),

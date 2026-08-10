@@ -13,11 +13,11 @@ namespace Rag.NET.DataProviders.Tests;
 /// </summary>
 public sealed class MetadataContractTests
 {
-    private static Dictionary<string, string> Valid() =>
+    private static Dictionary<string, MetadataValue> Valid() =>
         new(StringComparer.Ordinal) { ["repo"] = "acme/widgets" };
 
     /// <summary>Asserts the checker rejects <paramref name="metadata"/>, naming <paramref name="expectedReason"/>.</summary>
-    private static void AssertRejects(IReadOnlyDictionary<string, string>? metadata, string expectedReason)
+    private static void AssertRejects(IReadOnlyDictionary<string, MetadataValue>? metadata, string expectedReason)
     {
         var ex = Assert.ThrowsAny<XunitException>(() => MetadataContract.AssertValid(metadata, "self-test"));
         Assert.Contains(expectedReason, ex.Message, StringComparison.Ordinal);
@@ -27,11 +27,11 @@ public sealed class MetadataContractTests
 
     [Fact]
     public void AssertValid_Null_IsAccepted()
-        => MetadataContract.AssertValid((IReadOnlyDictionary<string, string>?)null);
+        => MetadataContract.AssertValid((IReadOnlyDictionary<string, MetadataValue>?)null);
 
     [Fact]
     public void AssertValid_WellFormedDictionary_IsAccepted()
-        => MetadataContract.AssertValid(new Dictionary<string, string>(StringComparer.Ordinal)
+        => MetadataContract.AssertValid(new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["repo"] = "acme/widgets",
             ["change_status"] = "modified",
@@ -44,20 +44,20 @@ public sealed class MetadataContractTests
 
     [Fact]
     public void AssertValid_EmptyDictionary_IsRejected()
-        => AssertRejects(new Dictionary<string, string>(StringComparer.Ordinal), "the dictionary is empty");
+        => AssertRejects(new Dictionary<string, MetadataValue>(StringComparer.Ordinal), "the dictionary is empty");
 
     // --- rule: the comparer is StringComparer.Ordinal ---
 
     [Fact]
     public void AssertValid_OrdinalIgnoreCaseComparer_IsRejected()
         => AssertRejects(
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["repo"] = "acme/widgets" },
+            new Dictionary<string, MetadataValue>(StringComparer.OrdinalIgnoreCase) { ["repo"] = "acme/widgets" },
             "rather than StringComparer.Ordinal");
 
 #pragma warning disable MA0002 // The missing comparer IS the violation under test.
     [Fact]
     public void AssertValid_DefaultComparer_IsRejected()
-        => AssertRejects(new Dictionary<string, string> { ["repo"] = "acme/widgets" },
+        => AssertRejects(new Dictionary<string, MetadataValue> { ["repo"] = "acme/widgets" },
             "rather than StringComparer.Ordinal");
 #pragma warning restore MA0002
 
@@ -77,7 +77,7 @@ public sealed class MetadataContractTests
     [InlineData("_internal")]            // leading underscore is framework-internal
     [InlineData("trailing_")]            // trailing underscore
     public void AssertValid_NonSnakeCaseKey_IsRejected(string key)
-        => AssertRejects(new Dictionary<string, string>(StringComparer.Ordinal) { [key] = "v" },
+        => AssertRejects(new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { [key] = "v" },
             "is not snake_case");
 
     // --- rule: no reserved key ---
@@ -92,7 +92,7 @@ public sealed class MetadataContractTests
     [InlineData(ReservedMetadataKeys.AllowedRoles)]
     [InlineData(ReservedMetadataKeys.TrustLevel)]
     public void AssertValid_ReservedKey_IsRejected(string key)
-        => AssertRejects(new Dictionary<string, string>(StringComparer.Ordinal) { [key] = "v" },
+        => AssertRejects(new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { [key] = "v" },
             "is reserved by the framework");
 
     /// <summary>
@@ -100,24 +100,26 @@ public sealed class MetadataContractTests
     /// <see cref="ReservedMetadataKeys"/> without the design being revisited, this fails.
     /// Phase 4.10 Task 4 grew this from seven to eight, reserving <c>updated_at</c> once the five
     /// connectors that used to write it as a plain tag were migrated to
-    /// <c>FileHandle.UpdatedAt</c> in the same commit.
+    /// <c>FileHandle.UpdatedAt</c> in the same commit. The typed-metadata change (#91/#82) grew
+    /// it to ten, reserving <c>page</c>/<c>page_end</c> for the chunking strategies' source-page
+    /// attribution.
     /// </summary>
     [Fact]
-    public void ReservedKeys_AreExactlyTheEightFromTheDesign()
+    public void ReservedKeys_AreExactlyTheTenFromTheDesign()
         => Assert.Equal(
-            ["_parentKey", "allowed_roles", "created_at", "document_id", "file_name", "provider_id", "trust_level", "updated_at"],
+            ["_parentKey", "allowed_roles", "created_at", "document_id", "file_name", "page", "page_end", "provider_id", "trust_level", "updated_at"],
             ReservedMetadataKeys.All.Order(StringComparer.Ordinal), StringComparer.Ordinal);
 
     // --- rule: no null or empty values ---
 
     [Fact]
     public void AssertValid_EmptyValue_IsRejected()
-        => AssertRejects(new Dictionary<string, string>(StringComparer.Ordinal) { ["repo"] = "" },
+        => AssertRejects(new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["repo"] = "" },
             "has a null or empty value");
 
     [Fact]
     public void AssertValid_NullValue_IsRejected()
-        => AssertRejects(new Dictionary<string, string>(StringComparer.Ordinal) { ["repo"] = null! },
+        => AssertRejects(new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["repo"] = null! },
             "has a null or empty value");
 
     // --- all violations are reported at once, not just the first ---
@@ -126,7 +128,7 @@ public sealed class MetadataContractTests
     public void AssertValid_MultipleViolations_AreAllReported()
     {
         var ex = Assert.ThrowsAny<XunitException>(() => MetadataContract.AssertValid(
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            new Dictionary<string, MetadataValue>(StringComparer.OrdinalIgnoreCase)
             {
                 ["Repo"] = "acme/widgets",
                 ["created_at"] = "2026-01-01",
@@ -142,7 +144,7 @@ public sealed class MetadataContractTests
 
     // --- the FileEntry conveniences delegate to the same rules ---
 
-    private static FileEntry Entry(IReadOnlyDictionary<string, string>? metadata) => new(
+    private static FileEntry Entry(IReadOnlyDictionary<string, MetadataValue>? metadata) => new(
         Id: new EntryId("entry-1"),
         FileName: "doc.md",
         OpenContentAsync: _ => Task.FromResult<Stream>(new MemoryStream()),
@@ -152,7 +154,7 @@ public sealed class MetadataContractTests
     public void AssertValid_FileEntry_RejectsBadMetadataAndNamesTheEntry()
     {
         var ex = Assert.ThrowsAny<XunitException>(() => MetadataContract.AssertValid(
-            Entry(new Dictionary<string, string>(StringComparer.Ordinal) { ["Repo"] = "x" })));
+            Entry(new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["Repo"] = "x" })));
 
         Assert.Contains("entry-1", ex.Message, StringComparison.Ordinal);
         Assert.Contains("is not snake_case", ex.Message, StringComparison.Ordinal);
@@ -169,7 +171,7 @@ public sealed class MetadataContractTests
         {
             Entry(Valid()),
             Entry(null),
-            Entry(new Dictionary<string, string>(StringComparer.Ordinal) { ["trust_level"] = "public" }),
+            Entry(new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["trust_level"] = "public" }),
         };
 
         var ex = Assert.ThrowsAny<XunitException>(() => MetadataContract.AssertAll(entries));
@@ -189,7 +191,7 @@ public sealed class MetadataContractTests
         {
             Result<FileEntry, RagError>.Success(Entry(Valid())),
             Result<FileEntry, RagError>.Success(
-                Entry(new Dictionary<string, string>(StringComparer.Ordinal) { ["Repo"] = "x" })),
+                Entry(new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["Repo"] = "x" })),
         };
 
         var ex = Assert.ThrowsAny<XunitException>(() => MetadataContract.AssertAll(results));
@@ -218,16 +220,16 @@ public sealed class MetadataContractTests
     /// An <see cref="IReadOnlyDictionary{TKey,TValue}"/> that is not a
     /// <see cref="Dictionary{TKey,TValue}"/>, so its comparer cannot be verified.
     /// </summary>
-    private sealed class UnverifiableDictionary(Dictionary<string, string> inner)
-        : IReadOnlyDictionary<string, string>
+    private sealed class UnverifiableDictionary(Dictionary<string, MetadataValue> inner)
+        : IReadOnlyDictionary<string, MetadataValue>
     {
-        public string this[string key] => inner[key];
+        public MetadataValue this[string key] => inner[key];
         public IEnumerable<string> Keys => inner.Keys;
-        public IEnumerable<string> Values => inner.Values;
+        public IEnumerable<MetadataValue> Values => inner.Values;
         public int Count => inner.Count;
         public bool ContainsKey(string key) => inner.ContainsKey(key);
-        public bool TryGetValue(string key, out string value) => inner.TryGetValue(key, out value!);
-        IEnumerator<KeyValuePair<string, string>> IEnumerable<KeyValuePair<string, string>>.GetEnumerator()
+        public bool TryGetValue(string key, out MetadataValue value) => inner.TryGetValue(key, out value);
+        IEnumerator<KeyValuePair<string, MetadataValue>> IEnumerable<KeyValuePair<string, MetadataValue>>.GetEnumerator()
             => inner.GetEnumerator();
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
             => inner.GetEnumerator();

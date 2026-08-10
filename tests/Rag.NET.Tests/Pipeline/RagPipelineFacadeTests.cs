@@ -189,7 +189,7 @@ public class RagPipelineFacadeTests
             UseLostInTheMiddleReordering = true,
             UseRedundancyFilter = true,
             RedundancyThreshold = 0.8f,
-            MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["key"] = "val" },
+            MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["key"] = "val" },
         };
         await foreach (var _ in _sut.AskStreamingAsync("q", opts, ct)) { }
 

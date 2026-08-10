@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Rag.NET.Models;
 using Rag.NET.Security;
 using Xunit;
 
@@ -13,7 +14,7 @@ public class PiiChunkSanitiserTests
         return new PiiChunkSanitiser(opts, NullLogger<PiiChunkSanitiser>.Instance);
     }
 
-    private static readonly Dictionary<string, string> Meta =
+    private static readonly Dictionary<string, MetadataValue> Meta =
         new(StringComparer.Ordinal) { ["file_name"] = "test.txt" };
 
     [Fact]

@@ -30,7 +30,7 @@ internal sealed class TavilyWebSearch : IWebSearch
                     Text = r.Content,
                     DocumentId = new DocumentId(r.Url),
                     ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                     {
                         ["title"] = r.Title,
                         ["url"] = r.Url,

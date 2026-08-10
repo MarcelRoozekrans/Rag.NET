@@ -252,6 +252,7 @@ public sealed partial class LateChunkingStrategy(
             ChunkIndex = index,
             StartPosition = start,
             EndPosition = end,
+            Metadata = PageMetadata.ForPage(section.PageNumber),
             // Part B contract: null when absent — the cast is load-bearing: without it the
             // null branch converts via the implicit float[] → ReadOnlyMemory<float> operator
             // into an empty, NON-null memory (exactly the trap TextChunk.Embedding documents).

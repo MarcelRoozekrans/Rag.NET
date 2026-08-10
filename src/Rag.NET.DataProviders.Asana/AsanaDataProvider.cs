@@ -119,9 +119,9 @@ public sealed class AsanaDataProvider : FileContentProviderBase
     /// <see cref="AsanaOptions.ProjectGid"/> narrowed the enumeration to one project.
     /// </para>
     /// </summary>
-    private Dictionary<string, string> BuildMetadata(AsanaTask task)
+    private Dictionary<string, MetadataValue> BuildMetadata(AsanaTask task)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["completed"] = task.Completed ? "true" : "false",
         };

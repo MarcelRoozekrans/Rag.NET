@@ -88,7 +88,7 @@ public class RbacRetrievalGuardBenchmarks
 public class PiiChunkSanitiserBenchmarks
 {
     private PiiChunkSanitiser _sanitiser = null!;
-    private Dictionary<string, string> _emptyMetadata = null!;
+    private Dictionary<string, MetadataValue> _emptyMetadata = null!;
 
     private string _smallNoPii    = null!;
     private string _mediumNoPii   = null!;
@@ -100,7 +100,7 @@ public class PiiChunkSanitiserBenchmarks
     public void Setup()
     {
         _sanitiser     = new PiiChunkSanitiser(new PiiDetectionOptions());
-        _emptyMetadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        _emptyMetadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 
         const string sentence = "The quick brown fox jumps over the lazy dog and contributes to the benchmark suite. ";
 

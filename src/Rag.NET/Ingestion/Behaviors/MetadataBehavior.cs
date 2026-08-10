@@ -15,7 +15,7 @@ public sealed class MetadataBehavior : IIngestionBehavior
         {
             foreach (var tag in ctx.Metadata.Tags)
                 chunk.Metadata.TryAdd(tag.Key, tag.Value);
-            chunk.Metadata.TryAdd(ReservedMetadataKeys.DocumentId, ctx.Metadata.DocumentId);
+            chunk.Metadata.TryAdd(ReservedMetadataKeys.DocumentId, (string)ctx.Metadata.DocumentId);
             chunk.Metadata.TryAdd(ReservedMetadataKeys.FileName,   ctx.Metadata.FileName);
             if (ctx.Metadata.CreatedAt is { } createdAt)
             {

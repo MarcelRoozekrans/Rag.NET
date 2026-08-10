@@ -107,7 +107,7 @@ public sealed class RssDataProvider : IFileContentProvider
     /// back to <c>&lt;updated&gt;</c>; <c>author</c> is the first <c>&lt;author&gt;/&lt;name&gt;</c>.
     /// Both are omitted when the feed does not carry them.
     /// </summary>
-    private static Dictionary<string, string>? BuildAtomMetadata(
+    private static Dictionary<string, MetadataValue>? BuildAtomMetadata(
         XElement entry, string url, string? updated)
     {
         var published = entry.Element(s_atomNs + "published")?.Value ?? updated;
@@ -118,14 +118,14 @@ public sealed class RssDataProvider : IFileContentProvider
     /// <summary>
     /// Tags for an RSS 2.0 item: <c>&lt;pubDate&gt;</c> and <c>&lt;author&gt;</c> where present.
     /// </summary>
-    private static Dictionary<string, string>? BuildRssMetadata(
+    private static Dictionary<string, MetadataValue>? BuildRssMetadata(
         XElement item, string url, string? pubDate)
         => BuildMetadata(url, pubDate, item.Element("author")?.Value);
 
-    private static Dictionary<string, string>? BuildMetadata(
+    private static Dictionary<string, MetadataValue>? BuildMetadata(
         string url, string? publishedAt, string? author)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (!string.IsNullOrEmpty(url))    metadata["url"]    = url;
         if (!string.IsNullOrEmpty(author)) metadata["author"] = author;
 

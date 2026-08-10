@@ -13,7 +13,13 @@ namespace Rag.NET.DataProviders;
 /// Optional cheap provider-supplied fingerprint (last-modified+size, <c>&lt;lastmod&gt;</c>, blob SHA, etc.).
 /// When the stored ETag matches, content is not fetched at all.
 /// </param>
-/// <param name="Metadata">Optional key/value pairs forwarded to <see cref="Rag.NET.Models.DocumentMetadata.Tags"/>.</param>
+/// <param name="Metadata">
+/// Optional key/value pairs forwarded to <see cref="Rag.NET.Models.DocumentMetadata.Tags"/>.
+/// Values are typed (<see cref="MetadataValue"/>): a connector can submit a number, boolean or
+/// date and it survives — typed — all the way to <see cref="TextChunk.Metadata"/> and the vector
+/// store, instead of being stringified at this first hop. Plain strings keep their shape via the
+/// implicit conversion.
+/// </param>
 /// <param name="CreatedAt">
 /// Optional creation/publication timestamp forwarded to
 /// <see cref="Rag.NET.Models.DocumentMetadata.CreatedAt"/>. Distinct from any string timestamp
@@ -28,6 +34,6 @@ public sealed record FileEntry(
     string FileName,
     Func<CancellationToken, Task<Stream>> OpenContentAsync,
     string? ETag = null,
-    IReadOnlyDictionary<string, string>? Metadata = null,
+    IReadOnlyDictionary<string, MetadataValue>? Metadata = null,
     DateTime? CreatedAt = null,
     DateTime? UpdatedAt = null);

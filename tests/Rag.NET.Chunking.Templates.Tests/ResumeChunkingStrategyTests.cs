@@ -68,7 +68,7 @@ public class ResumeChunkingStrategyTests
         await foreach (var c in sut.ChunkDocumentAsync(ToAsync(ResumeDoc()), new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(c);
 
-        Assert.Contains(chunks, c => c.Metadata.TryGetValue("section", out var s) && string.Equals(s, "work_history", StringComparison.Ordinal));
+        Assert.Contains(chunks, c => c.Metadata.TryGetValue("section", out var s) && s == "work_history");
     }
 
     [Fact]
@@ -80,7 +80,7 @@ public class ResumeChunkingStrategyTests
         await foreach (var c in sut.ChunkDocumentAsync(ToAsync(ResumeDoc()), new ChunkingOptions(), TestContext.Current.CancellationToken))
             chunks.Add(c);
 
-        Assert.All(chunks, c => Assert.Equal("resume", c.Metadata["template"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("resume", c.Metadata["template"]));
     }
 
     [Fact]

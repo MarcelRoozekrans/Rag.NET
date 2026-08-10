@@ -153,7 +153,7 @@ public class SecurityPipelineTests : IAsyncLifetime
                     DocumentId = new DocumentId(docId),
                     FileName = "untrusted.txt",
                     ContentType = "text/plain",
-                    Tags = new Dictionary<string, string>(StringComparer.Ordinal)
+                    Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                     {
                         ["trust_level"] = "untrusted",
                     },
@@ -257,7 +257,7 @@ public class SecurityPipelineTests : IAsyncLifetime
                 "Public information everyone can see.");
             await IngestWithTagsAsync(pipeline, docRestricted, "restricted.txt",
                 "Top secret admin-only content.",
-                new Dictionary<string, string>(StringComparer.Ordinal) { ["allowed_roles"] = "admin" });
+                new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["allowed_roles"] = "admin" });
 
             var retrieveResult = await pipeline.RetrieveAsync(
                 "information content",
@@ -266,7 +266,7 @@ public class SecurityPipelineTests : IAsyncLifetime
             Assert.True(retrieveResult.IsSuccess, $"RetrieveAsync failed: {retrieveResult}");
             Assert.DoesNotContain(retrieveResult.Value, c =>
                 c.Chunk.Metadata.TryGetValue("allowed_roles", out var r) &&
-                r.Contains("admin", StringComparison.OrdinalIgnoreCase));
+                r.StringValue.Contains("admin", StringComparison.OrdinalIgnoreCase));
         }
         finally
         {
@@ -341,7 +341,7 @@ public class SecurityPipelineTests : IAsyncLifetime
 
             await IngestWithTagsAsync(pipeline, docId, "admin-doc.txt",
                 "Admin-only data that should be audited.",
-                new Dictionary<string, string>(StringComparer.Ordinal) { ["allowed_roles"] = "admin" });
+                new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["allowed_roles"] = "admin" });
 
             var retrieveResult = await pipeline.RetrieveAsync(
                 "admin data audited",
@@ -382,7 +382,7 @@ public class SecurityPipelineTests : IAsyncLifetime
 
     private async Task IngestWithTagsAsync(
         IRagPipeline pipeline, string docId, string fileName, string text,
-        IDictionary<string, string> tags)
+        IDictionary<string, MetadataValue> tags)
     {
         var result = await pipeline.IngestAsync(
             new MemoryStream(Encoding.UTF8.GetBytes(text)),

@@ -25,7 +25,7 @@ public class ZipDocumentParserTests
         DocumentId = new DocumentId("archive-1"),
         FileName = ArchiveName,
         ContentType = "application/zip",
-        Tags = new Dictionary<string, string>(StringComparer.Ordinal),
+        Tags = new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
     };
 
     // ── What it claims ───────────────────────────────────────────────────────

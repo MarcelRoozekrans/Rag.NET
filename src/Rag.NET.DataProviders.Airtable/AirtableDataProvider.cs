@@ -151,9 +151,9 @@ public sealed partial class AirtableDataProvider : FileContentProviderBase
     /// The record's container context. Built synchronously (never inside the async iterator)
     /// and returned as <see langword="null"/> when there is nothing to say.
     /// </summary>
-    private Dictionary<string, string>? BuildRecordMetadata(string? recordId)
+    private Dictionary<string, MetadataValue>? BuildRecordMetadata(string? recordId)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (!string.IsNullOrEmpty(_options.BaseId))    metadata["base_id"]   = _options.BaseId;
         if (!string.IsNullOrEmpty(_options.TableName)) metadata["table"]     = _options.TableName;
         if (!string.IsNullOrEmpty(recordId))           metadata["record_id"] = recordId;
@@ -192,11 +192,11 @@ public sealed partial class AirtableDataProvider : FileContentProviderBase
     /// An attachment carries its parent record's container context plus the field it hangs off
     /// and the Airtable attachment id, so a chunk can be traced back to the exact cell.
     /// </summary>
-    private Dictionary<string, string>? BuildAttachmentMetadata(
+    private Dictionary<string, MetadataValue>? BuildAttachmentMetadata(
         string? recordId, string fieldName, string? attachmentId)
     {
         var metadata = BuildRecordMetadata(recordId)
-            ?? new Dictionary<string, string>(StringComparer.Ordinal);
+            ?? new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (!string.IsNullOrEmpty(fieldName))     metadata["field"]         = fieldName;
         if (!string.IsNullOrEmpty(attachmentId))  metadata["attachment_id"] = attachmentId;
         return metadata.Count == 0 ? null : metadata;

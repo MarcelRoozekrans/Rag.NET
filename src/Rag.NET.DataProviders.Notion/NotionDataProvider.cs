@@ -114,9 +114,9 @@ public sealed class NotionDataProvider : FileContentProviderBase
     /// connector queries <c>/v1/databases/{id}/query</c>.
     /// </para>
     /// </summary>
-    private static Dictionary<string, string>? BuildMetadata(NotionPage page)
+    private static Dictionary<string, MetadataValue>? BuildMetadata(NotionPage page)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (!string.IsNullOrEmpty(page.Id)) metadata["page_id"] = page.Id;
         return metadata.Count == 0 ? null : metadata;
     }

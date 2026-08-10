@@ -57,7 +57,7 @@ public sealed class AzureBlobDataProvider : FileContentProviderBase
     private FileHandle ToHandle(Azure.Storage.Blobs.Models.BlobItem blob)
     {
         var capturedName = blob.Name;
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["path"]      = blob.Name,
             ["container"] = _container.Name,

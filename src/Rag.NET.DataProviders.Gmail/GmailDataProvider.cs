@@ -120,9 +120,9 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
     /// as-is; the typed field is an addition, not a replacement.
     /// </para>
     /// </summary>
-    private static Dictionary<string, string> BuildMetadata(MimeMessage message)
+    private static Dictionary<string, MetadataValue> BuildMetadata(MimeMessage message)
     {
-        var metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
         {
             ["date"]            = message.Date.ToString("o", CultureInfo.InvariantCulture),
             ["has_attachments"] = message.Attachments.Any() ? "true" : "false",

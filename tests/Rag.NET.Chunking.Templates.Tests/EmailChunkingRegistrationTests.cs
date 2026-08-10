@@ -25,7 +25,7 @@ public sealed class EmailChunkingRegistrationTests
         var chunks = await ChunkAllAsync(strategy);
 
         Assert.Equal(2, chunks.Count);
-        Assert.DoesNotContain(chunks, c => string.Equals(c.Metadata["part"], "headers", StringComparison.Ordinal));
+        Assert.DoesNotContain(chunks, c => c.Metadata["part"] == "headers");
     }
 
     [Fact]

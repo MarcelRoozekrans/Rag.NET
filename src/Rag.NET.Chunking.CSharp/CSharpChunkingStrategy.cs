@@ -45,6 +45,7 @@ public sealed partial class CSharpChunkingStrategy : IChunkingStrategy
                 Text = section.Text,
                 DocumentId = section.DocumentId,
                 ChunkIndex = 0,
+                Metadata = PageMetadata.ForPage(section.PageNumber),
             };
             yield break;
         }
@@ -80,9 +81,10 @@ public sealed partial class CSharpChunkingStrategy : IChunkingStrategy
             if (string.IsNullOrWhiteSpace(text))
                 continue;
 
-            var chunkMetadata = new Dictionary<string, string>(StringComparer.Ordinal);
+            var chunkMetadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
             foreach (var kv in metadata)
                 chunkMetadata[kv.Key] = kv.Value;
+            PageMetadata.Write(chunkMetadata, section.PageNumber, section.PageNumber);
 
             if (text.Length > options.MaxChunkSize)
                 chunkMetadata["csharp.oversized"] = "true";

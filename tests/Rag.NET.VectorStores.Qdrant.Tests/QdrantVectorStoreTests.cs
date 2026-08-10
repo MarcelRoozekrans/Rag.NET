@@ -119,7 +119,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
                 Chunk = new TextChunk
                 {
                     Text = "engineering doc", DocumentId = new DocumentId("doc-1"), ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" },
                 },
                 Embedding = new float[] { 1.0f, 0.0f, 0.0f },
             },
@@ -128,7 +128,7 @@ public class QdrantVectorStoreTests : IAsyncLifetime
                 Chunk = new TextChunk
                 {
                     Text = "marketing doc", DocumentId = new DocumentId("doc-2"), ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "marketing" },
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "marketing" },
                 },
                 Embedding = new float[] { 0.9f, 0.1f, 0.0f },
             },
@@ -141,12 +141,97 @@ public class QdrantVectorStoreTests : IAsyncLifetime
             new SearchOptions
             {
                 TopK = 10,
-                MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" },
             },
             TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         Assert.Equal("engineering doc", results[0].Chunk.Text);
+    }
+
+    [Fact]
+    public async Task StoreAndSearch_TypedMetadata_KindsSurviveRoundTrip()
+    {
+        // A number reading back as the string "3" is the flattening bug the typed metadata
+        // design removes (#91) — so the assertion is on Kind, not on textual form.
+        var reviewedAt = new DateTimeOffset(2026, 5, 4, 12, 0, 0, TimeSpan.Zero);
+        await _sut.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = "typed metadata chunk", DocumentId = new DocumentId("doc-typed"), ChunkIndex = 0,
+                        Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                        {
+                            ["page"] = 3,
+                            ["rating"] = 4.5,
+                            ["published"] = true,
+                            ["reviewed_at"] = reviewedAt,
+                            ["source"] = "unit",
+                        },
+                    },
+                    Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+                },
+            ],
+            TestContext.Current.CancellationToken);
+
+        var results = await _sut.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions { TopK = 1 },
+            TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(results).Chunk.Metadata;
+        Assert.Equal(MetadataValueKind.Number, metadata["page"].Kind);
+        Assert.Equal(3d, metadata["page"].NumberValue);
+        Assert.Equal(4.5, metadata["rating"].NumberValue);
+        Assert.Equal(MetadataValueKind.Boolean, metadata["published"].Kind);
+        Assert.True(metadata["published"].BooleanValue);
+        Assert.Equal(MetadataValueKind.DateTimeOffset, metadata["reviewed_at"].Kind);
+        Assert.Equal(reviewedAt, metadata["reviewed_at"].DateTimeOffsetValue);
+        Assert.Equal(MetadataValueKind.String, metadata["source"].Kind);
+    }
+
+    [Fact]
+    public async Task Search_NumericMetadataFilter_Filters()
+    {
+        // The chunk nearest the query vector is on page 4, so only a server-side numeric
+        // condition (the closed gte = lte range the store builds for numbers) can exclude it
+        // while returning the farther page-3 chunk.
+        await _sut.StoreAsync(
+            [
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = "page four chunk", DocumentId = new DocumentId("doc-p4"), ChunkIndex = 0,
+                        Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["page"] = 4 },
+                    },
+                    Embedding = new float[] { 1.0f, 0.0f, 0.0f },
+                },
+                new EmbeddedChunk
+                {
+                    Chunk = new TextChunk
+                    {
+                        Text = "page three chunk", DocumentId = new DocumentId("doc-p3"), ChunkIndex = 0,
+                        Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["page"] = 3 },
+                    },
+                    Embedding = new float[] { 0.8f, 0.6f, 0.0f },
+                },
+            ],
+            TestContext.Current.CancellationToken);
+
+        var results = await _sut.SearchAsync(
+            new float[] { 1.0f, 0.0f, 0.0f },
+            new SearchOptions
+            {
+                TopK = 1,
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["page"] = 3 },
+            },
+            TestContext.Current.CancellationToken);
+
+        var hit = Assert.Single(results);
+        Assert.Equal("page three chunk", hit.Chunk.Text);
     }
 
     [Fact]

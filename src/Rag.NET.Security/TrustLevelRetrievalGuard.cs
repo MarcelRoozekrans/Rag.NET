@@ -23,7 +23,7 @@ public sealed partial class TrustLevelRetrievalGuard(
         for (var i = 0; i < results.Count; i++)
         {
             var result = results[i];
-            var trustLevel = result.Chunk.Metadata.TryGetValue(ReservedMetadataKeys.TrustLevel, out var tl) ? tl : "internal";
+            var trustLevel = result.Chunk.Metadata.TryGetValue(ReservedMetadataKeys.TrustLevel, out var tl) ? tl.ToString() : "internal";
             var docId = result.Chunk.DocumentId.Value;
 
             if (string.Equals(trustLevel, "untrusted", StringComparison.OrdinalIgnoreCase) && options.DropUntrusted)

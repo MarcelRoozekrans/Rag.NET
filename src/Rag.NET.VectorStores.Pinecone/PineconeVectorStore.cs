@@ -5,6 +5,8 @@ using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Telemetry;
 using PineconeIndexModel = Pinecone.Index;
+using PineconeMetadataValue = Pinecone.MetadataValue;
+using RagMetadataValue = Rag.NET.Models.MetadataValue;
 
 namespace Rag.NET.Pinecone;
 
@@ -301,9 +303,12 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
     private protected Vector BuildVector(EmbeddedChunk chunk, SparseValues? sparse)
     {
         var textChunk = chunk.Chunk;
+        // Pinecone metadata values are natively typed (string/number/bool, numbers stored as
+        // float64) but exclude objects, so dates ride as sentinel-prefixed ISO strings and are
+        // decoded on read.
         var metadata = new Metadata();
         foreach (var kvp in textChunk.Metadata)
-            metadata[kvp.Key] = kvp.Value;
+            metadata[kvp.Key] = ToPineconeValue(kvp.Value);
         // Written last so the reserved keys always win over same-named chunk metadata.
         metadata["document_id"] = (string)textChunk.DocumentId;
         metadata["chunk_index"] = textChunk.ChunkIndex;
@@ -318,8 +323,14 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         };
     }
 
-    /// <summary>Pinecone filter: <c>$eq</c> per key, <c>$and</c>-composed for two or more keys.</summary>
-    private protected static Metadata? BuildFilter(IDictionary<string, string>? metadataFilter)
+    /// <summary>
+    /// Pinecone filter: typed <c>$eq</c> per key, <c>$and</c>-composed for two or more keys. The
+    /// <c>$eq</c> operand carries the same native type <see cref="ToPineconeValue"/> stored, so a
+    /// Number filter matches a stored number and never a same-looking string. Metadata stored
+    /// before values carried types is all strings, so non-string filters do not match it until
+    /// re-ingested.
+    /// </summary>
+    private protected static Metadata? BuildFilter(IDictionary<string, RagMetadataValue>? metadataFilter)
     {
         if (metadataFilter is not { Count: > 0 })
             return null;
@@ -330,7 +341,7 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
                 return new Metadata { [kvp.Key] = EqualityClause(kvp.Value) };
         }
 
-        var operands = new MetadataValue?[metadataFilter.Count];
+        var operands = new PineconeMetadataValue?[metadataFilter.Count];
         var i = 0;
         foreach (var kvp in metadataFilter)
             operands[i++] = new Metadata { [kvp.Key] = EqualityClause(kvp.Value) };
@@ -353,7 +364,35 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         return results;
     }
 
-    private static Metadata EqualityClause(string value) => new() { ["$eq"] = value };
+    private static Metadata EqualityClause(RagMetadataValue value) => new() { ["$eq"] = ToPineconeValue(value) };
+
+    /// <summary>The native Pinecone metadata value for one metadata value, keeping its type.</summary>
+    private static PineconeMetadataValue ToPineconeValue(RagMetadataValue value) => value.Kind switch
+    {
+        MetadataValueKind.Number => value.NumberValue,
+        MetadataValueKind.Boolean => value.BooleanValue,
+        MetadataValueKind.DateTimeOffset => MetadataDateFormat.EncodeSentinel(value.DateTimeOffsetValue),
+        _ => value.StringValue,
+    };
+
+    /// <summary>
+    /// Maps a Pinecone metadata value back to a <see cref="RagMetadataValue"/> with its kind:
+    /// numbers and booleans directly, sentinel-encoded strings to dates, all other strings —
+    /// including every value stored before metadata carried types — as strings.
+    /// </summary>
+    private static RagMetadataValue FromPineconeValue(PineconeMetadataValue value)
+    {
+        if (value.IsT1)
+            return value.AsT1;
+        if (value.IsT2)
+            return value.AsT2;
+        if (!value.IsT0)
+            return value.ToString() ?? string.Empty;
+
+        return MetadataDateFormat.TryDecodeSentinel(value.AsT0, out var date)
+            ? date
+            : (RagMetadataValue)value.AsT0;
+    }
 
     /// <summary>
     /// Missing <c>document_id</c>/<c>chunk_index</c> metadata is backend corruption — the
@@ -374,13 +413,13 @@ public class PineconeVectorStore : IVectorStore, ICollectionManageable
         var text = metadata.TryGetValue("text", out var textValue) && textValue?.IsT0 == true
             ? textValue.AsT0
             : string.Empty;
-        var chunkMetadata = new Dictionary<string, string>(StringComparer.Ordinal);
+        var chunkMetadata = new Dictionary<string, RagMetadataValue>(StringComparer.Ordinal);
         foreach (var kvp in metadata)
         {
             if (kvp.Key is "document_id" or "chunk_index" or "text")
                 continue;
             if (kvp.Value is { } value)
-                chunkMetadata[kvp.Key] = value.IsT0 ? value.AsT0 : value.ToString() ?? string.Empty;
+                chunkMetadata[kvp.Key] = FromPineconeValue(value);
         }
 
         return new SearchResult

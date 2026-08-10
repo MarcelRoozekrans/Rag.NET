@@ -116,8 +116,8 @@ public class UseFederatedSearchTests
             new float[] { 1f }, new SearchOptions { TopK = 5 }, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("alpha", results.Single(r => string.Equals(r.Chunk.DocumentId, "docX", StringComparison.Ordinal)).Chunk.Metadata["source.store"]);
-        Assert.Equal("beta", results.Single(r => string.Equals(r.Chunk.DocumentId, "docZ", StringComparison.Ordinal)).Chunk.Metadata["source.store"]);
+        Assert.Equal<MetadataValue>("alpha", results.Single(r => string.Equals(r.Chunk.DocumentId, "docX", StringComparison.Ordinal)).Chunk.Metadata["source.store"]);
+        Assert.Equal<MetadataValue>("beta", results.Single(r => string.Equals(r.Chunk.DocumentId, "docZ", StringComparison.Ordinal)).Chunk.Metadata["source.store"]);
     }
 
     [Fact]

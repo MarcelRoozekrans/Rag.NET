@@ -8,14 +8,14 @@ namespace Rag.NET.Tests.Storage;
 public class InMemoryVectorStoreSparseTests
 {
     private static EmbeddedChunk MakeChunk(
-        string docId, int chunkIndex, IDictionary<string, string>? metadata = null) => new()
+        string docId, int chunkIndex, IDictionary<string, MetadataValue>? metadata = null) => new()
         {
             Chunk = new TextChunk
             {
                 Text = $"{docId}-{chunkIndex}",
                 DocumentId = new DocumentId(docId),
                 ChunkIndex = chunkIndex,
-                Metadata = metadata ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                Metadata = metadata ?? new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
             },
             Embedding = new float[] { 1f, 0f },
         };
@@ -95,9 +95,9 @@ public class InMemoryVectorStoreSparseTests
 
         await store.StoreSparseAsync(
         [
-            (MakeChunk("doc-eng", 0, new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" }),
+            (MakeChunk("doc-eng", 0, new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" }),
                 Sparse([1], [1f])),
-            (MakeChunk("doc-mkt", 0, new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "marketing" }),
+            (MakeChunk("doc-mkt", 0, new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "marketing" }),
                 Sparse([1], [5f])),
         ], ct);
 
@@ -106,7 +106,7 @@ public class InMemoryVectorStoreSparseTests
             new SearchOptions
             {
                 TopK = 10,
-                MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["department"] = "engineering" },
+                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["department"] = "engineering" },
             },
             ct);
 

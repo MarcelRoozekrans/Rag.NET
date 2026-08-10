@@ -224,7 +224,7 @@ public class ServiceCollectionExtensionsTests
                     Chunk = new TextChunk
                     {
                         Text = "small child", DocumentId = new DocumentId("doc1"), ChunkIndex = 0,
-                        Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["_parentKey"] = "doc1:0" }
+                        Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["_parentKey"] = "doc1:0" }
                     },
                     Score = 0.9
                 }
@@ -339,7 +339,7 @@ public class ServiceCollectionExtensionsTests
                     Chunk = new TextChunk
                     {
                         Text = "small child", DocumentId = new DocumentId("doc1"), ChunkIndex = 0,
-                        Metadata = new Dictionary<string, string>(StringComparer.Ordinal) { ["_parentKey"] = "doc1:0" }
+                        Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["_parentKey"] = "doc1:0" }
                     },
                     Score = 0.9
                 }

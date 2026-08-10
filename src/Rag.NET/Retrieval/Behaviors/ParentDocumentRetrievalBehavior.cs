@@ -30,11 +30,12 @@ public sealed class ParentDocumentRetrievalBehavior : IRetrievalBehavior
 
             foreach (var result in childResults)
             {
-                if (!result.Chunk.Metadata.TryGetValue(ParentChunkKeyHelper.ParentKeyMetadata, out var parentKey))
+                if (!result.Chunk.Metadata.TryGetValue(ParentChunkKeyHelper.ParentKeyMetadata, out var parentKeyValue))
                 {
                     noParentResults.Add(result);
                     continue;
                 }
+                var parentKey = parentKeyValue.ToString();
                 if (!parentGroups.TryGetValue(parentKey, out var existing) || result.Score > existing.maxScore)
                     parentGroups[parentKey] = (result, result.Score);
             }

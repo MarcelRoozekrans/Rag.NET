@@ -109,7 +109,7 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
 
         var communityChunks = ctx.EmbeddedChunks
             .Where(ec => ec.Chunk.Metadata.TryGetValue("graph_type", out var t)
-                && string.Equals(t, "community_report", StringComparison.Ordinal))
+                && t == "community_report")
             .ToList();
 
         Assert.NotEmpty(communityChunks);

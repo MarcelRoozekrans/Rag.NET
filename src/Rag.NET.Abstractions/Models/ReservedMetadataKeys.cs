@@ -58,6 +58,26 @@ public static class ReservedMetadataKeys
     /// <summary>Trust classification of a chunk, enforced by <c>TrustLevelRetrievalGuard</c>.</summary>
     public const string TrustLevel = "trust_level";
 
+    /// <summary>
+    /// The 1-based source page a chunk starts on, written by the chunking strategies from
+    /// <see cref="DocumentSection.PageNumber"/> as a <see cref="MetadataValueKind.Number"/> —
+    /// filterable numerically in every vector store. Absent (not null-valued, not zero) when the
+    /// source has no page concept (Markdown, plain text, code, …) or when the chunk's text is an
+    /// LLM rewrite with no source span to attribute (resume field extraction, for instance).
+    /// Whenever this key is present, <see cref="PageEnd"/> is present too.
+    /// </summary>
+    public const string Page = "page";
+
+    /// <summary>
+    /// The 1-based source page a chunk ends on, inclusive, written together with
+    /// <see cref="Page"/> as a <see cref="MetadataValueKind.Number"/>. Equal to
+    /// <see cref="Page"/> for a chunk on a single page (<c>page: 3, page_end: 3</c> — always
+    /// both, never a lone <c>page</c>) and greater when a merged chunk spans pages. A chunk
+    /// merged from sections with and without page numbers keeps the range of the pages that are
+    /// present rather than dropping the whole range.
+    /// </summary>
+    public const string PageEnd = "page_end";
+
     // Held as FrozenSet, not IReadOnlySet: IsReserved runs once per connector tag per document,
     // and calling Contains through the interface would forfeit the specialised, inlineable
     // implementation that is the entire reason for freezing the set.
@@ -71,6 +91,8 @@ public static class ReservedMetadataKeys
         ParentKey,
         AllowedRoles,
         TrustLevel,
+        Page,
+        PageEnd,
     }.ToFrozenSet(StringComparer.Ordinal);
 
     /// <summary>Every reserved key, ordinal-compared.</summary>

@@ -55,7 +55,7 @@ public class MetadataBehaviorCreatedAtTests
             DocumentId = new DocumentId("doc1"),
             FileName   = "doc1.txt",
             CreatedAt  = DateTime.UtcNow,
-            Tags       = new Dictionary<string, string>(StringComparer.Ordinal)
+            Tags       = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
             {
                 ["created_at"] = "2020-01-01T00:00:00.0000000Z",
             },
@@ -65,6 +65,6 @@ public class MetadataBehaviorCreatedAtTests
         await sut.HandleAsync(ctx, ct, NullNext);
 
         // Tags are copied first; TryAdd on "created_at" from CreatedAt property then does nothing
-        Assert.Equal("2020-01-01T00:00:00.0000000Z", ctx.Chunks[0].Metadata["created_at"]);
+        Assert.Equal<MetadataValue>("2020-01-01T00:00:00.0000000Z", ctx.Chunks[0].Metadata["created_at"]);
     }
 }

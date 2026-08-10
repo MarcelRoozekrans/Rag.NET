@@ -30,9 +30,10 @@ public sealed record DocumentSummary
 
     /// <summary>
     /// A snapshot of the document's tags (<c>DocumentMetadata.Tags</c>) as supplied at its most
-    /// recent ingest. Never <see langword="null"/>; a document with no tags has an empty
-    /// dictionary here, not a missing one.
+    /// recent ingest, with each value's <see cref="MetadataValue.Kind"/> intact — a numeric tag
+    /// reads back as a number, not its textual form. Never <see langword="null"/>; a document
+    /// with no tags has an empty dictionary here, not a missing one.
     /// </summary>
-    public IDictionary<string, string> Tags { get; init; }
-        = new Dictionary<string, string>(StringComparer.Ordinal);
+    public IDictionary<string, MetadataValue> Tags { get; init; }
+        = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 }

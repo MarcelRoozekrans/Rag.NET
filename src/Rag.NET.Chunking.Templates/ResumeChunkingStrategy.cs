@@ -22,17 +22,8 @@ public sealed partial class ResumeChunkingStrategy(
         ChunkingOptions chunkingOptions,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var fullText = new System.Text.StringBuilder();
-        DocumentId? docId = null;
-        await foreach (var section in sections.WithCancellation(cancellationToken).ConfigureAwait(false))
-        {
-            docId ??= section.DocumentId;
-            if (fullText.Length > 0) fullText.Append("\n\n");
-            fullText.Append(section.Text);
-        }
-
-        var id = docId ?? new DocumentId("unknown");
-        var text = fullText.ToString();
+        var (text, id, pageStart, pageEnd) = await ConcatenateSectionsAsync(sections, cancellationToken)
+            .ConfigureAwait(false);
 
         var activeClient = options.ChatClient ?? chatClient;
         var prompt = options.Prompt.Replace("{text}", text, StringComparison.Ordinal);
@@ -53,7 +44,10 @@ public sealed partial class ResumeChunkingStrategy(
 
         if (parsed is null)
         {
-            yield return MakeChunk(text, id, 0, "full_text");
+            // The fallback chunk carries the whole document verbatim, so the document-wide page
+            // range is accurate for it. The LLM-extracted chunks below keep pages absent: their
+            // text is rewritten field content with no source span to attribute to a page.
+            yield return MakeChunk(text, id, 0, "full_text", pageStart, pageEnd);
             yield break;
         }
 
@@ -83,6 +77,32 @@ public sealed partial class ResumeChunkingStrategy(
     }
 
     /// <summary>
+    /// Joins every section's text, tracking the min/max source page of the sections that carry
+    /// one — the document-wide range the full-text fallback chunk reports.
+    /// </summary>
+    private static async Task<(string Text, DocumentId Id, int? PageStart, int? PageEnd)> ConcatenateSectionsAsync(
+        IAsyncEnumerable<DocumentSection> sections,
+        CancellationToken cancellationToken)
+    {
+        var fullText = new System.Text.StringBuilder();
+        DocumentId? docId = null;
+        int? pageStart = null, pageEnd = null;
+        await foreach (var section in sections.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            docId ??= section.DocumentId;
+            if (fullText.Length > 0) fullText.Append("\n\n");
+            fullText.Append(section.Text);
+            if (section.PageNumber is { } page)
+            {
+                pageStart = pageStart is { } s ? Math.Min(s, page) : page;
+                pageEnd = pageEnd is { } e ? Math.Max(e, page) : page;
+            }
+        }
+
+        return (fullText.ToString(), docId ?? new DocumentId("unknown"), pageStart, pageEnd);
+    }
+
+    /// <summary>
     /// Safely extracts a string value from a <see cref="JsonNode"/>.
     /// Returns <c>null</c> if the node is <c>null</c>, an array, an object,
     /// or any non-string scalar — guarding against LLM responses that return
@@ -91,18 +111,24 @@ public sealed partial class ResumeChunkingStrategy(
     private static string? TryGetString(JsonNode? node) =>
         node is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
-    private static TextChunk MakeChunk(string text, DocumentId docId, int index, string section) =>
-        new()
+    private static TextChunk MakeChunk(
+        string text, DocumentId docId, int index, string section, int? page = null, int? pageEnd = null)
+    {
+        var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+        {
+            ["template"] = "resume",
+            ["section"] = section,
+        };
+        PageMetadata.Write(metadata, page, pageEnd);
+
+        return new TextChunk
         {
             Text = text,
             DocumentId = docId,
             ChunkIndex = index,
-            Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["template"] = "resume",
-                ["section"] = section,
-            },
+            Metadata = metadata,
         };
+    }
 
     private static string FormatObject(JsonNode? node)
     {

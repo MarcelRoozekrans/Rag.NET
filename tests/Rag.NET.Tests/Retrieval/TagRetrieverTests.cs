@@ -82,7 +82,7 @@ public class TagRetrieverTests
 
         var options = new RetrievalOptions
         {
-            MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["dept"] = "legal" }, // caller set this
+            MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["dept"] = "legal" }, // caller set this
         };
         var sut = new TagRetriever(inner, index, MockEmbedder([0.5f]), new TagRetrievalOptions());
         _ = await sut.RetrieveAsync("query", options, ct);
@@ -107,7 +107,7 @@ public class TagRetrieverTests
         // Caller has a different key ("region") — tag match adds "dept"
         var options = new RetrievalOptions
         {
-            MetadataFilter = new Dictionary<string, string>(StringComparer.Ordinal) { ["region"] = "emea" },
+            MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal) { ["region"] = "emea" },
         };
         var sut = new TagRetriever(inner, index, MockEmbedder([0.5f]), new TagRetrievalOptions());
         _ = await sut.RetrieveAsync("query", options, ct);

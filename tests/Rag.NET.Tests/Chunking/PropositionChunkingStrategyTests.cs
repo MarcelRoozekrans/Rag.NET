@@ -56,9 +56,9 @@ public class PropositionChunkingStrategyTests
         Assert.Equal("Fact two.", chunks[1].Text);
         Assert.All(chunks, c =>
         {
-            Assert.Equal("proposition", c.Metadata["chunk.kind"]);
-            Assert.Equal(0, int.Parse(c.Metadata["parent.start"], System.Globalization.CultureInfo.InvariantCulture));
-            Assert.Equal(text.Length, int.Parse(c.Metadata["parent.end"], System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Equal<MetadataValue>("proposition", c.Metadata["chunk.kind"]);
+            Assert.Equal(0, int.Parse(c.Metadata["parent.start"].ToString(), System.Globalization.CultureInfo.InvariantCulture));
+            Assert.Equal(text.Length, int.Parse(c.Metadata["parent.end"].ToString(), System.Globalization.CultureInfo.InvariantCulture));
             Assert.Equal(0, c.StartPosition);
             Assert.Equal(text.Length, c.EndPosition);
             Assert.Equal(new DocumentId("doc1"), c.DocumentId);
@@ -79,7 +79,7 @@ public class PropositionChunkingStrategyTests
 
         Assert.Single(chunks);
         Assert.Equal(text, chunks[0].Text);
-        Assert.Equal("passage", chunks[0].Metadata["chunk.kind"]);
+        Assert.Equal<MetadataValue>("passage", chunks[0].Metadata["chunk.kind"]);
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public class PropositionChunkingStrategyTests
 
         Assert.Single(chunks);
         Assert.Equal(text, chunks[0].Text);
-        Assert.Equal("passage", chunks[0].Metadata["chunk.kind"]);
+        Assert.Equal<MetadataValue>("passage", chunks[0].Metadata["chunk.kind"]);
     }
 
     [Fact]
@@ -111,7 +111,7 @@ public class PropositionChunkingStrategyTests
 
         Assert.Single(chunks);
         Assert.Equal("Real.", chunks[0].Text);
-        Assert.Equal("proposition", chunks[0].Metadata["chunk.kind"]);
+        Assert.Equal<MetadataValue>("proposition", chunks[0].Metadata["chunk.kind"]);
     }
 
     [Fact]
@@ -141,10 +141,10 @@ public class PropositionChunkingStrategyTests
             ToAsync([Section(text)]), new ChunkingOptions(), ct).ToListAsync(ct);
 
         Assert.Equal(3, chunks.Count);
-        Assert.Equal("passage", chunks[0].Metadata["chunk.kind"]);
+        Assert.Equal<MetadataValue>("passage", chunks[0].Metadata["chunk.kind"]);
         Assert.Equal(text, chunks[0].Text);
-        Assert.Equal("proposition", chunks[1].Metadata["chunk.kind"]);
-        Assert.Equal("proposition", chunks[2].Metadata["chunk.kind"]);
+        Assert.Equal<MetadataValue>("proposition", chunks[1].Metadata["chunk.kind"]);
+        Assert.Equal<MetadataValue>("proposition", chunks[2].Metadata["chunk.kind"]);
         Assert.Equal([0, 1, 2], chunks.Select(c => c.ChunkIndex));
     }
 
@@ -189,7 +189,7 @@ public class PropositionChunkingStrategyTests
 
         Assert.Equal(2, chunks.Count);
         Assert.Equal("Fact one.", chunks[0].Text);
-        Assert.All(chunks, c => Assert.Equal("proposition", c.Metadata["chunk.kind"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("proposition", c.Metadata["chunk.kind"]));
     }
 
     [Fact]
@@ -204,7 +204,7 @@ public class PropositionChunkingStrategyTests
 
         Assert.Single(chunks);
         Assert.Equal(text, chunks[0].Text);
-        Assert.Equal("passage", chunks[0].Metadata["chunk.kind"]);
+        Assert.Equal<MetadataValue>("passage", chunks[0].Metadata["chunk.kind"]);
     }
 
     [Fact]
@@ -219,7 +219,7 @@ public class PropositionChunkingStrategyTests
 
         Assert.Single(chunks);
         Assert.Equal(text, chunks[0].Text);
-        Assert.Equal("passage", chunks[0].Metadata["chunk.kind"]);
+        Assert.Equal<MetadataValue>("passage", chunks[0].Metadata["chunk.kind"]);
     }
 
     [Fact]
@@ -234,7 +234,7 @@ public class PropositionChunkingStrategyTests
         Assert.Equal(2, chunks.Count);
         Assert.Equal("Fact one.", chunks[0].Text);
         Assert.Equal("Fact two.", chunks[1].Text);
-        Assert.All(chunks, c => Assert.Equal("proposition", c.Metadata["chunk.kind"]));
+        Assert.All(chunks, c => Assert.Equal<MetadataValue>("proposition", c.Metadata["chunk.kind"]));
     }
 
     [Fact]

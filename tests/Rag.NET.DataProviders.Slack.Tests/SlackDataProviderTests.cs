@@ -472,7 +472,7 @@ public sealed class SlackDataProviderTests
         Assert.Equal(2, results.Count);
         // Day grouping order is not contractual — look the days up by their date tag.
         var byDate = results.ToDictionary(
-            r => r.Value.Metadata!["date"], r => r.Value.Metadata!, StringComparer.Ordinal);
+            r => r.Value.Metadata!["date"].ToString(), r => r.Value.Metadata!, StringComparer.Ordinal);
         Assert.Equal("2", byDate["2024-04-01"]["message_count"]);
         Assert.Equal("1", byDate["2024-04-02"]["message_count"]);
         Assert.Equal("random", byDate["2024-04-01"]["channel"]);

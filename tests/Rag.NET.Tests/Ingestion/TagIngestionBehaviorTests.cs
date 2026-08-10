@@ -11,7 +11,7 @@ namespace Rag.NET.Tests.Ingestion;
 
 public class TagIngestionBehaviorTests
 {
-    private static IngestionContext MakeCtx(Dictionary<string, string>? tags = null) =>
+    private static IngestionContext MakeCtx(Dictionary<string, MetadataValue>? tags = null) =>
         new()
         {
             Stream           = Stream.Null,
@@ -19,7 +19,7 @@ public class TagIngestionBehaviorTests
             {
                 DocumentId = new DocumentId("doc1"),
                 FileName   = "doc1.pdf",
-                Tags       = tags ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                Tags       = tags ?? new Dictionary<string, MetadataValue>(StringComparer.Ordinal),
             },
             GetNextBm25DocId = () => 0,
         };

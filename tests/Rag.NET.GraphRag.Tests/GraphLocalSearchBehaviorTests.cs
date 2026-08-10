@@ -67,7 +67,7 @@ public class GraphLocalSearchBehaviorTests
         // Find the Alice entity result
         var aliceResult = actual.First(r =>
             r.Chunk.Metadata.TryGetValue("graph_entity_name", out var n)
-            && string.Equals(n, "Alice", StringComparison.Ordinal));
+            && n == "Alice");
 
         // Expected: (1 - 0.4) * 0.9 + 0.4 * 0.8 = 0.54 + 0.32 = 0.86
         Assert.Equal(0.86, aliceResult.Score, precision: 5);
@@ -149,7 +149,7 @@ public class GraphLocalSearchBehaviorTests
         // Find the Alice entity result
         var aliceResult = actual.First(r =>
             r.Chunk.Metadata.TryGetValue("graph_entity_name", out var n)
-            && string.Equals(n, "Alice", StringComparison.Ordinal));
+            && n == "Alice");
 
         // Expected: (1 - 0.4) * 0.9 + 0.4 * 0.0 = 0.54 + 0.0 = 0.54
         Assert.Equal(0.54, aliceResult.Score, precision: 5);
@@ -165,7 +165,7 @@ public class GraphLocalSearchBehaviorTests
                     Text = "Alice is a person",
                     DocumentId = new DocumentId("doc1"),
                     ChunkIndex = 0,
-                    Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                     {
                         ["graph_type"] = "entity",
                         ["graph_entity_name"] = "Alice",

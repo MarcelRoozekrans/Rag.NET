@@ -27,14 +27,14 @@ public sealed partial class LlmPiiChunkSanitiser(
         "by typed placeholders such as [EMAIL], [PHONE], [SSN], [CREDIT_CARD], [IP_ADDRESS], [NAME]. " +
         "Return only the modified text with no explanation.\n\nText:\n{text}";
 
-    public string Sanitise(string text, IReadOnlyDictionary<string, string> metadata)
+    public string Sanitise(string text, IReadOnlyDictionary<string, MetadataValue> metadata)
     {
         if (text is null) return string.Empty;
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.security.sanitize");
         activity?.SetTag("security.sanitizer.type", "llm-pii-chunk");
 
-        var fileName = metadata.TryGetValue(ReservedMetadataKeys.FileName, out var fn) ? fn : "<unknown>";
+        var fileName = metadata.TryGetValue(ReservedMetadataKeys.FileName, out var fn) ? fn.ToString() : "<unknown>";
         try
         {
             var prompt = PiiPromptTemplate.Replace("{text}", text, StringComparison.Ordinal);

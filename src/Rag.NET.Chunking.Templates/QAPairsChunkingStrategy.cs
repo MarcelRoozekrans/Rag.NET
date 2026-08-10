@@ -19,16 +19,19 @@ public sealed class QAPairsChunkingStrategy : IDocumentChunkingStrategy
         var index = 0;
         await foreach (var section in sections.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
+            var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["template"] = "qa_pairs",
+                ["answer"] = section.Heading ?? string.Empty,
+            };
+            PageMetadata.Write(metadata, section.PageNumber, section.PageNumber);
+
             yield return new TextChunk
             {
                 Text = section.Text,
                 DocumentId = section.DocumentId,
                 ChunkIndex = index++,
-                Metadata = new Dictionary<string, string>(StringComparer.Ordinal)
-                {
-                    ["template"] = "qa_pairs",
-                    ["answer"] = section.Heading ?? string.Empty,
-                },
+                Metadata = metadata,
             };
         }
     }
