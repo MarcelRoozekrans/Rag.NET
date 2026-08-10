@@ -520,9 +520,17 @@ services.AddAirtableDataProvider(
     personalAccessToken: "patXXXXXXXXXXXXXX",
     configure: opts =>
     {
+        opts.LastModifiedFieldName = "Last Modified";  // names the field delta runs filter on
         opts.DeltaToken = settings.AirtableDeltaToken; // ISO 8601 timestamp; null on first run
     });
 ```
+
+Delta runs require a "Last modified time" field in the table, named via
+`AirtableOptions.LastModifiedFieldName`. When both it and `DeltaToken` are set, listing is filtered with
+`LAST_MODIFIED_TIME({Field})>'token'` — scoped to that field, not to the record's most recent
+change to any field. Field names containing `{` or `}` are rejected at construction (Airtable's
+formula grammar cannot escape braces inside a field reference), as are delta tokens containing
+anything outside ISO-8601 timestamp characters, since both are interpolated into the formula.
 
 ### Web — Sitemap
 

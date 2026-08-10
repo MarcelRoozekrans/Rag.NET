@@ -20,13 +20,18 @@ public static class GitLabDataProviderExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(projectIdOrPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
 
-        var client = new GitLabClient(baseUrl, token);
         var opts = new GitLabOptions
         {
             BaseUrl = baseUrl,
             ProjectIdOrPath = projectIdOrPath,
         };
         configure?.Invoke(opts);
+
+        // The client is constructed after the configure callback, from the options object — a
+        // callback that changed BaseUrl changes the instance targeted (issue #108 found the
+        // client being built from the raw parameter before the callback even ran).
+        ArgumentException.ThrowIfNullOrWhiteSpace(opts.BaseUrl, nameof(configure));
+        var client = new GitLabClient(opts.BaseUrl, token);
 
         return services.AddSingleton<IFileContentProvider>(new GitLabDataProvider(client, opts));
     }

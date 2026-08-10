@@ -81,8 +81,8 @@ rag.UseGraphRag(options =>
 {
     options.Enabled = true;                          // Toggle on/off
     options.GleaningPasses = 1;                      // Follow-up extraction passes (0 = skip)
-    options.EntityTypes = ["Person", "Organization"]; // Constrain types (null = open)
-    options.RelationshipTypes = null;                 // Constrain relationship types
+    options.EntityTypes = ["Person", "Organization"]; // Constrain entity types (null = open)
+    options.RelationshipTypes = null;                 // Constrain relationship kinds (null = open)
     options.MaxEntityDescriptionLength = 500;         // Summarization threshold — must be greater than 0
     options.ExtractionChatClient = cheapModel;        // Optional cheaper model
     options.SummarizationChatClient = cheapModel;     // Optional for reports
@@ -90,6 +90,8 @@ rag.UseGraphRag(options =>
 ```
 
 `UseGraphRag` validates the configured options at registration and throws `ArgumentException` from the configuring line. A negative `MaxEntityDescriptionLength` would throw mid-ingestion on the first extracted entity; zero would silently empty every entity description.
+
+`EntityTypes` and `RelationshipTypes` are enforced in two layers. The allowed lists are substituted into the extraction prompt's `{entity_types}` and `{relationship_types}` placeholders (when they are null the placeholders render the open-extraction guidance instead), and anything the LLM still returns outside a configured list is dropped — case-insensitively — before it reaches the graph store or the embedded chunks, including gleaning-pass output. A custom `EntityExtractionPrompt` without the placeholders still gets the filtering layer, so the constraint holds regardless of prompt. Relationships carry their kind in the `description` field (a concise verb phrase), so `RelationshipTypes` constrains that field. An empty array behaves like null rather than silently dropping every extraction.
 
 ### Retrieval Options
 

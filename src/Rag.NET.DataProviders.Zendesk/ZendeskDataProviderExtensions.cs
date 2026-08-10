@@ -36,8 +36,13 @@ public static class ZendeskDataProviderExtensions
         var opts = new ZendeskTicketsOptions { Subdomain = subdomain, Email = email };
         configure?.Invoke(opts);
 
-        var resolvedBaseUrl = string.IsNullOrEmpty(baseUrl) ? $"https://{subdomain}.zendesk.com" : baseUrl;
-        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{email}/token:{apiToken}"));
+        // Credentials are derived from the options object after the configure callback ran, so
+        // a callback that changed Email changes the credentials sent (issue #108 found the raw
+        // parameter being used instead, silently ignoring the callback).
+        ArgumentException.ThrowIfNullOrWhiteSpace(opts.Email, nameof(configure));
+
+        var resolvedBaseUrl = string.IsNullOrEmpty(baseUrl) ? $"https://{opts.Subdomain}.zendesk.com" : baseUrl;
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{opts.Email}/token:{apiToken}"));
 
         if (!services.Any(d => d.ServiceType == typeof(ZendeskApiMarker)))
         {
@@ -88,8 +93,12 @@ public static class ZendeskDataProviderExtensions
         var opts = new ZendeskArticlesOptions { Subdomain = subdomain, Email = email };
         configure?.Invoke(opts);
 
-        var resolvedBaseUrl = string.IsNullOrEmpty(baseUrl) ? $"https://{subdomain}.zendesk.com" : baseUrl;
-        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{email}/token:{apiToken}"));
+        // Same single-source-of-truth rule as the tickets registration: behaviour reads the
+        // options object, never the raw parameters, once the configure callback has run.
+        ArgumentException.ThrowIfNullOrWhiteSpace(opts.Email, nameof(configure));
+
+        var resolvedBaseUrl = string.IsNullOrEmpty(baseUrl) ? $"https://{opts.Subdomain}.zendesk.com" : baseUrl;
+        var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{opts.Email}/token:{apiToken}"));
 
         if (!services.Any(d => d.ServiceType == typeof(ZendeskApiMarker)))
         {

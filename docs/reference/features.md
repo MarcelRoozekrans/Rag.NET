@@ -83,7 +83,7 @@ Pre-built chunking templates for common vertical document types:
 - **Legal Documents** — detect numbered clause hierarchy, merge sub-clauses under parent article
 - **Q&A Pairs** — ingest CSV/Excel rows as question (chunk) + answer (payload) pairs
 - **Books** — hierarchical merge with table-of-contents removal
-- **Email** — parse `.eml` including attachments, recursively chunk body + attachments
+- **Email** — chunk header/body/attachment sections; `EmailChunkingOptions.IncludeHeaders` and `.IncludeAttachments` (both default `true`) skip the `headers` and `attachment:*` sections entirely when disabled
 - **Resumes** — parallel LLM extraction of basic info, work history, and education sections
 
 **Why:** Domain templates dramatically reduce noise. Legal documents chunked generically lose clause hierarchy; academic papers mix references into the body. Pre-built templates serve vertical markets out of the box.
