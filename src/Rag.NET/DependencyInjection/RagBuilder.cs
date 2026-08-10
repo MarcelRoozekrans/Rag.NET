@@ -40,10 +40,92 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
         {
             var options = new ChunkingOptions();
             configure(options);
+            ValidateChunkingOptions(options);
             Services.AddSingleton(options);
         }
 
         return this;
+    }
+
+    /// <summary>
+    /// Rejects invalid chunking options at the line that configured them.
+    /// <para>
+    /// Validation used to happen only on first ingestion, in <c>PipelineIngestor</c>. That is too
+    /// late to be useful: issue #90 was opened because <c>Overlap = -1</c> appeared to work, and
+    /// it appeared to work because the reporter had not ingested anything yet. A configuration
+    /// error should fail where it was written, with a stack trace pointing at the caller's
+    /// lambda, not on some later call that happens to consume it.
+    /// </para>
+    /// <para>
+    /// The ingestion-time check stays as well. These options are mutable and registered as a bare
+    /// singleton, so nothing stops a caller mutating them after registration, and a
+    /// <see cref="ChunkingOptions"/> can reach the container without passing through this method.
+    /// </para>
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// A property is out of range, or <see cref="ChunkingOptions.Overlap"/> is not smaller than
+    /// <see cref="ChunkingOptions.MaxChunkSize"/> — the generated validator covers both, the
+    /// second through <see cref="ChunkingOptions.ValidateOverlapFitsChunk"/>.
+    /// </exception>
+    private static void ValidateChunkingOptions(ChunkingOptions options)
+    {
+        var result = new ChunkingOptionsValidator().Validate(options);
+        if (!result.IsValid)
+        {
+            // Projected by index into an array, the shape PipelineIngestor.MapFailures uses:
+            // ValidationFailure is a non-readonly struct, so enumerating it by value trips EPS06
+            // on the hidden copy, while a bare indexed loop over the span trips HLQ013.
+            var failures = result.Failures;
+            var described = new string[failures.Length];
+            for (var i = 0; i < failures.Length; i++)
+            {
+                described[i] = $"{failures[i].PropertyName} — {failures[i].ErrorMessage}";
+            }
+
+            throw new ArgumentException(
+                "The chunking options configured here are invalid: " +
+                string.Join("; ", described),
+                nameof(options));
+        }
+    }
+
+    /// <summary>
+    /// Rejects parent-document sizing that the chunking strategies cannot act on.
+    /// <para>
+    /// <b>This closes a hang, not just a bad value (issue #93).</b>
+    /// <c>ParentDocumentIngestionBehavior</c> builds its own <see cref="ChunkingOptions"/> from
+    /// these two properties and hands it straight to a strategy, so it never met
+    /// <c>ChunkingOptionsValidator</c> — the ingestion-time check only ever saw the <i>main</i>
+    /// options. With <c>ParentChunkSize = 0</c> both strategies loop forever:
+    /// <c>RecursiveChunkingStrategy</c> advances its index by the chunk size, and
+    /// <c>FixedSizeChunkingStrategy</c>'s own guard falls back to the same zero it was guarding
+    /// against. Ingestion hangs with no error and no progress.
+    /// </para>
+    /// <para>
+    /// Validated by constructing the very options the behaviour will construct and running the
+    /// main path's rule over them, so the two paths cannot drift into disagreeing about what a
+    /// valid chunk size is — that drift being what caused this.
+    /// </para>
+    /// </summary>
+    /// <exception cref="ArgumentException">The sizing is one no strategy can make progress on.</exception>
+    private static void ValidateParentDocumentOptions(ParentDocumentOptions options)
+    {
+        try
+        {
+            ValidateChunkingOptions(new ChunkingOptions
+            {
+                MaxChunkSize = options.ParentChunkSize,
+                Overlap = options.ParentOverlap,
+            });
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ArgumentException(
+                "ParentDocumentOptions describes a chunking pass that cannot run: " + ex.Message +
+                " (ParentChunkSize maps to MaxChunkSize and ParentOverlap to Overlap.)",
+                nameof(options),
+                ex);
+        }
     }
 
     /// <summary>
@@ -311,6 +393,7 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     {
         var options = new ParentDocumentOptions();
         configure?.Invoke(options);
+        ValidateParentDocumentOptions(options);
         Services.AddSingleton(options);
         Services.AddSingleton<InMemoryParentChunkStore>();
         Services.TryAddSingleton<IParentChunkStore>(sp => sp.GetRequiredService<InMemoryParentChunkStore>());

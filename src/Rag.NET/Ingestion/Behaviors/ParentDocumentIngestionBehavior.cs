@@ -33,6 +33,8 @@ public sealed class ParentDocumentIngestionBehavior : IIngestionBehavior
             Overlap = ParentOptions.ParentOverlap,
         };
 
+        RequireUsableParentChunking(parentChunkingOptions, ParentOptions);
+
         var parser = Parsers.First(p => p.CanParse(ctx.Metadata.ContentType ?? "text/plain"));
         var parentBoundaries = new List<(int start, int end)>();
         var parentIndex = 0;
@@ -55,5 +57,36 @@ public sealed class ParentDocumentIngestionBehavior : IIngestionBehavior
         }
 
         return await next(ctx, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Rejects parent chunking this behaviour cannot make progress on.
+    /// <para>
+    /// These options never met <c>ChunkingOptionsValidator</c>: the ingestion-time check runs
+    /// over the <i>main</i> chunking options, not this synthesised pair, so the parent path had
+    /// no validation at all (issue #93). <c>UseParentDocumentRetrieval</c> now rejects it at
+    /// registration; this is the second line, because <see cref="ParentDocumentOptions"/> is a
+    /// mutable singleton and can reach the container without going through the builder.
+    /// </para>
+    /// <para>
+    /// Both checks run, deliberately. <see cref="ChunkingOptions.Validate"/> alone catches a
+    /// non-positive <c>ParentChunkSize</c> — any overlap ≥ 0 is then ≥ the chunk size — but not a
+    /// negative <c>ParentOverlap</c>, which is the quieter half of #93: it leaves gaps between
+    /// parent spans, and a child chunk landing in one falls through to the "last parent"
+    /// fallback, so retrieval answers fluently from the wrong part of the document.
+    /// </para>
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The sizing cannot be chunked.</exception>
+    private static void RequireUsableParentChunking(
+        ChunkingOptions parentChunkingOptions, ParentDocumentOptions parentOptions)
+    {
+        if (!new ChunkingOptionsValidator().Validate(parentChunkingOptions).IsValid)
+        {
+            throw new InvalidOperationException(
+                "ParentDocumentOptions produced invalid chunking options: " +
+                $"ParentChunkSize={parentOptions.ParentChunkSize}, " +
+                $"ParentOverlap={parentOptions.ParentOverlap}. Both must be at least 0, and " +
+                "ParentChunkSize must be greater than 0.");
+        }
     }
 }
