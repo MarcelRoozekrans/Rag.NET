@@ -51,6 +51,28 @@ Configurable chunking stage driven by user-supplied regex patterns for each head
 
 ---
 
+### Typed Chunk Metadata (Filterable Everywhere, No Per-Key Schema)
+**Packages:** `Rag.NET.Abstractions`, `Rag.NET`, all six vector stores, all data-provider connectors
+
+Metadata values carry their type end to end: `MetadataValue` (string, number, boolean, date) replaces `string` in `FileEntry.Metadata`, `DocumentMetadata.Tags`, `TextChunk.Metadata` and `SearchOptions.MetadataFilter`, and every vector store persists the kind — PgVector as native JSONB types, Qdrant as typed payload values (numbers filter via a closed range), Weaviate as typed auto-schema `meta_*` properties, Chroma and Pinecone as native record values (dates as a `$date:` sentinel), and Azure AI Search as a `metadata_entries` `Collection(Edm.ComplexType)` of `{key, stringValue, numberValue, boolValue, dateValue}` rows — every key filterable with its type, no per-key index schema. A custom data provider can submit a number and filter on it numerically; nothing stringifies it along the way. Backward compatibility: metadata stored before the change reads back losslessly as string-kind values; on Azure AI Search an existing index gains `metadata_entries` additively via `CreateOrUpdateIndexAsync` (no rebuild), but pre-existing documents have no typed rows and stop matching `MetadataFilter` until re-ingested — reads fall back to the legacy JSON blob.
+
+**Why:** `page eq 3` and `page gt 3` need a real number in the index; `IDictionary<string, string>` guaranteed everything arrived as text (#91). Typing only one link of the chain would just move the stringification, so the whole chain changed at once, before anything ships on nuget.org.
+
+**Status:** ✅ Done
+
+---
+
+### Page-Attributed Chunks (Source-Page Citation)
+**Packages:** `Rag.NET.Abstractions`, `Rag.NET`, `Rag.NET.Chunking`, `Rag.NET.Chunking.CSharp`, `Rag.NET.Chunking.Templates`, `Rag.NET.Parsers.Vision`
+
+The reserved `page`/`page_end` metadata pair (always written together, as numbers) carries the source-page range from `DocumentSection.PageNumber` through every chunking strategy: per-section strategies stamp both with the section's page, merging strategies (hierarchical merger and its templates, semantic document-level grouping, proposition passages) report min/max across the contributing sections and keep the pages present when a run mixes paginated and unpaginated sections. Absent — not null — for unpaginated formats and where the origin page is unknowable (LLM-rewritten resume fields; video timestamps stay `timestamp_seconds`). Riding on typed metadata (above), the pair is numerically filterable in all six stores with no per-store schema; chunks stored before the keys existed read back without them until re-ingested.
+
+**Why:** For reference checking, "which page did this answer come from" is the difference between a citation a human can verify and a chunk index they cannot (issue #82). PdfPig already supplied the page number; it previously died at the chunking boundary.
+
+**Status:** ✅ Done
+
+---
+
 ### Multi-Language Code Splitting (Heuristic)
 **Package:** `Rag.NET.Chunking`
 

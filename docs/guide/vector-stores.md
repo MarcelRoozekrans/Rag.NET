@@ -16,7 +16,8 @@ The vector store is the persistence layer for embedded chunks. Rag.NET ships six
 | Dense (semantic) search | Yes | Yes | Yes | Yes | Yes | Yes |
 | Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) | No — BM25 fallback | No — BM25 fallback |
 | Sparse search (SPLADE, `ISparseSearchable`) | Yes (`enableSparseVectors: true`) | Yes (`enableSparseVectors: true`) | No | No | No | Yes (`EnableSparseVectors = true`) |
-| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match) | Yes (`search.ismatch`) | Yes (`where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) | Yes (filter `$eq`/`$and`) |
+| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match / numeric range) | Yes (typed `metadata_entries/any(...)`) | Yes (typed `where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) | Yes (filter `$eq`/`$and`) |
+| Typed metadata round-trip | Yes (native JSONB types) | Yes (native payload types) | Yes (typed complex-collection slots) | Yes (typed auto-schema props) | Yes (native values; dates as sentinel) | Yes (native values; dates as sentinel) |
 | `ICollectionManageable` | Yes | Yes | Yes | Yes | Yes | Yes |
 | Similarity function | Cosine (via `<=>`); dot product when sparse (`<#>`) | Cosine | Cosine | Cosine | Cosine | Cosine (dotproduct when sparse) |
 | Index algorithm | HNSW at ≤ 2000 dims, **exact scan above** (see [below](#dense-index-and-search-behaviour)) | HNSW | HNSW | HNSW | HNSW | Serverless (managed) |
@@ -107,6 +108,23 @@ public interface IVectorStore
 
 `SearchOptions` carries `TopK`, `MinScore`, `MetadataFilter`, and `UseHybridSearch`. The `UseHybridSearch` flag in `SearchOptions` is used by `IHybridSearchable` implementations; stores that do not implement that interface ignore it (the pipeline handles routing before calling `SearchAsync`).
 
+### Typed metadata
+
+Chunk metadata values are typed (`MetadataValue`: string, number, boolean, or date — see the [ingestion guide](./ingestion.md#chunk-metadata)), and every store persists the type: a `page` written as the number `3` is stored as a number, read back as a number, and filtered as a number. `MetadataFilter` takes the same typed values, so a numeric filter is a numeric comparison in the store, not a string match:
+
+```csharp
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
+{
+    MetadataFilter = new Dictionary<string, MetadataValue>
+    {
+        ["department"] = "finance", // string match
+        ["page"]       = 3,         // numeric match — NOT the string "3"
+    },
+});
+```
+
+Filter values are kind-sensitive: filtering on the string `"3"` does not match a stored number `3`. Metadata stored **before** values carried types reads back losslessly as string-kind values; see each store's section (and the Azure AI Search migration note) for what that means for filtering old documents.
+
 ## Collection management
 
 All six also implement `ICollectionManageable`, registered alongside `IVectorStore` in the DI container:
@@ -140,7 +158,7 @@ store absorbs its own flavour.
 
 **Package:** `Rag.NET.VectorStores.PgVector`
 
-Stores chunks in a `rag_chunks` table. Uses the `pgvector` extension for dense search via the `<=>` cosine distance operator and, when sparse vectors are enabled, for SPLADE search via the `<#>` inner-product operator over a `sparsevec` column. Metadata is stored as `JSONB` and filtered using PostgreSQL's containment operator.
+Stores chunks in a `rag_chunks` table. Uses the `pgvector` extension for dense search via the `<=>` cosine distance operator and, when sparse vectors are enabled, for SPLADE search via the `<#>` inner-product operator over a `sparsevec` column. Metadata is stored as `JSONB` with native JSON types — a number-kind `MetadataValue` is a JSON number, a boolean a JSON boolean, a date a `{"$date": ...}` wrapper — and filtered using PostgreSQL's containment operator, so a numeric filter is numeric containment.
 
 ### Setup
 
@@ -307,7 +325,7 @@ So switching to an encoder with a different vocabulary is a drop-and-re-ingest o
 
 **Package:** `Rag.NET.VectorStores.Qdrant`
 
-Stores chunks as Qdrant points with a payload. Metadata is stored both as a serialised JSON string in `metadata` and as individual `meta_{key}` payload fields to enable Qdrant's native payload filtering.
+Stores chunks as Qdrant points with a payload. Metadata is stored both as a serialised JSON string in `metadata` (the round-trip authority) and as individual typed `meta_{key}` payload fields — numbers as payload doubles, booleans as payload booleans — to enable Qdrant's native payload filtering.
 
 ### Setup
 
@@ -331,14 +349,15 @@ await store!.InitializeAsync();
 
 ### Metadata filtering
 
-Qdrant filters on `meta_{key}` payload fields using must-match conditions:
+Qdrant filters on `meta_{key}` payload fields using must conditions matched to the value's kind: strings and dates use keyword match, booleans a boolean match, and numbers a closed `gte = lte` range (Qdrant's match condition has no double form):
 
 ```csharp
 var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 {
-    MetadataFilter = new Dictionary<string, string>
+    MetadataFilter = new Dictionary<string, MetadataValue>
     {
-        ["department"] = "finance",   // matches meta_department payload field
+        ["department"] = "finance",   // keyword match on meta_department
+        ["page"]       = 3,           // numeric range 3 <= meta_page <= 3
     },
 });
 ```
@@ -383,10 +402,11 @@ services.AddRagNet(rag => rag
 | `document_id` | `String` (filterable) | For delete-by-document |
 | `chunk_index` | `Int32` | Chunk ordinal |
 | `text` | `SearchableString` | Full-text search |
-| `metadata` | `String` | Serialised JSON |
+| `metadata` | `String` | Legacy serialised JSON (still written; read fallback) |
+| `metadata_entries` | `Collection(Edm.ComplexType)` | Typed metadata: `{key, stringValue, numberValue, boolValue, dateValue}` rows, all sub-fields filterable |
 | `embedding` | `Collection(Single)` | HNSW vector field |
 
-The vector field is configured with an HNSW algorithm profile named `"default-algorithm"`.
+The vector field is configured with an HNSW algorithm profile named `"default-algorithm"`. `metadata_entries` carries one row per metadata key with the sub-field matching the value's kind populated — which is what makes *every* metadata key filterable with its type and **no per-key schema change**: a new key needs no index update, the writer writes it and the filter finds it. Sub-fields of a complex collection cannot be marked `sortable` (they are multi-valued per document), so sorting by a metadata key is not available.
 
 ```csharp
 var store = provider.GetRequiredService<ICollectionManageable>() as AzureAISearchVectorStore;
@@ -409,20 +429,31 @@ The returned scores are Azure AI Search's internal BM25+vector fusion scores, no
 
 ### Metadata filtering
 
-Metadata is stored as a serialised JSON string in the `metadata` field. The filter uses `search.ismatch` to check for key-value substrings within the JSON:
+Filters run against the typed `metadata_entries` complex collection, one `any()` clause per filter pair, AND-composed, with the comparison against the sub-field matching the value's kind:
 
 ```csharp
-// Generates: search.ismatch('"department":"finance"', 'metadata')
+// Generates: metadata_entries/any(m: m/key eq 'department' and m/stringValue eq 'finance')
+//        and metadata_entries/any(m: m/key eq 'page' and m/numberValue eq 3)
 var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 {
-    MetadataFilter = new Dictionary<string, string>
+    MetadataFilter = new Dictionary<string, MetadataValue>
     {
         ["department"] = "finance",
+        ["page"]       = 3,
     },
 });
 ```
 
-Multiple filter entries are combined with `and`.
+This replaces the previous `search.ismatch` substring probe over the JSON blob with real typed comparisons.
+
+### Migrating an existing index
+
+`InitializeAsync` uses `CreateOrUpdateIndexAsync`, and adding `metadata_entries` is an **additive** field change, so an existing index picks the new field up on the next run without a rebuild. The legacy `metadata` string field stays declared and written — Azure AI Search forbids removing or re-typing an existing field, and keeping it is what lets the update succeed against a pre-existing index.
+
+Two honest caveats for documents ingested **before** the change:
+
+- **Reading them keeps working.** They have no `metadata_entries` rows, so the store falls back to the legacy JSON blob; every value comes back as a string-kind `MetadataValue`. Nothing throws, nothing is lost.
+- **Filtering them stops working until re-ingest.** `MetadataFilter` now runs against `metadata_entries`, and old documents have no rows there to match — under the previous `search.ismatch` filtering they *did* match. Re-ingest the affected documents to make them filterable again.
 
 ### Indexing latency
 
@@ -486,13 +517,13 @@ When `UseHybridSearch = true`, the pipeline calls `HybridSearchAsync` directly �
 
 ### Metadata filtering and auto-schema
 
-Each chunk metadata key is written as an extra `meta_{key}` text property; Weaviate's auto-schema (enabled by default in the official image) adds these properties on first write, making them server-side filterable:
+Each chunk metadata key is written as an extra typed `meta_{key}` property — text for strings, `number` for numbers, `boolean` for booleans; Weaviate's auto-schema (enabled by default in the official image) adds these properties with the matching type on first write, making them server-side filterable with typed `where` operands (`valueText`, `valueNumber`, `valueBoolean`). The `metadata_json` property remains the lossless round-trip authority:
 
 ```csharp
 // Generates: where: {path: ["meta_department"], operator: Equal, valueText: "finance"}
 var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 {
-    MetadataFilter = new Dictionary<string, string>
+    MetadataFilter = new Dictionary<string, MetadataValue>
     {
         ["department"] = "finance",
     },
@@ -554,13 +585,13 @@ The store **requires the cosine space**. If the configured collection already ex
 
 ### Metadata filtering
 
-Chunk metadata keys are stored as-is on each record and filtered server-side with Chroma's `$eq` operator; multiple filter entries are composed with `$and`:
+Chunk metadata keys are stored as-is on each record with native value types (numbers as numbers, booleans as booleans; dates as a `$date:`-prefixed sentinel string, since record values cannot be objects) and filtered server-side with Chroma's typed `$eq` operator; multiple filter entries are composed with `$and`:
 
 ```csharp
 // Generates: where: {"$and": [{"department": {"$eq": "finance"}}, {"team": {"$eq": "core"}}]}
 var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 {
-    MetadataFilter = new Dictionary<string, string>
+    MetadataFilter = new Dictionary<string, MetadataValue>
     {
         ["department"] = "finance",
         ["team"]       = "core",
@@ -634,13 +665,13 @@ Set `PineconeOptions.Namespace` to scope every upsert, query, and delete to one 
 
 ### Metadata filtering
 
-Chunk metadata keys are stored as-is on each record and filtered server-side with Pinecone's `$eq` operator; multiple filter entries are composed with `$and`:
+Chunk metadata keys are stored as-is on each record with native value types (numbers as numbers, booleans as booleans; dates as a `$date:`-prefixed sentinel string, since record values cannot be objects) and filtered server-side with Pinecone's typed `$eq` operator; multiple filter entries are composed with `$and`:
 
 ```csharp
 // Generates: filter: {"$and": [{"department": {"$eq": "finance"}}, {"team": {"$eq": "core"}}]}
 var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 {
-    MetadataFilter = new Dictionary<string, string>
+    MetadataFilter = new Dictionary<string, MetadataValue>
     {
         ["department"] = "finance",
         ["team"]       = "core",

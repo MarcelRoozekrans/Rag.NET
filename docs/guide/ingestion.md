@@ -39,8 +39,8 @@ public sealed record DocumentMetadata
     public required string DocumentId { get; init; }
     public required string FileName   { get; init; }
     public string? ContentType        { get; init; }
-    public IDictionary<string, string> Tags { get; init; }
-        = new Dictionary<string, string>(StringComparer.Ordinal);
+    public IDictionary<string, MetadataValue> Tags { get; init; }
+        = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 }
 ```
 
@@ -57,7 +57,7 @@ var metadata = new DocumentMetadata
     DocumentId  = "policy-hr-001",
     FileName    = "hr-policy.docx",
     ContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    Tags = new Dictionary<string, string>
+    Tags = new Dictionary<string, MetadataValue>
     {
         ["category"] = "hr",
         ["version"]  = "2024-01",
@@ -71,6 +71,26 @@ After ingestion, every `TextChunk.Metadata` for this document will contain:
 - `"category"` → `"hr"`
 - `"version"` → `"2024-01"`
 - Plus any heading metadata injected by the parser (see below)
+
+### Typed metadata values
+
+Metadata values are `MetadataValue`, a small discriminated value carrying one of four kinds — **string**, **number** (a `double`; `int`/`long` convert exactly up to 2^53), **boolean**, or **date** (`DateTimeOffset`, compared and stored by UTC instant). Implicit conversions exist *from* each carried type, so plain-string write sites keep their shape, and a number written as a number stays a number all the way into the vector store — filterable numerically, not as the text `"3"`:
+
+```csharp
+Tags = new Dictionary<string, MetadataValue>
+{
+    ["category"]    = "hr",              // string
+    ["page_count"]  = 42,                // number
+    ["confidential"] = true,             // boolean
+    ["approved_at"] = DateTimeOffset.UtcNow, // date
+},
+```
+
+There is deliberately **no** implicit conversion back to `string` — that would silently stringify numbers at read sites, which is exactly the bug the typed value removes. Read through `Kind` and the kind-checked accessors (`StringValue`, `NumberValue`, `BooleanValue`, `DateTimeOffsetValue`), or `ToString()` for a lossless textual form of any kind.
+
+The typing runs the whole chain: a data-provider connector's `FileEntry.Metadata`, `DocumentMetadata.Tags`, `TextChunk.Metadata`, `SearchOptions.MetadataFilter`, and each store's persisted representation (see [Vector stores](vector-stores.md#typed-metadata)). Values stored before metadata carried types read back losslessly as string-kind values.
+
+Chunk-level values win: `MetadataBehavior` applies document tags to chunks with `TryAdd`, so a key a chunking strategy already set is never clobbered by a document tag.
 
 ## `IngestionOptions`
 
@@ -515,6 +535,30 @@ When `HeadingLevel` and `Heading` are set (by the Markdown or HTML parser), the 
 The breadcrumb is built by concatenating all ancestor headings in order, separated by ` > `. A new heading at level N resets all headings at levels N+1 through 6.
 
 These metadata keys can be used for [metadata filtering](retrieval.md#metadata-filtering).
+
+### Page attribution
+
+When `PageNumber` is set (the PDF parser reads it from PdfPig's page number on every path —
+plain text, per-page OCR fallback, and document-level OCR — and the PowerPoint parser sets it
+to the slide number), every chunking strategy copies it onto the chunks it produces as the
+reserved `page` / `page_end` metadata pair, written as **numbers**, so a retrieved chunk can be
+cited back to its source page and filtered numerically:
+
+- A chunk that sits entirely on page 3 has `page: 3, page_end: 3` — the keys are always
+  written together, so consumers can render a range without probing for a missing half.
+- A chunk merged from sections spanning pages 3–4 (hierarchical merging, semantic
+  document-level grouping, proposition passages) has `page: 3, page_end: 4` — the min/max of
+  the contributing sections' page numbers.
+- A merged run that mixes paginated and unpaginated sections keeps the pages that are present:
+  a chunk touching page 3 and an unpaginated section is still findable on page 3.
+- Both keys are **absent** (not null-valued) for non-paginated formats (Markdown, HTML, plain
+  text, …) and for chunks whose origin page is unknowable (LLM-rewritten resume fields; video
+  "pages" are scene timestamps and stay in `timestamp_seconds`).
+
+`page` and `page_end` are [reserved metadata keys](data-providers.md#the-convention): the
+framework writes them, and a connector emitting either from entry metadata is rejected with
+`ReservedMetadataKeyException`. Chunks stored before the keys existed read back without them
+until re-ingested.
 
 ## Progress reporting
 
