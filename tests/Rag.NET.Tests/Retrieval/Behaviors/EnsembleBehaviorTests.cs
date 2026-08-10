@@ -431,6 +431,191 @@ public class EnsembleBehaviorTests
             Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
     }
 
+    // ── Native hybrid dispatch (IHybridSearchable) ───────────────────────────
+
+    /// <summary>
+    /// A store substitute that also implements <see cref="IHybridSearchable"/>, with both its
+    /// dense and native-hybrid searches stubbed so a test can assert on <em>which</em> was
+    /// called, not just on the result shape.
+    /// </summary>
+    private static (IVectorStore Store, IEmbeddingGenerator<string, Embedding<float>> Embedder, IBm25Index Bm25)
+        MakeHybridCapableArms(IReadOnlyList<SearchResult> denseResults, IReadOnlyList<SearchResult> nativeResults)
+    {
+        var store = Substitute.For<IVectorStore, IHybridSearchable>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25 = Substitute.For<IBm25Index>();
+
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(denseResults);
+        ((IHybridSearchable)store).HybridSearchAsync(
+                Arg.Any<string>(), Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(nativeResults);
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>())
+            .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
+
+        return (store, embedder, bm25);
+    }
+
+    [Fact]
+    public async Task HandleAsync_HybridSearchableStore_DispatchesNative()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var native = new List<SearchResult> { MakeResult("doc-native", 0, 0.03) };
+        var (store, embedder, bm25) = MakeHybridCapableArms([MakeResult("doc-dense", 0, 0.9)], native);
+
+        var sut = new EnsembleBehavior { Embedder = embedder, VectorStore = store, Bm25Index = bm25 };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException("must not call next"));
+
+        // The store's native result is returned as-is: no client-side fusion ran on top of it.
+        Assert.Same(native, output);
+        await ((IHybridSearchable)store).Received(1).HybridSearchAsync(
+            "test query", Arg.Any<ReadOnlyMemory<float>>(), Arg.Is<SearchOptions>(o => o!.TopK == 5), ct);
+        await store.DidNotReceive().SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+        bm25.DidNotReceive().Search(Arg.Any<string>(), Arg.Any<int>());
+    }
+
+    [Fact]
+    public async Task HandleAsync_StoreNotHybridSearchable_UsesClientFusion()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var store = Substitute.For<IVectorStore>(); // no IHybridSearchable
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25 = Substitute.For<IBm25Index>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>())
+            .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
+
+        var sut = new EnsembleBehavior { Embedder = embedder, VectorStore = store, Bm25Index = bm25 };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        // Client fusion ran: the dense search and the BM25 arm were both consulted.
+        await store.Received(1).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+        bm25.Received(1).Search(Arg.Any<string>(), Arg.Any<int>());
+        Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-bm25", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task HandleAsync_EnsembleOptionsSupplied_KeepsClientFusion()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (store, embedder, bm25) = MakeHybridCapableArms(
+            [MakeResult("doc-dense", 0, 0.9)], [MakeResult("doc-native", 0, 0.03)]);
+
+        var sut = new EnsembleBehavior { Embedder = embedder, VectorStore = store, Bm25Index = bm25 };
+        // Default-valued EnsembleOptions still expresses weighting intent: supplying the
+        // object at all keeps the client-side path, where the weights actually apply.
+        var ctx = MakeCtx(new RetrievalOptions
+        {
+            UseHybridSearch = true,
+            TopK = 5,
+            EnsembleOptions = new EnsembleOptions(),
+        });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        await ((IHybridSearchable)store).DidNotReceive().HybridSearchAsync(
+            Arg.Any<string>(), Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+        await store.Received(1).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+        Assert.DoesNotContain(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-native", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task HandleAsync_MinScoreConfigured_KeepsClientFusion()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (store, embedder, bm25) = MakeHybridCapableArms(
+            [MakeResult("doc-dense", 0, 0.9)], [MakeResult("doc-native", 0, 0.03)]);
+
+        var sut = new EnsembleBehavior { Embedder = embedder, VectorStore = store, Bm25Index = bm25 };
+        // A similarity-tuned MinScore against a native fusion scale (Azure hybrid: RRF values
+        // around 0.016) would silently empty the results — so it keeps the client path, where
+        // MinScore applies to the dense arm's similarity scores as it always has.
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5, MinScore = 0.5 });
+
+        await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        await ((IHybridSearchable)store).DidNotReceive().HybridSearchAsync(
+            Arg.Any<string>(), Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+        await store.Received(1).SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task HandleAsync_SparseArmWouldRun_KeepsClientFusion()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var store = Substitute.For<IVectorStore, IHybridSearchable, ISparseSearchable>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25 = Substitute.For<IBm25Index>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { MakeResult("doc-dense", 0, 0.9) });
+        ((ISparseSearchable)store).SearchSparseAsync(Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult> { MakeResult("doc-sparse", 0, 4.0) });
+        bm25.Search(Arg.Any<string>(), Arg.Any<int>())
+            .Returns(new[] { MakeBm25Hit("doc-bm25", 0) });
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = new FakeSparseGenerator(_ => MakeSparse()),
+        };
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        // Native hybrid cannot run a sparse arm; a sparse arm that would run wins.
+        await ((IHybridSearchable)store).DidNotReceive().HybridSearchAsync(
+            Arg.Any<string>(), Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+        Assert.Contains(output, r => string.Equals(r.Chunk.DocumentId.ToString(), "doc-sparse", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task HandleAsync_SparseDisabledPerCall_DispatchesNative()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var store = Substitute.For<IVectorStore, IHybridSearchable, ISparseSearchable>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        var bm25 = Substitute.For<IBm25Index>();
+        var native = new List<SearchResult> { MakeResult("doc-native", 0, 0.03) };
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        ((IHybridSearchable)store).HybridSearchAsync(
+                Arg.Any<string>(), Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(native);
+
+        var sut = new EnsembleBehavior
+        {
+            Embedder = embedder,
+            VectorStore = store,
+            Bm25Index = bm25,
+            SparseGenerator = new FakeSparseGenerator(_ => MakeSparse()),
+        };
+        // UseSparseSearch = false means the sparse arm would not run, so nothing client-side
+        // would do more than the native call: native wins again.
+        var ctx = MakeCtx(new RetrievalOptions { UseHybridSearch = true, TopK = 5, UseSparseSearch = false });
+
+        var output = await sut.HandleAsync(ctx, ct, (_, _) => throw new InvalidOperationException());
+
+        Assert.Same(native, output);
+        await ((ISparseSearchable)store).DidNotReceive().SearchSparseAsync(
+            Arg.Any<SparseVector>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task HandleAsync_Bm25ReturnsEmpty_ReturnsDenseResults()
     {

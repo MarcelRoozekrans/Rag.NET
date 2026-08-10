@@ -51,9 +51,16 @@ public sealed record RetrievalOptions
     public IDictionary<string, MetadataValue>? MetadataFilter { get; init; }
 
     /// <summary>
-    /// Combines dense vector search with sparse/keyword search for this call, fused by
-    /// reciprocal rank; see <see cref="EnsembleOptions"/> for weighting. Defaults to
-    /// <see langword="false"/> (dense search only).
+    /// Combines dense vector search with sparse/keyword search for this call. Defaults to
+    /// <see langword="false"/> (dense search only). Served by one of two mechanisms:
+    /// when the registered store implements <see cref="Rag.NET.Abstractions.IHybridSearchable"/>
+    /// and this call configures nothing native fusion cannot express — no sparse (SPLADE) arm
+    /// would run, <see cref="EnsembleOptions"/> is not supplied, and <see cref="MinScore"/> is
+    /// <c>0.0</c> — the store's own server-side hybrid query runs in a single backend call and
+    /// returns scores on the backend's fusion scale. Otherwise dense and BM25 (and, when
+    /// active, sparse) searches run client-side and are merged by reciprocal rank fusion with
+    /// <see cref="EnsembleOptions"/> weights, returning RRF scores. Either way the scores are
+    /// not similarities — treat them as ordinal.
     /// </summary>
     public bool UseHybridSearch { get; init; }
 

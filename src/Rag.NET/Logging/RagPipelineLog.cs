@@ -102,4 +102,7 @@ internal static partial class RagPipelineLog
 
     [LoggerMessage(EventId = 203256243, EventName = "cost_ledger_record_failed", Level = LogLevel.Warning, Message = "Cost ledger write failed; the call succeeded but its usage was not recorded")]
     internal static partial void CostLedgerRecordFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 1730415878, EventName = "ensemble_native_hybrid", Level = LogLevel.Debug, Message = "EnsembleBehavior: native hybrid search dispatched to {StoreName}")]
+    internal static partial void EnsembleNativeHybrid(ILogger logger, string storeName);
 }
