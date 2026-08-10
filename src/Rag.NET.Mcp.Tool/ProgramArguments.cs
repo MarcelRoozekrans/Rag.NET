@@ -47,4 +47,27 @@ internal static class ProgramArguments
 
         return null;
     }
+
+    /// <summary>
+    /// Whether <paramref name="name"/> is present as a bare flag.
+    /// </summary>
+    /// <param name="args">The raw command-line arguments.</param>
+    /// <param name="name">The flag, including its leading dashes (e.g. <c>--allow-anonymous</c>).</param>
+    /// <returns>
+    /// <see langword="true"/> when the flag appears as its own token. Unlike
+    /// <see cref="Parse"/> this takes no value: a flag that switches off a safety check should
+    /// not be satisfiable by <c>--allow-anonymous=false</c> reading as "present, therefore on".
+    /// </returns>
+    public static bool HasFlag(string[] args, string name)
+    {
+        foreach (var arg in args)
+        {
+            if (string.Equals(arg, name, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

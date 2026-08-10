@@ -17,11 +17,13 @@
 
 using Rag.NET.Hosting.DependencyInjection;
 using Rag.NET.Mcp.DependencyInjection;
+using Rag.NET.Mcp;
 using Rag.NET.Mcp.Tool;
 
 var transport = ProgramArguments.Parse(args, "--transport") ?? "stdio";
 var port = int.TryParse(ProgramArguments.Parse(args, "--port"), System.Globalization.CultureInfo.InvariantCulture, out var p) ? p : 5050;
 var apiKey = ProgramArguments.Parse(args, "--api-key") ?? Environment.GetEnvironmentVariable("RAGNET_MCP_API_KEY");
+var allowAnonymous = ProgramArguments.HasFlag(args, "--allow-anonymous");
 
 // The two transports need different hosts, not just different MCP builder calls: HTTP needs
 // Kestrel to accept connections, but stdio must NOT start a web server at all — an MCP stdio
@@ -29,7 +31,7 @@ var apiKey = ProgramArguments.Parse(args, "--api-key") ?? Environment.GetEnviron
 // exactly the silent-failure this tool shipped with (see the package's README).
 if (string.Equals(transport, "http", StringComparison.OrdinalIgnoreCase))
 {
-    await RunHttpAsync(args, port, apiKey).ConfigureAwait(false);
+    await RunHttpAsync(args, port, apiKey, allowAnonymous).ConfigureAwait(false);
 }
 else
 {
@@ -40,8 +42,23 @@ else
 // Transports
 // ---------------------------------------------------------------------------
 
-static async Task RunHttpAsync(string[] args, int port, string? apiKey)
+static async Task RunHttpAsync(string[] args, int port, string? apiKey, bool allowAnonymous)
 {
+    // Authentication is a decision, not a default. Without this the middleware below was simply
+    // not registered when no key was configured, so `--transport http` with no `--api-key` served
+    // ingest, retrieve and ask to anyone who could reach the port — and the host binds every
+    // interface, not loopback. Same fail-open shape #92 fixed in Rag.NET.Api.
+    if (string.IsNullOrEmpty(apiKey) && !allowAnonymous)
+    {
+        Console.Error.WriteLine(
+            "[ragnet-mcp] Refusing to start an unauthenticated HTTP transport. This endpoint " +
+            "exposes ingest, retrieve and ask, and binds every interface. Pass --api-key <key> " +
+            "(or set RAGNET_MCP_API_KEY), or pass --allow-anonymous if it really is behind a " +
+            "trusted gateway.");
+        Environment.ExitCode = 1;
+        return;
+    }
+
     var builder = WebApplication.CreateBuilder(args);
     builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
@@ -55,32 +72,32 @@ static async Task RunHttpAsync(string[] args, int port, string? apiKey)
 
     var app = builder.Build();
 
-    if (apiKey is not null)
+    // Registered unconditionally, unlike before. A middleware added only when a key exists means
+    // "no key configured" and "key checked and matched" are the same code path from outside;
+    // registering always and deciding inside keeps the refusal visible.
+    app.Use(async (context, next) =>
     {
-        app.Use(async (context, next) =>
+        var suppliedKey = context.Request.Headers.TryGetValue(McpApiKeyAuthorization.HeaderName, out var value)
+            ? value.ToString()
+            : null;
+
+        if (!McpApiKeyAuthorization.IsAuthorized(suppliedKey, apiKey, allowAnonymous))
         {
-            var suppliedKey = context.Request.Headers.TryGetValue("X-Api-Key", out var value)
-                ? value.ToString()
-                : null;
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
 
-            if (!ApiKeyAuthorization.IsAuthorized(suppliedKey, apiKey))
-            {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                return;
-            }
-
-            await next(context).ConfigureAwait(false);
-        });
-    }
+        await next(context).ConfigureAwait(false);
+    });
 
     // Map MCP Streamable HTTP endpoints (also exposes legacy SSE at /sse and /message).
     app.MapMcp("/mcp");
 
     Console.Error.WriteLine($"[ragnet-mcp] HTTP transport listening on http://0.0.0.0:{port}/mcp");
-    if (apiKey is not null)
-    {
-        Console.Error.WriteLine("[ragnet-mcp] API key authentication enabled.");
-    }
+    Console.Error.WriteLine(string.IsNullOrEmpty(apiKey)
+        ? "[ragnet-mcp] WARNING: serving unauthenticated (--allow-anonymous). Anyone who can " +
+          "reach this port can ingest into and query your store."
+        : "[ragnet-mcp] API key authentication enabled.");
 
     await app.RunAsync().ConfigureAwait(false);
 }

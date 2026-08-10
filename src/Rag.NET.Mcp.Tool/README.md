@@ -66,7 +66,19 @@ ragnet-mcp
 
 # HTTP/SSE on port 5050 with API-key auth
 ragnet-mcp --transport http --port 5050 --api-key your-secret
+
+# Behind a gateway that already authenticates — has to be said out loud
+ragnet-mcp --transport http --port 5050 --allow-anonymous
 ```
+
+**The HTTP transport refuses to start without an authentication decision.** It exposes ingest,
+retrieve and ask, and binds every interface rather than loopback — so `--transport http` with
+neither `--api-key` (or `RAGNET_MCP_API_KEY`) nor `--allow-anonymous` exits with a message naming
+both ways out, rather than serving your store to the network. `--allow-anonymous` starts and logs
+a warning each run.
+
+`--allow-anonymous` never weakens a key you did configure: supply both and the key still decides,
+so a stray flag in a script cannot quietly disable authentication.
 
 Claude Desktop configuration for the stdio variant:
 
