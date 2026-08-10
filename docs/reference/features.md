@@ -141,7 +141,7 @@ Maintain a "tag knowledge base" of content-tag pairs. At query time, match the u
 ### Time-Weighted Retrieval
 **Package:** `Rag.NET` (core)
 
-Combine semantic similarity score with a recency decay factor. Fresher documents receive a score boost, older ones decay. Configurable decay rate. Valuable for knowledge bases where recency matters (support docs, regulatory updates, news).
+Combine semantic similarity score with a recency decay factor. Fresher documents keep their original score, older ones decay toward zero. Configurable decay rate (`DecayRate`, zero or positive). Valuable for knowledge bases where recency matters (support docs, regulatory updates, news).
 
 **Why:** Pure semantic similarity ignores document age entirely.
 
@@ -191,7 +191,7 @@ Combine results from multiple retrievers (e.g., BM25 + dense vector) using Recip
 
 ### RAPTOR — Recursive Abstractive Tree Summarization
 **Status:** ✅ Done
-**Package:** `Rag.NET` (core)
+**Package:** `Rag.NET.Raptor`
 
 Embed chunks, dimensionality-reduce with UMAP, soft-cluster with a Gaussian Mixture Model (BIC selects optimal cluster count), then LLM-summarize each cluster into a new higher-level chunk. Recurse until one cluster remains, building a full summary tree. Store all intermediate summary chunks alongside originals; all levels participate in retrieval simultaneously.
 
@@ -202,7 +202,7 @@ Embed chunks, dimensionality-reduce with UMAP, soft-cluster with a Gaussian Mixt
 ### Deep Research Loop (Sufficiency-Gated Sub-Query Decomposition)
 **Package:** `Rag.NET` (core)
 
-After initial retrieval, use an LLM to judge whether the retrieved information is sufficient. If not, generate follow-up sub-queries and explore them recursively to a configurable depth. Merge and deduplicate results across all branches. Optional: integrate live web search in the same loop.
+After initial retrieval, use an LLM to judge whether the retrieved information is sufficient. If not, generate follow-up sub-queries (`SubQueryCount`, greater than 0) and explore them recursively to a configurable depth (`MaxDepth`, greater than 0). Merge and deduplicate results across all branches.
 
 **Why:** Answers complex questions that require discovering what is missing and forming follow-up questions — moves Rag.NET from single-pass retrieval toward autonomous research capability.
 

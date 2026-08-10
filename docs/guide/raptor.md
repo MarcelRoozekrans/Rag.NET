@@ -60,14 +60,16 @@ rag.UseRaptor(options =>
 {
     options.Enabled = true;                  // Toggle RAPTOR on/off
     options.MinChunksForRaptor = 5;          // Skip for small documents
-    options.ReducedDimensionality = 10;      // UMAP target dims
-    options.MaxClusters = null;              // null = BIC auto-selects
-    options.MaxTreeDepth = null;             // null = recurse until 1 cluster
+    options.ReducedDimensionality = 10;      // UMAP target dims — must be greater than 0
+    options.MaxClusters = null;              // null = BIC auto-selects; when set, must be greater than 1
+    options.MaxTreeDepth = null;             // null = recurse until 1 cluster; when set, must be greater than 0
     options.StoreLeafChunks = true;          // Keep originals alongside summaries
     options.SummaryChatClient = cheapModel;  // Optional: cheaper model for summaries
     options.SummaryEmbedder = fastEmbedder;  // Optional: separate embedder
 });
 ```
+
+`UseRaptor` validates the configured options at registration and throws `ArgumentException` from the configuring line. The bounds are not pedantry: `MaxClusters = 1` or `MaxTreeDepth = 0` would build no summary levels at all — RAPTOR silently disabled while `Enabled` still reads `true` — and a non-positive `ReducedDimensionality` would leave clustering nothing to work on or crash mid-ingestion.
 
 ### Retrieval Options
 
@@ -76,12 +78,14 @@ rag.UseRaptor(
     retrieval: options =>
     {
         options.Mode = RaptorRetrievalMode.Boost;
-        options.SummaryBoostFactor = 1.5;    // Score multiplier for summaries
-        options.MinRaptorLevel = null;       // Level filter lower bound
-        options.MaxRaptorLevel = null;       // Level filter upper bound
+        options.SummaryBoostFactor = 1.5;    // Score multiplier for summaries — must be greater than 0, and finite
+        options.MinRaptorLevel = null;       // Level filter lower bound — must not exceed MaxRaptorLevel
+        options.MaxRaptorLevel = null;       // Level filter upper bound — when set, must be zero or positive
     }
 );
 ```
+
+These are validated at registration too: `SummaryBoostFactor = 0` would bury every summary and a negative factor would invert their ranking — the opposite of what Boost mode is for — while an empty Filter window (`MinRaptorLevel > MaxRaptorLevel`, or a negative `MaxRaptorLevel`) would remove every result on every retrieval.
 
 ## Cost and Performance
 

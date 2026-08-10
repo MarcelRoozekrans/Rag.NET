@@ -427,11 +427,13 @@ services.AddRagNet(b => b
     }));
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `MaxDepth` | `3` | Maximum number of sufficiency-check iterations |
-| `SubQueryCount` | `3` | Maximum sub-queries generated per iteration |
-| `SufficiencyPrompt` | `null` | Custom prompt; `null` uses the built-in default |
+| Option | Default | Constraint | Description |
+|--------|---------|------------|-------------|
+| `MaxDepth` | `3` | Must be greater than 0 | Maximum number of sufficiency-check iterations. Zero or negative would skip the loop entirely — plain retrieval at decorator prices. |
+| `SubQueryCount` | `3` | Must be greater than 0 | Maximum sub-queries generated per iteration. Zero would burn one LLM call per iteration retrieving nothing; negative would throw mid-retrieval. |
+| `SufficiencyPrompt` | `null` | — | Custom prompt; `null` uses the built-in default |
+
+`UseDeepResearch` validates these at registration and throws `ArgumentException` from the configuring line — a bad value never reaches retrieval.
 
 ### How it works
 
@@ -491,10 +493,12 @@ services.AddRagNet(b => b
     }));
 ```
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `TopK` | `1` | Maximum number of distinct tag keys to inject |
-| `MinScore` | `0.82` | Minimum cosine similarity for a tag to be injected |
+| Option | Default | Constraint | Description |
+|--------|---------|------------|-------------|
+| `TopK` | `1` | Must be greater than 0 | Maximum number of distinct tag keys to inject. Zero would scan the index and then inject nothing — tag retrieval silently failing open. |
+| `MinScore` | `0.82` | Must be between −1.0 and 1.0, and finite | Minimum cosine similarity for a tag to be injected. Above 1 no similarity can ever qualify — the same silent fail-open. |
+
+`UseTagRetrieval` validates these at registration and throws `ArgumentException` from the configuring line.
 
 ### How it works
 
@@ -564,10 +568,12 @@ services.AddRagNet(rag => rag.UseTimeWeighting(new TimeWeightedOptions
 
 ### `TimeWeightedOptions`
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `DecayRate` | `0.01` | λ in `score × e^(−λ × age_hours)`. Default halves relevance at ~69 hours (~3 days). |
-| `FallbackMetadataKeys` | `["updated_at", "published_at", "lastmod", "received_at"]` | Connector-specific metadata keys to try, in order, after both reserved timestamp keys have been checked and missed. First parseable ISO 8601 value wins. |
+| Option | Default | Constraint | Description |
+|--------|---------|------------|-------------|
+| `DecayRate` | `0.01` | Must be zero or positive, and finite | λ in `score × e^(−λ × age_hours)`. Default halves relevance at ~69 hours (~3 days). Zero means no decay; a negative rate would *boost* the oldest content exponentially — recency inverted. |
+| `FallbackMetadataKeys` | `["updated_at", "published_at", "lastmod", "received_at"]` | — | Connector-specific metadata keys to try, in order, after both reserved timestamp keys have been checked and missed. First parseable ISO 8601 value wins. |
+
+`UseTimeWeighting` validates `DecayRate` at registration and throws `ArgumentException` from the configuring line.
 
 ### Resolution order
 

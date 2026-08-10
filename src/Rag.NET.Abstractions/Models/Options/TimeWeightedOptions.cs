@@ -1,3 +1,5 @@
+using ZeroAlloc.Validation;
+
 namespace Rag.NET.Models.Options;
 
 /// <summary>
@@ -5,17 +7,35 @@ namespace Rag.NET.Models.Options;
 /// factor based on chunk age, so more recent content ranks higher than an equally-similar older
 /// match.
 /// </summary>
+[Validate]
 public sealed class TimeWeightedOptions
 {
     /// <summary>
     /// Decay constant λ in <c>score × e^(−λ × age_hours)</c>.
     /// Default 0.01 halves relevance after ~69 hours (~3 days).
+    /// <para>
+    /// Must be zero or positive, and finite — enforced by the validation attributes, which
+    /// <c>RagBuilder.UseTimeWeighting</c> runs through the generated
+    /// <c>TimeWeightedOptionsValidator</c> at registration. A negative rate turns
+    /// <c>e^(−λ × age_hours)</c> into exponential <i>growth</i> with age
+    /// (<c>TimeWeightedRetriever.ComputeDecay</c>), so the oldest content in the store would
+    /// outrank everything regardless of similarity — recency weighting silently inverted.
+    /// Zero is valid and means no decay: every result keeps its original score.
+    /// </para>
     /// </summary>
+    [GreaterThanOrEqualTo(0.0)]
+    [Must(nameof(DecayRateIsFinite), Message = "DecayRate must be a finite number (not NaN or infinity).")]
     public double DecayRate { get; init; } = 0.01;
 
+    /// <summary>Reports whether <see cref="DecayRate"/> is a finite number.</summary>
+    /// <param name="value">The <see cref="DecayRate"/> value under validation.</param>
+    /// <returns>Whether the value is neither NaN nor infinite.</returns>
+    internal bool DecayRateIsFinite(double value) => double.IsFinite(value);
+
     /// <summary>
-    /// Ordered list of <see cref="Rag.NET.Models.TextChunk"/> metadata keys to check
-    /// when the primary <c>"created_at"</c> key is absent.
+    /// Ordered list of <see cref="Rag.NET.Models.TextChunk"/> metadata keys to check when both
+    /// reserved timestamp keys — <c>"updated_at"</c>, then <c>"created_at"</c> — are absent or
+    /// unparseable (see <c>TimeWeightedRetriever.ResolveTimestamp</c> for the precedence).
     /// First key with a parseable ISO 8601 value wins.
     /// </summary>
     /// <remarks>

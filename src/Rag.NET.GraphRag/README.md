@@ -24,7 +24,7 @@ using Rag.NET.Retrieval.Behaviors;
 services.AddRagNet(
     configure: rag => rag.UseGraphRag(
         options => options.GleaningPasses = 1,
-        retrieval: options => options.Mode = GraphRagRetrievalMode.Local,
+        retrieval: options => options.PageRankWeight = 0.3,
         graph: store => store.UseSqlite("graphrag.db")),
     ingestion: p => p
         .Add<GraphEntityExtractionBehavior>(after: typeof(EmbeddingBehavior))
@@ -46,9 +46,10 @@ rag.UseGraphRag(options =>
 });
 ```
 
-`GraphRagRetrievalMode.Global` answers "what are the main themes?" questions from
-community reports; `Auto` classifies each query first. `UseMindMapExtraction` adds
-hierarchical mind-map nodes instead of flat entities.
+Which search runs is decided by the behaviors you add to the retrieval pipeline:
+`GraphLocalSearchBehavior` for entity questions, `GraphGlobalSearchBehavior` for
+"what are the main themes?" questions over community reports. `UseMindMapExtraction`
+adds hierarchical mind-map nodes instead of flat entities.
 
 ## Full guide
 
