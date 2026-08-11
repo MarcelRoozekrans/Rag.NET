@@ -107,12 +107,15 @@ public static class BeirRunBudget
             "trec-covid",
             BeirProtocol.Parity,
             FitsTheNightly: false,
-            "DERIVED, not measured: ~3 h 10 m. FiQA's parity leg measured 1 h 11 m for 64,247 " +
-            "embeddings; TREC-COVID needs 171,382 (171,332 documents and 50 queries), which is " +
-            "2.67x as many, and the corpus embedding dominates. One separator only -- 171,325 of " +
-            "the 171,332 documents carry a title, so the second separator would move almost every " +
-            "document identically and re-derive a figure equal by construction. This string is " +
-            "replaced with the measured time the first time the leg runs."),
+            "DERIVED, not measured: ~3 h 10 m per separator, so ~6 h 20 m for the pair. FiQA's " +
+            "parity leg measured 1 h 11 m for 64,247 embeddings; TREC-COVID needs 171,382 " +
+            "(171,332 documents and 50 queries), which is 2.67x as many, and the corpus " +
+            "embedding dominates. Both separators run and neither is cheap: the theory adds a " +
+            "second case for any dataset with titled documents, 171,325 of these 171,332 have a " +
+            "title, and changing the separator changes the embedded text, so the warm cache from " +
+            "the first case is worth nothing to the second. The budget gate is keyed on dataset " +
+            "and protocol, not on separator, so the pair is bought together or not at all. This " +
+            "string is replaced with the measured time the first time the leg runs."),
         new(
             "trec-covid",
             BeirProtocol.HybridBm25,
