@@ -31,13 +31,28 @@ public sealed class RerankingBehavior : IRetrievalBehavior
                 .Select(r => r.SearchResult)
                 .ToList()
                 .AsReadOnly();
+
+            // A reranker that returns fewer results than were asked for has silently decided the
+            // answer's size. Cohere's TopN defaulted to 5 and did exactly that: Take(TopK) became
+            // a no-op and an answer meant to use 20 chunks used 5, with nothing logged and the
+            // ONNX reranker behaving differently for the same configuration (issue #94).
+            if (results.Count < ctx.Options.TopK && searchResults.Count >= ctx.Options.TopK)
+                RagPipelineLog.RerankingReturnedFewerThanRequested(
+                    ctx.Logger, Reranker.GetType().Name, results.Count, ctx.Options.TopK);
+
             return results;
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             RagPipelineLog.RerankingFailed(ctx.Logger, ctx.Query, ex);
-            return searchResults;
+
+            // Truncate on the way out. This used to return the whole candidate list, so a failed
+            // reranker handed back CandidateCount results — three times TopK by default — and a
+            // failure silently *widened* the caller's request instead of degrading to it.
+            return searchResults.Count <= ctx.Options.TopK
+                ? searchResults
+                : searchResults.Take(ctx.Options.TopK).ToList().AsReadOnly();
         }
     }
 }
