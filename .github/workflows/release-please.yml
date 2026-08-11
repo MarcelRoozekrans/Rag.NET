@@ -42,10 +42,19 @@ jobs:
     steps:
       # release-type simple: the release PR maintains CHANGELOG.md and a version.txt, and
       # nothing in the build consumes either — GitVersion derives the build's version from
-      # the tag this workflow creates, not from a file. For the first release ever,
-      # release-please defaults to proposing 1.0.0; if 6.3 decides otherwise, a
-      # `Release-As: x.y.z` footer on an empty commit overrides it — the procedure in
-      # docs/reference/ci.md records both.
+      # the tag this workflow creates, not from a file.
+      #
+      # The version rules live in release-please-config.json rather than in this input, so the
+      # two pre-1.0 bumps can be stated: bump-minor-pre-major keeps a breaking change on 0.x at
+      # a minor bump instead of jumping to 1.0.0, and bump-patch-for-minor-pre-major keeps a
+      # feature at a patch. Without them the first `feat!:` after 0.1.0 would propose 1.0.0 and
+      # nothing would ask whether that was intended. .release-please-manifest.json records the
+      # last released version — 0.0.0, because nothing has been released — and the two files
+      # must exist together: the config is what puts release-please into manifest mode.
+      #
+      # The first release's version is still chosen rather than derived. A `Release-As: x.y.z`
+      # footer on an empty commit overrides whatever the commits imply; the procedure in
+      # docs/reference/ci.md records it.
       - name: Create or update the release pull request
         uses: googleapis/release-please-action@v5
         with:
