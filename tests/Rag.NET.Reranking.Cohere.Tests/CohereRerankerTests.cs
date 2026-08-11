@@ -407,6 +407,106 @@ public sealed class CohereRerankerTests : IDisposable
     }
 
     // -------------------------------------------------------------------------
+    // RerankAsync – TopN (issue #94)
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// The default caps nothing, so the reranker cannot decide the answer's size behind the
+    /// caller's back. It defaulted to 5: a pipeline asking for TopK = 20 fetched 60 candidates,
+    /// got 5 back, and its own Take(20) did nothing.
+    /// </summary>
+    [Fact]
+    public void TopN_DefaultsToNoCap_SoTheRerankerDoesNotDecideTheResultCount()
+    {
+        Assert.Null(new CohereRerankerOptions { ApiKey = "test-key" }.TopN);
+    }
+
+    /// <summary>
+    /// With no cap configured, every candidate comes back ranked and the caller truncates.
+    /// </summary>
+    [Fact]
+    public async Task RerankAsync_WhenTopNIsNull_ReturnsEveryCandidate()
+    {
+        _server
+            .Given(Request.Create().WithPath("/v1/rerank").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(RerankJson([
+                    new { index = 0, relevance_score = 0.9 },
+                    new { index = 1, relevance_score = 0.8 },
+                    new { index = 2, relevance_score = 0.7 },
+                ])));
+
+        var options = CreateOptions();
+        options.TopN = null;
+        using var reranker = new CohereReranker(options);
+
+        var results = await reranker.RerankAsync(
+            "query",
+            [MakeSearchResult("a", 0), MakeSearchResult("b", 1), MakeSearchResult("c", 2)],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, results.Count);
+    }
+
+    /// <summary>
+    /// <c>top_n</c> is a per-call parameter, so sending it while batching asks each batch for its
+    /// own top N and throws the rest away before the merge — a document ranked sixth inside one
+    /// batch but third overall would never reach the merged ranking. When more than one call is
+    /// needed the cap is applied once, afterwards, so it means what the caller thinks it means.
+    /// </summary>
+    [Fact]
+    public async Task RerankAsync_WhenBatching_DoesNotSendTopNPerCall_SoTheMergeSeesEveryCandidate()
+    {
+        _server
+            .Given(Request.Create().WithPath("/v1/rerank").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(RerankJson([new { index = 0, relevance_score = 0.5 }])));
+
+        var options = CreateOptions(maxDocumentsPerBatch: 2);
+        options.TopN = 100;
+        using var reranker = new CohereReranker(options);
+
+        await reranker.RerankAsync(
+            "query",
+            [MakeSearchResult("a", 0), MakeSearchResult("b", 1), MakeSearchResult("c", 2)],
+            TestContext.Current.CancellationToken);
+
+        var bodies = _server.LogEntries
+            .Select(entry => entry.RequestMessage?.Body ?? string.Empty)
+            .ToList();
+
+        Assert.Equal(2, bodies.Count);
+        Assert.All(bodies, body =>
+            Assert.DoesNotContain("\"top_n\":1", body, StringComparison.Ordinal));
+    }
+
+    /// <summary>A single call covers every candidate, so the cap can be pushed to the server.</summary>
+    [Fact]
+    public async Task RerankAsync_WhenOneBatchCoversEverything_SendsTopN()
+    {
+        _server
+            .Given(Request.Create().WithPath("/v1/rerank").UsingPost())
+            .RespondWith(Response.Create()
+                .WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody(RerankJson([new { index = 0, relevance_score = 0.5 }])));
+
+        var options = CreateOptions();
+        options.TopN = 7;
+        using var reranker = new CohereReranker(options);
+
+        await reranker.RerankAsync(
+            "query", [MakeSearchResult("a", 0)], TestContext.Current.CancellationToken);
+
+        var body = Assert.Single(_server.LogEntries).RequestMessage?.Body ?? string.Empty;
+        Assert.Contains("7", body, StringComparison.Ordinal);
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 

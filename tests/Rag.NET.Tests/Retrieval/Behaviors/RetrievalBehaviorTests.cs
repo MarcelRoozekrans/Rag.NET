@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.Models;
@@ -231,6 +232,88 @@ public class RetrievalBehaviorTests
 
         Assert.Same(results, output);
         await reranker.DidNotReceive().RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A failing reranker degrades to the caller's <c>TopK</c>, not to the candidate pool.
+    /// <para>
+    /// The failure path returned the candidate list untouched, and that list is
+    /// <c>CandidateCount</c> long — <c>TopK * 3</c> by default. So a reranker throwing did not
+    /// degrade the request, it <b>widened</b> it: asking for 5 chunks and getting 15, with only a
+    /// warning about reranking to explain it (issue #94).
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Reranking_WhenRerankerThrows_FallsBackToTopKRatherThanTheWholeCandidatePool()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var candidates = new List<SearchResult>();
+        for (var i = 0; i < 15; i++)
+            candidates.Add(MakeResult($"doc-{i}", 0, 1.0 - (i * 0.01)));
+
+        var reranker = Substitute.For<IReranker>();
+        reranker.RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>())
+            .Returns<Task<IReadOnlyList<RerankResult>>>(_ => throw new InvalidOperationException("reranker down"));
+
+        var sut = new RerankingBehavior { Reranker = reranker };
+        var ctx = MakeCtx(new RetrievalOptions { UseReranking = true, TopK = 5 });
+
+        var output = await sut.HandleAsync(ctx, ct, NextReturning(candidates));
+
+        Assert.Equal(5, output.Count);
+    }
+
+    /// <summary>
+    /// A reranker returning fewer than <c>TopK</c> is reported rather than silently accepted.
+    /// <para>
+    /// <c>CohereRerankerOptions.TopN</c> defaulted to 5, so a caller asking for 20 got 5 chunks:
+    /// the behaviour's <c>Take(TopK)</c> was a no-op over a list the reranker had already cut, and
+    /// nothing said so. The ONNX reranker returns every candidate, so the same configuration gave
+    /// different answer sizes depending on which reranker was registered.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Reranking_WhenRerankerReturnsFewerThanTopK_LogsRatherThanSilentlyShrinking()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var candidates = new List<SearchResult>();
+        for (var i = 0; i < 30; i++)
+            candidates.Add(MakeResult($"doc-{i}", 0, 1.0 - (i * 0.01)));
+
+        // The shape a capped reranker produces: fewer results than the caller asked for.
+        var capped = new List<RerankResult>();
+        for (var i = 0; i < 5; i++)
+            capped.Add(new RerankResult { SearchResult = candidates[i], RelevanceScore = 1.0 - (i * 0.01) });
+
+        var reranker = Substitute.For<IReranker>();
+        reranker.RerankAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<RerankResult>>(capped));
+
+        var logger = new RecordingLogger();
+        var sut = new RerankingBehavior { Reranker = reranker };
+        var ctx = MakeCtx(new RetrievalOptions { UseReranking = true, TopK = 10 }) with { Logger = logger };
+
+        var output = await sut.HandleAsync(ctx, ct, NextReturning(candidates));
+
+        Assert.Equal(5, output.Count);
+        Assert.Contains(
+            logger.Messages,
+            message => message.Contains("returned 5 results for a TopK of 10", StringComparison.Ordinal));
+    }
+
+    /// <summary>Captures formatted log messages so a warning can be asserted on rather than assumed.</summary>
+    private sealed class RecordingLogger : ILogger
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
     }
 
     // ── HydeBehavior ──────────────────────────────────────────────────────────

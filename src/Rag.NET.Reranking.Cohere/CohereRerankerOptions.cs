@@ -17,9 +17,23 @@ public sealed class CohereRerankerOptions
     public string Model { get; init; } = "rerank-english-v3.0";
 
     /// <summary>
-    /// Number of top results to return. Default: 5.
+    /// Caps how many reranked results this reranker returns. <see langword="null"/> — the default —
+    /// returns every candidate it was given, ranked, and lets the caller decide how many to keep.
+    /// <para>
+    /// <b>It used to default to 5, which silently truncated the pipeline's own request.</b>
+    /// <c>RerankingBehavior</c> fetches <c>TopK * 3</c> candidates and cuts the reranked list to
+    /// <c>TopK</c>; with this capped at 5, a caller asking for <c>TopK = 20</c> received 5 chunks
+    /// and the behaviour's <c>Take(20)</c> did nothing. Nothing was logged, and the ONNX reranker
+    /// returns all candidates — so swapping rerankers changed how many chunks an answer was built
+    /// from, with no configuration change (issue #94).
+    /// </para>
+    /// <para>
+    /// Set it only to bound Cohere's response size deliberately. A value below the caller's
+    /// <c>TopK</c> still truncates — that is what it is for — but it is now an explicit choice
+    /// rather than a default.
+    /// </para>
     /// </summary>
-    public int TopN { get; init; } = 5;
+    public int? TopN { get; set; }
 
     /// <summary>
     /// Whether to ask Cohere to echo back document text in the response. Default: <see langword="false"/>.

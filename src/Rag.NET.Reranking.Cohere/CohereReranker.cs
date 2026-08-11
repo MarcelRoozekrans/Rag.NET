@@ -54,6 +54,13 @@ public sealed class CohereReranker : IReranker, IDisposable
 
         var allRerankResults = new List<RerankResult>(results.Count);
 
+        // TopN is a per-call parameter, so sending it while batching would ask each batch for its
+        // own top N and discard the rest before the merge ever happens — a document ranked sixth
+        // within one batch but third overall would be gone. It is therefore only sent when a
+        // single call covers every candidate; otherwise every batch ranks in full and the cap is
+        // applied once, after the merge, where it means what the caller thinks it means.
+        var singleBatch = results.Count <= _options.MaxDocumentsPerBatch;
+
         // Batch documents to respect Cohere's per-call limit
         for (var offset = 0; offset < results.Count; offset += _options.MaxDocumentsPerBatch)
         {
@@ -71,7 +78,7 @@ public sealed class CohereReranker : IReranker, IDisposable
                 Query = query,
                 Documents = documents,
                 Model = _options.Model,
-                TopN = _options.TopN,
+                TopN = singleBatch ? _options.TopN : null,
                 ReturnDocuments = _options.ReturnDocuments,
             };
 
@@ -90,8 +97,8 @@ public sealed class CohereReranker : IReranker, IDisposable
 
         // Sort descending by score (Cohere returns pre-sorted per batch; re-sort after merge)
         allRerankResults.Sort(static (a, b) => b.RelevanceScore.CompareTo(a.RelevanceScore));
-        if (allRerankResults.Count > _options.TopN)
-            allRerankResults.RemoveRange(_options.TopN, allRerankResults.Count - _options.TopN);
+        if (_options.TopN is { } cap && allRerankResults.Count > cap)
+            allRerankResults.RemoveRange(cap, allRerankResults.Count - cap);
         activity?.SetTag("reranker.result.count", allRerankResults.Count);
         return allRerankResults;
     }
