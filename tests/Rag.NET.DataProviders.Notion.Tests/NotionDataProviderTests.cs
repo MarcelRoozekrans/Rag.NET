@@ -17,6 +17,14 @@ public sealed class NotionDataProviderTests
     private static readonly IRestSerializer JsonSerializer = new SystemTextJsonSerializer();
 
     private static NotionDataProvider MakeProvider(
+        HttpMessageHandler handler, NotionOptions? options = null)
+    {
+        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.notion.com") };
+        var api = new NotionApiClient(http, JsonSerializer);
+        return new NotionDataProvider(api, options ?? new NotionOptions());
+    }
+
+    private static NotionDataProvider MakeProvider(
         Dictionary<string, string> responses,
         NotionOptions? options = null)
     {
@@ -547,12 +555,12 @@ public sealed class NotionDataProviderTests
             """;
         const string blocksJson = """{ "results": [], "has_more": false }""";
 
-        // DatabaseId is set precisely to prove it does NOT leak into the tags.
+        // Unscoped: /v1/search returns every accessible page, so no database parentage is known.
         var sut = MakeProvider(new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["/v1/search"] = searchJson,
             ["page-md"]    = blocksJson
-        }, new NotionOptions { DatabaseId = "db-42" });
+        }, new NotionOptions());
 
         var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
@@ -566,10 +574,107 @@ public sealed class NotionDataProviderTests
         Assert.False(metadata.ContainsKey("updated_at"));
         _ = Assert.Single(metadata);
 
-        // NotionOptions.DatabaseId is documented as "reserved for a future implementation" and
-        // appears nowhere in the /v1/search request, which returns every accessible page. Tagging
-        // pages with it would claim a parentage the API never confirmed.
+        // Without DatabaseId the provider searches, and /v1/search results carry no parent
+        // object — so tagging them with a database id would claim a parentage the API never
+        // confirmed. Scoped ingestion is the opposite case and is asserted separately.
         Assert.False(metadata.ContainsKey("database_id"));
+    }
+
+    // -------------------------------------------------------------------------
+    // DatabaseId scoping (issue #108)
+    // -------------------------------------------------------------------------
+
+    private const string OnePageJson = """
+        {
+          "results": [
+            {
+              "id": "page-db",
+              "last_edited_time": "2026-03-01T10:00:00.000Z",
+              "properties": { "title": { "title": [{ "plain_text": "Scoped Page" }] } }
+            }
+          ],
+          "has_more": false
+        }
+        """;
+
+    /// <summary>
+    /// With <see cref="NotionOptions.DatabaseId"/> set the provider queries the database endpoint
+    /// instead of searching.
+    /// <para>
+    /// The fake serves <b>only</b> <c>/v1/databases/db-42/query</c>, so a provider that still
+    /// called <c>/v1/search</c> gets a 404 and yields a failure — the endpoint choice is proven by
+    /// the absence of the other route rather than by inspecting a URL and hoping.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_WithDatabaseId_QueriesTheDatabaseInsteadOfSearching()
+    {
+        var handler = new RecordingHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/v1/databases/db-42/query"] = OnePageJson,
+            ["page-db"] = """{ "results": [], "has_more": false }""",
+        });
+        var sut = MakeProvider(handler, new NotionOptions { DatabaseId = "db-42" });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(results[0].IsSuccess, "the provider did not reach the database endpoint");
+        Assert.Contains(handler.Urls, url => url.Contains("/v1/databases/db-42/query", StringComparison.Ordinal));
+        Assert.DoesNotContain(handler.Urls, url => url.Contains("/v1/search", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Scoped ingestion tags every page with <c>database_id</c>, which is true of all of them
+    /// because a database query returns only that database's pages. Unscoped ingestion does not —
+    /// asserted in <c>GetFilesAsync_Metadata_*</c> above.
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_WithDatabaseId_TagsEachPageWithTheDatabaseItCameFrom()
+    {
+        var handler = new RecordingHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/v1/databases/db-42/query"] = OnePageJson,
+            ["page-db"] = """{ "results": [], "has_more": false }""",
+        });
+        var sut = MakeProvider(handler, new NotionOptions { DatabaseId = "db-42" });
+
+        var results = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var metadata = Assert.Single(results).Value.Metadata!;
+        Assert.Equal("db-42", metadata["database_id"]);
+        Assert.Equal("page-db", metadata["page_id"]);
+    }
+
+    /// <summary>
+    /// The delta sort reaches the database endpoint as <c>sorts</c>, an array.
+    /// <para>
+    /// <c>/v1/search</c> takes a single <c>sort</c> object and the database query takes a
+    /// <c>sorts</c> array. Notion accepts and <b>ignores</b> the wrong one, so sending search's
+    /// shape here would leave the query unsorted while everything still returned 200 — and delta
+    /// ingestion, which stops at the first page older than the token, would then stop somewhere
+    /// arbitrary. That failure is invisible in results, so it is asserted on the request.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_WithDatabaseIdAndDeltaToken_SendsSortsAsAnArray()
+    {
+        var handler = new RecordingHandler(new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["/v1/databases/db-42/query"] = """{ "results": [], "has_more": false }""",
+        });
+        var sut = MakeProvider(
+            handler,
+            new NotionOptions { DatabaseId = "db-42", DeltaToken = "2026-01-01T00:00:00.000Z" });
+
+        _ = await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var body = Assert.Single(handler.Bodies);
+        Assert.Contains("\"sorts\":[", body, StringComparison.Ordinal);
+        Assert.Contains("last_edited_time", body, StringComparison.Ordinal);
+        Assert.Contains("descending", body, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -618,6 +723,35 @@ public sealed class NotionDataProviderTests
 // ---------------------------------------------------------------------------
 // Test infrastructure — fake HTTP handlers
 // ---------------------------------------------------------------------------
+
+/// <summary>
+/// <see cref="FakeHandler"/> that also keeps every request URL and body, so a test can assert
+/// what was sent rather than only what came back.
+/// </summary>
+file sealed class RecordingHandler(Dictionary<string, string> responses) : HttpMessageHandler
+{
+    public List<string> Urls { get; } = [];
+
+    public List<string> Bodies { get; } = [];
+
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var url = request.RequestUri!.ToString();
+        Urls.Add(url);
+        Bodies.Add(request.Content is null
+            ? string.Empty
+            : await request.Content.ReadAsStringAsync(cancellationToken));
+
+        var key = responses.Keys.FirstOrDefault(k => url.Contains(k, StringComparison.Ordinal));
+        if (key is null)
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(responses[key], Encoding.UTF8, "application/json"),
+        };
+    }
+}
 
 file sealed class FakeHandler(Dictionary<string, string> responses) : HttpMessageHandler
 {

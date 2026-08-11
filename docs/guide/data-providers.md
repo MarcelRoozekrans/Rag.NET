@@ -316,6 +316,18 @@ services.AddNotionDataProvider(
 
 > **`baseUrl`** (optional) — overrides the default base URL (`https://api.notion.com`). Useful when routing through a proxy or pointing at a local mock during testing.
 
+**Scoping to one database.** By default the provider enumerates every page the integration can see, through `POST /v1/search`. Set `DatabaseId` to restrict it to a single database:
+
+```csharp
+services.AddNotionDataProvider(
+    integrationToken: "ntn_...",
+    configure: opts => opts.DatabaseId = "a8aec43384f447ed84390e8e42c2e089");
+```
+
+That switches the provider to `POST /v1/databases/{id}/query`, which is a different endpoint rather than a filter — `/v1/search` accepts no `database_id` filter at all.
+
+Scoping also adds a `database_id` tag to every page, usable in `MetadataFilter` and `HasTagSpec`. The tag appears **only** when scoped, deliberately: pages returned by `/v1/search` carry no parent object, so tagging them would claim a parentage the API never confirmed. Under a database query every result is by construction a page of that database.
+
 ### Asana — PAT
 
 ```csharp

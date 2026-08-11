@@ -11,6 +11,12 @@ internal interface INotionApi
         [Body] NotionSearchRequest body,
         CancellationToken cancellationToken = default);
 
+    [Post("/v1/databases/{databaseId}/query")]
+    Task<Result<NotionSearchResult, ZeroAlloc.Rest.HttpError>> QueryDatabaseAsync(
+        string databaseId,
+        [Body] NotionDatabaseQueryRequest body,
+        CancellationToken cancellationToken = default);
+
     [Get("/v1/blocks/{blockId}/children")]
     Task<Result<NotionBlockList, ZeroAlloc.Rest.HttpError>> GetBlockChildrenAsync(
         string blockId,

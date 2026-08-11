@@ -46,9 +46,7 @@ public sealed class NotionDataProvider : FileContentProviderBase
         bool stopPaging = false;
         do
         {
-            var result = await _api.SearchAsync(
-                body: new NotionSearchRequest(new NotionFilter("object", "page"), 100, cursor, sort),
-                cancellationToken).ConfigureAwait(false);
+            var result = await FetchPageAsync(sort, cursor, cancellationToken).ConfigureAwait(false);
 
             if (result.IsFailure)
             {
@@ -83,6 +81,37 @@ public sealed class NotionDataProvider : FileContentProviderBase
         while (cursor is not null);
     }
 
+    /// <summary>
+    /// One page of results, from whichever endpoint the configuration selects.
+    /// <para>
+    /// <see cref="NotionOptions.DatabaseId"/> scopes ingestion to a single database.
+    /// <c>/v1/search</c> cannot express that — it accepts no <c>database_id</c> filter and returns
+    /// every page the integration can see — so scoping means querying the database endpoint
+    /// instead, which is why the property was unread for as long as this provider only searched
+    /// (issue #108).
+    /// </para>
+    /// <para>
+    /// Both endpoints return the same list envelope, so paging, delta and handle-building are
+    /// shared below rather than duplicated per endpoint; only the request differs, and the two
+    /// request shapes differ enough to be separate records — see
+    /// <see cref="NotionDatabaseQueryRequest"/>.
+    /// </para>
+    /// </summary>
+    /// <param name="sort">The delta sort, or <see langword="null"/> for a full traversal.</param>
+    /// <param name="cursor">The pagination cursor, or <see langword="null"/> for the first page.</param>
+    /// <param name="cancellationToken">Cancels the call.</param>
+    /// <returns>The page of results, or the HTTP failure.</returns>
+    private Task<Result<NotionSearchResult, ZeroAlloc.Rest.HttpError>> FetchPageAsync(
+        NotionSort? sort, string? cursor, CancellationToken cancellationToken) =>
+        string.IsNullOrWhiteSpace(_options.DatabaseId)
+            ? _api.SearchAsync(
+                body: new NotionSearchRequest(new NotionFilter("object", "page"), 100, cursor, sort),
+                cancellationToken)
+            : _api.QueryDatabaseAsync(
+                _options.DatabaseId,
+                body: new NotionDatabaseQueryRequest(100, cursor, sort is null ? null : [sort]),
+                cancellationToken);
+
     private async Task<Result<FileHandle, RagError>> BuildHandleAsync(
         NotionPage page, CancellationToken cancellationToken)
     {
@@ -103,21 +132,22 @@ public sealed class NotionDataProvider : FileContentProviderBase
     }
 
     /// <summary>
-    /// The page's filterable fields, both read off the page itself.
+    /// The page's filterable fields.
     /// <para>
-    /// There is deliberately no <c>database_id</c>. <see cref="NotionOptions.DatabaseId"/> is
-    /// documented as reserved for a future implementation and appears nowhere in the
-    /// <c>POST /v1/search</c> request built above, which returns every accessible page and no
-    /// parent object. Tagging pages with it would write a database id onto documents provably
-    /// not in that database, so <c>HasTagSpec("database_id", …)</c> would return wrong documents
-    /// with no signal that anything was off. The key becomes available honestly once the
-    /// connector queries <c>/v1/databases/{id}/query</c>.
+    /// <c>database_id</c> is written <b>only</b> when <see cref="NotionOptions.DatabaseId"/>
+    /// scoped the enumeration, and that condition is the whole point. Under <c>/v1/search</c> the
+    /// results are every page the integration can see and carry no parent object, so tagging them
+    /// with a database id would write it onto documents provably not in that database —
+    /// <c>HasTagSpec("database_id", …)</c> would then return wrong documents with no signal that
+    /// anything was off. Under <c>/v1/databases/{id}/query</c> every result is by construction a
+    /// page of that database, so the key is true of every document it is written to.
     /// </para>
     /// </summary>
-    private static Dictionary<string, MetadataValue>? BuildMetadata(NotionPage page)
+    private Dictionary<string, MetadataValue>? BuildMetadata(NotionPage page)
     {
         var metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
         if (!string.IsNullOrEmpty(page.Id)) metadata["page_id"] = page.Id;
+        if (!string.IsNullOrWhiteSpace(_options.DatabaseId)) metadata["database_id"] = _options.DatabaseId;
         return metadata.Count == 0 ? null : metadata;
     }
 
