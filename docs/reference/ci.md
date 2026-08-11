@@ -272,8 +272,14 @@ Two more things that sweep established, worth knowing before running one:
 
 - **Stopping a sweep does not stop what it spawned.** An orphaned `dotnet test` kept writing to the
   log after it was truncated — NUL bytes in a run log are that signature — and then contended with
-  the replacement sweep for the same run files. Check for live `dotnet`/`python`/`uv` processes
-  before starting, and treat any timing taken beside one as void.
+  the replacement sweep for the same run files. Check for live processes before starting, and treat
+  any timing taken beside one as void.
+- **When you check, do not check for `dotnet`.** xUnit v3 runs the tests in a process named after
+  the assembly — `Rag.NET.Benchmarks.Quality.IntegrationTests` — so a filter on
+  `dotnet|testhost|vstest` sees the runner's scaffolding at a few MB and misses the process actually
+  holding 2 GB and 60% of the CPU. A stray-process check written that way reports a clean machine
+  while the thing that would ruin the measurement is running. Match on `Rag.NET.Benchmarks` too, or
+  simply sort by CPU and look.
 - **`RAGNET_BEIR_LONG_RUNS=1` ungates everything, including cases nobody has measured.** Adding a
   descriptor to `BeirDatasetDescriptor.All` enrolls it in every theory that iterates that list, so
   an opted-in run will attempt it and fail on a cold embedding cache. Scope the filter to the
