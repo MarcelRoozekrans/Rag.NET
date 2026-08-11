@@ -62,21 +62,15 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
         var inbox = client.Inbox ?? throw new InvalidOperationException("IMAP client has no Inbox folder.");
         await inbox.OpenAsync(FolderAccess.ReadOnly, cancellationToken).ConfigureAwait(false);
 
-        IList<UniqueId> uids;
+        var search = BuildSearch(client, _options);
         if (_options.DeltaToken is not null
             && UniqueId.TryParse(_options.DeltaToken, out var lastUid))
         {
-            uids = await inbox.SearchAsync(
-                SearchQuery.Uids(new UniqueIdRange(
-                    new UniqueId(lastUid.Id + 1), UniqueId.MaxValue)),
-                cancellationToken).ConfigureAwait(false);
+            search = SearchQuery.Uids(new UniqueIdRange(
+                new UniqueId(lastUid.Id + 1), UniqueId.MaxValue)).And(search);
         }
-        else
-        {
-            uids = await inbox.SearchAsync(
-                SearchQuery.All,
-                cancellationToken).ConfigureAwait(false);
-        }
+
+        var uids = await inbox.SearchAsync(search, cancellationToken).ConfigureAwait(false);
 
         var limit = Math.Min(uids.Count, _options.MaxResults);
         for (int i = 0; i < limit; i++)
@@ -88,6 +82,41 @@ public sealed partial class GmailDataProvider : FileContentProviderBase
         }
 
         await client.DisconnectAsync(true, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Translates <see cref="GmailOptions.Query"/> into a server-side search, or matches
+    /// everything when no query is configured.
+    /// </summary>
+    /// <param name="client">The connected client, asked whether it speaks <c>X-GM-RAW</c>.</param>
+    /// <param name="options">The provider's options.</param>
+    /// <returns>The search to run against the mailbox.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// A query is configured but the server does not advertise Gmail's <c>X-GM-EXT-1</c>. Falling
+    /// back to an unfiltered search would return every message while the caller believes their
+    /// query narrowed it — which is exactly the shape this property had when nothing read it at
+    /// all (issue #108), so it fails loudly instead.
+    /// </exception>
+    private static SearchQuery BuildSearch(IImapClient client, GmailOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(options.Query))
+        {
+            return SearchQuery.All;
+        }
+
+        if (!client.Capabilities.HasFlag(ImapCapabilities.GMailExt1))
+        {
+            throw new InvalidOperationException(
+                $"{nameof(GmailOptions)}.{nameof(GmailOptions.Query)} is set to " +
+                $"'{options.Query}', but the IMAP server does not advertise X-GM-EXT-1, the " +
+                "Gmail extension that evaluates it. Enumerating unfiltered would return every " +
+                "message in the mailbox while the query appeared to be applied. Clear the query " +
+                "to enumerate everything deliberately, or point the client at Gmail.");
+        }
+
+        // Gmail evaluates the expression itself, so the provider never reinterprets the syntax —
+        // anything the Gmail search box accepts means here what it means there.
+        return SearchQuery.GMailRawSearch(options.Query);
     }
 
     private static FileHandle ToHandle(UniqueId uid, MimeMessage message)

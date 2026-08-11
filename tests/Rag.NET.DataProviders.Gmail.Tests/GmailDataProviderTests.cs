@@ -49,6 +49,94 @@ public sealed class GmailDataProviderTests
         return msg;
     }
 
+    /// <summary>
+    /// <see cref="GmailOptions.Query"/> reaches the server as a Gmail raw search.
+    /// <para>
+    /// The property shipped documented as "reserved… currently unused" with a default of
+    /// <c>"in:inbox"</c> — a stated scoping that no code performed (issue #108). A test asserting
+    /// only that enumeration still works would have passed throughout that period, so this asserts
+    /// the search actually handed to the mailbox.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GetFilesAsync_ConfiguredQuery_IsSentToTheServerAsAGmailRawSearch()
+    {
+        var (client, inbox) = MakeMocks([new UniqueId(1)], MakeMessage());
+        client.Capabilities.Returns(ImapCapabilities.GMailExt1);
+        var sut = MakeProvider(client, new GmailOptions { Query = "from:alice@example.com" });
+
+        await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        await inbox.Received(1).SearchAsync(
+            Arg.Is<SearchQuery>(q => IsRawSearchFor(q, "from:alice@example.com")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ConfiguredQueryWithDeltaToken_NarrowsByBothRatherThanDroppingOne()
+    {
+        var (client, inbox) = MakeMocks([new UniqueId(9)], MakeMessage());
+        client.Capabilities.Returns(ImapCapabilities.GMailExt1);
+        var sut = MakeProvider(client, new GmailOptions
+        {
+            Query = "has:attachment",
+            DeltaToken = new UniqueId(4).ToString(),
+        });
+
+        await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        // The delta path used to replace the search outright; a query set alongside a delta token
+        // would have been dropped on every incremental run and applied on none.
+        await inbox.Received(1).SearchAsync(
+            Arg.Is<SearchQuery>(q => IsDeltaNarrowedBy(q, "has:attachment")),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_ConfiguredQueryWithoutTheGmailExtension_ThrowsRatherThanReturningEverything()
+    {
+        var (client, _) = MakeMocks([new UniqueId(1)], MakeMessage());
+        // Substitutes report ImapCapabilities.None, which is the case being asserted.
+        var sut = MakeProvider(client, new GmailOptions { Query = "from:alice@example.com" });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("X-GM-EXT-1", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task GetFilesAsync_NoQuery_MatchesEverythingAndNeedsNoExtension()
+    {
+        var (client, inbox) = MakeMocks([new UniqueId(1)], MakeMessage());
+        var sut = MakeProvider(client, new GmailOptions());
+
+        await sut.GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        await inbox.Received(1).SearchAsync(SearchQuery.All, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>The default enumerates everything, so it cannot state a scoping nothing performs.</summary>
+    [Fact]
+    public void Query_DefaultsToEmpty_RatherThanClaimingInboxScoping()
+    {
+        Assert.Equal(string.Empty, new GmailOptions().Query);
+    }
+
+    private static bool IsRawSearchFor(SearchQuery? query, string expected) =>
+        query is TextSearchQuery { Term: SearchTerm.GMailRaw } text
+        && string.Equals(text.Text, expected, StringComparison.Ordinal);
+
+    /// <summary>The delta UID range AND-ed with the configured query, both surviving.</summary>
+    private static bool IsDeltaNarrowedBy(SearchQuery? query, string expected) =>
+        query is BinarySearchQuery { Term: SearchTerm.And } binary
+        && binary.Left is UidSearchQuery
+        && IsRawSearchFor(binary.Right, expected);
+
     [Fact]
     public async Task GetFilesAsync_FullTraversal_YieldsOneEntryPerMessage()
     {
