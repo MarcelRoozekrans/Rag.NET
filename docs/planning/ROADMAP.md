@@ -3110,7 +3110,7 @@ Two guards followed, both for the same reason the defect survived:
 `CostMatrixDumpTests` gates every cell and emits the published tables, so the page cannot be
 rebuilt by hand from numbers nothing checked. **Phase 5.1 is complete.**
 
-### Phase 5.1.1: The Cost Figure Read Back [status: code landed; republication pending a single-session sweep]
+### Phase 5.1.1: The Cost Figure Read Back [status: complete 2026-08-11 — optimised, verified and republished; a single-session five-entrant sweep still owed]
 
 **Goal:** act on what 5.1 measured, instead of filing it. Publishing a latency number we lost on
 was the point of publishing it.
@@ -3152,14 +3152,30 @@ commits reached `main`. Caught by checking the file rather than the label — `m
 the scalar loop and no `DenseEntry`. This is the second time a merge state has had to be verified
 by content in this repository, and it will not be the last.
 
-**Remaining work is republication only.** Post-optimisation the control measured 0.3–0.4 ms
-(SciFact), 0.9–1.1 ms (ArguAna) and 7.9–10.0 ms (FiQA) — twice, idle machine, three gated rounds
-each — which puts it **ahead of Semantic Kernel on all three corpora**, reversing the published
-ordering. Those figures are deliberately *not* folded into the cross-ecosystem table yet: the
-Python rows come from a different session, and §2.2 requires one machine in one session. The
-comparison page and the positioning page now say the control rows are superseded and why, rather
-than carrying numbers the code no longer produces. The table is republished when all five entrants
-have been re-swept together on a quiet machine.
+**Published.** Post-optimisation the control measures 0.3–0.4 ms (SciFact), 0.9–1.1 ms (ArguAna)
+and 7.9–10.0 ms (FiQA) — **fastest of the five entrants on all three corpora**, reversing the
+published ordering against Semantic Kernel. Those figures are in the comparison page's tables, not
+in a footnote: a result nobody reads is not published, and the earlier "superseded" note left the
+old numbers in the table where a skimming reader would take them as current.
+
+**The session split is labelled rather than hidden, and Semantic Kernel is what makes that
+honest.** The Python rows are from 2026-08-10; the two .NET rows were re-measured 2026-08-11 in two
+separate idle sessions of three gated rounds each, and their columns publish the union across both
+— six runs, which is why those ranges are wider than the Python ones rather than tighter. §2.2
+still wants a single sweep of all five and that is still owed. What makes publishing before it
+defensible is that **SK is the control for the control**: its code did not change between the two
+sessions, so its movement is pure session variance — roughly ±20% — against a control that moved
+4–5×. Cross-session noise cannot manufacture a change that size, and the Python gap is two orders
+of magnitude.
+
+**Index construction moved the other way, and the page says so.** FiQA's control indexing went
+0.09 s → 0.11–0.19 s, because each vector's norm is now computed once on write rather than once per
+candidate per query. That is the trade working as intended — roughly 0.05 s at index time for
+~10 ms off every query over 57,638 documents — and part of even that increase is session variance,
+since SK's indexing moved similarly without any code change.
+
+**Still owed:** one sweep of all five entrants in a single session, which collapses the union
+ranges back to three-run spreads and removes the caveat entirely.
 
 ### Phase 5.2: Multi-Hop Retrieval [status: pending]
 **Goal:** Measure multi-hop retrieval — HotpotQA, MuSiQue, 2WikiMultiHopQA, MultiHop-RAG. (Not a
