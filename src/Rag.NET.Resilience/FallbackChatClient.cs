@@ -235,6 +235,37 @@ public sealed class FallbackChatClient(
 
     public void Dispose() { /* clients are externally owned */ }
 
+    /// <summary>
+    /// Reports whether an exception is the OpenAI SDK failing to deserialise a completion whose
+    /// <c>finish_reason</c> the provider set to something outside the OpenAI schema — in practice
+    /// <c>"error"</c>, which OpenRouter and other compatible gateways emit when the upstream model
+    /// call fails.
+    /// <para>
+    /// <b>This is a provider outage wearing the wrong exception type.</b> The throw happens inside
+    /// <c>ChatFinishReasonExtensions.ToChatFinishReason</c> during response deserialisation, before
+    /// any of this library sees the response, and it surfaces as a bare
+    /// <see cref="ArgumentOutOfRangeException"/> — a shape that reads as a caller bug. Nothing in
+    /// <see cref="IsTransient"/> matched it, so the one failure fallback exists for did not trigger
+    /// fallback: it propagated, and in ingestion the catch-all turned it into
+    /// <c>RagError.StorageFailed</c>, pointing a reader at the vector store (issue #143, observed
+    /// three times in one day).
+    /// </para>
+    /// <para>
+    /// <b>Matched on the message, against this file's own preference for matching on type.</b> The
+    /// SDK throws the framework exception with no subclass, no error code and no data, so the type
+    /// carries nothing to key on and treating every <see cref="ArgumentOutOfRangeException"/> as
+    /// transient would retry genuine programming errors against every configured provider in turn.
+    /// The parameter name and the type it failed to parse are the narrowest signature available,
+    /// and both are part of the SDK's observable behaviour rather than prose that reads as
+    /// incidental.
+    /// </para>
+    /// </summary>
+    /// <param name="ex">The exception to classify.</param>
+    /// <returns>Whether it is a provider-side error response rather than a caller mistake.</returns>
+    internal static bool IsProviderErrorResponse(Exception ex) =>
+        ex is ArgumentOutOfRangeException
+        && ex.Message.Contains("ChatFinishReason", StringComparison.Ordinal);
+
     internal static bool IsTransient(Exception ex)
     {
         // A blown budget must NEVER trigger provider fallback — retrying against the next
@@ -251,6 +282,9 @@ public sealed class FallbackChatClient(
             if (http.StatusCode is null or HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
                 return true;
         }
+
+        if (IsProviderErrorResponse(ex))
+            return true;
 
         var msg = ex.Message;
         foreach (var keyword in s_transientKeywords)

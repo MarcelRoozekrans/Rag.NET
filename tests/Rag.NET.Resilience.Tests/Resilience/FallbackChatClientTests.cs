@@ -345,6 +345,45 @@ public class FallbackChatClientTests
         Assert.False(FallbackChatClient.IsTransient(ex));
     }
 
+    /// <summary>
+    /// A provider returning <c>finish_reason: "error"</c> is a provider outage, so it must reach
+    /// the next client rather than propagating.
+    /// <para>
+    /// The OpenAI SDK throws this while deserialising the response, before any Rag.NET code sees
+    /// it, and it arrives as a bare <see cref="ArgumentOutOfRangeException"/> — matching none of
+    /// the status codes and none of the transient keywords. So the one failure fallback exists for
+    /// did not trigger fallback (issue #143). The exact exception the SDK constructs is
+    /// reproduced here rather than approximated.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void IsTransient_ProviderReturnedErrorFinishReason_IsTransient()
+    {
+        Assert.True(FallbackChatClient.IsTransient(UnknownFinishReason("error")));
+    }
+
+    /// <summary>
+    /// The match stays narrow: an ordinary argument error is a caller bug, and retrying it against
+    /// every configured provider in turn would turn one mistake into N failed calls.
+    /// </summary>
+    [Fact]
+    public void IsTransient_OrdinaryArgumentOutOfRange_IsNotTransient()
+    {
+        Assert.False(FallbackChatClient.IsTransient(TopKOutOfRange(0)));
+    }
+
+    /// <summary>The exact exception OpenAI's SDK constructs for an unrecognised finish reason.</summary>
+    /// <param name="value">The unrecognised finish reason, e.g. <c>"error"</c>.</param>
+    /// <returns>The SDK's exception.</returns>
+    private static ArgumentOutOfRangeException UnknownFinishReason(string value) =>
+        new(nameof(value), value, "Unknown ChatFinishReason value.");
+
+    /// <summary>An ordinary caller mistake of the same exception type.</summary>
+    /// <param name="topK">The offending value.</param>
+    /// <returns>A run-of-the-mill argument error.</returns>
+    private static ArgumentOutOfRangeException TopKOutOfRange(int topK) =>
+        new(nameof(topK), topK, "TopK must be greater than 0.");
+
     // Helper: async enumerable yielding items
     private static async IAsyncEnumerable<T> YieldUpdates<T>(params T[] items)
     {
