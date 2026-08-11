@@ -269,18 +269,36 @@ public sealed class WorkflowWiringTests
 
         // The real push: same glob and same duplicate policy the local-feed rehearsal executes
         // on every run, plus the two things nothing can exercise before 6.3 — the endpoint and
-        // the credential.
+        // the credential. Character-identical to the stored-key version it replaced: moving to
+        // Trusted Publishing changed where $NUGET_API_KEY comes from, not the command, so the
+        // command that has run green against a local feed on every push is still the one that
+        // runs on release day.
         Assert.Contains(
             "dotnet nuget push \"artifacts/packages/*.nupkg\" --source https://api.nuget.org/v3/index.json --api-key \"$NUGET_API_KEY\" --skip-duplicate",
             commands,
             StringComparison.Ordinal);
+
+        // Trusted Publishing's three moving parts, pinned because the push command deliberately
+        // does not move when they do — which is what makes the command stable and also what
+        // would let the credential silently revert to a stored secret with every assertion above
+        // still green.
+        Assert.Contains("uses: NuGet/login@v1", commands, StringComparison.Ordinal);
+        Assert.Contains(
+            "NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}",
+            commands,
+            StringComparison.Ordinal);
+
+        // id-token: write is what lets the OIDC token be minted at all, and a job-level
+        // permissions block replaces the workflow-level one, so contents: read has to be
+        // restated beside it or the checkout loses read access.
+        Assert.Contains("permissions: contents: read id-token: write", commands, StringComparison.Ordinal);
 
         // The documented procedure that satisfies the gate, held to TestGateTests' own standard
         // for procedures: a fenced command in docs/reference/ci.md, because a runnable command
         // is a procedure and a sentence mentioning one is not.
         var documented = ReadFencedCommands(Path.Combine(root, "docs", "reference", "ci.md"));
 
-        Assert.Contains("gh secret set NUGET_API_KEY", documented, StringComparison.Ordinal);
+        Assert.Contains("gh variable set NUGET_USER", documented, StringComparison.Ordinal);
         Assert.Contains(
             "gh workflow run ci.yml --ref main -f publish_to_nuget=true",
             documented,

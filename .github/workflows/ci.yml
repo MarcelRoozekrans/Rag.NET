@@ -12,7 +12,8 @@ on:
   # re-run after a flake or a runner outage, neither of which should require an empty commit.
   workflow_dispatch:
     inputs:
-      # Half of the publish-nuget gate; the other half is the NUGET_API_KEY secret. Underscores,
+      # Half of the publish-nuget gate; the other half is nuget.org's Trusted Publishing
+      # policy for this repository and workflow. Underscores,
       # not hyphens, so the job's `if:` dereferences it without leaning on expression-syntax
       # subtleties nothing exercises before release day. Defaulting false keeps every ordinary
       # dispatch — the re-run-after-a-flake case above — exactly what it was.
@@ -408,8 +409,9 @@ jobs:
   # THE GATE, recorded to the standard TestGateTests holds every other gate in this repository
   # to — named, condition stated, satisfiable by a documented procedure:
   #   NAME: publish-nuget.
-  #   CONDITION: a manual workflow_dispatch on main with publish_to_nuget=true, plus the
-  #     NUGET_API_KEY repository secret — a missing key fails loudly below instead of 401ing.
+  #   CONDITION: a manual workflow_dispatch on main with publish_to_nuget=true, plus a Trusted
+  #     Publishing policy on nuget.org and the NUGET_USER variable — when no key is minted the
+  #     push fails loudly below instead of 401ing.
   #   SATISFIED BY: the fenced procedure in docs/reference/ci.md ("The gated nuget.org push"),
   #     runnable by any maintainer; Phase 6.3 executes it.
   # TestGateTests scans test gates — RAGNET_* variables, #if symbols, skip attributes — not
@@ -429,6 +431,14 @@ jobs:
     needs: [build-test, pack-validate]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Trusted Publishing mints a short-lived key from an OIDC token, so this job needs
+    # id-token: write. A job-level permissions block REPLACES the workflow-level one rather than
+    # merging with it, so contents: read is restated here — dropping it would leave the checkout
+    # below without read access, and the failure would look like a repository problem rather than
+    # a permissions one.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -469,13 +479,28 @@ jobs:
       # is deliberately absent). --skip-duplicate is the duplicate policy chosen and rehearsed in
       # pack-validate: nuget.org never forgets a published version, so a push that dies partway
       # must be re-runnable, and without the flag the retry fails on whatever already arrived.
+      # Trusted Publishing, not a stored key. NuGet deprecated long-lived API keys in favour of
+      # this; the token minted here lasts minutes and cannot be exfiltrated from the repository
+      # because it does not exist there. It requires a matching Trusted Publishing policy on
+      # nuget.org naming this repository and workflow — a portal-side step, not a YAML one, and
+      # the only part of this that cannot fail until the push itself runs. The procedure is in
+      # docs/reference/ci.md.
+      - name: Mint a short-lived nuget.org key
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Push every package to nuget.org
         shell: bash
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+          # The push command below is character-identical to what it was under the stored key,
+          # deliberately: only the origin of the credential changed, so the command that Phase
+          # 4.1 rehearsed against a local feed on every push is still the command that runs.
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
           if [ -z "$NUGET_API_KEY" ]; then
-            echo "::error::NUGET_API_KEY is not configured, so this push cannot authenticate. The gate's procedure in docs/reference/ci.md provisions it: gh secret set NUGET_API_KEY."
+            echo "::error::The NuGet login step minted no key, so this push cannot authenticate. Check the NUGET_USER repository variable and the Trusted Publishing policy on nuget.org — both are in the gate's procedure in docs/reference/ci.md."
             exit 1
           fi
           dotnet nuget push "artifacts/packages/*.nupkg" \

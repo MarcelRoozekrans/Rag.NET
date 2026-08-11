@@ -425,17 +425,41 @@ recorded to the standard `TestGateTests` holds every other gate in this reposito
 | | |
 |---|---|
 | **Name** | `publish-nuget`, a job in `ci.yml` |
-| **Condition** | a manual `workflow_dispatch` on `main` with `publish_to_nuget=true`, plus the `NUGET_API_KEY` repository secret — the job fails loudly on a missing key rather than 401ing |
+| **Condition** | a manual `workflow_dispatch` on `main` with `publish_to_nuget=true`, plus a Trusted Publishing policy on nuget.org and the `NUGET_USER` repository variable — the job fails loudly when no key is minted rather than 401ing |
 | **Satisfied by** | the procedure below, runnable by any maintainer with admin on the repository; Phase 6.3 executes it |
 
 ```bash
-# Once: an API key minted on nuget.org, scoped to pushing new packages and package versions.
-gh secret set NUGET_API_KEY
+# Once: the nuget.org account name the Trusted Publishing policy belongs to. Not a secret —
+# it is a username, and holding it as a variable keeps it visible and editable.
+gh variable set NUGET_USER
 # The release: dispatch CI on main with the publish input. The full test matrix and
 # pack-validate run first on that same commit, and publish-nuget refuses to start until
 # both are green.
 gh workflow run ci.yml --ref main -f publish_to_nuget=true
 ```
+
+**One step in this procedure is not a command, and it is the one that fails last.** Trusted
+Publishing needs a policy created on nuget.org itself — under *Account → Trusted Publishing* —
+naming this repository, the `ci.yml` workflow and the owner. Nothing in the repository can
+create it, assert it or detect its absence: the workflow runs, `NuGet/login` requests a token,
+and nuget.org declines. Create it before the first dispatch.
+
+**Why Trusted Publishing rather than a stored key.** NuGet deprecated long-lived API keys in
+favour of short-lived tokens minted per run from the workflow's OIDC identity. The practical
+difference is that there is no credential in the repository to leak, rotate or forget: the token
+this job receives lasts minutes and is bound to this repository and workflow. Raised by StefH on
+issue #87, tracked as #89.
+
+**The push command did not change**, deliberately. Only the origin of `$NUGET_API_KEY` did — a
+secret before, a step output now — so the command Phase 4.1 rehearsed against a local feed on
+every push is still the command that runs on release day. `WorkflowWiringTests` pins the command,
+the login action, the step output it reads and the `id-token: write` permission together, because
+a push command that stays stable while its credential changes underneath is exactly the drift
+nothing else would notice.
+
+> **Delete the `NUGET_API_KEY` secret once a Trusted Publishing push has succeeded.** It is no
+> longer read by anything, and a retired credential that still works is how these migrations
+> stall — the old mechanism stays usable, so nothing forces the new one to be correct.
 
 **`TestGateTests` does not cover this gate, and that is stated rather than assumed away.** That
 guard scans *test* gates — `RAGNET_*` environment variables, `#if` symbols, skip attributes —
