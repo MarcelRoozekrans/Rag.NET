@@ -389,7 +389,17 @@ services.AddGmailDataProvider(tokenProvider, opts =>
 });
 ```
 
-`GmailOptions` connects to `imap.gmail.com:993` — the IMAP host and port are not configurable; only `UserName` (for authentication), `Query` (reserved for a future `SEARCH` filter, currently unused) and `MaxResults` (default 500) are.
+`GmailOptions` connects to `imap.gmail.com:993` — the IMAP host and port are not configurable; only `UserName` (for authentication), `Query` and `MaxResults` (default 500) are.
+
+`Query` takes a **Gmail search expression**, the same syntax as the Gmail search box — `"from:alice@example.com has:attachment"`, `"newer_than:7d"`, `"label:support"`. It is applied server-side through Gmail's `X-GM-RAW` IMAP extension, so Gmail evaluates it rather than the provider reinterpreting it, and it combines with delta ingestion rather than replacing it. Empty (the default) enumerates the whole mailbox. A server that does not advertise the extension makes the provider throw rather than quietly enumerate unfiltered.
+
+```csharp
+services.AddGmailDataProvider(opts =>
+{
+    opts.UserName = "me@example.com";
+    opts.Query    = "label:support newer_than:30d";
+});
+```
 
 ### Exchange / Outlook
 
