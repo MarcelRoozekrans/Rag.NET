@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.0](https://github.com/MarcelRoozekrans/Rag.NET/compare/v0.1.0...v0.1.0) (2026-08-11)
+## 0.1.0 (2026-08-11)
 
 
 ### ⚠ BREAKING CHANGES
@@ -194,5 +194,3 @@
 * **parsers:** merge Word, Excel and PowerPoint into Rag.NET.Parsers.Office ([f14fa48](https://github.com/MarcelRoozekrans/Rag.NET/commit/f14fa48d148818ba1fec5a8ec93257bfc2e3eb48))
 * **templates:** move RegisterParser from the options object to the call ([94af794](https://github.com/MarcelRoozekrans/Rag.NET/commit/94af794af314a38e8029fdda0069daed2fa9c6e6))
 * **templates:** rename EmailDocumentParser to EmailTemplateDocumentParser ([2e60b9f](https://github.com/MarcelRoozekrans/Rag.NET/commit/2e60b9f15a98b8383b1e43c189778351d7208c6e))
-
-## Changelog
