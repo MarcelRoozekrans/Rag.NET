@@ -3110,6 +3110,73 @@ Two guards followed, both for the same reason the defect survived:
 `CostMatrixDumpTests` gates every cell and emits the published tables, so the page cannot be
 rebuilt by hand from numbers nothing checked. **Phase 5.1 is complete.**
 
+### Phase 5.1.1: The Cost Figure Read Back [status: complete 2026-08-11 — optimised, verified and republished; a single-session five-entrant sweep still owed]
+
+**Goal:** act on what 5.1 measured, instead of filing it. Publishing a latency number we lost on
+was the point of publishing it.
+
+**The measurement pointed at two defects, and the benchmark suite could not see either.** Ten
+benchmarks in `Rag.NET.Benchmarks` call a `SearchAsync` and **every one is a stub** holding the
+store still while some other component is measured — correct for those benchmarks, and it left the
+real `InMemoryVectorStore.SearchAsync` with no coverage at all. The one retrieval path carrying a
+published latency figure was the one path with no allocation profile. `VectorSearchBenchmarks`
+fills it at the corpus sizes the comparison used, and reproduced the published control p50 on its
+first run — which is what established that the scan, not the surrounding span, was the cost.
+
+- **The dense scan allocated the whole corpus per query.** `SearchAsync` built a `List` pre-sized
+  to `_dense.Count` and sorted it to take ten: **901 KB per query** over FiQA's 57,638 documents,
+  past the Large Object Heap threshold, with Gen2 collections visible from 8,674 documents up — and
+  O(n log n) work for an O(n log k) question. A bounded top-k selector makes allocation **constant
+  at 952 B** across every corpus size measured.
+- **Scoring recomputed two constants per candidate.** Cosine ran three multiply-accumulate chains
+  over 384 floats — the dot product and *both* norms — although the query's norm is fixed for the
+  whole scan and a stored vector's cannot change while stored. Hoisting both and vectorising the
+  remaining chain with the in-box `Vector<T>` (not TensorPrimitives, which would add a dependency
+  to `Rag.NET` itself) leaves one chain per candidate.
+
+Measured on one idle machine in one session: **4.3× / 4.0× / 2.5×** at 5,183 / 8,674 / 57,638
+documents, allocation **81.75 KB → 952 B**, **136.3 KB → 952 B**, **901.36 KB → 952 B**.
+
+**Verified against retrieval quality, because vectorising changes summation order.** A vectorised
+reduction folds several partial sums instead of accumulating left to right, so scores move in the
+last bits — usually *more* accurately — and retrieval turns scores into an ordering, so two chunks
+differing in the seventh decimal can swap rank. The full gated BEIR suite passes **89 cases with
+every pinned nDCG unmoved**, across control, parity, reproduction, ablation, real-chunking and
+Semantic Kernel rows on all three corpora. The three failures are
+`fiqa-{langchain,haystack,llamaindex}.trec` not existing — the refuse-on-miss rule for a corpus no
+Python entrant has ever run, which scores pre-existing run files and never touches this store.
+
+**A stacked pull request reported itself merged and was not.** #138 was based on #137's branch;
+when #137 squash-merged and its branch was deleted, GitHub closed #138 as merged while none of its
+commits reached `main`. Caught by checking the file rather than the label — `main` still carried
+the scalar loop and no `DenseEntry`. This is the second time a merge state has had to be verified
+by content in this repository, and it will not be the last.
+
+**Published.** Post-optimisation the control measures 0.3–0.4 ms (SciFact), 0.9–1.1 ms (ArguAna)
+and 7.9–10.0 ms (FiQA) — **fastest of the five entrants on all three corpora**, reversing the
+published ordering against Semantic Kernel. Those figures are in the comparison page's tables, not
+in a footnote: a result nobody reads is not published, and the earlier "superseded" note left the
+old numbers in the table where a skimming reader would take them as current.
+
+**The session split is labelled rather than hidden, and Semantic Kernel is what makes that
+honest.** The Python rows are from 2026-08-10; the two .NET rows were re-measured 2026-08-11 in two
+separate idle sessions of three gated rounds each, and their columns publish the union across both
+— six runs, which is why those ranges are wider than the Python ones rather than tighter. §2.2
+still wants a single sweep of all five and that is still owed. What makes publishing before it
+defensible is that **SK is the control for the control**: its code did not change between the two
+sessions, so its movement is pure session variance — roughly ±20% — against a control that moved
+4–5×. Cross-session noise cannot manufacture a change that size, and the Python gap is two orders
+of magnitude.
+
+**Index construction moved the other way, and the page says so.** FiQA's control indexing went
+0.09 s → 0.11–0.19 s, because each vector's norm is now computed once on write rather than once per
+candidate per query. That is the trade working as intended — roughly 0.05 s at index time for
+~10 ms off every query over 57,638 documents — and part of even that increase is session variance,
+since SK's indexing moved similarly without any code change.
+
+**Still owed:** one sweep of all five entrants in a single session, which collapses the union
+ranges back to three-run spreads and removes the caveat entirely.
+
 ### Phase 5.2: Multi-Hop Retrieval [status: pending]
 **Goal:** Measure multi-hop retrieval — HotpotQA, MuSiQue, 2WikiMultiHopQA, MultiHop-RAG. (Not a
 features.md row — evaluation depth past single-hop BEIR.)
