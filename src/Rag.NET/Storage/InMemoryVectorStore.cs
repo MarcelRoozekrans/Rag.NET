@@ -65,7 +65,10 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
         _lock.EnterReadLock();
         try
         {
-            var scored = new List<(double Score, EmbeddedChunk Entry)>(_dense.Count);
+            // Capacity is bounded by the corpus as well as by TopK: a caller asking for more
+            // results than exist must not size an array to the request, which is what the
+            // corpus-sized list it replaced did implicitly.
+            var top = new TopScores(Math.Min(options.TopK, _dense.Count));
             foreach (var entry in _dense.Values)
             {
                 if (!MatchesFilter(entry.Chunk, options.MetadataFilter))
@@ -77,10 +80,10 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
                 if (score < options.MinScore)
                     continue;
 
-                scored.Add((score, entry));
+                top.Add(score, entry);
             }
 
-            return Task.FromResult(TakeTop(scored, options.TopK));
+            return Task.FromResult(top.ToResults());
         }
         finally
         {
@@ -281,6 +284,66 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// The best <c>topK</c> entries seen so far, kept ordered by descending score.
+    /// <para>
+    /// <b>What it replaced, and why.</b> The dense scan used to collect every scoring entry into a
+    /// <c>List</c> pre-sized to the whole corpus and then sort it to take ten. That allocated the
+    /// corpus on every query — measured at <b>901 KB per query</b> over FiQA's 57,638 documents,
+    /// large enough to land on the Large Object Heap, with Gen2 collections visible in the
+    /// benchmark from 8,674 documents up — and paid O(n log n) to answer an O(n log k) question.
+    /// Here k is the metric cutoff, ten or eleven, so the working set is two small arrays that
+    /// live on the stack's side of the allocator and never grow with the corpus.
+    /// </para>
+    /// <para>
+    /// Ties keep insertion order — the shift stops at the first strictly-lower score — where the
+    /// previous unstable <c>List.Sort</c> left them arbitrary. That is a tightening, not a
+    /// loosening, and the dense path's consumers re-sort with their own ordinal tie-break anyway.
+    /// </para>
+    /// </summary>
+    private struct TopScores
+    {
+        private readonly double[] _scores;
+        private readonly EmbeddedChunk[] _entries;
+        private int _count;
+
+        public TopScores(int capacity)
+        {
+            _scores = new double[capacity];
+            _entries = new EmbeddedChunk[capacity];
+            _count = 0;
+        }
+
+        /// <summary>Offers an entry, keeping it only if it beats the current k-th best.</summary>
+        public void Add(double score, EmbeddedChunk entry)
+        {
+            var full = _count == _scores.Length;
+            if (full && score <= _scores[_count - 1])
+                return;
+
+            var position = full ? _count - 1 : _count++;
+            while (position > 0 && _scores[position - 1] < score)
+            {
+                _scores[position] = _scores[position - 1];
+                _entries[position] = _entries[position - 1];
+                position--;
+            }
+
+            _scores[position] = score;
+            _entries[position] = entry;
+        }
+
+        /// <summary>The kept entries as results, best first.</summary>
+        public readonly IReadOnlyList<SearchResult> ToResults()
+        {
+            var results = new List<SearchResult>(_count);
+            for (var i = 0; i < _count; i++)
+                results.Add(new SearchResult { Chunk = _entries[i].Chunk, Score = _scores[i] });
+
+            return results;
+        }
     }
 
     private static IReadOnlyList<SearchResult> TakeTop(
