@@ -6,5 +6,5 @@ namespace Rag.NET.DataProviders.Dropbox;
 public sealed class DropboxOptions : CloudStorageOptions
 {
     /// <summary>Dropbox folder path (e.g. <c>"/docs"</c>). Empty string = root.</summary>
-    public string FolderPath { get; init; } = string.Empty;
+    public string FolderPath { get; set; } = string.Empty;
 }

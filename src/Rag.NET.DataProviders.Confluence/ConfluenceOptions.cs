@@ -24,5 +24,5 @@ public sealed class ConfluenceOptions : CloudStorageOptions
     /// Must match the pattern <c>^[A-Za-z0-9\-_]+$</c>.
     /// When <see langword="null"/>, all accessible pages are returned.
     /// </summary>
-    public string? SpaceKey        { get; init; }
+    public string? SpaceKey        { get; set; }
 }

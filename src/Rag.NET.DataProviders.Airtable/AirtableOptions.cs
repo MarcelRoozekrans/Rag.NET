@@ -6,13 +6,13 @@ namespace Rag.NET.DataProviders.Airtable;
 public sealed class AirtableOptions : CloudStorageOptions
 {
     /// <summary>Airtable base ID (e.g. <c>appXXXXXXXXXXXXXX</c>).</summary>
-    public required string BaseId { get; init; }
+    public required string BaseId { get; set; }
 
     /// <summary>Name or ID of the table to read records from.</summary>
-    public required string TableName { get; init; }
+    public required string TableName { get; set; }
 
     /// <summary>Optional view name to filter records through.</summary>
-    public string? View { get; init; }
+    public string? View { get; set; }
 
     /// <summary>
     /// Name of a "Last modified time" field in the table.

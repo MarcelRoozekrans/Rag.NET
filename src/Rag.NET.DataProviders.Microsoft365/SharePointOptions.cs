@@ -6,8 +6,8 @@ namespace Rag.NET.DataProviders.SharePoint;
 public sealed class SharePointOptions : CloudStorageOptions
 {
     /// <summary>SharePoint site ID.</summary>
-    public required string SiteId { get; init; }
+    public required string SiteId { get; set; }
 
     /// <summary>Drive ID within the site.</summary>
-    public required string DriveId { get; init; }
+    public required string DriveId { get; set; }
 }

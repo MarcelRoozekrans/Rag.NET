@@ -24,10 +24,10 @@ public sealed class JiraOptions : CloudStorageOptions
     /// Must match the pattern <c>^[A-Za-z0-9\-_]+$</c>.
     /// When <see langword="null"/>, issues across all accessible projects are returned.
     /// </summary>
-    public string? ProjectKey       { get; init; }
+    public string? ProjectKey       { get; set; }
 
     /// <summary>
     /// Base JQL clause appended to every query. Defaults to <c>order by updated DESC</c>.
     /// </summary>
-    public string  Jql { get; init; } = "order by updated DESC";
+    public string  Jql { get; set; } = "order by updated DESC";
 }

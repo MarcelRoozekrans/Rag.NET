@@ -9,11 +9,11 @@ public sealed class SlackOptions : CloudStorageOptions
     /// Optional Slack channel ID. When <see langword="null"/>, all channels the bot has
     /// joined are enumerated.
     /// </summary>
-    public string? ChannelId    { get; init; }
+    public string? ChannelId    { get; set; }
 
     /// <summary>
     /// Maximum number of messages to request per <c>conversations.history</c> call.
     /// Defaults to 200.
     /// </summary>
-    public int     MessageLimit { get; init; } = 200;
+    public int     MessageLimit { get; set; } = 200;
 }
