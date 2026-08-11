@@ -104,6 +104,86 @@ public static class BeirRunBudget
             "recorded as having overshot rather than quietly replaced. The 8-9 h figure before " +
             "it priced the pre-3.16 fragmenting chunker's 429,850 chunks and died with them."),
         new(
+            "trec-covid",
+            BeirProtocol.Parity,
+            FitsTheNightly: false,
+            "DERIVED, not measured: ~3 h 10 m. FiQA's parity leg measured 1 h 11 m for 64,247 " +
+            "embeddings; TREC-COVID needs 171,382 (171,332 documents and 50 queries), which is " +
+            "2.67x as many, and the corpus embedding dominates. One separator only -- 171,325 of " +
+            "the 171,332 documents carry a title, so the second separator would move almost every " +
+            "document identically and re-derive a figure equal by construction. This string is " +
+            "replaced with the measured time the first time the leg runs."),
+        new(
+            "trec-covid",
+            BeirProtocol.HybridBm25,
+            FitsTheNightly: false,
+            "NOT RUN, and not derivable from the other datasets' cells. The BM25 arm indexes the " +
+            "whole corpus, and this corpus is 3.0x FiQA's and 33x SciFact's, so scaling either " +
+            "measured figure would be a guess wearing a number. Phase 5.3 lands the parity leg " +
+            "only, because that is the one with a published figure to check against."),
+        new(
+            "trec-covid",
+            BeirProtocol.Hyde,
+            FitsTheNightly: false,
+            "NOT RUN. Needs the hypothetical cache, which only the generation tool writes and " +
+            "which is never committed -- so this cell cannot run on a fresh machine at any " +
+            "budget, exactly as the other three datasets' Hyde cells cannot."),
+        new(
+            "trec-covid",
+            BeirProtocol.Reranked,
+            FitsTheNightly: false,
+            "NOT RUN, and it would be the most expensive reranker cell in the suite by a wide " +
+            "margin if it were: the cross-encoder scores every retrieved candidate for every " +
+            "judged query, and TREC-COVID judges 50 queries against a densely judged corpus " +
+            "averaging 493.5 relevant documents each."),
+        new(
+            "trec-covid",
+            BeirProtocol.Comparison,
+            FitsTheNightly: false,
+            "NOT RUN. The library comparison's entrants are pinned to SciFact, ArguAna and FiQA " +
+            "by Phase 5.1's published matrix; adding a fourth corpus to it is a decision for that " +
+            "phase rather than a side effect of landing a dataset here."),
+        new(
+            "trec-covid",
+            BeirProtocol.SemanticKernel,
+            FitsTheNightly: false,
+            "NOT RUN, for the same reason as the Comparison cell: the Semantic Kernel entrant " +
+            "exists to sit beside the control in Phase 5.1's matrix, and that matrix's corpora " +
+            "are fixed."),
+        new(
+            "trec-covid",
+            BeirProtocol.LangChain,
+            FitsTheNightly: false,
+            "NOT RUN, for the same reason as the Comparison cell: the LangChain entrant exists to sit " +
+            "beside the control in Phase 5.1's published matrix, and that matrix's three corpora " +
+            "are fixed. Adding a fourth is a decision for that phase, not a side effect of " +
+            "landing a dataset here."),
+        new(
+            "trec-covid",
+            BeirProtocol.LlamaIndex,
+            FitsTheNightly: false,
+            "NOT RUN, for the same reason as the Comparison cell: the LlamaIndex entrant exists to sit " +
+            "beside the control in Phase 5.1's published matrix, and that matrix's three corpora " +
+            "are fixed. Adding a fourth is a decision for that phase, not a side effect of " +
+            "landing a dataset here."),
+        new(
+            "trec-covid",
+            BeirProtocol.Haystack,
+            FitsTheNightly: false,
+            "NOT RUN, for the same reason as the Comparison cell: the Haystack entrant exists to sit " +
+            "beside the control in Phase 5.1's published matrix, and that matrix's three corpora " +
+            "are fixed. Adding a fourth is a decision for that phase, not a side effect of " +
+            "landing a dataset here."),
+        new(
+            "trec-covid",
+            BeirProtocol.Real,
+            FitsTheNightly: false,
+            "DERIVED, not measured, and deliberately unrun so far: the real leg chunks the corpus " +
+            "rather than taking one unit per document, and TREC-COVID's abstracts are long enough " +
+            "that the chunk count -- and so the cost -- is not derivable from the parity leg the " +
+            "way FiQA's was. Phase 5.3 lands the parity leg first, because that is the one with a " +
+            "published figure to check against."),
+        new(
             "arguana",
             BeirProtocol.Parity,
             FitsTheNightly: true,

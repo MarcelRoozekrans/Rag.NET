@@ -185,13 +185,60 @@ public sealed record BeirDatasetDescriptor(
         ParityTarget: new BeirParityTarget(0.50167, ArguAnaPublishedSource));
 
     /// <summary>
+    /// TREC-COVID: 50 topics judged against the CORD-19 open-research corpus, and the programme's
+    /// <b>first graded-relevance dataset</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Counts measured from the downloaded archive on 2026-08-11, not from a paper: 171,332
+    /// documents, 50 queries, and 66,336 judgements over 50 query ids in <c>qrels/test.tsv</c>.
+    /// 171,325 of the documents carry a title; 7 do not.
+    /// </para>
+    /// <para>
+    /// <b>It is genuinely graded, which FiQA turned out not to be.</b> The judgements are
+    /// 41,661 at grade 0, 10,456 at grade 1 and 14,217 at grade 2 — so <c>2^rel - 1</c> finally
+    /// evaluates to something other than 1 (grade 2 gains 3), and Milestone 5's graded-gain
+    /// criterion has a dataset that can satisfy it. NIST states the scale verbatim: "judgment is 0
+    /// for not relevant, 1 for partially relevant, and 2 for fully relevant". FiQA's equivalent
+    /// claim was checked the same way and failed — every one of its 17,110 judgements across all
+    /// three splits scores exactly 1.
+    /// </para>
+    /// <para>
+    /// <b>Two judgements score -1, a value the documented scale does not contain</b> (query 38 /
+    /// <c>9hbib8b3</c> and query 50 / <c>svo94kuo</c>). They are already handled: every consumer in
+    /// <see cref="IrMetrics"/> gates on <c>grade &gt; 0</c>, so a negative grade is treated as
+    /// non-relevant and never reaches <c>Gain</c> — which would otherwise return -0.5 for it. That
+    /// is also what <c>trec_eval</c> does with non-positive judgements, so the boundary this
+    /// repository publishes across stays honest. The count is recorded here because a reader
+    /// totalling the qrels will otherwise be two rows out: 41,661 + 10,456 + 14,217 + 2 = 66,336.
+    /// </para>
+    /// <para>
+    /// <b>Densely judged, unlike the other three.</b> Every one of the 50 queries has at least 111
+    /// relevant documents and one has 1,266, averaging 493.5 — against SciFact's 1.1. nDCG@10's
+    /// IDCG is therefore always the full ideal ten, never the short-list case SciFact exercises,
+    /// and Recall@10 is bounded far below 1 by construction: ten documents cannot recall 493.
+    /// </para>
+    /// </remarks>
+    public static BeirDatasetDescriptor TrecCovid { get; } = new(
+        "trec-covid",
+        new Uri("https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/trec-covid.zip"),
+        "ce62140cb23feb9becf6270d0d1fe6d1",
+        TrecCovidLicence,
+        DocumentCount: 171332,
+        QueryCount: 50,
+        TestQueryCount: 50,
+        TitledDocumentCount: 171325,
+        ExcludesSelfRetrievedDocument: false,
+        ParityTarget: new BeirParityTarget(0.47232, TrecCovidPublishedSource));
+
+    /// <summary>
     /// Every dataset the harness knows about, in the order they were added.
     /// </summary>
     /// <remarks>
     /// The parity test enumerates this, so a dataset that is described here is measured. There is no
     /// second list to keep in step and no way to add a descriptor that nothing runs.
     /// </remarks>
-    public static IReadOnlyList<BeirDatasetDescriptor> All { get; } = [SciFact, FiQA, ArguAna];
+    public static IReadOnlyList<BeirDatasetDescriptor> All { get; } = [SciFact, FiQA, ArguAna, TrecCovid];
 
     /// <summary>
     /// Where every published figure in this file was read from, quoted into each dataset's own
@@ -238,6 +285,15 @@ public sealed record BeirDatasetDescriptor(
         "and unsourced until now. Corroborated at SciFact.json ndcg_at_10 = 0.64508 (test split, " +
         "dataset revision 0228b52cf27578f30900b9e5271d331663a030d7) from " + MtebResultsSource +
         " The measured value under this harness is 0.64593.";
+
+    /// <summary>The provenance of TREC-COVID's published figure.</summary>
+    /// <remarks>
+    /// One split only: TREC-COVID ships nothing but <c>test</c>, which is also the split
+    /// <c>qrels/test.tsv</c> holds and the one this descriptor's counts describe.
+    /// </remarks>
+    private const string TrecCovidPublishedSource =
+        "0.47232 for all-MiniLM-L6-v2 -- TRECCOVID.json ndcg_at_10, test split, dataset revision " +
+        "bb9466bac8153a0349341eb1b22e06409e78ef4e, from " + MtebResultsSource;
 
     /// <summary>The provenance of FiQA's published figure.</summary>
     /// <remarks>
@@ -362,6 +418,24 @@ public sealed record BeirDatasetDescriptor(
     /// Knowledge", ACL 2018.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// TREC-COVID's licence, determined from the corpus's own agreement rather than from a mirror.
+    /// </summary>
+    /// <remarks>
+    /// The BEIR Hugging Face card <c>BeIR/trec-covid</c> is tagged <c>cc-by-sa-4.0</c>, and that
+    /// tag is a blanket repository tag rather than a determination — BEIR's own paper states that
+    /// the authors of several of its datasets report no licence at all. Upstream is authoritative,
+    /// and upstream here is the CORD-19 dataset agreement.
+    /// </remarks>
+    private const string TrecCovidLicence =
+        "Corpus: the CORD-19 dataset agreement, which permits text and data mining only " +
+        "(https://github.com/allenai/cord19, LICENSE). Judgements: NIST TREC-COVID topics and " +
+        "qrels (https://ir.nist.gov/trec-covid/), publicly released for research use. The " +
+        "agreement permits exactly what this repository does with it -- cache locally, benchmark, " +
+        "publish figures -- and forbids redistribution, which this repository does not do: no " +
+        "corpus, judgement or embedding file is ever committed. Do not cite the Hugging Face " +
+        "BeIR/trec-covid card's cc-by-sa-4.0 tag; it is a blanket repo tag contradicted upstream.";
+
     private const string ArguAnaLicence =
         "CC BY 4.0, from the upstream Zenodo deposit doi:10.5281/zenodo.3973258 (Webis, " +
         "https://webis.de/data/arguana-counterargs.html). BEIR's linked homepage " +
