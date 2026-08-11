@@ -2834,7 +2834,7 @@ by this entry**: Milestone 4's "All planned phases complete" stays open (4.5 rem
 "No package declares `VerifiedBy=none`" stays open (`Rag.NET.Security.AspNetCore`) — both updated
 above to say so rather than left stale.)
 
-## Milestone 5: Evaluation Depth [status: active — 5.1 and 5.1.1 complete; 5.2 and 5.3 remaining]
+## Milestone 5: Evaluation Depth [status: active — 5.1 and 5.1.1 complete, including 5.1.1's owed single-session sweep; 5.2 and 5.3 remaining]
 **Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:
 what each library **costs** rather than what it scores, multi-hop retrieval, graded relevance and
 the datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` does not compute.
@@ -3110,10 +3110,36 @@ Two guards followed, both for the same reason the defect survived:
 `CostMatrixDumpTests` gates every cell and emits the published tables, so the page cannot be
 rebuilt by hand from numbers nothing checked. **Phase 5.1 is complete.**
 
-### Phase 5.1.1: The Cost Figure Read Back [status: complete 2026-08-11 — optimised, verified and republished; a single-session five-entrant sweep still owed]
+### Phase 5.1.1: The Cost Figure Read Back [status: complete 2026-08-11 — optimised, verified and republished; the owed single-session five-entrant sweep paid 2026-08-12]
 
 **Goal:** act on what 5.1 measured, instead of filing it. Publishing a latency number we lost on
 was the point of publishing it.
+
+**The owed sweep, paid 2026-08-12.** All twelve cells, five entrants, three gated repeats each, on
+one machine in one session, repeat-outermost so drift lands on every entrant equally instead of
+becoming a between-entrant difference. `docs/reference/library-comparison.md` now publishes
+three-run spreads throughout and no longer carries the two-session caveat. Semantic Kernel, whose
+code has not changed since, landed inside both earlier sessions' envelopes and slightly below them
+on FiQA — so the session was measurably no noisier than the ones it replaces, rather than merely
+declared quiet. The tighter measurement also **corrected a published claim**: FiQA's control index
+construction reads 0.10–0.11 s, not 0.11–0.19 s, so most of the "indexing got slower" delta was
+session noise and the real cost of hoisting norms is about 0.01–0.02 s over 57,638 documents.
+
+**Five attempts; the four discards carry the transferable part.** Two died of machine contention.
+The third died because Phase 5.3's new descriptor joined `BeirComparisonControlTests`' theory —
+that class iterates `BeirDatasetDescriptor.All` — and hit a cold embedding cache seven minutes in;
+`RAGNET_BEIR_LONG_RUNS` deliberately ungates *everything*, so opting in enrolled a dataset nobody
+had measured. **The fourth is the one to remember.** Stopping the third did not stop the processes
+it had spawned: the orphan kept writing to the log after truncation (the NUL bytes that appeared
+mid-run are the signature) and two `dotnet test` runs then contended for the same run files, one
+failing on a file lock. It nevertheless **exited 0**, having written nine of twelve cells per
+repeat — silently omitting the Semantic Kernel entrant, the one row that calibrates whether the
+machine was quiet. A sweep that reports success while dropping its own control is the inert-guard
+shape this repository keeps finding — but the tooling was not what failed. `CostMatrixDumpTests`
+refuses a partial matrix by design and names every missing cell; run against that sweep it would
+have rejected it in under a second. The defect was procedural: a sweep's exit code was read as
+evidence it had measured what it claimed, when the only thing that establishes that is the gate.
+Recorded in `docs/reference/ci.md` beside the sweep commands, where the next person runs them.
 
 **The measurement pointed at two defects, and the benchmark suite could not see either.** Ten
 benchmarks in `Rag.NET.Benchmarks` call a `SearchAsync` and **every one is a stub** holding the

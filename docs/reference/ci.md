@@ -259,6 +259,26 @@ A cell whose sidecars are missing or whose spread is past the bar **fails** and 
 with every other failing cell, instead of dropping out of the table — a matrix that quietly prints
 eleven rows where twelve were measured reads exactly like a complete one.
 
+**Run the dump immediately after a sweep, before believing the sweep.** A sweep's exit code says
+its commands ran, not that they measured the matrix, and on 2026-08-12 that distinction cost half
+an hour: a sweep exited **0** having written nine of twelve cells per repeat, because the two .NET
+entrants live in *two* test classes — `BeirComparisonControlTests` writes `ragnet-control` and
+`BeirSemanticKernelDefaultsTests` writes `semantic-kernel` — and the filter named only the first.
+The missing row was the Semantic Kernel one, which is the row that calibrates whether the machine
+was quiet, so the sweep dropped its own control and reported success. The dump is what catches
+this; nothing upstream of it will.
+
+Two more things that sweep established, worth knowing before running one:
+
+- **Stopping a sweep does not stop what it spawned.** An orphaned `dotnet test` kept writing to the
+  log after it was truncated — NUL bytes in a run log are that signature — and then contended with
+  the replacement sweep for the same run files. Check for live `dotnet`/`python`/`uv` processes
+  before starting, and treat any timing taken beside one as void.
+- **`RAGNET_BEIR_LONG_RUNS=1` ungates everything, including cases nobody has measured.** Adding a
+  descriptor to `BeirDatasetDescriptor.All` enrolls it in every theory that iterates that list, so
+  an opted-in run will attempt it and fail on a cold embedding cache. Scope the filter to the
+  datasets being measured, and confirm it with `--list-tests` before spending hours on it.
+
 **The reranked ablation cells additionally need the cross-encoder, which the nightly deliberately
 does not provision.** It used to: the job fetched, SHA-256-checked and cached the ~87 MB
 `cross-encoder/ms-marco-MiniLM-L6-v2` export on every cold run — and both genuine runs on the

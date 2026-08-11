@@ -56,12 +56,23 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
 
 ## Known debt carried into this milestone
 
-- **A single-session five-entrant cost sweep is owed.** The published latency table's .NET rows
-  were re-measured on 2026-08-11 after the optimisation, in two idle sessions, while the Python
-  rows are from 2026-08-10. §2.2 wants one machine in one session. The page labels the split and
-  says why it is tolerable — Semantic Kernel's unchanged code moved only ±20% between the two
-  sessions while the control moved 4–5× — but the sweep collapses the union ranges back to
-  three-run spreads and removes the caveat. Recorded in Phase 5.1.1.
+- ~~**A single-session five-entrant cost sweep is owed.**~~ **Paid 2026-08-12.** All twelve cells,
+  five entrants interleaved, three gated repeats each, on one machine in one session. The union
+  ranges are gone and every published figure is now a three-run spread; the confound caveat is
+  removed from `docs/reference/library-comparison.md`. Semantic Kernel — unchanged code, so a pure
+  read on session conditions — landed inside both earlier sessions' envelopes and slightly below
+  them on FiQA, so the sweep is not merely single-session but measurably no noisier than the
+  sessions it replaces. It also corrected a claim: FiQA's control indexing reads 0.10–0.11 s rather
+  than 0.11–0.19 s, so most of the "index construction got slower" delta was session noise, not the
+  optimisation's cost.
+  **It took five attempts, and the four discards are the useful part.** Two died of machine
+  contention. The third died because a descriptor added for Phase 5.3 silently joined the
+  comparison control's theory and hit a cold cache seven minutes in. The fourth is the one worth
+  remembering: stopping the third did not stop the processes it had spawned, so two test runs
+  contended for the same run files — and it still exited **0**, having written nine of twelve cells
+  per repeat, missing the Semantic Kernel entrant entirely. A sweep that reports success while
+  omitting the entrant that calibrates it is the inert-guard shape this repository keeps finding.
+  Recorded in Phase 5.1.1.
 - **5.2 and 5.3 are the milestone's remaining substance**, and 5.3 is what would satisfy the
   graded-gain criterion, since it brings the datasets whose qrels carry grades above 1.
 

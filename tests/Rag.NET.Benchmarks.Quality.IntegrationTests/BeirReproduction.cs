@@ -391,6 +391,78 @@ public static class BeirReproduction
             "onnxruntime 1.28.0), self-exclusion applied on the writer's side of the boundary " +
             "(the written file held zero query-id = document-id lines). Measured 2026-08-02 " +
             "(Phase 3.14 Stage 2), Windows 11, CPU ONNX Runtime."),
+        new(
+            "trec-covid",
+            BeirProtocol.Parity,
+            [],
+            "Phase 5.3's dataset, and the one that makes IrMetrics' graded gain mean something: " +
+            "TREC-COVID's qrels carry 14,217 rows at grade 2 against FiQA's 17,110 judgements " +
+            "that are every one of them exactly 1. NOT YET PINNED — the leg is ~6 h 20 m for the " +
+            "pair of separators and this entry is empty until it has run. Empty is deliberate " +
+            "and it fails an opted-in run rather than passing it: the descriptor's published " +
+            "band (MTEB ndcg_at_10 0.47232 at revision bb9466ba) is what the first run is " +
+            "checked against, and this line is what pins the repository's own figure afterwards " +
+            "so a later drift of 0.01 cannot hide inside a +/-0.02 published band."),
+        new(
+            "trec-covid",
+            BeirProtocol.Real,
+            [],
+            "NEVER RUN. The chunking leg costs the parity leg's embedding again over 171,332 " +
+            "documents, and Phase 5.3 bought the parity leg only. When somebody pays for the " +
+            "run, its figure belongs here."),
+        new(
+            "trec-covid",
+            BeirProtocol.HybridBm25,
+            [],
+            "NEVER RUN. Phase 5.3 lands the parity leg, which is the one with a published figure " +
+            "to be checked against; a hybrid figure here would be this repository's own number " +
+            "comparable to nothing outside it."),
+        new(
+            "trec-covid",
+            BeirProtocol.Hyde,
+            [],
+            "NEVER RUN, and not runnable on a fresh machine at any budget: the leg needs the " +
+            "hypothetical cache, which only the generation tool writes and which is never " +
+            "committed. The same is true of every other dataset's Hyde cell."),
+        new(
+            "trec-covid",
+            BeirProtocol.Reranked,
+            [],
+            "NEVER RUN. It would be the suite's most expensive reranker cell -- the " +
+            "cross-encoder scores every retrieved candidate for each of 50 judged queries " +
+            "against a corpus judged far more densely than the other three, averaging 493.5 " +
+            "relevant documents per query."),
+        new(
+            "trec-covid",
+            BeirProtocol.Comparison,
+            [],
+            "NEVER RUN, and deliberately so. The library comparison's corpora were fixed by " +
+            "Phase 5.1's published matrix at SciFact, ArguAna and FiQA. This entry exists " +
+            "because a descriptor added to BeirDatasetDescriptor.All joins the control theory " +
+            "whether or not anyone intended it to -- which is not a hypothetical: it happened " +
+            "on 2026-08-11, seven minutes into a cost sweep, when the new case tried to prefetch " +
+            "171,382 vectors from a cold cache."),
+        new(
+            "trec-covid",
+            BeirProtocol.SemanticKernel,
+            [],
+            "NEVER RUN, for the Comparison entry's reason: the Semantic Kernel entrant exists to " +
+            "sit beside the control in Phase 5.1's matrix, over that matrix's three corpora."),
+        new(
+            "trec-covid",
+            BeirProtocol.LangChain,
+            [],
+            "NEVER RUN, for the Comparison entry's reason."),
+        new(
+            "trec-covid",
+            BeirProtocol.LlamaIndex,
+            [],
+            "NEVER RUN, for the Comparison entry's reason."),
+        new(
+            "trec-covid",
+            BeirProtocol.Haystack,
+            [],
+            "NEVER RUN, for the Comparison entry's reason."),
     ];
 
     /// <summary>
