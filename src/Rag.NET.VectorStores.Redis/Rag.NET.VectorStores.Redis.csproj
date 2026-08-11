@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.VectorStores.Redis</RootNamespace>
+    <PackageId>Rag.NET.VectorStores.Redis</PackageId>
+    <Description>Redis (RediSearch) vector store for Rag.NET</Description>
+    <VerifiedBy>container</VerifiedBy>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The "Rag.NET"-named ActivitySource core also links; see src/Shared/RagTelemetrySource.cs.
+         Linked, not referenced: a ProjectReference to core would pull the whole pipeline into a
+         vector store. -->
+    <Compile Include="..\Shared\RagTelemetrySource.cs" Link="Telemetry\RagTelemetrySource.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <PackageReference Include="NRedisStack" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.VectorStores.Redis.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

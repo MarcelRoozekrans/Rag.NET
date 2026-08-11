@@ -10,18 +10,18 @@ The vector store is the persistence layer for embedded chunks. Rag.NET ships six
 
 ## Feature matrix
 
-| Feature | `PgVectorStore` | `QdrantVectorStore` | `AzureAISearchVectorStore` | `WeaviateVectorStore` | `ChromaVectorStore` | `PineconeVectorStore` |
-|---------|:-:|:-:|:-:|:-:|:-:|:-:|
-| Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` | `Rag.NET.VectorStores.Weaviate` | `Rag.NET.VectorStores.Chroma` | `Rag.NET.VectorStores.Pinecone` |
-| Dense (semantic) search | Yes | Yes | Yes | Yes | Yes | Yes |
-| Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) | No — BM25 fallback | No — BM25 fallback |
-| Sparse search (SPLADE, `ISparseSearchable`) | Yes (`enableSparseVectors: true`) | Yes (`enableSparseVectors: true`) | No | No | No | Yes (`EnableSparseVectors = true`) |
-| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match / numeric range) | Yes (typed `metadata_entries/any(...)`) | Yes (typed `where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) | Yes (filter `$eq`/`$and`) |
-| Typed metadata round-trip | Yes (native JSONB types) | Yes (native payload types) | Yes (typed complex-collection slots) | Yes (typed auto-schema props) | Yes (native values; dates as sentinel) | Yes (native values; dates as sentinel) |
-| `ICollectionManageable` | Yes | Yes | Yes | Yes | Yes | Yes |
-| Similarity function | Cosine (via `<=>`); dot product when sparse (`<#>`) | Cosine | Cosine | Cosine | Cosine | Cosine (dotproduct when sparse) |
-| Index algorithm | HNSW at ≤ 2000 dims, **exact scan above** (see [below](#dense-index-and-search-behaviour)) | HNSW | HNSW | HNSW | HNSW | Serverless (managed) |
-| Persistence | PostgreSQL | Qdrant server | Azure managed | Weaviate server | Chroma server | Pinecone managed |
+| Feature | `PgVectorStore` | `QdrantVectorStore` | `AzureAISearchVectorStore` | `WeaviateVectorStore` | `ChromaVectorStore` | `PineconeVectorStore` | `RedisVectorStore` |
+|---------|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| Package | `Rag.NET.VectorStores.PgVector` | `Rag.NET.VectorStores.Qdrant` | `Rag.NET.VectorStores.AzureAISearch` | `Rag.NET.VectorStores.Weaviate` | `Rag.NET.VectorStores.Chroma` | `Rag.NET.VectorStores.Pinecone` | `Rag.NET.VectorStores.Redis` |
+| Dense (semantic) search | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Hybrid search (native) | No — BM25 fallback | No — BM25 fallback | Yes (`IHybridSearchable`) | Yes (`IHybridSearchable`) | No — BM25 fallback | No — BM25 fallback | No — BM25 fallback ([why](#hybrid-search-is-declined-not-approximated)) |
+| Sparse search (SPLADE, `ISparseSearchable`) | Yes (`enableSparseVectors: true`) | Yes (`enableSparseVectors: true`) | No | No | No | Yes (`EnableSparseVectors = true`) | No |
+| Metadata filtering | Yes (JSONB `@>`) | Yes (payload match / numeric range) | Yes (typed `metadata_entries/any(...)`) | Yes (typed `where` on `meta_*` props) | Yes (`where` `$eq`/`$and`) | Yes (filter `$eq`/`$and`) | Not yet |
+| Typed metadata round-trip | Yes (native JSONB types) | Yes (native payload types) | Yes (typed complex-collection slots) | Yes (typed auto-schema props) | Yes (native values; dates as sentinel) | Yes (native values; dates as sentinel) | Not yet |
+| `ICollectionManageable` | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
+| Similarity function | Cosine (via `<=>`); dot product when sparse (`<#>`) | Cosine | Cosine | Cosine | Cosine | Cosine (dotproduct when sparse) | Cosine (distance converted to similarity) |
+| Index algorithm | HNSW at ≤ 2000 dims, **exact scan above** (see [below](#dense-index-and-search-behaviour)) | HNSW | HNSW | HNSW | HNSW | Serverless (managed) | HNSW |
+| Persistence | PostgreSQL | Qdrant server | Azure managed | Weaviate server | Chroma server | Pinecone managed | Redis Stack / Redis 8+ |
 
 ## Interface hierarchy
 
@@ -696,6 +696,47 @@ Pinecone only accepts sparse values on **dotproduct** indexes. The sparse varian
 **Pinecone Local gap:** the emulator rejects sparse values on *writes* to dense indexes (its gRPC upsert answers `INVALID_ARGUMENT`; its REST path silently drops them), though it does serve sparse *queries*. Concretely, the container suite covers: dotproduct index creation by the sparse variant, dense store/search through it, the non-dotproduct fail-fast, and sparse querying (including that the zero dense vector is sized from the live index rather than the configured `VectorDimensions`). It does **not** cover storing sparse values or the sparse store-then-search round-trip — that test is skipped with this reason, so the same-record sparse write path has only been verified by construction, never executed against a live Pinecone serverless index. Treat it as unproven until you run it against the real service.
 
 ---
+
+## Redis (RediSearch)
+
+**Package:** `Rag.NET.VectorStores.Redis`
+
+Stores chunks as Redis hashes under `{index}:{documentId}:{chunkIndex}` and queries them with an HNSW vector index. The point is reuse: a large share of .NET applications already run Redis for caching, and for those teams pointing it at retrieval is a much lower bar than standing up a second datastore — the same argument that justifies pgvector.
+
+Needs the **RediSearch module**: Redis Stack, or Redis 8 and later where it is built in. Plain Redis answers `FT.CREATE` with an unknown-command error.
+
+### Setup
+
+```csharp
+services.AddRagNet(rag => rag
+    .UseRedis(
+        configuration:    "localhost:6379",
+        indexName:        "ragnet-idx",
+        vectorDimensions: 1536));
+```
+
+If Redis is already in the application — the case this store exists for — hand it the connection you have. The store does not dispose a multiplexer it did not create:
+
+```csharp
+var redis = ConnectionMultiplexer.Connect("localhost:6379");
+services.AddRagNet(rag => rag.UseRedis(redis, "ragnet-idx", 1536));
+```
+
+Call `InitializeAsync` before first use. It creates the index only if absent, because re-creating it would discard every stored vector.
+
+### Similarity score
+
+RediSearch returns `vector_score` as a **cosine distance** in `[0, 2]` — 0 is identical, larger is worse. That is the opposite direction from every score in this library, so the store converts it to `1 - distance` and reports ordinary cosine similarity in `[-1, 1]`.
+
+This is why `RedisVectorStore` does **not** implement `IScoreScaleAware`: its scores are already on the scale every threshold assumes, exactly as pgvector's `1 - (embedding <=> $1)` is. Publishing the distance unconverted would invert every ranking and silently break `MinScore` — an integration test asserts an exact match scores ~1.0 rather than ~0.0 for precisely that reason.
+
+### Hybrid search is declined, not approximated
+
+RediSearch can run a text query alongside the vector one, but its text scoring is TF-IDF-shaped rather than the BM25 the hybrid arm fuses. A store advertising `IHybridSearchable` here would be fusing a score it cannot describe, so this one does not — and the pipeline falls back to its own BM25 arm, which is honest about what it is.
+
+### Not yet
+
+Metadata filtering and typed metadata round-trip are not implemented. `document_id` is indexed as a TAG (which is how `DeleteByDocumentIdAsync` finds a document's chunks without scanning keys the store did not write) and `chunk_index` as NUMERIC, but arbitrary `MetadataFilter` predicates are not translated to RediSearch query syntax. Filtering happens in the pipeline instead.
 
 ## Multi-index federation
 
