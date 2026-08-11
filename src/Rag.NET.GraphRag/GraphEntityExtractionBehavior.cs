@@ -311,6 +311,22 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
             LogExtractionFailed(_logger, ex);
             return null;
         }
+        catch (ArgumentOutOfRangeException ex)
+            when (ex.Message.Contains("ChatFinishReason", StringComparison.Ordinal))
+        {
+            // The provider set finish_reason to something outside the OpenAI schema — "error" in
+            // practice, which OpenRouter and other compatible gateways emit when the upstream
+            // model call fails. The OpenAI SDK throws while deserialising, before any of this is
+            // reachable, and as a bare ArgumentOutOfRangeException that reads like a caller bug.
+            //
+            // Treated exactly as an unparseable response: this chunk yields nothing and the
+            // document carries on. It used to escape the whole ingestion, where the catch-all
+            // reported it as RagError.StorageFailed and pointed the reader at the vector store,
+            // which had done nothing wrong (issue #143). One failed call is not a failed
+            // document — the gleaning loop is already built to accept a chunk yielding nothing.
+            LogProviderReturnedError(_logger, ex);
+            return null;
+        }
     }
 
     private string TruncateDescription(string description)
@@ -322,4 +338,7 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
 
     [LoggerMessage(EventId = 1144623303, EventName = "log_extraction_failed", Level = LogLevel.Warning, Message = "Failed to parse entity extraction JSON from LLM response")]
     private static partial void LogExtractionFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(EventId = 1793044612, EventName = "log_provider_returned_error", Level = LogLevel.Warning, Message = "The chat provider returned an error response (finish_reason outside the OpenAI schema) during entity extraction; this chunk contributes no entities and ingestion continues")]
+    private static partial void LogProviderReturnedError(ILogger logger, Exception ex);
 }
