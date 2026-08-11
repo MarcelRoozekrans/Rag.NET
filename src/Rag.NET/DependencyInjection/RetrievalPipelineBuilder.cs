@@ -14,6 +14,11 @@ public sealed class RetrievalPipelineBuilder
         typeof(SelfQueryBehavior),
         typeof(ResultCacheBehavior),
         typeof(LostInTheMiddleBehavior),
+        // Inside LostInTheMiddle and outside everything that ranks, so the budget drops
+        // from a settled ranking and the reorder then applies to the survivors. The other
+        // way round drops whichever chunk ended up last, which after lost-in-the-middle is
+        // a mid-ranked one.
+        typeof(ContextBudgetBehavior),
         typeof(MmrBehavior),
         typeof(RedundancyFilterBehavior),
         typeof(ParentDocumentRetrievalBehavior),

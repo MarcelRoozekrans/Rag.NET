@@ -110,6 +110,29 @@ public sealed record RetrievalOptions
     public float RedundancyThreshold { get; init; } = 0.95f;
 
     /// <summary>
+    /// Caps the combined length of the retrieved chunks, in cl100k_base tokens.
+    /// <see langword="null"/> — the default — applies no length bound, which is the behaviour
+    /// this repository had before the setting existed.
+    /// <para>
+    /// <see cref="TopK"/> bounds how <i>many</i> chunks come back and <see cref="MinScore"/> how
+    /// relevant they are; neither bounds how <i>long</i> they are. A corpus rechunked from 500 to
+    /// 4,000 characters silently multiplies the prompt at the same TopK, with no error until the
+    /// model rejects the request (issue #85). Chunk size is an ingestion decision; the context
+    /// limit is a model constraint known at query time, and this is how the second gets said.
+    /// </para>
+    /// <para>
+    /// Chunks are dropped whole and lowest-ranked first, never truncated, and the drop is logged
+    /// — see <c>ContextBudgetBehavior</c> for why each of those is the way round it is.
+    /// </para>
+    /// </summary>
+    [GreaterThan(0, When = nameof(MaxContextTokensIsSet))]
+    public int? MaxContextTokens { get; init; }
+
+    /// <summary>Reports whether <see cref="MaxContextTokens"/> was set at all.</summary>
+    /// <returns>Whether a budget is configured.</returns>
+    internal bool MaxContextTokensIsSet() => MaxContextTokens.HasValue;
+
+    /// <summary>
     /// Set to <see langword="true"/> to enable Maximal Marginal Relevance selection for this call.
     /// Requires <c>RagBuilder.UseMmr()</c>. Unlike most retrieval features, MMR is opt-in per call.
     /// Has no effect when <c>UseMmr()</c> is not registered.
