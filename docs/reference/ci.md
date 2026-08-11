@@ -549,6 +549,37 @@ git commit --allow-empty -m "chore: set the release version" -m "Release-As: 0.9
 Then the release itself is the publish procedure above, dispatched on the tagged commit — where
 GitVersion returns the tag's stable version and `publish-nuget` packs and pushes exactly that.
 
+**The release pull request arrives with no checks on it, and that is a property of GitHub rather
+than a misconfiguration.** Events triggered by the built-in `GITHUB_TOKEN` do not start workflow
+runs — the rule that stops workflows triggering themselves forever. release-please opens its PR
+with that token, so `ci.yml`'s `pull_request` trigger never fires and **none of the four required
+checks reports**. Verified rather than inferred: release PR
+[AdoNet.Async#140](https://github.com/MarcelRoozekrans/AdoNet.Async/pull/140) has `total_count: 0`
+check runs and was merged anyway, through the same admin bypass this repository has.
+
+That matters here more than it does there. The `Main` ruleset requires four checks precisely so
+that nothing reaches `main` unvalidated — and the release commit, the one commit that becomes a
+tag and 70 published packages, would be the single commit merged with **no CI at all**, by
+bypassing the rule that exists to prevent it. Pick one before the first release:
+
+- **Run the checks by hand on the release branch.** `ci.yml` has a `workflow_dispatch` trigger,
+  and a dispatched run reports against the branch's head commit, so the required checks can be
+  satisfied without a bypass:
+
+  ```bash
+  gh workflow run ci.yml --ref release-please--branches--main
+  ```
+
+- **Give release-please a token that is not `GITHUB_TOKEN`** — a fine-grained PAT or a GitHub App
+  installation token, passed as the action's `token:` input. Its PR triggers `ci.yml` normally and
+  the checks run unprompted. This is the option that needs no discipline on the day, at the cost
+  of a credential to hold — which is the trade Trusted Publishing was just adopted to avoid
+  elsewhere, so it is a real choice rather than an obvious one.
+
+Merging the release PR with the admin bypass is the third option and is the one to take
+deliberately or not at all, because it is indistinguishable afterwards from the bypass being
+routine.
+
 **The residual, stated:** the action's first real execution is release day. What holds it until
 then is `WorkflowWiringTests`, which pins the dispatch-only trigger, the `main`-ref condition,
 the action reference and this fenced procedure — the same properties every other gate in this
