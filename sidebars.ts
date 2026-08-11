@@ -5,6 +5,7 @@ const sidebars: SidebarsConfig = {
     'index',
     'why-rag',
     'getting-started',
+    'positioning',
     {
       type: 'category',
       label: 'Guide',
@@ -30,6 +31,7 @@ const sidebars: SidebarsConfig = {
         'reference/benchmarks',
         'reference/retrieval-quality',
         'reference/library-comparison',
+        'reference/library-comparison-scope',
         'reference/ci',
         'reference/features',
       ],
