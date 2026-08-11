@@ -388,8 +388,8 @@ selection with a hardcoded list passed it. A guard that a comment can satisfy is
 
 `ci.yml` has a second gating job besides the test matrix: `pack-validate`, on `ubuntu-latest`.
 Every run it derives the version from git history (see [Versioning](#versioning-gitversion-and-the-release-tooling)
-below), packs the 69 shippable packages with it (`dotnet pack Rag.NET.slnx -c Release -o
-artifacts/packages -p:Version="$PACKAGE_VERSION"` — 69 `.nupkg` plus 69 `.snupkg`), validates
+below), packs the 70 shippable packages with it (`dotnet pack Rag.NET.slnx -c Release -o
+artifacts/packages -p:Version="$PACKAGE_VERSION"` — 70 `.nupkg` plus 70 `.snupkg`), validates
 them with `tests/Rag.NET.PackageValidation.Tests` — the only guard there is, because `dotnet
 pack` enforces almost none of its own metadata — and then **pushes every package to a local
 directory feed, twice, asserting per file that each one arrived**.
@@ -412,7 +412,7 @@ Three things the rehearsal measured (2026-08-03), each pinned by a workflow asse
   changes that behaviour the run fails and the rehearsal widens to cover symbol packages.
 
 `--skip-duplicate` is the deliberate duplicate policy for the real push: nuget.org never forgets
-a published version, so a push that dies partway through 69 packages must be re-runnable, and
+a published version, so a push that dies partway through 70 packages must be re-runnable, and
 without the flag the retry fails on the first package that already arrived. Idempotent is the
 only retry-safe shape against an append-only feed.
 
@@ -473,7 +473,7 @@ a documented procedure, and guarded so it cannot be deleted or drift silently.
 ### What the rehearsal cannot prove — the 6.3 residual
 
 Pushing to a local feed is not pushing to nuget.org. **Exercised for real exactly once, on
-release day:** authentication, API-key scoping, package-ID availability (none of the 69 IDs is
+release day:** authentication, API-key scoping, package-ID availability (none of the 70 IDs is
 reserved until then — an exposure the design accepts and records), the service's own validation,
 the real 409-and-skip behaviour of `--skip-duplicate`, and `.snupkg` symbol delivery — which at
 nuget.org rides automatically on each `.nupkg` push and cannot be rehearsed against a directory

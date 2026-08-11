@@ -52,7 +52,7 @@ Configurable chunking stage driven by user-supplied regex patterns for each head
 ---
 
 ### Typed Chunk Metadata (Filterable Everywhere, No Per-Key Schema)
-**Packages:** `Rag.NET.Abstractions`, `Rag.NET`, all six vector stores, all data-provider connectors
+**Packages:** `Rag.NET.Abstractions`, `Rag.NET`, all seven vector stores, all data-provider connectors
 
 Metadata values carry their type end to end: `MetadataValue` (string, number, boolean, date) replaces `string` in `FileEntry.Metadata`, `DocumentMetadata.Tags`, `TextChunk.Metadata` and `SearchOptions.MetadataFilter`, and every vector store persists the kind — PgVector as native JSONB types, Qdrant as typed payload values (numbers filter via a closed range), Weaviate as typed auto-schema `meta_*` properties, Chroma and Pinecone as native record values (dates as a `$date:` sentinel), and Azure AI Search as a `metadata_entries` `Collection(Edm.ComplexType)` of `{key, stringValue, numberValue, boolValue, dateValue}` rows — every key filterable with its type, no per-key index schema. A custom data provider can submit a number and filter on it numerically; nothing stringifies it along the way. Backward compatibility: metadata stored before the change reads back losslessly as string-kind values; on Azure AI Search an existing index gains `metadata_entries` additively via `CreateOrUpdateIndexAsync` (no rebuild), but pre-existing documents have no typed rows and stop matching `MetadataFilter` until re-ingested — reads fall back to the legacy JSON blob.
 

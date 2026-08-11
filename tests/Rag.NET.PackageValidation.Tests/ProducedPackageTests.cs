@@ -40,15 +40,16 @@ public sealed class ProducedPackageTests
     /// <c>Rag.NET.Telemetry</c> (the OpenTelemetry SDK wiring core stays free of). So
     /// 70 + 3 − 7 + 1 = 67, and Phase 4.6 added two more — <c>Rag.NET.Hosting</c> (the
     /// configuration-driven pipeline wiring both executables share) and <c>Rag.NET.Cli</c> (the
-    /// <c>ragnet</c> tool built on it) — so 69, measured by an actual <c>dotnet pack</c> of the
-    /// solution. Exact on
+    /// <c>ragnet</c> tool built on it) — so 69; and Milestone 4's close added
+    /// <c>Rag.NET.VectorStores.Redis</c> (issue #86), so <b>70</b>, measured by an actual
+    /// <c>dotnet pack</c> of the solution. Exact on
     /// both sides deliberately — fewer means a project silently dropped out of the solution,
     /// which is precisely how <c>Rag.NET.WebSearch.Tavily.Tests</c> went unbuilt and untested for
     /// an unknown period; more means something unshippable is packing, which is how the sample
     /// and benchmark projects inflated the count before Task 1b. Adding or removing a package is
     /// a deliberate act; update this constant in the same commit.
     /// </summary>
-    private const int ExpectedPackageCount = 69;
+    private const int ExpectedPackageCount = 70;
 
     /// <summary>
     /// What NuGet ships when a project declares no <c>Description</c>. Not a warning, not an
