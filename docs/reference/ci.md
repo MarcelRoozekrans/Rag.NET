@@ -37,11 +37,10 @@ anywhere in `ci.yml` — **and, for both tiers, that a merge is mechanically blo
 2026-08-03, correcting this page, which said no branch protection existed): the repository's
 **`Main` ruleset** requires both matrix legs, `build-test (ubuntu-latest)` and
 `build-test (windows-latest)`, as status checks on the default branch, and the Docker tier runs
-inside the Ubuntu leg, so both tiers block. Two honest limits: repository admins can always
-bypass the ruleset, and the other checks in `ci.yml` — `pack-validate` and `commitlint` — run
-and fail loudly but are **not yet in the required set**; they are the ones to add. Adding them
-is scheduled work, on Phase 6.3's checklist in the ROADMAP — before the release dispatches, the
-only guard on the packaging surface must be able to block a merge.
+inside the Ubuntu leg, so both tiers block. Since 2026-08-11 it also requires **`pack-validate`**
+and **`commitlint`** — Phase 6.3's first checklist item, done before either release dispatch,
+because until then the only guard on the whole packaging surface could go red without blocking
+anything. One honest limit remains: repository admins can always bypass the ruleset.
 
 The LLM tier is one project, `Rag.NET.E2ETests`. It pulls `nomic-embed-text` and `llama3.2:1b`, and
 its assertions are text a model wrote — Phase 2.1 measured one such assertion failing roughly **1 run
@@ -61,8 +60,8 @@ reasons:
 
 On `run-secrets`: the job *gates* in the sense that a failure is a real failure and is reported as
 one — no `continue-on-error` anywhere in it. It does not *block* anything today: the `Main`
-ruleset requires only the two `build-test` legs, and this job is not among them. If it is ever
-added, this is the nightly job to require; the `llm` one never is.
+ruleset requires the two `build-test` legs, `pack-validate` and `commitlint`, and this job is not
+among them. If a fifth is ever added, this is the nightly job to require; the `llm` one never is.
 
 Use `run-llm` when you have changed the answer engine or a retrieval path and want to see the
 end-to-end result before merging. Use `run-secrets` when you have touched PDF OCR, Document
