@@ -16,6 +16,7 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 |------|---------------|
 | [Why RAG?](why-rag.md) | What RAG is, the problem it solves, and when Rag.NET is the right tool |
 | [Getting Started](getting-started.md) | Dependency injection setup, ingesting a document, and running a Q&A loop |
+| [Positioning](positioning.md) | Where Rag.NET sits against Semantic Kernel, LangChain, LlamaIndex and Haystack — and where it loses |
 | [Architecture](guide/architecture.md) | Pipeline internals, data-flow diagram, all interfaces and core models |
 | [Ingestion](guide/ingestion.md) | Parsers, `DocumentMetadata`, `IngestionOptions`, progress reporting |
 | [Data Providers](guide/data-providers.md) | Cloud storage and web connectors; OAuth token management; delta ingestion |
@@ -37,6 +38,8 @@ Rag.NET is a modular Retrieval-Augmented Generation (RAG) pipeline library for .
 - Sample applications: `samples/Rag.NET.Sample` — interactive console app (PgVector, Ollama/OpenAI)
   — and `samples/Rag.NET.QuickStart` — a config-driven walkthrough built on `Rag.NET.Hosting`
 - Benchmark results: [benchmarks.md](reference/benchmarks.md)
+- How Rag.NET compares: [quality and cost](reference/library-comparison.md) (measured) and
+  [scope](reference/library-comparison-scope.md) (read, cited per claim)
 - Feature roadmap and design notes: `docs/plans/`
 - GitHub README: covers the quick-start and package list
 

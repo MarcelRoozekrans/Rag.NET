@@ -363,7 +363,9 @@ derived or third-party data and never are.
   brackets a call in an already-warm process. A cold-start comparison would be a different
   measurement and would favour neither ecosystem for the reason this one does.
 - **Not production suitability.** Operational maturity, ecosystem, hosting, security posture —
-  none of it is in an nDCG.
+  none of it is in an nDCG. **What each library ships** — the scope axis rather than the quality
+  one — is read, cited and tabulated in [Library Comparison — Scope](./library-comparison-scope.md),
+  which is a reading rather than a measurement and says so before its table.
 - **Not any library's ceiling.** Every entrant would score differently tuned — that is the point of
   a defaults table and also its limit. It measures the decisions a library makes on your behalf
   when you make none, and on corpora whose documents fit inside most default chunk sizes, those
