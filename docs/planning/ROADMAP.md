@@ -3521,7 +3521,7 @@ by something.
 > 4.1 could not rehearse because their only observable effects *are* the release.
 
 **Checklist** (the phase's work beyond the tag itself):
-- [ ] **Add `pack-validate` and `commitlint` to the `Main` ruleset's required checks** (routed
+- [x] **Add `pack-validate` and `commitlint` to the `Main` ruleset's required checks** (routed
       here 2026-08-03 at Phase 4.1's close — until now recorded in that phase's residual (6),
       in `ci.yml`'s BRANCH PROTECTION comments and in `docs/reference/ci.md`, but owned by no
       phase, which violates this repository's record-then-schedule rule). Both checks run on
@@ -3531,3 +3531,8 @@ by something.
       documented. Do it before either release dispatch, and verify it the way the `build-test`
       checks were verified on 2026-08-03 — by reading the ruleset back through the GitHub API,
       not by trusting the settings page.
+      *(Done 2026-08-11. The `Main` ruleset now requires `build-test (ubuntu-latest)`,
+      `build-test (windows-latest)`, `pack-validate` and `commitlint`, read back through
+      `GET /repos/{owner}/{repo}/rulesets/{id}` rather than off the settings page. Everything
+      else is unchanged and was re-read in the same response: enforcement `active`, one
+      approving review, strict up-to-date policy on, and the admin bypass at `always`.)*
