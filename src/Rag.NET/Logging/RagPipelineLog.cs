@@ -13,6 +13,10 @@ internal static partial class RagPipelineLog
     [LoggerMessage(EventId = 532533048, EventName = "query_retrieval_failed", Level = LogLevel.Warning, Message = "Query retrieval failed for query '{Query}', skipping")]
     internal static partial void QueryRetrievalFailed(ILogger logger, string query, Exception exception);
 
+    [LoggerMessage(EventId = 967345512, EventName = "context_budget_dropped_chunks", Level = LogLevel.Information, Message = "Context budget dropped {Dropped} of {Total} retrieved chunks: {TotalTokens} tokens exceeded the {Budget}-token budget, {KeptTokens} kept")]
+    internal static partial void ContextBudgetDroppedChunks(
+        ILogger logger, int dropped, int total, int totalTokens, int budget, int keptTokens);
+
     [LoggerMessage(EventId = 175297165, EventName = "reranking_failed", Level = LogLevel.Warning, Message = "Reranking failed for query '{Query}', returning the unreranked results cut to TopK")]
     internal static partial void RerankingFailed(ILogger logger, string query, Exception exception);
 

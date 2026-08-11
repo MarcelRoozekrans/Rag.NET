@@ -130,6 +130,7 @@ public sealed class RagPipeline(
     private static RetrievalOptions BuildRetrievalOptions(RagOptions opts) => new()
     {
         TopK = opts.TopK,
+        MaxContextTokens = opts.MaxContextTokens,
         MinScore = opts.MinScore,
         MetadataFilter = opts.MetadataFilter,
         UseHybridSearch = opts.UseHybridSearch,

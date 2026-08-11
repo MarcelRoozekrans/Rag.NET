@@ -23,6 +23,13 @@ public sealed class RagOptions
     public int TopK { get; set; } = 5;
 
     /// <summary>
+    /// Caps the combined length of retrieved context, in cl100k_base tokens; forwarded to
+    /// <c>RetrievalOptions.MaxContextTokens</c>. <see langword="null"/> applies no length bound.
+    /// <see cref="TopK"/> bounds the number of chunks, not their length (issue #85).
+    /// </summary>
+    public int? MaxContextTokens { get; set; }
+
+    /// <summary>
     /// Minimum similarity score a retrieved chunk must meet — a similarity score, not a
     /// percentage. Defaults to 0.0 (no filtering). Passed straight through to the vector store's
     /// own score threshold; filtering happens inside the store, not here.

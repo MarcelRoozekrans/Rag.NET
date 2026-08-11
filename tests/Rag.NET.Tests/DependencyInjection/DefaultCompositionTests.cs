@@ -25,6 +25,7 @@ public sealed class DefaultCompositionTests
         "SelfQueryBehavior",
         "ResultCacheBehavior",
         "LostInTheMiddleBehavior",
+        "ContextBudgetBehavior",
         "MmrBehavior",
         "RedundancyFilterBehavior",
         "ParentDocumentRetrievalBehavior",

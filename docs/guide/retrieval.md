@@ -14,6 +14,7 @@ Retrieval is the step that determines answer quality more than any other. A well
 public sealed record RetrievalOptions
 {
     public int TopK                          { get; init; } = 5;
+    public int? MaxContextTokens             { get; init; }
     public double MinScore                   { get; init; } = 0.0;
     public IDictionary<string, MetadataValue>? MetadataFilter { get; init; }
     public ISpecification<SearchResult>? Filter { get; init; }
@@ -106,6 +107,35 @@ var results = await pipeline.RetrieveAsync("explain the refund policy", new Retr
 ```
 
 `MinScore = 0.0` (the default) returns all results up to `TopK` regardless of score. Raise it to filter out weakly relevant chunks. Values around `0.6–0.75` work well for typical prose with OpenAI embeddings.
+
+### Bounding the context by length, not just by count
+
+`TopK` bounds how **many** chunks come back; `MinScore` bounds how **relevant** they are. Neither
+bounds how **long** they are — so `TopK = 5` over a corpus chunked at 4,000 characters is a very
+different prompt from `TopK = 5` over one chunked at 500. Chunk size is an ingestion decision; the
+context limit is a property of the model you query with. `MaxContextTokens` is how the second gets
+said:
+
+```csharp
+var results = await retriever.RetrieveAsync(query, new RetrievalOptions
+{
+    TopK             = 20,
+    MaxContextTokens = 6000,
+});
+```
+
+Unset (the default) applies no length bound. When set, chunks are dropped **whole and
+lowest-ranked first** until the set fits — never truncated, because a chunk cut mid-sentence is
+evidence an answer can still cite while no longer supporting what it says.
+
+Counting uses the `cl100k_base` encoding, the same one `ConversationMemoryPipeline` budgets
+conversation history with, so the two halves of a prompt agree about what a token is. For a model
+that tokenises differently the budget is an approximation — leave headroom.
+
+The budget applies **after** ranking (reranking, MMR, redundancy filtering) and **before**
+lost-in-the-middle reordering, so what survives is decided by rank and only then arranged. Every
+drop is logged with the counts and totals: a budget that quietly discards evidence is a new way to
+produce "I cannot find any relevant information".
 
 ## Hybrid search (BM25 + vector)
 
