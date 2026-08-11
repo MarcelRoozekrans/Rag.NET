@@ -6,11 +6,11 @@ namespace Rag.NET.DataProviders.Asana;
 public sealed class AsanaOptions : CloudStorageOptions
 {
     /// <summary>Asana workspace GID that scopes task enumeration.</summary>
-    public required string WorkspaceGid { get; init; }
+    public required string WorkspaceGid { get; set; }
 
     /// <summary>
     /// Optional project GID. When set, only tasks in this project are returned
     /// instead of all workspace tasks.
     /// </summary>
-    public string? ProjectGid           { get; init; }
+    public string? ProjectGid           { get; set; }
 }

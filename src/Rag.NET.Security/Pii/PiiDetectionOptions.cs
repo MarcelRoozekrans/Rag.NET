@@ -9,5 +9,5 @@ public sealed class PiiDetectionOptions
     /// <summary>
     /// The active PII patterns. Patterns are compiled at <see cref="PiiChunkSanitiser"/> construction time.
     /// </summary>
-    public IList<PiiPattern> Patterns { get; init; } = PiiPatterns.Defaults.ToList();
+    public IList<PiiPattern> Patterns { get; set; } = PiiPatterns.Defaults.ToList();
 }

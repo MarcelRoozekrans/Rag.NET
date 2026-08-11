@@ -8,13 +8,13 @@ public sealed class CohereRerankerOptions
     /// <summary>
     /// Cohere API key. Required.
     /// </summary>
-    public required string ApiKey { get; init; }
+    public required string ApiKey { get; set; }
 
     /// <summary>
     /// Reranking model. Default: <c>rerank-english-v3.0</c> (English-only, fast).
     /// Switch to <c>rerank-v3.5</c> for multilingual workloads.
     /// </summary>
-    public string Model { get; init; } = "rerank-english-v3.0";
+    public string Model { get; set; } = "rerank-english-v3.0";
 
     /// <summary>
     /// Caps how many reranked results this reranker returns. <see langword="null"/> — the default —
@@ -38,17 +38,17 @@ public sealed class CohereRerankerOptions
     /// <summary>
     /// Whether to ask Cohere to echo back document text in the response. Default: <see langword="false"/>.
     /// </summary>
-    public bool ReturnDocuments { get; init; }
+    public bool ReturnDocuments { get; set; }
 
     /// <summary>
     /// Maximum documents per API call. Cohere's hard limit is 1,000. Default: 1000.
     /// When the document list exceeds this, calls are batched sequentially and merged.
     /// </summary>
-    public int MaxDocumentsPerBatch { get; init; } = 1000;
+    public int MaxDocumentsPerBatch { get; set; } = 1000;
 
     /// <summary>
     /// Optional API endpoint override. Useful for testing with a local stub server.
     /// When <see langword="null"/>, the Cohere SDK uses its default endpoint.
     /// </summary>
-    public string? Endpoint { get; init; }
+    public string? Endpoint { get; set; }
 }

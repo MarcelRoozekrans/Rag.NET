@@ -6,7 +6,7 @@ namespace Rag.NET.DataProviders.Zendesk;
 public sealed class ZendeskArticlesOptions : CloudStorageOptions
 {
     /// <summary>Zendesk subdomain (e.g. <c>"mycompany"</c> → <c>https://mycompany.zendesk.com</c>).</summary>
-    public required string Subdomain { get; init; }
+    public required string Subdomain { get; set; }
 
     /// <summary>
     /// Agent email address used for Basic authentication.

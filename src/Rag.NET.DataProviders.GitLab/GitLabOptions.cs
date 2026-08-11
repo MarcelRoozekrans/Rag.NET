@@ -13,10 +13,10 @@ public sealed class GitLabOptions : CloudStorageOptions
     public required string BaseUrl { get; set; }
 
     /// <summary>Numeric project ID or <c>namespace/project</c> path.</summary>
-    public required string ProjectIdOrPath { get; init; }
+    public required string ProjectIdOrPath { get; set; }
 
     /// <summary>Branch or ref to traverse. Default: <c>"main"</c>.</summary>
-    public string Ref { get; init; } = "main";
+    public string Ref { get; set; } = "main";
 
     /// <summary>
     /// When set, performs a delta run: only files changed since this commit SHA are returned.
