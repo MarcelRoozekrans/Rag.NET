@@ -3536,3 +3536,40 @@ by something.
       `GET /repos/{owner}/{repo}/rulesets/{id}` rather than off the settings page. Everything
       else is unchanged and was re-read in the same response: enforcement `active`, one
       approving review, strict up-to-date policy on, and the admin bypass at `always`.)*
+
+## Beyond v1.0: Recorded, Not Scheduled [status: a list, not a plan]
+
+**What this section is for.** Ideas that are worth keeping and are not worth doing yet. This
+repository's rule is that deferred work gets recorded with its origin and then placed somewhere,
+because an idea living only in an issue queue is indistinguishable from one nobody weighed. Phase
+5.5 does the same for dataset candidates: **a milestone that lists everything schedules nothing**,
+so nothing here is a commitment, and anything picked up gets a real phase entry with a scope and a
+number first.
+
+Milestone 6 is the terminal milestone. Entries below are explicitly after it.
+
+### TOON instead of JSON in prompts — [#153](https://github.com/MarcelRoozekrans/Rag.NET/issues/153)
+
+[TOON](https://github.com/toon-format/toon) encodes the JSON data model compactly for LLM prompts,
+claiming 42.6% fewer tokens at 72.2% accuracy against JSON's 71.4%.
+
+**One place in this repository fits it.** TOON's strength is uniform arrays of records going *into*
+a prompt, and almost nothing here is that shape: `ChatAnswerEngine` sends `[Source N]` blocks of
+unstructured prose, GraphRAG's global search joins community summaries as text, and GraphRAG's
+extraction asks the model to *return* JSON, which is the opposite direction. The exception is
+`GraphEntityExtractionBehavior.PerformGleaningAsync`, which re-serialises the entities and
+relationships found so far into the prompt on every gleaning pass — a uniform array of flat
+records, sent repeatedly.
+
+**Not scheduled, for reasons worth keeping.** No official .NET implementation surfaced, so this is
+writing and maintaining an encoder rather than adding a package — a poor trade for one call site.
+The accuracy figures are a wash rather than a win, so the whole benefit is token cost. And that
+cost lands on the smallest prompt path this library has: retrieved chunk text dominates prompt size
+by a wide margin, which is why `RetrievalOptions.MaxContextTokens` (Phase 5.1's sibling work,
+issue #85) is the lever that acts on the part that is actually large.
+
+**What would settle it** is a measurement, not a claim: gleaning-prompt tokens per chunk, JSON
+against TOON, counted with the same `cl100k_base` encoding `ContextBudgetBehavior` uses, with
+entity and relationship counts asserted not to move — and compared against the honest baseline of
+simply running fewer gleaning passes, which costs no new format at all. If the saving is a small
+fraction of total prompt tokens, the answer is no and the measurement says so.
