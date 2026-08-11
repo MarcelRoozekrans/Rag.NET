@@ -215,6 +215,26 @@ inside the timed spans, and identical runs differed by **23×** on OS page-cache
 every single-run validation passing. Indexing and p50 additionally hard-fail above ×3; all twelve
 cells passed, with spreads of ×1.02–×1.17 for all but two.
 
+:::warning The `ragnet-control` latency rows below are superseded
+
+They were measured before the Phase 5.1.1 dense-scan optimisation, which found two defects in the
+path they time: `SearchAsync` allocated a list sized to **the whole corpus on every query** (901 KB
+at FiQA, on the Large Object Heap) and sorted it to take ten, and the scoring kernel recomputed two
+constant norms per candidate in a scalar loop. Fixing both moved the control row **ahead of
+Semantic Kernel on all three corpora**.
+
+Post-optimisation the control measured **0.3–0.4 ms** (SciFact), **0.9–1.1 ms** (ArguAna) and
+**7.9–10.0 ms** (FiQA) — twice, on an idle machine, three gated rounds each. Those figures are
+**not folded into the table yet**, deliberately: the Python rows come from a different session, and
+a cross-ecosystem latency table stitched from two sessions would break the one-machine-one-session
+rule this page asserts three paragraphs down. The table is republished when all five entrants have
+been re-swept together.
+
+The Python rows, the index-construction tables and every nDCG figure on this page are unaffected —
+the optimisation is verified to leave all pinned retrieval-quality figures unmoved.
+
+:::
+
 ### Query latency, per retrieval call — comparable across ecosystems
 
 | Dataset | Entrant | p50 | p99 *(reported, never gated)* |
@@ -242,6 +262,11 @@ in Python-level loops. *"LangChain is 40× slower"* is **false**; *"LangChain's 
 store is 40× slower than Rag.NET's default in-memory store"* is what was measured. The
 "at their defaults" protocol is what makes the row meaningful and is also exactly what makes the
 unqualified claim wrong.
+
+The multiplier itself is a moving target and should be read as one: it is a ratio between two
+implementations, and the Phase 5.1.1 optimisation to *our* side of it widened the same ratio past
+100× without anything changing in LangChain. A number that moves that far on one side's internals
+was never a fact about either library.
 
 **p99 is reported and deliberately never gated.** At these query counts it rides on one to three
 tail samples, so it moves for reasons a defect-catching bar cannot distinguish from noise — the

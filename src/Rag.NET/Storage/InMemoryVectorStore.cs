@@ -19,8 +19,8 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
 {
     private readonly ReaderWriterLockSlim _lock = new();
 
-    // Dense side: (docId, chunkIndex) → chunk + embedding.
-    private readonly Dictionary<(string DocId, int ChunkIndex), EmbeddedChunk> _dense = [];
+    // Dense side: (docId, chunkIndex) → chunk + embedding + its norm, computed once on write.
+    private readonly Dictionary<(string DocId, int ChunkIndex), DenseEntry> _dense = [];
 
     // Sparse side: slot registry + inverted postings (InMemoryBm25Index structure).
     private readonly Dictionary<(string DocId, int ChunkIndex), int> _sparseSlots = [];
@@ -40,7 +40,8 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
             for (var i = 0; i < chunks.Count; i++)
             {
                 var chunk = chunks[i];
-                _dense[(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex)] = chunk;
+                _dense[(chunk.Chunk.DocumentId.Value, chunk.Chunk.ChunkIndex)] =
+                    new DenseEntry(chunk, EmbeddingMath.Norm(chunk.Embedding.Span));
             }
         }
         finally
@@ -69,18 +70,25 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
             // results than exist must not size an array to the request, which is what the
             // corpus-sized list it replaced did implicitly.
             var top = new TopScores(Math.Min(options.TopK, _dense.Count));
+
+            // The query's norm is fixed for the whole scan, and each entry's was computed on
+            // write, so the per-candidate work is one dot product rather than three.
+            var query = queryEmbedding.Span;
+            var queryNorm = EmbeddingMath.Norm(query);
+
             foreach (var entry in _dense.Values)
             {
-                if (!MatchesFilter(entry.Chunk, options.MetadataFilter))
+                if (!MatchesFilter(entry.Embedded.Chunk, options.MetadataFilter))
                     continue;
 
                 // Shared cosine helper: a dimension mismatch scores 0 (excluded whenever
                 // MinScore > 0; included with score 0 under the default MinScore of 0).
-                double score = EmbeddingMath.CosineSimilarity(queryEmbedding, entry.Embedding);
+                double score = EmbeddingMath.CosineSimilarity(
+                    query, queryNorm, entry.Embedded.Embedding.Span, entry.Norm);
                 if (score < options.MinScore)
                     continue;
 
-                top.Add(score, entry);
+                top.Add(score, entry.Embedded);
             }
 
             return Task.FromResult(top.ToResults());
@@ -258,7 +266,7 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
     }
 
     private static void RemoveKeysForDocument(
-        Dictionary<(string DocId, int ChunkIndex), EmbeddedChunk> map, string documentId)
+        Dictionary<(string DocId, int ChunkIndex), DenseEntry> map, string documentId)
     {
         var toRemove = new List<(string DocId, int ChunkIndex)>();
         foreach (var key in map.Keys)
@@ -303,6 +311,11 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
     /// loosening, and the dense path's consumers re-sort with their own ordinal tie-break anyway.
     /// </para>
     /// </summary>
+    /// <summary>A stored chunk with its norm, so the scan never recomputes what cannot change.</summary>
+    /// <param name="Embedded">The chunk and its embedding, as stored.</param>
+    /// <param name="Norm">The embedding's Euclidean norm, computed once on write.</param>
+    private readonly record struct DenseEntry(EmbeddedChunk Embedded, float Norm);
+
     private struct TopScores
     {
         private readonly double[] _scores;

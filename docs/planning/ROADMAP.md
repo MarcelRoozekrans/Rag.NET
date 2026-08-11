@@ -3110,6 +3110,57 @@ Two guards followed, both for the same reason the defect survived:
 `CostMatrixDumpTests` gates every cell and emits the published tables, so the page cannot be
 rebuilt by hand from numbers nothing checked. **Phase 5.1 is complete.**
 
+### Phase 5.1.1: The Cost Figure Read Back [status: code landed; republication pending a single-session sweep]
+
+**Goal:** act on what 5.1 measured, instead of filing it. Publishing a latency number we lost on
+was the point of publishing it.
+
+**The measurement pointed at two defects, and the benchmark suite could not see either.** Ten
+benchmarks in `Rag.NET.Benchmarks` call a `SearchAsync` and **every one is a stub** holding the
+store still while some other component is measured — correct for those benchmarks, and it left the
+real `InMemoryVectorStore.SearchAsync` with no coverage at all. The one retrieval path carrying a
+published latency figure was the one path with no allocation profile. `VectorSearchBenchmarks`
+fills it at the corpus sizes the comparison used, and reproduced the published control p50 on its
+first run — which is what established that the scan, not the surrounding span, was the cost.
+
+- **The dense scan allocated the whole corpus per query.** `SearchAsync` built a `List` pre-sized
+  to `_dense.Count` and sorted it to take ten: **901 KB per query** over FiQA's 57,638 documents,
+  past the Large Object Heap threshold, with Gen2 collections visible from 8,674 documents up — and
+  O(n log n) work for an O(n log k) question. A bounded top-k selector makes allocation **constant
+  at 952 B** across every corpus size measured.
+- **Scoring recomputed two constants per candidate.** Cosine ran three multiply-accumulate chains
+  over 384 floats — the dot product and *both* norms — although the query's norm is fixed for the
+  whole scan and a stored vector's cannot change while stored. Hoisting both and vectorising the
+  remaining chain with the in-box `Vector<T>` (not TensorPrimitives, which would add a dependency
+  to `Rag.NET` itself) leaves one chain per candidate.
+
+Measured on one idle machine in one session: **4.3× / 4.0× / 2.5×** at 5,183 / 8,674 / 57,638
+documents, allocation **81.75 KB → 952 B**, **136.3 KB → 952 B**, **901.36 KB → 952 B**.
+
+**Verified against retrieval quality, because vectorising changes summation order.** A vectorised
+reduction folds several partial sums instead of accumulating left to right, so scores move in the
+last bits — usually *more* accurately — and retrieval turns scores into an ordering, so two chunks
+differing in the seventh decimal can swap rank. The full gated BEIR suite passes **89 cases with
+every pinned nDCG unmoved**, across control, parity, reproduction, ablation, real-chunking and
+Semantic Kernel rows on all three corpora. The three failures are
+`fiqa-{langchain,haystack,llamaindex}.trec` not existing — the refuse-on-miss rule for a corpus no
+Python entrant has ever run, which scores pre-existing run files and never touches this store.
+
+**A stacked pull request reported itself merged and was not.** #138 was based on #137's branch;
+when #137 squash-merged and its branch was deleted, GitHub closed #138 as merged while none of its
+commits reached `main`. Caught by checking the file rather than the label — `main` still carried
+the scalar loop and no `DenseEntry`. This is the second time a merge state has had to be verified
+by content in this repository, and it will not be the last.
+
+**Remaining work is republication only.** Post-optimisation the control measured 0.3–0.4 ms
+(SciFact), 0.9–1.1 ms (ArguAna) and 7.9–10.0 ms (FiQA) — twice, idle machine, three gated rounds
+each — which puts it **ahead of Semantic Kernel on all three corpora**, reversing the published
+ordering. Those figures are deliberately *not* folded into the cross-ecosystem table yet: the
+Python rows come from a different session, and §2.2 requires one machine in one session. The
+comparison page and the positioning page now say the control rows are superseded and why, rather
+than carrying numbers the code no longer produces. The table is republished when all five entrants
+have been re-swept together on a quiet machine.
+
 ### Phase 5.2: Multi-Hop Retrieval [status: pending]
 **Goal:** Measure multi-hop retrieval — HotpotQA, MuSiQue, 2WikiMultiHopQA, MultiHop-RAG. (Not a
 features.md row — evaluation depth past single-hop BEIR.)

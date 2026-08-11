@@ -38,11 +38,19 @@ produces on the same corpora (+0.031, −0.029), and no such gap exists here. **
 Rag.NET for its nDCG.**
 
 **Query latency is a real .NET advantage, with a caveat that guts the headline version of it.**
-The .NET entrants answer in 1.5–3.2 ms on SciFact and ArguAna where the Python entrants take
-54–118 ms. But that compares each library's *default in-memory store*, and the Python defaults are
-reference implementations nobody deploys — Python-level scan loops. Point all five at a real
-Qdrant or pgvector and this gap is the store's, not the library's. Semantic Kernel is slightly
-faster than Rag.NET in that table.
+The .NET entrants answer in single-digit milliseconds on SciFact and ArguAna where the Python
+entrants take 54–118 ms. But that compares each library's *default in-memory store*, and the
+Python defaults are reference implementations nobody deploys — Python-level scan loops. Point all
+five at a real Qdrant or pgvector and this gap is the store's, not the library's.
+
+An earlier version of this page said Semantic Kernel was slightly faster than Rag.NET. That was
+true of the figures then published and is **no longer true**: the dense scan was allocating the
+whole corpus per query and recomputing two constant norms per candidate, and fixing both moved the
+control row ahead of Semantic Kernel on all three corpora. The exact figures are being
+re-measured — see the note on
+[the comparison page](./reference/library-comparison.md#cost-retrieval-latency-and-index-construction).
+Neither the old ordering nor the new one is a reason to choose a library, which is this page's
+whole point.
 
 ## Against the .NET field
 
