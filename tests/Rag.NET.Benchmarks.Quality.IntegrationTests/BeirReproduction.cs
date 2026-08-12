@@ -391,6 +391,84 @@ public static class BeirReproduction
             "onnxruntime 1.28.0), self-exclusion applied on the writer's side of the boundary " +
             "(the written file held zero query-id = document-id lines). Measured 2026-08-02 " +
             "(Phase 3.14 Stage 2), Windows 11, CPU ONNX Runtime."),
+        new(
+            "trec-covid",
+            BeirProtocol.Parity,
+            [0.45427],
+            "Both separators, and they agree to five decimals. Recall@10 0.01292, MRR@10 0.72438, " +
+            "50 judged queries, 171,332 units over 171,332 documents. Measured 2026-08-12, " +
+            "Windows 11, .NET 10, CPU ONNX Runtime; 3,765.3 s cold then 2,847.6 s warm, 1 h 50 m " +
+            "for the pair. Phase 5.3's dataset, and the one that makes IrMetrics' graded gain " +
+            "mean something: its qrels carry 14,217 rows at grade 2 where FiQA's 17,110 " +
+            "judgements are every one of them exactly 1. " +
+            "**This is the worst agreement with published of the four datasets, by roughly 7x.** " +
+            "MTEB records 0.47232 at revision bb9466ba; this measured 0.45427, a delta of " +
+            "-0.01805 against +0.00085, +0.00219 and +0.00265 for SciFact, FiQA and ArguAna. It " +
+            "passes the +/-0.02 band with 0.0023 to spare, which is a pass and not a comfortable " +
+            "one, and it is the only negative delta of the four. One run, so the spread is " +
+            "unknown. Treat a future drift here as more likely to be real than the same drift on " +
+            "the other three, and treat the band as having nearly failed rather than as having " +
+            "confirmed the harness on this corpus."),
+        new(
+            "trec-covid",
+            BeirProtocol.Real,
+            [],
+            "NEVER RUN. The chunking leg costs the parity leg's embedding again over 171,332 " +
+            "documents, and Phase 5.3 bought the parity leg only. When somebody pays for the " +
+            "run, its figure belongs here."),
+        new(
+            "trec-covid",
+            BeirProtocol.HybridBm25,
+            [],
+            "NEVER RUN. Phase 5.3 lands the parity leg, which is the one with a published figure " +
+            "to be checked against; a hybrid figure here would be this repository's own number " +
+            "comparable to nothing outside it."),
+        new(
+            "trec-covid",
+            BeirProtocol.Hyde,
+            [],
+            "NEVER RUN, and not runnable on a fresh machine at any budget: the leg needs the " +
+            "hypothetical cache, which only the generation tool writes and which is never " +
+            "committed. The same is true of every other dataset's Hyde cell."),
+        new(
+            "trec-covid",
+            BeirProtocol.Reranked,
+            [],
+            "NEVER RUN. It would be the suite's most expensive reranker cell -- the " +
+            "cross-encoder scores every retrieved candidate for each of 50 judged queries " +
+            "against a corpus judged far more densely than the other three, averaging 493.5 " +
+            "relevant documents per query."),
+        new(
+            "trec-covid",
+            BeirProtocol.Comparison,
+            [],
+            "NEVER RUN, and deliberately so. The library comparison's corpora were fixed by " +
+            "Phase 5.1's published matrix at SciFact, ArguAna and FiQA. This entry exists " +
+            "because a descriptor added to BeirDatasetDescriptor.All joins the control theory " +
+            "whether or not anyone intended it to -- which is not a hypothetical: it happened " +
+            "on 2026-08-11, seven minutes into a cost sweep, when the new case tried to prefetch " +
+            "171,382 vectors from a cold cache."),
+        new(
+            "trec-covid",
+            BeirProtocol.SemanticKernel,
+            [],
+            "NEVER RUN, for the Comparison entry's reason: the Semantic Kernel entrant exists to " +
+            "sit beside the control in Phase 5.1's matrix, over that matrix's three corpora."),
+        new(
+            "trec-covid",
+            BeirProtocol.LangChain,
+            [],
+            "NEVER RUN, for the Comparison entry's reason."),
+        new(
+            "trec-covid",
+            BeirProtocol.LlamaIndex,
+            [],
+            "NEVER RUN, for the Comparison entry's reason."),
+        new(
+            "trec-covid",
+            BeirProtocol.Haystack,
+            [],
+            "NEVER RUN, for the Comparison entry's reason."),
     ];
 
     /// <summary>

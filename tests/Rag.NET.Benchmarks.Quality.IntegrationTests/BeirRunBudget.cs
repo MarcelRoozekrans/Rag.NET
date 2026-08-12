@@ -104,6 +104,99 @@ public static class BeirRunBudget
             "recorded as having overshot rather than quietly replaced. The 8-9 h figure before " +
             "it priced the pre-3.16 fragmenting chunker's 429,850 chunks and died with them."),
         new(
+            "trec-covid",
+            BeirProtocol.Parity,
+            FitsTheNightly: false,
+            "MEASURED 2026-08-12: 3,765.3 s (1 h 3 m) for the first separator and 2,847.6 s " +
+            "(47 m) for the second, 1 h 50 m for the pair. The budget gate is keyed on dataset " +
+            "and protocol rather than on separator, so the pair is bought together or not at " +
+            "all. " +
+            "**The derivation this replaces said ~6 h 20 m and was wrong by 3.4x, in the " +
+            "direction that makes work look unaffordable.** It scaled FiQA's parity leg -- 1 h " +
+            "11 m for 64,247 embeddings -- by TREC-COVID's 2.67x larger corpus. The error was " +
+            "treating that figure as embedding cost when most of it was retrieval: FiQA's leg " +
+            "retrieved for 6,648 queries through the pre-Phase-5.1.1 dense search, the one " +
+            "allocating a corpus-sized list per query, while TREC-COVID retrieves for 50. " +
+            "Scaling a total by the size of the part that is not dominating it is how a phase " +
+            "gets deferred for being too expensive. " +
+            "**A second claim in the derivation was also wrong and is worth more than the " +
+            "timing.** It reasoned that changing the separator changes the embedded text, so the " +
+            "first case's warm cache would be worth nothing to the second. Measured, the second " +
+            "leg took 42,203 cache hits against 129,179 misses -- 24.6% of texts identical " +
+            "across the two separators, on a corpus where 171,325 of 171,332 documents carry a " +
+            "title. The two legs also produce the same nDCG@10 to five decimals, so on this " +
+            "corpus the separator moves the number by nothing at all."),
+        new(
+            "trec-covid",
+            BeirProtocol.HybridBm25,
+            FitsTheNightly: false,
+            "NOT RUN, and not derivable from the other datasets' cells. The BM25 arm indexes the " +
+            "whole corpus, and this corpus is 3.0x FiQA's and 33x SciFact's, so scaling either " +
+            "measured figure would be a guess wearing a number. Phase 5.3 lands the parity leg " +
+            "only, because that is the one with a published figure to check against."),
+        new(
+            "trec-covid",
+            BeirProtocol.Hyde,
+            FitsTheNightly: false,
+            "NOT RUN. Needs the hypothetical cache, which only the generation tool writes and " +
+            "which is never committed -- so this cell cannot run on a fresh machine at any " +
+            "budget, exactly as the other three datasets' Hyde cells cannot."),
+        new(
+            "trec-covid",
+            BeirProtocol.Reranked,
+            FitsTheNightly: false,
+            "NOT RUN, and it would be the most expensive reranker cell in the suite by a wide " +
+            "margin if it were: the cross-encoder scores every retrieved candidate for every " +
+            "judged query, and TREC-COVID judges 50 queries against a densely judged corpus " +
+            "averaging 493.5 relevant documents each."),
+        new(
+            "trec-covid",
+            BeirProtocol.Comparison,
+            FitsTheNightly: false,
+            "NOT RUN. The library comparison's entrants are pinned to SciFact, ArguAna and FiQA " +
+            "by Phase 5.1's published matrix; adding a fourth corpus to it is a decision for that " +
+            "phase rather than a side effect of landing a dataset here."),
+        new(
+            "trec-covid",
+            BeirProtocol.SemanticKernel,
+            FitsTheNightly: false,
+            "NOT RUN, for the same reason as the Comparison cell: the Semantic Kernel entrant " +
+            "exists to sit beside the control in Phase 5.1's matrix, and that matrix's corpora " +
+            "are fixed."),
+        new(
+            "trec-covid",
+            BeirProtocol.LangChain,
+            FitsTheNightly: false,
+            "NOT RUN, for the same reason as the Comparison cell: the LangChain entrant exists to sit " +
+            "beside the control in Phase 5.1's published matrix, and that matrix's three corpora " +
+            "are fixed. Adding a fourth is a decision for that phase, not a side effect of " +
+            "landing a dataset here."),
+        new(
+            "trec-covid",
+            BeirProtocol.LlamaIndex,
+            FitsTheNightly: false,
+            "NOT RUN, for the same reason as the Comparison cell: the LlamaIndex entrant exists to sit " +
+            "beside the control in Phase 5.1's published matrix, and that matrix's three corpora " +
+            "are fixed. Adding a fourth is a decision for that phase, not a side effect of " +
+            "landing a dataset here."),
+        new(
+            "trec-covid",
+            BeirProtocol.Haystack,
+            FitsTheNightly: false,
+            "NOT RUN, for the same reason as the Comparison cell: the Haystack entrant exists to sit " +
+            "beside the control in Phase 5.1's published matrix, and that matrix's three corpora " +
+            "are fixed. Adding a fourth is a decision for that phase, not a side effect of " +
+            "landing a dataset here."),
+        new(
+            "trec-covid",
+            BeirProtocol.Real,
+            FitsTheNightly: false,
+            "DERIVED, not measured, and deliberately unrun so far: the real leg chunks the corpus " +
+            "rather than taking one unit per document, and TREC-COVID's abstracts are long enough " +
+            "that the chunk count -- and so the cost -- is not derivable from the parity leg the " +
+            "way FiQA's was. Phase 5.3 lands the parity leg first, because that is the one with a " +
+            "published figure to check against."),
+        new(
             "arguana",
             BeirProtocol.Parity,
             FitsTheNightly: true,

@@ -129,9 +129,14 @@ public sealed class BeirReproductionTests
     [Fact]
     public void AnUndescribedDatasetThrowsRatherThanPassing()
     {
+        // The placeholder is deliberately a name no dataset can ever take. It used to be
+        // "trec-covid", chosen when that dataset was hypothetical, and Phase 5.3 landing it turned
+        // this assertion into one that would start failing the moment the reproduction pin was
+        // added — a test whose subject was scheduled to stop being undescribed. A real name here
+        // is a landmine with a date on it.
         var exception = Assert.Throws<InvalidOperationException>(
             () => BeirReproduction.AssertReproduces(
-                "trec-covid", BeirProtocol.Parity, 0.5, _output));
+                "no-such-dataset", BeirProtocol.Parity, 0.5, _output));
 
         Assert.Contains("No reproduction is recorded", exception.Message, StringComparison.Ordinal);
     }

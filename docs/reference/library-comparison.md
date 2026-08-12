@@ -203,8 +203,9 @@ this check would, silently, on any corpus with accented text.
 
 ## Cost: retrieval latency and index construction
 
-Measured on one machine: Windows 11 (10.0.26200), Intel Core i9-12900HK (14C/20T), 64 GB, .NET
-10.0.302, CPU ONNX Runtime, CPython 3.14.5. Three repeat runs of every cell, every run gated.
+Measured on one machine in one session, 2026-08-12: Windows 11 (10.0.26200), Intel Core i9-12900HK
+(14C/20T), 64 GB, .NET 10.0.302, CPU ONNX Runtime, CPython 3.14.5. All five entrants, all twelve
+cells, three repeat runs of every cell, every run gated.
 
 **Every figure is a range, not a number, and that is the point.** No cost figure here comes from a
 single run. `CostReproducibility` reads the repeats and publishes the spread — smallest run,
@@ -225,36 +226,41 @@ unmoved. Details in [ROADMAP Phase 5.1.1](https://github.com/MarcelRoozekrans/Ra
 
 | Dataset | Entrant | p50 | p99 *(reported, never gated)* |
 |---|---|---|---|
-| SciFact | **`ragnet-control`** | **0.3–0.4 ms** | 0.5–0.9 ms |
-| SciFact | `semantic-kernel-1.78.0` | 0.9–1.5 ms | 1.8–3.4 ms |
-| SciFact | `langchain-core-1.5.3` | 54.0–56.1 ms (×1.04) | 60.6–61.3 ms (×1.01) |
-| SciFact | `llama-index-core-0.14.23` | 65.7–68.6 ms (×1.04) | 73.9–78.6 ms (×1.06) |
-| SciFact | `haystack-ai-3.0.0` | 78.9–82.4 ms (×1.04) | 89.4–124.9 ms (×1.40) |
-| ArguAna | **`ragnet-control`** | **0.9–1.1 ms** | 1.4–3.8 ms |
-| ArguAna | `semantic-kernel-1.78.0` | 2.0–4.4 ms | 10.8–18.3 ms |
-| ArguAna | `langchain-core-1.5.3` | 88.8–92.7 ms (×1.04) | 97.3–106.5 ms (×1.09) |
-| ArguAna | `llama-index-core-0.14.23` | 106.4–117.2 ms (×1.10) | 114.7–133.1 ms (×1.16) |
-| ArguAna | `haystack-ai-3.0.0` | 107.8–118.1 ms (×1.10) | 123.3–143.8 ms (×1.17) |
-| FiQA | **`ragnet-control`** | **7.9–10.0 ms** | 13.8–27.0 ms |
-| FiQA | `semantic-kernel-1.78.0` | 21.4–23.6 ms | 33.7–42.1 ms |
+| SciFact | **`ragnet-control`** | **0.2–0.3 ms** (×1.32) | 0.4–0.7 ms (×1.80) |
+| SciFact | `semantic-kernel-1.78.0` | 0.8–1.2 ms (×1.45) | 2.0–3.1 ms (×1.55) |
+| SciFact | `langchain-core-1.5.3` | 52.8–55.3 ms (×1.05) | 63.3–69.5 ms (×1.10) |
+| SciFact | `llama-index-core-0.14.23` | 63.1–64.4 ms (×1.02) | 69.9–74.7 ms (×1.07) |
+| SciFact | `haystack-ai-3.0.0` | 75.8–77.1 ms (×1.02) | 86.4–98.4 ms (×1.14) |
+| ArguAna | **`ragnet-control`** | **0.8–1.0 ms** (×1.30) | 1.1–1.7 ms (×1.46) |
+| ArguAna | `semantic-kernel-1.78.0` | 1.9–2.4 ms (×1.27) | 9.9–10.5 ms (×1.07) |
+| ArguAna | `langchain-core-1.5.3` | 88.1–88.4 ms (×1.00) | 102.9–104.6 ms (×1.02) |
+| ArguAna | `llama-index-core-0.14.23` | 106.5–107.1 ms (×1.01) | 121.0–166.0 ms (×1.37) |
+| ArguAna | `haystack-ai-3.0.0` | 105.9–107.3 ms (×1.01) | 124.1–127.7 ms (×1.03) |
+| FiQA | **`ragnet-control`** | **7.0–7.4 ms** (×1.05) | 11.2–13.1 ms (×1.17) |
+| FiQA | `semantic-kernel-1.78.0` | 20.0–20.2 ms (×1.01) | 30.7–36.8 ms (×1.20) |
 
-**Rag.NET is now the fastest entrant on all three corpora**, 2–3× ahead of Semantic Kernel and two
-orders of magnitude ahead of the Python defaults. Read the two caveats below before quoting either
-of those, because both change what the numbers mean.
+**Rag.NET is the fastest entrant on all three corpora**, 2.4–4× ahead of Semantic Kernel and two
+orders of magnitude ahead of the Python defaults. Read the caveat below before quoting either of
+those, because it changes what the numbers mean.
 
-**The .NET rows come from a different session than the Python rows, and their ranges say so.** The
-Python entrants were measured 2026-08-10; the two .NET entrants were re-measured 2026-08-11 after
-the optimisation, in **two** separate idle sessions of three gated rounds each, and their columns
-publish the union across both — six runs, not three, which is why those ranges are wider than the
-Python ones rather than tighter. Strictly this page's own "one machine, one session" rule wants a
-single sweep of all five, and that re-sweep is still owed.
+**All twelve cells come from one machine in one session**, measured 2026-08-12 00:04, five entrants
+interleaved, three gated repeats each. The confound this section carried until then is gone: the
+earlier table published the union of two .NET sessions against Python rows from a third day, six
+runs wide where the Python rows were three, and said so. These ranges are three-run spreads
+throughout, which is why almost every one of them is narrower than the figure it replaces.
 
-**Semantic Kernel is what makes that tolerable, because it is the control for the control.** Its
-code did not change between the two sessions, so whatever its rows moved is session variance and
-nothing else: 0.7–1.2 → 0.9–1.5 ms on SciFact, 1.9–2.3 → 2.0–4.4 on ArguAna, 21.6–22.6 → 21.4–23.6
-on FiQA. That is roughly ±20%, at the same time as the control moved **4–5×**. A cross-session
-comparison could not manufacture a change that size, and the Python gap is two orders of magnitude
-— far outside anything session state has ever been worth here.
+**Semantic Kernel says the machine was quiet, and it is the reason to believe the rest.** Its code
+has not changed since the two-session measurement, so its rows are a pure read on session
+conditions: 0.8–1.2 ms on SciFact against 0.7–1.2 and 0.9–1.5 previously, 1.9–2.4 on ArguAna
+against 1.9–2.3 and 2.0–4.4, 20.0–20.2 on FiQA against 21.6–22.6 and 21.4–23.6. Every one lands
+inside the earlier envelopes and FiQA lands slightly below both, so this session was at least as
+quiet as the sessions whose numbers it replaces — measured, not asserted.
+
+**The sweep is repeat-outermost, and that is not an implementation detail.** Running one entrant's
+three repeats before starting the next would hand whichever went first the quietest stretch and the
+last one whatever the machine had become, turning drift into a between-entrant difference that
+reads exactly like a library result. Interleaved, drift lands on all five roughly equally and
+surfaces as spread inside each cell, where the gate can see it.
 
 FiQA has no Python rows: no Python entrant has ever run that corpus, so its vector cache is cold,
 and a cold entrant would pay 57,638 documents of embedding no other row paid.
@@ -262,22 +268,24 @@ and a cold entrant would pay 57,638 documents of embedding no other row paid.
 **The caveat that must travel with this table, or it misleads.** This compares **default in-memory
 stores**, and for the Python entrants the default is a reference implementation nobody runs in
 production — LangChain's `InMemoryVectorStore` and LlamaIndex's `SimpleVectorStore` scan candidates
-in Python-level loops. *"LangChain is 150× slower"* is **false**; *"LangChain's default in-memory
-store is 150× slower than Rag.NET's default in-memory store"* is what was measured. The
+in Python-level loops. *"LangChain is 200× slower"* is **false**; *"LangChain's default in-memory
+store is 200× slower than Rag.NET's default in-memory store"* is what was measured. The
 "at their defaults" protocol is what makes the row meaningful and is also exactly what makes the
 unqualified claim wrong.
 
 The multiplier is also a moving target and should be read as one. It was ~40× when this section was
-first published; optimising *our* side of the ratio pushed the same comparison past 150× with
-nothing changing in LangChain whatsoever. A number that moves that far on one side's internals was
+first published; optimising *our* side of the ratio pushed the same comparison to roughly 180–280×
+on SciFact — the spread is that wide because the denominator is a 0.2–0.3 ms range — with nothing
+changing in LangChain whatsoever. A number that moves that far on one side's internals was
 never a fact about either library — point all five entrants at a real Qdrant or pgvector and the
 figure becomes the store's, not the library's.
 
 **p99 is reported and deliberately never gated.** At these query counts it rides on one to three
-tail samples, so it moves for reasons a defect-catching bar cannot distinguish from noise: FiQA's
-control p99 spans 13.8–27.0 ms while its p50 spans 7.9–10.0, and an earlier SciFact run measured a
-×3.35 p99 spread on a p50 that barely moved — a single 7 ms sample among 300 is enough. It is
-published anyway, so an unstable tail is visible rather than quietly dropped.
+tail samples, so it moves for reasons a defect-catching bar cannot distinguish from noise. Even in
+this single quiet session SciFact's control tail spreads ×1.80 on a p50 that spreads ×1.32, and
+ArguAna's LlamaIndex tail spans 121.0–166.0 ms (×1.37) beside a p50 that holds to ×1.01; an earlier
+run measured a ×3.35 p99 spread on a p50 that barely moved, and a single 7 ms sample among 300 is
+enough to do it. It is published anyway, so an unstable tail is visible rather than quietly dropped.
 
 ### Index construction — per ecosystem, **not comparable across them**
 
@@ -285,30 +293,39 @@ published anyway, so an unstable tail is visible rather than quietly dropped.
 
 | Dataset | Entrant | Indexing |
 |---|---|---|
-| SciFact | `ragnet-control` | 0.01–0.02 s |
-| SciFact | `semantic-kernel-1.78.0` | 0.02–0.03 s |
-| ArguAna | `ragnet-control` | 0.02–0.04 s |
-| ArguAna | `semantic-kernel-1.78.0` | 0.05–0.11 s |
-| FiQA | `ragnet-control` | 0.11–0.19 s |
-| FiQA | `semantic-kernel-1.78.0` | 0.18–0.23 s |
+| SciFact | `ragnet-control` | 0.02–0.02 s (×1.59) |
+| SciFact | `semantic-kernel-1.78.0` | 0.02–0.02 s (×1.09) |
+| ArguAna | `ragnet-control` | 0.02–0.03 s (×2.20) |
+| ArguAna | `semantic-kernel-1.78.0` | 0.05–0.10 s (×2.03) |
+| FiQA | `ragnet-control` | 0.10–0.11 s (×1.09) |
+| FiQA | `semantic-kernel-1.78.0` | 0.16–0.18 s (×1.08) |
 
-**The control's index construction got slower, and that is the trade, not a regression.** FiQA moved
-from 0.09 s before the optimisation to 0.11–0.19 s after: each vector's norm is now computed once
-on write instead of once per candidate per query. Roughly 0.05 s more at index time buys ~10 ms off
-every query, over 57,638 documents — worth it after the first few queries and increasingly so
-afterwards. Part of the increase is session variance rather than the change, since Semantic Kernel
-moved similarly (0.16–0.18 → 0.18–0.23 s) without any code change at all.
+**The control's index construction got slower, and that is the trade, not a regression — but the
+size of the trade was overstated until this sweep.** Each vector's norm is now computed once on
+write instead of once per candidate per query, and FiQA's index construction moved from 0.09 s
+before the optimisation to **0.10–0.11 s** after. The previous table read 0.11–0.19 s and this page
+attributed "part of" that to session variance; the single-session re-measurement says most of it
+was. Semantic Kernel, whose code did not change, fell from 0.18–0.23 s to 0.16–0.18 s over the same
+interval — so the earlier session was inflating both rows, and the real cost of the trade is about
+0.01–0.02 s on 57,638 documents, bought back by the query-side gain in the table above. A figure
+that shrank when the machine got quieter was never mostly about the code.
+
+**ArguAna's ×2.20 and ×2.03 are the honest wart here.** Both are near the ×3 hard-fail bar, on
+spans of 0.02–0.03 s and 0.05–0.10 s — durations short enough that a scheduler hiccup is a large
+fraction of the measurement. They are published rather than smoothed because a ratio that large on
+a span that small is a statement about the resolution of the instrument, and hiding it would make
+the other cells look better calibrated than they are.
 
 **Python entrants** — the span additionally includes each library's own chunker:
 
 | Dataset | Entrant | Indexing |
 |---|---|---|
-| SciFact | `langchain-core-1.5.3` | 0.45–0.49 s (×1.07) |
-| SciFact | `llama-index-core-0.14.23` | 1.52–1.56 s (×1.02) |
-| SciFact | `haystack-ai-3.0.0` | 0.85–0.96 s (×1.13) |
-| ArguAna | `langchain-core-1.5.3` | 0.74–0.75 s (×1.02) |
-| ArguAna | `llama-index-core-0.14.23` | 2.18–2.25 s (×1.03) |
-| ArguAna | `haystack-ai-3.0.0` | 1.30–1.42 s (×1.09) |
+| SciFact | `langchain-core-1.5.3` | 0.44–0.45 s (×1.02) |
+| SciFact | `llama-index-core-0.14.23` | 1.43–1.46 s (×1.02) |
+| SciFact | `haystack-ai-3.0.0` | 0.82–0.83 s (×1.01) |
+| ArguAna | `langchain-core-1.5.3` | 0.72–0.77 s (×1.06) |
+| ArguAna | `llama-index-core-0.14.23` | 2.11–2.17 s (×1.03) |
+| ArguAna | `haystack-ai-3.0.0` | 1.24–1.25 s (×1.01) |
 
 **Two tables rather than one, on purpose.** The indexing spans do not bracket the same work: the
 Python entrants' spans include each library's own chunker, while the .NET rows receive their units
