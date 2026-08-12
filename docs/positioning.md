@@ -79,7 +79,7 @@ project its authors archived invites the fair objection that the table picked so
 not answer back.
 
 That leaves a real gap in .NET, and filling it is Rag.NET's actual claim: 18 source connectors,
-9 parser packages, 7 vector stores, RAPTOR, GraphRAG with Leiden community detection, HyDE and
+9 parser packages, 7 vector stores, RAPTOR, GraphRAG with community detection, HyDE and
 multi-query, four answer engines, and REST/gRPC/MCP/CLI serving surfaces — none of which has a
 maintained .NET equivalent today.
 

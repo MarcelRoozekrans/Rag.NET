@@ -3,7 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Rag.NET.Graph</RootNamespace>
     <PackageId>Rag.NET.Graph</PackageId>
-    <Description>Standalone graph library — Leiden community detection, PageRank, IGraphStore abstraction</Description>
+    <Description>Standalone graph library — modularity community detection, PageRank, IGraphStore abstraction</Description>
     <PackageTags>$(PackageTags);graph;leiden;pagerank;community-detection</PackageTags>
     <VerifiedBy>unit</VerifiedBy>
   </PropertyGroup>

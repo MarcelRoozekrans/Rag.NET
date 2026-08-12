@@ -4,7 +4,7 @@ using Xunit;
 
 namespace Rag.NET.Graph.Tests.Algorithms;
 
-public class LeidenTests
+public class LouvainWithRefinementTests
 {
     [Fact]
     public void Detect_TwoDisconnectedCliques_FindsTwoCommunities()
@@ -21,7 +21,7 @@ public class LeidenTests
                 relationships.Add(new GraphRelationship($"E{i}", $"E{j}", "connected"));
 
         var graph = new GraphSnapshot(entities, relationships, []);
-        var communities = Leiden.Detect(graph);
+        var communities = LouvainWithRefinement.Detect(graph);
 
         Assert.Equal(2, communities.Count);
         var c0 = communities[0].MemberEntities.ToHashSet(StringComparer.Ordinal);
@@ -35,7 +35,7 @@ public class LeidenTests
     public void Detect_SingleNode_ReturnsSingleCommunity()
     {
         var graph = new GraphSnapshot([new GraphEntity("A", "Node", "A")], [], []);
-        var communities = Leiden.Detect(graph);
+        var communities = LouvainWithRefinement.Detect(graph);
         Assert.Single(communities);
         Assert.Single(communities[0].MemberEntities);
     }
@@ -44,7 +44,7 @@ public class LeidenTests
     public void Detect_EmptyGraph_ReturnsEmpty()
     {
         var graph = new GraphSnapshot([], [], []);
-        var communities = Leiden.Detect(graph);
+        var communities = LouvainWithRefinement.Detect(graph);
         Assert.Empty(communities);
     }
 
@@ -60,7 +60,7 @@ public class LeidenTests
                 relationships.Add(new GraphRelationship($"E{i}", $"E{j}", "connected"));
 
         var graph = new GraphSnapshot(entities, relationships, []);
-        var communities = Leiden.Detect(graph);
+        var communities = LouvainWithRefinement.Detect(graph);
         Assert.Single(communities);
         Assert.Equal(5, communities[0].MemberEntities.Count);
     }
@@ -80,7 +80,7 @@ public class LeidenTests
         relationships.Add(new GraphRelationship("E7", "E8", "bridge"));
 
         var graph = new GraphSnapshot(entities, relationships, []);
-        var communities = Leiden.Detect(graph);
+        var communities = LouvainWithRefinement.Detect(graph);
 
         Assert.Equal(3, communities.Count);
         // All 12 entities must be assigned
@@ -114,7 +114,7 @@ public class LeidenTests
         relationships.Add(new GraphRelationship("E0", "E10", "bridge"));
 
         var graph = new GraphSnapshot(entities, relationships, []);
-        var communities = Leiden.Detect(graph);
+        var communities = LouvainWithRefinement.Detect(graph);
 
         Assert.Equal(2, communities.Count);
     }
@@ -124,7 +124,7 @@ public class LeidenTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>This is a property of Leiden, not a tuning target.</b> Each clique holds 45 internal edges
+    /// <b>This is a property of modularity, not a tuning target.</b> Each clique holds 45 internal edges
     /// and spends 2 on the ring, so the partition into ten is the modularity optimum by an enormous
     /// margin, and every published implementation recovers it. It is stated as an equality for that
     /// reason: a bound like <c>Count &gt;= 1</c> is satisfied by returning one community of 100,
@@ -159,7 +159,7 @@ public class LeidenTests
             relationships.Add(new GraphRelationship($"C{c}N0", $"C{(c + 1) % cliques}N0", "bridge"));
 
         var graph = new GraphSnapshot(entities, relationships, []);
-        var communities = Leiden.Detect(graph);
+        var communities = LouvainWithRefinement.Detect(graph);
 
         Assert.Equal(cliques, communities.Count);
         foreach (var community in communities)
@@ -184,8 +184,8 @@ public class LeidenTests
         relationships.Add(new GraphRelationship("E3", "E4", "weak bridge", 0.1));
 
         var graph = new GraphSnapshot(entities, relationships, []);
-        var lowRes = Leiden.Detect(graph, new LeidenOptions { Resolution = 0.5 });
-        var highRes = Leiden.Detect(graph, new LeidenOptions { Resolution = 2.0 });
+        var lowRes = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { Resolution = 0.5 });
+        var highRes = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { Resolution = 2.0 });
 
         Assert.True(highRes.Count >= lowRes.Count);
     }
@@ -202,8 +202,8 @@ public class LeidenTests
             .ToList();
 
         var graph = new GraphSnapshot(entities, relationships, []);
-        var run1 = Leiden.Detect(graph, new LeidenOptions { RandomSeed = 123 });
-        var run2 = Leiden.Detect(graph, new LeidenOptions { RandomSeed = 123 });
+        var run1 = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { RandomSeed = 123 });
+        var run2 = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { RandomSeed = 123 });
 
         Assert.Equal(run1.Count, run2.Count);
         var sorted1 = run1.Select(c => c.MemberEntities.OrderBy(x => x, StringComparer.Ordinal).ToList()).ToList();
@@ -222,7 +222,7 @@ public class LeidenTests
             new("A", "B", "connected"),
         };
         var graph = new GraphSnapshot(entities, relationships, []);
-        var communities = Leiden.Detect(graph);
+        var communities = LouvainWithRefinement.Detect(graph);
         // Should not crash; should still find communities
         Assert.NotEmpty(communities);
         Assert.Equal(2, communities.SelectMany(c => c.MemberEntities).Count());
@@ -238,7 +238,7 @@ public class LeidenTests
         };
         // No relationships at all
         var graph = new GraphSnapshot(entities, [], []);
-        var communities = Leiden.Detect(graph);
+        var communities = LouvainWithRefinement.Detect(graph);
         var allMembers = communities.SelectMany(c => c.MemberEntities).ToHashSet(StringComparer.Ordinal);
         Assert.Equal(3, allMembers.Count); // all entities assigned
     }
@@ -251,7 +251,7 @@ public class LeidenTests
     /// <see cref="SqliteGraphStore"/>'s <c>name</c> column is <c>COLLATE NOCASE</c> — two spellings
     /// are one row, and it cannot hold "Google" and "google" as separate entities — and its
     /// neighbour queries match endpoints with <c>COLLATE NOCASE</c> too, so it traverses this edge.
-    /// <see cref="Leiden"/> matched endpoints to names with <see cref="StringComparer.Ordinal"/> and
+    /// <see cref="LouvainWithRefinement"/> matched endpoints to names with <see cref="StringComparer.Ordinal"/> and
     /// therefore dropped it. Over the sixty-article MultiHop-RAG slice that silently cost the
     /// clustering real structure: 475 of 655 communities held a single entity.
     /// </remarks>
@@ -265,7 +265,7 @@ public class LeidenTests
         };
         var relationships = new[] { new GraphRelationship("google", "Alphabet", "subsidiary of") };
 
-        var communities = Leiden.Detect(new GraphSnapshot(entities, relationships, []));
+        var communities = LouvainWithRefinement.Detect(new GraphSnapshot(entities, relationships, []));
 
         Assert.Single(communities);
         Assert.Equal(2, communities[0].MemberEntities.Count);
@@ -286,7 +286,7 @@ public class LeidenTests
                 relationships.Add(new GraphRelationship($"E{i}", $"E{j}", "connected"));
 
         var graph = new GraphSnapshot(entities, relationships, []);
-        var communities = Leiden.Detect(graph, new LeidenOptions { MaxLevels = 1 });
+        var communities = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { MaxLevels = 1 });
         // Should still find communities, MaxLevels caps recursion
         Assert.NotEmpty(communities);
     }

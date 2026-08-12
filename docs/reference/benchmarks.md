@@ -370,25 +370,25 @@ Community detection, PageRank, entity extraction, and graph-aware retrieval. Bas
 
 | Method | Nodes | Mean | Allocated |
 |--------|------:|-----:|----------:|
-| Leiden_Detect | 50 | 531 μs | 250 KB |
+| LouvainWithRefinement_Detect | 50 | 531 μs | 250 KB |
 | PageRank_Compute | 50 | 67 μs | 13 KB |
 | Ingestion_WithoutGraphRag | 50 | 6 μs | 712 B |
 | Ingestion_WithGraphEntityExtraction | 50 | 376 μs | 131 KB |
 | Retrieval_LocalSearch | 50 | 103 μs | 19 KB |
 | Retrieval_GlobalSearch | 50 | 26 μs | 6 KB |
-| Leiden_Detect | 200 | 2,605 μs | 1,077 KB |
+| LouvainWithRefinement_Detect | 200 | 2,605 μs | 1,077 KB |
 | PageRank_Compute | 200 | 228 μs | 51 KB |
 | Ingestion_WithGraphEntityExtraction | 200 | 370 μs | 131 KB |
 | Retrieval_LocalSearch | 200 | 134 μs | 50 KB |
 | Retrieval_GlobalSearch | 200 | 27 μs | 17 KB |
-| Leiden_Detect | 1,000 | 5,457 μs | 8,134 KB |
+| LouvainWithRefinement_Detect | 1,000 | 5,457 μs | 8,134 KB |
 | PageRank_Compute | 1,000 | 675 μs | 250 KB |
 | Ingestion_WithGraphEntityExtraction | 1,000 | 411 μs | 131 KB |
 | Retrieval_LocalSearch | 1,000 | 361 μs | 196 KB |
 | Retrieval_GlobalSearch | 1,000 | 76 μs | 76 KB |
 
 **Notes:**
-- Leiden community detection scales super-linearly with node count — runs offline during ingestion, not on the query path.
+- Modularity community detection (`LouvainWithRefinement`, named `Leiden` when these runs were recorded) scales super-linearly with node count — runs offline during ingestion, not on the query path.
 - `Ingestion_WithGraphEntityExtraction` cost is dominated by LLM extraction calls (mocked here); real-world cost is 100–500 ms per document.
 - `Retrieval_GlobalSearch` generates community summaries via LLM (mocked); real-world cost is 50–200 ms.
 

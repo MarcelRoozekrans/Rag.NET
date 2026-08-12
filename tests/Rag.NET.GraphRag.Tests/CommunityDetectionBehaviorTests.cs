@@ -48,7 +48,7 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task HandleAsync_RunsLeidenAndStoresCommunities()
+    public async Task HandleAsync_RunsCommunityDetectionAndStoresCommunities()
     {
         var options = new GraphRagOptions { Enabled = true };
         var sut = new CommunityDetectionBehavior(_chatClient, _embedder, _graphStore, options);
@@ -63,7 +63,7 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
 
         var snapshot = await _graphStore.GetFullGraphAsync(TestContext.Current.CancellationToken);
         Assert.NotEmpty(snapshot.Communities);
-        // Leiden should detect at least 2 communities from the two cliques
+        // The clusterer should detect at least 2 communities from the two cliques
         Assert.True(snapshot.Communities.Count >= 2);
     }
 
@@ -211,7 +211,7 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
         Assert.All(snapshot.Entities, entity => Assert.True(entity.PageRankScore > 0.0));
     }
 
-    /// <summary>The configured Leiden resolution actually reaches Leiden.</summary>
+    /// <summary>The configured resolution actually reaches the clusterer.</summary>
     /// <remarks>
     /// <b>The plumbing test above proves the option is stored; this one proves it is read.</b> That
     /// is the distinction #108 was written about: <c>GraphRagOptions.EntityTypes</c> was settable,
@@ -221,7 +221,7 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
     /// two runs over the same graph must therefore disagree.
     /// </remarks>
     [Fact]
-    public async Task HandleAsync_HigherLeidenResolution_ProducesMoreCommunities()
+    public async Task HandleAsync_HigherResolution_ProducesMoreCommunities()
     {
         SetupChatClient("Community report text");
         SetupEmbedder(4);
@@ -233,14 +233,14 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
         Assert.True(
             fine > coarse,
             $"resolution 5.0 produced {fine} communities and 0.5 produced {coarse}; if they are " +
-            "equal the setting is not reaching Leiden.Detect");
+            "equal the setting is not reaching LouvainWithRefinement.Detect");
     }
 
     /// <summary>Runs detection once at one resolution and reports how many communities it found.</summary>
     private async Task<int> CountCommunitiesAtResolutionAsync(double resolution)
     {
         var options = new GraphRagOptions { Enabled = true };
-        options.Leiden.Resolution = resolution;
+        options.CommunityDetection.Resolution = resolution;
         var sut = new CommunityDetectionBehavior(_chatClient, _embedder, _graphStore, options);
         var ct = TestContext.Current.CancellationToken;
 
@@ -400,7 +400,7 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
 
     private async Task PopulateGraphStore()
     {
-        // Two cliques of entities to ensure Leiden finds communities
+        // Two cliques of entities to ensure the clusterer finds communities
         await _graphStore.AddEntitiesAsync([
             new GraphEntity("A1", "Org", "Company A1"), new GraphEntity("A2", "Org", "Company A2"),
             new GraphEntity("A3", "Org", "Company A3"), new GraphEntity("A4", "Org", "Company A4"),
