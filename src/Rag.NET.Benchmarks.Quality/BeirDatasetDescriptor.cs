@@ -70,6 +70,139 @@ public sealed record BeirDatasetDescriptor(
     bool ExcludesSelfRetrievedDocument,
     BeirParityTarget ParityTarget)
 {
+    // A record's synthesized Equals and GetHashCode are built from this field, so its type decides
+    // whether two descriptors with the same protocols are the same descriptor. BeirProtocolSet is a
+    // struct, so they are; every BCL set is compared by reference here and they were not.
+    private readonly BeirProtocolSet? _applicableProtocols;
+
+    /// <summary>
+    /// The protocols this dataset can be measured under, or <see langword="null"/> for all of them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This exists because "nobody has run this" and "running this would be meaningless" were the
+    /// same statement.</b> Both were written as an empty <c>BeirReproduction</c> array beside a
+    /// <c>FitsTheNightly: false</c> budget cell reading NEVER RUN. TREC-COVID's Comparison cell means
+    /// the first. MultiHop-RAG's Parity leg means the second — its articles average 10,340 characters
+    /// and the parity protocol indexes one chunk per document truncated at 256 tokens, so the run
+    /// would score roughly the first tenth of each article and report the result as retrieval quality.
+    /// </para>
+    /// <para>
+    /// Conflating the two is not untidiness. <see cref="All"/> enrols a descriptor in every theory
+    /// that iterates it, so on 2026-08-12 a descriptor added for Phase 5.3 joined the comparison
+    /// control and killed a cost sweep seven minutes in against a cold embedding cache.
+    /// </para>
+    /// <para>
+    /// <see langword="null"/> rather than a populated set is deliberate: it keeps the four existing
+    /// descriptors byte-identical and makes "supports everything" the thing you get by not thinking
+    /// about it, which is right for a BEIR dataset and wrong only for the shapes BEIR does not cover.
+    /// </para>
+    /// <para>
+    /// <b>An empty set is refused.</b> It would make <see cref="Supports"/> answer
+    /// <see langword="false"/> for every protocol, which is a descriptor that is described and then
+    /// measured by nothing — precisely the state <see cref="All"/>'s own documentation says cannot
+    /// arise and that
+    /// <c>All_ListsEveryDescribedDataset_SoADescriptorCannotExistWithoutBeingMeasured</c> exists to
+    /// prevent. Neither would catch it, because both look at whether a descriptor is listed rather
+    /// than at whether anything can run it. Failing at construction beats surfacing hours later as a
+    /// universal skip nobody can account for.
+    /// </para>
+    /// <para>
+    /// <b>And the set cannot be reached back through.</b> This was once an
+    /// <see cref="IReadOnlySet{T}"/> that the accessor froze a copy of, because a read-only view is
+    /// not an immutable set: a caller holding the <see cref="HashSet{T}"/> it passed could keep
+    /// mutating it and silently change what a <see langword="static"/> descriptor supports at
+    /// runtime. <see cref="BeirProtocolSet"/> is a <see langword="struct"/> with no referent, so the
+    /// same invariant now holds by construction rather than by the accessor remembering to copy —
+    /// and it brings the value equality a set behind an interface could not have. See that type for
+    /// why no BCL set could.
+    /// </para>
+    /// </remarks>
+    public BeirProtocolSet? ApplicableProtocols
+    {
+        get => _applicableProtocols;
+        init
+        {
+            if (value is { Count: 0 })
+            {
+                throw new ArgumentException(
+                    "A BEIR dataset descriptor cannot declare an empty set of applicable " +
+                    "protocols: it would be measurable under no protocol at all, so it would be " +
+                    "described and then run by nothing. Pass null to say 'all of them', which is " +
+                    "the default, or name the protocols the dataset can actually be measured under.",
+                    nameof(value));
+            }
+
+            _applicableProtocols = value;
+        }
+    }
+
+    /// <summary>Reports whether this dataset can be measured under one protocol.</summary>
+    /// <param name="protocol">The protocol to ask about.</param>
+    /// <returns><see langword="true"/> when this dataset can be measured under it.</returns>
+    public bool Supports(BeirProtocol protocol) =>
+        _applicableProtocols is not { } protocols || protocols.Contains(protocol);
+
+    /// <summary>
+    /// How this dataset is put on disk, or <see langword="null"/> for the normal thing: download
+    /// <see cref="ArchiveUrl"/> and verify it against <see cref="ArchiveMd5"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A BEIR dataset is a zip with a published checksum, and that is what the four descriptors
+    /// below are. A dataset that is <i>not</i> published that way — two JSON files on a model hub,
+    /// say — cannot be described by a URL and an MD5 alone, but it can still satisfy the one thing
+    /// the harness needs, which is a directory holding <c>corpus.jsonl</c>, <c>queries.jsonl</c> and
+    /// <c>qrels/{split}.tsv</c>. Naming an <see cref="IBeirDatasetSource"/> here is how it says so.
+    /// </para>
+    /// <para>
+    /// <see langword="null"/> rather than a default instance, for the same reason
+    /// <see cref="ApplicableProtocols"/> is: it keeps the four existing descriptors byte-identical
+    /// and makes "the way BEIR publishes datasets" the thing you get by not thinking about it.
+    /// </para>
+    /// </remarks>
+    public IBeirDatasetSource? Source { get; init; }
+
+    /// <summary>
+    /// Every protocol except <see cref="BeirProtocol.GraphRag"/> — what a BEIR-published dataset is
+    /// measurable under.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The four descriptors below left <see cref="ApplicableProtocols"/> at <see langword="null"/>
+    /// from the day applicability was added until <see cref="BeirProtocol.GraphRag"/> arrived, and
+    /// <see langword="null"/> means "all of them" — which would now enrol all four in a graph
+    /// protocol none of them can be judged under. Naming the ten is the smaller change than making
+    /// the eleventh protocol opt-in on the enum's side, and it keeps the descriptor the single place
+    /// a reader asks what a dataset can be measured under.
+    /// </para>
+    /// <para>
+    /// Declared <b>above</b> the descriptors that read it, because static field and property
+    /// initialisers run in declaration order: below them it would still be
+    /// <c>default(BeirProtocolSet)</c> at the moment each of the four is constructed — the empty
+    /// set, which is exactly the state <see cref="ApplicableProtocols"/> refuses to be handed.
+    /// That refusal is what turns a mis-ordering into a loud failure rather than four datasets
+    /// measurable under nothing.
+    /// </para>
+    /// <para>
+    /// One shared value rather than four literals, so "the BEIR ten" cannot drift into four
+    /// slightly different lists. It is safe to share because
+    /// <see cref="BeirProtocolSet"/> is an immutable value; there is nothing for a reader of it to
+    /// hold on to.
+    /// </para>
+    /// </remarks>
+    private static readonly BeirProtocolSet EveryProtocolExceptGraphRag = BeirProtocolSet.Of(
+        BeirProtocol.Parity,
+        BeirProtocol.Real,
+        BeirProtocol.HybridBm25,
+        BeirProtocol.Hyde,
+        BeirProtocol.Reranked,
+        BeirProtocol.Comparison,
+        BeirProtocol.SemanticKernel,
+        BeirProtocol.LangChain,
+        BeirProtocol.LlamaIndex,
+        BeirProtocol.Haystack);
+
     /// <summary>
     /// SciFact: scientific claims against a corpus of abstracts.
     /// </summary>
@@ -96,7 +229,10 @@ public sealed record BeirDatasetDescriptor(
         TestQueryCount: 300,
         TitledDocumentCount: 5183,
         ExcludesSelfRetrievedDocument: false,
-        ParityTarget: new BeirParityTarget(0.645, SciFactPublishedSource));
+        ParityTarget: new BeirParityTarget(0.645, SciFactPublishedSource))
+    {
+        ApplicableProtocols = EveryProtocolExceptGraphRag,
+    };
 
     /// <summary>
     /// FiQA-2018 task 2: opinionated financial questions against answers crawled from StackExchange,
@@ -145,7 +281,10 @@ public sealed record BeirDatasetDescriptor(
         TestQueryCount: 648,
         TitledDocumentCount: 0,
         ExcludesSelfRetrievedDocument: true,
-        ParityTarget: new BeirParityTarget(0.36867, FiQAPublishedSource));
+        ParityTarget: new BeirParityTarget(0.36867, FiQAPublishedSource))
+    {
+        ApplicableProtocols = EveryProtocolExceptGraphRag,
+    };
 
     /// <summary>
     /// ArguAna: retrieve the best counterargument to an argument, over idebate.org debates.
@@ -182,7 +321,10 @@ public sealed record BeirDatasetDescriptor(
         TestQueryCount: 1406,
         TitledDocumentCount: 2699,
         ExcludesSelfRetrievedDocument: true,
-        ParityTarget: new BeirParityTarget(0.50167, ArguAnaPublishedSource));
+        ParityTarget: new BeirParityTarget(0.50167, ArguAnaPublishedSource))
+    {
+        ApplicableProtocols = EveryProtocolExceptGraphRag,
+    };
 
     /// <summary>
     /// TREC-COVID: 50 topics judged against the CORD-19 open-research corpus, and the programme's
@@ -229,7 +371,92 @@ public sealed record BeirDatasetDescriptor(
         TestQueryCount: 50,
         TitledDocumentCount: 171325,
         ExcludesSelfRetrievedDocument: false,
-        ParityTarget: new BeirParityTarget(0.47232, TrecCovidPublishedSource));
+        ParityTarget: new BeirParityTarget(0.47232, TrecCovidPublishedSource))
+    {
+        ApplicableProtocols = EveryProtocolExceptGraphRag,
+    };
+
+    /// <summary>
+    /// MultiHop-RAG: news articles, and questions written to be unanswerable from any one of them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The first dataset here that BEIR does not publish.</b> There is no zip and no checksum to
+    /// download — upstream is two JSON files on Hugging Face, which <see cref="MultiHopRagSource"/>
+    /// fetches, verifies against the pinned revision's own measured lengths and digests, and
+    /// converts into the <c>corpus.jsonl</c> / <c>queries.jsonl</c> / <c>qrels/test.tsv</c> layout
+    /// the rest of the harness reads. <see cref="ArchiveUrl"/> therefore points at the pinned
+    /// revision's file tree rather than at an archive, and <see cref="ArchiveMd5"/> is empty because
+    /// there is no archive to have one: the two digests that actually gate the download live on
+    /// <see cref="MultiHopRagSource"/>, where they are checked. Neither field is read for this
+    /// descriptor — <c>BeirDatasetCache</c> consults them only when <see cref="Source"/> is
+    /// <see langword="null"/>.
+    /// </para>
+    /// <para>
+    /// Counts are what the pinned revision converts to, measured on 2026-08-12 and pinned by
+    /// <see cref="MultiHopRagSource.PublishedCounts"/> rather than taken from the paper: 609
+    /// articles, all titled, and 2,556 queries of which 2,255 are judged. The other 301 are
+    /// <c>null_query</c> records answered "Insufficient information." with an empty evidence list —
+    /// written out like any other query and judged by nothing, which is why <c>TestQueryCount</c>
+    /// and <c>QueryCount</c> differ here for a reason no other dataset in this file has.
+    /// </para>
+    /// <para>
+    /// <b>Two protocols, not eleven.</b> <see cref="BeirProtocol.Real"/> and
+    /// <see cref="BeirProtocol.GraphRag"/>. Parity is excluded because it would produce a number
+    /// rather than a measurement: these articles average 10,340 characters and the parity protocol
+    /// indexes one chunk per document truncated at the model's 256 tokens, so the run would score
+    /// roughly the first tenth of each article and report the result as retrieval quality. The
+    /// ablation cells and the library-comparison rows are excluded because they are all defined
+    /// over the parity corpus, and the Python entrants because Phase 5.1's published matrix fixes
+    /// their three corpora.
+    /// </para>
+    /// <para>
+    /// <b>There is no published parity anchor, and that is a determination rather than an
+    /// omission.</b> Every other descriptor in this file carries a <see cref="BeirParityTarget"/>
+    /// holding MTEB's published nDCG@10 for <c>all-MiniLM-L6-v2</c>. MultiHop-RAG has no comparable
+    /// figure anywhere. Its paper's Table 5 reports MAP@K, MRR@K and Hit@K for ada-002,
+    /// llm-embedder, bge-large-en-v1.5, jina-v2, e5-base-v2, voyage-02 and instructor-large —
+    /// <b>there is no MiniLM row</b> — while this repository pins <c>all-MiniLM-L6-v2</c> at
+    /// nDCG@10. Both the model and the metric differ, so no figure in that table can anchor a run
+    /// here, and borrowing one would be comparing our embedder against somebody else's under a
+    /// metric neither of them reported. MTEB does not carry the dataset as a retrieval task at all,
+    /// so the source every other figure here comes from holds nothing for it either.
+    /// </para>
+    /// <para>
+    /// This is recorded at length because it is exactly the kind of fact that gets quietly forgotten
+    /// and then filled in from the wrong row six months later. <b>The target's
+    /// <see cref="BeirParityTarget.PublishedNdcgAt10"/> is therefore
+    /// <see cref="double.NaN"/></b>, which is not a placeholder: every comparison against NaN is
+    /// false, so <see cref="BeirParityTarget.Contains"/> admits no measurement at all and a parity
+    /// assertion against this dataset cannot pass by accident. Nothing should reach it in the first
+    /// place — <see cref="BeirProtocol.Parity"/> is declared inapplicable and
+    /// <c>BeirParityTests</c> skips on that before it looks at the target — and the NaN is what
+    /// makes "should" into "cannot".
+    /// </para>
+    /// <para>
+    /// Upstream is the Hugging Face dataset repository <c>yixuantt/MultiHopRAG</c> at the revision
+    /// <see cref="MultiHopRagSource.Revision"/> pins. No author or venue is cited here, deliberately:
+    /// this file's other citations were each read off a licence file or a deposit record, and the
+    /// paper's authorship has not been traced to one, so quoting it from memory would put an
+    /// unverified line beside four verified ones.
+    /// </para>
+    /// </remarks>
+    public static BeirDatasetDescriptor MultiHopRag { get; } = new(
+        MultiHopRagSource.DatasetName,
+        new Uri(
+            "https://huggingface.co/datasets/yixuantt/MultiHopRAG/tree/" + MultiHopRagSource.Revision),
+        ArchiveMd5: string.Empty,
+        MultiHopRagLicence,
+        DocumentCount: 609,
+        QueryCount: 2556,
+        TestQueryCount: 2255,
+        TitledDocumentCount: 609,
+        ExcludesSelfRetrievedDocument: false,
+        ParityTarget: new BeirParityTarget(double.NaN, MultiHopRagNoPublishedReference))
+    {
+        ApplicableProtocols = BeirProtocolSet.Of(BeirProtocol.Real, BeirProtocol.GraphRag),
+        Source = new MultiHopRagSource(),
+    };
 
     /// <summary>
     /// Every dataset the harness knows about, in the order they were added.
@@ -238,7 +465,8 @@ public sealed record BeirDatasetDescriptor(
     /// The parity test enumerates this, so a dataset that is described here is measured. There is no
     /// second list to keep in step and no way to add a descriptor that nothing runs.
     /// </remarks>
-    public static IReadOnlyList<BeirDatasetDescriptor> All { get; } = [SciFact, FiQA, ArguAna, TrecCovid];
+    public static IReadOnlyList<BeirDatasetDescriptor> All { get; } =
+        [SciFact, FiQA, ArguAna, TrecCovid, MultiHopRag];
 
     /// <summary>
     /// Where every published figure in this file was read from, quoted into each dataset's own
@@ -306,6 +534,64 @@ public sealed record BeirDatasetDescriptor(
         "0.36867 for all-MiniLM-L6-v2 — FiQA2018.json ndcg_at_10, test split, dataset revision " +
         "27a168819829fe9bcd655c2df245fb19452e8e06, from " + MtebResultsSource +
         " The dev split reports 0.38815 and train 0.36609; test is the split measured here.";
+
+    /// <summary>
+    /// What stands in for MultiHop-RAG's published figure: the finding that there is none.
+    /// </summary>
+    /// <remarks>
+    /// The full reasoning is on <see cref="MultiHopRag"/> itself. Restated here because
+    /// <see cref="BeirParityTarget"/>'s whole design is that a figure and its provenance live in one
+    /// record and cannot drift apart — so the absence of a figure has to be recorded in the same
+    /// place, or a later reader finds a bare NaN with nothing to say why.
+    /// </remarks>
+    private const string MultiHopRagNoPublishedReference =
+        "NaN -- NO PUBLISHED REFERENCE, and a determination rather than an omission. The " +
+        "MultiHop-RAG paper's Table 5 reports MAP@K, MRR@K and Hit@K for ada-002, llm-embedder, " +
+        "bge-large-en-v1.5, jina-v2, e5-base-v2, voyage-02 and instructor-large. There is no " +
+        "MiniLM row, and this repository pins all-MiniLM-L6-v2 at nDCG@10: both the model and the " +
+        "metric differ, so no figure there can anchor a run here, and borrowing one would compare " +
+        "our embedder against somebody else's under a metric neither reported. Nor does the source " +
+        "every other figure in this file comes from hold one -- " + MtebResultsSource +
+        " MTEB does not carry MultiHop-RAG as a retrieval task at that model revision or any " +
+        "other, so there is nothing to read off it. The figure is NaN rather than a plausible " +
+        "number because every comparison against NaN is false: BeirParityTarget.Contains can admit " +
+        "no measurement at all, which turns 'nothing should consult this target' -- the descriptor " +
+        "declares BeirProtocol.Parity inapplicable -- into 'nothing can pass against it'.";
+
+    /// <summary>
+    /// MultiHop-RAG's licence, read from the dataset's own repository, and the one dataset in this
+    /// file whose authors declared a licence themselves.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The Hugging Face repository <c>yixuantt/MultiHopRAG</c> declares <c>odc-by</c>, and it is
+    /// the dataset's <b>own authors'</b> repository rather than a mirror. That is a different kind
+    /// of claim from the four above it, where the tag on the BeIR cards is one blanket
+    /// <c>cc-by-sa-4.0</c> applied by an aggregator across the mirror's 19 datasets whose authors
+    /// declared nothing — a repository-level default, not a per-dataset determination, which is why
+    /// this file has already caught it disagreeing with upstream on every BEIR dataset it
+    /// describes, and materially on two: FiQA, where <c>cc-by-sa-4.0</c> grants the commercial use
+    /// upstream explicitly refuses, and SciFact, whose corpus and queries are licensed separately
+    /// (ODC-By 1.0 and CC BY 4.0) with no share-alike obligation on either.
+    /// </para>
+    /// <para>
+    /// <b>The upstream GitHub code repository carries no licence at all</b>, which is recorded so
+    /// nobody re-discovers it and reads it as a contradiction. It is not one: what this harness
+    /// downloads is the data on Hugging Face, not the code on GitHub, and the code's silence says
+    /// nothing about the data's declaration.
+    /// </para>
+    /// </remarks>
+    private const string MultiHopRagLicence =
+        "ODC-By 1.0 (odc-by), declared by the dataset's own authors on their own Hugging Face " +
+        "repository huggingface.co/datasets/yixuantt/MultiHopRAG, at the pinned revision " +
+        MultiHopRagSource.Revision + ". Attribution required. This is an author declaration, not " +
+        "an aggregator's tag: the BeIR Hugging Face cards carry one blanket cc-by-sa-4.0 across " +
+        "the mirror's 19 datasets whose authors declared nothing, and this file has already caught " +
+        "that tag disagreeing with upstream on every BEIR dataset it describes -- materially on " +
+        "FiQA, where it grants the commercial use upstream refuses, and on SciFact, whose corpus " +
+        "and queries are licensed separately with no share-alike. The upstream GitHub code " +
+        "repository carries no licence; that is irrelevant here, because what is downloaded is the " +
+        "data on Hugging Face and not the code.";
 
     /// <summary>The provenance of ArguAna's published figure.</summary>
     /// <remarks>

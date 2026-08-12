@@ -15,6 +15,13 @@ public sealed class GraphGlobalSearchBehavior(
 {
     private const int DefaultBatchSize = 5;
 
+    /// <summary>Community reports fetched when the handed-down candidate set holds none.</summary>
+    private const int DefaultReportCandidates = 50;
+
+    /// <summary>The metadata key and value community reports are tagged with at ingestion.</summary>
+    private const string GraphTypeKey = "graph_type";
+    private const string CommunityReportKind = "community_report";
+
     public async ValueTask<IReadOnlyList<SearchResult>> HandleAsync(
         RetrievalContext ctx, CancellationToken ct,
         Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next)
@@ -22,15 +29,76 @@ public sealed class GraphGlobalSearchBehavior(
         var results = await next(ctx, ct).ConfigureAwait(false);
         var (communityReports, otherResults) = PartitionResults(results);
 
+        var fetched = false;
+        if (communityReports.Count == 0)
+        {
+            communityReports = await FetchCommunityReports(ctx, next, ct).ConfigureAwait(false);
+            fetched = true;
+        }
+
         if (communityReports.Count == 0)
             return results;
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.graphrag.search");
         activity?.SetTag("graphrag.search.mode", "global");
         activity?.SetTag("graphrag.community.count", communityReports.Count);
+        activity?.SetTag("graphrag.community.refetched", fetched);
 
         var synthesized = await MapReduce(ctx, communityReports, ct).ConfigureAwait(false);
         return PrependSynthesized(synthesized, otherResults);
+    }
+
+    /// <summary>
+    /// Re-enters the retrieval pipeline asking only for community reports.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is what made the behavior reachable at all.</b> Global search is map-reduce over
+    /// community reports, and it partitions them out of whatever the retrieval underneath happened
+    /// to return — but a corpus produces a few hundred long, general, multi-entity reports against
+    /// tens of thousands of short, specific entity and article chunks, and nothing reserved the
+    /// reports a slot. Over a sixty-article slice not one appeared in a dense top-500: the map
+    /// phase never ran, and the behavior returned its input untouched while looking as though it
+    /// had worked. Expecting a general-purpose dense retriever to surface reports among all that is
+    /// a category error — a search defined over community reports should ask for community reports.
+    /// </para>
+    /// <para>
+    /// <b>It uses the seams that already exist rather than taking a vector store of its own.</b>
+    /// <c>RetrievalOptions.MetadataFilter</c> is already carried through the pipeline and already
+    /// applied by the store, so the fetch is the caller's own retrieval with one filter added —
+    /// exactly what a caller had to write by hand to reach this behavior before. Any filter the
+    /// caller set is preserved; only the graph-type key is imposed, because a global search that
+    /// declined to look at community reports would have nothing to reduce.
+    /// </para>
+    /// <para>
+    /// It costs a second pass through the downstream pipeline, which is why it is conditional: a
+    /// candidate set that already contains a report never triggers it.
+    /// </para>
+    /// </remarks>
+    private async Task<List<SearchResult>> FetchCommunityReports(
+        RetrievalContext ctx,
+        Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next,
+        CancellationToken ct)
+    {
+        var filter = ctx.Options.MetadataFilter is not null
+            ? new Dictionary<string, MetadataValue>(ctx.Options.MetadataFilter, StringComparer.Ordinal)
+            : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+
+        filter[GraphTypeKey] = CommunityReportKind;
+
+        var reportContext = ctx with
+        {
+            Options = ctx.Options with
+            {
+                MetadataFilter = filter,
+                TopK = options.GlobalReportCandidates ?? DefaultReportCandidates,
+            },
+        };
+
+        var results = await next(reportContext, ct).ConfigureAwait(false);
+        var (reports, _) = PartitionResults(results);
+
+        return reports;
     }
 
     private static (List<SearchResult> Communities, List<SearchResult> Others) PartitionResults(
@@ -41,8 +109,8 @@ public sealed class GraphGlobalSearchBehavior(
 
         for (var i = 0; i < results.Count; i++)
         {
-            if (results[i].Chunk.Metadata.TryGetValue("graph_type", out var gt)
-                && gt == "community_report")
+            if (results[i].Chunk.Metadata.TryGetValue(GraphTypeKey, out var gt)
+                && gt == CommunityReportKind)
             {
                 communities.Add(results[i]);
             }

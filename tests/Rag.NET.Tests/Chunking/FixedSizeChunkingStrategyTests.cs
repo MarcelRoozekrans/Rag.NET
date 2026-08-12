@@ -97,4 +97,32 @@ public class FixedSizeChunkingStrategyTests
 
         Assert.Empty(chunks);
     }
+
+    [Fact]
+    public async Task ChunkAsync_AstralCharactersAtEverySplitOffset_KeepEveryChunkWellFormed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // The same defect RecursiveChunkingStrategy carried: the window end is a raw code-unit
+        // offset whenever no space is near enough to break on, and the overlap walks the next
+        // start backwards by another raw count. No spaces at all here, so the space search never
+        // rescues the boundary, and the pair is swept across every alignment.
+        for (var lead = 0; lead < 24; lead++)
+        {
+            var text = new string('a', lead) + "\U0001F525" + new string('b', 30);
+            var options = new ChunkingOptions { MaxChunkSize = 8, Overlap = 3 };
+
+            var chunks = await _sut.ChunkAsync(CreateSection(text), options, ct).ToListAsync(ct);
+
+            foreach (var chunk in chunks)
+            {
+                // Normalize() is the assertion because it is what breaks in production: it
+                // throws on a lone surrogate, and every transformer tokenizer normalizes first.
+                var failure = Record.Exception(() => chunk.Text.Normalize());
+                Assert.True(
+                    failure is null,
+                    FormattableString.Invariant(
+                        $"lead {lead}: chunk {chunk.ChunkIndex} is not well-formed UTF-16: {failure?.Message}"));
+            }
+        }
+    }
 }

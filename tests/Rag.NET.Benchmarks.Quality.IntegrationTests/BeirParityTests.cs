@@ -84,18 +84,30 @@ public sealed class BeirParityTests
     public async Task NdcgAt10_ThroughTheRealPipeline_LandsWithinToleranceOfPublished(
         string datasetName, string sep)
     {
+        // The descriptor is fetched before any gate because the first gate is a question about the
+        // dataset. ByName throws on a name no descriptor carries, which is right: an unknown
+        // dataset name is a bug in the theory data, not a case to skip past.
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        // First of the three, because the answer is a property of the dataset rather than of this
+        // machine. An inapplicable case reporting "no model file" would send the reader to their
+        // environment for something no environment can fix.
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.Parity),
+            $"{datasetName} does not declare the Parity protocol applicable, so measuring it would " +
+            "produce a number that means nothing.");
+
         Assert.SkipUnless(
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
 
-        // Second, and in this order deliberately. An unprovisioned machine should be told it is
+        // Third, and in this order deliberately. An unprovisioned machine should be told it is
         // unprovisioned; the budget message is for the case that could have run and was not asked
         // to, which is exactly the nightly's situation.
         Assert.SkipWhen(
             BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.Parity, out var budgetReason),
             budgetReason);
 
-        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
 
         // The separator is passed explicitly, not left to the default, because it decides what is

@@ -23,6 +23,16 @@ build/
 # Test result output (--logger trx is the standing default for Benchmarks.Quality.Tests)
 TestResults/
 
+# The GraphRAG extraction cache. It normally lives under RAGNET_BEIR_CACHE, beside the datasets
+# and well outside this tree — but RAGNET_BEIR_CACHE is a path a developer chooses, and pointing
+# it at a directory inside the checkout is an easy afternoon's mistake. Two things must never be
+# committed from it, and they are different things: the extractions are LLM output derived from
+# MultiHop-RAG's articles, which are ODC-By and not ours to redistribute, and they are paid for
+# per token. Neither belongs in history. The same reasoning covers the HyDE hypotheticals beside
+# them.
+graph-extractions/
+hypotheticals/
+
 # dotnet pack output — ci.yml's pack-validate job and tests/Rag.NET.PackageValidation.Tests both
 # use artifacts/packages; packages are build products and never belong in history.
 artifacts/

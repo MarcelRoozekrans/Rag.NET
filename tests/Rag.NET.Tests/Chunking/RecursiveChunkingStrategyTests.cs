@@ -149,6 +149,81 @@ public class RecursiveChunkingStrategyTests
     }
 
     [Fact]
+    public async Task ChunkAsync_HardSplitLandingInsideAnAstralCharacter_KeepsEveryChunkWellFormed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // U+1F525 FIRE is one rune stored as two UTF-16 code units. Nine 'a's put its high
+        // surrogate at index 9 and its low surrogate at index 10, so a hard split every 10
+        // code units falls exactly between them. The text contains none of the separators,
+        // so the recursion runs out of them and reaches the hard split.
+        var text = new string('a', 9) + "\U0001F525" + new string('b', 15);
+        var options = new ChunkingOptions { MaxChunkSize = 10, Overlap = 0 };
+
+        var chunks = await _sut.ChunkAsync(CreateSection(text), options, ct).ToListAsync(ct);
+
+        AssertEveryChunkIsWellFormedText(chunks, "hard split");
+    }
+
+    [Fact]
+    public async Task ChunkAsync_OverlapSliceLandingInsideAnAstralCharacter_KeepsEveryChunkWellFormed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // The other code-unit slice. "aaa\U0001F525" is five code units ending with the pair,
+        // so an overlap of one takes the last single code unit — the low surrogate on its own —
+        // and prepends it to the next chunk. Nothing is hard-split here; the paragraph
+        // separator does the splitting and the overlap still corrupts the result.
+        var text = "aaa\U0001F525\n\nbbb";
+        var options = new ChunkingOptions { MaxChunkSize = 6, Overlap = 1 };
+
+        var chunks = await _sut.ChunkAsync(CreateSection(text), options, ct).ToListAsync(ct);
+
+        Assert.True(chunks.Count > 1, $"Input must produce multiple chunks; got {chunks.Count}");
+        AssertEveryChunkIsWellFormedText(chunks, "overlap slice");
+    }
+
+    [Fact]
+    public async Task ChunkAsync_AstralCharactersAtEverySplitOffset_KeepEveryChunkWellFormed()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // The two cases above pin one offset each. This sweeps the pair across every
+        // alignment relative to MaxChunkSize, so a fix that only handles the boundary
+        // landing on the high surrogate — and not the one landing on the low — still fails.
+        for (var lead = 0; lead < 24; lead++)
+        {
+            var text = new string('a', lead) + "\U0001F525" + new string('b', 30);
+            var options = new ChunkingOptions { MaxChunkSize = 8, Overlap = 3 };
+
+            var chunks = await _sut.ChunkAsync(CreateSection(text), options, ct).ToListAsync(ct);
+
+            AssertEveryChunkIsWellFormedText(chunks, FormattableString.Invariant($"lead {lead}"));
+        }
+    }
+
+    /// <summary>
+    /// Asserts no chunk carries half of a surrogate pair.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="string.Normalize()"/> is the assertion rather than a hand-rolled surrogate scan
+    /// because it is what actually broke: it throws <see cref="ArgumentException"/> on a lone
+    /// surrogate, and <c>BertNormalizer</c> — the first thing every ONNX embedder in this
+    /// repository runs on a chunk — calls it. A chunk that fails here cannot be embedded at all.
+    /// </remarks>
+    private static void AssertEveryChunkIsWellFormedText(
+        IReadOnlyList<TextChunk> chunks, string context)
+    {
+        foreach (var chunk in chunks)
+        {
+            var failure = Record.Exception(() => chunk.Text.Normalize());
+            Assert.True(
+                failure is null,
+                FormattableString.Invariant(
+                    $"{context}: chunk {chunk.ChunkIndex} of {chunk.Text.Length} code units is not ") +
+                FormattableString.Invariant(
+                    $"well-formed UTF-16 and cannot be embedded: {failure?.Message}"));
+        }
+    }
+
+    [Fact]
     public async Task ChunkAsync_ManyShortLines_PacksThemTowardsMaxChunkSize()
     {
         var ct = TestContext.Current.CancellationToken;

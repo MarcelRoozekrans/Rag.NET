@@ -469,6 +469,74 @@ public static class BeirReproduction
             BeirProtocol.Haystack,
             [],
             "NEVER RUN, for the Comparison entry's reason."),
+        new(
+            "multihop-rag",
+            BeirProtocol.Real,
+            [0.63967],
+            "MEASURED 2026-08-12 on Windows 11, .NET 10, CPU ONNX Runtime. Rag.NET's own " +
+            "chunking over the 609 converted articles, max-pooled back to documents: 17,648 " +
+            "units over 609 of 609 documents, up to 201 from a single article, none of them " +
+            "contributing nothing. All 2,255 judged queries evaluated, none excluded for want of " +
+            "a positive judgement, and every one of them retrieved two or more units of one " +
+            "document -- so max-pooling is exercised on the whole query set here rather than on " +
+            "a fraction of it, which is not true of any other corpus in this table. " +
+            "Recall@10 = 0.78684, MRR@10 = 0.70150. " +
+            "**Measured twice, and the two agree to five decimals.** The first run took 392.6 s " +
+            "off a partly warm cache, the second 600.2 s cold on a machine under other load; the " +
+            "cache state and the load moved the wall clock by 1.6x and moved nDCG@10, Recall@10 " +
+            "and MRR@10 by nothing at all. That is the expected result -- the protocol is " +
+            "deterministic given the corpus, the pinned model and the judged set -- but it is " +
+            "worth recording, because it separates the figure pinned here from the timing in " +
+            "BeirRunBudget, which is load-sensitive and is flagged there as an upper bound. " +
+            "**This figure is pinned on its own authority, and that phrase is doing real work.** " +
+            "No published figure exists for all-MiniLM-L6-v2 on this dataset under any metric " +
+            "this repository reports. The paper's Table 5 gives MAP@K, MRR@K and Hit@K for " +
+            "ada-002, llm-embedder, bge-large-en-v1.5, jina-v2, e5-base-v2, voyage-02 and " +
+            "instructor-large -- there is no MiniLM row -- and MTEB does not carry the dataset " +
+            "as a retrieval task at all, so the source every other published figure here comes " +
+            "from holds nothing for it either. Both the model and the metric differ from " +
+            "anything in the literature, so nothing outside this repository checked 0.63967 and " +
+            "nothing outside it can. What the number is good for is drift: the next run is " +
+            "compared against this one, and a later reader must not mistake a self-pinned figure " +
+            "for a reproduced one. " +
+            "The companion parity leg read 0.55724 (Recall@10 = 0.68906, MRR@10 = 0.63748, 609 " +
+            "units, 41.1 s), giving a chunking delta of +0.08243 -- the largest in the suite, and " +
+            "expected on a corpus whose articles average 10,340 characters, because the parity " +
+            "protocol truncates each at 256 tokens and simply cannot see most of the document " +
+            "the chunked leg indexes. That leg is deliberately NOT pinned and carries no entry: " +
+            "the descriptor declares Parity inapplicable for exactly the reason the delta is " +
+            "large, and it is measured here only as the control this delta is subtracted from."),
+        new(
+            "multihop-rag",
+            BeirProtocol.GraphRag,
+            [],
+            "RUN 2026-08-12, and it produced NO nDCG@10 -- which is why the figure list is empty " +
+            "and will stay empty until somebody asks a different question of this protocol. " +
+            "GraphRagFunctionsTests runs the graph path end to end over a pinned 60-article slice " +
+            "of the corpus and asserts that it FUNCTIONS: extraction produced 8,999 entities and " +
+            "16,403 relationships, entities recur across articles (\"Google\" in 16 of the 60), " +
+            "Leiden returned 607 communities, local search retrieved a known-relevant document in " +
+            "the top 10 for all 27 of the slice's judged queries, and global search's map-reduce " +
+            "ran over the community reports. **None of that is a retrieval quality figure.** It is " +
+            "scored over 60 of 609 documents and 27 of 2,255 queries, so an nDCG computed from it " +
+            "would not be comparable to the Real entry above, to any other row here, or to " +
+            "anything outside this repository -- and a number in this cell is read as comparable " +
+            "by construction. The empty list is therefore a determination, not a gap: " +
+            "AssertReproduces prints and checks nothing for this pair, which is the correct " +
+            "behaviour, and the run's own assertions are its gate. " +
+            "**What would fill it** is the comparative run the roadmap defers -- the whole corpus " +
+            "under the graph path, differenced against the Real entry's 0.63967 -- and that run " +
+            "does not exist yet. Two things measured on 2026-08-12 say what it would cost and " +
+            "what it would find. Extraction is one LLM call per chunk plus a gleaning pass: 4,088 " +
+            "calls for 60 articles, so the 609-article corpus is roughly 41,000. And the graph the " +
+            "60 articles produced was degenerate when this entry was first written -- 475 of 655 " +
+            "communities held one entity and one held 7,954 of the 8,999. **That was six library " +
+            "defects, not a property of the corpus, and this entry asserted it as current state " +
+            "for as long as it took to notice.** After the fixes of 2026-08-12 the same slice " +
+            "gives 607 communities, 396 singletons, and a largest community of 796 -- 8.8% of the " +
+            "graph against 88.4%. 273 entities genuinely have no relationship, which is a property " +
+            "of extraction rather than of clustering. Neither figure is a reason to skip the " +
+            "comparison; both are reasons not to predict its outcome from this entry."),
     ];
 
     /// <summary>
@@ -513,6 +581,29 @@ public static class BeirReproduction
     /// </remarks>
     public static void RequireRecordedCase(string datasetName, BeirProtocol protocol) =>
         _ = Find(datasetName, protocol);
+
+    /// <summary>Reports whether the table holds an entry for one pair, without throwing when it does not.</summary>
+    /// <param name="datasetName">The BEIR dataset name.</param>
+    /// <param name="protocol">The protocol to ask about.</param>
+    /// <returns><see langword="true"/> when the table holds an entry for that pair.</returns>
+    /// <remarks>
+    /// <see cref="AssertReproduces"/> and <see cref="RequireRecordedCase"/> both go through
+    /// <c>Find</c>, which throws on an absent pair — correct for them, and useless for asking
+    /// whether a pair is absent.
+    /// </remarks>
+    public static bool HasReproduction(string datasetName, BeirProtocol protocol)
+    {
+        foreach (var reproduction in Reproductions)
+        {
+            if (string.Equals(reproduction.Dataset, datasetName, StringComparison.Ordinal)
+                && reproduction.Protocol == protocol)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>Reports whether the measurement lands within tolerance of any recorded figure.</summary>
     private static bool Reproduces(Reproduction recorded, double measured)

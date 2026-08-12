@@ -153,6 +153,7 @@
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/Rag.NET.Benchmarks/Rag.NET.Benchmarks.csproj" />
+    <Project Path="benchmarks/Rag.NET.Benchmarks.Quality.GraphExtractions/Rag.NET.Benchmarks.Quality.GraphExtractions.csproj" />
     <Project Path="benchmarks/Rag.NET.Benchmarks.Quality.Hypotheticals/Rag.NET.Benchmarks.Quality.Hypotheticals.csproj" />
   </Folder>
 </Solution>

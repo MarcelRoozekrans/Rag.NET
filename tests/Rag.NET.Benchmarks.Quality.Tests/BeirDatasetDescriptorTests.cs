@@ -272,6 +272,133 @@ public sealed class BeirDatasetDescriptorTests
     }
 
     [Fact]
+    public void TheFourBeirDatasetsSupportEveryProtocolExceptGraphRag_SoNoMeasuredCellIsGatedOff()
+    {
+        // Originally EveryExistingDatasetSupportsEveryProtocol_SoThisChangeMovesNothing, over
+        // BeirDatasetDescriptor.All and every protocol. Landing MultiHop-RAG made that false twice
+        // over, both times by design: All now holds a fifth descriptor that declares nine protocols
+        // inapplicable, and BeirProtocol gained an eleventh member — GraphRag — that the four BEIR
+        // datasets cannot be judged under, so they now name the ten they can.
+        //
+        // The scope narrowed rather than the assertion weakening, because the job has not changed.
+        // What this catches is somebody quietly restricting one of the four datasets whose cells are
+        // already measured and pinned in BeirRunBudget and BeirReproduction: a restriction there
+        // gates off a measured cell, and a gated-off cell reads from a test summary exactly like a
+        // cell that passed. Naming the four and the ten is what keeps that catchable while letting
+        // a fifth dataset — and an eleventh protocol — exist. Weakening it to "All, where
+        // applicable" would have been the same test asserting nothing, since it would agree with
+        // whatever the descriptors happen to say.
+        BeirDatasetDescriptor[] beirDatasets =
+            [
+                BeirDatasetDescriptor.SciFact,
+                BeirDatasetDescriptor.FiQA,
+                BeirDatasetDescriptor.ArguAna,
+                BeirDatasetDescriptor.TrecCovid,
+            ];
+
+        foreach (var descriptor in beirDatasets)
+        {
+            foreach (var protocol in Enum.GetValues<BeirProtocol>())
+            {
+                if (protocol == BeirProtocol.GraphRag)
+                {
+                    Assert.False(
+                        descriptor.Supports(protocol),
+                        $"{descriptor.Name} started supporting GraphRag. The graph protocol is " +
+                        "MultiHop-RAG's; a BEIR dataset claiming it would owe a budget cell and a " +
+                        "reproduction entry for a run whose judgements cannot reward a graph.");
+                    continue;
+                }
+
+                Assert.True(
+                    descriptor.Supports(protocol),
+                    $"{descriptor.Name} stopped supporting {protocol}, which would gate off a measured cell.");
+            }
+        }
+    }
+
+    [Fact]
+    public void ADescriptorThatRestrictsItsProtocols_SupportsThoseAndOnlyThose()
+    {
+        // The test above cannot reach this branch. Every existing descriptor leaves
+        // ApplicableProtocols null, so "is null" short-circuits on all 40 of its iterations and
+        // Contains is never called — the half of Supports that actually gates anything would have
+        // shipped with zero coverage. This repository's recurring defect is guards that report
+        // green while covering nothing, so the restricted path gets its own case.
+        var restricted = BeirDatasetDescriptor.SciFact with
+        {
+            ApplicableProtocols = BeirProtocolSet.Of(BeirProtocol.Parity),
+        };
+
+        Assert.True(restricted.Supports(BeirProtocol.Parity));
+        Assert.False(restricted.Supports(BeirProtocol.Real));
+    }
+
+    [Fact]
+    public void ADescriptorCannotDeclareAnEmptySetOfProtocols_BecauseNothingWouldEverRunIt()
+    {
+        // An empty set makes Supports answer false for everything, which is a descriptor that is
+        // described and then measured by nothing. All's own documentation says that state cannot
+        // arise and All_ListsEveryDescribedDataset exists to prevent it, but neither can see it:
+        // both check that a descriptor is listed, not that anything can run it. So the refusal has
+        // to happen at construction, where it names the mistake, rather than hours later as a
+        // universal skip.
+        var exception = Assert.Throws<ArgumentException>(
+            () => BeirDatasetDescriptor.SciFact with
+            {
+                ApplicableProtocols = BeirProtocolSet.Of(),
+            });
+
+        Assert.Contains("empty set", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARestrictedDescriptorIgnoresLaterMutationOfTheSetItWasGiven()
+    {
+        // This can no longer fail on its own: BeirProtocolSet is a struct over a bitmask, so there
+        // is nothing for the caller below to still be holding. That is exactly why it stays. It was
+        // written when the property took an IReadOnlySet<T> — a read-only view, not an immutable
+        // set — where a caller keeping its HashSet could change what a static descriptor supports
+        // at runtime, process-wide, from whichever test happened to run first. It is now the
+        // tripwire for the storage type rather than for the accessor: swap in anything that is a
+        // view onto somebody else's collection and this goes red again.
+        var mutable = new HashSet<BeirProtocol> { BeirProtocol.Parity };
+        var restricted = BeirDatasetDescriptor.SciFact with
+        {
+            ApplicableProtocols = BeirProtocolSet.Of([.. mutable]),
+        };
+
+        mutable.Add(BeirProtocol.Real);
+
+        Assert.False(restricted.Supports(BeirProtocol.Real));
+    }
+
+    [Fact]
+    public void TwoDescriptorsWithTheSameProtocols_AreEqual()
+    {
+        // A record compares its fields with EqualityComparer<T>.Default, and no BCL set overrides
+        // Equals — not HashSet, not FrozenSet, not ImmutableHashSet — so this used to be reference
+        // equality: two descriptors printing character-for-character identically compared unequal
+        // and hashed differently. Deferred while only one descriptor restricted its protocols, and
+        // fixed before a second could inherit the surprise.
+        //
+        // The two sets are built separately and in opposite orders, so what is asserted is that the
+        // protocols are compared, not that an instance is shared.
+        var a = BeirDatasetDescriptor.SciFact with
+        {
+            ApplicableProtocols = BeirProtocolSet.Of(BeirProtocol.Parity, BeirProtocol.Real),
+        };
+
+        var b = BeirDatasetDescriptor.SciFact with
+        {
+            ApplicableProtocols = BeirProtocolSet.Of(BeirProtocol.Real, BeirProtocol.Parity),
+        };
+
+        Assert.Equal(a, b);
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+    }
+
+    [Fact]
     public void ByName_FindsADescribedDataset()
     {
         Assert.Same(BeirDatasetDescriptor.SciFact, BeirDatasetDescriptor.ByName("scifact"));

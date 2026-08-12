@@ -46,6 +46,23 @@ rag.UseGraphRag(options =>
 });
 ```
 
+Tune the clustering itself through `options.Leiden`:
+
+```csharp
+rag.UseGraphRag(options =>
+{
+    options.Leiden.Resolution    = 1.0;   // higher splits into more, smaller communities
+    options.Leiden.MaxIterations = 10;    // local-moving passes per level
+    options.Leiden.MaxLevels     = null;  // null = aggregate until no further improvement
+    options.Leiden.RandomSeed    = 42;    // fixed, so clustering is reproducible
+});
+```
+
+`Resolution` is the one worth reaching for: it scales modularity's penalty term, so raise it
+when communities come out too large to summarise usefully and lower it when the graph
+fragments into many small ones. Values are checked when you configure them — a resolution of
+zero or below is rejected at that line rather than silently returning one community.
+
 Which search runs is decided by the behaviors you add to the retrieval pipeline:
 `GraphLocalSearchBehavior` for entity questions, `GraphGlobalSearchBehavior` for
 "what are the main themes?" questions over community reports. `UseMindMapExtraction`

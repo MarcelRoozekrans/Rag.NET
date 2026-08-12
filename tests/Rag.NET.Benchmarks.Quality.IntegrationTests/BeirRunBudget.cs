@@ -429,6 +429,73 @@ public static class BeirRunBudget
             "measured 2026-08-02: 404.7 s for the Haystack ArguAna run (11,342 units over " +
             "8,674 documents, max 6 from one, 5,094 embedded fresh). Opt-in for the " +
             "LangChain entry's reason; no file, opted-in = FAIL."),
+        new(
+            "multihop-rag",
+            BeirProtocol.Real,
+            FitsTheNightly: false,
+            "MEASURED 2026-08-12: 600.2 s for the real leg and 78.9 s for the parity control it " +
+            "is differenced against, 11 m 19 s for the case. Cold embedding cache, which is what " +
+            "a fresh machine has: 20,453 texts embedded across the two legs, 17,648 of them the " +
+            "chunks of 609 articles. The derivation this replaces declined to guess and said so, " +
+            "which was right -- 609 documents is one order of magnitude under SciFact's corpus " +
+            "and cost about the same, because the articles average 10,340 characters and it is " +
+            "the chunk count, not the document count, that the embedding bill tracks. " +
+            "**This is an UPPER BOUND, not a clean-room figure.** It was taken on a machine " +
+            "running other work -- a media player, three browsers, four editor instances and " +
+            "several MCP servers, 45% CPU across 20 logical processors before the run started -- " +
+            "so an idle machine will be faster by an unknown margin and this number should be " +
+            "re-measured on one before anybody schedules against it. It is published in that " +
+            "state deliberately, because for a gating decision the error is safe in exactly one " +
+            "direction: an over-statement gates a case OUT of the nightly that might have fitted, " +
+            "which costs coverage and is visible, while an under-statement lets a case in that " +
+            "does not fit and silently blows a 120-minute job. Over-estimating fails safe; " +
+            "under-estimating does not. " +
+            "FitsTheNightly stays false for the same reason. 11 m 19 s looks like it would fit " +
+            "beside a solution build, and it may well -- but flipping the gate on a figure known " +
+            "to be inflated by an unmeasured amount is the decision this cell exists to prevent " +
+            "somebody making casually. Re-measure idle, then decide. " +
+            "**Cache state moves this number more than the corpus does, so read the two runs " +
+            "together.** The same case measured 7 m 14 s earlier the same day off a partly warm " +
+            "cache (11,501 hits, 8,402 misses), against 11 m 19 s cold -- a 1.6x spread from " +
+            "nothing but which vectors happened to be on disk. The cold figure is the one " +
+            "recorded because the nightly starts cold; the warm one is recorded here so that a " +
+            "later reader who measures 7 minutes knows why and does not file it as an " +
+            "improvement. Both runs produced identical nDCG@10 to five decimals, so none of this " +
+            "touches the figure in BeirReproduction -- only what it costs to obtain."),
+        new(
+            "multihop-rag",
+            BeirProtocol.GraphRag,
+            FitsTheNightly: false,
+            "MEASURED 2026-08-12, and the only cell in this table whose cost is in two currencies. " +
+            "**The run itself: 5 m 45 s from a cold embedding cache, 33-35 s warm.** " +
+            "GraphRagFunctionsTests over the pinned 60-article slice (MultiHopRagSlice), Windows " +
+            "11, .NET 10, CPU ONNX Runtime. The cold figure is the honest one for a fresh machine: " +
+            "the slice's 2,044 article chunks are the small part, and the 33,100 entity and " +
+            "relationship chunks GraphRAG itself produces plus 655 community reports are what " +
+            "actually gets embedded -- roughly 35,800 vectors, against 17,648 for the whole " +
+            "609-article corpus under the Real protocol. **Graph construction costs more embedding " +
+            "than the corpus does.** " +
+            "**The other currency: 4,088 OpenRouter calls, once.** Entity extraction is an LLM " +
+            "call per chunk plus one gleaning pass, so 2,044 chunks cost 4,088 requests against " +
+            "openai/gpt-4o-mini at temperature 0. That took 34 m 25 s (2,065.2 s) at twelve " +
+            "articles in flight, after a 58-request smoke run of 225.1 s on one article. **No " +
+            "token or cost figure was captured** -- the generation tool never read " +
+            "ChatResponse.Usage, so nothing here is a spend measurement and none should be " +
+            "inferred from the request count. " +
+            "**But the nightly would pay none of it, and neither does a re-run.** Every one of " +
+            "those 4,088 responses is in GraphExtractionCache, replayed refuse-on-miss; the run " +
+            "above makes zero model calls. The cache is never committed, so this cell can no more " +
+            "run on a fresh runner than the Hyde cells can, and an opted-in run without it FAILS " +
+            "naming the missing key rather than skipping. " +
+            "FitsTheNightly stays false for that reason before any timing argument: the nightly " +
+            "has no cache to replay and cannot make the calls. " +
+            "**Two costs are NOT in these figures and would dominate if they were.** Community " +
+            "report generation is one LLM call per community over 655 communities, and the " +
+            "largest community's prompt is 976,425 characters of entity descriptions -- past any " +
+            "model's context, so the guard synthesises reports rather than generating them (see " +
+            "PromptEchoChatClient). And CommunityDetectionBehavior is an ingestion behavior, so a " +
+            "real pipeline re-detects and regenerates every report on every document: 60 passes " +
+            "over this slice, of which 59 are overwritten."),
     ];
 
     /// <summary>
@@ -476,6 +543,28 @@ public static class BeirRunBudget
     /// </remarks>
     public static bool FitsTheNightly(string datasetName, BeirProtocol protocol) =>
         Find(datasetName, protocol).FitsTheNightly;
+
+    /// <summary>Reports whether the table holds a cell for one pair, without throwing when it does not.</summary>
+    /// <param name="datasetName">The BEIR dataset name.</param>
+    /// <param name="protocol">The protocol to ask about.</param>
+    /// <returns><see langword="true"/> when the table holds a cell for that pair.</returns>
+    /// <remarks>
+    /// <see cref="IsGatedOff"/> and <see cref="FitsTheNightly"/> both go through <c>Find</c>, which
+    /// throws on an absent pair — correct for them, and useless for asking whether a pair is absent.
+    /// </remarks>
+    public static bool HasCost(string datasetName, BeirProtocol protocol)
+    {
+        foreach (var cost in Costs)
+        {
+            if (string.Equals(cost.Dataset, datasetName, StringComparison.Ordinal)
+                && cost.Protocol == protocol)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>Reports whether the long runs were explicitly asked for.</summary>
     /// <returns><see langword="true"/> when <see cref="OptInVariable"/> asks for them.</returns>
@@ -566,6 +655,9 @@ public static class BeirRunBudget
         BeirProtocol.Haystack =>
             "HAYSTACK entrant (DocumentSplitter defaults, InMemoryDocumentStore dot_product, " +
             "pinned embedder, scored from the Python harness's TREC run file)",
+        BeirProtocol.GraphRag =>
+            "GRAPHRAG (entities and relations extracted into a graph, communities detected, " +
+            "local and global search over the result)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -579,6 +671,13 @@ public static class BeirRunBudget
     /// live three-to-a-class in <see cref="BeirAblationTests"/>, so their discriminator is a
     /// fragment of the test <i>method</i> name rather than the class name — the class alone would
     /// select all three cells and misreport what the quoted cost buys.
+    /// <para>
+    /// <see cref="BeirProtocol.GraphRag"/>'s discriminator is a bare string because no test class
+    /// measures that protocol yet, so there is nothing to <c>nameof</c>. It is still the right
+    /// fragment: a class or method added for the graph path will carry <c>GraphRag</c> in its
+    /// display name, and a filter that selected nothing today would only be discovered by somebody
+    /// pasting it out of a skip message.
+    /// </para>
     /// </remarks>
     private static string Filter(Cost cost)
     {
@@ -594,6 +693,7 @@ public static class BeirRunBudget
             BeirProtocol.LangChain => "ThroughLangChain",
             BeirProtocol.LlamaIndex => "ThroughLlamaIndex",
             BeirProtocol.Haystack => "ThroughHaystack",
+            BeirProtocol.GraphRag => "GraphRag",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 

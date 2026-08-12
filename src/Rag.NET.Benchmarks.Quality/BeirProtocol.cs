@@ -1,11 +1,11 @@
-namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
+namespace Rag.NET.Benchmarks.Quality;
 
 /// <summary>
 /// Which measurement a run makes over a dataset: the two chunking protocols, plus the ablation
 /// table's three cells — which all index the parity corpus but cost very differently.
 /// </summary>
 /// <remarks>
-/// Exists so <see cref="BeirRunBudget"/> can key a cost on the pair that actually determines it. A
+/// Exists so <c>BeirRunBudget</c> can key a cost on the pair that actually determines it. A
 /// dataset does not have "a cost": SciFact costs ~5 minutes under
 /// <see cref="Parity"/> and roughly twice that under <see cref="Real"/>, because the real
 /// protocol embeds 20,155 chunks where parity embeds 5,183 documents. Keying the budget on the
@@ -18,13 +18,13 @@ public enum BeirProtocol
 {
     /// <summary>
     /// One chunk per document, truncated at the model's 256 tokens — BEIR's own protocol, and the
-    /// only one comparable to a published figure. Measured by <see cref="BeirParityTests"/>.
+    /// only one comparable to a published figure. Measured by <c>BeirParityTests</c>.
     /// </summary>
     Parity,
 
     /// <summary>
     /// Rag.NET's own chunking, max-pooled back to documents, measured against the parity run rather
-    /// than against anything published. Measured by <see cref="BeirRealChunkingTests"/>, which runs
+    /// than against anything published. Measured by <c>BeirRealChunkingTests</c>, which runs
     /// <b>both</b> legs — so a real case costs its own embedding work plus whatever the parity leg
     /// costs when the cache cannot supply it.
     /// </summary>
@@ -34,7 +34,7 @@ public enum BeirProtocol
     /// The ablation table's +bm25 hybrid cell: the parity corpus, dense fused with
     /// <c>InMemoryBm25Index</c> via RRF, comparable to the dense anchor and to no published BM25
     /// figure. Measured by
-    /// <see cref="BeirAblationTests.NdcgAt10_UnderBm25HybridRrf_MeasuresWithBm25ProvablyContributing"/>.
+    /// <c>BeirAblationTests.NdcgAt10_UnderBm25HybridRrf_MeasuresWithBm25ProvablyContributing</c>.
     /// </summary>
     HybridBm25,
 
@@ -42,14 +42,14 @@ public enum BeirProtocol
     /// The ablation table's +hyde cell: the parity corpus searched with the mean of the cached
     /// hypotheticals' vectors instead of the query vector — no LLM call; the run reads the frozen
     /// generation run and refuses on a miss. Measured by
-    /// <see cref="BeirAblationTests.NdcgAt10_UnderCachedHyde_MeasuresWithHydeProvablyDiverging"/>.
+    /// <c>BeirAblationTests.NdcgAt10_UnderCachedHyde_MeasuresWithHydeProvablyDiverging</c>.
     /// </summary>
     Hyde,
 
     /// <summary>
     /// The ablation table's +reranker cell: the parity corpus's dense top-k rescored by the
     /// cross-encoder. Measured by
-    /// <see cref="BeirAblationTests.NdcgAt10_UnderCrossEncoderRerank_MeasuresWithRerankerProvablyReordering"/>.
+    /// <c>BeirAblationTests.NdcgAt10_UnderCrossEncoderRerank_MeasuresWithRerankerProvablyReordering</c>.
     /// </summary>
     Reranked,
 
@@ -59,7 +59,7 @@ public enum BeirProtocol
     /// back — the boundary every comparison entrant crosses — rather than from the rankings in
     /// memory. Same retrieval work as <see cref="Parity"/>, so the same cold cost; what it
     /// measures is the boundary itself, on a row whose answer is already published. Measured by
-    /// <see cref="BeirComparisonControlTests"/>.
+    /// <c>BeirComparisonControlTests</c>.
     /// </summary>
     Comparison,
 
@@ -69,7 +69,7 @@ public enum BeirProtocol
     /// it ships no ingestion pipeline — embedded and searched through Semantic Kernel's own paths
     /// with the pinned embedder, and scored from a TREC run file like every entrant. The embedding
     /// work is the parity corpus's exactly (same texts, same model), so its cold cost is the
-    /// parity leg's. Measured by <see cref="BeirSemanticKernelDefaultsTests"/>.
+    /// parity leg's. Measured by <c>BeirSemanticKernelDefaultsTests</c>.
     /// </summary>
     SemanticKernel,
 
@@ -80,7 +80,7 @@ public enum BeirProtocol
     /// LangChain's own search path with the pinned embedder behind its <c>Embeddings</c>
     /// interface, max-pooled to documents writer-side, and scored from a TREC run file the
     /// pinned Python harness (<c>benchmarks/library-comparison-python</c>) emitted. Scored by
-    /// <see cref="BeirPythonEntrantsTests"/>; no Python code computes a metric.
+    /// <c>BeirPythonEntrantsTests</c>; no Python code computes a metric.
     /// </summary>
     LangChain,
 
@@ -90,7 +90,7 @@ public enum BeirProtocol
     /// <c>SimpleVectorStore</c> (cosine), retrieved through LlamaIndex's own path with the pinned
     /// embedder behind <c>Settings.embed_model</c>, max-pooled to documents writer-side, and
     /// scored from a TREC run file the pinned Python harness emitted. Scored by
-    /// <see cref="BeirPythonEntrantsTests"/>; no Python code computes a metric.
+    /// <c>BeirPythonEntrantsTests</c>; no Python code computes a metric.
     /// </summary>
     LlamaIndex,
 
@@ -101,7 +101,28 @@ public enum BeirProtocol
     /// vectors are unit-length, so dot product and cosine coincide), retrieved through Haystack's
     /// own <c>InMemoryEmbeddingRetriever</c>, max-pooled to documents writer-side, and scored
     /// from a TREC run file the pinned Python harness emitted. Scored by
-    /// <see cref="BeirPythonEntrantsTests"/>; no Python code computes a metric.
+    /// <c>BeirPythonEntrantsTests</c>; no Python code computes a metric.
     /// </summary>
     Haystack,
+
+    /// <summary>
+    /// The graph path: entities and relations extracted from the corpus into a graph, that graph
+    /// partitioned into communities, and retrieval running over the result — local search out from
+    /// the entities a query names, global search over the community summaries. <b>Applies to
+    /// MultiHop-RAG and to nothing else here.</b>
+    /// <para>
+    /// The other ten protocols all index a flat corpus and differ only in how they cut, fuse or
+    /// rescore it, so their costs are variations on one embedding bill. This one builds a second
+    /// structure before it retrieves anything, which is a construction cost no chunking figure
+    /// predicts — the reason it is a protocol rather than another ablation cell.
+    /// </para>
+    /// <para>
+    /// It is restricted to MultiHop-RAG because a graph can only be rewarded where the judgements
+    /// need more than one document. The four BEIR datasets here judge a query against documents
+    /// that answer it individually, so a graph built over them would be measured by qrels that
+    /// cannot tell whether it helped; MultiHop-RAG's queries cite 2 to 4 articles each and are
+    /// written to be unanswerable from any one of them.
+    /// </para>
+    /// </summary>
+    GraphRag,
 }

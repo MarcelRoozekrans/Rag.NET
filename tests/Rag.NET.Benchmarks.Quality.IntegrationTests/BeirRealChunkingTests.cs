@@ -111,12 +111,25 @@ public sealed class BeirRealChunkingTests
     public async Task NdcgAt10_UnderRagNetsOwnChunking_DiffersFromOurParityRunAndStaysNearIt(
         string datasetName)
     {
+        // The descriptor is fetched before any gate because the first gate is a question about the
+        // dataset. ByName throws on a name no descriptor carries, which is right: an unknown
+        // dataset name is a bug in the theory data, not a case to skip past.
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        // First of the three, because the answer is a property of the dataset rather than of this
+        // machine. An inapplicable case reporting "no model file" would send the reader to their
+        // environment for something no environment can fix.
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.Real),
+            $"{datasetName} does not declare the Real protocol applicable, so measuring it would " +
+            "produce a number that means nothing.");
+
         Assert.SkipUnless(
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
 
-        // Every dataset's real leg is opt-in — see BeirRunBudget for why the cheapest of them still
-        // does not fit a 120-minute job that builds the solution first. The cheap half of this
+        // Last: every dataset's real leg is opt-in — see BeirRunBudget for why the cheapest of them
+        // still does not fit a 120-minute job that builds the solution first. The cheap half of this
         // file's coverage, Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments, is deliberately not
         // gated: it needs no model, runs in seconds, and is what still catches a chunker that
         // stopped chunking on the nightly.
@@ -124,7 +137,6 @@ public sealed class BeirRealChunkingTests
             BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.Real, out var budgetReason),
             budgetReason);
 
-        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
         var dataset = await BeirHarness.LoadAsync(
             descriptor, cacheDirectory, BeirLoader.DefaultTitleTextSeparator, ct);
@@ -147,14 +159,63 @@ public sealed class BeirRealChunkingTests
         AssertTheTwoRunsDiffer(descriptor, parity, real);
         AssertTheRealRunDidNotCollapse(descriptor, parity, real);
 
-        // Both legs, because this test's headline result is the DELTA between them and a delta is
-        // pinned by pinning its ends. The collapse envelope above is 0.5x-1.5x of parity — it
-        // catches a protocol that fell over, and it is the right instrument for that — but ArguAna's
-        // real leg can lose 0.020 inside it without a word. That is the whole gap:
-        // BeirReproduction's window is 0.005 and it is centred on what this repository measured, not
-        // on anything published, because for this protocol there is nothing published to centre on.
-        BeirReproduction.AssertReproduces(datasetName, BeirProtocol.Parity, parity.NdcgAt10, _output);
-        BeirReproduction.AssertReproduces(datasetName, BeirProtocol.Real, real.NdcgAt10, _output);
+        PinEachLegThatHasAnAnchor(descriptor, parity, real);
+    }
+
+    /// <summary>
+    /// Pins each leg against what this repository last measured for it.
+    /// </summary>
+    /// <param name="descriptor">The dataset, which decides whether the parity leg has an anchor.</param>
+    /// <param name="parity">The internal control.</param>
+    /// <param name="real">The chunked run.</param>
+    /// <remarks>
+    /// <para>
+    /// Both legs where both can be pinned, because this test's headline result is the DELTA between
+    /// them and a delta is pinned by pinning its ends. The collapse envelope is 0.5x-1.5x of parity
+    /// — it catches a protocol that fell over, and it is the right instrument for that — but
+    /// ArguAna's real leg can lose 0.020 inside it without a word. That is the whole gap:
+    /// <see cref="BeirReproduction"/>'s window is 0.005 and it is centred on what this repository
+    /// measured, not on anything published, because for this protocol there is nothing published to
+    /// centre on.
+    /// </para>
+    /// <para>
+    /// <b>A dataset may have no parity anchor at all, and the parity leg still runs.</b> The two
+    /// facts are easy to conflate and are not the same. MultiHop-RAG declares
+    /// <see cref="BeirProtocol.Parity"/> inapplicable because one chunk truncated at 256 tokens
+    /// indexes about a tenth of a 10,340-character article, so measuring it <i>against the
+    /// literature</i> would report the first tenth of each article as retrieval quality. None of
+    /// that touches the leg's other job: re-measured here on the same corpus in the same process
+    /// off the same vectors, it is the control the chunking delta is subtracted from, and a delta
+    /// needs its control whether or not anybody ever published a number for it. So the leg is
+    /// measured, printed and differenced as always; only the pin is skipped, because
+    /// <see cref="BeirReproduction"/> holds no entry to pin it to.
+    /// </para>
+    /// <para>
+    /// <b>The predicate is <see cref="BeirDatasetDescriptor.Supports"/> and it is consulted
+    /// everywhere.</b> Two candidates could answer this — that, or
+    /// <c>double.IsNaN(descriptor.ParityTarget.PublishedNdcgAt10)</c> — and two predicates that can
+    /// disagree is precisely the defect this phase has spent itself removing. <c>Supports</c> wins
+    /// on three counts. It is the same question the gates at the top of both theories already ask.
+    /// It is the cause rather than the consequence: the NaN target exists <i>because</i> the
+    /// protocol is inapplicable, and the descriptor says so itself. And it cannot drift from the
+    /// registry this method calls into, because
+    /// <c>BeirReproductionTests.EveryApplicableCaseIsRecordedAndNoInapplicableOneIs</c> asserts the
+    /// biconditional directly — an entry is required where a protocol is supported and refused
+    /// where it is not — so "supports Parity" and "has a Parity entry to assert against" are the
+    /// same fact, kept the same by a test rather than by a convention.
+    /// </para>
+    /// </remarks>
+    private void PinEachLegThatHasAnAnchor(
+        BeirDatasetDescriptor descriptor, BeirRunResult parity, BeirRunResult real)
+    {
+        if (descriptor.Supports(BeirProtocol.Parity))
+        {
+            BeirReproduction.AssertReproduces(
+                descriptor.Name, BeirProtocol.Parity, parity.NdcgAt10, _output);
+        }
+
+        BeirReproduction.AssertReproduces(
+            descriptor.Name, BeirProtocol.Real, real.NdcgAt10, _output);
     }
 
     [Theory]
@@ -334,8 +395,7 @@ public sealed class BeirRealChunkingTests
                 {descriptor.Name} real run nDCG@10 = {real.NdcgAt10:F5}, outside {floor:F5}–{ceiling:F5}.
                 That envelope is OUR OWN PARITY RUN ({parity.NdcgAt10:F5}) times {CollapseFloor:F1} and
                 {LeakCeiling:F1}. It is NOT a parity band and there is no published figure for this
-                protocol — do not reach for {descriptor.ParityTarget.PublishedNdcgAt10:F5}, which was
-                measured by truncating each document at 256 tokens and indexing it whole.
+                protocol — {DescribeWhatNotToReachFor(descriptor)}
                 Below the floor: chunk ids reaching IrMetrics instead of document ids, or top-k cutting
                 the candidate list before DocumentRanking pooled it.
                 Above the ceiling: a leak, the same one the parity band's upper edge watches for.
@@ -343,12 +403,46 @@ public sealed class BeirRealChunkingTests
                 """));
     }
 
+    /// <summary>
+    /// Names the published figure a reader must not mistake this envelope for — or says there is
+    /// no such figure, which for a dataset with no parity anchor is the more useful warning.
+    /// </summary>
+    /// <remarks>
+    /// The absent case must never format <see cref="BeirParityTarget.PublishedNdcgAt10"/>: it is
+    /// <see cref="double.NaN"/> by deliberate design, and "do not reach for NaN" reads as a bug in
+    /// the harness rather than as the deliberate determination it records.
+    /// </remarks>
+    /// <remarks>
+    /// The supported branch keeps the original wording and its line break exactly, so a dataset
+    /// with an anchor produces the same failure text to the byte as it did before this method
+    /// existed.
+    /// </remarks>
+    private static string DescribeWhatNotToReachFor(BeirDatasetDescriptor descriptor) =>
+        descriptor.Supports(BeirProtocol.Parity)
+            ? FormattableString.Invariant($"""
+                do not reach for {descriptor.ParityTarget.PublishedNdcgAt10:F5}, which was
+                measured by truncating each document at 256 tokens and indexing it whole.
+                """)
+            : "and this dataset has no published anchor under any protocol, so there is nothing "
+              + "to reach for and nothing to be tempted by.";
+
+    /// <summary>
+    /// Says what the parity leg may be compared with outside this process, which for a dataset
+    /// with no parity anchor is nothing.
+    /// </summary>
+    private static string DescribeParityLegHeading(BeirDatasetDescriptor descriptor) =>
+        descriptor.Supports(BeirProtocol.Parity)
+            ? FormattableString.Invariant(
+                $"comparable to published ≈ {descriptor.ParityTarget.PublishedNdcgAt10:F5}")
+            : "NO published anchor exists for this dataset, so this leg is the internal control "
+              + "and nothing else — it is not pinned and it is not comparable to the literature";
+
     /// <summary>Both runs side by side, which is the only form in which either is meaningful.</summary>
     private static string Describe(
         BeirDatasetDescriptor descriptor, BeirRunResult parity, BeirRunResult real) =>
         FormattableString.Invariant($"""
             === {descriptor.Name} ===
-            PARITY (one chunk per document, truncated at 256) — comparable to published ≈ {descriptor.ParityTarget.PublishedNdcgAt10:F5}
+            PARITY (one chunk per document, truncated at 256) — {DescribeParityLegHeading(descriptor)}
             {parity.Describe()}
 
             REAL (RecursiveChunkingStrategy at defaults, max-pooled to documents) — comparable to the parity run above, and to NOTHING published

@@ -2834,7 +2834,7 @@ by this entry**: Milestone 4's "All planned phases complete" stays open (4.5 rem
 "No package declares `VerifiedBy=none`" stays open (`Rag.NET.Security.AspNetCore`) — both updated
 above to say so rather than left stale.)
 
-## Milestone 5: Evaluation Depth [status: active — 5.1, 5.1.1, 5.3 and 5.4 complete; 5.2 is all that remains]
+## Milestone 5: Evaluation Depth [status: active — 5.1, 5.1.1, 5.3 and 5.4 complete; 5.2 partial — its dataset landed and GraphRAG functions, its comparative run does not exist]
 **Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:
 what each library **costs** rather than what it scores, multi-hop retrieval, graded relevance and
 the datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` does not compute.
@@ -2855,12 +2855,16 @@ shape, though that box is still here doing its share):
       default-in-memory-store caveat inline plus the startup exclusion; indexing publishes as two
       per-ecosystem tables labelled non-comparable, with the reason — the Python spans include each
       library's chunker and are warmed by an untimed rehearsal — stated between them.)*
-- [ ] **`IrMetrics`' graded gain has scored a real dataset**: at least one dataset whose qrels
+- [x] **`IrMetrics`' graded gain has scored a real dataset**: at least one dataset whose qrels
       carry a grade above 1 has been through `Evaluate`, and the FiQA-qrels contradiction
       (`IrMetrics.cs:31-32` against the TREC-COVID debt entry) is settled by reading the cached
       `qrels/test.tsv`, with the losing sentence corrected. Fixture-only exercise of `2^rel − 1`
       fails this criterion, exactly as it has since Phase 3.7.
-- [ ] **Every dataset this milestone lands carries the full Milestone 3 per-dataset checklist**
+      *(Met 2026-08-12 by TREC-COVID: 10,456 qrels rows at grade 1 and 14,217 at grade 2, counted
+      from the downloaded archive, through `Evaluate` to nDCG@10 = 0.45427. The contradiction
+      settled against FiQA — all 17,110 of its judgements are exactly 1 — which is why this needed a
+      new dataset rather than a new run.)*
+- [x] **Every dataset this milestone lands carries the full Milestone 3 per-dataset checklist**
       — descriptor, `BeirRunBudget` timing (the budget table throws on an untimed dataset, so
       that half checks itself), a revision-pinned published reference where one exists, a licence
       determination from upstream rather than a mirror, and every published figure pinned in
@@ -2868,7 +2872,17 @@ shape, though that box is still here doing its share):
       criterion — Milestone 3's close declined TREC-COVID and EnronQA precisely because none of
       this existed for them, so landing them without it would repeat the decline's grounds as
       defects.
+      *(Met for both datasets landed so far, 2026-08-12. TREC-COVID: counts from the archive,
+      timing measured across all ten protocols, reference pinned to MTEB's `ndcg_at_10` 0.47232 at
+      revision `bb9466ba`, licence read from `allenai/cord19` and NIST directly, figure pinned at
+      ±0.005. MultiHop-RAG: counts measured from the pinned revision rather than taken from the
+      paper, timing measured, licence `odc-by` read from the authors' own repository, figure pinned
+      at 0.63967 — and **"where one exists" is doing real work in its row**: there is no published
+      reference for `all-MiniLM-L6-v2` at nDCG@10 on this dataset, so the target holds `NaN`,
+      recorded as a determination and not as an omission.)*
 - [ ] All test projects passing; solution builds 0 warnings / 0 errors from a clean restore
+      — to be re-run at close. True on 2026-08-11; 5.2's branch has not been re-checked from a
+      clean restore.
 
 > **Where this milestone comes from (2026-08-03).** An external handover document ("RAG.net —
 > Evaluation & Benchmarking Handover") proposed an evaluation programme. **Most of it Milestone 3
@@ -3203,7 +3217,7 @@ since SK's indexing moved similarly without any code change.
 **Still owed:** one sweep of all five entrants in a single session, which collapses the union
 ranges back to three-run spreads and removes the caveat entirely.
 
-### Phase 5.2: Multi-Hop Retrieval [status: pending]
+### Phase 5.2: Multi-Hop Retrieval [status: partial 2026-08-12 — MultiHop-RAG landed and measured, and GraphRAG functions; the comparative run this phase was written for is still not run]
 **Goal:** Measure multi-hop retrieval — HotpotQA, MuSiQue, 2WikiMultiHopQA, MultiHop-RAG. (Not a
 features.md row — evaluation depth past single-hop BEIR.)
 
@@ -3300,6 +3314,129 @@ run, a verified licence, a clean HuggingFace revision pin, and retrieval-stage r
 (Hits@10, MRR@10, MAP@10) rather than answer-level ones. Its only work is deriving document-level
 qrels from per-query evidence lists, plus a policy for the **301 null queries** that have no answer
 and no evidence — which is a real decision, not a detail, since they are 12% of the query set.
+
+> **Correction, 2026-08-12: "retrieval-stage reference figures rather than answer-level ones" is
+> true and misleading, and the misleading half is the one that mattered.** The paper's Table 5 is
+> indeed retrieval-stage — and it reports MAP@K, MRR@K and Hit@K for ada-002, llm-embedder,
+> bge-large-en-v1.5, jina-v2, e5-base-v2, voyage-02 and instructor-large. **There is no MiniLM
+> row**, and this repository pins `all-MiniLM-L6-v2` at nDCG@10. Both the model and the metric
+> differ, so not one figure in that table can anchor a run here; MTEB does not carry the dataset as
+> a retrieval task at all, so the source every other published figure in this programme comes from
+> holds nothing for it either. **There is no published reference for our configuration, and this
+> entry read as though there were.** The descriptor now carries `PublishedNdcgAt10 = double.NaN`
+> — not a placeholder: every comparison against NaN is false, so no parity assertion against this
+> dataset can pass by accident. This is the fifth claim in the programme to come from a plausible
+> reading rather than from the source, after four licences.
+
+**Landed 2026-08-12, and measured.** MultiHop-RAG carries the full Milestone 3 per-dataset
+checklist: licence **ODC-BY (`odc-by`)**, declared by the dataset's own authors on their own
+Hugging Face repository `yixuantt/MultiHopRAG`, pinned at revision
+`71ac0d0bd1f951d2d6b70311f7d2ae404e1ffa82`; 609 documents, all titled, bodies averaging 10,340
+characters; 2,556 queries of which **301 are `null_query` records** answered "Insufficient
+information." with an empty evidence list, leaving 2,255 judged; **5,908 qrels rows** after 6,084
+evidence rows collapsed on 176 duplicate citations of the same document by the same query;
+`BeirRunBudget` timing measured rather than derived; the figure pinned in `BeirReproduction`.
+
+| Leg | nDCG@10 | Notes |
+|---|---|---|
+| Parity (control only, not pinned) | **0.55724** | Recall@10 0.68906, MRR@10 0.63748, 609 units, 41.1 s |
+| Real (chunked, pinned) | **0.63967** | Recall@10 0.78684, MRR@10 0.70150; 17,648 units over 609 of 609 documents, max 201 from one article |
+| Chunking delta | **+0.08243** | The largest in the suite |
+
+The delta is large for a reason the corpus explains: at 10,340 characters a document, the parity
+protocol truncates each article at the model's 256 tokens and cannot see most of what the chunked
+leg indexes. Parity is declared **inapplicable** for that reason and carries no pinned entry; it is
+measured only as the control this delta is subtracted from. All 2,255 judged queries were pooled,
+none excluded for want of a positive judgement, and every one retrieved two or more units of one
+document — so max-pooling is exercised over the whole query set here, which is true of no other
+corpus in the table.
+
+**The wall clock is an upper bound and is recorded as one.** The Real leg read **600.2 s** cold, on
+a machine at 45% CPU with other applications running; it wants an idle re-measure before it is
+quoted as a cost. A partly warm first attempt read **392.6 s** — a **1.6x cache artefact** — and
+nDCG@10, Recall@10 and MRR@10 were identical to five decimals across the two. That is the expected
+result for a deterministic protocol, and it is the point: the *figure* is stable and the *timing* is
+not, so they are pinned in different files with different confidence.
+
+**Goal (1) is answered. Goal (2) is not.** `GraphRagFunctionsTests` runs `Rag.NET.GraphRag` end to
+end over a pinned 60-article slice — 8,999 entities, 16,403 relationships, 607 communities, a
+known-relevant document in the top 10 for all 27 of the slice's judged queries, and a global-search
+map/reduce that runs over the community reports it finds in the unfiltered candidate set. It
+publishes **no nDCG**, and the `multihop-rag` / `GraphRag` cell in `BeirReproduction` is
+deliberately empty: 60 of 609 documents and 27 of 2,255 queries would not be comparable to the Real
+row above, to any other row, or to anything outside this repository, and a number in that cell is
+read as comparable by construction. The comparative run — the whole corpus under the graph path,
+differenced against 0.63967 — remains unrun, and two measurements say what it would cost: extraction
+is one LLM call per chunk plus a gleaning pass, **4,088 calls for 60 articles**, so the full corpus
+is roughly **41,000**.
+
+**Running it once found six defects in shipping library code.** All six were live in packages
+published at 0.1.0; none was found by a test, a review or a user.
+
+1. **`RecursiveChunkingStrategy` and three other chunkers sliced by UTF-16 code unit** (`6f86f0a7`),
+   bisecting surrogate pairs and emitting strings that make `String.Normalize` throw — which kills
+   any downstream embedder on text containing emoji. Fixed at four sites. **The defect predates this
+   phase; MultiHop-RAG merely has emoji in it.** Every corpus this harness had run before was
+   scientific abstracts, and this is the first made of news.
+2. **The clusterer dropped edges the store held, on a casing difference** (`e9178aee`, three sites).
+   `Leiden` and `PageRank` matched relationship endpoints with `StringComparer.Ordinal` while
+   `SqliteGraphStore`'s `name` column is `COLLATE NOCASE`.
+3. **Leiden discarded intra-community weight when aggregating** (`929d45a3`), so merging always paid
+   and it over-merged unconditionally. It reproduced with no corpus at all: **ten disjoint 10-node
+   cliques joined in a ring returned ONE community of 100.** On the real slice the largest community
+   held **88.4%** of the graph (7,954 of 8,999) before the casing fix and **89.7%** after it — the
+   fix *grew* it, which is what said the real cause lay elsewhere — and **8.8%** (796 entities)
+   afterwards.
+4. **Community detection appended every entity description to itself** (`46ff566b`). Scores were
+   persisted through `AddEntitiesAsync`, whose merge clause concatenates, so each row merged with a
+   copy of itself once per run — and, as an ingestion behavior, once per **document**: two runs
+   produce four copies, a sixty-document ingestion compounds sixty times.
+5. **`LeidenOptions` was unreachable from the public API** (`c34d270e`) while `docs/guide/graphrag.md`
+   told readers to tune Leiden `Resolution` through it. The defaults were the only values that had
+   ever run. Same shape as #108's dead settings: stored, documented, ignored at the point of use.
+6. **The community report prompt was unbounded and global search could not reach its own reports**
+   (`49da36ae`, `2abc17e4`). One prompt measured **1,806,352 characters** — some 450,000 tokens
+   against gpt-4o-mini's 128,000-token context — because its size was a property of the corpus
+   rather than of the code. And global search maps over chunks tagged `graph_type =
+   community_report`, of which a dense top-500 over this slice contained **none**, so the map phase
+   never ran and the behavior returned its input untouched, looking to every caller as though it had
+   worked: **zero map/reduce calls.** Bounded at 50,000 characters and filled in PageRank order, the
+   largest prompt this run builds is **49,937 characters**, the best report moved from rank 1,098 to
+   209, and the map/reduce runs — **2 calls, unfiltered**.
+
+**Three tests had been written around broken behaviour rather than through it, and that is the
+transferable finding.** `Detect_ThreeCliquesWithBridges_FindsThreeCommunities` asserted only
+`Count >= 1`, with a comment conceding "Leiden may merge communities" — it now asserts **3**, and
+passes. Two assertions in this phase's own new guard were weakened on first writing to accommodate
+degenerate output, and restored once the pipeline was sound. **Individually each was defensible.
+Together they meant a green suite over a pipeline where 90% of the graph sat in one bucket and
+global search never executed.** A test that documents the defect it tolerates is still a test that
+stops anyone finding it.
+
+**Recorded, not fixed:**
+
+- **65% of communities are singletons** (396 of 607). 273 of them are entities appearing in no
+  relationship at all, so roughly 123 have edges and still end up alone. Printed on every run and
+  deliberately not asserted: a pass/fail bound would hide movement inside its band, and movement is
+  the whole of what is interesting.
+- **The guard never sees a real community report.** `PromptEchoChatClient` returns a bounded head of
+  the prompt, so a "report" is its community's own entity descriptions. **"Do real reports retrieve
+  well" is untested**, and the two rank figures (1,098 → 209) are partly properties of the stub.
+- **`Leiden.RefineSingleNode` indexes `assignment[comm]` with a community id where a node index is
+  wanted.** It is correct today only because refined community ids are always seed-node indices.
+  Fragile, worth a follow-up, and not touched in this phase because it was found while reading rather
+  than while failing.
+- **`RunLeiden` is Louvain-with-refinement, not textbook Leiden** — no guaranteed-connected
+  communities, no refinement-partition aggregation. It clusters, and it is not the algorithm the
+  name promises.
+- **Retrieval-mode routing (#104) does not exist at all** — no `Mode` property, no
+  `GraphRagRetrievalMode` enum, nothing in either behavior consulting one. **That issue's framing is
+  itself wrong**: it reads as "a setting is not honoured" when the setting was deleted at 0.1.0
+  (#125) and what is open is a feature. A test asserting `Mode = Local` routes to local search would
+  not compile.
+
+`features.md`'s GraphRAG row is corrected accordingly: it still says `✅ Done`, which was never false
+about the code shipping, and it now says what is exercised and what is not.
 
 ### Phase 5.3: Deferred Datasets — NFCorpus, TREC-COVID, EnronQA [status: complete 2026-08-12 — TREC-COVID landed and measured; NFCorpus declined on its licence; EnronQA still blocked, undeclared]
 **Goal:** Land the three datasets the evaluation programme still lacks, together: the small hard

@@ -23,7 +23,7 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 public sealed class BeirRunBudgetTests
 {
     [Fact]
-    public void EveryDescribedDatasetHasARecordedCostUnderEveryProtocol()
+    public void EveryApplicablePairHasARecordedCost_AndNoInapplicablePairHasOne()
     {
         // BeirRunBudget.Find throws on a pair it has no measurement for, which is the behaviour that
         // stops a fourth dataset from silently defaulting into — or out of — the nightly. But that
@@ -32,11 +32,29 @@ public sealed class BeirRunBudgetTests
         // protocol, not just the two chunking legs: since Phase 3.15 the ablation cells gate through
         // the same table, so a fourth dataset owes those three measurements too before its cells can
         // skip with an honest cost.
+        //
+        // And the other direction, which the requirement alone does not cover. A descriptor can now
+        // declare a protocol inapplicable, and a budget cell surviving that declaration is a
+        // contradiction the table cannot detect on its own: Find is only ever consulted for pairs
+        // somebody runs, so a cell for a pair nobody can run is read by nothing and deleted by
+        // nobody. It also does not look stale — a measured-looking string beside FitsTheNightly
+        // reads exactly like a measurement somebody took, which is how this project has previously
+        // ended up with guards that were green over nothing. Required where applicable, refused
+        // where not; either half alone is not a guard.
         foreach (var descriptor in BeirDatasetDescriptor.All)
         {
             foreach (var protocol in Enum.GetValues<BeirProtocol>())
             {
-                _ = BeirRunBudget.IsGatedOff(descriptor.Name, protocol, out _);
+                if (descriptor.Supports(protocol))
+                {
+                    _ = BeirRunBudget.IsGatedOff(descriptor.Name, protocol, out _);
+                    continue;
+                }
+
+                Assert.False(
+                    BeirRunBudget.HasCost(descriptor.Name, protocol),
+                    $"{descriptor.Name} declares {protocol} inapplicable but still carries a budget " +
+                    "cell. One of the two is wrong, and a stale cell looks exactly like a measurement.");
             }
         }
     }
@@ -55,10 +73,18 @@ public sealed class BeirRunBudgetTests
         // developer who sets it to run a measurement would turn this test into an assertion that
         // three is at least two — green whatever the table says, on the one machine most likely to
         // be editing the table.
+        // Supports before FitsTheNightly, and not as a courtesy. FitsTheNightly goes through Find,
+        // which throws on a pair the table holds no cell for — and since the table became
+        // bidirectional it correctly holds no Parity cell for a dataset that declares Parity
+        // inapplicable, which MultiHop-RAG does. Asking the table about that pair anyway turns this
+        // guard into an InvalidOperationException complaining that somebody forgot to measure
+        // something nobody can measure: a true statement about the wrong thing, in place of the
+        // count this test exists to assert.
         var measured = 0;
         foreach (var descriptor in BeirDatasetDescriptor.All)
         {
-            if (BeirRunBudget.FitsTheNightly(descriptor.Name, BeirProtocol.Parity))
+            if (descriptor.Supports(BeirProtocol.Parity)
+                && BeirRunBudget.FitsTheNightly(descriptor.Name, BeirProtocol.Parity))
             {
                 measured++;
             }

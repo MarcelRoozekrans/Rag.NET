@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- The one-time GraphRAG extraction generation tool, and the home of the ingestion driver the
+         GraphRAG guard replays through. It lives under benchmarks/ for the reason the HyDE
+         hypothetical tool does: the one LLM-provider package it needs stays out of every shipped
+         project — src/ carries only Microsoft.Extensions.AI.Abstractions.
+
+         It is also referenced BY tests/Rag.NET.Benchmarks.Quality.IntegrationTests, which is
+         unusual and deliberate. The cache key is the rendered extraction prompt, so if the tool
+         chunked or prompted even slightly differently from the guard, every key the guard computed
+         would miss and the run would fail with a wall of refuse-on-miss errors that look like an
+         empty cache. One GraphRagSliceIngestion, driven by both, makes that impossible rather than
+         merely unlikely — the same reasoning BeirHarness is shared by the parity and real runs. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Abstractions\Rag.NET.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Benchmarks.Quality\Rag.NET.Benchmarks.Quality.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.Graph\Rag.NET.Graph.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET.GraphRag\Rag.NET.GraphRag.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <!-- The OpenAI-compatible IChatClient. OpenRouter is a drop-in behind the same wire protocol,
+         so the well-trodden OpenAI client with its Endpoint overridden is the whole integration. -->
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+  </ItemGroup>
+
+</Project>

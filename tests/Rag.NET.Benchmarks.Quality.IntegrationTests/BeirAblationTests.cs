@@ -68,6 +68,19 @@ public sealed class BeirAblationTests
     public async Task NdcgAt10_UnderBm25HybridRrf_MeasuresWithBm25ProvablyContributing(
         string datasetName)
     {
+        // The descriptor is fetched before any gate because the first gate is a question about the
+        // dataset. ByName throws on a name no descriptor carries, which is right: an unknown
+        // dataset name is a bug in the theory data, not a case to skip past.
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        // First of the three, because the answer is a property of the dataset rather than of this
+        // machine. An inapplicable case reporting "no model file" would send the reader to their
+        // environment for something no environment can fix.
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.HybridBm25),
+            $"{datasetName} does not declare the HybridBm25 protocol applicable, so measuring it " +
+            "would produce a number that means nothing.");
+
         Assert.SkipUnless(
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
@@ -75,7 +88,6 @@ public sealed class BeirAblationTests
             BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.HybridBm25, out var budgetReason),
             budgetReason);
 
-        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
 
         // The space separator, explicitly, for the reason BeirParityTests passes it explicitly:
@@ -110,6 +122,20 @@ public sealed class BeirAblationTests
     public async Task NdcgAt10_UnderCrossEncoderRerank_MeasuresWithRerankerProvablyReordering(
         string datasetName)
     {
+        // The descriptor is fetched before any gate because the first gate is a question about the
+        // dataset. ByName throws on a name no descriptor carries, which is right: an unknown
+        // dataset name is a bug in the theory data, not a case to skip past.
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        // First of the gates — ahead of BOTH provisioning checks, not just the embedder's — because
+        // the answer is a property of the dataset rather than of this machine. An inapplicable case
+        // reporting "no reranker model" would send the reader to their environment for something no
+        // environment can fix.
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.Reranked),
+            $"{datasetName} does not declare the Reranked protocol applicable, so measuring it " +
+            "would produce a number that means nothing.");
+
         Assert.SkipUnless(
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
@@ -120,7 +146,6 @@ public sealed class BeirAblationTests
             BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.Reranked, out var budgetReason),
             budgetReason);
 
-        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
 
         // The space separator, explicitly, for the reason BeirParityTests passes it explicitly:
@@ -160,6 +185,19 @@ public sealed class BeirAblationTests
     [MemberData(nameof(Datasets))]
     public async Task NdcgAt10_UnderCachedHyde_MeasuresWithHydeProvablyDiverging(string datasetName)
     {
+        // The descriptor is fetched before any gate because the first gate is a question about the
+        // dataset. ByName throws on a name no descriptor carries, which is right: an unknown
+        // dataset name is a bug in the theory data, not a case to skip past.
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        // First of the three, because the answer is a property of the dataset rather than of this
+        // machine. An inapplicable case reporting "no model file" would send the reader to their
+        // environment for something no environment can fix.
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.Hyde),
+            $"{datasetName} does not declare the Hyde protocol applicable, so measuring it would " +
+            "produce a number that means nothing.");
+
         Assert.SkipUnless(
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
@@ -170,7 +208,6 @@ public sealed class BeirAblationTests
         // opted-in run that cannot find an entry must fail through refuse-on-miss, naming the key
         // and the generation tool — a skip here would read, from the summary, like a measurement.
 
-        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
 
         // The space separator, explicitly, for the reason BeirParityTests passes it explicitly:

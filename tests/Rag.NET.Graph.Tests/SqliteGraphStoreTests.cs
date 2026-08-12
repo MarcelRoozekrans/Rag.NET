@@ -1,4 +1,5 @@
 using Rag.NET.Graph;
+using Rag.NET.Graph.Algorithms;
 using Xunit;
 
 namespace Rag.NET.Graph.Tests;
@@ -156,6 +157,72 @@ public class SqliteGraphStoreTests : IAsyncDisposable
         var ct = TestContext.Current.CancellationToken;
         var communities = await _store.GetCommunitiesForEntityAsync("DoesNotExist", ct);
         Assert.Empty(communities);
+    }
+
+    /// <summary>
+    /// What the store joins, the clusterer clusters — over the store's own snapshot.
+    /// </summary>
+    /// <remarks>
+    /// <b>The two unit tests for this live beside the algorithms; this one is here because it is the
+    /// production path.</b> <see cref="Leiden"/> and <see cref="PageRank"/> never see a hand-built
+    /// snapshot in real use — they see <see cref="SqliteGraphStore.GetFullGraphAsync"/>'s, and the
+    /// defect was precisely that they disagreed with it about what an entity name is. Asserting the
+    /// store's traversal and the clusterer's grouping in one test means a later change to the
+    /// <c>COLLATE NOCASE</c> schema cannot drift away from <see cref="GraphNames.Comparer"/>
+    /// unnoticed: whichever side moves, this goes red.
+    /// </remarks>
+    [Fact]
+    public async Task GetFullGraphAsync_MiscasedEndpoint_IsAnEdgeToBothStoreAndClusterer()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.AddEntitiesAsync(
+            [
+                new GraphEntity("Google", "Organisation", "A search company"),
+                new GraphEntity("Alphabet", "Organisation", "Its holding company"),
+            ],
+            ct);
+        await _store.AddRelationshipsAsync(
+            [new GraphRelationship("google", "Alphabet", "subsidiary of")], ct);
+
+        var neighbors = await _store.GetNeighborsAsync("Google", 1, ct);
+        var communities = Leiden.Detect(await _store.GetFullGraphAsync(ct));
+
+        Assert.Single(neighbors);
+        Assert.Single(communities);
+        Assert.Equal(2, communities[0].MemberEntities.Count);
+    }
+
+    /// <summary>Writing a score writes the score and nothing else.</summary>
+    /// <remarks>
+    /// The description half is the point. <see cref="SqliteGraphStore.AddEntitiesAsync"/> merges by
+    /// appending, so persisting a score through it appended each entity's description to itself;
+    /// this method exists so that a caller updating one column touches one column.
+    /// </remarks>
+    [Fact]
+    public async Task SetPageRankScoresAsync_UpdatesScoreAndLeavesDescriptionIntact()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.AddEntitiesAsync([new GraphEntity("Google", "Org", "A search company")], ct);
+
+        await _store.SetPageRankScoresAsync(
+            new Dictionary<string, double>(StringComparer.Ordinal) { ["google"] = 0.75 }, ct);
+
+        var snapshot = await _store.GetFullGraphAsync(ct);
+        Assert.Equal(0.75, snapshot.Entities[0].PageRankScore);
+        Assert.Equal("A search company", snapshot.Entities[0].Description);
+    }
+
+    /// <summary>A score for an entity the store never had is ignored, not invented.</summary>
+    [Fact]
+    public async Task SetPageRankScoresAsync_UnknownEntity_StoresNothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await _store.SetPageRankScoresAsync(
+            new Dictionary<string, double>(StringComparer.Ordinal) { ["Nobody"] = 0.5 }, ct);
+
+        var snapshot = await _store.GetFullGraphAsync(ct);
+        Assert.Empty(snapshot.Entities);
     }
 
     public async ValueTask DisposeAsync()
