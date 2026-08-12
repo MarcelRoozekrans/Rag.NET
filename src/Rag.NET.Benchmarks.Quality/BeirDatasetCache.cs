@@ -134,8 +134,9 @@ public sealed class BeirDatasetCache
     /// <param name="cancellationToken">Cancels the acquisition.</param>
     /// <returns>The directory <see cref="BeirLoader.Load"/> can be pointed at.</returns>
     /// <exception cref="InvalidDataException">
-    /// The archive's length or MD5 does not match what was published, or the acquisition did not
-    /// produce the files a BEIR dataset must have.
+    /// The source refused what it acquired — a length or digest that does not match what was
+    /// published, a shape it could not convert — or the acquisition returned without producing the
+    /// files a BEIR dataset must have.
     /// </exception>
     public async Task<string> EnsureAsync(
         BeirDatasetDescriptor dataset, CancellationToken cancellationToken = default)
@@ -174,10 +175,16 @@ public sealed class BeirDatasetCache
 
         if (!IsPresent(dataset))
         {
+            // Named for the dataset rather than for a zip. This message used to say the archive
+            // matched its MD5 but extracted wrongly, which was true while every source was
+            // BeirArchiveSource and false the moment one downloaded no archive at all — a
+            // conversion that produced nothing would have been reported as a bad extraction.
             throw new InvalidDataException(
-                $"'{dataset.ArchiveFileName}' matched its published MD5 but extracting it did not " +
-                $"produce '{datasetDirectory}' with corpus.jsonl, queries.jsonl and qrels/. The " +
-                "archive layout has changed; loading it would silently score against the wrong files.");
+                $"Acquiring '{dataset.Name}' returned without producing '{datasetDirectory}' with " +
+                "corpus.jsonl, queries.jsonl and qrels/. Its source establishes that layout however " +
+                "the dataset is published — by extracting an archive, by converting files published " +
+                "in some other shape — and this one did not, so what it was given has changed " +
+                "shape. Loading it would silently score against the wrong files.");
         }
 
         return datasetDirectory;

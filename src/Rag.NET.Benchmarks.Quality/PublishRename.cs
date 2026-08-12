@@ -48,6 +48,73 @@ internal static class PublishRename
     internal static readonly TimeSpan TransientDenialSettleTime = TimeSpan.FromMilliseconds(15);
 
     /// <summary>
+    /// Renames a staged, complete dataset directory into the name the cache reads.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The one publication step every <see cref="IBeirDatasetSource"/> shares, whatever it did to
+    /// build the directory: <see cref="BeirArchiveSource"/> extracts a zip into it,
+    /// <see cref="MultiHopRagConversion"/> converts two JSON files into it, and both must make it
+    /// appear complete or not at all. That matters more than it looks, because
+    /// <see cref="BeirDatasetCache.IsExtractedAt"/> does not check <c>qrels/{split}.tsv</c>: a
+    /// dataset directory that exists with only some of its files is a permanent cache hit for every
+    /// later run.
+    /// </para>
+    /// <para>
+    /// When two callers both finish, the first rename wins and the loser's rename throws
+    /// <see cref="IOException"/> because the destination now exists. Losing is success: the winner's
+    /// directory satisfies the same postcondition, so the loser keeps it, lets its own staging be
+    /// discarded, and resolves the same directory. Do not "fix" the swallowed exception — the filter
+    /// re-checks <see cref="BeirDatasetCache.IsExtractedAt"/>, so a rename that failed for any other
+    /// reason still throws.
+    /// </para>
+    /// <para>
+    /// The winner's rename has its own Windows-only hazard, external to this process: NTFS refuses
+    /// to rename a directory while any handle is open on anything beneath it, whatever sharing the
+    /// holder asked for — and every file beneath this one was written milliseconds ago, which is
+    /// precisely when an on-access scanner opens it. The retry below is for that measured, transient
+    /// denial; this class carries the measurements. It cannot mask a handle this process leaked —
+    /// our own handle would outlive every attempt and the final throw would still surface it — and
+    /// it cannot mask the lost race, because the <c>!Directory.Exists</c> filter refuses to retry
+    /// once a rival's dataset directory exists.
+    /// </para>
+    /// </remarks>
+    /// <param name="stagedDirectory">The complete directory, under a name only this caller knows.</param>
+    /// <param name="datasetDirectory">The name the cache resolves.</param>
+    /// <param name="cancellationToken">Cancels the settles between attempts.</param>
+    public static async Task PublishDirectoryAsync(
+        string stagedDirectory, string datasetDirectory, CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            if (BeirDatasetCache.IsExtractedAt(datasetDirectory))
+            {
+                return;
+            }
+
+            try
+            {
+                Directory.Move(stagedDirectory, datasetDirectory);
+                return;
+            }
+            catch (IOException) when (BeirDatasetCache.IsExtractedAt(datasetDirectory))
+            {
+                // Lost a photo finish to a rival that satisfied the same postcondition.
+                return;
+            }
+            catch (IOException) when (
+                attempt < TransientDenialRetryLimit && !Directory.Exists(datasetDirectory))
+            {
+                // The destination does not exist, so this is not the lost race above: it is the
+                // scanner-held source measured on this class. Observed denials clear within
+                // single-digit milliseconds; past the limit the exception propagates and the
+                // caller's delete-on-failure discipline still runs.
+                await Task.Delay(TransientDenialSettleTime, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
     /// Moves <paramref name="sourcePath"/> over <paramref name="destinationPath"/>, replacing it,
     /// retrying the transient scanner denial described on the class.
     /// </summary>

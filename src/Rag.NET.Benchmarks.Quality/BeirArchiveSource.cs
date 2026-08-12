@@ -186,8 +186,8 @@ internal sealed class BeirArchiveSource : IBeirDatasetSource
             var stagedDatasetDirectory = Path.Combine(stagingDirectory, dataset.Name);
             if (Directory.Exists(stagedDatasetDirectory))
             {
-                await PublishExtractedDatasetAsync(
-                    stagedDatasetDirectory, datasetDirectory, cancellationToken)
+                await PublishRename
+                    .PublishDirectoryAsync(stagedDatasetDirectory, datasetDirectory, cancellationToken)
                     .ConfigureAwait(false);
             }
         }
@@ -196,61 +196,6 @@ internal sealed class BeirArchiveSource : IBeirDatasetSource
             if (Directory.Exists(stagingDirectory))
             {
                 Directory.Delete(stagingDirectory, recursive: true);
-            }
-        }
-    }
-
-    /// <summary>Renames the staged, complete dataset directory into place.</summary>
-    /// <remarks>
-    /// <para>
-    /// When two callers both finish extracting, the first rename wins and the loser's rename
-    /// throws <see cref="IOException"/> because the destination now exists. Losing is success:
-    /// the winner's directory came from an archive verified against the same published MD5, so
-    /// the loser keeps it, lets its own staging be discarded, and resolves the same directory.
-    /// Do not "fix" the swallowed exception — the filter re-checks
-    /// <see cref="BeirDatasetCache.IsExtractedAt"/>, so a rename that failed for any other reason
-    /// still throws.
-    /// </para>
-    /// <para>
-    /// The winner's rename has its own Windows-only hazard, external to this process: NTFS
-    /// refuses to rename a directory while any handle is open on anything beneath it, whatever
-    /// sharing the holder asked for — and every file beneath this one was written milliseconds
-    /// ago, which is precisely when an on-access scanner opens it. The retry below is for that
-    /// measured, transient denial; <see cref="PublishRename"/> carries the measurements. It
-    /// cannot mask a handle this process leaked — our own handle would outlive every attempt and
-    /// the final throw would still surface it — and it cannot mask the lost race, because the
-    /// <c>!Directory.Exists</c> filter refuses to retry once a rival's dataset directory exists.
-    /// </para>
-    /// </remarks>
-    private static async Task PublishExtractedDatasetAsync(
-        string stagedDatasetDirectory, string datasetDirectory, CancellationToken cancellationToken)
-    {
-        for (var attempt = 0; ; attempt++)
-        {
-            if (BeirDatasetCache.IsExtractedAt(datasetDirectory))
-            {
-                return;
-            }
-
-            try
-            {
-                Directory.Move(stagedDatasetDirectory, datasetDirectory);
-                return;
-            }
-            catch (IOException) when (BeirDatasetCache.IsExtractedAt(datasetDirectory))
-            {
-                // Lost a photo finish to a rival whose archive verified against the same MD5.
-                return;
-            }
-            catch (IOException) when (
-                attempt < PublishRename.TransientDenialRetryLimit && !Directory.Exists(datasetDirectory))
-            {
-                // The destination does not exist, so this is not the lost race above: it is the
-                // scanner-held source measured on PublishRename. Observed denials clear within
-                // single-digit milliseconds; past the limit the exception propagates and the
-                // caller's delete-on-failure discipline still runs.
-                await Task.Delay(PublishRename.TransientDenialSettleTime, cancellationToken)
-                    .ConfigureAwait(false);
             }
         }
     }
