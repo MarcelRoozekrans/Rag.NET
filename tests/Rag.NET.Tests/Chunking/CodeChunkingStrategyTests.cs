@@ -121,4 +121,29 @@ public class CodeChunkingStrategyTests
         var chunks = await sut.ChunkAsync(Section(""), Opts(), ct).ToListAsync(ct);
         Assert.Empty(chunks);
     }
+
+    [Fact]
+    public async Task AstralCharactersAtEverySplitOffset_KeepEveryChunkWellFormed()
+    {
+        var ct  = TestContext.Current.CancellationToken;
+        var sut = new CodeChunkingStrategy(new CodeChunkingOptions());
+        // Source code carries emoji in string literals and comments routinely. This strategy's
+        // last-resort split had the same fixed code-unit stride RecursiveChunkingStrategy did,
+        // so a literal straddling the boundary produced a chunk no embedder could normalize.
+        for (var lead = 0; lead < 24; lead++)
+        {
+            var text = new string('a', lead) + "\U0001F525" + new string('b', 30);
+
+            var chunks = await sut.ChunkAsync(Section(text), Opts(max: 8), ct).ToListAsync(ct);
+
+            foreach (var chunk in chunks)
+            {
+                var failure = Record.Exception(() => chunk.Text.Normalize());
+                Assert.True(
+                    failure is null,
+                    FormattableString.Invariant(
+                        $"lead {lead}: chunk {chunk.ChunkIndex} is not well-formed UTF-16: {failure?.Message}"));
+            }
+        }
+    }
 }

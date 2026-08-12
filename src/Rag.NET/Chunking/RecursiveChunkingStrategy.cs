@@ -42,7 +42,14 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
             if (options.Overlap > 0 && previousChunkText != null)
             {
                 int overlapLength = Math.Min(options.Overlap, previousChunkText.Length);
-                string overlapText = previousChunkText[^overlapLength..];
+
+                // The overlap is counted back from the end, so it can land inside a surrogate
+                // pair just as the hard split can. Backing the start up widens the overlap by one
+                // code unit and keeps the character whole; trimming it forwards would drop the
+                // pair's leading half and leave the same invalid string this guards against.
+                int overlapStart = RuneBoundary.AtOrBefore(
+                    previousChunkText, previousChunkText.Length - overlapLength);
+                string overlapText = previousChunkText[overlapStart..];
                 chunkText = overlapText + text;
             }
             else
@@ -169,15 +176,38 @@ public sealed class RecursiveChunkingStrategy : IChunkingStrategy
         }
     }
 
+    /// <summary>
+    /// The last resort: no separator divides this text, so it is cut to length.
+    /// </summary>
+    /// <remarks>
+    /// The cut respects character boundaries. A fixed <c>i += maxSize</c> stride does not, and
+    /// bisecting an emoji leaves two lone surrogates that no embedder can normalize — see
+    /// <see cref="RuneBoundary"/>.
+    /// </remarks>
     private static IEnumerable<string> HardSplitCore(string text, int maxSize)
     {
-        for (int i = 0; i < text.Length; i += maxSize)
+        var start = 0;
+        while (start < text.Length)
         {
-            var segment = text.Substring(i, Math.Min(maxSize, text.Length - i)).Trim();
+            var end = RuneBoundary.AtOrBefore(text, Math.Min(start + maxSize, text.Length));
+
+            // Only reachable when maxSize is narrower than the character sitting at `start`,
+            // which backing up cannot solve. Emitting that character whole overruns the budget
+            // by a single code unit; the alternatives are to split it — the defect this method
+            // exists to avoid — or to drop it, and silently altering the caller's text is never
+            // the right answer.
+            if (end <= start)
+            {
+                end = Math.Min(start + 2, text.Length);
+            }
+
+            var segment = text[start..end].Trim();
             if (segment.Length > 0)
             {
                 yield return segment;
             }
+
+            start = end;
         }
     }
 

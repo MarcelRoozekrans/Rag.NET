@@ -110,11 +110,18 @@ public sealed class CodeChunkingStrategy : IChunkingStrategy
                 yield return trimmed;
                 yield break;
             }
-            for (int i = 0; i < trimmed.Length; i += maxSize)
+            var start = 0;
+            while (start < trimmed.Length)
             {
-                var seg = trimmed.Substring(i, Math.Min(maxSize, trimmed.Length - i)).Trim();
+                var stop = RuneBoundaryAtOrBefore(trimmed, Math.Min(start + maxSize, trimmed.Length));
+                if (stop <= start)
+                    stop = Math.Min(start + 2, trimmed.Length);
+
+                var seg = trimmed[start..stop].Trim();
                 if (seg.Length > 0)
                     yield return seg;
+
+                start = stop;
             }
             yield break;
         }
@@ -147,6 +154,26 @@ public sealed class CodeChunkingStrategy : IChunkingStrategy
             }
         }
     }
+
+    /// <summary>Gets the nearest legal split offset at or before <paramref name="index"/>.</summary>
+    /// <param name="text">The text being split.</param>
+    /// <param name="index">The wanted offset, in UTF-16 code units.</param>
+    /// <returns><paramref name="index"/>, or one less when it would cut a surrogate pair in half.</returns>
+    /// <remarks>
+    /// A duplicate of <c>Rag.NET.Chunking.RuneBoundary</c> in the core assembly, which this one
+    /// does not reference — it depends on Rag.NET.Abstractions alone, and promoting six lines to
+    /// public API to share them would cost more than the duplication does. The reasoning lives
+    /// there: a character outside the Basic Multilingual Plane spans two code units, and either
+    /// half alone is an invalid string that <see cref="string.Normalize()"/> rejects, so a chunk
+    /// cut through one cannot be embedded.
+    /// </remarks>
+    private static int RuneBoundaryAtOrBefore(string text, int index) =>
+        index > 0
+        && index < text.Length
+        && char.IsHighSurrogate(text[index - 1])
+        && char.IsLowSurrogate(text[index])
+            ? index - 1
+            : index;
 
     /// <summary>
     /// Splits <paramref name="text"/> on <paramref name="separator"/>, keeping the separator
