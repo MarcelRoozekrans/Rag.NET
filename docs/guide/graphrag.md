@@ -34,7 +34,7 @@ Two packages:
 1. **Entity Extraction** — For each chunk, an LLM extracts entities (name, type, description) and relationships (source, target, description, weight)
 2. **Gleaning** — Follow-up LLM passes ask "Did I miss anything?" to improve recall (configurable, default 1 pass)
 3. **Graph Building** — Entities and relationships stored in IGraphStore, descriptions embedded in IVectorStore
-4. **Community Detection** — Leiden algorithm detects clusters of related entities
+4. **Community Detection** — the `Leiden` type detects clusters of related entities. Despite the name it is a Louvain-family algorithm with a refinement pass, not the Leiden paper's algorithm, and it does not provide that paper's guarantee that every community is connected — see the type's XML remarks for what it does and does not do
 5. **PageRank** — Computes importance scores for each entity
 6. **Community Reports** — LLM generates summary reports for each community, embedded and stored
 
