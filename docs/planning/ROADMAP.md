@@ -3425,7 +3425,12 @@ stops anyone finding it.
 - **`Leiden.RefineSingleNode` indexes `assignment[comm]` with a community id where a node index is
   wanted.** It is correct today only because refined community ids are always seed-node indices.
   Fragile, worth a follow-up, and not touched in this phase because it was found while reading rather
-  than while failing.
+  than while failing. **Fixed 2026-08-12 (#170):** the refinement now takes its starting labelling as
+  a parameter and resolves a sub-community's community through an explicit map, and
+  `LeidenRefinementNumberingTests` re-runs it under two other labellings. Reading it was right about
+  the defect and understated it — under a constant offset the old bounds check dropped the
+  same-community constraint entirely and merged two communities into one, and under a dense
+  renumbering it both merged across communities and blocked legitimate merges inside them.
 - **`RunLeiden` is Louvain-with-refinement, not textbook Leiden** — no guaranteed-connected
   communities, no refinement-partition aggregation. It clusters, and it is not the algorithm the
   name promises.

@@ -244,13 +244,37 @@ public static class Leiden
         List<int>[] neighbors, List<double>[] weights, int n, int[] assignment,
         double totalWeight, LeidenOptions options, Random rng)
     {
-        // Start with each node in its own sub-community.
-        var refined = new int[n];
+        // Start with each node in its own sub-community, labelled by that node's own index.
+        var singletons = new int[n];
         for (int i = 0; i < n; i++)
         {
-            refined[i] = i;
+            singletons[i] = i;
         }
 
+        return Refine(neighbors, weights, n, assignment, singletons, totalWeight, options, rng);
+    }
+
+    /// <summary>
+    /// Splits each community of <paramref name="assignment"/> into well-joined sub-communities,
+    /// starting from the one-node-per-community labelling in <paramref name="singletonCommunities"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>The labelling is the caller's to choose, and that is the point of this parameter.</b>
+    /// Refined community ids are labels: nothing about them is an index into anything, and the only
+    /// requirement is that they be distinct. <see cref="RefinementPhase"/> passes each node's own
+    /// index because that is the cheapest distinct label to produce, and the refinement used to
+    /// depend on that choice without saying so — see
+    /// <see cref="MapRefinedCommunitiesToCommunities"/>. This parameter is how
+    /// <c>LeidenRefinementNumberingTests</c> re-runs the same refinement under a labelling that is
+    /// not node indices and asserts the partition comes back identical, so the dependency cannot
+    /// return unnoticed.
+    /// </remarks>
+    internal static int[] Refine(
+        List<int>[] neighbors, List<double>[] weights, int n, int[] assignment,
+        int[] singletonCommunities, double totalWeight, LeidenOptions options, Random rng)
+    {
+        var refined = singletonCommunities.AsSpan(0, n).ToArray();
+        var refinedToCommunity = MapRefinedCommunitiesToCommunities(refined, assignment, n);
         var nodeDegree = ComputeNodeDegrees(weights, n);
         var communityWeight = ComputeCommunityWeights(refined, nodeDegree, n);
         double m2 = 2.0 * totalWeight;
@@ -258,18 +282,66 @@ public static class Leiden
 
         foreach (int node in order)
         {
-            RefineSingleNode(neighbors, weights, node, assignment, refined, m2, options.Resolution, nodeDegree, communityWeight);
+            RefineSingleNode(
+                neighbors, weights, node, assignment[node], refined, refinedToCommunity,
+                m2, options.Resolution, nodeDegree, communityWeight);
         }
 
         return refined;
     }
 
+    /// <summary>
+    /// Which community of the partition being refined each refined sub-community sits inside.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This lookup exists so that a community id is never used as a node index.</b> The question
+    /// <see cref="RefineSingleNode"/> has to answer about a candidate sub-community is "which
+    /// community is it part of", and it used to answer it with <c>assignment[comm]</c> — an array
+    /// indexed by node index everywhere else in this file, subscripted by a sub-community id. That
+    /// was right only because <see cref="RefinementPhase"/> labels each starting sub-community with
+    /// its own node's index, so the two spaces coincided numerically by construction. Renumbering
+    /// sub-communities any other way — densely from zero is the obvious one — read an unrelated
+    /// node's entry and answered the wrong question without failing. See
+    /// <c>LeidenRefinementNumberingTests</c>, which fails against the old form under both a dense
+    /// renumbering and a constant offset.
+    /// </para>
+    /// <para>
+    /// <b>It stays correct as nodes move.</b> A sub-community's entry is never updated, and does not
+    /// need to be: every merge <see cref="RefineSingleNode"/> permits is into a sub-community of the
+    /// same community, so a sub-community's community is fixed for as long as it has members — even
+    /// after the node it was named for has left it.
+    /// </para>
+    /// </remarks>
+    private static Dictionary<int, int> MapRefinedCommunitiesToCommunities(int[] refined, int[] assignment, int n)
+    {
+        var map = new Dictionary<int, int>(n);
+        for (int i = 0; i < n; i++)
+        {
+            map[refined[i]] = assignment[i];
+        }
+
+        return map;
+    }
+
+    /// <summary>
+    /// Moves one node into the neighbouring sub-community that gains the most modularity, considering
+    /// only sub-communities of <paramref name="community"/> — the node's own community in the
+    /// partition being refined.
+    /// </summary>
+    /// <remarks>
+    /// Every id this method handles is a sub-community id: the keys of
+    /// <paramref name="communityWeight"/>, the keys of the neighbour weights, and the values of
+    /// <paramref name="refined"/>. It is passed no array indexed by node index that it could
+    /// subscript with one by mistake, and an id missing from
+    /// <paramref name="refinedToCommunity"/> throws rather than reading something unrelated.
+    /// </remarks>
     private static void RefineSingleNode(
-        List<int>[] neighbors, List<double>[] weights, int node, int[] assignment, int[] refined,
+        List<int>[] neighbors, List<double>[] weights, int node, int community, int[] refined,
+        Dictionary<int, int> refinedToCommunity,
         double m2, double resolution, double[] nodeDegree, Dictionary<int, double> communityWeight)
     {
         int currentComm = refined[node];
-        int leidenComm = assignment[node];
         var neighborWeights = ComputeNeighborCommunityWeights(neighbors, weights, node, refined);
 
         double bestGain = 0.0;
@@ -282,8 +354,8 @@ public static class Leiden
 
         foreach (var (comm, wComm) in neighborWeights)
         {
-            // Only merge within the same Leiden community.
-            if (assignment.Length > comm && assignment[comm] != leidenComm)
+            // Sub-communities may only merge within one community of the partition being refined.
+            if (refinedToCommunity[comm] != community)
             {
                 continue;
             }
