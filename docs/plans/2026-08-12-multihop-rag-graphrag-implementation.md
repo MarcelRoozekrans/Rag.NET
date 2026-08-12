@@ -228,7 +228,8 @@ descriptor is wrong, not the pin.
 - Modify: `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirRunBudget.cs`
 - Modify: `tests/Rag.NET.Benchmarks.Quality.IntegrationTests/BeirRunBudgetTests.cs:26-42`
 
-Today `EveryDescribedDatasetHasARecordedCostUnderEveryProtocol` demands a cell for all ten
+Today `EveryDescribedDatasetHasARecordedCostUnderEveryProtocol` (renamed by this task to
+`EveryApplicablePairHasARecordedCost_AndNoInapplicablePairHasOne`) demands a cell for all ten
 protocols. It must demand one for every **applicable** pair and **refuse** one for every
 inapplicable pair. A budget entry for a protocol that cannot run is a contradiction and nothing
 notices it today.
@@ -532,7 +533,22 @@ descriptor."
 Also add `GraphRag` to `BeirProtocol` in this task, and give the four existing descriptors
 `ApplicableProtocols` excluding it.
 
-**Now Task 2's pinned test should go green**, and Task 3's second red run becomes possible. Do both.
+**A test from Task 1 will fail when you land this, and that is not a bug in your work.**
+`BeirDatasetDescriptorTests.EveryExistingDatasetSupportsEveryProtocol_SoThisChangeMovesNothing`
+iterates `BeirDatasetDescriptor.All` and asserts every descriptor supports every protocol. It was
+written when `All` held only the four BEIR datasets, and MultiHop-RAG joins that list restricting
+its protocols — so the assertion becomes false by design.
+
+**Do not delete it and do not weaken it to `Supports(p) || true`.** Its job is to catch someone
+quietly restricting one of the four existing descriptors, and that job still matters. Scope it to
+the four by name — `SciFact`, `FiQA`, `ArguAna`, `TrecCovid` — rather than to `All`, and rename it
+so the name says what it now guards. Landing the new descriptor is exactly the event it was written
+to survive, not the event that retires it.
+
+**Land the pinned inapplicable-pairs test here**, copying the literal from Task 2 above unchanged.
+Then Task 3's second red run becomes possible — do it.
+
+
 
 **Commit:** `feat(quality): describe the MultiHop-RAG dataset`
 
