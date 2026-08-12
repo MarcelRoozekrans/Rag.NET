@@ -164,6 +164,34 @@ public class LeidenTests
         Assert.Equal(3, allMembers.Count); // all entities assigned
     }
 
+    /// <summary>
+    /// An edge whose endpoint spells an entity with different casing is still an edge.
+    /// </summary>
+    /// <remarks>
+    /// <b>The clusterer and the graph store have to agree on this, and they did not.</b>
+    /// <see cref="SqliteGraphStore"/>'s <c>name</c> column is <c>COLLATE NOCASE</c> — two spellings
+    /// are one row, and it cannot hold "Google" and "google" as separate entities — and its
+    /// neighbour queries match endpoints with <c>COLLATE NOCASE</c> too, so it traverses this edge.
+    /// <see cref="Leiden"/> matched endpoints to names with <see cref="StringComparer.Ordinal"/> and
+    /// therefore dropped it. Over the sixty-article MultiHop-RAG slice that silently cost the
+    /// clustering real structure: 475 of 655 communities held a single entity.
+    /// </remarks>
+    [Fact]
+    public void Detect_EndpointCasingDiffersFromEntityName_StillJoinsThem()
+    {
+        var entities = new[]
+        {
+            new GraphEntity("Google", "Organisation", "A search company"),
+            new GraphEntity("Alphabet", "Organisation", "Its holding company"),
+        };
+        var relationships = new[] { new GraphRelationship("google", "Alphabet", "subsidiary of") };
+
+        var communities = Leiden.Detect(new GraphSnapshot(entities, relationships, []));
+
+        Assert.Single(communities);
+        Assert.Equal(2, communities[0].MemberEntities.Count);
+    }
+
     [Fact]
     public void Detect_MaxLevelsOne_StopsAfterOneLevel()
     {

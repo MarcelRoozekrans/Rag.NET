@@ -120,6 +120,15 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
     public long SynthesisedReports => _reportChat.Calls;
 
     /// <summary>
+    /// Gets the character length of the largest community-report prompt this run built.
+    /// </summary>
+    /// <remarks>
+    /// The bound <c>CommunityDetectionBehavior</c> does not have. Printed on every run so the cost
+    /// of the largest community is a measurement rather than an anecdote.
+    /// </remarks>
+    public long LongestReportPrompt => _reportChat.LongestPrompt;
+
+    /// <summary>
     /// Extracts the slice into a graph, detects communities over it, and indexes everything.
     /// </summary>
     /// <param name="documents">The slice's articles, in corpus order.</param>

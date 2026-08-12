@@ -1,4 +1,5 @@
 using Rag.NET.Graph;
+using Rag.NET.Graph.Algorithms;
 using Xunit;
 
 namespace Rag.NET.Graph.Tests;
@@ -156,6 +157,39 @@ public class SqliteGraphStoreTests : IAsyncDisposable
         var ct = TestContext.Current.CancellationToken;
         var communities = await _store.GetCommunitiesForEntityAsync("DoesNotExist", ct);
         Assert.Empty(communities);
+    }
+
+    /// <summary>
+    /// What the store joins, the clusterer clusters — over the store's own snapshot.
+    /// </summary>
+    /// <remarks>
+    /// <b>The two unit tests for this live beside the algorithms; this one is here because it is the
+    /// production path.</b> <see cref="Leiden"/> and <see cref="PageRank"/> never see a hand-built
+    /// snapshot in real use — they see <see cref="SqliteGraphStore.GetFullGraphAsync"/>'s, and the
+    /// defect was precisely that they disagreed with it about what an entity name is. Asserting the
+    /// store's traversal and the clusterer's grouping in one test means a later change to the
+    /// <c>COLLATE NOCASE</c> schema cannot drift away from <see cref="GraphNames.Comparer"/>
+    /// unnoticed: whichever side moves, this goes red.
+    /// </remarks>
+    [Fact]
+    public async Task GetFullGraphAsync_MiscasedEndpoint_IsAnEdgeToBothStoreAndClusterer()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.AddEntitiesAsync(
+            [
+                new GraphEntity("Google", "Organisation", "A search company"),
+                new GraphEntity("Alphabet", "Organisation", "Its holding company"),
+            ],
+            ct);
+        await _store.AddRelationshipsAsync(
+            [new GraphRelationship("google", "Alphabet", "subsidiary of")], ct);
+
+        var neighbors = await _store.GetNeighborsAsync("Google", 1, ct);
+        var communities = Leiden.Detect(await _store.GetFullGraphAsync(ct));
+
+        Assert.Single(neighbors);
+        Assert.Single(communities);
+        Assert.Equal(2, communities[0].MemberEntities.Count);
     }
 
     public async ValueTask DisposeAsync()

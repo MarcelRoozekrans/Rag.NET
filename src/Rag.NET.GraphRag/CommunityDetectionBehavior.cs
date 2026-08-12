@@ -83,7 +83,11 @@ public sealed class CommunityDetectionBehavior(
         IChatClient client,
         CancellationToken ct)
     {
-        var entityLookup = new Dictionary<string, GraphEntity>(StringComparer.Ordinal);
+        // GraphNames.Comparer, not Ordinal: memberSet below is matched against relationship
+        // endpoints, and an endpoint spelled with different casing from the entity it names is one
+        // the store still joins. Comparing ordinally dropped those relationships from the report,
+        // the same way it dropped them from the clustering.
+        var entityLookup = new Dictionary<string, GraphEntity>(GraphNames.Comparer);
         for (int i = 0; i < snapshot.Entities.Count; i++)
         {
             entityLookup[snapshot.Entities[i].Name] = snapshot.Entities[i];
@@ -94,7 +98,7 @@ public sealed class CommunityDetectionBehavior(
         for (int i = 0; i < communities.Count; i++)
         {
             var community = communities[i];
-            var memberSet = new HashSet<string>(community.MemberEntities, StringComparer.Ordinal);
+            var memberSet = new HashSet<string>(community.MemberEntities, GraphNames.Comparer);
 
             // Build entity descriptions
             var entityDescriptions = new List<string>();

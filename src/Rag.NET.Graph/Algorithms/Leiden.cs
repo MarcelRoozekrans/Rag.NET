@@ -33,9 +33,15 @@ public static class Leiden
         return communities;
     }
 
+    /// <summary>Indexes entities by name, the way the store that produced them compares names.</summary>
+    /// <remarks>
+    /// <see cref="GraphNames.Comparer"/> and not <see cref="StringComparer.Ordinal"/>: a
+    /// relationship endpoint whose casing differs from the entity it names is an edge, and matching
+    /// it ordinally dropped it from the adjacency while the store went on traversing it.
+    /// </remarks>
     private static Dictionary<string, int> BuildNameIndex(IReadOnlyList<GraphEntity> entities)
     {
-        var map = new Dictionary<string, int>(entities.Count, StringComparer.Ordinal);
+        var map = new Dictionary<string, int>(entities.Count, GraphNames.Comparer);
         for (int i = 0; i < entities.Count; i++)
         {
             map[entities[i].Name] = i;

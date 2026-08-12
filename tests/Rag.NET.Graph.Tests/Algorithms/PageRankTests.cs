@@ -93,6 +93,32 @@ public class PageRankTests
         Assert.InRange(ranks.Values.Sum(), 0.99, 1.01);
     }
 
+    /// <summary>
+    /// An edge whose endpoint spells an entity with different casing still carries rank.
+    /// </summary>
+    /// <remarks>
+    /// The clusterer's defect, in <see cref="PageRank"/>'s copy of the same adjacency build — see
+    /// <see cref="GraphNames"/>. Matching endpoints ordinally left the target looking like an
+    /// unreferenced node, so it scored the corpus's flat baseline instead of the rank the edge the
+    /// store holds should have given it.
+    /// </remarks>
+    [Fact]
+    public void Compute_EndpointCasingDiffersFromEntityName_StillCarriesRank()
+    {
+        var entities = new[]
+        {
+            new GraphEntity("Google", "Organisation", "A search company"),
+            new GraphEntity("Alphabet", "Organisation", "Its holding company"),
+        };
+        var relationships = new[] { new GraphRelationship("google", "Alphabet", "subsidiary of") };
+
+        var ranks = PageRank.Compute(new GraphSnapshot(entities, relationships, []));
+
+        Assert.True(
+            ranks["Alphabet"] > ranks["Google"],
+            "the only edge in the graph points at Alphabet, so it must outrank its source");
+    }
+
     [Fact]
     public void Compute_AllDanglingNodes_DistributesEqualRank()
     {

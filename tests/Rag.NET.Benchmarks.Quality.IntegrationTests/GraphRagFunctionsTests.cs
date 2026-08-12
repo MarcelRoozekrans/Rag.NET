@@ -191,14 +191,33 @@ public sealed class GraphRagFunctionsTests
     /// <b>The second half asks that several communities cluster, not that every one does, and the
     /// difference is a finding rather than a softening.</b> Leiden emits one community per node it
     /// cannot attach to anything, which is correct behaviour and not a defect — but on this graph
-    /// it does so 475 times out of 655, because <c>Leiden.BuildAdjacency</c> matches relationship
-    /// endpoints to entity names with <c>StringComparer.Ordinal</c> while
-    /// <c>SqliteGraphStore</c>'s <c>name</c> column is <c>COLLATE NOCASE</c> and its neighbour
-    /// queries use <c>OrdinalIgnoreCase</c>. An endpoint whose casing differs from the entity it
-    /// names is an edge the store has and the clusterer drops. Demanding zero singletons would
-    /// make this file red on arrival, and a permanently failing test is not a guard — so the
-    /// numbers are printed on every run, the mismatch is written down here, and the assertion
-    /// guards what it can: that clustering happened somewhere.
+    /// it does so 396 times out of 565, and the other 8,070 entities land in a single community.
+    /// Demanding zero singletons would make this file red on arrival, and a permanently failing
+    /// test is not a guard — so the numbers are printed on every run, what is known about them is
+    /// written down here, and the assertion guards what it can: that clustering happened somewhere.
+    /// </para>
+    /// <para>
+    /// <b>One cause has been removed and it was not the main one.</b> <c>Leiden</c> and
+    /// <c>PageRank</c> matched relationship endpoints to entity names with
+    /// <c>StringComparer.Ordinal</c> while <c>SqliteGraphStore</c>'s <c>name</c> column is
+    /// <c>COLLATE NOCASE</c>, so every endpoint whose casing differed from the entity it named was
+    /// an edge the store held and the clusterer dropped; they now compare through
+    /// <c>GraphNames.Comparer</c>. Recovering those edges moved the numbers from 655 communities
+    /// and 475 singletons to 565 and 396 — and grew the largest community from 7,954 to 8,070,
+    /// because what the recovered edges mostly did was attach more nodes to the giant one.
+    /// </para>
+    /// <para>
+    /// <b>The giant community is a separate defect, in the aggregation step.</b>
+    /// <c>Leiden.BuildAggregatedEdges</c> skips edges whose endpoints fall in the same community
+    /// (<c>ci == cj</c>) instead of folding them into a self-loop on the super-node, so every
+    /// aggregation level discards the intra-community weight that modularity's null model needs.
+    /// Each level therefore sees communities that look far lighter than they are, merging always
+    /// pays, and the recursion collapses whatever is connected into one community. It reproduces
+    /// with no corpus at all: ten 10-node cliques joined in a ring by one bridge edge each return
+    /// <b>one</b> community of 100, and two cliques joined by one bridge return one community of
+    /// 20. <c>LeidenTests.Detect_ThreeCliquesWithBridges_FindsThreeCommunities</c> already carries
+    /// the symptom in a comment — "with bridge edges at default resolution, Leiden may merge
+    /// communities" — and asserts only <c>Count &gt;= 1</c> because of it.
     /// </para>
     /// </remarks>
     private static void AssertCommunityDetectionClusteredTheGraph(GraphRagSliceRun run)
@@ -458,6 +477,7 @@ public sealed class GraphRagFunctionsTests
             entity recurrence: {run.EntityDocuments.Count} distinct names, most widespread "{best}" in {articles} articles
             communities: {run.Graph.Communities.Count}, of which {CountSingletons(run.Graph.Communities)} hold one entity and the largest holds {LargestCommunity(run)}
             indexed: {run.ChunkCount} article chunks, {run.GraphChunkCount} entity/relationship chunks, {run.CommunityReportCount} community reports ({run.SynthesisedReports} synthesised, not generated -- see PromptEchoChatClient)
+            largest community report prompt: {run.LongestReportPrompt} characters
             """);
     }
 

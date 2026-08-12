@@ -22,7 +22,7 @@ public static class PageRank
 
         if (n == 0)
         {
-            return new Dictionary<string, double>(StringComparer.Ordinal);
+            return new Dictionary<string, double>(GraphNames.Comparer);
         }
 
         var nameToIndex = BuildNameIndex(entities);
@@ -32,9 +32,15 @@ public static class PageRank
         return BuildResult(entities, ranks);
     }
 
+    /// <summary>Indexes entities by name, the way the store that produced them compares names.</summary>
+    /// <remarks>
+    /// The same edge-dropping <see cref="Leiden"/> had, in the same shape: see
+    /// <see cref="GraphNames"/>. Here it made a node look less connected than the store says it is,
+    /// so its score was computed over a sparser graph than the one that exists.
+    /// </remarks>
     private static Dictionary<string, int> BuildNameIndex(IReadOnlyList<GraphEntity> entities)
     {
-        var map = new Dictionary<string, int>(entities.Count, StringComparer.Ordinal);
+        var map = new Dictionary<string, int>(entities.Count, GraphNames.Comparer);
         for (int i = 0; i < entities.Count; i++)
         {
             map[entities[i].Name] = i;
@@ -157,9 +163,10 @@ public static class PageRank
         return max;
     }
 
+    /// <summary>Keys the scores by entity name, so a caller holding either spelling finds one.</summary>
     private static Dictionary<string, double> BuildResult(IReadOnlyList<GraphEntity> entities, double[] ranks)
     {
-        var result = new Dictionary<string, double>(entities.Count, StringComparer.Ordinal);
+        var result = new Dictionary<string, double>(entities.Count, GraphNames.Comparer);
         for (int i = 0; i < entities.Count; i++)
         {
             result[entities[i].Name] = ranks[i];
