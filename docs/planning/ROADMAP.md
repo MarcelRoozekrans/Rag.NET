@@ -3448,8 +3448,16 @@ stops anyone finding it.
   graphs — 48 of 2,220 random weighted trees, 14 of 520 tree-plus-chords, **0 of 2,220 unweighted
   trees**, and 0 on anything dense. The weights open the gap, not the sparsity. A ten-node tree at
   the default resolution is pinned in `LeidenCommunityConnectivityTests` as a still-false record.
-  **Extracted entity graphs are sparse and weighted, and whether this fires on the MultiHop-RAG
-  slice has not been checked** — that check is cheap and is the next thing worth doing.
+  **Checked on the MultiHop-RAG slice's own graph the same day: it does not fire.** 0 disconnected
+  of 211 non-singleton communities at the defaults, 0 across seven resolution/seed settings (1,477
+  non-singleton communities), on the graph that reproduces the recorded 8,999/16,403/607/396
+  exactly. **Recorded as an underpowered negative rather than a clearance, and the arithmetic is
+  the point:** the reason I expected — that a real entity graph is too richly connected for the
+  mechanism — is measurably wrong, since **135 of the 211 communities are trees** and the synthetic
+  disconnected sizes (4–18) overlap the real tree communities (2–11). The synthetic per-community
+  rate is 53 of 490,358, about 1 in 9,250, so the expected count in a 1,477-community sample is
+  **0.16**. Zero is the most likely observation whether or not this corpus is safe. Distinguishing
+  the two needs ~9,250 non-singleton communities — a much larger corpus, not more seeds.
 - **Retrieval-mode routing (#104) does not exist at all** — no `Mode` property, no
   `GraphRagRetrievalMode` enum, nothing in either behavior consulting one. **That issue's framing is
   itself wrong**: it reads as "a setting is not honoured" when the setting was deleted at 0.1.0
