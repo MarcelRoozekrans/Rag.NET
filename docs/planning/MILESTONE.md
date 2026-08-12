@@ -59,7 +59,7 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
 | 5.1 | Library Performance Comparison | **complete** 2026-08-10 — full matrix gated and published |
 | 5.1.1 | The Cost Figure Read Back | **complete** 2026-08-11 — optimised, verified and republished |
 | 5.2 | Multi-Hop Retrieval | pending |
-| 5.3 | Deferred Datasets — NFCorpus, TREC-COVID, EnronQA | **TREC-COVID complete** 2026-08-12; NFCorpus blocked on a licence decision; EnronQA blocked (no declared licence) |
+| 5.3 | Deferred Datasets — NFCorpus, TREC-COVID, EnronQA | **complete** 2026-08-12 — TREC-COVID landed; NFCorpus declined on its licence; EnronQA blocked, undeclared |
 | 5.4 | Precision@k and MAP | **implemented** 2026-08-09 (#75) |
 | 5.5 | Tier 3 Suites | recorded — deliberately not scheduled |
 
@@ -83,10 +83,11 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
   omitting the entrant that calibrates it is the inert-guard shape this repository keeps finding.
   Recorded in Phase 5.1.1.
 - ~~**5.2 and 5.3 are the milestone's remaining substance**, and 5.3 is what would satisfy the
-  graded-gain criterion.~~ **5.3 delivered TREC-COVID on 2026-08-12 and the graded-gain criterion
-  is met.** What remains of 5.3 is blocked rather than pending: NFCorpus needs a licence decision
-  that is the maintainer's to make ("academic use only" plus CC BY-NC), and EnronQA declares no
-  licence at all. **5.2 is now the milestone's only remaining substance.**
+  graded-gain criterion.~~ **5.3 closed 2026-08-12.** TREC-COVID landed and met the graded-gain
+  criterion; NFCorpus was declined, because upstream asks non-academic users to contact the author
+  rather than offering a licence to read, and TREC-COVID had already taken the biomedical and
+  graded-relevance ground it was wanted for; EnronQA stays blocked, its licence re-verified absent
+  against the HuggingFace API the same day. **5.2 is the milestone's only remaining substance.**
 - **TREC-COVID's agreement with published is the weakest of the four datasets and nothing is
   scheduled to look into it.** −0.01805 against a ±0.02 band, where the other three sit within
   +0.003. It passes, and it passes with 0.0023 to spare on a single run. Recorded here rather than

@@ -482,9 +482,15 @@ the login action, the step output it reads and the `id-token: write` permission 
 a push command that stays stable while its credential changes underneath is exactly the drift
 nothing else would notice.
 
-> **Delete the `NUGET_API_KEY` secret once a Trusted Publishing push has succeeded.** It is no
-> longer read by anything, and a retired credential that still works is how these migrations
-> stall — the old mechanism stays usable, so nothing forces the new one to be correct.
+> **The `NUGET_API_KEY` secret was deleted on 2026-08-12**, after the 2026-08-11 Trusted
+> Publishing push put 70 packages and 70 symbol packages on nuget.org. A retired credential that
+> still works is how these migrations stall — the old mechanism stays usable, so nothing forces the
+> new one to be correct. `OPENROUTER_API_KEY` is now the repository's only secret.
+>
+> **`$NUGET_API_KEY` still appears in `ci.yml` and that is not a leftover.** It is the *environment
+> variable* the push step sets, fed from `steps.nuget-login.outputs.NUGET_API_KEY` — the key minted
+> per run by `NuGet/login@v1`. Nothing reads `secrets.NUGET_API_KEY`; grep for that exact form
+> before concluding the key is still in use, because the two differ only by their prefix.
 
 **`TestGateTests` does not cover this gate, and that is stated rather than assumed away.** That
 guard scans *test* gates — `RAGNET_*` environment variables, `#if` symbols, skip attributes —
