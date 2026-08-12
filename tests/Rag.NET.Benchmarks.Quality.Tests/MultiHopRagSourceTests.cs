@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using Rag.NET.Benchmarks.Quality;
 using Xunit;
@@ -6,14 +8,22 @@ using Xunit;
 namespace Rag.NET.Benchmarks.Quality.Tests;
 
 /// <summary>
-/// Pins <see cref="MultiHopRagConversion"/> — the half of <see cref="MultiHopRagSource"/> that turns
-/// two HuggingFace JSON files into BEIR's on-disk layout — against <b>small synthetic fixtures built
-/// here</b>. Nothing in this file touches the network and no dataset byte is committed.
+/// Pins both halves of <see cref="MultiHopRagSource"/> — the download that verifies two HuggingFace
+/// JSON files against the pinned revision, and the <see cref="MultiHopRagConversion"/> that turns
+/// them into BEIR's on-disk layout — against <b>small synthetic fixtures built here</b> and a stub
+/// handler. Nothing in this file touches the network and no dataset byte is committed.
 /// <para>
-/// Every test below is about a way the conversion could produce a smaller dataset than it was given
-/// and still look plausible. A dropped evidence row, a short corpus or a half-written directory all
-/// end as a believable retrieval figure computed from less data than the number claims, which is the
-/// most expensive kind of wrong this harness can be.
+/// Every test below is about a way the source could produce a smaller or different dataset than the
+/// revision it claims and still look plausible. A body that is not the pinned one, a dropped evidence
+/// row, a short corpus or a half-written directory all end as a believable retrieval figure computed
+/// from data the number does not describe, which is the most expensive kind of wrong this harness can
+/// be.
+/// </para>
+/// <para>
+/// The download's <i>happy</i> path is not tested here and deliberately so: it is 6.5 MB of one
+/// specific revision, which can only be exercised by fetching it. What is testable without a network
+/// — and what matters, because a verification that is computed and ignored is indistinguishable from
+/// one that works until the day upstream re-publishes — is the refusal.
 /// </para>
 /// </summary>
 public sealed class MultiHopRagSourceTests : IDisposable
@@ -22,6 +32,16 @@ public sealed class MultiHopRagSourceTests : IDisposable
     private const string Beta = "https://example.invalid/beta";
     private const string Gamma = "https://example.invalid/gamma";
     private const string Missing = "https://example.invalid/never-published";
+
+    /// <summary>
+    /// What the pinned revision's <c>corpus.json</c> is, restated here rather than read off the
+    /// source — the same discipline as <see cref="PublishedFiles_AreThePinnedRevisionsTwoJsonFiles"/>
+    /// restating the revision hash. A test that asked the source what it expected would agree with
+    /// whatever the source ever expects, which is precisely the failure it is meant to catch.
+    /// </summary>
+    private const string PinnedCorpusMd5 = "9b81a85a6acbe0a452b9d51368a2ce87";
+
+    private const long PinnedCorpusLength = 6785567;
 
     private readonly string _root;
 
@@ -56,12 +76,65 @@ public sealed class MultiHopRagSourceTests : IDisposable
     }
 
     [Fact]
-    public void PublishedCounts_AreWhatTheTwoFilesActuallyContain()
+    public void PublishedCounts_ArePinnedToTheRevision()
     {
-        // Measured from the pinned revision on 2026-08-12, not read off the paper: 609 articles,
-        // 2,556 queries of which 301 are null_query and therefore judged by nothing, and 5,908
-        // distinct (query, document) pairs over the remaining 2,255.
+        // Restates the counts as a literal; it does not open either file, and cannot — they are 12 MB
+        // of one HuggingFace revision. The figures were measured from that revision on 2026-08-12,
+        // not read off the paper: 609 articles, 2,556 queries of which 301 are null_query and
+        // therefore judged by nothing, and 5,908 distinct (query, document) pairs over the remaining
+        // 2,255. What this pins is that they cannot be edited in the source alone.
         Assert.Equal(new MultiHopRagCounts(609, 2556, 2255, 5908), MultiHopRagSource.PublishedCounts);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_ABodyWhoseDigestIsNotThePinnedOne_ThrowsNamingBothDigests()
+    {
+        // MultiHop-RAG publishes no checksum of its own, so the digests in the source were measured
+        // from the pinned revision and are the entire pin: they are what stands between a
+        // re-published corpus.json and a figure quietly measured against different articles. The
+        // body below is a plausible corpus.json — it parses, it is an array — and only the digest
+        // says otherwise.
+        var body = Encoding.UTF8.GetBytes("[]");
+
+        var exception = await PrepareAndCatchAsync(body, declaredLength: body.Length);
+
+        Assert.Contains(PinnedCorpusMd5, exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(Md5Of(body), exception.Message, StringComparison.OrdinalIgnoreCase);
+
+        // The response delivered every byte it declared, so this is not a truncation and must not be
+        // reported as one — see the test below for why the two are worth separating.
+        Assert.DoesNotContain("cut short", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_ABodyShorterThanTheDeclaredContentLength_SaysTheTransferWasCutShort()
+    {
+        // Distinguished from a digest mismatch on purpose, exactly as BeirArchiveSource distinguishes
+        // them: "the transfer was cut short" sends whoever reads it to the network, "this is a
+        // different file" sends them upstream. One message covering both sends them to neither, and
+        // the digest alone cannot tell them apart — a truncated body fails it too.
+        var body = Encoding.UTF8.GetBytes("[]");
+
+        var exception = await PrepareAndCatchAsync(body, PinnedCorpusLength);
+
+        Assert.Contains("cut short", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_ARejectedDownload_LeavesNothingBehindForTheNextRunToTrust()
+    {
+        // The failure that matters most is the second run, not the first. The scratch directory is
+        // named after the dataset directory and sits beside it, so a rejected download that left it
+        // behind would put an unverified corpus.json next to the cache — and the loud failure would
+        // happen exactly once, on a machine nobody was watching.
+        var body = Encoding.UTF8.GetBytes("[]");
+        var datasetDirectory = Path.Combine(_root, "multihop-rag");
+
+        _ = await PrepareAndCatchAsync(body, declaredLength: body.Length);
+
+        Assert.False(Directory.Exists(datasetDirectory));
+        Assert.Empty(Directory.GetDirectories(_root));
+        Assert.Empty(Directory.GetFiles(_root));
     }
 
     [Fact]
@@ -190,6 +263,29 @@ public sealed class MultiHopRagSourceTests : IDisposable
     }
 
     /// <summary>
+    /// Runs <see cref="MultiHopRagSource.PrepareAsync"/> against a stub handler that serves
+    /// <paramref name="body"/> for every request, and returns the refusal it must produce.
+    /// </summary>
+    /// <param name="body">
+    /// The bytes the "server" returns. Never the pinned <c>corpus.json</c> — the first download is
+    /// the corpus, so verification refuses it before a second request is ever made.
+    /// </param>
+    /// <param name="declaredLength">
+    /// The <c>Content-Length</c> the response advertises, which the caller sets to disagree with
+    /// <paramref name="body"/> when it wants a cut-short transfer rather than a different file.
+    /// </param>
+    /// <returns>The exception <see cref="MultiHopRagSource.PrepareAsync"/> threw.</returns>
+    private async Task<InvalidDataException> PrepareAndCatchAsync(byte[] body, long declaredLength)
+    {
+        var source = new MultiHopRagSource(new HttpClient(new PublishedFileHandler(body, declaredLength)));
+
+        return await Assert.ThrowsAsync<InvalidDataException>(() => source.PrepareAsync(
+            Path.Combine(_root, "multihop-rag"), TestContext.Current.CancellationToken));
+    }
+
+    private static string Md5Of(byte[] content) => Convert.ToHexStringLower(MD5.HashData(content));
+
+    /// <summary>
     /// Converts one pair of fixture files into a dataset directory under <see cref="_root"/>.
     /// </summary>
     /// <returns>The dataset directory the conversion published.</returns>
@@ -275,6 +371,23 @@ public sealed class MultiHopRagSourceTests : IDisposable
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// Serves one fixed body for any request, optionally declaring a <c>Content-Length</c> that
+    /// disagrees with it — the same stub shape <c>BeirDatasetCacheTests</c> uses, so both refusal
+    /// paths are exercised deterministically and neither needs a network.
+    /// </summary>
+    private sealed class PublishedFileHandler(byte[] body, long declaredLength) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var content = new ByteArrayContent(body);
+            content.Headers.ContentLength = declaredLength;
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+        }
     }
 
     /// <summary>A descriptor whose only job is to give <see cref="BeirDatasetCache"/> a name.</summary>

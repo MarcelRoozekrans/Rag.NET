@@ -161,6 +161,7 @@ public sealed class MultiHopRagSource : IBeirDatasetSource
         }
 
         var path = Path.Combine(scratchDirectory, fileName);
+        long declaredLength;
         long writtenLength;
 
         using (var response = await _httpClient
@@ -168,6 +169,7 @@ public sealed class MultiHopRagSource : IBeirDatasetSource
             .ConfigureAwait(false))
         {
             _ = response.EnsureSuccessStatusCode();
+            declaredLength = response.Content.Headers.ContentLength ?? -1;
 
             var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             await using (source.ConfigureAwait(false))
@@ -182,17 +184,10 @@ public sealed class MultiHopRagSource : IBeirDatasetSource
         }
 
         var actualMd5 = ComputeMd5(path);
-        if (writtenLength != publishedLength ||
-            !string.Equals(actualMd5, publishedMd5, StringComparison.OrdinalIgnoreCase))
+        var failure = DescribeFailure(url, declaredLength, writtenLength, publishedLength, publishedMd5, actualMd5);
+        if (failure is not null)
         {
-            throw new InvalidDataException(
-                $"'{url}' returned {writtenLength.ToString(CultureInfo.InvariantCulture)} bytes with " +
-                $"MD5 {actualMd5}, but revision {Revision} publishes " +
-                $"{publishedLength.ToString(CultureInfo.InvariantCulture)} bytes with MD5 " +
-                $"{publishedMd5}. Either the download was truncated, a proxy or captive portal " +
-                "answered instead of the server, or the dataset was re-published under the same " +
-                "name. Any of the three would otherwise surface as a retrieval score computed from " +
-                "the wrong data rather than as a bad download.");
+            throw new InvalidDataException(failure);
         }
 
         if (_logger is not null)
@@ -201,6 +196,57 @@ public sealed class MultiHopRagSource : IBeirDatasetSource
         }
 
         return path;
+    }
+
+    /// <summary>
+    /// Describes what is wrong with a downloaded file, or <see langword="null"/> when it is what the
+    /// pinned revision publishes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Length is checked before the digest so the message can distinguish "the transfer was cut
+    /// short" from "this is a different file", which <see cref="BeirArchiveSource"/> also does and
+    /// for the same reason: the two send whoever reads the message to entirely different places —
+    /// the network, or upstream. The digest cannot make that distinction on its own, because a
+    /// truncated body fails it exactly as a re-published one does.
+    /// </para>
+    /// <para>
+    /// The declared length is the response's, and it is absent whenever the response is chunked;
+    /// the pinned length is the revision's, and it is what a complete transfer of a re-published
+    /// file would disagree with. They are different claims and both are checked — the digest last,
+    /// because it is the check that actually matters and catches everything the other two would.
+    /// </para>
+    /// </remarks>
+    private static string? DescribeFailure(
+        Uri url,
+        long declaredLength,
+        long writtenLength,
+        long publishedLength,
+        string publishedMd5,
+        string actualMd5)
+    {
+        if (declaredLength >= 0 && writtenLength != declaredLength)
+        {
+            return $"Downloading '{url}' produced " +
+                $"{writtenLength.ToString(CultureInfo.InvariantCulture)} bytes but the response " +
+                $"declared {declaredLength.ToString(CultureInfo.InvariantCulture)}. The transfer " +
+                "was cut short. Unverified, this converts to a short corpus that scores badly and " +
+                "reads as a retrieval defect.";
+        }
+
+        if (writtenLength != publishedLength ||
+            !string.Equals(actualMd5, publishedMd5, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"'{url}' returned {writtenLength.ToString(CultureInfo.InvariantCulture)} bytes " +
+                $"with MD5 {actualMd5}, but revision {Revision} publishes " +
+                $"{publishedLength.ToString(CultureInfo.InvariantCulture)} bytes with MD5 " +
+                $"{publishedMd5}. Either a proxy or captive portal answered instead of the server, " +
+                "or the dataset was re-published under the same name. Either would otherwise " +
+                "surface as a retrieval score computed from the wrong data rather than as a bad " +
+                "download.";
+        }
+
+        return null;
     }
 
     /// <summary>
