@@ -466,14 +466,36 @@ public static class BeirRunBudget
             "multihop-rag",
             BeirProtocol.GraphRag,
             FitsTheNightly: false,
-            "NOT RUN, and not yet runnable: no test measures the GraphRag protocol. The cell " +
-            "exists because a descriptor in BeirDatasetDescriptor.All owes a recorded cost for " +
-            "every protocol it declares applicable, and MultiHop-RAG declares this one -- the " +
-            "cell is the table saying so out loud rather than the pair going unnoticed until a " +
-            "run throws. Nothing about the cost is known: graph construction extracts entities " +
-            "and relations from every chunk before anything is retrieved, which is an LLM bill " +
-            "with no counterpart in the ten flat-corpus protocols above, so there is no cell in " +
-            "this table it can be derived from and no figure is offered."),
+            "MEASURED 2026-08-12, and the only cell in this table whose cost is in two currencies. " +
+            "**The run itself: 5 m 45 s from a cold embedding cache, 33-35 s warm.** " +
+            "GraphRagFunctionsTests over the pinned 60-article slice (MultiHopRagSlice), Windows " +
+            "11, .NET 10, CPU ONNX Runtime. The cold figure is the honest one for a fresh machine: " +
+            "the slice's 2,044 article chunks are the small part, and the 33,100 entity and " +
+            "relationship chunks GraphRAG itself produces plus 655 community reports are what " +
+            "actually gets embedded -- roughly 35,800 vectors, against 17,648 for the whole " +
+            "609-article corpus under the Real protocol. **Graph construction costs more embedding " +
+            "than the corpus does.** " +
+            "**The other currency: 4,088 OpenRouter calls, once.** Entity extraction is an LLM " +
+            "call per chunk plus one gleaning pass, so 2,044 chunks cost 4,088 requests against " +
+            "openai/gpt-4o-mini at temperature 0. That took 34 m 25 s (2,065.2 s) at twelve " +
+            "articles in flight, after a 58-request smoke run of 225.1 s on one article. **No " +
+            "token or cost figure was captured** -- the generation tool never read " +
+            "ChatResponse.Usage, so nothing here is a spend measurement and none should be " +
+            "inferred from the request count. " +
+            "**But the nightly would pay none of it, and neither does a re-run.** Every one of " +
+            "those 4,088 responses is in GraphExtractionCache, replayed refuse-on-miss; the run " +
+            "above makes zero model calls. The cache is never committed, so this cell can no more " +
+            "run on a fresh runner than the Hyde cells can, and an opted-in run without it FAILS " +
+            "naming the missing key rather than skipping. " +
+            "FitsTheNightly stays false for that reason before any timing argument: the nightly " +
+            "has no cache to replay and cannot make the calls. " +
+            "**Two costs are NOT in these figures and would dominate if they were.** Community " +
+            "report generation is one LLM call per community over 655 communities, and the " +
+            "largest community's prompt is 976,425 characters of entity descriptions -- past any " +
+            "model's context, so the guard synthesises reports rather than generating them (see " +
+            "PromptEchoChatClient). And CommunityDetectionBehavior is an ingestion behavior, so a " +
+            "real pipeline re-detects and regenerates every report on every document: 60 passes " +
+            "over this slice, of which 59 are overwritten."),
     ];
 
     /// <summary>

@@ -510,12 +510,29 @@ public static class BeirReproduction
             "multihop-rag",
             BeirProtocol.GraphRag,
             [],
-            "NEVER RUN, and not yet runnable: no test measures the GraphRag protocol. This entry " +
-            "exists because MultiHop-RAG declares the protocol applicable, and the table requires " +
-            "an entry for every applicable pair -- so the pair is recorded as unmeasured here " +
-            "rather than discovered when a run throws. Nothing is claimed about the number the " +
-            "graph path will produce, and nothing in this file can be used to predict it: the " +
-            "other entries all measure a flat corpus retrieved by cosine, and this one will not."),
+            "RUN 2026-08-12, and it produced NO nDCG@10 -- which is why the figure list is empty " +
+            "and will stay empty until somebody asks a different question of this protocol. " +
+            "GraphRagFunctionsTests runs the graph path end to end over a pinned 60-article slice " +
+            "of the corpus and asserts that it FUNCTIONS: extraction produced 8,999 entities and " +
+            "16,403 relationships, entities recur across articles (\"Google\" in 16 of the 60), " +
+            "Leiden returned 655 communities, local search retrieved a known-relevant document in " +
+            "the top 10 for all 27 of the slice's judged queries, and global search's map-reduce " +
+            "ran over the community reports. **None of that is a retrieval quality figure.** It is " +
+            "scored over 60 of 609 documents and 27 of 2,255 queries, so an nDCG computed from it " +
+            "would not be comparable to the Real entry above, to any other row here, or to " +
+            "anything outside this repository -- and a number in this cell is read as comparable " +
+            "by construction. The empty list is therefore a determination, not a gap: " +
+            "AssertReproduces prints and checks nothing for this pair, which is the correct " +
+            "behaviour, and the run's own assertions are its gate. " +
+            "**What would fill it** is the comparative run the roadmap defers -- the whole corpus " +
+            "under the graph path, differenced against the Real entry's 0.63967 -- and that run " +
+            "does not exist yet. Two things measured on 2026-08-12 say what it would cost and " +
+            "what it would find. Extraction is one LLM call per chunk plus a gleaning pass: 4,088 " +
+            "calls for 60 articles, so the 609-article corpus is roughly 41,000. And the graph the " +
+            "60 articles produced is degenerate -- 475 of the 655 communities hold a single entity " +
+            "and one holds 7,954 of the 8,999, which is community detection finding almost " +
+            "nothing. Neither is a reason to skip the comparison; both are reasons not to predict " +
+            "its outcome from this entry."),
     ];
 
     /// <summary>
