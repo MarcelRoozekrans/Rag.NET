@@ -12,19 +12,23 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// decides what the graph contains and must not vary between runs.
 /// </para>
 /// <para>
-/// <b>Community reports cannot be generated at all on this graph, and that is a measurement.</b>
-/// <c>CommunityDetectionBehavior</c> builds a report prompt by pasting every member entity's whole
-/// merged description into one message, with no bound of any kind. Over the sixty-article slice
-/// Leiden puts 8,070 of 8,999 entities into a single community, and that one prompt measures
-/// <b>1,806,352 characters</b> — roughly 450,000 tokens, against gpt-4o-mini's 128,000-token
-/// context. There is no model to send it to. Generating the reports is therefore not something this
-/// guard declined to pay for; it is something the library cannot currently do, and the finding is
-/// recorded here rather than hidden behind a skip.
+/// <b>Community reports are not generated here because 607 of them cost real money, not because
+/// they cannot be.</b> That distinction is new. <c>CommunityDetectionBehavior</c> builds a report
+/// prompt by pasting every member entity's whole merged description into one message with no bound
+/// of any kind, and while Leiden was discarding intra-community weight when aggregating, it put
+/// 8,070 of 8,999 entities into one community and that prompt measured <b>1,806,352 characters</b>
+/// — some 450,000 tokens against gpt-4o-mini's 128,000-token context, with no model to send it to.
+/// Folding those edges into a self-loop dropped the largest community to 796 entities and the
+/// largest prompt to <b>195,446 characters</b>, roughly 49,000 tokens, which fits. The stub stays
+/// because the guard replays rather than spends, not because the library is incapable.
 /// </para>
 /// <para>
-/// The figure is <see cref="LongestPrompt"/>, printed by every run, rather than a number somebody
-/// once observed — an earlier note here put it at 976,425 characters, which was the entity-
-/// description block alone and roughly half of what the behavior actually sends.
+/// <b>The prompt is still unbounded, and that is the finding this number now carries.</b> Sixty
+/// articles fit; nothing in the behavior makes that true of six hundred, because the bound is a
+/// property of the corpus rather than of the code. <see cref="LongestPrompt"/> is measured on every
+/// run and printed by the guard for exactly that reason — an earlier note here put the figure at
+/// 976,425 characters, which was the entity-description block alone and about half of what the
+/// behavior actually sends, and a number nobody re-measures is a number that drifts.
 /// </para>
 /// <para>
 /// <b>Global search's map-reduce is uncached because its prompts are machine-dependent.</b> They

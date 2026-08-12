@@ -300,6 +300,17 @@ public static class Leiden
         communityWeight[bestComm] += ki;
     }
 
+    /// <summary>How much edge weight joins one node to each community around it.</summary>
+    /// <remarks>
+    /// <b>The node's own self-loop is deliberately not counted.</b> Since
+    /// <see cref="BuildAggregatedEdges"/> began folding a community's internal weight into a
+    /// self-loop, super-nodes carry one, and it belongs to the node rather than to any community it
+    /// might join: modularity's <c>A_ii</c> term contributes the same amount wherever the node sits,
+    /// so it cancels out of every gain and every removal cost. Counting it would inflate the weight
+    /// binding a node to whichever community it currently occupies by its entire internal weight,
+    /// and no node would ever leave anywhere. It is still counted in
+    /// <see cref="ComputeNodeDegrees"/>, where it is the whole point.
+    /// </remarks>
     private static Dictionary<int, double> ComputeNeighborCommunityWeights(
         List<int>[] neighbors, List<double>[] weights, int node, int[] assignment)
     {
@@ -309,6 +320,11 @@ public static class Leiden
 
         for (int i = 0; i < nSpan.Length; i++)
         {
+            if (nSpan[i] == node)
+            {
+                continue;
+            }
+
             int comm = assignment[nSpan[i]];
             ref double val = ref CollectionsMarshal.GetValueRefOrAddDefault(result, comm, out _);
             val += wSpan[i];
@@ -350,6 +366,33 @@ public static class Leiden
         return (new AggregatedGraph(newN, newNeighbors, newWeights), nodeMap);
     }
 
+    /// <summary>
+    /// Collapses each community into one super-node, keeping the weight between communities as
+    /// edges and the weight inside each community as a self-loop on its super-node.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The self-loop is what makes the next level's modularity mean anything, and dropping it
+    /// collapsed the whole clustering.</b> Modularity scores a community against a null model whose
+    /// only input is each node's total incident weight, so a super-node that discarded its internal
+    /// edges arrives at the next level looking exactly as light as its few external ones. The
+    /// penalty for merging it into a neighbour is computed from that phantom weight, merging
+    /// therefore always pays, and every level swallows the one below it — ten cliques joined in a
+    /// ring came back as a single community of a hundred, and a 9,000-entity corpus as a single
+    /// community of 8,070.
+    /// </para>
+    /// <para>
+    /// <b>Why the weight lands doubled and that is not an error.</b> Adjacency here is undirected
+    /// and stored from both ends, so an internal edge between two distinct members is visited twice
+    /// and contributes its weight twice, giving a self-loop of 2·W. That is the quantity the rest of
+    /// the algorithm wants: <see cref="ComputeNodeDegrees"/> sums the adjacency list to get a node's
+    /// degree, and a self-loop counts twice toward degree because both of its ends are attached to
+    /// the same node. It also keeps <see cref="ComputeTotalWeight"/> invariant across levels, which
+    /// it must be — <c>m</c> is the same graph however it is aggregated. A self-loop already present
+    /// on an incoming super-node is visited once and carries its already-doubled weight forward
+    /// unchanged, which is the same arithmetic one level up.
+    /// </para>
+    /// </remarks>
     private static void BuildAggregatedEdges(
         List<int>[] neighbors, List<double>[] weights, int n, int[] nodeMap,
         List<int>[] newNeighbors, List<double>[] newWeights)
@@ -362,13 +405,7 @@ public static class Leiden
 
             for (int k = 0; k < nSpan.Length; k++)
             {
-                int cj = nodeMap[nSpan[k]];
-                if (ci == cj)
-                {
-                    continue;
-                }
-
-                AddEdge(newNeighbors, newWeights, ci, cj, wSpan[k]);
+                AddEdge(newNeighbors, newWeights, ci, nodeMap[nSpan[k]], wSpan[k]);
             }
         }
     }

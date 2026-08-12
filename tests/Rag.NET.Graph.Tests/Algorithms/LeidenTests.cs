@@ -82,11 +82,90 @@ public class LeidenTests
         var graph = new GraphSnapshot(entities, relationships, []);
         var communities = Leiden.Detect(graph);
 
-        // With bridge edges at default resolution, Leiden may merge communities
-        Assert.True(communities.Count >= 1);
+        Assert.Equal(3, communities.Count);
         // All 12 entities must be assigned
         var allMembers = communities.SelectMany(c => c.MemberEntities).ToHashSet(StringComparer.Ordinal);
         Assert.Equal(12, allMembers.Count);
+    }
+
+    /// <summary>
+    /// Two cliques joined by a single edge are two communities.
+    /// </summary>
+    /// <remarks>
+    /// <b>The smallest graph on which merging is unambiguously wrong.</b> Twenty nodes, ninety
+    /// edges, and exactly one of them crossing: no resolution worth the name calls that one group.
+    /// It is the minimal case of the defect
+    /// <see cref="Detect_TenCliquesInARing_FindsTenCommunities"/> shows at scale, and it is here
+    /// because a one-line reproduction is what a future regression will be debugged against.
+    /// </remarks>
+    [Fact]
+    public void Detect_TwoCliquesJoinedByOneBridge_FindsTwoCommunities()
+    {
+        var entities = Enumerable.Range(0, 20)
+            .Select(i => new GraphEntity($"E{i}", "Node", $"Entity {i}"))
+            .ToList();
+        var relationships = new List<GraphRelationship>();
+        for (int i = 0; i < 10; i++)
+            for (int j = i + 1; j < 10; j++)
+                relationships.Add(new GraphRelationship($"E{i}", $"E{j}", "connected"));
+        for (int i = 10; i < 20; i++)
+            for (int j = i + 1; j < 20; j++)
+                relationships.Add(new GraphRelationship($"E{i}", $"E{j}", "connected"));
+        relationships.Add(new GraphRelationship("E0", "E10", "bridge"));
+
+        var graph = new GraphSnapshot(entities, relationships, []);
+        var communities = Leiden.Detect(graph);
+
+        Assert.Equal(2, communities.Count);
+    }
+
+    /// <summary>
+    /// Ten cliques in a ring, each joined to the next by one edge, are ten communities.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is a property of Leiden, not a tuning target.</b> Each clique holds 45 internal edges
+    /// and spends 2 on the ring, so the partition into ten is the modularity optimum by an enormous
+    /// margin, and every published implementation recovers it. It is stated as an equality for that
+    /// reason: a bound like <c>Count &gt;= 1</c> is satisfied by returning one community of 100,
+    /// which is exactly what this implementation used to do.
+    /// </para>
+    /// <para>
+    /// <b>What it caught.</b> <c>BuildAggregatedEdges</c> discarded every edge whose endpoints fell
+    /// in the same community instead of folding it into a self-loop on the super-node. Modularity's
+    /// null model is driven by each node's total incident weight, so a super-node that has thrown
+    /// its 45 internal edges away looks 45 edges lighter than it is; the penalty for merging it into
+    /// a neighbour collapses, merging always pays, and each aggregation level swallows the last.
+    /// The corpus symptom was a single community holding 8,070 of 8,999 entities, but no corpus is
+    /// needed to see it — a ring of cliques came back as one community of 100.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Detect_TenCliquesInARing_FindsTenCommunities()
+    {
+        const int cliques = 10;
+        const int size = 10;
+        var entities = new List<GraphEntity>();
+        for (int c = 0; c < cliques; c++)
+            for (int i = 0; i < size; i++)
+                entities.Add(new GraphEntity($"C{c}N{i}", "Node", $"Node {i} of clique {c}"));
+
+        var relationships = new List<GraphRelationship>();
+        for (int c = 0; c < cliques; c++)
+            for (int i = 0; i < size; i++)
+                for (int j = i + 1; j < size; j++)
+                    relationships.Add(new GraphRelationship($"C{c}N{i}", $"C{c}N{j}", "in clique"));
+        for (int c = 0; c < cliques; c++)
+            relationships.Add(new GraphRelationship($"C{c}N0", $"C{(c + 1) % cliques}N0", "bridge"));
+
+        var graph = new GraphSnapshot(entities, relationships, []);
+        var communities = Leiden.Detect(graph);
+
+        Assert.Equal(cliques, communities.Count);
+        foreach (var community in communities)
+        {
+            Assert.Equal(size, community.MemberEntities.Count);
+        }
     }
 
     [Fact]

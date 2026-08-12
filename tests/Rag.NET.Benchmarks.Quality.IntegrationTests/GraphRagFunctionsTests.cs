@@ -191,33 +191,31 @@ public sealed class GraphRagFunctionsTests
     /// <b>The second half asks that several communities cluster, not that every one does, and the
     /// difference is a finding rather than a softening.</b> Leiden emits one community per node it
     /// cannot attach to anything, which is correct behaviour and not a defect — but on this graph
-    /// it does so 396 times out of 565, and the other 8,070 entities land in a single community.
-    /// Demanding zero singletons would make this file red on arrival, and a permanently failing
-    /// test is not a guard — so the numbers are printed on every run, what is known about them is
-    /// written down here, and the assertion guards what it can: that clustering happened somewhere.
+    /// it does so 396 times out of 607. Demanding zero singletons would make this file red on
+    /// arrival, so the numbers are printed on every run, what is known about them is written down
+    /// here, and the assertion guards what it can.
     /// </para>
     /// <para>
-    /// <b>One cause has been removed and it was not the main one.</b> <c>Leiden</c> and
-    /// <c>PageRank</c> matched relationship endpoints to entity names with
+    /// <b>Two defects were found underneath these numbers, and both are fixed.</b> First,
+    /// <c>Leiden</c> and <c>PageRank</c> matched relationship endpoints to entity names with
     /// <c>StringComparer.Ordinal</c> while <c>SqliteGraphStore</c>'s <c>name</c> column is
     /// <c>COLLATE NOCASE</c>, so every endpoint whose casing differed from the entity it named was
     /// an edge the store held and the clusterer dropped; they now compare through
-    /// <c>GraphNames.Comparer</c>. Recovering those edges moved the numbers from 655 communities
-    /// and 475 singletons to 565 and 396 — and grew the largest community from 7,954 to 8,070,
-    /// because what the recovered edges mostly did was attach more nodes to the giant one.
+    /// <c>GraphNames.Comparer</c>. Recovering those edges moved 655 communities and 475 singletons
+    /// to 565 and 396 — and <i>grew</i> the largest community from 7,954 to 8,070, which is what
+    /// said the real cause lay elsewhere.
     /// </para>
     /// <para>
-    /// <b>The giant community is a separate defect, in the aggregation step.</b>
-    /// <c>Leiden.BuildAggregatedEdges</c> skips edges whose endpoints fall in the same community
-    /// (<c>ci == cj</c>) instead of folding them into a self-loop on the super-node, so every
-    /// aggregation level discards the intra-community weight that modularity's null model needs.
-    /// Each level therefore sees communities that look far lighter than they are, merging always
-    /// pays, and the recursion collapses whatever is connected into one community. It reproduces
-    /// with no corpus at all: ten 10-node cliques joined in a ring by one bridge edge each return
-    /// <b>one</b> community of 100, and two cliques joined by one bridge return one community of
-    /// 20. <c>LeidenTests.Detect_ThreeCliquesWithBridges_FindsThreeCommunities</c> already carries
-    /// the symptom in a comment — "with bridge edges at default resolution, Leiden may merge
-    /// communities" — and asserts only <c>Count &gt;= 1</c> because of it.
+    /// It lay in aggregation. <c>Leiden.BuildAggregatedEdges</c> skipped edges whose endpoints fell
+    /// in the same community instead of folding them into a self-loop on the super-node, so every
+    /// level discarded the intra-community weight modularity's null model is computed from; each
+    /// level saw communities far lighter than they were, merging always paid, and the recursion
+    /// collapsed whatever was connected into one community. It reproduced with no corpus at all —
+    /// ten 10-node cliques ring-bridged by one edge each returned <b>one</b> community of 100 — and
+    /// <c>LeidenTests</c> now pins that case, along with the two- and three-clique cases whose
+    /// <c>Count &gt;= 1</c> assertion had been tolerating the defect. Folding the weight in dropped
+    /// the largest community from 8,070 entities to <b>796</b>, its share of the graph from 89.7%
+    /// to 8.8%, and the largest report prompt from 1,806,352 characters to 195,446.
     /// </para>
     /// </remarks>
     private static void AssertCommunityDetectionClusteredTheGraph(GraphRagSliceRun run)
