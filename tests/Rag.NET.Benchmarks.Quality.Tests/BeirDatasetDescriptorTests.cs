@@ -272,6 +272,72 @@ public sealed class BeirDatasetDescriptorTests
     }
 
     [Fact]
+    public void EveryExistingDatasetSupportsEveryProtocol_SoThisChangeMovesNothing()
+    {
+        // The default has to be "all", or adding applicability silently gates off cells that four
+        // datasets have already measured and pinned.
+        foreach (var descriptor in BeirDatasetDescriptor.All)
+        {
+            foreach (var protocol in Enum.GetValues<BeirProtocol>())
+            {
+                Assert.True(
+                    descriptor.Supports(protocol),
+                    $"{descriptor.Name} stopped supporting {protocol}, which would gate off a measured cell.");
+            }
+        }
+    }
+
+    [Fact]
+    public void ADescriptorThatRestrictsItsProtocols_SupportsThoseAndOnlyThose()
+    {
+        // The test above cannot reach this branch. Every existing descriptor leaves
+        // ApplicableProtocols null, so "is null" short-circuits on all 40 of its iterations and
+        // Contains is never called — the half of Supports that actually gates anything would have
+        // shipped with zero coverage. This repository's recurring defect is guards that report
+        // green while covering nothing, so the restricted path gets its own case.
+        var restricted = BeirDatasetDescriptor.SciFact with
+        {
+            ApplicableProtocols = new HashSet<BeirProtocol> { BeirProtocol.Parity },
+        };
+
+        Assert.True(restricted.Supports(BeirProtocol.Parity));
+        Assert.False(restricted.Supports(BeirProtocol.Real));
+    }
+
+    [Fact]
+    public void ADescriptorCannotDeclareAnEmptySetOfProtocols_BecauseNothingWouldEverRunIt()
+    {
+        // An empty set makes Supports answer false for everything, which is a descriptor that is
+        // described and then measured by nothing. All's own documentation says that state cannot
+        // arise and All_ListsEveryDescribedDataset exists to prevent it, but neither can see it:
+        // both check that a descriptor is listed, not that anything can run it. So the refusal has
+        // to happen at construction, where it names the mistake, rather than hours later as a
+        // universal skip.
+        var exception = Assert.Throws<ArgumentException>(
+            () => BeirDatasetDescriptor.SciFact with
+            {
+                ApplicableProtocols = new HashSet<BeirProtocol>(),
+            });
+
+        Assert.Contains("empty set", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARestrictedDescriptorIgnoresLaterMutationOfTheSetItWasGiven()
+    {
+        // IReadOnlySet<T> is a read-only view, not an immutable set. Without the copy in the init
+        // accessor, the caller below would be reaching into a descriptor after construction and
+        // changing what it supports — and on the static descriptors that is a process-wide change
+        // to what the harness measures, arriving from whichever test happened to run first.
+        var mutable = new HashSet<BeirProtocol> { BeirProtocol.Parity };
+        var restricted = BeirDatasetDescriptor.SciFact with { ApplicableProtocols = mutable };
+
+        mutable.Add(BeirProtocol.Real);
+
+        Assert.False(restricted.Supports(BeirProtocol.Real));
+    }
+
+    [Fact]
     public void ByName_FindsADescribedDataset()
     {
         Assert.Same(BeirDatasetDescriptor.SciFact, BeirDatasetDescriptor.ByName("scifact"));

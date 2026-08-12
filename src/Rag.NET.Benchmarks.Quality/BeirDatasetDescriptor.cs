@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+
 namespace Rag.NET.Benchmarks.Quality;
 
 /// <summary>
@@ -70,6 +72,80 @@ public sealed record BeirDatasetDescriptor(
     bool ExcludesSelfRetrievedDocument,
     BeirParityTarget ParityTarget)
 {
+    // Held as the concrete FrozenSet rather than as the interface the property exposes: the
+    // interface would box the set's value-type enumerator on assignment (HLQ001), and Supports
+    // reads this field directly so its Contains call is a direct one rather than a virtual
+    // dispatch through IReadOnlySet.
+    private readonly FrozenSet<BeirProtocol>? _applicableProtocols;
+
+    /// <summary>
+    /// The protocols this dataset can be measured under, or <see langword="null"/> for all of them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This exists because "nobody has run this" and "running this would be meaningless" were the
+    /// same statement.</b> Both were written as an empty <c>BeirReproduction</c> array beside a
+    /// <c>FitsTheNightly: false</c> budget cell reading NEVER RUN. TREC-COVID's Comparison cell means
+    /// the first. MultiHop-RAG's Parity leg means the second — its articles average 10,340 characters
+    /// and the parity protocol indexes one chunk per document truncated at 256 tokens, so the run
+    /// would score roughly the first tenth of each article and report the result as retrieval quality.
+    /// </para>
+    /// <para>
+    /// Conflating the two is not untidiness. <see cref="All"/> enrols a descriptor in every theory
+    /// that iterates it, so on 2026-08-12 a descriptor added for Phase 5.3 joined the comparison
+    /// control and killed a cost sweep seven minutes in against a cold embedding cache.
+    /// </para>
+    /// <para>
+    /// <see langword="null"/> rather than a populated set is deliberate: it keeps the four existing
+    /// descriptors byte-identical and makes "supports everything" the thing you get by not thinking
+    /// about it, which is right for a BEIR dataset and wrong only for the shapes BEIR does not cover.
+    /// </para>
+    /// <para>
+    /// Two things are settled on assignment rather than left to a caller, because a descriptor is
+    /// usually a <see langword="static"/> field read by every theory in the harness.
+    /// </para>
+    /// <para>
+    /// <b>An empty set is refused.</b> It would make <see cref="Supports"/> answer
+    /// <see langword="false"/> for every protocol, which is a descriptor that is described and then
+    /// measured by nothing — precisely the state <see cref="All"/>'s own documentation says cannot
+    /// arise and that
+    /// <c>All_ListsEveryDescribedDataset_SoADescriptorCannotExistWithoutBeingMeasured</c> exists to
+    /// prevent. Neither would catch it, because both look at whether a descriptor is listed rather
+    /// than at whether anything can run it. Failing at construction beats surfacing hours later as a
+    /// universal skip nobody can account for.
+    /// </para>
+    /// <para>
+    /// <b>And the set is copied.</b> <see cref="IReadOnlySet{T}"/> is a read-only view, not an
+    /// immutable set: a caller holding the <see cref="HashSet{T}"/> it passed can keep mutating it
+    /// afterwards and silently change what a <see langword="static"/> descriptor supports at
+    /// runtime. Freezing on the way in makes the descriptor's answer a function of construction.
+    /// </para>
+    /// </remarks>
+    public IReadOnlySet<BeirProtocol>? ApplicableProtocols
+    {
+        get => _applicableProtocols;
+        init
+        {
+            if (value is not null && value.Count == 0)
+            {
+                throw new ArgumentException(
+                    "A BEIR dataset descriptor cannot declare an empty set of applicable " +
+                    "protocols: it would be measurable under no protocol at all, so it would be " +
+                    "described and then run by nothing. Pass null to say 'all of them', which is " +
+                    "the default, or name the protocols the dataset can actually be measured under.",
+                    nameof(value));
+            }
+
+            _applicableProtocols = value?.ToFrozenSet();
+        }
+    }
+
+    /// <summary>Reports whether this dataset can be measured under one protocol.</summary>
+    /// <param name="protocol">The protocol to ask about.</param>
+    /// <returns><see langword="true"/> when this dataset can be measured under it.</returns>
+    public bool Supports(BeirProtocol protocol) =>
+        _applicableProtocols is null || _applicableProtocols.Contains(protocol);
+
     /// <summary>
     /// SciFact: scientific claims against a corpus of abstracts.
     /// </summary>
