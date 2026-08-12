@@ -111,12 +111,29 @@ public sealed class BeirPythonEntrantsTests
         string expectedRunTag,
         string configuration)
     {
+        // The descriptor is fetched before any gate because the first gate is a question about the
+        // dataset. ByName throws on a name no descriptor carries, which is right: an unknown
+        // dataset name is a bug in the theory data, not a case to skip past.
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        // First of the three, for the reason the other seven theories give — and here it is not
+        // only a matter of reporting the right thing. Since the budget table became bidirectional it
+        // holds NO cell for an inapplicable pair, and IsGatedOff goes through Find, which throws on
+        // a missing cell. So an inapplicable dataset reaching the budget gate does not skip: it
+        // fails, with a message telling the reader to measure something nobody can measure. This
+        // file was the last of the ten theories without the gate, and MultiHop-RAG is the first
+        // dataset that would have found out — on a machine with RAGNET_BEIR_CACHE set, which is
+        // every nightly.
+        Assert.SkipUnless(
+            descriptor.Supports(protocol),
+            $"{datasetName} does not declare the {protocol} protocol applicable, so measuring it " +
+            "would produce a number that means nothing.");
+
         Assert.SkipUnless(
             BeirHarness.IsDatasetCacheProvisioned(out var cacheDirectory), DatasetCacheSkipReason);
         Assert.SkipWhen(
             BeirRunBudget.IsGatedOff(datasetName, protocol, out var budgetReason), budgetReason);
 
-        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
         var dataset = await BeirHarness.LoadAsync(descriptor, cacheDirectory, " ", ct);
 

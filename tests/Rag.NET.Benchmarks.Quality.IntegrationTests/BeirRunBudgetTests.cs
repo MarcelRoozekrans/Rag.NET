@@ -73,10 +73,18 @@ public sealed class BeirRunBudgetTests
         // developer who sets it to run a measurement would turn this test into an assertion that
         // three is at least two — green whatever the table says, on the one machine most likely to
         // be editing the table.
+        // Supports before FitsTheNightly, and not as a courtesy. FitsTheNightly goes through Find,
+        // which throws on a pair the table holds no cell for — and since the table became
+        // bidirectional it correctly holds no Parity cell for a dataset that declares Parity
+        // inapplicable, which MultiHop-RAG does. Asking the table about that pair anyway turns this
+        // guard into an InvalidOperationException complaining that somebody forgot to measure
+        // something nobody can measure: a true statement about the wrong thing, in place of the
+        // count this test exists to assert.
         var measured = 0;
         foreach (var descriptor in BeirDatasetDescriptor.All)
         {
-            if (BeirRunBudget.FitsTheNightly(descriptor.Name, BeirProtocol.Parity))
+            if (descriptor.Supports(BeirProtocol.Parity)
+                && BeirRunBudget.FitsTheNightly(descriptor.Name, BeirProtocol.Parity))
             {
                 measured++;
             }
