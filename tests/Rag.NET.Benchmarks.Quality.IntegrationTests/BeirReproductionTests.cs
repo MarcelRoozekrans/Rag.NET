@@ -31,7 +31,7 @@ public sealed class BeirReproductionTests
     }
 
     [Fact]
-    public void EveryDescribedDatasetHasARecordedReproductionUnderEveryProtocol()
+    public void EveryApplicablePairHasARecordedReproduction_AndNoInapplicablePairHasOne()
     {
         // BeirReproduction.Find throws on a pair it holds nothing for, which is what stops a fourth
         // dataset from joining the suite pinned by nothing but a ±0.02 published band. That throw
@@ -39,11 +39,30 @@ public sealed class BeirReproductionTests
         // so it is provoked here, where nothing is gated. Every protocol, not just the two
         // chunking legs: since Phase 3.15 pinned the ablation cells, a fourth dataset owes those
         // three figures too (or an entry recording that nobody has run them).
+        //
+        // And the other direction, which the requirement alone does not cover. A descriptor can now
+        // declare a protocol inapplicable, and an entry surviving that declaration is a
+        // contradiction nothing else can see: Find is only consulted for pairs somebody runs, so an
+        // entry for a pair nobody can run is read by nothing and deleted by nobody. It is worse here
+        // than in the budget table, because an entry carries an nDCG and a provenance string — a
+        // figure for a protocol the dataset cannot be measured under is indistinguishable, to a
+        // reader and to docs/reference/retrieval-quality.md, from a figure somebody measured.
+        // Required where applicable, refused where not; either half alone is not a guard.
         foreach (var descriptor in BeirDatasetDescriptor.All)
         {
             foreach (var protocol in Enum.GetValues<BeirProtocol>())
             {
-                BeirReproduction.RequireRecordedCase(descriptor.Name, protocol);
+                if (descriptor.Supports(protocol))
+                {
+                    BeirReproduction.RequireRecordedCase(descriptor.Name, protocol);
+                    continue;
+                }
+
+                Assert.False(
+                    BeirReproduction.HasReproduction(descriptor.Name, protocol),
+                    $"{descriptor.Name} declares {protocol} inapplicable but still carries a " +
+                    "reproduction entry. One of the two is wrong, and a stale entry looks exactly " +
+                    "like a measurement.");
             }
         }
     }

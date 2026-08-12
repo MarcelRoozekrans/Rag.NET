@@ -514,6 +514,29 @@ public static class BeirReproduction
     public static void RequireRecordedCase(string datasetName, BeirProtocol protocol) =>
         _ = Find(datasetName, protocol);
 
+    /// <summary>Reports whether the table holds an entry for one pair, without throwing when it does not.</summary>
+    /// <param name="datasetName">The BEIR dataset name.</param>
+    /// <param name="protocol">The protocol to ask about.</param>
+    /// <returns><see langword="true"/> when the table holds an entry for that pair.</returns>
+    /// <remarks>
+    /// <see cref="AssertReproduces"/> and <see cref="RequireRecordedCase"/> both go through
+    /// <c>Find</c>, which throws on an absent pair — correct for them, and useless for asking
+    /// whether a pair is absent.
+    /// </remarks>
+    public static bool HasReproduction(string datasetName, BeirProtocol protocol)
+    {
+        foreach (var reproduction in Reproductions)
+        {
+            if (string.Equals(reproduction.Dataset, datasetName, StringComparison.Ordinal)
+                && reproduction.Protocol == protocol)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Reports whether the measurement lands within tolerance of any recorded figure.</summary>
     private static bool Reproduces(Reproduction recorded, double measured)
     {
