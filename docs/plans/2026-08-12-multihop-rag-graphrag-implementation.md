@@ -445,6 +445,32 @@ going further; a refactor that changes behaviour here would be invisible until a
 - Create: `src/Rag.NET.Benchmarks.Quality/MultiHopRagSource.cs`
 - Test: `tests/Rag.NET.Benchmarks.Quality.Tests/MultiHopRagSourceTests.cs`
 
+> ### Read this before writing a line of the converter
+>
+> **`IsPresent` does not check the qrels file.** `BeirDatasetCache.RequiredFiles` is
+> `["corpus.jsonl", "queries.jsonl"]` and the qrels check only asserts that the `qrels/`
+> *directory* exists — verified 2026-08-12 at `BeirDatasetCache.cs:43`. `BeirLoader.Load` then
+> reads `qrels/{split}.tsv` and fails if it is missing.
+>
+> The archive path survives this because it extracts to a staging directory and renames atomically,
+> so a half-extracted dataset is never visible under its real name. **A converter that writes the
+> three files directly into the dataset directory has no such protection**: interrupt it after
+> `corpus.jsonl` and `queries.jsonl` and the next run sees `IsPresent == true`, skips acquisition,
+> and fails inside `BeirLoader` — permanently, because nothing will ever re-acquire it.
+>
+> **Write to a staging directory and rename, mirroring `PublishExtractedDatasetAsync`.** Do not
+> instead widen `RequiredFiles`; that would change the cache-hit predicate for the four existing
+> datasets, and this task is not the place to move that.
+>
+> **Also:** nothing yet exercises the non-null arm of `dataset.Source ?? new BeirArchiveSource(...)`
+> — Task 6 deliberately left that gap for you, so your tests are its first coverage.
+>
+> **And:** `EnsureAsync`'s post-acquisition failure message still names the archive file
+> (`"'{ArchiveFileName}' matched its published MD5 but extracting it did not produce…"`), which is
+> wrong for a converted source that downloaded no zip. Reword it in this task now that a second
+> source exists — Task 6 left it verbatim deliberately rather than changing a message under a
+> move-don't-rewrite instruction.
+
 **Rules, all of them load-bearing:**
 
 - **Document id is the article `url`.** Bijective over 609 documents; all 6,084 evidence rows join
