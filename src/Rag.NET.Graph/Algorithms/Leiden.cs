@@ -3,10 +3,66 @@ using Rag.NET.Telemetry;
 
 namespace Rag.NET.Graph.Algorithms;
 
-/// <summary>Leiden community detection algorithm — a refinement of Louvain that guarantees well-connected communities.</summary>
+/// <summary>
+/// Modularity community detection: Louvain's local moving and aggregation, with a refinement pass
+/// between them that constrains what may be aggregated together.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>This is not the Leiden algorithm, and this paragraph is the only thing that says so.</b> The
+/// type name asserts Traag, Waltman and van Eck's algorithm (<i>From Louvain to Leiden: guaranteeing
+/// well-connected communities</i>, Scientific Reports 9:5233, 2019), whose entire reason for
+/// existing is a guarantee — after each iteration "all communities are γ-connected", and in
+/// particular no returned community is internally disconnected, which Louvain's are known to be.
+/// <b>This implementation does not provide that guarantee</b>, and someone choosing it because the
+/// name promises one would be choosing on a false premise.
+/// </para>
+/// <para>
+/// <b>What it actually does.</b> Local moving to a modularity local optimum at
+/// <see cref="LeidenOptions.Resolution"/>; then a refinement pass that rebuilds sub-communities
+/// inside each community from singletons, merging a node only into a sub-community of its own
+/// community and only by the largest modularity gain; then aggregation of that refined partition
+/// into super-nodes, and the same again one level up. On the graphs where the answer is not in
+/// doubt it finds it: ten disjoint cliques ring-bridged come back as ten communities, two joined by
+/// a bridge as two, three as three. <b>It clusters, and it clusters correctly on everything
+/// measured.</b>
+/// </para>
+/// <para>
+/// <b>Where it departs from the paper, in the three places the guarantee comes from.</b> The paper
+/// aggregates the refined partition but starts the next level from the unrefined one — "the
+/// aggregate network is created based on the partition P<sub>refined</sub>. However, the initial
+/// partition for the aggregate network is based on P" — where <see cref="RunLeiden"/> overwrites P
+/// with the refined partition and restarts the next level from singletons. The paper moves only
+/// nodes that are alone in their refined community, and merges one "only if both are sufficiently
+/// well connected to their community in P"; <see cref="RefineSingleNode"/> moves every node and
+/// tests no such condition. The paper picks the merge target at random, weighted by the size of the
+/// quality increase and a randomness parameter θ; this picks the largest gain. <b>The guarantee is a
+/// property of those constraints, not of having a refinement pass</b>, so adding the seeding step
+/// alone would not earn the name either.
+/// </para>
+/// <para>
+/// <b>Concretely, what is not guaranteed.</b> A refined sub-community is built by attaching nodes to
+/// sub-communities they have an edge to, but a node may later leave one it was the sole link
+/// through, so a returned community can be internally disconnected. Nothing in this suite pins
+/// otherwise: the clique tests assert community counts and sizes, none asserts connectedness.
+/// </para>
+/// <para>
+/// <b>Why the name was kept anyway.</b> <c>Leiden</c> is public in a package shipped at 0.1.0, and
+/// the name reaches further than this type — <see cref="LeidenOptions"/>, the
+/// <c>options.Leiden</c> property on the GraphRAG ingestion options, and this repository's own
+/// guide. Renaming is a breaking change across all of them and was not taken unilaterally. The
+/// honest description therefore lives here, on the type, rather than in a guide the reader who
+/// picked this class for its guarantees will never open.
+/// </para>
+/// </remarks>
 public static class Leiden
 {
-    /// <summary>Detect communities in the given graph using the Leiden algorithm.</summary>
+    /// <summary>Detect communities in the given graph by modularity optimisation.</summary>
+    /// <remarks>
+    /// Read <see cref="Leiden"/>'s own remarks before relying on any property of the result beyond
+    /// "related entities tend to land together": this is Louvain with a refinement pass, and it does
+    /// not provide the Leiden paper's well-connectedness guarantee.
+    /// </remarks>
     public static IReadOnlyList<Community> Detect(GraphSnapshot graph, LeidenOptions? options = null)
     {
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.graph.cluster");

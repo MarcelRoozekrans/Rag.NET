@@ -3433,7 +3433,15 @@ stops anyone finding it.
   renumbering it both merged across communities and blocked legitimate merges inside them.
 - **`RunLeiden` is Louvain-with-refinement, not textbook Leiden** — no guaranteed-connected
   communities, no refinement-partition aggregation. It clusters, and it is not the algorithm the
-  name promises.
+  name promises. **Documented 2026-08-12 (#171), not renamed and not reimplemented:** the type now
+  says on itself what it is, what it is not, and that the γ-connectedness guarantee is not provided.
+  Checking the paper rather than the issue changed the recommendation. The seeding step the issue
+  names is one of **three** departures, and the guarantee is a property of the other two — the
+  paper moves only nodes alone in their refined community and merges one "only if both are
+  sufficiently well connected to their community in P", and picks the target randomly by θ-weighted
+  quality increase rather than by best gain. **Implementing the seeding step alone would leave the
+  name just as false and look like it had been fixed.** Renaming stays open: `Leiden` is public at
+  0.1.0 and the name also reaches `LeidenOptions`, `options.Leiden` and the guide.
 - **Retrieval-mode routing (#104) does not exist at all** — no `Mode` property, no
   `GraphRagRetrievalMode` enum, nothing in either behavior consulting one. **That issue's framing is
   itself wrong**: it reads as "a setting is not honoured" when the setting was deleted at 0.1.0
