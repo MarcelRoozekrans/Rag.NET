@@ -11,6 +11,8 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Testcontainers" />
+    <!-- Direct only to lift SSH.NET past GHSA-q939-rpr3-3284: Testcontainers 4.13.0 pins the vulnerable 2025.1.0 and has no newer release. Nothing in src/ pulls it, so no shipped package is affected. -->
+    <PackageReference Include="SSH.NET" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
