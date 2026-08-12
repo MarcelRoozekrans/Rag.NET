@@ -472,18 +472,40 @@ public static class BeirReproduction
         new(
             "multihop-rag",
             BeirProtocol.Real,
-            [],
-            "NEVER RUN. Rag.NET's own chunking over the 609 converted articles, max-pooled back " +
-            "to documents -- the dataset's first measurement, and nobody has paid for it yet. " +
-            "The empty list is deliberate and is what AssertReproduces treats as 'print what the " +
-            "run saw and check nothing', which is the state FiQA's real leg sat in from Phase " +
-            "3.12 until 3.15 measured it. Note what that means for the first run: this protocol " +
-            "has no published figure on any dataset, and MultiHop-RAG has no published figure " +
-            "under any protocol -- see the descriptor, whose parity target is NaN because the " +
-            "paper reports MAP/MRR/Hit@K for seven embedders that do not include MiniLM. So the " +
-            "first figure is checked by nothing and pinned on its own authority; whoever records " +
-            "it must say so here rather than let a later reader mistake a self-pinned number for " +
-            "a reproduced one."),
+            [0.63967],
+            "MEASURED 2026-08-12 on Windows 11, .NET 10, CPU ONNX Runtime. Rag.NET's own " +
+            "chunking over the 609 converted articles, max-pooled back to documents: 17,648 " +
+            "units over 609 of 609 documents, up to 201 from a single article, none of them " +
+            "contributing nothing. All 2,255 judged queries evaluated, none excluded for want of " +
+            "a positive judgement, and every one of them retrieved two or more units of one " +
+            "document -- so max-pooling is exercised on the whole query set here rather than on " +
+            "a fraction of it, which is not true of any other corpus in this table. " +
+            "Recall@10 = 0.78684, MRR@10 = 0.70150. " +
+            "**Measured twice, and the two agree to five decimals.** The first run took 392.6 s " +
+            "off a partly warm cache, the second 600.2 s cold on a machine under other load; the " +
+            "cache state and the load moved the wall clock by 1.6x and moved nDCG@10, Recall@10 " +
+            "and MRR@10 by nothing at all. That is the expected result -- the protocol is " +
+            "deterministic given the corpus, the pinned model and the judged set -- but it is " +
+            "worth recording, because it separates the figure pinned here from the timing in " +
+            "BeirRunBudget, which is load-sensitive and is flagged there as an upper bound. " +
+            "**This figure is pinned on its own authority, and that phrase is doing real work.** " +
+            "No published figure exists for all-MiniLM-L6-v2 on this dataset under any metric " +
+            "this repository reports. The paper's Table 5 gives MAP@K, MRR@K and Hit@K for " +
+            "ada-002, llm-embedder, bge-large-en-v1.5, jina-v2, e5-base-v2, voyage-02 and " +
+            "instructor-large -- there is no MiniLM row -- and MTEB does not carry the dataset " +
+            "as a retrieval task at all, so the source every other published figure here comes " +
+            "from holds nothing for it either. Both the model and the metric differ from " +
+            "anything in the literature, so nothing outside this repository checked 0.63967 and " +
+            "nothing outside it can. What the number is good for is drift: the next run is " +
+            "compared against this one, and a later reader must not mistake a self-pinned figure " +
+            "for a reproduced one. " +
+            "The companion parity leg read 0.55724 (Recall@10 = 0.68906, MRR@10 = 0.63748, 609 " +
+            "units, 41.1 s), giving a chunking delta of +0.08243 -- the largest in the suite, and " +
+            "expected on a corpus whose articles average 10,340 characters, because the parity " +
+            "protocol truncates each at 256 tokens and simply cannot see most of the document " +
+            "the chunked leg indexes. That leg is deliberately NOT pinned and carries no entry: " +
+            "the descriptor declares Parity inapplicable for exactly the reason the delta is " +
+            "large, and it is measured here only as the control this delta is subtracted from."),
         new(
             "multihop-rag",
             BeirProtocol.GraphRag,

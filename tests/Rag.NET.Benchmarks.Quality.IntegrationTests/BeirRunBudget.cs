@@ -433,17 +433,35 @@ public static class BeirRunBudget
             "multihop-rag",
             BeirProtocol.Real,
             FitsTheNightly: false,
-            "NOT RUN. No wall-clock figure exists for this pair and nothing here is a " +
-            "measurement of it -- not even a derived one, because the four BEIR cells cannot " +
-            "supply the input a derivation needs. The corpus is 609 documents, which is two " +
-            "orders of magnitude smaller than TREC-COVID's and one smaller than SciFact's, but " +
-            "the articles average 10,340 characters, so the chunk count per document -- the thing " +
-            "the embedding bill is actually proportional to -- is unlike any corpus already " +
-            "timed. Scaling a measured figure by document count would produce exactly the class " +
-            "of number that made TREC-COVID's parity leg look like 6 h 20 m when it was 1 h 50 m. " +
-            "To find out what it costs, time it: this pair is the one measurement the dataset " +
-            "needs before anything about it can be published, and it is cheap enough to buy -- " +
-            "609 documents is minutes, not hours."),
+            "MEASURED 2026-08-12: 600.2 s for the real leg and 78.9 s for the parity control it " +
+            "is differenced against, 11 m 19 s for the case. Cold embedding cache, which is what " +
+            "a fresh machine has: 20,453 texts embedded across the two legs, 17,648 of them the " +
+            "chunks of 609 articles. The derivation this replaces declined to guess and said so, " +
+            "which was right -- 609 documents is one order of magnitude under SciFact's corpus " +
+            "and cost about the same, because the articles average 10,340 characters and it is " +
+            "the chunk count, not the document count, that the embedding bill tracks. " +
+            "**This is an UPPER BOUND, not a clean-room figure.** It was taken on a machine " +
+            "running other work -- a media player, three browsers, four editor instances and " +
+            "several MCP servers, 45% CPU across 20 logical processors before the run started -- " +
+            "so an idle machine will be faster by an unknown margin and this number should be " +
+            "re-measured on one before anybody schedules against it. It is published in that " +
+            "state deliberately, because for a gating decision the error is safe in exactly one " +
+            "direction: an over-statement gates a case OUT of the nightly that might have fitted, " +
+            "which costs coverage and is visible, while an under-statement lets a case in that " +
+            "does not fit and silently blows a 120-minute job. Over-estimating fails safe; " +
+            "under-estimating does not. " +
+            "FitsTheNightly stays false for the same reason. 11 m 19 s looks like it would fit " +
+            "beside a solution build, and it may well -- but flipping the gate on a figure known " +
+            "to be inflated by an unmeasured amount is the decision this cell exists to prevent " +
+            "somebody making casually. Re-measure idle, then decide. " +
+            "**Cache state moves this number more than the corpus does, so read the two runs " +
+            "together.** The same case measured 7 m 14 s earlier the same day off a partly warm " +
+            "cache (11,501 hits, 8,402 misses), against 11 m 19 s cold -- a 1.6x spread from " +
+            "nothing but which vectors happened to be on disk. The cold figure is the one " +
+            "recorded because the nightly starts cold; the warm one is recorded here so that a " +
+            "later reader who measures 7 minutes knows why and does not file it as an " +
+            "improvement. Both runs produced identical nDCG@10 to five decimals, so none of this " +
+            "touches the figure in BeirReproduction -- only what it costs to obtain."),
         new(
             "multihop-rag",
             BeirProtocol.GraphRag,
