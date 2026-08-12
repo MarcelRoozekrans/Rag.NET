@@ -55,7 +55,11 @@ public class ObsoleteLeidenPropertyTests
 
         var message = attribute.Message ?? string.Empty;
         Assert.Contains("CommunityDetection", message, StringComparison.Ordinal);
-        Assert.Contains("not Traag/Waltman/van Eck's Leiden algorithm", message, StringComparison.Ordinal);
+
+        // See ObsoleteLeidenForwarderTests for why the pinned phrase changed with #180: the message
+        // used to assert the missing guarantee, and outlasted the defect it described.
+        Assert.Contains("the Leiden paper's refinement phase", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("does not provide", message, StringComparison.Ordinal);
     }
 
     /// <summary>Resolves the deprecated property by name, so no source file has to name it.</summary>

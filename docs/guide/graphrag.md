@@ -34,7 +34,7 @@ Two packages:
 1. **Entity Extraction** — For each chunk, an LLM extracts entities (name, type, description) and relationships (source, target, description, weight)
 2. **Gleaning** — Follow-up LLM passes ask "Did I miss anything?" to improve recall (configurable, default 1 pass)
 3. **Graph Building** — Entities and relationships stored in IGraphStore, descriptions embedded in IVectorStore
-4. **Community Detection** — the `LouvainWithRefinement` type detects clusters of related entities. It is Louvain's local moving and aggregation with a refinement pass, not the Leiden paper's algorithm, and it does not provide that paper's guarantee that every community is connected — see the type's XML remarks for what it does and does not do. It was called `Leiden` until 0.1.0; that name survives as an `[Obsolete]` forwarder
+4. **Community Detection** — the `LouvainWithRefinement` type detects clusters of related entities. It is Louvain's local moving and aggregation with the Leiden paper's refinement phase between them, so **every returned community is connected in the subgraph it induces** — see the type's XML remarks for where that guarantee comes from and what it still does not promise. It was called `Leiden` until 0.1.0; that name survives as an `[Obsolete]` forwarder
 5. **PageRank** — Computes importance scores for each entity
 6. **Community Reports** — LLM generates summary reports for each community, embedded and stored
 
@@ -91,12 +91,15 @@ rag.UseGraphRag(options =>
     options.CommunityDetection.MaxIterations = 10;    // Local-moving passes per level — must be > 0
     options.CommunityDetection.MaxLevels = null;      // null = aggregate until no improvement
     options.CommunityDetection.RandomSeed = 42;       // Fixed, so clustering is reproducible
+    options.CommunityDetection.Randomness = 0.01;     // θ in the refinement's draw — must be > 0
 
     options.MaxCommunityReportPromptLength = 50_000;  // Report prompt cap, characters — must be > 0
 });
 ```
 
 `UseGraphRag` validates the configured options at registration and throws `ArgumentException` from the configuring line. A negative `MaxEntityDescriptionLength` would throw mid-ingestion on the first extracted entity; zero would silently empty every entity description. A `CommunityDetection.Resolution` of zero or below is rejected the same way: resolution scales modularity's penalty term, so zero removes the penalty entirely and returns one community for every connected graph.
+
+`Randomness` is θ from the Leiden paper, and it is validated where it is set rather than at registration: the refinement divides by it inside `exp(ΔQ / θ)`, so a zero, negative or non-finite value throws `ArgumentOutOfRangeException` from the assigning line. It controls how sharply the refinement's merge draw prefers the best candidate — small values approach greedy, large values approach uniform over every legal merge — and 0.01 is the value the paper's own experiments use. **Randomised does not mean unreproducible:** every draw comes from `RandomSeed`, so a fixed seed still gives a fixed partition.
 
 `options.CommunityDetection` reaches the clustering that community detection runs. Before it existed, `CommunityDetectionBehavior` called the clusterer without options, so every setting on `LouvainWithRefinementOptions` was unreachable through `UseGraphRag` and the defaults were the only values that had ever run — despite this guide telling you to adjust them. The property was called `options.Leiden` until 0.1.0 and still answers to it, deprecated.
 

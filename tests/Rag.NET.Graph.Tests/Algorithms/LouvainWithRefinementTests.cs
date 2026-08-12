@@ -190,26 +190,95 @@ public class LouvainWithRefinementTests
         Assert.True(highRes.Count >= lowRes.Count);
     }
 
+    /// <summary>
+    /// One seed is one partition, however many times it is run.
+    /// </summary>
+    /// <remarks>
+    /// <b>This became load-bearing when the refinement became randomised.</b> The merge target is now
+    /// drawn, not chosen, so every pinned figure in this repository — community counts on the
+    /// MultiHop-RAG slice, the largest-community ceiling, the singleton count — rests on
+    /// <see cref="LouvainWithRefinementOptions.RandomSeed"/> reaching every draw and on the number of
+    /// draws being a function of the graph alone. Five runs rather than two because a discipline that
+    /// leaked state would not necessarily leak it on the first repeat.
+    /// </remarks>
     [Fact]
     public void Detect_IsDeterministicWithSameSeed()
     {
-        var entities = Enumerable.Range(0, 20)
+        var graph = BuildRandomGraph(nodes: 60, edges: 200, seed: 42);
+
+        string first = Describe(
+            LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { RandomSeed = 123 }));
+
+        for (int repeat = 0; repeat < 4; repeat++)
+        {
+            Assert.Equal(
+                first,
+                Describe(LouvainWithRefinement.Detect(
+                    graph, new LouvainWithRefinementOptions { RandomSeed = 123 })));
+        }
+    }
+
+    /// <summary>
+    /// <see cref="LouvainWithRefinementOptions.Randomness"/> reaches the algorithm.
+    /// </summary>
+    /// <remarks>
+    /// <b>A setting nothing reads is the shape of defect this repository keeps finding</b> — three
+    /// dead settings in the #108 audit, and the whole of
+    /// <see cref="LouvainWithRefinementOptions"/> unreachable through <c>UseGraphRag</c> before that.
+    /// θ is a divisor inside <c>exp(ΔQ / θ)</c>, so a large value flattens the draw toward uniform
+    /// over every legal merge and a small one concentrates it on the best; if the two produce the
+    /// same partition on a graph with this many near-tied merges, the parameter is not being read.
+    /// </remarks>
+    [Fact]
+    public void Detect_RandomnessChangesTheDraw()
+    {
+        var graph = BuildRandomGraph(nodes: 60, edges: 200, seed: 7);
+
+        string concentrated = Describe(LouvainWithRefinement.Detect(
+            graph, new LouvainWithRefinementOptions { RandomSeed = 5, Randomness = 0.0001 }));
+        string flattened = Describe(LouvainWithRefinement.Detect(
+            graph, new LouvainWithRefinementOptions { RandomSeed = 5, Randomness = 100.0 }));
+
+        Assert.NotEqual(concentrated, flattened, StringComparer.Ordinal);
+    }
+
+    /// <summary>A θ the draw cannot use is refused where it is set, not where it is divided by.</summary>
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-1.0)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void Randomness_ValueTheDrawCannotUse_Throws(double value)
+    {
+        var exception = Assert.Throws<ArgumentOutOfRangeException>(
+            () => new LouvainWithRefinementOptions { Randomness = value });
+
+        Assert.Contains(nameof(LouvainWithRefinementOptions.Randomness), exception.Message, StringComparison.Ordinal);
+    }
+
+    private static GraphSnapshot BuildRandomGraph(int nodes, int edges, int seed)
+    {
+        var entities = Enumerable.Range(0, nodes)
             .Select(i => new GraphEntity($"E{i}", "Node", $"Entity {i}"))
             .ToList();
-        var rng = new Random(42);
-        var relationships = Enumerable.Range(0, 40)
-            .Select(_ => new GraphRelationship($"E{rng.Next(20)}", $"E{rng.Next(20)}", "r"))
+        var rng = new Random(seed);
+        var relationships = Enumerable.Range(0, edges)
+            .Select(_ => new GraphRelationship(
+                $"E{rng.Next(nodes)}", $"E{rng.Next(nodes)}", "r", 1.0 + rng.Next(5)))
             .ToList();
 
-        var graph = new GraphSnapshot(entities, relationships, []);
-        var run1 = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { RandomSeed = 123 });
-        var run2 = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { RandomSeed = 123 });
+        return new GraphSnapshot(entities, relationships, []);
+    }
 
-        Assert.Equal(run1.Count, run2.Count);
-        var sorted1 = run1.Select(c => c.MemberEntities.OrderBy(x => x, StringComparer.Ordinal).ToList()).ToList();
-        var sorted2 = run2.Select(c => c.MemberEntities.OrderBy(x => x, StringComparer.Ordinal).ToList()).ToList();
-        for (int i = 0; i < sorted1.Count; i++)
-            Assert.Equal(sorted1[i], sorted2[i]);
+    /// <summary>Renders a partition so that two runs compare as strings and nothing else varies.</summary>
+    private static string Describe(IReadOnlyList<Community> communities)
+    {
+        var rendered = communities
+            .Select(c => string.Join(",", c.MemberEntities.OrderBy(x => x, StringComparer.Ordinal)))
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToList();
+
+        return string.Join(" | ", rendered);
     }
 
     [Fact]

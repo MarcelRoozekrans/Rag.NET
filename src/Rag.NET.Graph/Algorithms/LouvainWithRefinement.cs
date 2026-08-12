@@ -9,57 +9,64 @@ namespace Rag.NET.Graph.Algorithms;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This type was called <c>Leiden</c> until it was measured, and it is not the Leiden
-/// algorithm.</b> That name asserted Traag, Waltman and van Eck's algorithm (<i>From Louvain to
-/// Leiden: guaranteeing well-connected communities</i>, Scientific Reports 9:5233, 2019), whose
-/// entire reason for existing is a guarantee — after each iteration "all communities are
-/// γ-connected", and in particular no returned community is internally disconnected, which
-/// Louvain's are known to be. <b>This implementation does not provide that guarantee</b>, so anyone
-/// who chose it for the guarantee the name promised chose on a false premise. The old name survives
-/// as an <see cref="Leiden">obsolete forwarder</see> and nothing else.
+/// <b>What it does.</b> Local moving to a modularity local optimum at
+/// <see cref="LouvainWithRefinementOptions.Resolution"/>; then the refinement pass of Traag, Waltman
+/// and van Eck (<i>From Louvain to Leiden: guaranteeing well-connected communities</i>, Scientific
+/// Reports 9:5233, 2019), which rebuilds sub-communities inside each community from singletons; then
+/// aggregation of <i>that refined partition</i> into super-nodes while the next level starts from
+/// the unrefined one, and the same again one level up until every community is a single super-node.
 /// </para>
 /// <para>
-/// <b>What it actually does, which is what it is now named for.</b> Local moving to a modularity
-/// local optimum at <see cref="LouvainWithRefinementOptions.Resolution"/>; then a refinement pass
-/// that rebuilds sub-communities inside each community from singletons, merging a node only into a
-/// sub-community of its own community and only by the largest modularity gain; then aggregation of
-/// that refined partition into super-nodes, and the same again one level up. On the graphs where
-/// the answer is not in doubt it finds it: ten disjoint cliques ring-bridged come back as ten
-/// communities, two joined by a bridge as two, three as three. <b>It clusters, and it clusters
-/// correctly on everything measured.</b>
+/// <b>Every returned community is connected in the subgraph it induces.</b> That is the property
+/// the paper exists to supply and Louvain lacks, and it is a consequence of three constraints in
+/// <see cref="RefinementState"/> and <see cref="RefineSingleNode"/> together with the seeding step
+/// in <see cref="RunLevels"/>, not of merely having a refinement pass. Only a node alone in its
+/// refined sub-community may move; it may only join a sub-community of its own community in the
+/// partition being refined, and only when both it and that sub-community are γ-connected to that
+/// community; and the target is drawn at random, weighted by <c>exp(ΔQ / θ)</c> over the candidates
+/// whose modularity increase is non-negative, rather than taken as the largest gain. A move with no
+/// edge behind it has <c>ΔQ = -γ·k·K/2m &lt; 0</c> and is never drawn, so a refined sub-community is
+/// connected by construction; the loop then exits only once every community of the working partition
+/// is one such sub-community, which makes the returned communities connected too.
 /// </para>
 /// <para>
-/// <b>Where it departs from the paper, in the three places the guarantee comes from.</b> The paper
-/// aggregates the refined partition but starts the next level from the unrefined one — "the
-/// aggregate network is created based on the partition P<sub>refined</sub>. However, the initial
-/// partition for the aggregate network is based on P" — where <see cref="RunLevels"/> overwrites P
-/// with the refined partition and restarts the next level from singletons. The paper moves only
-/// nodes that are alone in their refined community, and merges one "only if both are sufficiently
-/// well connected to their community in P"; <see cref="RefineSingleNode"/> moves every node and
-/// tests no such condition. The paper picks the merge target at random, weighted by the size of the
-/// quality increase and a randomness parameter θ; this picks the largest gain. <b>The guarantee is a
-/// property of those constraints, not of having a refinement pass</b>, so adding the seeding step
-/// alone would not have earned the old name either.
+/// <b>What that guarantee is not.</b> Both early exits hand back the refined partition rather than
+/// the working one, precisely so that connectedness survives them: a caller who caps the hierarchy
+/// with <see cref="LouvainWithRefinementOptions.MaxLevels"/>, and the case where a level's
+/// refinement merges nothing at all and so cannot aggregate, both get connected communities by
+/// getting a <i>finer</i> partition than the uncapped run would. That is a cost in quality, not in
+/// the guarantee, and <see cref="RefineUntilItMerges"/> exists to make the second case rare. The
+/// guarantee is also not about optimality: the partition is a modularity local optimum reached by a
+/// randomised search, and a different <see cref="LouvainWithRefinementOptions.RandomSeed"/> is a
+/// different local optimum.
 /// </para>
 /// <para>
-/// <b>Concretely, what is not guaranteed, and it has been measured rather than argued.</b> A refined
-/// sub-community is built by attaching nodes to sub-communities they have an edge to, but a node may
-/// later leave one it was the sole link through, and nothing puts the remainder back together — so a
-/// returned community can be internally disconnected. It does happen. A sweep of some 30,000
-/// detections found none on anything dense (cliques, planted partitions, Erdős–Rényi, barbells) and
-/// found them on sparse weighted graphs: 48 of 2,220 random weighted trees held a disconnected
-/// community for some resolution and seed, while 2,220 <i>unweighted</i> trees held none. A ten-node
-/// example is pinned in <c>CommunityConnectivityTests</c>, at the default resolution, where a
-/// returned community contains a node with no edge to any other member.
+/// <b>The name is descriptive and stays that way.</b> This type was called <c>Leiden</c> while it
+/// lacked all three constraints above, which made the name a claim about a guarantee it did not
+/// have; the old name survives as an <see cref="Leiden">obsolete forwarder</see>. It now implements
+/// the paper's construction over modularity, with two documented simplifications that do not bear on
+/// the guarantee: the local moving phase is a repeated sweep rather than the paper's queue-driven
+/// <c>MoveNodesFast</c>, and it does not offer a node an empty community to move into, so the set of
+/// nodes the refinement will consider can be smaller than the paper's <c>R</c> — which leaves more
+/// nodes as refined singletons and costs a level, never connectedness.
 /// </para>
 /// </remarks>
 public static class LouvainWithRefinement
 {
+    /// <summary>How many times one level will redraw a refinement that merged nothing at all.</summary>
+    /// <remarks>
+    /// Four rather than one because a redraw is cheap next to the level it saves, and rather than a
+    /// larger number because the outcome it guards against needs every node in every multi-node
+    /// community to draw "stay" on the same pass — if that keeps happening, no candidate has a
+    /// non-negative quality increase and no further draw will find one.
+    /// </remarks>
+    private const int RefinementAttempts = 4;
+
     /// <summary>Detect communities in the given graph by modularity optimisation.</summary>
     /// <remarks>
-    /// Read <see cref="LouvainWithRefinement"/>'s own remarks before relying on any property of the
-    /// result beyond "related entities tend to land together": this is Louvain with a refinement
-    /// pass, and it does not provide the Leiden paper's well-connectedness guarantee.
+    /// Every returned community is connected in the subgraph it induces — see
+    /// <see cref="LouvainWithRefinement"/>'s own remarks for where that comes from and for what it
+    /// still does not promise.
     /// </remarks>
     public static IReadOnlyList<Community> Detect(GraphSnapshot graph, LouvainWithRefinementOptions? options = null)
     {
@@ -162,67 +169,100 @@ public static class LouvainWithRefinement
         return total / 2.0;
     }
 
+    /// <summary>
+    /// Runs the level hierarchy: local moving, refinement, aggregation of the refined partition, and
+    /// the same again over the super-nodes until every community is a single super-node.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Two partitions are kept apart here, and keeping them apart is the seeding step the
+    /// guarantee needs.</b> <c>partition</c> is the paper's P and <c>refined</c> its
+    /// P<sub>refined</sub>: "the aggregate network is created based on the refined partition
+    /// P<sub>refined</sub>. However, the initial partition for the aggregate network is based on P."
+    /// This method used to overwrite P with the refined partition and then restart the next level
+    /// from singletons, which threw away everything the level below had learned and left the
+    /// refinement decorative — the sub-communities were aggregated and then immediately dissolved.
+    /// </para>
+    /// <para>
+    /// <b>Why the exit condition is "P is the singleton partition" and not "nothing moved".</b> Each
+    /// super-node is a refined sub-community, and so is connected by construction; a community of P
+    /// is a <i>set</i> of super-nodes and need not be. The returned communities are therefore
+    /// connected exactly when the loop stops with every community of P holding one super-node, which
+    /// is the paper's <c>done</c>. Stopping on "no node moved" would return P at a level where its
+    /// communities are still sets, which is where the disconnected communities came from.
+    /// </para>
+    /// </remarks>
     private static int[] RunLevels(List<int>[] neighbors, List<double>[] weights, int n, double totalWeight, LouvainWithRefinementOptions options)
     {
         var rng = new Random(options.RandomSeed);
-        var assignment = new int[n];
-        for (int i = 0; i < n; i++)
-        {
-            assignment[i] = i;
-        }
+        int originalN = n;
+        var membership = CreateIdentity(n);
+        var partition = CreateIdentity(n);
 
         int level = 0;
         while (true)
         {
-            bool moved = LocalMovingPhase(neighbors, weights, n, assignment, totalWeight, options, rng);
-            if (!moved)
+            LocalMovingPhase(neighbors, weights, n, partition, totalWeight, options, rng);
+            if (CountCommunities(partition, n) == n)
             {
                 break;
             }
 
-            assignment = RefinementPhase(neighbors, weights, n, assignment, totalWeight, options, rng);
-            if (options.MaxLevels.HasValue && ++level >= options.MaxLevels.Value)
+            var refined = RefineUntilItMerges(neighbors, weights, n, partition, totalWeight, options, rng);
+            var (aggregated, nodeMap) = Aggregate(neighbors, weights, n, refined);
+            ProjectInPlace(membership, nodeMap, originalN);
+
+            if (aggregated.N == n || (options.MaxLevels.HasValue && ++level >= options.MaxLevels.Value))
             {
-                break;
+                return membership;
             }
 
-            var (agg, map) = Aggregate(neighbors, weights, n, assignment);
-            if (agg.N == n)
-            {
-                break;
-            }
-
-            neighbors = agg.Neighbors;
-            weights = agg.Weights;
-            var oldAssignment = assignment;
-            n = agg.N;
+            partition = ProjectPartition(partition, nodeMap, n, aggregated.N);
+            neighbors = aggregated.Neighbors;
+            weights = aggregated.Weights;
+            n = aggregated.N;
             totalWeight = ComputeTotalWeight(weights, n);
-            assignment = new int[n];
-            for (int i = 0; i < n; i++)
-            {
-                assignment[i] = i;
-            }
-
-            // After next phases complete, we need to map back.
-            // Store the chain for later flattening.
-            // Actually, we flatten after each aggregation round.
-            // We'll run recursively and then flatten.
-            int[] innerResult = RunLevels(neighbors, weights, n, totalWeight, options with { MaxLevels = options.MaxLevels.HasValue ? options.MaxLevels.Value - level : null });
-
-            // Map super-node assignments back to original nodes.
-            return FlattenAssignment(oldAssignment, map, innerResult);
         }
 
-        return assignment;
+        return FlattenAssignment(membership, partition, originalN);
     }
 
-    private static bool LocalMovingPhase(
+    /// <summary>
+    /// Refines the partition, retrying while the refinement merges nothing at all.
+    /// </summary>
+    /// <remarks>
+    /// <b>The retry exists because the refinement is a lottery and a lottery can come up empty.</b>
+    /// Every node in every multi-node community has some probability of drawing "stay where you
+    /// are", and if every one of them does so the refined partition is the singleton partition, the
+    /// aggregate graph is the same size as the graph, and <see cref="RunLevels"/> has to stop a level
+    /// early and hand back singletons. Redrawing costs one refinement pass and makes that outcome
+    /// require the same unlucky sweep several times over. It cannot be ruled out entirely — if no
+    /// node in any community has a legal merge with a non-negative quality increase, no number of
+    /// draws will find one — which is why the caller still has a path for it.
+    /// </remarks>
+    private static int[] RefineUntilItMerges(
+        List<int>[] neighbors, List<double>[] weights, int n, int[] partition,
+        double totalWeight, LouvainWithRefinementOptions options, Random rng)
+    {
+        int[] refined = [];
+        for (int attempt = 0; attempt < RefinementAttempts; attempt++)
+        {
+            refined = RefinementPhase(neighbors, weights, n, partition, totalWeight, options, rng);
+            if (CountCommunities(refined, n) < n)
+            {
+                break;
+            }
+        }
+
+        return refined;
+    }
+
+    private static void LocalMovingPhase(
         List<int>[] neighbors, List<double>[] weights, int n, int[] assignment,
         double totalWeight, LouvainWithRefinementOptions options, Random rng)
     {
         var nodeDegree = ComputeNodeDegrees(weights, n);
         var communityWeight = ComputeCommunityWeights(assignment, nodeDegree, n);
-        bool anyMoved = false;
 
         for (int iter = 0; iter < options.MaxIterations; iter++)
         {
@@ -234,11 +274,7 @@ public static class LouvainWithRefinement
             {
                 break;
             }
-
-            anyMoved = true;
         }
-
-        return anyMoved;
     }
 
     private static bool LocalMovingIteration(
@@ -296,17 +332,10 @@ public static class LouvainWithRefinement
 
     private static int[] RefinementPhase(
         List<int>[] neighbors, List<double>[] weights, int n, int[] assignment,
-        double totalWeight, LouvainWithRefinementOptions options, Random rng)
-    {
-        // Start with each node in its own sub-community, labelled by that node's own index.
-        var singletons = new int[n];
-        for (int i = 0; i < n; i++)
-        {
-            singletons[i] = i;
-        }
+        double totalWeight, LouvainWithRefinementOptions options, Random rng) =>
 
-        return Refine(neighbors, weights, n, assignment, singletons, totalWeight, options, rng);
-    }
+        // Start with each node in its own sub-community, labelled by that node's own index.
+        Refine(neighbors, weights, n, assignment, CreateIdentity(n), totalWeight, options, rng);
 
     /// <summary>
     /// Splits each community of <paramref name="assignment"/> into well-joined sub-communities,
@@ -327,21 +356,16 @@ public static class LouvainWithRefinement
         List<int>[] neighbors, List<double>[] weights, int n, int[] assignment,
         int[] singletonCommunities, double totalWeight, LouvainWithRefinementOptions options, Random rng)
     {
-        var refined = singletonCommunities.AsSpan(0, n).ToArray();
-        var refinedToCommunity = MapRefinedCommunitiesToCommunities(refined, assignment, n);
-        var nodeDegree = ComputeNodeDegrees(weights, n);
-        var communityWeight = ComputeCommunityWeights(refined, nodeDegree, n);
-        double m2 = 2.0 * totalWeight;
+        var state = new RefinementState(
+            neighbors, weights, n, assignment, singletonCommunities, totalWeight, options.Resolution);
         var order = CreateShuffledOrder(n, rng);
 
         foreach (int node in order)
         {
-            RefineSingleNode(
-                neighbors, weights, node, assignment[node], refined, refinedToCommunity,
-                m2, options.Resolution, nodeDegree, communityWeight);
+            RefineSingleNode(state, node, options.Randomness, rng);
         }
 
-        return refined;
+        return state.Refined;
     }
 
     /// <summary>
@@ -379,51 +403,113 @@ public static class LouvainWithRefinement
     }
 
     /// <summary>
-    /// Moves one node into the neighbouring sub-community that gains the most modularity, considering
-    /// only sub-communities of <paramref name="community"/> — the node's own community in the
-    /// partition being refined.
+    /// Merges one node into a sub-community of its own community, drawn at random and weighted by
+    /// the modularity increase — the paper's <c>MergeNodesSubset</c> body for a single node.
     /// </summary>
     /// <remarks>
-    /// Every id this method handles is a sub-community id: the keys of
-    /// <paramref name="communityWeight"/>, the keys of the neighbour weights, and the values of
-    /// <paramref name="refined"/>. It is passed no array indexed by node index that it could
-    /// subscript with one by mistake, and an id missing from
-    /// <paramref name="refinedToCommunity"/> throws rather than reading something unrelated.
+    /// <para>
+    /// <b>Three refusals here are the guarantee, and dropping any one of them brings back
+    /// disconnected communities.</b> A node that is no longer alone in its sub-community is left
+    /// where it is, so a sub-community is only ever added to and no node can leave one it was the
+    /// sole link through — that departure, with nothing to put the remainder back together, is the
+    /// mechanism the recorded ten-node counterexample ran on. A node that is not itself γ-connected
+    /// to its community is left alone, and so is a sub-community that is not; and a candidate whose
+    /// modularity increase is negative is never drawn, which is what rules out joining a
+    /// sub-community there is no edge to.
+    /// </para>
+    /// <para>
+    /// <b>Candidates come from the node's neighbours, which is narrower than the paper's <c>T</c> and
+    /// deliberately so.</b> <c>T</c> is every well-connected sub-community of <c>S</c>; the ones the
+    /// node has no edge to score <c>ΔQ = -γ·k·K/2m</c>, which is negative and so excluded — except
+    /// when the node has degree zero, where it is exactly zero and the node could be drawn into a
+    /// community it does not touch. Enumerating neighbours removes that case rather than relying on
+    /// a strict inequality over a floating-point zero.
+    /// </para>
     /// </remarks>
-    private static void RefineSingleNode(
-        List<int>[] neighbors, List<double>[] weights, int node, int community, int[] refined,
-        Dictionary<int, int> refinedToCommunity,
-        double m2, double resolution, double[] nodeDegree, Dictionary<int, double> communityWeight)
+    private static void RefineSingleNode(RefinementState state, int node, double randomness, Random rng)
     {
-        int currentComm = refined[node];
-        var neighborWeights = ComputeNeighborCommunityWeights(neighbors, weights, node, refined);
-
-        double bestGain = 0.0;
-        int bestComm = currentComm;
-        double ki = nodeDegree[node];
-
-        communityWeight[currentComm] -= ki;
-        double wCurrent = neighborWeights.GetValueOrDefault(currentComm, 0.0);
-        double removeCost = wCurrent - resolution * ki * communityWeight[currentComm] / m2;
-
-        foreach (var (comm, wComm) in neighborWeights)
+        if (!state.IsAloneInItsSubCommunity(node) || !state.IsWellConnectedToItsCommunity(node))
         {
-            // Sub-communities may only merge within one community of the partition being refined.
-            if (refinedToCommunity[comm] != community)
+            return;
+        }
+
+        var candidates = new List<MergeCandidate>();
+        double best = 0.0;
+        foreach (var (subCommunity, edgeWeight) in state.NeighbouringSubCommunities(node))
+        {
+            if (!state.IsEligibleTarget(node, subCommunity))
             {
                 continue;
             }
 
-            double gain = wComm - resolution * ki * communityWeight[comm] / m2 - removeCost;
-            if (gain > bestGain)
+            double gain = state.QualityIncrease(node, subCommunity, edgeWeight);
+            if (gain < 0.0)
             {
-                bestGain = gain;
-                bestComm = comm;
+                continue;
+            }
+
+            candidates.Add(new MergeCandidate(subCommunity, edgeWeight, gain));
+            best = Math.Max(best, gain);
+        }
+
+        int chosen = ChooseTarget(candidates, best, randomness, rng);
+        if (chosen >= 0)
+        {
+            state.Merge(node, candidates[chosen]);
+        }
+    }
+
+    /// <summary>
+    /// Draws one candidate with probability proportional to <c>exp(ΔQ / θ)</c>, or -1 for "stay".
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Staying put is a candidate, not a fallback.</b> The paper's <c>T</c> contains the node's
+    /// own singleton sub-community, whose quality increase is zero and whose weight is therefore
+    /// <c>exp(0)</c>; leaving it out would make the draw always move a node that has any
+    /// non-negative candidate at all, which is a different algorithm with a different stationary
+    /// behaviour. It is the reason <see cref="RefineUntilItMerges"/> exists.
+    /// </para>
+    /// <para>
+    /// <b>Every exponent is shifted by the best gain so nothing overflows.</b> <c>exp(ΔQ / θ)</c>
+    /// with the paper's θ of 0.01 overflows to infinity by a quality increase of about 7.1, which on
+    /// a graph with heavy edges is an ordinary value, and infinity divided by infinity is a
+    /// <c>NaN</c> probability. Subtracting the maximum leaves every weight in <c>(0, 1]</c> and the
+    /// total at least 1, and scales out of the ratio exactly.
+    /// </para>
+    /// </remarks>
+    private static int ChooseTarget(List<MergeCandidate> candidates, double best, double randomness, Random rng)
+    {
+        if (candidates.Count == 0)
+        {
+            return -1;
+        }
+
+        double stayWeight = Math.Exp(-best / randomness);
+        double total = stayWeight;
+        foreach (ref readonly var candidate in CollectionsMarshal.AsSpan(candidates))
+        {
+            total += Math.Exp((candidate.Gain - best) / randomness);
+        }
+
+        double draw = rng.NextDouble() * total;
+        if (draw < stayWeight)
+        {
+            return -1;
+        }
+
+        double cumulative = stayWeight;
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            cumulative += Math.Exp((candidates[i].Gain - best) / randomness);
+            if (draw < cumulative)
+            {
+                return i;
             }
         }
 
-        refined[node] = bestComm;
-        communityWeight[bestComm] += ki;
+        // Only reachable when rounding leaves the draw just past the accumulated total.
+        return candidates.Count - 1;
     }
 
     /// <summary>How much edge weight joins one node to each community around it.</summary>
@@ -536,16 +622,69 @@ public static class LouvainWithRefinement
         }
     }
 
-    private static int[] FlattenAssignment(int[] oldAssignment, int[] nodeMap, int[] innerResult)
+    /// <summary>Reads each original node's community off the partition of the top level.</summary>
+    private static int[] FlattenAssignment(int[] membership, int[] partition, int originalN)
     {
-        var result = new int[oldAssignment.Length];
-        for (int i = 0; i < oldAssignment.Length; i++)
+        var result = new int[originalN];
+        for (int i = 0; i < originalN; i++)
         {
-            int superNode = nodeMap[i];
-            result[i] = innerResult[superNode];
+            result[i] = partition[membership[i]];
         }
 
         return result;
+    }
+
+    /// <summary>The one-per-node labelling every partition in this file starts from.</summary>
+    private static int[] CreateIdentity(int n)
+    {
+        var identity = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            identity[i] = i;
+        }
+
+        return identity;
+    }
+
+    /// <summary>How many distinct communities a labelling holds.</summary>
+    private static int CountCommunities(int[] assignment, int n)
+    {
+        var seen = new HashSet<int>(n);
+        foreach (ref readonly int community in assignment.AsSpan(0, n))
+        {
+            seen.Add(community);
+        }
+
+        return seen.Count;
+    }
+
+    /// <summary>Follows each original node from the node it was in to the super-node it is now in.</summary>
+    private static void ProjectInPlace(int[] membership, int[] nodeMap, int originalN)
+    {
+        foreach (ref int node in membership.AsSpan(0, originalN))
+        {
+            node = nodeMap[node];
+        }
+    }
+
+    /// <summary>
+    /// Carries the partition P onto the aggregate graph — the paper's "the initial partition for the
+    /// aggregate network is based on P".
+    /// </summary>
+    /// <remarks>
+    /// Every node collapsed into one super-node shared a refined sub-community, and a refined
+    /// sub-community never straddles two communities of P, so all of them agree on the community to
+    /// write and it does not matter which of them writes it.
+    /// </remarks>
+    private static int[] ProjectPartition(int[] partition, int[] nodeMap, int n, int aggregatedN)
+    {
+        var projected = new int[aggregatedN];
+        for (int i = 0; i < n; i++)
+        {
+            projected[nodeMap[i]] = partition[i];
+        }
+
+        return projected;
     }
 
     private static double[] ComputeNodeDegrees(List<double>[] weights, int n)
@@ -577,13 +716,34 @@ public static class LouvainWithRefinement
         return cw;
     }
 
-    private static int[] CreateShuffledOrder(int n, Random rng)
+    /// <summary>How much of one node's incident weight goes to the rest of its own community.</summary>
+    private static double[] ComputeBoundaryToOwnCommunity(
+        List<int>[] neighbors, List<double>[] weights, int n, int[] assignment)
     {
-        var order = new int[n];
+        var boundary = new double[n];
         for (int i = 0; i < n; i++)
         {
-            order[i] = i;
+            var nSpan = CollectionsMarshal.AsSpan(neighbors[i]);
+            var wSpan = CollectionsMarshal.AsSpan(weights[i]);
+            double sum = 0.0;
+
+            for (int k = 0; k < nSpan.Length; k++)
+            {
+                if (nSpan[k] != i && assignment[nSpan[k]] == assignment[i])
+                {
+                    sum += wSpan[k];
+                }
+            }
+
+            boundary[i] = sum;
         }
+
+        return boundary;
+    }
+
+    private static int[] CreateShuffledOrder(int n, Random rng)
+    {
+        var order = CreateIdentity(n);
 
         // Fisher-Yates shuffle.
         for (int i = n - 1; i > 0; i--)
@@ -621,4 +781,139 @@ public static class LouvainWithRefinement
     }
 
     private sealed record AggregatedGraph(int N, List<int>[] Neighbors, List<double>[] Weights);
+
+    /// <summary>One sub-community a node may merge into, with the weight and gain that go with it.</summary>
+    /// <param name="SubCommunity">The refined sub-community id.</param>
+    /// <param name="EdgeWeight">Weight joining the node to it, needed again to fix up its boundary.</param>
+    /// <param name="Gain">The modularity increase the merge would produce.</param>
+    [StructLayout(LayoutKind.Auto)]
+    private readonly record struct MergeCandidate(int SubCommunity, double EdgeWeight, double Gain);
+
+    /// <summary>
+    /// The bookkeeping one refinement pass needs, and the only place the γ-connectedness tests live.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why the quantities are maintained rather than recomputed.</b> The paper's condition —
+    /// "<c>E(C, S − C) ≥ γ‖C‖·(‖S‖ − ‖C‖)</c>" — is asked of a sub-community that grows as the pass
+    /// runs, so its boundary onto the rest of its community changes with every merge. Recomputing it
+    /// per candidate would make the pass quadratic in community size; maintaining it costs one
+    /// subtraction per merge, because the only edges that stop being boundary edges are the ones
+    /// between the joining node and the community it joins, and they leave from both ends.
+    /// </para>
+    /// <para>
+    /// <b>The condition is stated for CPM in the paper, and this is its modularity form.</b>
+    /// Modularity is CPM with each node's size taken as its degree and the resolution rescaled by
+    /// <c>2m</c>, so <c>‖C‖</c> is the community's total incident weight and the threshold is
+    /// <c>γ·K_C·(K_S − K_C) / 2m</c>. Written that way it is also readable as the statement the
+    /// local moving phase would make: the sub-community does not improve modularity by leaving its
+    /// community.
+    /// </para>
+    /// </remarks>
+    private sealed class RefinementState
+    {
+        private readonly List<int>[] _neighbors;
+        private readonly List<double>[] _weights;
+        private readonly int[] _assignment;
+        private readonly double[] _nodeDegree;
+        private readonly double[] _nodeBoundary;
+        private readonly Dictionary<int, double> _communityWeight;
+        private readonly Dictionary<int, double> _subCommunityWeight;
+        private readonly Dictionary<int, double> _subCommunityBoundary;
+        private readonly Dictionary<int, int> _subCommunitySize;
+        private readonly Dictionary<int, int> _subCommunityToCommunity;
+        private readonly double _m2;
+        private readonly double _resolution;
+
+        internal RefinementState(
+            List<int>[] neighbors, List<double>[] weights, int n, int[] assignment,
+            int[] singletonCommunities, double totalWeight, double resolution)
+        {
+            _neighbors = neighbors;
+            _weights = weights;
+            _assignment = assignment;
+            _resolution = resolution;
+            _m2 = 2.0 * totalWeight;
+            Refined = singletonCommunities.AsSpan(0, n).ToArray();
+            _subCommunityToCommunity = MapRefinedCommunitiesToCommunities(Refined, assignment, n);
+            _nodeDegree = ComputeNodeDegrees(weights, n);
+            _nodeBoundary = ComputeBoundaryToOwnCommunity(neighbors, weights, n, assignment);
+            _communityWeight = ComputeCommunityWeights(assignment, _nodeDegree, n);
+            _subCommunityWeight = ComputeCommunityWeights(Refined, _nodeDegree, n);
+            _subCommunityBoundary = new Dictionary<int, double>(n);
+            _subCommunitySize = new Dictionary<int, int>(n);
+
+            for (int i = 0; i < n; i++)
+            {
+                _subCommunityBoundary[Refined[i]] = _nodeBoundary[i];
+                _subCommunitySize[Refined[i]] = 1;
+            }
+        }
+
+        /// <summary>The sub-community each node currently belongs to.</summary>
+        internal int[] Refined { get; }
+
+        /// <summary>Whether the node is still the only member of its sub-community.</summary>
+        internal bool IsAloneInItsSubCommunity(int node) => _subCommunitySize[Refined[node]] == 1;
+
+        /// <summary>Whether the node is γ-connected to its community — the paper's <c>R</c>.</summary>
+        internal bool IsWellConnectedToItsCommunity(int node) =>
+            _nodeBoundary[node] >= Threshold(_nodeDegree[node], _communityWeight[_assignment[node]]);
+
+        /// <summary>How much weight joins the node to each sub-community around it.</summary>
+        internal Dictionary<int, double> NeighbouringSubCommunities(int node) =>
+            ComputeNeighborCommunityWeights(_neighbors, _weights, node, Refined);
+
+        /// <summary>
+        /// Whether a sub-community may be merged into: inside the node's own community, and
+        /// γ-connected to it.
+        /// </summary>
+        internal bool IsEligibleTarget(int node, int subCommunity)
+        {
+            if (_subCommunityToCommunity[subCommunity] != _assignment[node])
+            {
+                return false;
+            }
+
+            double weight = _subCommunityWeight[subCommunity];
+            return _subCommunityBoundary[subCommunity] >=
+                Threshold(weight, _communityWeight[_assignment[node]]);
+        }
+
+        /// <summary>
+        /// The modularity increase from moving the node out of its singleton into a sub-community.
+        /// </summary>
+        /// <remarks>
+        /// The removal cost the local moving phase subtracts is absent because it is zero here: the
+        /// node is alone, so it has no weight to its own sub-community and nothing is left behind.
+        /// </remarks>
+        internal double QualityIncrease(int node, int subCommunity, double edgeWeight) =>
+            edgeWeight - (_resolution * _nodeDegree[node] * _subCommunityWeight[subCommunity] / _m2);
+
+        /// <summary>Moves the node into the chosen sub-community and retires the one it leaves empty.</summary>
+        internal void Merge(int node, in MergeCandidate target)
+        {
+            int vacated = Refined[node];
+            if (vacated == target.SubCommunity)
+            {
+                return;
+            }
+
+            // The edges between the node and its new sub-community stop being boundary edges at both
+            // of their ends, which is why the doubling is there and not an error.
+            _subCommunityBoundary[target.SubCommunity] +=
+                _nodeBoundary[node] - (2.0 * target.EdgeWeight);
+            _subCommunityWeight[target.SubCommunity] += _nodeDegree[node];
+            _subCommunitySize[target.SubCommunity]++;
+
+            _subCommunityBoundary.Remove(vacated);
+            _subCommunityWeight.Remove(vacated);
+            _subCommunitySize.Remove(vacated);
+            Refined[node] = target.SubCommunity;
+        }
+
+        /// <summary>The weight a part must carry to the rest of its community to count as γ-connected.</summary>
+        private double Threshold(double partWeight, double communityWeight) =>
+            _resolution * partWeight * (communityWeight - partWeight) / _m2;
+    }
 }

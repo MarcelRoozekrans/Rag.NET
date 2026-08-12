@@ -155,9 +155,15 @@ public sealed class GraphRagOptions
     /// </para>
     /// <para>
     /// <b>This property was called <c>Leiden</c>.</b> It was renamed with the algorithm it
-    /// configures, which is Louvain with a refinement pass and not the Leiden paper's algorithm —
-    /// see <see cref="LouvainWithRefinement"/>'s remarks. The old name survives as an obsolete
-    /// forwarder onto this one.
+    /// configures, which is Louvain with a refinement pass — see
+    /// <see cref="LouvainWithRefinement"/>'s remarks. The old name survives as an obsolete forwarder
+    /// onto this one.
+    /// </para>
+    /// <para>
+    /// <see cref="LouvainWithRefinementOptions.Randomness"/> is deliberately absent from the
+    /// validation below, and that is not an omission: it validates in its own setter, so an
+    /// unusable value cannot reach this property to be checked for. It is documented on the option
+    /// itself.
     /// </para>
     /// <para>
     /// <see cref="LouvainWithRefinementOptions.Resolution"/> must be finite and greater than zero —
@@ -182,10 +188,10 @@ public sealed class GraphRagOptions
     /// get a deprecation warning instead of a broken build. Reads and writes the same instance.
     /// </summary>
     [Obsolete(
-        "Renamed to CommunityDetection: the clustering it configures is LouvainWithRefinement — " +
-        "Louvain with a refinement pass, not Traag/Waltman/van Eck's Leiden algorithm — and it " +
-        "does not provide that paper's guarantee that every returned community is internally " +
-        "connected.")]
+        "Renamed to CommunityDetection, which is what it configures: LouvainWithRefinement — " +
+        "Louvain's local moving and aggregation with the Leiden paper's refinement phase between " +
+        "them. The old name was a claim about a guarantee the code did not then have; it has it " +
+        "now, but the descriptive name stays.")]
     public LouvainWithRefinementOptions Leiden
     {
         get => CommunityDetection;

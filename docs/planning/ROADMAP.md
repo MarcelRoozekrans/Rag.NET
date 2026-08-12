@@ -3401,7 +3401,7 @@ published at 0.1.0; none was found by a test, a review or a user.
    community_report`, of which a dense top-500 over this slice contained **none**, so the map phase
    never ran and the behavior returned its input untouched, looking to every caller as though it had
    worked: **zero map/reduce calls.** Bounded at 50,000 characters and filled in PageRank order, the
-   largest prompt this run builds is **49,937 characters**, the best report moved from rank 1,098 to
+   largest prompt this run builds is **49,933 characters**, the best report moved from rank 1,098 to
    209, and the map/reduce runs — **2 calls, unfiltered**.
 
 **Three tests had been written around broken behaviour rather than through it, and that is the
@@ -3431,10 +3431,10 @@ stops anyone finding it.
   the defect and understated it — under a constant offset the old bounds check dropped the
   same-community constraint entirely and merged two communities into one, and under a dense
   renumbering it both merged across communities and blocked legitimate merges inside them.
-- **The clusterer is Louvain-with-refinement, not textbook Leiden** — no guaranteed-connected
-  communities, no refinement-partition aggregation. It clusters, and it is not the algorithm the
-  name promises. **Documented 2026-08-12 (#171), not renamed and not reimplemented:** the type now
-  says on itself what it is, what it is not, and that the γ-connectedness guarantee is not provided.
+- **The clusterer was Louvain-with-refinement, not textbook Leiden** — no guaranteed-connected
+  communities, no refinement-partition aggregation. It clustered, and it was not the algorithm the
+  name promised. **Documented 2026-08-12 (#171), not renamed and not reimplemented:** the type said
+  on itself what it was, what it was not, and that the γ-connectedness guarantee was not provided.
   Checking the paper rather than the issue changed the recommendation. The seeding step the issue
   names is one of **three** departures, and the guarantee is a property of the other two — the
   paper moves only nodes alone in their refined community and merges one "only if both are
@@ -3442,24 +3442,37 @@ stops anyone finding it.
   quality increase rather than by best gain. **Implementing the seeding step alone would leave the
   name just as false and look like it had been fixed.** **Renamed 2026-08-12:** the type is
   `LouvainWithRefinement`, its settings `LouvainWithRefinementOptions`, and the ingestion property
-  `options.CommunityDetection`; all three old names survive as `[Obsolete]` forwarders whose message
-  says the algorithm is not Leiden rather than merely that a name changed.
-- **The missing guarantee is not theoretical — it fires (#180).** Written as a disclaimer, then
-  tested, because this repository has twice learned that "it is implemented" and "it works" are
-  different claims. A ~30,000-detection sweep returns disconnected communities on sparse *weighted*
-  graphs — 48 of 2,220 random weighted trees, 14 of 520 tree-plus-chords, **0 of 2,220 unweighted
-  trees**, and 0 on anything dense. The weights open the gap, not the sparsity. A ten-node tree at
-  the default resolution is pinned in `CommunityConnectivityTests` as a still-false record.
-  **Checked on the MultiHop-RAG slice's own graph the same day: it does not fire.** 0 disconnected
-  of 211 non-singleton communities at the defaults, 0 across seven resolution/seed settings (1,477
-  non-singleton communities), on the graph that reproduces the recorded 8,999/16,403/607/396
-  exactly. **Recorded as an underpowered negative rather than a clearance, and the arithmetic is
-  the point:** the reason I expected — that a real entity graph is too richly connected for the
-  mechanism — is measurably wrong, since **135 of the 211 communities are trees** and the synthetic
-  disconnected sizes (4–18) overlap the real tree communities (2–11). The synthetic per-community
-  rate is 53 of 490,358, about 1 in 9,250, so the expected count in a 1,477-community sample is
-  **0.16**. Zero is the most likely observation whether or not this corpus is safe. Distinguishing
-  the two needs ~9,250 non-singleton communities — a much larger corpus, not more seeds.
+  `options.CommunityDetection`. **Fixed 2026-08-12 (#180)** — all three constraints and the seeding
+  step, below. The rename is **not** being reverted: the descriptive name is accurate whatever the
+  algorithm turns out to be, and reversing it would cost every caller a second migration to say
+  nothing new. The `[Obsolete]` messages, which had been asserting the missing guarantee, were the
+  last place in the tree still recording it and now say only what the rename was for.
+- **The missing guarantee fired, and is now supplied (#180).** Written as a disclaimer, then tested,
+  because this repository has twice learned that "it is implemented" and "it works" are different
+  claims. A ~30,000-detection sweep returned disconnected communities on sparse *weighted* graphs —
+  48 of 2,220 random weighted trees, 14 of 520 tree-plus-chords, **0 of 2,220 unweighted trees**,
+  and 0 on anything dense. The weights opened the gap, not the sparsity. **Fixed 2026-08-12** by
+  implementing the paper's refinement phase in full: moves restricted to nodes alone in their
+  refined sub-community; a merge permitted only when both the node and the target sub-community are
+  γ-connected to their community in the unrefined partition P (in modularity's units,
+  `E(C, S−C) ≥ γ·K_C·(K_S − K_C) / 2m`); the target drawn at random with probability proportional
+  to `exp(ΔQ / θ)` over candidates with `ΔQ ≥ 0`, staying put included at `ΔQ = 0`; and the
+  aggregate graph built from P_refined while the next level is seeded from P rather than reset to
+  singletons. θ is the new `LouvainWithRefinementOptions.Randomness`, defaulting to 0.01 — the
+  paper's own experimental value — and validated in its setter.
+  **Re-swept with the same harness against both implementations: 132 disconnected of 3,351,175
+  communities before, 0 of 3,359,331 after**, over 40,000 random weighted trees × five resolutions ×
+  four seeds, which is roughly seven times the exposure of the run that first measured the base
+  rate (53 of 490,358). `CommunityConnectivityTests` no longer pins the ten-node counterexample as a
+  still-false record; it keeps the graph and asserts the communities are connected, across four
+  resolution/seed pairs, alongside a 300-graph sample of the weighted-tree family.
+  **What it cost on the corpus:** nothing measurable. The MultiHop-RAG slice returns the same 607
+  communities and the same 396 singletons; only the largest community moved, 796 → 661 entities
+  (8.8% → 7.3%), because the refinement splits the one community that had been holding two halves
+  joined by too little. **What is still not guaranteed:** a run capped by `MaxLevels` returns the
+  refined partition rather than the working one — connected, but finer than the uncapped run — and
+  the partition is a randomised search's local optimum, so a different `RandomSeed` is a different
+  partition. Determinism under a fixed seed is asserted over five repeats.
 - **Retrieval-mode routing (#104) does not exist at all** — no `Mode` property, no
   `GraphRagRetrievalMode` enum, nothing in either behavior consulting one. **That issue's framing is
   itself wrong**: it reads as "a setting is not honoured" when the setting was deleted at 0.1.0

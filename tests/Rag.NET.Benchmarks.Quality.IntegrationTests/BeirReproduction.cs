@@ -534,8 +534,12 @@ public static class BeirReproduction
             "communities held one entity and one held 7,954 of the 8,999. **That was six library " +
             "defects, not a property of the corpus, and this entry asserted it as current state " +
             "for as long as it took to notice.** After the fixes of 2026-08-12 the same slice " +
-            "gives 607 communities, 396 singletons, and a largest community of 796 -- 8.8% of the " +
-            "graph against 88.4%. 273 entities genuinely have no relationship, which is a property " +
+            "gives 607 communities, 396 singletons, and a largest community of 661 -- 7.3% of the " +
+            "graph against 88.4%. The community and singleton counts are unchanged by the " +
+            "well-connectedness fix (#180) that came later the same day; the largest community was " +
+            "796 (8.8%) before it and 661 (7.3%) after, because the paper's refinement splits the " +
+            "one community that had been holding two weakly-joined halves. " +
+            "273 entities genuinely have no relationship, which is a property " +
             "of extraction rather than of clustering. Neither figure is a reason to skip the " +
             "comparison; both are reasons not to predict its outcome from this entry."),
     ];

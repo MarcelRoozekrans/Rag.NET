@@ -12,7 +12,8 @@ namespace Rag.NET.Graph.Algorithms;
 /// for why the old name was wrong.
 /// </remarks>
 [Obsolete(
-    "Renamed to LouvainWithRefinementOptions: the algorithm it configures is Louvain with a " +
-    "refinement pass, not Traag/Waltman/van Eck's Leiden algorithm, and it does not provide that " +
-    "paper's guarantee that every returned community is internally connected.")]
+    "Renamed to LouvainWithRefinementOptions, after what it configures: Louvain's local moving " +
+    "and aggregation with the Leiden paper's refinement phase between them. The old name was a " +
+    "claim about a guarantee the code did not then have; it has it now, but the descriptive name " +
+    "stays.")]
 public sealed record class LeidenOptions : LouvainWithRefinementOptions;

@@ -45,14 +45,17 @@ var neighbors = await store.GetNeighborsAsync("Ada Lovelace", depth: 2);
 // Community detection and PageRank operate on a snapshot of the whole graph.
 var graph = await store.GetFullGraphAsync();
 var communities = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { Resolution = 1.0 });
+// Every community in the result is connected in the subgraph its members induce.
 var ranks = PageRank.Compute(graph);
 ```
 
 `LouvainWithRefinement` was called `Leiden` until 0.1.0. It is Louvain's local moving and
-aggregation with a refinement pass, not Traag/Waltman/van Eck's Leiden algorithm, and it does not
-provide that paper's guarantee that every returned community is internally connected — a ten-node
-counterexample is pinned in the test suite. `Leiden` and `LeidenOptions` remain as `[Obsolete]`
-forwarders; the type's own XML remarks give the three places it departs from the paper.
+aggregation with Traag/Waltman/van Eck's refinement phase between them, so **every returned
+community is connected in the subgraph it induces** — the guarantee that paper exists to supply.
+The refinement is randomised (`Randomness`, θ, default 0.01) but every draw comes from `RandomSeed`,
+so a fixed seed gives a fixed partition. `Leiden` and `LeidenOptions` remain as `[Obsolete]`
+forwarders; the type's own XML remarks give where the guarantee comes from and what it does not
+promise.
 
 ## Full guide
 

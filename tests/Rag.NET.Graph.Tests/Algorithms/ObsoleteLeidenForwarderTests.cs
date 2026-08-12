@@ -101,7 +101,12 @@ public class ObsoleteLeidenForwarderTests
 
         var message = attribute.Message ?? string.Empty;
         Assert.Contains(replacement, message, StringComparison.Ordinal);
-        Assert.Contains("not Traag/Waltman/van Eck's Leiden algorithm", message, StringComparison.Ordinal);
+
+        // Naming the replacement is half of it; the other half is why the old name went. The message
+        // said the algorithm "does not provide that paper's guarantee" until #180 supplied it, which
+        // made a deprecation notice the last place in the tree still asserting the defect.
+        Assert.Contains("the Leiden paper's refinement phase", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("does not provide", message, StringComparison.Ordinal);
     }
 
     [Fact]

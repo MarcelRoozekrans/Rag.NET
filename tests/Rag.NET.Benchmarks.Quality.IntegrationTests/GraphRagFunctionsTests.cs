@@ -63,7 +63,7 @@ public sealed class GraphRagFunctionsTests
 
     /// <summary>
     /// The share of all entities the largest community may hold before this guard calls the
-    /// clustering degenerate. Twenty-five percent, against a measured 8.8%.
+    /// clustering degenerate. Twenty-five percent, against a measured 7.3%.
     /// </summary>
     /// <remarks>
     /// <b>A ceiling on the largest community's share, not a floor on the singleton count, because
@@ -236,7 +236,12 @@ public sealed class GraphRagFunctionsTests
     /// <c>LouvainWithRefinementTests</c> now pins that case, along with the two- and three-clique cases whose
     /// <c>Count &gt;= 1</c> assertion had been tolerating the defect. Folding the weight in dropped
     /// the largest community from 8,070 entities to <b>796</b>, its share of the graph from 89.7%
-    /// to 8.8%, and the largest report prompt from 1,806,352 characters to 195,446.
+    /// to 8.8%, and the largest report prompt from 1,806,352 characters to 195,446. Implementing the
+    /// Leiden paper's refinement phase (#180) moved the largest community again, to <b>661</b>
+    /// entities and 7.3%: it splits the one community that had been holding two halves joined by too
+    /// little. <b>The community count and the singleton count did not move at all</b> — 607 and 396
+    /// before and after — which is the shape to expect, since the refinement redistributes what was
+    /// over-merged rather than finding anything new to cluster.
     /// </para>
     /// </remarks>
     private static void AssertCommunityDetectionClusteredTheGraph(GraphRagSliceRun run)
@@ -275,7 +280,7 @@ public sealed class GraphRagFunctionsTests
                 community holding most of the graph is not a cluster, it is the absence of one: its
                 report is a summary of the entire corpus, global search maps over it as though it
                 were a theme, and the prompt to write it grows with the corpus rather than with any
-                topic in it. Measured at 8.8% when this ceiling was set, against 89.7% before
+                topic in it. Measured at 7.3%, and at 8.8% when this ceiling was set, against 89.7% before
                 LouvainWithRefinement.BuildAggregatedEdges stopped discarding intra-community weight — so a number
                 anywhere near the ceiling means the aggregation step has regressed to treating
                 super-nodes as though they had no internal edges.
