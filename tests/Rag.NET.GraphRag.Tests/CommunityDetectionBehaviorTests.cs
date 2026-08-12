@@ -252,7 +252,141 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
         return snapshot.Communities.Count;
     }
 
+    /// <summary>The report prompt stays inside its configured budget.</summary>
+    /// <remarks>
+    /// <b>The prompt used to have no bound at all, so its size was a property of the corpus.</b>
+    /// A sixty-article slice reached 1,806,352 characters — 450,000 tokens against a 128,000-token
+    /// context. This asserts the code now decides, not the data: forty entities carrying a
+    /// kilobyte of description each would render some 40,000 characters unbounded, and must not.
+    /// </remarks>
+    [Fact]
+    public async Task HandleAsync_LargeCommunity_BoundsTheReportPrompt()
+    {
+        const int budget = 4_000;
+        var prompts = await CapturePromptsAsync(budget, entities: 40, descriptionLength: 1_000);
+
+        Assert.NotEmpty(prompts);
+        Assert.All(prompts, prompt => Assert.True(
+            prompt.Length <= budget,
+            $"a report prompt ran to {prompt.Length} characters against a budget of {budget}"));
+    }
+
+    /// <summary>Truncation is stated in the prompt rather than left for the model to infer.</summary>
+    /// <remarks>
+    /// <b>A silently shortened community is a lie told to the summarizer.</b> It would describe
+    /// forty entities as though they were the whole cluster, and the report would read as complete
+    /// while covering a fraction. The notice is the difference between a bound and a defect.
+    /// </remarks>
+    [Fact]
+    public async Task HandleAsync_TruncatedReport_SaysSoInThePrompt()
+    {
+        var prompts = await CapturePromptsAsync(budget: 4_000, entities: 40, descriptionLength: 1_000);
+
+        Assert.Contains(prompts, p => p.Contains("entities are shown, most central first", StringComparison.Ordinal));
+        Assert.Contains(prompts, p => p.Contains("were omitted to keep this report prompt", StringComparison.Ordinal));
+    }
+
+    /// <summary>What survives truncation is the most central entities, not an arbitrary prefix.</summary>
+    /// <remarks>
+    /// The hub of a star graph is the one entity a summary of it cannot omit. Emitting members in
+    /// PageRank order is what makes the bound cost the least — dropping by store order would just
+    /// as often drop the subject of the community.
+    /// </remarks>
+    [Fact]
+    public async Task HandleAsync_TruncatedReport_KeepsTheMostCentralEntities()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await PopulateStarGraph(spokes: 30, descriptionLength: 400);
+        SetupChatClient("report");
+        SetupEmbedder(4);
+
+        var prompts = CaptureChatPrompts();
+        var options = new GraphRagOptions { Enabled = true, MaxCommunityReportPromptLength = 2_000 };
+        var sut = new CommunityDetectionBehavior(_chatClient, _embedder, _graphStore, options);
+
+        await sut.HandleAsync(CreateContext(), ct, (c, _) =>
+            ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+
+        var hubPrompt = prompts.Find(p => p.Contains("- Hub (", StringComparison.Ordinal));
+        Assert.NotNull(hubPrompt);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>Runs detection over one padded clique and returns the prompts it built.</summary>
+    private async Task<List<string>> CapturePromptsAsync(int budget, int entities, int descriptionLength)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await PopulateClique(entities, descriptionLength);
+        SetupChatClient("report");
+        SetupEmbedder(4);
+
+        var prompts = CaptureChatPrompts();
+        var options = new GraphRagOptions { Enabled = true, MaxCommunityReportPromptLength = budget };
+        var sut = new CommunityDetectionBehavior(_chatClient, _embedder, _graphStore, options);
+
+        await sut.HandleAsync(CreateContext(), ct, (c, _) =>
+            ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+
+        return prompts;
+    }
+
+    /// <summary>Records the text of every prompt the chat client is handed.</summary>
+    private List<string> CaptureChatPrompts()
+    {
+        var prompts = new List<string>();
+        _chatClient.GetResponseAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                foreach (var message in callInfo.Arg<IEnumerable<ChatMessage>>()!)
+                {
+                    prompts.Add(message.Text);
+                }
+
+                return new ChatResponse([new ChatMessage(ChatRole.Assistant, "report")]);
+            });
+
+        return prompts;
+    }
+
+    /// <summary>A fully connected clique whose descriptions are deliberately bulky.</summary>
+    private async Task PopulateClique(int count, int descriptionLength)
+    {
+        var padding = new string('x', descriptionLength);
+        var entities = new List<GraphEntity>(count);
+        for (int i = 0; i < count; i++)
+        {
+            entities.Add(new GraphEntity($"E{i}", "Org", $"Entity {i} {padding}"));
+        }
+
+        await _graphStore.AddEntitiesAsync(entities);
+
+        var rels = new List<GraphRelationship>();
+        for (int i = 0; i < count; i++)
+            for (int j = i + 1; j < count; j++)
+                rels.Add(new GraphRelationship($"E{i}", $"E{j}", "works with"));
+
+        await _graphStore.AddRelationshipsAsync(rels);
+    }
+
+    /// <summary>A star: one hub every spoke points at, so PageRank has a clear winner.</summary>
+    private async Task PopulateStarGraph(int spokes, int descriptionLength)
+    {
+        var padding = new string('y', descriptionLength);
+        var entities = new List<GraphEntity> { new("Hub", "Org", $"The hub {padding}") };
+        var rels = new List<GraphRelationship>();
+
+        for (int i = 0; i < spokes; i++)
+        {
+            entities.Add(new GraphEntity($"Spoke{i:D2}", "Org", $"Spoke {i} {padding}"));
+            rels.Add(new GraphRelationship($"Spoke{i:D2}", "Hub", "reports to"));
+        }
+
+        await _graphStore.AddEntitiesAsync(entities);
+        await _graphStore.AddRelationshipsAsync(rels);
+    }
+
 
     private static IngestionContext CreateContext()
     {

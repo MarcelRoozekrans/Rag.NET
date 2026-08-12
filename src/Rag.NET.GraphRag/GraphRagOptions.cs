@@ -94,6 +94,36 @@ public sealed class GraphRagOptions
         {text}
         """;
 
+    /// <summary>
+    /// Caps a community report prompt, in characters. Default: 50,000 (roughly 12,000 tokens).
+    /// <para>
+    /// <b>Without it the prompt's size was a property of the corpus rather than of the code.</b>
+    /// <c>CommunityDetectionBehavior</c> pasted every member entity's whole merged description into
+    /// one message with no bound of any kind. Over a sixty-article slice, while Leiden was
+    /// over-merging, that produced a single prompt of 1,806,352 characters — some 450,000 tokens
+    /// against gpt-4o-mini's 128,000-token context, which no model could accept. Fixing the
+    /// clustering brought the same prompt to 195,446 characters, which fits, but nothing in the
+    /// code made it fit and a larger corpus would regrow it.
+    /// </para>
+    /// <para>
+    /// Must be greater than 0 — enforced by the validation attribute, which <c>UseGraphRag</c> runs
+    /// at registration. Over-budget communities are <b>truncated, not rejected</b>: members are
+    /// emitted in PageRank order so the least central are dropped first, three quarters of the
+    /// budget is reserved for entities and the remainder for the relationships between them, and
+    /// the prompt states what was left out so the model is not shown a partial community as though
+    /// it were whole. Truncation is also tagged on the <c>ragnet.graphrag.communities</c> activity.
+    /// Failing an ingestion that used to work, on data rather than on configuration, would be a
+    /// regression however principled it looked — so the bound degrades the report instead.
+    /// </para>
+    /// <para>
+    /// One prompt can still exceed this: a single entity whose description alone is longer than the
+    /// budget is emitted anyway, because a report prompt describing none of its community's members
+    /// is indistinguishable from one for a community that holds nothing.
+    /// </para>
+    /// </summary>
+    [GreaterThan(0)]
+    public int MaxCommunityReportPromptLength { get; set; } = 50_000;
+
     /// <summary>Prompt template for community report generation. {entities} and {relationships} are replaced.</summary>
     public string CommunityReportPrompt { get; set; } = """
         You are analyzing a community of related entities in a knowledge graph.
