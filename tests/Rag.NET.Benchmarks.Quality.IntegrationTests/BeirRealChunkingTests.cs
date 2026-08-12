@@ -111,12 +111,25 @@ public sealed class BeirRealChunkingTests
     public async Task NdcgAt10_UnderRagNetsOwnChunking_DiffersFromOurParityRunAndStaysNearIt(
         string datasetName)
     {
+        // The descriptor is fetched before any gate because the first gate is a question about the
+        // dataset. ByName throws on a name no descriptor carries, which is right: an unknown
+        // dataset name is a bug in the theory data, not a case to skip past.
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        // First of the three, because the answer is a property of the dataset rather than of this
+        // machine. An inapplicable case reporting "no model file" would send the reader to their
+        // environment for something no environment can fix.
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.Real),
+            $"{datasetName} does not declare the Real protocol applicable, so measuring it would " +
+            "produce a number that means nothing.");
+
         Assert.SkipUnless(
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
 
-        // Every dataset's real leg is opt-in — see BeirRunBudget for why the cheapest of them still
-        // does not fit a 120-minute job that builds the solution first. The cheap half of this
+        // Last: every dataset's real leg is opt-in — see BeirRunBudget for why the cheapest of them
+        // still does not fit a 120-minute job that builds the solution first. The cheap half of this
         // file's coverage, Chunking_SplitsEveryCorpusIntoMoreUnitsThanDocuments, is deliberately not
         // gated: it needs no model, runs in seconds, and is what still catches a chunker that
         // stopped chunking on the nightly.
@@ -124,7 +137,6 @@ public sealed class BeirRealChunkingTests
             BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.Real, out var budgetReason),
             budgetReason);
 
-        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
         var dataset = await BeirHarness.LoadAsync(
             descriptor, cacheDirectory, BeirLoader.DefaultTitleTextSeparator, ct);

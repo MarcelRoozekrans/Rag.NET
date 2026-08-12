@@ -67,6 +67,15 @@ public sealed class BeirComparisonControlTests
     public async Task NdcgAt10_ThroughTheTrecRunFileBoundary_ReproducesTheRepositoryFigures(
         string datasetName)
     {
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        // First of the three, because the answer is a property of the dataset rather than of this
+        // machine. An inapplicable case reporting "no model file" would send the reader to their
+        // environment for something no environment can fix.
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.Comparison),
+            $"{datasetName} does not declare the Comparison protocol applicable, so measuring it " +
+            "would produce a number that means nothing.");
         Assert.SkipUnless(
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
@@ -74,7 +83,6 @@ public sealed class BeirComparisonControlTests
             BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.Comparison, out var budgetReason),
             budgetReason);
 
-        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
         var dataset = await BeirHarness.LoadAsync(descriptor, cacheDirectory, " ", ct);
 
@@ -96,14 +104,8 @@ public sealed class BeirComparisonControlTests
 
         var runFilePath = RunFilePath(cacheDirectory, datasetName);
         TrecRunFile.Write(runFilePath, measured.Runs, RunTag);
-        TimingsSidecar.Write(
-            runFilePath,
-            new EntrantTimings(
-                RunTag, measured.IndexingSeconds, measured.QueryLatenciesMilliseconds,
-                checked((int)(embeddings.Hits - hitsBefore)),
-                checked((int)(embeddings.Misses - missesBefore)),
-                measured.UnitCount, measured.MaxUnitsPerDocument),
-            BeirHarness.RunIndex);
+        WriteTimingsSidecar(
+            runFilePath, measured, embeddings.Hits - hitsBefore, embeddings.Misses - missesBefore);
         var readBack = TrecRunFile.Read(runFilePath);
 
         AssertRoundTripPreservedEveryRanking(measured.Runs, readBack);
@@ -124,6 +126,22 @@ public sealed class BeirComparisonControlTests
             datasetName, BeirProtocol.Comparison, evaluation.NormalizedDiscountedCumulativeGain,
             _output);
     }
+
+    /// <summary>
+    /// Writes the row's self-measured timings beside its run file, the way
+    /// <see cref="BeirSemanticKernelDefaultsTests"/> writes its own. The cache counts arrive as
+    /// deltas taken across the whole run, so they describe what the disk held for this row rather
+    /// than what the cache has accumulated since the process started.
+    /// </summary>
+    private static void WriteTimingsSidecar(
+        string runFilePath, TimedScoredRuns measured, long cacheHits, long cacheMisses) =>
+        TimingsSidecar.Write(
+            runFilePath,
+            new EntrantTimings(
+                RunTag, measured.IndexingSeconds, measured.QueryLatenciesMilliseconds,
+                checked((int)cacheHits), checked((int)cacheMisses),
+                measured.UnitCount, measured.MaxUnitsPerDocument),
+            BeirHarness.RunIndex);
 
     /// <summary>
     /// Where the run file goes: under the BEIR cache, never under the repository, because a run

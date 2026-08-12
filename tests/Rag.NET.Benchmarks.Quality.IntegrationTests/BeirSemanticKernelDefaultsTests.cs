@@ -118,6 +118,15 @@ public sealed class BeirSemanticKernelDefaultsTests
     public async Task NdcgAt10_ThroughSemanticKernelAtItsDefaults_ThroughTheTrecRunFileBoundary(
         string datasetName)
     {
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        // First of the three, because the answer is a property of the dataset rather than of this
+        // machine. An inapplicable case reporting "no model file" would send the reader to their
+        // environment for something no environment can fix.
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.SemanticKernel),
+            $"{datasetName} does not declare the SemanticKernel protocol applicable, so measuring " +
+            "it would produce a number that means nothing.");
         Assert.SkipUnless(
             BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
             BeirHarness.SkipReason);
@@ -125,7 +134,6 @@ public sealed class BeirSemanticKernelDefaultsTests
             BeirRunBudget.IsGatedOff(datasetName, BeirProtocol.SemanticKernel, out var budgetReason),
             budgetReason);
 
-        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
         var ct = TestContext.Current.CancellationToken;
         var dataset = await BeirHarness.LoadAsync(descriptor, cacheDirectory, " ", ct);
 
@@ -156,14 +164,10 @@ public sealed class BeirSemanticKernelDefaultsTests
         var runFilePath = RunFilePath(cacheDirectory, datasetName);
         TrecRunFile.Write(runFilePath, runs, RunTag);
         WriteTimingsSidecar(
-            runFilePath, indexingSeconds, queryLatencies,
-            checked((int)(embeddings.Hits - hitsBefore)),
-            checked((int)(embeddings.Misses - missesBefore)),
-            dataset.Documents.Count);
-        if (descriptor.ExcludesSelfRetrievedDocument)
-        {
-            AssertTheWrittenFileHoldsThePostExclusionRanking(runFilePath);
-        }
+            runFilePath, indexingSeconds, queryLatencies, embeddings.Hits - hitsBefore,
+            embeddings.Misses - missesBefore, dataset.Documents.Count);
+        AssertTheWrittenFileHoldsThePostExclusionRanking(
+            runFilePath, descriptor.ExcludesSelfRetrievedDocument);
 
         var readBack = TrecRunFile.Read(runFilePath);
         var evaluation = IrMetrics.Evaluate(readBack, dataset.Qrels, BeirHarness.Cutoff);
@@ -282,9 +286,20 @@ public sealed class BeirSemanticKernelDefaultsTests
     /// 1,298 of 1,406 queries are byte-identical to their same-id corpus document, so without the
     /// exclusion the file would hold roughly that many self-lines at rank 1; zero is not
     /// achievable by accident.
+    /// <para>
+    /// The check applies only to the datasets whose protocol excludes the query's own document, so
+    /// the condition lives here rather than at the call site: this is the only thing that decides
+    /// whether the file's self-lines are a defect or the expected content.
+    /// </para>
     /// </summary>
-    private static void AssertTheWrittenFileHoldsThePostExclusionRanking(string runFilePath)
+    private static void AssertTheWrittenFileHoldsThePostExclusionRanking(
+        string runFilePath, bool excludesSelfRetrievedDocument)
     {
+        if (!excludesSelfRetrievedDocument)
+        {
+            return;
+        }
+
         var lineNumber = 0;
         foreach (var line in File.ReadLines(runFilePath))
         {
@@ -339,14 +354,15 @@ public sealed class BeirSemanticKernelDefaultsTests
         string runFilePath,
         double indexingSeconds,
         IReadOnlyDictionary<string, double> queryLatenciesMilliseconds,
-        int embeddingCacheHits,
-        int embeddingCacheMisses,
+        long embeddingCacheHits,
+        long embeddingCacheMisses,
         int unitCount) =>
         TimingsSidecar.Write(
             runFilePath,
             new EntrantTimings(
                 RunTag, indexingSeconds, queryLatenciesMilliseconds,
-                embeddingCacheHits, embeddingCacheMisses, unitCount, MaxUnitsPerDocument: 1),
+                checked((int)embeddingCacheHits), checked((int)embeddingCacheMisses),
+                unitCount, MaxUnitsPerDocument: 1),
             BeirHarness.RunIndex);
 
     /// <summary>
