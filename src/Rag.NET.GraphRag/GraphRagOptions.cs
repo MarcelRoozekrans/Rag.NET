@@ -99,7 +99,7 @@ public sealed class GraphRagOptions
     /// <para>
     /// <b>Without it the prompt's size was a property of the corpus rather than of the code.</b>
     /// <c>CommunityDetectionBehavior</c> pasted every member entity's whole merged description into
-    /// one message with no bound of any kind. Over a sixty-article slice, while the clusterer was
+    /// one message with no bound of any kind. Over a sixty-article slice, while Leiden was
     /// over-merging, that produced a single prompt of 1,806,352 characters — some 450,000 tokens
     /// against gpt-4o-mini's 128,000-token context, which no model could accept. Fixing the
     /// clustering brought the same prompt to 195,446 characters, which fits, but nothing in the
@@ -142,60 +142,41 @@ public sealed class GraphRagOptions
         """;
 
     /// <summary>
-    /// Settings for the clustering that community detection runs. Default:
-    /// <see cref="LouvainWithRefinement"/>'s own.
+    /// Settings for the Leiden clustering that community detection runs. Default: Leiden's own.
     /// <para>
     /// <b>These were unreachable until recently, which is why they are documented at length
-    /// here.</b> <see cref="LouvainWithRefinementOptions"/> shipped public and complete, and
-    /// <c>CommunityDetectionBehavior</c> called the clusterer with the argument omitted — so no
-    /// caller could change a single one of them and the defaults were the only settings that had
-    /// ever run. That is the same shape as the three dead settings audit #108 found, and it is
-    /// asserted against in both directions: that the value is stored, and that changing it changes
-    /// the clustering.
+    /// here.</b> <see cref="LeidenOptions"/> shipped public and complete, and
+    /// <c>CommunityDetectionBehavior</c> called <c>Leiden.Detect(snapshot)</c> with the argument
+    /// omitted — so no caller could change a single one of them and the defaults were the only
+    /// settings that had ever run. That is the same shape as the three dead settings audit #108
+    /// found, and it is asserted against in both directions: that the value is stored, and that
+    /// changing it changes the clustering.
     /// </para>
     /// <para>
-    /// <b>This property was called <c>Leiden</c>.</b> It was renamed with the algorithm it
-    /// configures, which is Louvain with a refinement pass and not the Leiden paper's algorithm —
-    /// see <see cref="LouvainWithRefinement"/>'s remarks. The old name survives as an obsolete
-    /// forwarder onto this one.
+    /// <see cref="LeidenOptions.Randomness"/> is deliberately absent from the validation below, and
+    /// that is not an omission: it validates in its own setter, so an unusable value cannot reach
+    /// this property to be checked for. It is documented on the option itself.
     /// </para>
     /// <para>
-    /// <see cref="LouvainWithRefinementOptions.Resolution"/> must be finite and greater than zero —
-    /// enforced by the validation attribute below, which <c>UseGraphRag</c> runs at registration. It
-    /// scales modularity's penalty term, so zero removes the penalty entirely and every connected
-    /// graph collapses into a single community; negative inverts it and merging is rewarded without
-    /// bound. <see cref="LouvainWithRefinementOptions.MaxIterations"/> must be greater than zero,
-    /// since the local moving phase loops that many times and zero means no node ever moves — every
-    /// entity its own community. <see cref="LouvainWithRefinementOptions.MaxLevels"/>, when set,
-    /// must be greater than zero for the same reason one level up; null means "until no further
-    /// improvement" and is the default.
+    /// <see cref="LeidenOptions.Resolution"/> must be finite and greater than zero — enforced by
+    /// the validation attribute below, which <c>UseGraphRag</c> runs at registration. It scales
+    /// modularity's penalty term, so zero removes the penalty entirely and every connected graph
+    /// collapses into a single community; negative inverts it and merging is rewarded without
+    /// bound. <see cref="LeidenOptions.MaxIterations"/> must be greater than zero, since the local
+    /// moving phase loops that many times and zero means no node ever moves — every entity its own
+    /// community. <see cref="LeidenOptions.MaxLevels"/>, when set, must be greater than zero for
+    /// the same reason one level up; null means "until no further improvement" and is the default.
     /// </para>
     /// </summary>
-    [Must(nameof(CommunityDetectionIsUsable), Message =
-        "CommunityDetection.Resolution must be a finite number greater than 0, " +
-        "CommunityDetection.MaxIterations must be greater than 0, and " +
-        "CommunityDetection.MaxLevels, when set, must be greater than 0.")]
-    public LouvainWithRefinementOptions CommunityDetection { get; set; } = new();
+    [Must(nameof(LeidenIsUsable), Message =
+        "Leiden.Resolution must be a finite number greater than 0, Leiden.MaxIterations must be " +
+        "greater than 0, and Leiden.MaxLevels, when set, must be greater than 0.")]
+    public LeidenOptions Leiden { get; set; } = new();
 
-    /// <summary>
-    /// The former name of <see cref="CommunityDetection"/>, kept as a forwarder so callers on 0.1.0
-    /// get a deprecation warning instead of a broken build. Reads and writes the same instance.
-    /// </summary>
-    [Obsolete(
-        "Renamed to CommunityDetection: the clustering it configures is LouvainWithRefinement — " +
-        "Louvain with a refinement pass, not Traag/Waltman/van Eck's Leiden algorithm — and it " +
-        "does not provide that paper's guarantee that every returned community is internally " +
-        "connected.")]
-    public LouvainWithRefinementOptions Leiden
-    {
-        get => CommunityDetection;
-        set => CommunityDetection = value;
-    }
-
-    /// <summary>Reports whether the clustering settings are ones the algorithm can actually run.</summary>
-    /// <param name="value">The <see cref="CommunityDetection"/> value under validation.</param>
+    /// <summary>Reports whether the Leiden settings are ones the algorithm can actually run.</summary>
+    /// <param name="value">The <see cref="Leiden"/> value under validation.</param>
     /// <returns>Whether every setting is inside its documented range.</returns>
-    internal bool CommunityDetectionIsUsable(LouvainWithRefinementOptions value) =>
+    internal bool LeidenIsUsable(LeidenOptions value) =>
         value is not null
         && double.IsFinite(value.Resolution)
         && value.Resolution > 0.0

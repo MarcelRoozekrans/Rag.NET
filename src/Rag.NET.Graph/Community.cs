@@ -1,6 +1,6 @@
 namespace Rag.NET.Graph;
 
-/// <summary>A community of related entities detected by <c>LouvainWithRefinement</c>.</summary>
+/// <summary>A community of related entities detected by <c>Leiden</c>.</summary>
 public sealed record Community(
     int Id,
     int Level,

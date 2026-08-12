@@ -10,7 +10,7 @@ using Rag.NET.Telemetry;
 namespace Rag.NET.GraphRag;
 
 /// <summary>
-/// Ingestion behavior that runs modularity community detection, computes PageRank,
+/// Ingestion behavior that runs Leiden community detection, computes PageRank,
 /// generates LLM community reports, and embeds them as chunks.
 /// </summary>
 public sealed class CommunityDetectionBehavior(
@@ -47,8 +47,8 @@ public sealed class CommunityDetectionBehavior(
             return await next(ctx, ct).ConfigureAwait(false);
         }
 
-        // Run community detection, with the caller's settings rather than the defaults.
-        var communities = LouvainWithRefinement.Detect(snapshot, options.CommunityDetection);
+        // Run Leiden community detection, with the caller's settings rather than the defaults.
+        var communities = Leiden.Detect(snapshot, options.Leiden);
 
         // Compute PageRank and persist the scores -- only the scores.
         var ranks = PageRank.Compute(snapshot);
@@ -137,7 +137,7 @@ public sealed class CommunityDetectionBehavior(
     /// <para>
     /// <b>The bound exists because this prompt used to have none at all.</b> Every member's whole
     /// merged description went into one message, so its size was a property of the corpus rather
-    /// than of the code: over a sixty-article slice, while the clusterer was over-merging, one prompt
+    /// than of the code: over a sixty-article slice, while Leiden was over-merging, one prompt
     /// reached 1,806,352 characters — some 450,000 tokens against a 128,000-token context, with no
     /// model to send it to. Fixing the clustering brought that to 195,446, which fits; nothing
     /// about the code made it fit, and a larger corpus would regrow it.

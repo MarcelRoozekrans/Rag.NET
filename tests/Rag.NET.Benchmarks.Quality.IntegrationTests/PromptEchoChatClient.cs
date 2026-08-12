@@ -15,11 +15,12 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <b>Community reports are not generated here because 607 of them cost real money, not because
 /// they cannot be.</b> That distinction is new. <c>CommunityDetectionBehavior</c> builds a report
 /// prompt by pasting every member entity's whole merged description into one message with no bound
-/// of any kind, and while the clusterer was discarding intra-community weight when aggregating, it put
+/// of any kind, and while Leiden was discarding intra-community weight when aggregating, it put
 /// 8,070 of 8,999 entities into one community and that prompt measured <b>1,806,352 characters</b>
 /// — some 450,000 tokens against gpt-4o-mini's 128,000-token context, with no model to send it to.
 /// Folding those edges into a self-loop dropped the largest community to 796 entities and the
-/// largest prompt to <b>195,446 characters</b>, roughly 49,000 tokens, which fits. The stub stays
+/// largest prompt to <b>195,446 characters</b>, roughly 49,000 tokens, which fits; implementing the
+/// Leiden paper's refinement phase (#180) later took the largest community to 661. The stub stays
 /// because the guard replays rather than spends, not because the library is incapable.
 /// </para>
 /// <para>
@@ -27,7 +28,7 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// was luck; nothing in the behavior made it true of six hundred.
 /// <c>GraphRagOptions.MaxCommunityReportPromptLength</c> caps it — 50,000 characters by default,
 /// filled in PageRank order so the least central members are dropped first, with the omission
-/// stated in the prompt — and the largest prompt this run builds is 49,937 characters.
+/// stated in the prompt — and the largest prompt this run builds is 49,933 characters.
 /// <see cref="LongestPrompt"/> is measured on every run and printed by the guard, because an
 /// earlier note here put the figure at 976,425 characters, which was the entity-description block
 /// alone and about half of what the behavior actually sends: a number nobody re-measures drifts.

@@ -73,7 +73,7 @@ versions of the committed lockfile.
 | Reranking | ✅ 2 pkgs | ✖ | ⚠️ abstract only | ✅ 4 | ✅ 3 |
 | Query transformation | ✅ HyDE, multi-query | ✖ | ✖ | ✅ HyDE | ✅ expander |
 | Hierarchical summary index (RAPTOR) | ✅ | ✖ | ✖ | ✖ | ✖ |
-| Graph-community RAG | ✅ | ✖ | ✖ | ⚠️ graph, no communities | ✖ |
+| Graph-community RAG (Leiden) | ✅ | ✖ | ✖ | ⚠️ graph, no communities | ✖ |
 | Multi-pass answer engines | ✅ 4 | ✖ | ✖ | ✅ | ✅ |
 | Conversational memory | ✅ | — | ✅ types | ✅ | — |
 | RAG evaluation | ✅ 2 pkgs | ✖ | ✖ | ✅ | ✅ |
@@ -131,7 +131,7 @@ a first-party Rag.NET package (`Rag.NET.Raptor`) and, on this scoping line, nobo
 **3. LlamaIndex has graph indexing but not community-detection GraphRAG.**
 `llama_index/core/indices/property_graph/` and `.../knowledge_graph/` exist; a search for
 `leiden`/`graphrag` across all `.py` in `llama_index` returns nothing. The distinction matters:
-graph *indexing* answers entity questions, whereas the community-report map-reduce in
+graph *indexing* answers entity questions, whereas the Leiden community-report map-reduce in
 `Rag.NET.GraphRag` is what answers corpus-wide questions. Marked ⚠️ rather than ✅ or ✖ for exactly
 that reason.
 

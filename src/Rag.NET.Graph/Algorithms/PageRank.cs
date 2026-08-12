@@ -34,7 +34,7 @@ public static class PageRank
 
     /// <summary>Indexes entities by name, the way the store that produced them compares names.</summary>
     /// <remarks>
-    /// The same edge-dropping <see cref="LouvainWithRefinement"/> had, in the same shape: see
+    /// The same edge-dropping <see cref="Leiden"/> had, in the same shape: see
     /// <see cref="GraphNames"/>. Here it made a node look less connected than the store says it is,
     /// so its score was computed over a sparser graph than the one that exists.
     /// </remarks>

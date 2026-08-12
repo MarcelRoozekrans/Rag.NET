@@ -45,7 +45,7 @@ public sealed partial class ScopeMatrixClaimTests
         ["Reranking"] = ["Rag.NET.Reranking.Onnx", "Rag.NET.Reranking.Cohere"],
         ["Query transformation"] = ["Rag.NET.QueryTechniques"],
         ["Hierarchical summary index (RAPTOR)"] = ["Rag.NET.Raptor"],
-        ["Graph-community RAG"] = ["Rag.NET.GraphRag", "Rag.NET.Graph"],
+        ["Graph-community RAG (Leiden)"] = ["Rag.NET.GraphRag", "Rag.NET.Graph"],
         ["Multi-pass answer engines"] = ["Rag.NET.AnswerEngines"],
         ["Conversational memory"] = ["Rag.NET.Memory"],
         ["RAG evaluation"] = ["Rag.NET.Evaluation", "Rag.NET.Evaluation.Ragas"],

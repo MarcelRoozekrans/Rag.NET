@@ -4,94 +4,112 @@ using Xunit;
 namespace Rag.NET.Graph.Tests.Algorithms;
 
 /// <summary>
-/// Measures the guarantee <see cref="LouvainWithRefinement"/>'s remarks say it does not provide: that every
-/// returned community is connected in the subgraph it induces.
+/// Measures the guarantee <see cref="Leiden"/> claims: that every returned community
+/// is connected in the subgraph it induces.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>A disclaimer nobody has tested is a guess.</b> The type documents that a community can come
-/// back internally disconnected — the defect the Leiden paper exists to remove from Louvain — and
-/// until this file that was an argument from reading the code rather than a measurement. It is now
-/// a measurement, and the answer is that the defect is real:
-/// <see cref="Detect_TheRecordedCounterexample_StillReturnsADisconnectedCommunity"/> holds a
-/// ten-node tree on which a returned community has a member with no edge to any other member.
+/// <b>This file used to assert the opposite, and the history is the point.</b> The type documented
+/// that a community could come back internally disconnected — the defect the Leiden paper exists to
+/// remove from Louvain — and this file pinned a ten-node weighted tree that demonstrated it, on the
+/// model of <c>FeatureClaimTests.EveryRecordedFalseClaimIsStillFalse</c>: a recorded defect may not
+/// outlive the defect it records. Implementing the paper's refinement phase (#180) removed the
+/// defect, so the recording was deleted rather than weakened, and the same graph is now asserted the
+/// other way round by
+/// <see cref="Detect_TheGraphThatUsedToReturnADisconnectedCommunity_ReturnsOnlyConnectedOnes"/>.
 /// </para>
 /// <para>
-/// <b>Where it bites, from a sweep of about 30,000 detections.</b> Nothing dense produced one:
-/// Erdős–Rényi (7,485 runs), heavy-tailed weighted Erdős–Rényi (2,400), planted partitions (2,700),
-/// barbells (960), hub-and-blob shapes (3,360) and paths (1,560) all came back wholly connected.
-/// Sparse weighted graphs do produce them — 48 of 2,220 random weighted trees, and 14 of 520
-/// tree-plus-chords graphs, held a disconnected community for at least one resolution and seed.
-/// <b>Unweighted trees produced none in 2,220 graphs</b>, so it is the weights, not the sparsity
-/// alone, that opens the gap: a heavy edge elsewhere is what pays a node enough to abandon the
-/// neighbours that were only attached through it.
-/// </para>
-/// <para>
-/// <b>What that does and does not mean for a corpus.</b> An extracted entity graph is sparse and
-/// weighted, which is the family that produces these; but the rate is low and the fragments are
-/// small, and no measurement here says how often it happens on real data — the MultiHop-RAG slice
-/// has never been checked for it. Two of these tests assert the clique shapes stay connected, which
-/// is the common case holding, not the guarantee holding.
+/// <b>Where it used to bite, which is where a regression would show first.</b> A sweep of about
+/// 30,000 detections against the old implementation found nothing on anything dense — Erdős–Rényi,
+/// planted partitions, barbells, hub-and-blob shapes and paths all came back wholly connected — and
+/// found the failures on sparse <i>weighted</i> graphs: 48 of 2,220 random weighted trees and 14 of
+/// 520 tree-plus-chords graphs held a disconnected community for some resolution and seed, against
+/// <b>0 of 2,220 unweighted trees</b>. It was the weights, not the sparsity alone: a heavy edge
+/// elsewhere is what paid a node enough to abandon the neighbours that were only attached through
+/// it. That family is therefore the one worth sweeping again after any change to the refinement, and
+/// <see cref="Detect_RandomWeightedTrees_EveryCommunityIsConnected"/> keeps a sample of it in the
+/// suite.
 /// </para>
 /// </remarks>
 public class CommunityConnectivityTests
 {
     /// <summary>
-    /// A ten-node weighted tree on which community detection returns a disconnected community.
+    /// The ten-node weighted tree that used to produce a disconnected community.
     /// </summary>
     /// <remarks>
     /// Found by sweeping random weighted trees, then reduced to whole-number weights that still
-    /// reproduce. At <see cref="LouvainWithRefinementOptions.Resolution"/> 1.0 — the default — and seed 1, the
-    /// returned communities are <c>{N0,N2,N3,N4,N7,N8}</c> and <c>{N1,N5,N6,N9}</c>, and the second
-    /// is not connected: <c>N5</c>'s only edge is to <c>N0</c>, which is in the other community, so
-    /// it sits in a community with three nodes it does not touch. The general mechanism is that a
-    /// node may leave a sub-community it was the only link through, and nothing puts the remainder
-    /// back together.
+    /// reproduced. At <see cref="LeidenOptions.Resolution"/> 1.0 — the default — and
+    /// seed 1, the old implementation returned <c>{N0,N2,N3,N4,N7,N8}</c> and <c>{N1,N5,N6,N9}</c>,
+    /// and the second was not connected: <c>N5</c>'s only edge is to <c>N0</c>, which sat in the
+    /// other community, so it shared a community with three nodes it does not touch. The mechanism
+    /// was that a node could leave a sub-community it was the only link through, with nothing to put
+    /// the remainder back together. <b>The graph is kept because it is the hard case</b>, not because
+    /// the partition it now produces is interesting.
     /// </remarks>
-    private static readonly (int From, int To, double Weight)[] CounterexampleTree =
+    private static readonly (int From, int To, double Weight)[] HardTree =
     [
         (0, 1, 6.0), (0, 2, 3.0), (2, 3, 3.0), (1, 4, 4.0), (0, 5, 1.0),
         (1, 6, 4.0), (0, 7, 5.0), (4, 8, 6.0), (6, 9, 4.0),
     ];
 
     /// <summary>
-    /// The recorded counterexample must stay a counterexample, on the model of
-    /// <c>FeatureClaimTests.EveryRecordedFalseClaimIsStillFalse</c>: a recorded defect cannot
-    /// outlive the defect it records.
+    /// The graph the defect was recorded on returns only connected communities, at the settings it
+    /// was recorded at and across a spread of others.
     /// </summary>
     /// <remarks>
-    /// <b>If this test fails, that is probably good news, and it is not a licence to edit it.</b> It
-    /// fails when this graph stops producing a disconnected community — which is what implementing
-    /// the Leiden paper's refinement would do. In that case delete this test, delete the paragraph
-    /// in <see cref="LouvainWithRefinement"/>'s remarks that says the guarantee is absent, and assert the general
-    /// property instead. It also fails if the move order changes for unrelated reasons, in which
-    /// case the guarantee is still absent and the honest repair is to find the counterexample again
-    /// rather than to weaken the assertion.
+    /// The default resolution and seed 1 are the settings the counterexample was pinned at, and are
+    /// asserted first so a regression names them. The rest are there because the guarantee is not a
+    /// property of one seed: the refinement draws its merge targets at random, so a seed that
+    /// happens to work says nothing on its own.
+    /// </remarks>
+    [Theory]
+    [InlineData(1.0, 1)]
+    [InlineData(1.0, 42)]
+    [InlineData(0.5, 7)]
+    [InlineData(2.0, 2026)]
+    public void Detect_TheGraphThatUsedToReturnADisconnectedCommunity_ReturnsOnlyConnectedOnes(
+        double resolution, int seed)
+    {
+        var graph = BuildGraph(10, HardTree);
+
+        AssertEveryCommunityIsConnected(
+            graph, new LeidenOptions { Resolution = resolution, RandomSeed = seed });
+    }
+
+    /// <summary>
+    /// The family the counterexample was drawn from — random weighted trees — comes back connected.
+    /// </summary>
+    /// <remarks>
+    /// <b>One pinned graph is a regression test, not evidence of a guarantee.</b> The old
+    /// implementation failed on roughly one in fifty random weighted trees when swept across
+    /// resolutions and seeds, so a few hundred of them is enough to be very unlikely to pass by luck
+    /// while staying inside a unit test's time budget. The wider sweep — hundreds of thousands of
+    /// communities — is not run here; this is the tripwire, not the measurement.
     /// </remarks>
     [Fact]
-    public void Detect_TheRecordedCounterexample_StillReturnsADisconnectedCommunity()
+    public void Detect_RandomWeightedTrees_EveryCommunityIsConnected()
     {
-        var graph = BuildGraph(10, CounterexampleTree);
-
-        var communities = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { RandomSeed = 1 });
-
-        var disconnected = new List<string>();
-        foreach (var community in communities)
+        var rng = new Random(20260812);
+        for (int sample = 0; sample < 300; sample++)
         {
-            if (!IsConnected(graph, community.MemberEntities))
+            int nodes = 6 + rng.Next(15);
+            var edges = new List<(int, int, double)>(nodes - 1);
+            for (int node = 1; node < nodes; node++)
             {
-                disconnected.Add(string.Join(",", community.MemberEntities));
+                edges.Add((rng.Next(node), node, 1.0 + (rng.Next(10) * 1.0)));
             }
-        }
 
-        Assert.Equal(["N1,N5,N6,N9"], disconnected);
+            AssertEveryCommunityIsConnected(
+                BuildGraph(nodes, [.. edges]),
+                new LeidenOptions { RandomSeed = sample + 1 });
+        }
     }
 
     [Fact]
     public void Detect_TenCliquesInARing_EveryCommunityIsConnected()
     {
         var graph = BuildCliques(10, 10, bridged: true);
-        AssertEveryCommunityIsConnected(graph, new LouvainWithRefinementOptions());
+        AssertEveryCommunityIsConnected(graph, new LeidenOptions());
     }
 
     [Fact]
@@ -101,7 +119,7 @@ public class CommunityConnectivityTests
         AddClique(edges, 0, 10);
         AddClique(edges, 10, 10);
         edges.Add((0, 10, 1.0));
-        AssertEveryCommunityIsConnected(BuildGraph(20, [.. edges]), new LouvainWithRefinementOptions());
+        AssertEveryCommunityIsConnected(BuildGraph(20, [.. edges]), new LeidenOptions());
     }
 
     [Fact]
@@ -113,18 +131,18 @@ public class CommunityConnectivityTests
         AddClique(edges, 8, 4);
         edges.Add((3, 4, 1.0));
         edges.Add((7, 8, 1.0));
-        AssertEveryCommunityIsConnected(BuildGraph(12, [.. edges]), new LouvainWithRefinementOptions());
+        AssertEveryCommunityIsConnected(BuildGraph(12, [.. edges]), new LeidenOptions());
     }
 
     [Fact]
     public void Detect_TwoDisjointCliques_EveryCommunityIsConnected()
     {
-        AssertEveryCommunityIsConnected(BuildCliques(2, 8, bridged: false), new LouvainWithRefinementOptions());
+        AssertEveryCommunityIsConnected(BuildCliques(2, 8, bridged: false), new LeidenOptions());
     }
 
     /// <summary>
-    /// The dense case holds across resolutions and seeds, which is what makes the tree above a
-    /// finding about sparse weighted graphs rather than about the algorithm falling over generally.
+    /// The dense case holds across resolutions and seeds, as it did before the refinement was fixed —
+    /// which is what makes the tree above the interesting shape rather than the only one that works.
     /// </summary>
     [Theory]
     [InlineData(0.5, 1)]
@@ -151,13 +169,13 @@ public class CommunityConnectivityTests
             }
 
             var graph = BuildGraph(blocks * size, [.. edges]);
-            AssertEveryCommunityIsConnected(graph, new LouvainWithRefinementOptions { Resolution = resolution, RandomSeed = seed });
+            AssertEveryCommunityIsConnected(graph, new LeidenOptions { Resolution = resolution, RandomSeed = seed });
         }
     }
 
-    private static void AssertEveryCommunityIsConnected(GraphSnapshot graph, LouvainWithRefinementOptions options)
+    private static void AssertEveryCommunityIsConnected(GraphSnapshot graph, LeidenOptions options)
     {
-        foreach (var community in LouvainWithRefinement.Detect(graph, options))
+        foreach (var community in Leiden.Detect(graph, options))
         {
             Assert.True(
                 IsConnected(graph, community.MemberEntities),
@@ -167,7 +185,7 @@ public class CommunityConnectivityTests
 
     /// <summary>
     /// Whether the members induce a connected subgraph, using the same endpoint matching
-    /// <see cref="LouvainWithRefinement"/> itself uses so that an edge it counted is an edge here.
+    /// <see cref="Leiden"/> itself uses so that an edge it counted is an edge here.
     /// </summary>
     private static bool IsConnected(GraphSnapshot graph, IReadOnlyList<string> members)
     {

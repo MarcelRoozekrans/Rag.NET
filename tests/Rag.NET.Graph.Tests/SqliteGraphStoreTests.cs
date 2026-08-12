@@ -164,7 +164,7 @@ public class SqliteGraphStoreTests : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// <b>The two unit tests for this live beside the algorithms; this one is here because it is the
-    /// production path.</b> <see cref="LouvainWithRefinement"/> and <see cref="PageRank"/> never see a hand-built
+    /// production path.</b> <see cref="Leiden"/> and <see cref="PageRank"/> never see a hand-built
     /// snapshot in real use — they see <see cref="SqliteGraphStore.GetFullGraphAsync"/>'s, and the
     /// defect was precisely that they disagreed with it about what an entity name is. Asserting the
     /// store's traversal and the clusterer's grouping in one test means a later change to the
@@ -185,7 +185,7 @@ public class SqliteGraphStoreTests : IAsyncDisposable
             [new GraphRelationship("google", "Alphabet", "subsidiary of")], ct);
 
         var neighbors = await _store.GetNeighborsAsync("Google", 1, ct);
-        var communities = LouvainWithRefinement.Detect(await _store.GetFullGraphAsync(ct));
+        var communities = Leiden.Detect(await _store.GetFullGraphAsync(ct));
 
         Assert.Single(neighbors);
         Assert.Single(communities);

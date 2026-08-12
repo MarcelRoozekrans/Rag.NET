@@ -13,7 +13,7 @@ using Rag.NET.Retrieval;
 namespace Rag.NET.Benchmarks;
 
 /// <summary>
-/// Benchmarks the CPU cost of GraphRAG algorithms (community detection, PageRank) and the overhead
+/// Benchmarks the CPU cost of GraphRAG algorithms (Leiden, PageRank) and the overhead
 /// of entity extraction and retrieval behaviors. All LLM and embedding calls are stubbed
 /// to isolate algorithmic and pipeline cost.
 /// </summary>
@@ -71,13 +71,13 @@ public class GraphRagBenchmarks
     }
 
     // ════════════════════════════════════════════════════════════════════
-    // A) Modularity community detection — CPU cost
+    // A) Leiden community detection — CPU cost
     // ════════════════════════════════════════════════════════════════════
 
     [Benchmark]
-    public IReadOnlyList<Community> LouvainWithRefinement_Detect()
+    public IReadOnlyList<Community> Leiden_Detect()
     {
-        return LouvainWithRefinement.Detect(_graph, new LouvainWithRefinementOptions { MaxLevels = 5 });
+        return Leiden.Detect(_graph, new LeidenOptions { MaxLevels = 5 });
     }
 
     // ════════════════════════════════════════════════════════════════════
