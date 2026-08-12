@@ -469,6 +469,31 @@ public static class BeirReproduction
             BeirProtocol.Haystack,
             [],
             "NEVER RUN, for the Comparison entry's reason."),
+        new(
+            "multihop-rag",
+            BeirProtocol.Real,
+            [],
+            "NEVER RUN. Rag.NET's own chunking over the 609 converted articles, max-pooled back " +
+            "to documents -- the dataset's first measurement, and nobody has paid for it yet. " +
+            "The empty list is deliberate and is what AssertReproduces treats as 'print what the " +
+            "run saw and check nothing', which is the state FiQA's real leg sat in from Phase " +
+            "3.12 until 3.15 measured it. Note what that means for the first run: this protocol " +
+            "has no published figure on any dataset, and MultiHop-RAG has no published figure " +
+            "under any protocol -- see the descriptor, whose parity target is NaN because the " +
+            "paper reports MAP/MRR/Hit@K for seven embedders that do not include MiniLM. So the " +
+            "first figure is checked by nothing and pinned on its own authority; whoever records " +
+            "it must say so here rather than let a later reader mistake a self-pinned number for " +
+            "a reproduced one."),
+        new(
+            "multihop-rag",
+            BeirProtocol.GraphRag,
+            [],
+            "NEVER RUN, and not yet runnable: no test measures the GraphRag protocol. This entry " +
+            "exists because MultiHop-RAG declares the protocol applicable, and the table requires " +
+            "an entry for every applicable pair -- so the pair is recorded as unmeasured here " +
+            "rather than discovered when a run throws. Nothing is claimed about the number the " +
+            "graph path will produce, and nothing in this file can be used to predict it: the " +
+            "other entries all measure a flat corpus retrieved by cosine, and this one will not."),
     ];
 
     /// <summary>

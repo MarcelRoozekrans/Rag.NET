@@ -104,4 +104,25 @@ public enum BeirProtocol
     /// <c>BeirPythonEntrantsTests</c>; no Python code computes a metric.
     /// </summary>
     Haystack,
+
+    /// <summary>
+    /// The graph path: entities and relations extracted from the corpus into a graph, that graph
+    /// partitioned into communities, and retrieval running over the result — local search out from
+    /// the entities a query names, global search over the community summaries. <b>Applies to
+    /// MultiHop-RAG and to nothing else here.</b>
+    /// <para>
+    /// The other ten protocols all index a flat corpus and differ only in how they cut, fuse or
+    /// rescore it, so their costs are variations on one embedding bill. This one builds a second
+    /// structure before it retrieves anything, which is a construction cost no chunking figure
+    /// predicts — the reason it is a protocol rather than another ablation cell.
+    /// </para>
+    /// <para>
+    /// It is restricted to MultiHop-RAG because a graph can only be rewarded where the judgements
+    /// need more than one document. The four BEIR datasets here judge a query against documents
+    /// that answer it individually, so a graph built over them would be measured by qrels that
+    /// cannot tell whether it helped; MultiHop-RAG's queries cite 2 to 4 articles each and are
+    /// written to be unanswerable from any one of them.
+    /// </para>
+    /// </summary>
+    GraphRag,
 }

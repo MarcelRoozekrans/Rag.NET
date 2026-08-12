@@ -429,6 +429,33 @@ public static class BeirRunBudget
             "measured 2026-08-02: 404.7 s for the Haystack ArguAna run (11,342 units over " +
             "8,674 documents, max 6 from one, 5,094 embedded fresh). Opt-in for the " +
             "LangChain entry's reason; no file, opted-in = FAIL."),
+        new(
+            "multihop-rag",
+            BeirProtocol.Real,
+            FitsTheNightly: false,
+            "NOT RUN. No wall-clock figure exists for this pair and nothing here is a " +
+            "measurement of it -- not even a derived one, because the four BEIR cells cannot " +
+            "supply the input a derivation needs. The corpus is 609 documents, which is two " +
+            "orders of magnitude smaller than TREC-COVID's and one smaller than SciFact's, but " +
+            "the articles average 10,340 characters, so the chunk count per document -- the thing " +
+            "the embedding bill is actually proportional to -- is unlike any corpus already " +
+            "timed. Scaling a measured figure by document count would produce exactly the class " +
+            "of number that made TREC-COVID's parity leg look like 6 h 20 m when it was 1 h 50 m. " +
+            "To find out what it costs, time it: this pair is the one measurement the dataset " +
+            "needs before anything about it can be published, and it is cheap enough to buy -- " +
+            "609 documents is minutes, not hours."),
+        new(
+            "multihop-rag",
+            BeirProtocol.GraphRag,
+            FitsTheNightly: false,
+            "NOT RUN, and not yet runnable: no test measures the GraphRag protocol. The cell " +
+            "exists because a descriptor in BeirDatasetDescriptor.All owes a recorded cost for " +
+            "every protocol it declares applicable, and MultiHop-RAG declares this one -- the " +
+            "cell is the table saying so out loud rather than the pair going unnoticed until a " +
+            "run throws. Nothing about the cost is known: graph construction extracts entities " +
+            "and relations from every chunk before anything is retrieved, which is an LLM bill " +
+            "with no counterpart in the ten flat-corpus protocols above, so there is no cell in " +
+            "this table it can be derived from and no figure is offered."),
     ];
 
     /// <summary>
@@ -588,6 +615,9 @@ public static class BeirRunBudget
         BeirProtocol.Haystack =>
             "HAYSTACK entrant (DocumentSplitter defaults, InMemoryDocumentStore dot_product, " +
             "pinned embedder, scored from the Python harness's TREC run file)",
+        BeirProtocol.GraphRag =>
+            "GRAPHRAG (entities and relations extracted into a graph, communities detected, " +
+            "local and global search over the result)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -601,6 +631,13 @@ public static class BeirRunBudget
     /// live three-to-a-class in <see cref="BeirAblationTests"/>, so their discriminator is a
     /// fragment of the test <i>method</i> name rather than the class name — the class alone would
     /// select all three cells and misreport what the quoted cost buys.
+    /// <para>
+    /// <see cref="BeirProtocol.GraphRag"/>'s discriminator is a bare string because no test class
+    /// measures that protocol yet, so there is nothing to <c>nameof</c>. It is still the right
+    /// fragment: a class or method added for the graph path will carry <c>GraphRag</c> in its
+    /// display name, and a filter that selected nothing today would only be discovered by somebody
+    /// pasting it out of a skip message.
+    /// </para>
     /// </remarks>
     private static string Filter(Cost cost)
     {
@@ -616,6 +653,7 @@ public static class BeirRunBudget
             BeirProtocol.LangChain => "ThroughLangChain",
             BeirProtocol.LlamaIndex => "ThroughLlamaIndex",
             BeirProtocol.Haystack => "ThroughHaystack",
+            BeirProtocol.GraphRag => "GraphRag",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 
