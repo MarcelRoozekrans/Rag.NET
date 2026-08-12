@@ -2834,7 +2834,7 @@ by this entry**: Milestone 4's "All planned phases complete" stays open (4.5 rem
 "No package declares `VerifiedBy=none`" stays open (`Rag.NET.Security.AspNetCore`) — both updated
 above to say so rather than left stale.)
 
-## Milestone 5: Evaluation Depth [status: active — 5.1 and 5.1.1 complete, including 5.1.1's owed single-session sweep; 5.2 and 5.3 remaining]
+## Milestone 5: Evaluation Depth [status: active — 5.1, 5.1.1, 5.3 and 5.4 complete; 5.2 is all that remains]
 **Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:
 what each library **costs** rather than what it scores, multi-hop retrieval, graded relevance and
 the datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` does not compute.
@@ -3301,7 +3301,7 @@ run, a verified licence, a clean HuggingFace revision pin, and retrieval-stage r
 qrels from per-query evidence lists, plus a policy for the **301 null queries** that have no answer
 and no evidence — which is a real decision, not a detail, since they are 12% of the query set.
 
-### Phase 5.3: Deferred Datasets — NFCorpus, TREC-COVID, EnronQA [status: pending]
+### Phase 5.3: Deferred Datasets — NFCorpus, TREC-COVID, EnronQA [status: complete 2026-08-12 — TREC-COVID landed and measured; NFCorpus declined on its licence; EnronQA still blocked, undeclared]
 **Goal:** Land the three datasets the evaluation programme still lacks, together: the small hard
 one, the graded one, the private-corpus one. (Not a features.md row — **this phase is the real
 destination the TREC-COVID/EnronQA debt entry has waited for since 3.12**; its
@@ -3346,9 +3346,37 @@ the whole phase, so it was done first and separately from any implementation.
 
 | Dataset | Licence (upstream) | Pin | BM25 reference | Verdict |
 |---|---|---|---|---|
-| NFCorpus | **Academic use only** ([Heidelberg](https://www.cl.uni-heidelberg.de/statnlpgroup/nfcorpus/)); underlying NutritionFacts.org content is **CC BY-NC 4.0** | HF `b5026a0e…`; BEIR zip MD5 `a89dba18…` | nDCG@10 **0.325** | **needs a decision** |
+| NFCorpus | **"Free to use for academic purposes"**, verbatim from [Heidelberg](https://www.cl.uni-heidelberg.de/statnlpgroup/nfcorpus/); non-academic use of the NutritionFacts.org material requires contacting **Dr. Michael Greger directly**. Citation of Boteva et al. 2016 required. | HF `b5026a0e…`; BEIR zip MD5 `a89dba18…` | nDCG@10 **0.325** | **DECLINED** 2026-08-12 |
 | TREC-COVID | Corpus: **CORD-19 agreement — "text and data mining only"** ([LICENSE](https://github.com/allenai/cord19/blob/master/LICENSE)); qrels: NIST, unstated | HF `7e16fde3…`; BEIR zip MD5 `ce62140c…` | nDCG@10 **0.656** | **clear to land** |
-| EnronQA | **None declared** — see the correction above | HF `c0b3a919…` | Recall@5 87.5 (BM25) / 59.3 (ColBERTv2) | **blocked** |
+| EnronQA | **None declared**, re-verified 2026-08-12 against the HuggingFace API: no licence tag, no `cardData.license`, no LICENSE file on `MichaelR207/enron_qa_0922` | HF `c0b3a919…` | Recall@5 87.5 (BM25) / 59.3 (ColBERTv2) | **blocked** |
+
+**NFCorpus was declined on 2026-08-12, and the licence is only half the reason.** Upstream does not
+present a licence to interpret; it presents an instruction to ask — "free to use for academic
+purposes", with non-academic use of the NutritionFacts.org material directed to contact the author
+personally. Rag.NET is an open-source library that commercial users consume, so calling this
+benchmarking "academic purposes" is a stretch, and proceeding would mean ignoring an explicit
+request rather than reading a permissive licence. **The other half is that its value collapsed the
+day before.** NFCorpus was wanted for domain diversity and graded relevance; TREC-COVID is also
+biomedical and landed the graded-gain criterion on 2026-08-12, so NFCorpus would now buy overlap at
+the price of an unresolved permission. If it is ever wanted, the route is to email Dr. Greger, not
+to reinterpret the sentence.
+
+> **This row previously claimed the NutritionFacts.org content is CC BY-NC 4.0. That was wrong**, or
+> at least unverifiable: the upstream page says no such thing — it directs non-academic users to the
+> site's Terms of Service and to the author. Corrected 2026-08-12 by reading the page rather than
+> the note. **That is the fourth licence claim in this repository to come from a convenient
+> secondary source and fail against the primary one**, after SciFact's HuggingFace `cc-by-sa-4.0`
+> tag, ArguAna's dead BEIR homepage, and TREC-COVID's identically wrong `cc-by-sa-4.0` tag.
+> Heidelberg also describes 9,964 PubMed documents against 3,244 NutritionFacts.org queries, where
+> this row says ~3.6k documents — BEIR repackages a subset, so the two are not the same corpus and
+> the figures should not be quoted interchangeably.
+
+**"Other projects use it" is not a licence, and it is worth saying why.** EnronQA's underlying Enron
+emails are FERC public record and widely treated as usable; EnronQA's contribution is the generated
+question-answer pairs on top, and that derivative work declares nothing. Absent a declaration,
+copyright's default is that the author retains all rights — so the number of repositories depending
+on it says something about the community's risk appetite and nothing about the grant. The unblocking
+move is to ask the author to add a licence, which would settle it for everyone rather than for us.
 
 Three things worth carrying forward:
 
