@@ -477,6 +477,28 @@ public static class BeirRunBudget
     public static bool FitsTheNightly(string datasetName, BeirProtocol protocol) =>
         Find(datasetName, protocol).FitsTheNightly;
 
+    /// <summary>Reports whether the table holds a cell for one pair, without throwing when it does not.</summary>
+    /// <param name="datasetName">The BEIR dataset name.</param>
+    /// <param name="protocol">The protocol to ask about.</param>
+    /// <returns><see langword="true"/> when the table holds a cell for that pair.</returns>
+    /// <remarks>
+    /// <see cref="IsGatedOff"/> and <see cref="FitsTheNightly"/> both go through <c>Find</c>, which
+    /// throws on an absent pair — correct for them, and useless for asking whether a pair is absent.
+    /// </remarks>
+    public static bool HasCost(string datasetName, BeirProtocol protocol)
+    {
+        foreach (var cost in Costs)
+        {
+            if (string.Equals(cost.Dataset, datasetName, StringComparison.Ordinal)
+                && cost.Protocol == protocol)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Reports whether the long runs were explicitly asked for.</summary>
     /// <returns><see langword="true"/> when <see cref="OptInVariable"/> asks for them.</returns>
     /// <remarks>

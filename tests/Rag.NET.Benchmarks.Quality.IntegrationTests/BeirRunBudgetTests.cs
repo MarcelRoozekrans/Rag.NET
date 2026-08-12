@@ -23,7 +23,7 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 public sealed class BeirRunBudgetTests
 {
     [Fact]
-    public void EveryDescribedDatasetHasARecordedCostUnderEveryProtocol()
+    public void EveryApplicablePairHasARecordedCost_AndNoInapplicablePairHasOne()
     {
         // BeirRunBudget.Find throws on a pair it has no measurement for, which is the behaviour that
         // stops a fourth dataset from silently defaulting into — or out of — the nightly. But that
@@ -32,11 +32,29 @@ public sealed class BeirRunBudgetTests
         // protocol, not just the two chunking legs: since Phase 3.15 the ablation cells gate through
         // the same table, so a fourth dataset owes those three measurements too before its cells can
         // skip with an honest cost.
+        //
+        // And the other direction, which the requirement alone does not cover. A descriptor can now
+        // declare a protocol inapplicable, and a budget cell surviving that declaration is a
+        // contradiction the table cannot detect on its own: Find is only ever consulted for pairs
+        // somebody runs, so a cell for a pair nobody can run is read by nothing and deleted by
+        // nobody. It also does not look stale — a measured-looking string beside FitsTheNightly
+        // reads exactly like a measurement somebody took, which is how this project has previously
+        // ended up with guards that were green over nothing. Required where applicable, refused
+        // where not; either half alone is not a guard.
         foreach (var descriptor in BeirDatasetDescriptor.All)
         {
             foreach (var protocol in Enum.GetValues<BeirProtocol>())
             {
-                _ = BeirRunBudget.IsGatedOff(descriptor.Name, protocol, out _);
+                if (descriptor.Supports(protocol))
+                {
+                    _ = BeirRunBudget.IsGatedOff(descriptor.Name, protocol, out _);
+                    continue;
+                }
+
+                Assert.False(
+                    BeirRunBudget.HasCost(descriptor.Name, protocol),
+                    $"{descriptor.Name} declares {protocol} inapplicable but still carries a budget " +
+                    "cell. One of the two is wrong, and a stale cell looks exactly like a measurement.");
             }
         }
     }
