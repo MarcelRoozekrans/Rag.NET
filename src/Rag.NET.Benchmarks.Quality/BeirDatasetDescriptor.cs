@@ -147,6 +147,26 @@ public sealed record BeirDatasetDescriptor(
         _applicableProtocols is null || _applicableProtocols.Contains(protocol);
 
     /// <summary>
+    /// How this dataset is put on disk, or <see langword="null"/> for the normal thing: download
+    /// <see cref="ArchiveUrl"/> and verify it against <see cref="ArchiveMd5"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A BEIR dataset is a zip with a published checksum, and that is what the four descriptors
+    /// below are. A dataset that is <i>not</i> published that way — two JSON files on a model hub,
+    /// say — cannot be described by a URL and an MD5 alone, but it can still satisfy the one thing
+    /// the harness needs, which is a directory holding <c>corpus.jsonl</c>, <c>queries.jsonl</c> and
+    /// <c>qrels/{split}.tsv</c>. Naming an <see cref="IBeirDatasetSource"/> here is how it says so.
+    /// </para>
+    /// <para>
+    /// <see langword="null"/> rather than a default instance, for the same reason
+    /// <see cref="ApplicableProtocols"/> is: it keeps the four existing descriptors byte-identical
+    /// and makes "the way BEIR publishes datasets" the thing you get by not thinking about it.
+    /// </para>
+    /// </remarks>
+    public IBeirDatasetSource? Source { get; init; }
+
+    /// <summary>
     /// SciFact: scientific claims against a corpus of abstracts.
     /// </summary>
     /// <remarks>
