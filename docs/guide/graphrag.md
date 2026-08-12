@@ -179,7 +179,7 @@ GraphRAG is the most expensive ingestion strategy — LLM calls per chunk:
 ### Retrieval Cost
 
 - **Local Search**: Zero additional LLM calls. Graph traversal + vector search only.
-- **Global Search**: LLM calls proportional to number of communities (map) + 1 (reduce).
+- **Global Search**: one map call per batch of `GlobalBatchSize` community reports in the candidate set (5 by default), plus 1 reduce — not one per community. It is the reports that reach retrieval that cost, not the communities that exist.
 
 ### Storage
 
