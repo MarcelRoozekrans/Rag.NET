@@ -327,7 +327,7 @@ public sealed class BeirDatasetDescriptorTests
         // green while covering nothing, so the restricted path gets its own case.
         var restricted = BeirDatasetDescriptor.SciFact with
         {
-            ApplicableProtocols = new HashSet<BeirProtocol> { BeirProtocol.Parity },
+            ApplicableProtocols = BeirProtocolSet.Of(BeirProtocol.Parity),
         };
 
         Assert.True(restricted.Supports(BeirProtocol.Parity));
@@ -346,7 +346,7 @@ public sealed class BeirDatasetDescriptorTests
         var exception = Assert.Throws<ArgumentException>(
             () => BeirDatasetDescriptor.SciFact with
             {
-                ApplicableProtocols = new HashSet<BeirProtocol>(),
+                ApplicableProtocols = BeirProtocolSet.Of(),
             });
 
         Assert.Contains("empty set", exception.Message, StringComparison.Ordinal);
@@ -355,16 +355,47 @@ public sealed class BeirDatasetDescriptorTests
     [Fact]
     public void ARestrictedDescriptorIgnoresLaterMutationOfTheSetItWasGiven()
     {
-        // IReadOnlySet<T> is a read-only view, not an immutable set. Without the copy in the init
-        // accessor, the caller below would be reaching into a descriptor after construction and
-        // changing what it supports — and on the static descriptors that is a process-wide change
-        // to what the harness measures, arriving from whichever test happened to run first.
+        // This can no longer fail on its own: BeirProtocolSet is a struct over a bitmask, so there
+        // is nothing for the caller below to still be holding. That is exactly why it stays. It was
+        // written when the property took an IReadOnlySet<T> — a read-only view, not an immutable
+        // set — where a caller keeping its HashSet could change what a static descriptor supports
+        // at runtime, process-wide, from whichever test happened to run first. It is now the
+        // tripwire for the storage type rather than for the accessor: swap in anything that is a
+        // view onto somebody else's collection and this goes red again.
         var mutable = new HashSet<BeirProtocol> { BeirProtocol.Parity };
-        var restricted = BeirDatasetDescriptor.SciFact with { ApplicableProtocols = mutable };
+        var restricted = BeirDatasetDescriptor.SciFact with
+        {
+            ApplicableProtocols = BeirProtocolSet.Of([.. mutable]),
+        };
 
         mutable.Add(BeirProtocol.Real);
 
         Assert.False(restricted.Supports(BeirProtocol.Real));
+    }
+
+    [Fact]
+    public void TwoDescriptorsWithTheSameProtocols_AreEqual()
+    {
+        // A record compares its fields with EqualityComparer<T>.Default, and no BCL set overrides
+        // Equals — not HashSet, not FrozenSet, not ImmutableHashSet — so this used to be reference
+        // equality: two descriptors printing character-for-character identically compared unequal
+        // and hashed differently. Deferred while only one descriptor restricted its protocols, and
+        // fixed before a second could inherit the surprise.
+        //
+        // The two sets are built separately and in opposite orders, so what is asserted is that the
+        // protocols are compared, not that an instance is shared.
+        var a = BeirDatasetDescriptor.SciFact with
+        {
+            ApplicableProtocols = BeirProtocolSet.Of(BeirProtocol.Parity, BeirProtocol.Real),
+        };
+
+        var b = BeirDatasetDescriptor.SciFact with
+        {
+            ApplicableProtocols = BeirProtocolSet.Of(BeirProtocol.Real, BeirProtocol.Parity),
+        };
+
+        Assert.Equal(a, b);
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
     }
 
     [Fact]

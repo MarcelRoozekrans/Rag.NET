@@ -1,5 +1,3 @@
-using System.Collections.Frozen;
-
 namespace Rag.NET.Benchmarks.Quality;
 
 /// <summary>
@@ -72,11 +70,10 @@ public sealed record BeirDatasetDescriptor(
     bool ExcludesSelfRetrievedDocument,
     BeirParityTarget ParityTarget)
 {
-    // Held as the concrete FrozenSet rather than as the interface the property exposes: the
-    // interface would box the set's value-type enumerator on assignment (HLQ001), and Supports
-    // reads this field directly so its Contains call is a direct one rather than a virtual
-    // dispatch through IReadOnlySet.
-    private readonly FrozenSet<BeirProtocol>? _applicableProtocols;
+    // A record's synthesized Equals and GetHashCode are built from this field, so its type decides
+    // whether two descriptors with the same protocols are the same descriptor. BeirProtocolSet is a
+    // struct, so they are; every BCL set is compared by reference here and they were not.
+    private readonly BeirProtocolSet? _applicableProtocols;
 
     /// <summary>
     /// The protocols this dataset can be measured under, or <see langword="null"/> for all of them.
@@ -101,10 +98,6 @@ public sealed record BeirDatasetDescriptor(
     /// about it, which is right for a BEIR dataset and wrong only for the shapes BEIR does not cover.
     /// </para>
     /// <para>
-    /// Two things are settled on assignment rather than left to a caller, because a descriptor is
-    /// usually a <see langword="static"/> field read by every theory in the harness.
-    /// </para>
-    /// <para>
     /// <b>An empty set is refused.</b> It would make <see cref="Supports"/> answer
     /// <see langword="false"/> for every protocol, which is a descriptor that is described and then
     /// measured by nothing — precisely the state <see cref="All"/>'s own documentation says cannot
@@ -115,18 +108,22 @@ public sealed record BeirDatasetDescriptor(
     /// universal skip nobody can account for.
     /// </para>
     /// <para>
-    /// <b>And the set is copied.</b> <see cref="IReadOnlySet{T}"/> is a read-only view, not an
-    /// immutable set: a caller holding the <see cref="HashSet{T}"/> it passed can keep mutating it
-    /// afterwards and silently change what a <see langword="static"/> descriptor supports at
-    /// runtime. Freezing on the way in makes the descriptor's answer a function of construction.
+    /// <b>And the set cannot be reached back through.</b> This was once an
+    /// <see cref="IReadOnlySet{T}"/> that the accessor froze a copy of, because a read-only view is
+    /// not an immutable set: a caller holding the <see cref="HashSet{T}"/> it passed could keep
+    /// mutating it and silently change what a <see langword="static"/> descriptor supports at
+    /// runtime. <see cref="BeirProtocolSet"/> is a <see langword="struct"/> with no referent, so the
+    /// same invariant now holds by construction rather than by the accessor remembering to copy —
+    /// and it brings the value equality a set behind an interface could not have. See that type for
+    /// why no BCL set could.
     /// </para>
     /// </remarks>
-    public IReadOnlySet<BeirProtocol>? ApplicableProtocols
+    public BeirProtocolSet? ApplicableProtocols
     {
         get => _applicableProtocols;
         init
         {
-            if (value is not null && value.Count == 0)
+            if (value is { Count: 0 })
             {
                 throw new ArgumentException(
                     "A BEIR dataset descriptor cannot declare an empty set of applicable " +
@@ -136,7 +133,7 @@ public sealed record BeirDatasetDescriptor(
                     nameof(value));
             }
 
-            _applicableProtocols = value?.ToFrozenSet();
+            _applicableProtocols = value;
         }
     }
 
@@ -144,7 +141,7 @@ public sealed record BeirDatasetDescriptor(
     /// <param name="protocol">The protocol to ask about.</param>
     /// <returns><see langword="true"/> when this dataset can be measured under it.</returns>
     public bool Supports(BeirProtocol protocol) =>
-        _applicableProtocols is null || _applicableProtocols.Contains(protocol);
+        _applicableProtocols is not { } protocols || protocols.Contains(protocol);
 
     /// <summary>
     /// How this dataset is put on disk, or <see langword="null"/> for the normal thing: download
@@ -181,17 +178,20 @@ public sealed record BeirDatasetDescriptor(
     /// </para>
     /// <para>
     /// Declared <b>above</b> the descriptors that read it, because static field and property
-    /// initialisers run in declaration order: below them it would be <see langword="null"/> at the
-    /// moment each of the four is constructed, and an empty-or-null set is exactly the state
-    /// <see cref="ApplicableProtocols"/> refuses to be handed silently.
+    /// initialisers run in declaration order: below them it would still be
+    /// <c>default(BeirProtocolSet)</c> at the moment each of the four is constructed — the empty
+    /// set, which is exactly the state <see cref="ApplicableProtocols"/> refuses to be handed.
+    /// That refusal is what turns a mis-ordering into a loud failure rather than four datasets
+    /// measurable under nothing.
     /// </para>
     /// <para>
-    /// One shared instance rather than four literals, so "the BEIR ten" cannot drift into four
-    /// slightly different lists. It is safe to share because <see cref="ApplicableProtocols"/>
-    /// freezes a copy on assignment.
+    /// One shared value rather than four literals, so "the BEIR ten" cannot drift into four
+    /// slightly different lists. It is safe to share because
+    /// <see cref="BeirProtocolSet"/> is an immutable value; there is nothing for a reader of it to
+    /// hold on to.
     /// </para>
     /// </remarks>
-    private static readonly FrozenSet<BeirProtocol> EveryProtocolExceptGraphRag = FrozenSet.Create(
+    private static readonly BeirProtocolSet EveryProtocolExceptGraphRag = BeirProtocolSet.Of(
         BeirProtocol.Parity,
         BeirProtocol.Real,
         BeirProtocol.HybridBm25,
@@ -454,7 +454,7 @@ public sealed record BeirDatasetDescriptor(
         ExcludesSelfRetrievedDocument: false,
         ParityTarget: new BeirParityTarget(double.NaN, MultiHopRagNoPublishedReference))
     {
-        ApplicableProtocols = FrozenSet.Create(BeirProtocol.Real, BeirProtocol.GraphRag),
+        ApplicableProtocols = BeirProtocolSet.Of(BeirProtocol.Real, BeirProtocol.GraphRag),
         Source = new MultiHopRagSource(),
     };
 
