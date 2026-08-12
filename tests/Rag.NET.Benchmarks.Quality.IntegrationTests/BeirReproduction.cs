@@ -515,7 +515,7 @@ public static class BeirReproduction
             "GraphRagFunctionsTests runs the graph path end to end over a pinned 60-article slice " +
             "of the corpus and asserts that it FUNCTIONS: extraction produced 8,999 entities and " +
             "16,403 relationships, entities recur across articles (\"Google\" in 16 of the 60), " +
-            "Leiden returned 655 communities, local search retrieved a known-relevant document in " +
+            "Leiden returned 607 communities, local search retrieved a known-relevant document in " +
             "the top 10 for all 27 of the slice's judged queries, and global search's map-reduce " +
             "ran over the community reports. **None of that is a retrieval quality figure.** It is " +
             "scored over 60 of 609 documents and 27 of 2,255 queries, so an nDCG computed from it " +
@@ -529,10 +529,14 @@ public static class BeirReproduction
             "does not exist yet. Two things measured on 2026-08-12 say what it would cost and " +
             "what it would find. Extraction is one LLM call per chunk plus a gleaning pass: 4,088 " +
             "calls for 60 articles, so the 609-article corpus is roughly 41,000. And the graph the " +
-            "60 articles produced is degenerate -- 475 of the 655 communities hold a single entity " +
-            "and one holds 7,954 of the 8,999, which is community detection finding almost " +
-            "nothing. Neither is a reason to skip the comparison; both are reasons not to predict " +
-            "its outcome from this entry."),
+            "60 articles produced was degenerate when this entry was first written -- 475 of 655 " +
+            "communities held one entity and one held 7,954 of the 8,999. **That was six library " +
+            "defects, not a property of the corpus, and this entry asserted it as current state " +
+            "for as long as it took to notice.** After the fixes of 2026-08-12 the same slice " +
+            "gives 607 communities, 396 singletons, and a largest community of 796 -- 8.8% of the " +
+            "graph against 88.4%. 273 entities genuinely have no relationship, which is a property " +
+            "of extraction rather than of clustering. Neither figure is a reason to skip the " +
+            "comparison; both are reasons not to predict its outcome from this entry."),
     ];
 
     /// <summary>
