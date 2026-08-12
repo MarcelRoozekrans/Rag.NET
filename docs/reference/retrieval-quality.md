@@ -53,6 +53,23 @@ across the boundary.
 | **SciFact** | **0.64593** | 0.64508 | +0.00085 | **0.67742** | **+0.03148** |
 | **FiQA** | **0.37086** | 0.36867 | +0.00219 | **0.35569** | **−0.01517** |
 | **ArguAna** | **0.50432** | 0.50167 | +0.00265 | **0.47559** | **−0.02873** |
+| **TREC-COVID** | **0.45427** | 0.47232 | **−0.01805** | not run | — |
+
+**TREC-COVID agrees with the literature far less well than the other three, and that is the most
+interesting thing on this table.** Its delta is −0.01805 where the others are +0.00085, +0.00219
+and +0.00265 — roughly seven times larger, and the only negative one. It passes the ±0.02 band
+with 0.0023 to spare. That is a pass, and it is not a comfortable one: on the other three corpora
+the band has ~0.017 of headroom and here it has almost none, so a band that reads "green" is
+carrying much less evidence about this dataset than about the others. Measured once, 2026-08-12,
+so the run-to-run spread is unknown. Recall@10 is 0.01292 and that is expected rather than alarming
+— TREC-COVID judges an average of 493.5 relevant documents per query, so ten results cannot recall
+much of it — and MRR@10 is 0.72438, the highest of the four.
+
+**Both separators produce 0.45427, identical to five decimals.** 171,325 of the 171,332 documents
+carry a title, so the space/newline join applies to almost every one of them, and it moves the
+number by nothing measurable. The pair cost 1 h 50 m: 3,765.3 s for the first leg and 2,847.6 s for
+the second, which ran 24% faster on 42,203 embedding-cache hits — a quarter of the texts are
+byte-identical across the two separators.
 
 **The right-hand column is compared to the left-hand one and to nothing else.** There is no published
 nDCG@10 for "chunked with Rag.NET's defaults and max-pooled", none is invented here, and nothing in

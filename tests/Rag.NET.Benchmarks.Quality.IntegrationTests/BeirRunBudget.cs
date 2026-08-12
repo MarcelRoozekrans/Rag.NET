@@ -107,15 +107,25 @@ public static class BeirRunBudget
             "trec-covid",
             BeirProtocol.Parity,
             FitsTheNightly: false,
-            "DERIVED, not measured: ~3 h 10 m per separator, so ~6 h 20 m for the pair. FiQA's " +
-            "parity leg measured 1 h 11 m for 64,247 embeddings; TREC-COVID needs 171,382 " +
-            "(171,332 documents and 50 queries), which is 2.67x as many, and the corpus " +
-            "embedding dominates. Both separators run and neither is cheap: the theory adds a " +
-            "second case for any dataset with titled documents, 171,325 of these 171,332 have a " +
-            "title, and changing the separator changes the embedded text, so the warm cache from " +
-            "the first case is worth nothing to the second. The budget gate is keyed on dataset " +
-            "and protocol, not on separator, so the pair is bought together or not at all. This " +
-            "string is replaced with the measured time the first time the leg runs."),
+            "MEASURED 2026-08-12: 3,765.3 s (1 h 3 m) for the first separator and 2,847.6 s " +
+            "(47 m) for the second, 1 h 50 m for the pair. The budget gate is keyed on dataset " +
+            "and protocol rather than on separator, so the pair is bought together or not at " +
+            "all. " +
+            "**The derivation this replaces said ~6 h 20 m and was wrong by 3.4x, in the " +
+            "direction that makes work look unaffordable.** It scaled FiQA's parity leg -- 1 h " +
+            "11 m for 64,247 embeddings -- by TREC-COVID's 2.67x larger corpus. The error was " +
+            "treating that figure as embedding cost when most of it was retrieval: FiQA's leg " +
+            "retrieved for 6,648 queries through the pre-Phase-5.1.1 dense search, the one " +
+            "allocating a corpus-sized list per query, while TREC-COVID retrieves for 50. " +
+            "Scaling a total by the size of the part that is not dominating it is how a phase " +
+            "gets deferred for being too expensive. " +
+            "**A second claim in the derivation was also wrong and is worth more than the " +
+            "timing.** It reasoned that changing the separator changes the embedded text, so the " +
+            "first case's warm cache would be worth nothing to the second. Measured, the second " +
+            "leg took 42,203 cache hits against 129,179 misses -- 24.6% of texts identical " +
+            "across the two separators, on a corpus where 171,325 of 171,332 documents carry a " +
+            "title. The two legs also produce the same nDCG@10 to five decimals, so on this " +
+            "corpus the separator moves the number by nothing at all."),
         new(
             "trec-covid",
             BeirProtocol.HybridBm25,

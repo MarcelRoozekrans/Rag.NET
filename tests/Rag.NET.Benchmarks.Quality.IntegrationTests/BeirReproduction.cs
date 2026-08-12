@@ -394,15 +394,21 @@ public static class BeirReproduction
         new(
             "trec-covid",
             BeirProtocol.Parity,
-            [],
-            "Phase 5.3's dataset, and the one that makes IrMetrics' graded gain mean something: " +
-            "TREC-COVID's qrels carry 14,217 rows at grade 2 against FiQA's 17,110 judgements " +
-            "that are every one of them exactly 1. NOT YET PINNED — the leg is ~6 h 20 m for the " +
-            "pair of separators and this entry is empty until it has run. Empty is deliberate " +
-            "and it fails an opted-in run rather than passing it: the descriptor's published " +
-            "band (MTEB ndcg_at_10 0.47232 at revision bb9466ba) is what the first run is " +
-            "checked against, and this line is what pins the repository's own figure afterwards " +
-            "so a later drift of 0.01 cannot hide inside a +/-0.02 published band."),
+            [0.45427],
+            "Both separators, and they agree to five decimals. Recall@10 0.01292, MRR@10 0.72438, " +
+            "50 judged queries, 171,332 units over 171,332 documents. Measured 2026-08-12, " +
+            "Windows 11, .NET 10, CPU ONNX Runtime; 3,765.3 s cold then 2,847.6 s warm, 1 h 50 m " +
+            "for the pair. Phase 5.3's dataset, and the one that makes IrMetrics' graded gain " +
+            "mean something: its qrels carry 14,217 rows at grade 2 where FiQA's 17,110 " +
+            "judgements are every one of them exactly 1. " +
+            "**This is the worst agreement with published of the four datasets, by roughly 7x.** " +
+            "MTEB records 0.47232 at revision bb9466ba; this measured 0.45427, a delta of " +
+            "-0.01805 against +0.00085, +0.00219 and +0.00265 for SciFact, FiQA and ArguAna. It " +
+            "passes the +/-0.02 band with 0.0023 to spare, which is a pass and not a comfortable " +
+            "one, and it is the only negative delta of the four. One run, so the spread is " +
+            "unknown. Treat a future drift here as more likely to be real than the same drift on " +
+            "the other three, and treat the band as having nearly failed rather than as having " +
+            "confirmed the harness on this corpus."),
         new(
             "trec-covid",
             BeirProtocol.Real,
