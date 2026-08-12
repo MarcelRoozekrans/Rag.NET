@@ -607,7 +607,42 @@ Then Task 3's second red run becomes possible — do it.
 
 ---
 
-## Task 9: Earn the budget timing and the reproduction pin
+## Task 9: BLOCKED — the Real leg structurally depends on the Parity leg
+
+**Found 2026-08-12, before spending the run. This is a design error, not an implementation one.**
+
+`BeirRealChunkingTests.NdcgAt10_UnderRagNetsOwnChunking_DiffersFromOurParityRunAndStaysNearIt`
+measures **both** legs in one process — the chunked run and a parity run as its internal control —
+and at line 168 calls `BeirReproduction.AssertReproduces(datasetName, BeirProtocol.Parity, ...)`.
+It also formats `descriptor.ParityTarget.PublishedNdcgAt10` into its output at lines 349 and 363.
+
+MultiHop-RAG declares `Real` applicable and `Parity` inapplicable. The registries therefore
+correctly refuse to hold a Parity reproduction entry for it — so the Real run would throw
+`InvalidOperationException` looking for one. **The two declarations cannot both stand as written.**
+
+**The distinction the design missed.** Its objection to a parity leg was that one chunk per document
+truncated at 256 tokens indexes roughly a tenth of a 10,340-character article, so the number means
+nothing *against a published figure*. That is right. But the Real test does not use the parity leg
+that way — it uses it as the **internal baseline** the chunking delta is measured from, in the same
+process on the same corpus. A truncated baseline is exactly what makes "what does chunking buy"
+answerable. So parity is meaningless here as a published comparison and meaningful as a control,
+and applicability as currently modelled cannot say that.
+
+**Do not resolve it by declaring Parity applicable.** `BeirParityTests` would then run and assert
+`descriptor.ParityTarget.Contains(measured)` against a `NaN` target, which no measurement can
+satisfy — trading a throw for a guaranteed failure.
+
+**Preferred resolution:** teach `BeirRealChunkingTests` that a dataset may have no parity anchor.
+It still measures the parity leg as its control and still reports the delta; it skips only the
+`AssertReproduces` pin and the published-figure lines, guarded on `descriptor.Supports(Parity)` or
+on the target being `NaN`. Whichever predicate is chosen must be the one thing consulted, so the two
+cannot drift.
+
+**Whoever takes this: write the failing case first.** Run the Real leg for `multihop-rag` and
+capture the actual throw before changing anything, so the fix is verified against the real failure
+rather than an assumed one.
+
+## Task 9 (after the above is resolved): Earn the budget timing and the reproduction pin
 
 Run the chunked `Real` protocol once. 609 documents, so this is minutes, not the six hours
 TREC-COVID's derivation predicted for a bigger corpus — and do not derive a figure, measure it.
