@@ -4,7 +4,7 @@ using Xunit;
 namespace Rag.NET.Graph.Tests.Algorithms;
 
 /// <summary>
-/// Measures the guarantee <see cref="Leiden"/>'s remarks say it does not provide: that every
+/// Measures the guarantee <see cref="LouvainWithRefinement"/>'s remarks say it does not provide: that every
 /// returned community is connected in the subgraph it induces.
 /// </summary>
 /// <remarks>
@@ -34,14 +34,14 @@ namespace Rag.NET.Graph.Tests.Algorithms;
 /// is the common case holding, not the guarantee holding.
 /// </para>
 /// </remarks>
-public class LeidenCommunityConnectivityTests
+public class CommunityConnectivityTests
 {
     /// <summary>
     /// A ten-node weighted tree on which community detection returns a disconnected community.
     /// </summary>
     /// <remarks>
     /// Found by sweeping random weighted trees, then reduced to whole-number weights that still
-    /// reproduce. At <see cref="LeidenOptions.Resolution"/> 1.0 — the default — and seed 1, the
+    /// reproduce. At <see cref="LouvainWithRefinementOptions.Resolution"/> 1.0 — the default — and seed 1, the
     /// returned communities are <c>{N0,N2,N3,N4,N7,N8}</c> and <c>{N1,N5,N6,N9}</c>, and the second
     /// is not connected: <c>N5</c>'s only edge is to <c>N0</c>, which is in the other community, so
     /// it sits in a community with three nodes it does not touch. The general mechanism is that a
@@ -63,7 +63,7 @@ public class LeidenCommunityConnectivityTests
     /// <b>If this test fails, that is probably good news, and it is not a licence to edit it.</b> It
     /// fails when this graph stops producing a disconnected community — which is what implementing
     /// the Leiden paper's refinement would do. In that case delete this test, delete the paragraph
-    /// in <see cref="Leiden"/>'s remarks that says the guarantee is absent, and assert the general
+    /// in <see cref="LouvainWithRefinement"/>'s remarks that says the guarantee is absent, and assert the general
     /// property instead. It also fails if the move order changes for unrelated reasons, in which
     /// case the guarantee is still absent and the honest repair is to find the counterexample again
     /// rather than to weaken the assertion.
@@ -73,7 +73,7 @@ public class LeidenCommunityConnectivityTests
     {
         var graph = BuildGraph(10, CounterexampleTree);
 
-        var communities = Leiden.Detect(graph, new LeidenOptions { RandomSeed = 1 });
+        var communities = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { RandomSeed = 1 });
 
         var disconnected = new List<string>();
         foreach (var community in communities)
@@ -91,7 +91,7 @@ public class LeidenCommunityConnectivityTests
     public void Detect_TenCliquesInARing_EveryCommunityIsConnected()
     {
         var graph = BuildCliques(10, 10, bridged: true);
-        AssertEveryCommunityIsConnected(graph, new LeidenOptions());
+        AssertEveryCommunityIsConnected(graph, new LouvainWithRefinementOptions());
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class LeidenCommunityConnectivityTests
         AddClique(edges, 0, 10);
         AddClique(edges, 10, 10);
         edges.Add((0, 10, 1.0));
-        AssertEveryCommunityIsConnected(BuildGraph(20, [.. edges]), new LeidenOptions());
+        AssertEveryCommunityIsConnected(BuildGraph(20, [.. edges]), new LouvainWithRefinementOptions());
     }
 
     [Fact]
@@ -113,13 +113,13 @@ public class LeidenCommunityConnectivityTests
         AddClique(edges, 8, 4);
         edges.Add((3, 4, 1.0));
         edges.Add((7, 8, 1.0));
-        AssertEveryCommunityIsConnected(BuildGraph(12, [.. edges]), new LeidenOptions());
+        AssertEveryCommunityIsConnected(BuildGraph(12, [.. edges]), new LouvainWithRefinementOptions());
     }
 
     [Fact]
     public void Detect_TwoDisjointCliques_EveryCommunityIsConnected()
     {
-        AssertEveryCommunityIsConnected(BuildCliques(2, 8, bridged: false), new LeidenOptions());
+        AssertEveryCommunityIsConnected(BuildCliques(2, 8, bridged: false), new LouvainWithRefinementOptions());
     }
 
     /// <summary>
@@ -151,13 +151,13 @@ public class LeidenCommunityConnectivityTests
             }
 
             var graph = BuildGraph(blocks * size, [.. edges]);
-            AssertEveryCommunityIsConnected(graph, new LeidenOptions { Resolution = resolution, RandomSeed = seed });
+            AssertEveryCommunityIsConnected(graph, new LouvainWithRefinementOptions { Resolution = resolution, RandomSeed = seed });
         }
     }
 
-    private static void AssertEveryCommunityIsConnected(GraphSnapshot graph, LeidenOptions options)
+    private static void AssertEveryCommunityIsConnected(GraphSnapshot graph, LouvainWithRefinementOptions options)
     {
-        foreach (var community in Leiden.Detect(graph, options))
+        foreach (var community in LouvainWithRefinement.Detect(graph, options))
         {
             Assert.True(
                 IsConnected(graph, community.MemberEntities),
@@ -167,7 +167,7 @@ public class LeidenCommunityConnectivityTests
 
     /// <summary>
     /// Whether the members induce a connected subgraph, using the same endpoint matching
-    /// <see cref="Leiden"/> itself uses so that an edge it counted is an edge here.
+    /// <see cref="LouvainWithRefinement"/> itself uses so that an edge it counted is an edge here.
     /// </summary>
     private static bool IsConnected(GraphSnapshot graph, IReadOnlyList<string> members)
     {

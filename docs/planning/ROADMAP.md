@@ -2508,7 +2508,7 @@ group: Qdrant, PgVector, Pinecone, Weaviate, Chroma, Azure AI Search (`ragnet.ve
 Weaviate and Azure AI Search's hybrid overloads share the `search` span name with
 `vectorstore.hybrid=true` distinguishing them, per Task 5's shared-abstraction rule); Onnx +
 Cohere (`ragnet.rerank`, tagged `reranker.type` + `reranker.candidate.count`); Graph
-(`ragnet.graph.cluster` around `Leiden.Detect`, `ragnet.graph.pagerank` around `PageRank.Compute`);
+(`ragnet.graph.cluster` around the clusterer, `ragnet.graph.pagerank` around `PageRank.Compute`);
 GraphRag (`ragnet.graphrag.extract`, `.communities`, `.search` — local/global search share one
 span name with `graphrag.search.mode` distinguishing them); Raptor (`ragnet.raptor.build` around
 whole-tree construction, `ragnet.raptor.summarize` as its per-level child); Security
@@ -3427,11 +3427,11 @@ stops anyone finding it.
   Fragile, worth a follow-up, and not touched in this phase because it was found while reading rather
   than while failing. **Fixed 2026-08-12 (#170):** the refinement now takes its starting labelling as
   a parameter and resolves a sub-community's community through an explicit map, and
-  `LeidenRefinementNumberingTests` re-runs it under two other labellings. Reading it was right about
+  `RefinementNumberingTests` re-runs it under two other labellings. Reading it was right about
   the defect and understated it — under a constant offset the old bounds check dropped the
   same-community constraint entirely and merged two communities into one, and under a dense
   renumbering it both merged across communities and blocked legitimate merges inside them.
-- **`RunLeiden` is Louvain-with-refinement, not textbook Leiden** — no guaranteed-connected
+- **The clusterer is Louvain-with-refinement, not textbook Leiden** — no guaranteed-connected
   communities, no refinement-partition aggregation. It clusters, and it is not the algorithm the
   name promises. **Documented 2026-08-12 (#171), not renamed and not reimplemented:** the type now
   says on itself what it is, what it is not, and that the γ-connectedness guarantee is not provided.
@@ -3440,14 +3440,16 @@ stops anyone finding it.
   paper moves only nodes alone in their refined community and merges one "only if both are
   sufficiently well connected to their community in P", and picks the target randomly by θ-weighted
   quality increase rather than by best gain. **Implementing the seeding step alone would leave the
-  name just as false and look like it had been fixed.** Renaming stays open: `Leiden` is public at
-  0.1.0 and the name also reaches `LeidenOptions`, `options.Leiden` and the guide.
+  name just as false and look like it had been fixed.** **Renamed 2026-08-12:** the type is
+  `LouvainWithRefinement`, its settings `LouvainWithRefinementOptions`, and the ingestion property
+  `options.CommunityDetection`; all three old names survive as `[Obsolete]` forwarders whose message
+  says the algorithm is not Leiden rather than merely that a name changed.
 - **The missing guarantee is not theoretical — it fires (#180).** Written as a disclaimer, then
   tested, because this repository has twice learned that "it is implemented" and "it works" are
   different claims. A ~30,000-detection sweep returns disconnected communities on sparse *weighted*
   graphs — 48 of 2,220 random weighted trees, 14 of 520 tree-plus-chords, **0 of 2,220 unweighted
   trees**, and 0 on anything dense. The weights open the gap, not the sparsity. A ten-node tree at
-  the default resolution is pinned in `LeidenCommunityConnectivityTests` as a still-false record.
+  the default resolution is pinned in `CommunityConnectivityTests` as a still-false record.
   **Checked on the MultiHop-RAG slice's own graph the same day: it does not fire.** 0 disconnected
   of 211 non-singleton communities at the defaults, 0 across seven resolution/seed settings (1,477
   non-singleton communities), on the graph that reproduces the recorded 8,999/16,403/607/396

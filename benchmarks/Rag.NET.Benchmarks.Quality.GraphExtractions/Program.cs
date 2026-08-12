@@ -118,7 +118,7 @@ internal static class Program
     /// <b>No LLM calls, and no community reports are cached.</b> That was this phase's original
     /// intent and it does not survive contact with the numbers this prints. The report prompt is
     /// built by pasting every member entity's whole merged description into one message, with no
-    /// bound of any kind — and Leiden puts most of this graph in one community, so that one
+    /// bound of any kind — and the clusterer puts most of this graph in one community, so that one
     /// prompt runs to millions of characters. There is no model to send it to. The guard therefore
     /// synthesises reports deterministically instead of generating them, and says so; this printout
     /// is the evidence for that decision, and the thing to re-read if the report prompt ever grows
@@ -145,7 +145,7 @@ internal static class Program
         }
 
         var snapshot = await graphStore.GetFullGraphAsync();
-        PrintGraph(snapshot, Leiden.Detect(snapshot));
+        PrintGraph(snapshot, LouvainWithRefinement.Detect(snapshot));
     }
 
     /// <summary>Prints the graph's shape and the community-report prompt sizes it implies.</summary>

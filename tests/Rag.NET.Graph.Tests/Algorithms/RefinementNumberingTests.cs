@@ -27,7 +27,7 @@ namespace Rag.NET.Graph.Tests.Algorithms;
 /// the constraint and applied it to the wrong node.
 /// </para>
 /// </remarks>
-public class LeidenRefinementNumberingTests
+public class RefinementNumberingTests
 {
     private const int NodeCount = 6;
 
@@ -109,9 +109,9 @@ public class LeidenRefinementNumberingTests
             totalWeight += weight;
         }
 
-        return Leiden.Refine(
+        return LouvainWithRefinement.Refine(
             neighbors, weights, NodeCount, Assignment, singletonCommunities,
-            totalWeight, new LeidenOptions(), new Random(42));
+            totalWeight, new LouvainWithRefinementOptions(), new Random(42));
     }
 
     /// <summary>

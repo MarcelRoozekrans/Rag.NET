@@ -1,6 +1,6 @@
 # Rag.NET.GraphRag
 
-GraphRAG for Rag.NET: an LLM extracts entities and relationships during ingestion, Leiden
+GraphRAG for Rag.NET: an LLM extracts entities and relationships during ingestion, modularity
 community detection organises them (via `Rag.NET.Graph`), and retrieval answers entity
 questions with local graph search or corpus-wide questions with community-report
 map-reduce.
@@ -46,17 +46,23 @@ rag.UseGraphRag(options =>
 });
 ```
 
-Tune the clustering itself through `options.Leiden`:
+Tune the clustering itself through `options.CommunityDetection`:
 
 ```csharp
 rag.UseGraphRag(options =>
 {
-    options.Leiden.Resolution    = 1.0;   // higher splits into more, smaller communities
-    options.Leiden.MaxIterations = 10;    // local-moving passes per level
-    options.Leiden.MaxLevels     = null;  // null = aggregate until no further improvement
-    options.Leiden.RandomSeed    = 42;    // fixed, so clustering is reproducible
+    options.CommunityDetection.Resolution    = 1.0;   // higher splits into more, smaller communities
+    options.CommunityDetection.MaxIterations = 10;    // local-moving passes per level
+    options.CommunityDetection.MaxLevels     = null;  // null = aggregate until no further improvement
+    options.CommunityDetection.RandomSeed    = 42;    // fixed, so clustering is reproducible
 });
 ```
+
+This property was called `options.Leiden` until 0.1.0, and the clusterer behind it `Leiden`. It is
+Louvain with a refinement pass, not Traag/Waltman/van Eck's Leiden algorithm, and it does not
+provide that paper's guarantee that every returned community is internally connected — the old
+names remain as `[Obsolete]` forwarders, and `LouvainWithRefinement`'s XML remarks give the three
+places it departs from the paper.
 
 `Resolution` is the one worth reaching for: it scales modularity's penalty term, so raise it
 when communities come out too large to summarise usefully and lower it when the graph
