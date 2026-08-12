@@ -40,8 +40,14 @@ importantly, three findings that contradict how the ROADMAP framed this phase.
 |---|---|
 | `Rag.NET.Tests` | 1,336 passed |
 | `Rag.NET.Benchmarks.Quality.Tests` | 278 passed |
-| `Rag.NET.Benchmarks.Quality.IntegrationTests` | 63 passed / 46 skipped |
+| `Rag.NET.Benchmarks.Quality.IntegrationTests` | **109 total** — 63 passed / 46 skipped *with* `RAGNET_BEIR_CACHE` set, **58 passed / 51 skipped without it** |
 | `Rag.NET.RepoConventions.Tests` | 83 passed |
+
+> **The integration suite's split depends on your environment, so quote the total.** Five cases gate
+> on `RAGNET_BEIR_CACHE`, `RAGNET_ONNX_EMBED_MODEL` and `RAGNET_ONNX_EMBED_VOCAB` and skip when they
+> are unset. Both splits above were measured on 2026-08-12. **The invariant to check is 109 total
+> and your own before-vs-after, not a particular split** — and if a count moves, report it rather
+> than adjusting anything to reach it.
 
 **Environment for anything that runs a dataset:**
 
@@ -196,22 +202,23 @@ public void TheInapplicablePairsAreExactlyThese_SoApplicabilityCannotHideAFailin
 }
 ```
 
-**Step 2: Run it**
+**Resolved 2026-08-12: this test is authored here and lands in Task 8.**
 
-Expected: FAIL — `multihop-rag` does not exist yet and `GraphRag` is not a protocol yet. **That is
-correct.** This test is written now and stays red until Tasks 6 and 8 land. Note the failure text
-in your commit message rather than weakening the test to make it green early.
+The point of writing it early is that a pin derived from what the code already does pins nothing —
+it would agree with any value the descriptor ever takes. That requirement is already satisfied: the
+expected set above is committed as a literal in this plan at `539b0f39`, before any of the code it
+constrains exists. Landing the file in Task 8 does not weaken it, because the content cannot be
+back-fitted to whatever Task 8 happens to produce.
 
-If you would rather not carry a red test across four tasks, move this task to sit immediately after
-Task 8 — but do not delete it, and do not write it after the descriptor exists, because a pin
-written from what the code already does pins nothing.
+Carrying a deliberately red test across six tasks would, by contrast, cost something real: every
+intervening task verifies against "all suites green", so a standing failure would either mask a new
+one or train whoever is running the plan to ignore a red suite. That trade is not worth it.
 
-**Step 3: Commit**
-
-```bash
-git add tests/Rag.NET.Benchmarks.Quality.Tests/ProtocolApplicabilityTests.cs
-git commit -m "test(quality): pin the inapplicable protocol pairs before any exist"
-```
+**So: no commit in this task.** Copy the literal above into
+`tests/Rag.NET.Benchmarks.Quality.Tests/ProtocolApplicabilityTests.cs` during Task 8, unchanged
+from what is written here. If you find yourself editing the expected set to make it pass, stop —
+that is the failure mode this task exists to prevent, and the disagreement is telling you the
+descriptor is wrong, not the pin.
 
 ---
 
@@ -655,6 +662,56 @@ Container suites need Docker; if it is down they fail rather than skip, and
 are environmental. Say so explicitly in the PR rather than reporting "all green".
 
 Open the PR. **Do not merge it.**
+
+---
+
+## Task 8b: Give `ApplicableProtocols` value equality
+
+**Do this after Task 8, once a second descriptor exists and before any third does.**
+
+`BeirDatasetDescriptor` is a `record`, so its synthesized `Equals`/`GetHashCode` compare
+`ApplicableProtocols` with `EqualityComparer<T>.Default`. No BCL set overrides `Equals`, so that is
+**reference** equality — including `FrozenSet` and `ImmutableHashSet`. Verified empirically during
+Task 1's review: two descriptors identical in every field, including protocol content, compare
+unequal and hash differently. One member of a value-equality type quietly opting out is the kind of
+thing found later as a mysterious failing assertion.
+
+It is latent while only one descriptor sets the property, and it was deliberately left out of
+Task 1: Tasks 3–8 call `Supports(...)`, not the property, so the blast radius is the property
+declaration plus one descriptor — cheap to change here, not cheap once several descriptors set it.
+
+**Preferred fix:** a `readonly record struct BeirProtocolSet` over a `uint` mask, used as
+`BeirProtocolSet?`. Eleven protocols fit comfortably, `Nullable<T>` gives value equality for free,
+the type is genuinely immutable rather than a read-only view, and `null` still means "all". It also
+lets `ToString` print the protocol names instead of `System.Collections.Generic.HashSet\`1[…]`.
+
+**Write the failing test first**, since the point is that the current behaviour is wrong:
+
+```csharp
+[Fact]
+public void TwoDescriptorsWithTheSameProtocols_AreEqual()
+{
+    var a = BeirDatasetDescriptor.SciFact with { ApplicableProtocols = Set(BeirProtocol.Parity) };
+    var b = BeirDatasetDescriptor.SciFact with { ApplicableProtocols = Set(BeirProtocol.Parity) };
+    Assert.Equal(a, b);
+    Assert.Equal(a.GetHashCode(), b.GetHashCode());
+}
+```
+
+**Two conditions carried from Task 1's review, both load-bearing:**
+
+- **Keep `ARestrictedDescriptorIgnoresLaterMutationOfTheSetItWasGiven`.** It can no longer go red —
+  the `FrozenSet<BeirProtocol>?` backing field enforces the aliasing invariant through the type
+  system, and removing `.ToFrozenSet()` now fails to compile rather than failing the test. It is a
+  tripwire for *this* task: a replacement storage type that is not genuinely immutable is exactly
+  what it will catch.
+- **Until this task lands, no test or helper may `Assert.Equal` two independently constructed
+  descriptors.** It would fail for a reason that reads as nonsense. Note that a round-tripped
+  `with { ApplicableProtocols = d.ApplicableProtocols }` *does* compare equal, because
+  `ToFrozenSet` on an already-frozen set with the default comparer returns the same instance — so
+  the trap only springs on two separately built sets.
+
+**Commit:** `fix(quality): compare a descriptor's applicable protocols by value`
 
 ---
 
