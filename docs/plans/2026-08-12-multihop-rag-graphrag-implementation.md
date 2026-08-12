@@ -387,6 +387,18 @@ dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests -c Release
 ```
 Expected: **63 passed / 46 skipped**, unchanged. If skips went up, a real dataset lost a protocol.
 
+**MA0051 will bite you, and suppression is forbidden.** Meziantou caps a method at 60 lines
+*including comments and blank lines*, so no formatting trick recovers the budget.
+`BeirComparisonControlTests` (69 lines) and `BeirSemanticKernelDefaultsTests` (68) were already
+within three lines of the cap before the ~8-line gate went in. Task 5 made room by extracting
+helpers — a `WriteTimingsSidecar` in the comparison control, and moving the
+`ExcludesSelfRetrievedDocument` wrapper into `AssertTheWrittenFileHoldsThePostExclusionRanking` in
+the Semantic Kernel file — changing no measurement, gate order or assertion.
+
+> **Carry this forward: those two theories now sit at the cap again.** Any later task adding a line
+> to either will hit MA0051, and the fix is another extraction, never a suppression. If you find
+> yourself wanting to add to them, extract first and add second.
+
 **Commit:** `refactor(quality): theories ask whether a protocol applies before asking the machine`
 
 ---
