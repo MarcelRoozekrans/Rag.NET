@@ -68,7 +68,13 @@ public sealed class MultiHopRagSliceTests
             "Set RAGNET_BEIR_CACHE to a writable directory to check the MultiHop-RAG slice.");
 
         var dataset = await LoadAsync(cacheDirectory);
-        var (queries, documents) = Walk(dataset);
+
+        // The walk lives in the harness project rather than here, because the extraction
+        // generation tool is a console application that cannot see this project's literals and
+        // must fill the cache for exactly the articles the guard will ask for. Two copies of the
+        // walk would eventually disagree, and the symptom would be a refuse-on-miss failure on the
+        // guard's first chunk that reads like an empty cache.
+        var (queries, documents) = MultiHopRagSliceWalk.Derive(dataset);
 
         // The query sequence is compared in order — it comes off an explicitly sorted list, so its
         // order is the walk's and is reproducible. The documents are compared as a SET: within one
@@ -141,60 +147,4 @@ public sealed class MultiHopRagSliceTests
         return outside;
     }
 
-    /// <summary>
-    /// Re-derives the slice: judged queries in id order, accumulating each one's evidence documents
-    /// until <see cref="MultiHopRagSlice.TargetDocumentCount"/> distinct articles have been seen.
-    /// The query that crosses the target is taken whole, which is what keeps the result
-    /// self-contained by construction.
-    /// </summary>
-    private static (IReadOnlyList<string> Queries, IReadOnlyList<string> Documents) Walk(
-        BeirDataset dataset)
-    {
-        var queryIds = new List<string>(dataset.Qrels.Count);
-        foreach (var queryId in dataset.Qrels.Keys)
-        {
-            queryIds.Add(queryId);
-        }
-
-        queryIds.Sort(StringComparer.Ordinal);
-
-        var takenQueries = new List<string>();
-        var takenDocuments = new List<string>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var queryId in queryIds)
-        {
-            takenQueries.Add(queryId);
-            foreach (var documentId in JudgedDocumentsInFileOrder(dataset.Qrels[queryId]))
-            {
-                if (seen.Add(documentId))
-                {
-                    takenDocuments.Add(documentId);
-                }
-            }
-
-            if (seen.Count >= MultiHopRagSlice.TargetDocumentCount)
-            {
-                break;
-            }
-        }
-
-        return (takenQueries, takenDocuments);
-    }
-
-    /// <summary>
-    /// One query's relevant documents, in the order <c>qrels/test.tsv</c> lists them — which
-    /// <see cref="BeirLoader"/> preserves, and which decides the pinned document list's order.
-    /// </summary>
-    private static IEnumerable<string> JudgedDocumentsInFileOrder(
-        IReadOnlyDictionary<string, int> judgements)
-    {
-        foreach (var (documentId, grade) in judgements)
-        {
-            if (grade > 0)
-            {
-                yield return documentId;
-            }
-        }
-    }
 }

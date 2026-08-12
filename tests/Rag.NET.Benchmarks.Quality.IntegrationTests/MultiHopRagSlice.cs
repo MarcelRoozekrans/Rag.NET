@@ -45,10 +45,10 @@ public static class MultiHopRagSlice
     /// without overshooting it.
     /// </summary>
     /// <remarks>
-    /// A constant so the walk in <see cref="MultiHopRagSliceTests"/> and the pinned list below are
-    /// bounded by one number rather than by two that could disagree.
+    /// Forwarded from <see cref="MultiHopRagSliceWalk"/>, where the derivation lives, so the walk
+    /// and the pinned list below are bounded by one number rather than by two that could disagree.
     /// </remarks>
-    public const int TargetDocumentCount = 60;
+    public const int TargetDocumentCount = MultiHopRagSliceWalk.TargetDocumentCount;
 
     /// <summary>
     /// The twenty-seven judged queries the walk consumed, in id order.
