@@ -61,6 +61,27 @@ public sealed class GraphRagFunctionsTests
     /// </remarks>
     private const int DocumentCutoff = BeirHarness.Cutoff;
 
+    /// <summary>
+    /// The share of all entities the largest community may hold before this guard calls the
+    /// clustering degenerate. Twenty-five percent, against a measured 8.8%.
+    /// </summary>
+    /// <remarks>
+    /// <b>A ceiling on the largest community's share, not a floor on the singleton count, because
+    /// the share is the number that carries the meaning.</b> Leiden legitimately emits one
+    /// community per node it cannot attach to anything, so singletons are largely a property of the
+    /// extraction rather than a defect, and a bound on them would fail for an honest reason and
+    /// pass for a dishonest one. The two counts are printed side by side because they do not match
+    /// and the gap is itself informative: 273 of this slice's entities appear in no relationship at
+    /// all, while 396 communities hold one member — so some 123 entities have edges and still end
+    /// up alone, their neighbours having been drawn elsewhere. What cannot be legitimate is one
+    /// community swallowing the graph: at 89.7% — where this slice sat
+    /// while <c>Leiden.BuildAggregatedEdges</c> discarded intra-community weight — every assertion
+    /// about clustering below is satisfied while nothing has been clustered. The margin is wide on
+    /// purpose: this is a degeneracy detector, not a quality target, and a ceiling set just above
+    /// the measurement would go red on a corpus change that means nothing.
+    /// </remarks>
+    private const double LargestCommunityShareCeiling = 0.25;
+
     private readonly ITestOutputHelper _output;
 
     public GraphRagFunctionsTests(ITestOutputHelper output)
@@ -222,6 +243,8 @@ public sealed class GraphRagFunctionsTests
     {
         var communities = run.Graph.Communities;
         var clustered = communities.Count - CountSingletons(communities);
+        var largest = LargestCommunity(run);
+        var share = (double)largest / run.Graph.Entities.Count;
 
         Assert.True(
             communities.Count > 1,
@@ -242,6 +265,20 @@ public sealed class GraphRagFunctionsTests
                 {run.Graph.Relationships.Count} relationships, that means the relationship endpoints
                 are not joining to the entity names they should: check that the clusterer and the
                 graph store agree on how entity names compare.
+                """));
+
+        Assert.True(
+            share < LargestCommunityShareCeiling,
+            FormattableString.Invariant($"""
+                THE LARGEST COMMUNITY HOLDS {largest} OF {run.Graph.Entities.Count} ENTITIES
+                ({share:P1}), above the {LargestCommunityShareCeiling:P0} this guard allows. A
+                community holding most of the graph is not a cluster, it is the absence of one: its
+                report is a summary of the entire corpus, global search maps over it as though it
+                were a theme, and the prompt to write it grows with the corpus rather than with any
+                topic in it. Measured at 8.8% when this ceiling was set, against 89.7% before
+                Leiden.BuildAggregatedEdges stopped discarding intra-community weight — so a number
+                anywhere near the ceiling means the aggregation step has regressed to treating
+                super-nodes as though they had no internal edges.
                 """));
     }
 
@@ -310,32 +347,51 @@ public sealed class GraphRagFunctionsTests
     /// printed.
     /// </para>
     /// <para>
-    /// <b>Reaching the map-reduce needs a filtered candidate set, and that is the finding.</b> Over
-    /// this slice a plain dense top-500 contains no community report at all: 655 long multi-entity
-    /// reports compete against some 35,800 short, specific entity and article chunks and lose every
-    /// slot. The run prints where the best report actually ranks. So the behavior is exercised over
-    /// a candidate set restricted by the store's own metadata filter — the only way a caller could
-    /// reach it — and the unfiltered attempt is reported beside it rather than quietly dropped.
+    /// <b>This is now asserted unfiltered, which it could not be before.</b> Over this slice a
+    /// plain dense top-500 once contained no community report at all — hundreds of long
+    /// multi-entity reports competing against some 35,800 short, specific entity and article chunks
+    /// and losing every slot — so the guard reached the map-reduce by restricting the candidate set
+    /// with a metadata filter of its own. A guard doing by hand what the library should do is a
+    /// guard testing itself, and that path is gone: <c>GraphGlobalSearchBehavior</c> re-enters
+    /// retrieval with its own filter when it is handed no reports, and what is asserted here is the
+    /// unfiltered call any caller would make.
+    /// </para>
+    /// <para>
+    /// <b>On this slice the refetch does not actually fire, and the reason is worth recording.</b>
+    /// Bounding the report prompt changed what the reports say: capped at 50,000 characters and
+    /// filled in PageRank order, they now lead with their community's most central entities instead
+    /// of an arbitrary prefix of all of them, and the best of them moved from rank 1,098 to 209 —
+    /// inside the top-500, so the first retrieval already carries reports and the second is never
+    /// needed. The refetch remains the safety net for a corpus where they do not surface, and
+    /// <c>GraphGlobalSearchBehaviorTests</c> is where it is exercised directly. The run prints the
+    /// retrieval count so which of the two paths ran is never a guess.
+    /// </para>
+    /// <para>
+    /// Both of those rank figures are partly properties of this harness rather than of GraphRAG:
+    /// <see cref="PromptEchoChatClient"/> answers with the first 2,000 characters of the prompt, so
+    /// a "report" here is its community's own entity descriptions rather than the prose a model
+    /// would return. What does not depend on the stub is the structure — a few hundred general
+    /// reports against tens of thousands of specific chunks, with nothing reserving them a slot.
     /// </para>
     /// </remarks>
     private async Task AssertGlobalSearchDiffersFromLocalAsync(
         GraphRagSliceRun run, BeirQuery query, CancellationToken cancellationToken)
     {
         var local = await run.LocalSearchAsync(query.Text, cancellationToken);
-        var unfiltered = await run.GlobalSearchAsync(query.Text, cancellationToken);
-        var callsAfterUnfiltered = run.GlobalSearchCalls;
         var rank = await run.FirstCommunityReportRankAsync(query.Text, cancellationToken);
 
-        var global = await run.GlobalSearchOverReportsAsync(query.Text, cancellationToken);
+        var callsBefore = run.GlobalSearchCalls;
+        var retrievalsBefore = run.RetrievalCalls;
+        var global = await run.GlobalSearchAsync(query.Text, cancellationToken);
 
         _output.WriteLine(FormattableString.Invariant($"""
             global {query.Id}: local returned {local.Count} results
-              over the SAME candidate set as local: {unfiltered.Count} results, {callsAfterUnfiltered} map/reduce calls
-              best community report ranks {rank} in the full store, against a candidate set of {local.Count}
-              over community reports only: {global.Count} results, {run.GlobalSearchCalls - callsAfterUnfiltered} map/reduce calls
+              over the SAME candidate set as local: {global.Count} results, {run.GlobalSearchCalls - callsBefore} map/reduce calls
+              it reached its reports in {run.RetrievalCalls - retrievalsBefore} retrievals (2 = it went back for them itself)
+              best community report ranks {rank} in an unfiltered scan of the whole store
             """));
 
-        AssertGlobalSearchRan(run, query, global, callsAfterUnfiltered, rank);
+        AssertGlobalSearchRan(run, query, global, callsBefore, rank);
 
         Assert.False(
             SameResults(local, global),
@@ -352,7 +408,7 @@ public sealed class GraphRagFunctionsTests
         GraphRagSliceRun run,
         BeirQuery query,
         IReadOnlyList<SearchResult> global,
-        long callsAfterUnfiltered,
+        long callsBefore,
         int rank)
     {
         Assert.True(
@@ -362,13 +418,16 @@ public sealed class GraphRagFunctionsTests
             "report among them, so an empty result means the retrieval underneath it was empty.");
 
         Assert.True(
-            run.GlobalSearchCalls > callsAfterUnfiltered,
+            run.GlobalSearchCalls > callsBefore,
             FormattableString.Invariant($"""
-                GLOBAL SEARCH MADE NO MAP-REDUCE CALLS for query {query.Id} even over a candidate
-                set filtered to community reports alone. {run.CommunityReportCount} reports were
-                embedded and indexed, and the best of them ranks {rank} in the full store. The
-                behavior partitions on the chunk metadata key graph_type = community_report, so
-                either that tag stopped being written or the reports never reached the vector store.
+                GLOBAL SEARCH MADE NO MAP-REDUCE CALLS for query {query.Id}, over the same
+                unfiltered candidate set local search gets. {run.CommunityReportCount} reports were
+                embedded and indexed, and the best of them ranks {rank} in an unfiltered scan — far
+                below the candidate cutoff, which is exactly why the behavior is supposed to go back
+                for them with a metadata filter of its own rather than hope one turns up. So either
+                that refetch stopped happening, the graph_type = community_report tag stopped being
+                written, or the retrieval standing in for VectorStoreBehavior stopped honouring
+                MetadataFilter.
                 """));
     }
 
@@ -473,10 +532,43 @@ public sealed class GraphRagFunctionsTests
             {run.ReplayedRequests} extraction and report requests, every one replayed from the cache
             graph: {run.Graph.Entities.Count} entities, {run.Graph.Relationships.Count} relationships
             entity recurrence: {run.EntityDocuments.Count} distinct names, most widespread "{best}" in {articles} articles
-            communities: {run.Graph.Communities.Count}, of which {CountSingletons(run.Graph.Communities)} hold one entity and the largest holds {LargestCommunity(run)}
+            communities: {run.Graph.Communities.Count}, of which {CountSingletons(run.Graph.Communities)} hold one entity
+            largest community: {LargestCommunity(run)} entities, {(double)LargestCommunity(run) / run.Graph.Entities.Count:P1} of the graph (ceiling {LargestCommunityShareCeiling:P0})
+            isolated entities: {IsolatedEntities(run)} of {run.Graph.Entities.Count} have no relationship -- recorded, not asserted; see the constant above
             indexed: {run.ChunkCount} article chunks, {run.GraphChunkCount} entity/relationship chunks, {run.CommunityReportCount} community reports ({run.SynthesisedReports} synthesised, not generated -- see PromptEchoChatClient)
             largest community report prompt: {run.LongestReportPrompt} characters
             """);
+    }
+
+    /// <summary>How many entities no relationship in the graph names at either end.</summary>
+    /// <remarks>
+    /// <b>Printed and never asserted, deliberately.</b> These are the entities Leiden turns into
+    /// singleton communities, and they are a property of what extraction produced rather than of
+    /// how the graph was clustered: a model naming a subject once, in one article, in one phrasing.
+    /// A pass/fail bound would hide movement inside its band, and movement is the whole of what is
+    /// interesting here — if an extraction change halves this number, that is a result worth
+    /// seeing, and if it doubles it, that is a regression worth seeing, and neither is a reason for
+    /// this file to go red.
+    /// </remarks>
+    private static int IsolatedEntities(GraphRagSliceRun run)
+    {
+        var connected = new HashSet<string>(GraphNames.Comparer);
+        var relationships = run.Graph.Relationships;
+
+        for (var i = 0; i < relationships.Count; i++)
+        {
+            _ = connected.Add(relationships[i].SourceEntity);
+            _ = connected.Add(relationships[i].TargetEntity);
+        }
+
+        var isolated = 0;
+        var entities = run.Graph.Entities;
+        for (var i = 0; i < entities.Count; i++)
+        {
+            isolated += connected.Contains(entities[i].Name) ? 0 : 1;
+        }
+
+        return isolated;
     }
 
     /// <summary>How many entities the largest community holds.</summary>

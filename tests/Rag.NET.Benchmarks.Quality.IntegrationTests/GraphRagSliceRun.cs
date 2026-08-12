@@ -128,6 +128,14 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
     /// </remarks>
     public long LongestReportPrompt => _reportChat.LongestPrompt;
 
+    /// <summary>Gets how many times a search has gone to the vector store through this run.</summary>
+    /// <remarks>
+    /// The evidence that global search fetched its own community reports: one call means it worked
+    /// with the candidate set it was handed, two means it found no report there and went back for
+    /// them with a metadata filter.
+    /// </remarks>
+    public int RetrievalCalls { get; private set; }
+
     /// <summary>
     /// Extracts the slice into a graph, detects communities over it, and indexes everything.
     /// </summary>
@@ -163,35 +171,21 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
     /// <summary>
     /// Runs global search for one query over the same candidate set local search gets.
     /// </summary>
+    /// <remarks>
+    /// <b>There is no longer a second, filtered variant of this, and its removal is the point.</b>
+    /// The guard used to reach the map-reduce by handing the behavior a candidate set it had
+    /// restricted to community reports itself, because a plain dense top-500 over this slice
+    /// contains none and the behavior did nothing without them. A guard doing by hand what the
+    /// library should do is a guard testing itself, so the behavior now re-enters retrieval with
+    /// its own metadata filter and this — the unfiltered call any caller would make — is what gets
+    /// asserted.
+    /// </remarks>
     public async Task<IReadOnlyList<SearchResult>> GlobalSearchAsync(
         string query, CancellationToken cancellationToken)
     {
         var behavior = new GraphGlobalSearchBehavior(_globalChat, _retrievalOptions);
 
         return await behavior.HandleAsync(CreateContext(query), cancellationToken, RetrieveAsync);
-    }
-
-    /// <summary>
-    /// Runs global search for one query over a candidate set restricted to community reports.
-    /// </summary>
-    /// <remarks>
-    /// <b>This is the only way the map-reduce runs at all, and that is a finding rather than a
-    /// convenience.</b> <c>GraphGlobalSearchBehavior</c> partitions <c>graph_type =
-    /// community_report</c> chunks out of whatever the retrieval underneath it returned, and does
-    /// nothing whatsoever when there are none. Over this slice there are 655 reports among some
-    /// 35,800 indexed chunks, and they are long multi-entity texts competing against short,
-    /// specific entity descriptions — so a plain dense top-500 contains no report at all and global
-    /// search returns its input untouched. The filter here is the store's own
-    /// <c>SearchOptions.MetadataFilter</c>, not a special path: it is what a caller would have to
-    /// do to reach the behavior, and the library offers no way to configure it.
-    /// </remarks>
-    public async Task<IReadOnlyList<SearchResult>> GlobalSearchOverReportsAsync(
-        string query, CancellationToken cancellationToken)
-    {
-        var behavior = new GraphGlobalSearchBehavior(_globalChat, _retrievalOptions);
-
-        return await behavior.HandleAsync(
-            CreateContext(query), cancellationToken, RetrieveCommunityReportsAsync);
     }
 
     /// <summary>
@@ -333,20 +327,20 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
     /// The dense retrieval both graph behaviors sit in front of: embed the query through the cache,
     /// scan the store, return the candidates.
     /// </summary>
+    /// <remarks>
+    /// <b>It reads <see cref="RetrievalOptions.MetadataFilter"/> and
+    /// <see cref="RetrievalOptions.TopK"/> off the context because the pipeline's own
+    /// <c>VectorStoreBehavior</c> does.</b> This method stands in for that behavior, and a stand-in
+    /// that ignored half its contract would make the guard measure something the library does not
+    /// do — which matters now that <c>GraphGlobalSearchBehavior</c> re-enters retrieval with a
+    /// filtered context of its own. Hard-coding the top-k here, as this once did, would have made
+    /// that second call indistinguishable from the first and the behavior look unreachable when it
+    /// is not.
+    /// </remarks>
     private async ValueTask<IReadOnlyList<SearchResult>> RetrieveAsync(
         RetrievalContext context, CancellationToken cancellationToken)
     {
-        var vectors = await BeirHarness.EmbedAsync(
-            _generator, _embeddings, [context.Query], cancellationToken);
-
-        return await _vectorStore.SearchAsync(
-            vectors[0], new SearchOptions { TopK = BaseTopK }, cancellationToken);
-    }
-
-    /// <summary>The same retrieval, restricted to community reports by the store's own filter.</summary>
-    private async ValueTask<IReadOnlyList<SearchResult>> RetrieveCommunityReportsAsync(
-        RetrievalContext context, CancellationToken cancellationToken)
-    {
+        RetrievalCalls++;
         var vectors = await BeirHarness.EmbedAsync(
             _generator, _embeddings, [context.Query], cancellationToken);
 
@@ -354,11 +348,8 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
             vectors[0],
             new SearchOptions
             {
-                TopK = BaseTopK,
-                MetadataFilter = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
-                {
-                    ["graph_type"] = CommunityReportKind,
-                },
+                TopK = context.Options.TopK,
+                MetadataFilter = context.Options.MetadataFilter,
             },
             cancellationToken);
     }

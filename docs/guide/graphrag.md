@@ -91,12 +91,16 @@ rag.UseGraphRag(options =>
     options.Leiden.MaxIterations = 10;                // Local-moving passes per level — must be > 0
     options.Leiden.MaxLevels = null;                  // null = aggregate until no improvement
     options.Leiden.RandomSeed = 42;                   // Fixed, so clustering is reproducible
+
+    options.MaxCommunityReportPromptLength = 50_000;  // Report prompt cap, characters — must be > 0
 });
 ```
 
 `UseGraphRag` validates the configured options at registration and throws `ArgumentException` from the configuring line. A negative `MaxEntityDescriptionLength` would throw mid-ingestion on the first extracted entity; zero would silently empty every entity description. A `Leiden.Resolution` of zero or below is rejected the same way: resolution scales modularity's penalty term, so zero removes the penalty entirely and returns one community for every connected graph.
 
 `options.Leiden` reaches the clustering that community detection runs. Before it existed, `CommunityDetectionBehavior` called `Leiden.Detect(snapshot)` without options, so every setting on `LeidenOptions` was unreachable through `UseGraphRag` and the defaults were the only values that had ever run — despite this guide telling you to adjust them.
+
+`MaxCommunityReportPromptLength` bounds the prompt used to summarise one community. Without it the prompt's size was a property of your corpus rather than of the code — every member entity's whole merged description went into one message — and a large community could build a prompt no model would accept. A community that exceeds the budget is **truncated, not rejected**: members are emitted in PageRank order so the least central drop out first, three quarters of the budget goes to entities and the rest to the relationships between them, and the prompt says what was left out so the summariser is not shown a fragment as though it were the whole. Truncation is tagged on the `ragnet.graphrag.communities` activity as `graphrag.community.report.truncated`.
 
 `EntityTypes` and `RelationshipTypes` are enforced in two layers. The allowed lists are substituted into the extraction prompt's `{entity_types}` and `{relationship_types}` placeholders (when they are null the placeholders render the open-extraction guidance instead), and anything the LLM still returns outside a configured list is dropped — case-insensitively — before it reaches the graph store or the embedded chunks, including gleaning-pass output. A custom `EntityExtractionPrompt` without the placeholders still gets the filtering layer, so the constraint holds regardless of prompt. Relationships carry their kind in the `description` field (a concise verb phrase), so `RelationshipTypes` constrains that field. An empty array behaves like null rather than silently dropping every extraction.
 
@@ -109,11 +113,14 @@ rag.UseGraphRag(retrieval: options =>
     options.LocalTopEntities = 10;                // Starting entities — must be greater than 0
     options.PageRankWeight = 0.3;                 // PageRank vs similarity blend — range 0.0–1.0, finite
     options.GlobalBatchSize = 5;                  // Reports per map batch — when set, must be greater than 0
+    options.GlobalReportCandidates = 50;          // Reports fetched when none were handed down — when set, > 0
     options.GlobalChatClient = cheapModel;         // Optional for map-reduce
 });
 ```
 
-These are validated at registration too. `LocalSearchDepth` or `LocalTopEntities` at zero would silently disable local graph search; a `PageRankWeight` outside `[0, 1]` would give one blend term a negative coefficient; `GlobalBatchSize = 0` would hang global search in an infinite batching loop.
+These are validated at registration too. `LocalSearchDepth` or `LocalTopEntities` at zero would silently disable local graph search; a `PageRankWeight` outside `[0, 1]` would give one blend term a negative coefficient; `GlobalBatchSize = 0` would hang global search in an infinite batching loop; `GlobalReportCandidates = 0` would ask the store for no reports and silently restore the do-nothing behaviour below.
+
+`GlobalReportCandidates` exists because global search was, in practice, unreachable. It maps and reduces over chunks tagged `graph_type = community_report`, partitioned out of whatever retrieval handed it — and a corpus produces a few hundred long, general reports against tens of thousands of short, specific entity and article chunks, with nothing reserving the reports a slot. Over a sixty-article corpus not one report appeared in a dense top-500, so the map phase never ran and the behavior returned its input untouched, looking to every caller as though it had worked. It now re-enters the retrieval pipeline with a metadata filter of its own when it is handed no reports, fetching this many. Any `MetadataFilter` you set is preserved — only the graph-type key is added — and the second retrieval is skipped entirely when the first already contains reports.
 
 > **Which search runs is a registration decision, not a setting.** Add `GraphLocalSearchBehavior`, `GraphGlobalSearchBehavior`, or both to the retrieval pipeline; each runs on the chunks it recognises. There is deliberately no `Mode` property — one existed until 0.1.0, was never read by any behavior, and is described in issue #104.
 
@@ -218,6 +225,11 @@ Retrieval:  VectorStore → Ensemble → Filter → [GraphRAG Local/Global] → 
 **Global search returns empty**
 - Ensure CommunityDetectionBehavior runs during ingestion
 - Verify community reports were embedded (check for `graph_type=community_report` in vector store)
+
+**Global search returns results but never calls the LLM**
+- It found no community reports in the candidate set and its own refetch also came back empty
+- Check the `graphrag.community.refetched` tag on the `ragnet.graphrag.search` activity
+- Confirm your vector store applies `SearchOptions.MetadataFilter`; the refetch relies on it
 
 **High ingestion cost**
 - Use `ExtractionChatClient` with a cheaper model

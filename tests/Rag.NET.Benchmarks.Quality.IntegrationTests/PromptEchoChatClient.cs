@@ -23,12 +23,14 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// because the guard replays rather than spends, not because the library is incapable.
 /// </para>
 /// <para>
-/// <b>The prompt is still unbounded, and that is the finding this number now carries.</b> Sixty
-/// articles fit; nothing in the behavior makes that true of six hundred, because the bound is a
-/// property of the corpus rather than of the code. <see cref="LongestPrompt"/> is measured on every
-/// run and printed by the guard for exactly that reason — an earlier note here put the figure at
-/// 976,425 characters, which was the entity-description block alone and about half of what the
-/// behavior actually sends, and a number nobody re-measures is a number that drifts.
+/// <b>The prompt is now bounded by the code rather than by the corpus.</b> Sixty articles fitting
+/// was luck; nothing in the behavior made it true of six hundred.
+/// <c>GraphRagOptions.MaxCommunityReportPromptLength</c> caps it — 50,000 characters by default,
+/// filled in PageRank order so the least central members are dropped first, with the omission
+/// stated in the prompt — and the largest prompt this run builds is 49,937 characters.
+/// <see cref="LongestPrompt"/> is measured on every run and printed by the guard, because an
+/// earlier note here put the figure at 976,425 characters, which was the entity-description block
+/// alone and about half of what the behavior actually sends: a number nobody re-measures drifts.
 /// </para>
 /// <para>
 /// <b>Global search's map-reduce is uncached because its prompts are machine-dependent.</b> They
