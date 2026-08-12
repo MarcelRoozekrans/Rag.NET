@@ -148,6 +148,69 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
             Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
+    /// <summary>
+    /// Community detection persists PageRank scores without rewriting descriptions.
+    /// </summary>
+    /// <remarks>
+    /// <b>It used to double every description in the graph, on every run.</b>
+    /// <c>UpdateEntitiesWithPageRank</c> read the whole graph, set a score on each entity, and
+    /// handed the entities back to <c>AddEntitiesAsync</c> — whose <c>ON CONFLICT</c> clause is
+    /// <c>description = entities.description || char(10) || $description</c>. That concatenation is
+    /// wanted and is pinned by <c>SqliteGraphStoreTests.AddEntitiesAsync_DuplicateName_MergesDescriptions</c>:
+    /// two articles describing the same subject should merge into one entity. What was never wanted
+    /// is a re-add of a row against itself, which appends a description to a copy of itself. So the
+    /// score now goes through <c>SetPageRankScoresAsync</c>, which writes the one column it means
+    /// to, and the merge path is left exactly as it was.
+    /// </remarks>
+    [Fact]
+    public async Task HandleAsync_RunTwice_DoesNotDuplicateEntityDescriptions()
+    {
+        var options = new GraphRagOptions { Enabled = true };
+        var sut = new CommunityDetectionBehavior(_chatClient, _embedder, _graphStore, options);
+        var ct = TestContext.Current.CancellationToken;
+
+        await PopulateGraphStore();
+        SetupChatClient("Community report text");
+        SetupEmbedder(4);
+
+        for (var run = 0; run < 2; run++)
+        {
+            await sut.HandleAsync(CreateContext(), ct, (c, _) =>
+                ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+        }
+
+        var snapshot = await _graphStore.GetFullGraphAsync(ct);
+        foreach (var entity in snapshot.Entities)
+        {
+            Assert.Equal($"Company {entity.Name}", entity.Description);
+        }
+    }
+
+    /// <summary>The scores community detection computed are the scores the store hands back.</summary>
+    /// <remarks>
+    /// The doubling fix must not become a silent drop: local search blends
+    /// <see cref="GraphEntity.PageRankScore"/> read straight off the store, so a
+    /// <c>SetPageRankScoresAsync</c> that wrote nothing would leave every entity at zero and look
+    /// fine to every other assertion here.
+    /// </remarks>
+    [Fact]
+    public async Task HandleAsync_PersistsPageRankScores()
+    {
+        var options = new GraphRagOptions { Enabled = true };
+        var sut = new CommunityDetectionBehavior(_chatClient, _embedder, _graphStore, options);
+        var ct = TestContext.Current.CancellationToken;
+
+        await PopulateGraphStore();
+        SetupChatClient("Community report text");
+        SetupEmbedder(4);
+
+        await sut.HandleAsync(CreateContext(), ct, (c, _) =>
+            ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+
+        var snapshot = await _graphStore.GetFullGraphAsync(ct);
+        Assert.All(snapshot.Entities, entity => Assert.True(entity.PageRankScore > 0.0));
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private static IngestionContext CreateContext()

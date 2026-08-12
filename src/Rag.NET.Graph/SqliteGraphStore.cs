@@ -88,6 +88,34 @@ public sealed class SqliteGraphStore : IGraphStore
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// An <c>UPDATE</c> of the one column, not an upsert: a name with no row is a name the caller
+    /// computed a score for and the store never had, and inventing an entity with an empty
+    /// description to hold a number would be worse than ignoring it.
+    /// </remarks>
+    public Task SetPageRankScoresAsync(
+        IReadOnlyDictionary<string, double> scores, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(scores);
+
+        using var transaction = _connection.BeginTransaction();
+
+        foreach (var (name, score) in scores)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            using var cmd = _connection.CreateCommand();
+            cmd.CommandText = "UPDATE entities SET page_rank = $pageRank WHERE name = $name COLLATE NOCASE";
+            cmd.Parameters.Add(new SqliteParameter("$pageRank", SqliteType.Real) { Value = score });
+            cmd.Parameters.Add(new SqliteParameter("$name", name));
+            cmd.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+        return Task.CompletedTask;
+    }
+
     public Task AddRelationshipsAsync(IReadOnlyList<GraphRelationship> relationships, CancellationToken ct = default)
     {
         using var transaction = _connection.BeginTransaction();

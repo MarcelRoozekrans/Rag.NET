@@ -192,6 +192,39 @@ public class SqliteGraphStoreTests : IAsyncDisposable
         Assert.Equal(2, communities[0].MemberEntities.Count);
     }
 
+    /// <summary>Writing a score writes the score and nothing else.</summary>
+    /// <remarks>
+    /// The description half is the point. <see cref="SqliteGraphStore.AddEntitiesAsync"/> merges by
+    /// appending, so persisting a score through it appended each entity's description to itself;
+    /// this method exists so that a caller updating one column touches one column.
+    /// </remarks>
+    [Fact]
+    public async Task SetPageRankScoresAsync_UpdatesScoreAndLeavesDescriptionIntact()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.AddEntitiesAsync([new GraphEntity("Google", "Org", "A search company")], ct);
+
+        await _store.SetPageRankScoresAsync(
+            new Dictionary<string, double>(StringComparer.Ordinal) { ["google"] = 0.75 }, ct);
+
+        var snapshot = await _store.GetFullGraphAsync(ct);
+        Assert.Equal(0.75, snapshot.Entities[0].PageRankScore);
+        Assert.Equal("A search company", snapshot.Entities[0].Description);
+    }
+
+    /// <summary>A score for an entity the store never had is ignored, not invented.</summary>
+    [Fact]
+    public async Task SetPageRankScoresAsync_UnknownEntity_StoresNothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        await _store.SetPageRankScoresAsync(
+            new Dictionary<string, double>(StringComparer.Ordinal) { ["Nobody"] = 0.5 }, ct);
+
+        var snapshot = await _store.GetFullGraphAsync(ct);
+        Assert.Empty(snapshot.Entities);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _store.DisposeAsync();

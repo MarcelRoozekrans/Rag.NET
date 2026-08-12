@@ -42,9 +42,9 @@ public sealed class CommunityDetectionBehavior(
         // Run Leiden community detection
         var communities = Leiden.Detect(snapshot);
 
-        // Compute PageRank and update entities
+        // Compute PageRank and persist the scores -- only the scores.
         var ranks = PageRank.Compute(snapshot);
-        await UpdateEntitiesWithPageRank(snapshot.Entities, ranks, ct).ConfigureAwait(false);
+        await graphStore.SetPageRankScoresAsync(ranks, ct).ConfigureAwait(false);
 
         // Generate community reports via LLM
         var client = options.SummarizationChatClient ?? chatClient;
@@ -59,22 +59,6 @@ public sealed class CommunityDetectionBehavior(
         await EmbedCommunityReports(ctx, updatedCommunities, ct).ConfigureAwait(false);
 
         return await next(ctx, ct).ConfigureAwait(false);
-    }
-
-    private async Task UpdateEntitiesWithPageRank(
-        IReadOnlyList<GraphEntity> entities,
-        IReadOnlyDictionary<string, double> ranks,
-        CancellationToken ct)
-    {
-        for (int i = 0; i < entities.Count; i++)
-        {
-            if (ranks.TryGetValue(entities[i].Name, out var score))
-            {
-                entities[i].PageRankScore = score;
-            }
-        }
-
-        await graphStore.AddEntitiesAsync(entities, ct).ConfigureAwait(false);
     }
 
     private async Task<IReadOnlyList<Community>> GenerateCommunityReports(

@@ -4,7 +4,24 @@ namespace Rag.NET.Graph;
 public interface IGraphStore : IAsyncDisposable
 {
     /// <summary>Add or merge entities into the store. Duplicate names merge descriptions.</summary>
+    /// <remarks>
+    /// <b>Merging means appending, so this is not the way to update an entity you already read.</b>
+    /// Re-adding a row against itself concatenates its description onto a copy of itself. Callers
+    /// holding entities that came out of <see cref="GetFullGraphAsync"/> and wanting to change one
+    /// field want a targeted writer such as <see cref="SetPageRankScoresAsync"/>.
+    /// </remarks>
     Task AddEntitiesAsync(IReadOnlyList<GraphEntity> entities, CancellationToken ct = default);
+
+    /// <summary>Set PageRank scores by entity name, leaving every other column untouched.</summary>
+    /// <param name="scores">Scores by entity name; names not in the store are ignored.</param>
+    /// <param name="ct">Cancels the write.</param>
+    /// <remarks>
+    /// Exists because the alternative was <see cref="AddEntitiesAsync"/>, and community detection
+    /// using it to persist scores appended every entity's description to itself once per run —
+    /// which, as an ingestion behavior running per document, doubled them per document.
+    /// </remarks>
+    Task SetPageRankScoresAsync(
+        IReadOnlyDictionary<string, double> scores, CancellationToken ct = default);
 
     /// <summary>Add relationships between entities.</summary>
     Task AddRelationshipsAsync(IReadOnlyList<GraphRelationship> relationships, CancellationToken ct = default);
