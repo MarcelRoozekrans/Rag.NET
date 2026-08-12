@@ -554,6 +554,21 @@ Pinned facts, verbatim, do not re-derive:
 | Documents | 609, all titled |
 | Queries / judged | 2,556 / 2,255 |
 | Applicable protocols | `Real`, `GraphRag` |
+| `Source` | `new MultiHopRagSource()` |
+
+> **The source takes no cache directory or `HttpClient`.** `BeirDatasetDescriptor.Source` sits on a
+> `static` field, so it is constructed at type-initialisation, long before any `BeirDatasetCache`
+> exists. `BeirArchiveSource` can take `(dataset, cacheDirectory, httpClient, logger)` only because
+> `EnsureAsync` news it up on the spot. Write `Source = new MultiHopRagSource()` and nothing more;
+> it derives its scratch location from the directory it is handed. Use
+> `MultiHopRagSource.DatasetName` for the descriptor's `Name` so the two cannot drift.
+
+> **Task 7 discovered a rule this plan never stated: the qrels must be deduplicated.** The upstream
+> file holds 6,084 evidence rows but only 5,908 distinct (query, document) pairs — 176 of them are a
+> query citing two separate facts from the same article. Binary judgements mean the second citation
+> adds nothing, so the pairs collapse. The count assertion is what forces this; had the assertion
+> been derived from the data instead of pinned, the duplicate rows would have sailed through and
+> inflated every recall figure computed from them.
 
 The published-reference slot records that **no comparable figure exists**:
 
