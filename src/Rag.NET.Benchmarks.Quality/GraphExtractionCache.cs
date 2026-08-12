@@ -12,7 +12,7 @@ namespace Rag.NET.Benchmarks.Quality;
 /// <b>The cached text is the experiment</b>, exactly as it is for <see cref="HypotheticalCache"/>.
 /// Hosted LLMs are not bit-deterministic even at temperature 0, so "regenerate and compare" does
 /// not exist: the graph the GraphRAG guard asserts against — its entities, its relationships, the
-/// communities the clusterer finds in them — means one thing only if every extraction comes from one
+/// communities Leiden finds in them — means one thing only if every extraction comes from one
 /// generation run, done once by a tool, and read back verbatim ever after. That is why
 /// <see cref="GraphExtractionCacheMode.RefuseOnMiss"/> exists and is the mode the guard runs in.
 /// </para>

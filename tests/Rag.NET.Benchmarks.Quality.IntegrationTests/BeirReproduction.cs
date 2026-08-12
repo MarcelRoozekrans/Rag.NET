@@ -515,9 +515,8 @@ public static class BeirReproduction
             "GraphRagFunctionsTests runs the graph path end to end over a pinned 60-article slice " +
             "of the corpus and asserts that it FUNCTIONS: extraction produced 8,999 entities and " +
             "16,403 relationships, entities recur across articles (\"Google\" in 16 of the 60), " +
-            "the clusterer returned 607 communities, local search retrieved a known-relevant " +
-            "document in the top 10 for all 27 of the slice's judged queries, and global search's " +
-            "map-reduce " +
+            "Leiden returned 607 communities, local search retrieved a known-relevant document in " +
+            "the top 10 for all 27 of the slice's judged queries, and global search's map-reduce " +
             "ran over the community reports. **None of that is a retrieval quality figure.** It is " +
             "scored over 60 of 609 documents and 27 of 2,255 queries, so an nDCG computed from it " +
             "would not be comparable to the Real entry above, to any other row here, or to " +

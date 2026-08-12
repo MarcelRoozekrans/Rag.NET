@@ -6,10 +6,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Graph\Rag.NET.Graph.csproj" />
-    <!-- ObsoleteLeidenForwarderTests compiles a consumer of the deprecated Leiden/LeidenOptions
-         names and asserts the compiler answers with CS0618, a warning, and no error. Nothing
-         short of running the compiler shows what a consumer actually gets. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">

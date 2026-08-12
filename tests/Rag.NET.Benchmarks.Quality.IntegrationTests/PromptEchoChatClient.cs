@@ -15,7 +15,7 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <b>Community reports are not generated here because 607 of them cost real money, not because
 /// they cannot be.</b> That distinction is new. <c>CommunityDetectionBehavior</c> builds a report
 /// prompt by pasting every member entity's whole merged description into one message with no bound
-/// of any kind, and while the clusterer was discarding intra-community weight when aggregating, it put
+/// of any kind, and while Leiden was discarding intra-community weight when aggregating, it put
 /// 8,070 of 8,999 entities into one community and that prompt measured <b>1,806,352 characters</b>
 /// — some 450,000 tokens against gpt-4o-mini's 128,000-token context, with no model to send it to.
 /// Folding those edges into a self-loop dropped the largest community to 796 entities and the

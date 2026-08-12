@@ -138,7 +138,7 @@ public static class GraphRagSliceIngestion
     public const string CommunityDocumentId = "graphrag://communities";
 
     /// <summary>
-    /// Runs community detection, PageRank and community-report generation over whatever the
+    /// Runs Leiden community detection, PageRank and community-report generation over whatever the
     /// graph store now holds, and returns the embedded report chunks.
     /// </summary>
     /// <param name="chatClient">The cached extraction client; it writes the report prompts too.</param>

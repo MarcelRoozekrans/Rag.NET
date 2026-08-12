@@ -67,7 +67,7 @@ public sealed class GraphRagFunctionsTests
     /// </summary>
     /// <remarks>
     /// <b>A ceiling on the largest community's share, not a floor on the singleton count, because
-    /// the share is the number that carries the meaning.</b> The clusterer legitimately emits one
+    /// the share is the number that carries the meaning.</b> Leiden legitimately emits one
     /// community per node it cannot attach to anything, so singletons are largely a property of the
     /// extraction rather than a defect, and a bound on them would fail for an honest reason and
     /// pass for a dishonest one. The two counts are printed side by side because they do not match
@@ -75,7 +75,7 @@ public sealed class GraphRagFunctionsTests
     /// all, while 396 communities hold one member — so some 123 entities have edges and still end
     /// up alone, their neighbours having been drawn elsewhere. What cannot be legitimate is one
     /// community swallowing the graph: at 89.7% — where this slice sat
-    /// while <c>LouvainWithRefinement.BuildAggregatedEdges</c> discarded intra-community weight — every assertion
+    /// while <c>Leiden.BuildAggregatedEdges</c> discarded intra-community weight — every assertion
     /// about clustering below is satisfied while nothing has been clustered. The margin is wide on
     /// purpose: this is a degeneracy detector, not a quality target, and a ceiling set just above
     /// the measurement would go red on a corpus change that means nothing.
@@ -149,7 +149,7 @@ public sealed class GraphRagFunctionsTests
     /// returned nothing usable — an unparseable response, a provider error swallowed as an empty
     /// chunk — while entities without relationships means the model answered the entity half of
     /// the schema and not the relationship half, which leaves every later stage a graph of isolated
-    /// nodes that the clusterer will faithfully report as one community per entity.
+    /// nodes that Leiden will faithfully report as one community per entity.
     /// </remarks>
     private static void AssertExtractionProducedEntitiesAndRelationships(GraphRagSliceRun run)
     {
@@ -166,7 +166,7 @@ public sealed class GraphRagFunctionsTests
             run.Graph.Relationships.Count > 0,
             FormattableString.Invariant($"""
                 EXTRACTION PRODUCED {run.Graph.Entities.Count} ENTITIES AND NO RELATIONSHIPS. The
-                graph has nodes and no edges, so the clusterer's adjacency is empty, every entity stays in
+                graph has nodes and no edges, so Leiden's adjacency is empty, every entity stays in
                 its own community, and both the clustering assertion and global search below would
                 be measuring nothing.
                 """));
@@ -178,7 +178,7 @@ public sealed class GraphRagFunctionsTests
     /// <remarks>
     /// <b>Without this, assertion 3 passes vacuously.</b> Community detection can only find
     /// structure that crosses articles, and a slice whose sixty articles shared no entities would
-    /// produce sixty disconnected components — which the clusterer would return as communities, truthfully,
+    /// produce sixty disconnected components — which Leiden would return as communities, truthfully,
     /// while finding nothing. This is also the assertion that says the query-derived slice did its
     /// job: it was built that way precisely because a multi-hop question cites two to four articles
     /// that share subjects.
@@ -210,7 +210,7 @@ public sealed class GraphRagFunctionsTests
     /// </para>
     /// <para>
     /// <b>The second half asks that several communities cluster, not that every one does, and the
-    /// difference is a finding rather than a softening.</b> The clusterer emits one community per node it
+    /// difference is a finding rather than a softening.</b> Leiden emits one community per node it
     /// cannot attach to anything, which is correct behaviour and not a defect — but on this graph
     /// it does so 396 times out of 607. Demanding zero singletons would make this file red on
     /// arrival, so the numbers are printed on every run, what is known about them is written down
@@ -218,7 +218,7 @@ public sealed class GraphRagFunctionsTests
     /// </para>
     /// <para>
     /// <b>Two defects were found underneath these numbers, and both are fixed.</b> First,
-    /// <c>LouvainWithRefinement</c> and <c>PageRank</c> matched relationship endpoints to entity names with
+    /// <c>Leiden</c> and <c>PageRank</c> matched relationship endpoints to entity names with
     /// <c>StringComparer.Ordinal</c> while <c>SqliteGraphStore</c>'s <c>name</c> column is
     /// <c>COLLATE NOCASE</c>, so every endpoint whose casing differed from the entity it named was
     /// an edge the store held and the clusterer dropped; they now compare through
@@ -227,13 +227,13 @@ public sealed class GraphRagFunctionsTests
     /// said the real cause lay elsewhere.
     /// </para>
     /// <para>
-    /// It lay in aggregation. <c>LouvainWithRefinement.BuildAggregatedEdges</c> skipped edges whose endpoints fell
+    /// It lay in aggregation. <c>Leiden.BuildAggregatedEdges</c> skipped edges whose endpoints fell
     /// in the same community instead of folding them into a self-loop on the super-node, so every
     /// level discarded the intra-community weight modularity's null model is computed from; each
     /// level saw communities far lighter than they were, merging always paid, and the recursion
     /// collapsed whatever was connected into one community. It reproduced with no corpus at all —
     /// ten 10-node cliques ring-bridged by one edge each returned <b>one</b> community of 100 — and
-    /// <c>LouvainWithRefinementTests</c> now pins that case, along with the two- and three-clique cases whose
+    /// <c>LeidenTests</c> now pins that case, along with the two- and three-clique cases whose
     /// <c>Count &gt;= 1</c> assertion had been tolerating the defect. Folding the weight in dropped
     /// the largest community from 8,070 entities to <b>796</b>, its share of the graph from 89.7%
     /// to 8.8%, and the largest report prompt from 1,806,352 characters to 195,446. Implementing the
@@ -264,7 +264,7 @@ public sealed class GraphRagFunctionsTests
             clustered > 1,
             FormattableString.Invariant($"""
                 ONLY {clustered} OF {communities.Count} COMMUNITIES HOLD MORE THAN ONE ENTITY. A
-                community of one is the clusterer reporting an entity it could not attach to anything, not
+                community of one is Leiden reporting an entity it could not attach to anything, not
                 a cluster — its report summarises one description, and global search maps over it as
                 if it were a theme. Over {run.Graph.Entities.Count} entities and
                 {run.Graph.Relationships.Count} relationships, that means the relationship endpoints
@@ -281,7 +281,7 @@ public sealed class GraphRagFunctionsTests
                 report is a summary of the entire corpus, global search maps over it as though it
                 were a theme, and the prompt to write it grows with the corpus rather than with any
                 topic in it. Measured at 7.3%, and at 8.8% when this ceiling was set, against 89.7% before
-                LouvainWithRefinement.BuildAggregatedEdges stopped discarding intra-community weight — so a number
+                Leiden.BuildAggregatedEdges stopped discarding intra-community weight — so a number
                 anywhere near the ceiling means the aggregation step has regressed to treating
                 super-nodes as though they had no internal edges.
                 """));
@@ -547,7 +547,7 @@ public sealed class GraphRagFunctionsTests
 
     /// <summary>How many entities no relationship in the graph names at either end.</summary>
     /// <remarks>
-    /// <b>Printed and never asserted, deliberately.</b> These are the entities the clusterer turns into
+    /// <b>Printed and never asserted, deliberately.</b> These are the entities Leiden turns into
     /// singleton communities, and they are a property of what extraction produced rather than of
     /// how the graph was clustered: a model naming a subject once, in one article, in one phrasing.
     /// A pass/fail bound would hide movement inside its band, and movement is the whole of what is

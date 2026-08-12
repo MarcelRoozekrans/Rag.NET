@@ -109,9 +109,9 @@ public class RefinementNumberingTests
             totalWeight += weight;
         }
 
-        return LouvainWithRefinement.Refine(
+        return Leiden.Refine(
             neighbors, weights, NodeCount, Assignment, singletonCommunities,
-            totalWeight, new LouvainWithRefinementOptions(), new Random(42));
+            totalWeight, new LeidenOptions(), new Random(42));
     }
 
     /// <summary>

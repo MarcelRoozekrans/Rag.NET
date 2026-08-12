@@ -33,7 +33,7 @@ public class GraphAlgorithmsTelemetryTests
         var relationships = new List<GraphRelationship> { new("E0", "E1", "connected") };
         var graph = new GraphSnapshot(entities, relationships, []);
 
-        var communities = LouvainWithRefinement.Detect(graph);
+        var communities = Leiden.Detect(graph);
 
         var span = activities
             .Where(a => a.TraceId == parent.TraceId)

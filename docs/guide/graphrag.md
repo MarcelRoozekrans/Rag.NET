@@ -15,7 +15,7 @@ Avoid GraphRAG for simple factual Q&A where standard vector search suffices — 
 
 Two packages:
 
-- **`Rag.NET.Graph`** — Standalone graph library (no Rag.NET dependency). Modularity community detection, PageRank, IGraphStore abstraction with SQLite default. Usable independently.
+- **`Rag.NET.Graph`** — Standalone graph library (no Rag.NET dependency). Leiden community detection, PageRank, IGraphStore abstraction with SQLite default. Usable independently.
 - **`Rag.NET.GraphRag`** — GraphRAG behaviors for Rag.NET. Entity extraction, community detection, local + global search.
 
 ### Hybrid Storage Model
@@ -34,7 +34,7 @@ Two packages:
 1. **Entity Extraction** — For each chunk, an LLM extracts entities (name, type, description) and relationships (source, target, description, weight)
 2. **Gleaning** — Follow-up LLM passes ask "Did I miss anything?" to improve recall (configurable, default 1 pass)
 3. **Graph Building** — Entities and relationships stored in IGraphStore, descriptions embedded in IVectorStore
-4. **Community Detection** — the `LouvainWithRefinement` type detects clusters of related entities. It is Louvain's local moving and aggregation with the Leiden paper's refinement phase between them, so **every returned community is connected in the subgraph it induces** — see the type's XML remarks for where that guarantee comes from and what it still does not promise. It was called `Leiden` until 0.1.0; that name survives as an `[Obsolete]` forwarder
+4. **Community Detection** — the `Leiden` type detects clusters of related entities. It implements Traag/Waltman/van Eck's Leiden algorithm over modularity — Louvain's local moving and aggregation with the paper's refinement phase between them — so **every returned community is connected in the subgraph it induces**, which is the guarantee that paper exists to supply. See the type's XML remarks for where the guarantee comes from and what it still does not promise
 5. **PageRank** — Computes importance scores for each entity
 6. **Community Reports** — LLM generates summary reports for each community, embedded and stored
 
@@ -87,21 +87,21 @@ rag.UseGraphRag(options =>
     options.ExtractionChatClient = cheapModel;        // Optional cheaper model
     options.SummarizationChatClient = cheapModel;     // Optional for reports
 
-    options.CommunityDetection.Resolution = 1.0;      // Clustering granularity — must be > 0
-    options.CommunityDetection.MaxIterations = 10;    // Local-moving passes per level — must be > 0
-    options.CommunityDetection.MaxLevels = null;      // null = aggregate until no improvement
-    options.CommunityDetection.RandomSeed = 42;       // Fixed, so clustering is reproducible
-    options.CommunityDetection.Randomness = 0.01;     // θ in the refinement's draw — must be > 0
+    options.Leiden.Resolution = 1.0;      // Clustering granularity — must be > 0
+    options.Leiden.MaxIterations = 10;    // Local-moving passes per level — must be > 0
+    options.Leiden.MaxLevels = null;      // null = aggregate until no improvement
+    options.Leiden.RandomSeed = 42;       // Fixed, so clustering is reproducible
+    options.Leiden.Randomness = 0.01;     // θ in the refinement's draw — must be > 0
 
     options.MaxCommunityReportPromptLength = 50_000;  // Report prompt cap, characters — must be > 0
 });
 ```
 
-`UseGraphRag` validates the configured options at registration and throws `ArgumentException` from the configuring line. A negative `MaxEntityDescriptionLength` would throw mid-ingestion on the first extracted entity; zero would silently empty every entity description. A `CommunityDetection.Resolution` of zero or below is rejected the same way: resolution scales modularity's penalty term, so zero removes the penalty entirely and returns one community for every connected graph.
+`UseGraphRag` validates the configured options at registration and throws `ArgumentException` from the configuring line. A negative `MaxEntityDescriptionLength` would throw mid-ingestion on the first extracted entity; zero would silently empty every entity description. A `Leiden.Resolution` of zero or below is rejected the same way: resolution scales modularity's penalty term, so zero removes the penalty entirely and returns one community for every connected graph.
 
 `Randomness` is θ from the Leiden paper, and it is validated where it is set rather than at registration: the refinement divides by it inside `exp(ΔQ / θ)`, so a zero, negative or non-finite value throws `ArgumentOutOfRangeException` from the assigning line. It controls how sharply the refinement's merge draw prefers the best candidate — small values approach greedy, large values approach uniform over every legal merge — and 0.01 is the value the paper's own experiments use. **Randomised does not mean unreproducible:** every draw comes from `RandomSeed`, so a fixed seed still gives a fixed partition.
 
-`options.CommunityDetection` reaches the clustering that community detection runs. Before it existed, `CommunityDetectionBehavior` called the clusterer without options, so every setting on `LouvainWithRefinementOptions` was unreachable through `UseGraphRag` and the defaults were the only values that had ever run — despite this guide telling you to adjust them. The property was called `options.Leiden` until 0.1.0 and still answers to it, deprecated.
+`options.Leiden` reaches the clustering that community detection runs. Before it existed, `CommunityDetectionBehavior` called the clusterer without options, so every setting on `LeidenOptions` was unreachable through `UseGraphRag` and the defaults were the only values that had ever run — despite this guide telling you to adjust them.
 
 `MaxCommunityReportPromptLength` bounds the prompt used to summarise one community. Without it the prompt's size was a property of your corpus rather than of the code — every member entity's whole merged description went into one message — and a large community could build a prompt no model would accept. A community that exceeds the budget is **truncated, not rejected**: members are emitted in PageRank order so the least central drop out first, three quarters of the budget goes to entities and the rest to the relationships between them, and the prompt says what was left out so the summariser is not shown a fragment as though it were the whole. Truncation is tagged on the `ragnet.graphrag.communities` activity as `graphrag.community.report.truncated`.
 
@@ -193,9 +193,9 @@ Entities, relationships, and community reports are stored as additional embedded
 `Rag.NET.Graph` is usable independently — no Rag.NET dependency required:
 
 ```csharp
-// Modularity community detection
+// Leiden community detection
 var graph = new GraphSnapshot(entities, relationships, []);
-var communities = LouvainWithRefinement.Detect(graph, new LouvainWithRefinementOptions { Resolution = 1.0 });
+var communities = Leiden.Detect(graph, new LeidenOptions { Resolution = 1.0 });
 
 // PageRank
 var ranks = PageRank.Compute(graph);
@@ -222,7 +222,7 @@ Retrieval:  VectorStore → Ensemble → Filter → [GraphRAG Local/Global] → 
 - Try increasing chunk size — very short chunks may not contain extractable entities
 
 **Too many/few communities**
-- Adjust `options.CommunityDetection.Resolution` in `UseGraphRag`'s ingestion options
+- Adjust `options.Leiden.Resolution` in `UseGraphRag`'s ingestion options
 - Higher resolution = more, smaller communities
 
 **Global search returns empty**

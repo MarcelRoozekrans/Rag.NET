@@ -3440,13 +3440,18 @@ stops anyone finding it.
   paper moves only nodes alone in their refined community and merges one "only if both are
   sufficiently well connected to their community in P", and picks the target randomly by θ-weighted
   quality increase rather than by best gain. **Implementing the seeding step alone would leave the
-  name just as false and look like it had been fixed.** **Renamed 2026-08-12:** the type is
-  `LouvainWithRefinement`, its settings `LouvainWithRefinementOptions`, and the ingestion property
-  `options.CommunityDetection`. **Fixed 2026-08-12 (#180)** — all three constraints and the seeding
-  step, below. The rename is **not** being reverted: the descriptive name is accurate whatever the
-  algorithm turns out to be, and reversing it would cost every caller a second migration to say
-  nothing new. The `[Obsolete]` messages, which had been asserting the missing guarantee, were the
-  last place in the tree still recording it and now say only what the rename was for.
+  name just as false and look like it had been fixed.** **Renamed 2026-08-12 (#181):** the type
+  became `LouvainWithRefinement`, its settings `LouvainWithRefinementOptions`, and the ingestion
+  property `options.CommunityDetection`, each old name kept as an `[Obsolete]` forwarder. **Fixed
+  2026-08-12 (#180)** — all three constraints and the seeding step, below. **Renamed back
+  2026-08-12, same day:** once the guarantee held, the descriptive name understated the code and
+  nobody searching for "Leiden" would find it, so `Leiden`, `LeidenOptions` and `options.Leiden` are
+  the names again. The argument for keeping the descriptive name was that reversing would cost
+  callers a second migration — that argument was wrong on its premise. nuget.org has only 0.1.0,
+  published before the rename, and `git tag --contains` on the rename commit is empty, so no
+  consumer ever saw the new names and the net cost to anyone downstream is one rename rather than
+  two. The forwarders are **deleted** rather than stacked in the other direction, for the same
+  reason: they protected nobody and a second layer pointing back would only confuse.
 - **The missing guarantee fired, and is now supplied (#180).** Written as a disclaimer, then tested,
   because this repository has twice learned that "it is implemented" and "it works" are different
   claims. A ~30,000-detection sweep returned disconnected communities on sparse *weighted* graphs —
@@ -3458,7 +3463,7 @@ stops anyone finding it.
   `E(C, S−C) ≥ γ·K_C·(K_S − K_C) / 2m`); the target drawn at random with probability proportional
   to `exp(ΔQ / θ)` over candidates with `ΔQ ≥ 0`, staying put included at `ΔQ = 0`; and the
   aggregate graph built from P_refined while the next level is seeded from P rather than reset to
-  singletons. θ is the new `LouvainWithRefinementOptions.Randomness`, defaulting to 0.01 — the
+  singletons. θ is the new `LeidenOptions.Randomness`, defaulting to 0.01 — the
   paper's own experimental value — and validated in its setter.
   **Re-swept with the same harness against both implementations: 132 disconnected of 3,351,175
   communities before, 0 of 3,359,331 after**, over 40,000 random weighted trees × five resolutions ×

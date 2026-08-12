@@ -10,7 +10,7 @@ namespace Rag.NET.Graph;
 /// places, and one of them was wrong.</b> <see cref="SqliteGraphStore"/> declares
 /// <c>entities.name</c> as <c>TEXT PRIMARY KEY COLLATE NOCASE</c> and matches relationship
 /// endpoints with <c>COLLATE NOCASE</c>, so "Google" and "google" are one entity there and an edge
-/// between them is an edge it will traverse. The modularity clusterer and PageRank matched endpoints to
+/// between them is an edge it will traverse. The Leiden clusterer and PageRank matched endpoints to
 /// names with <see cref="StringComparer.Ordinal"/>, and so silently dropped every edge whose
 /// endpoint was spelled with different casing from the entity it named — edges the store held and
 /// would happily walk. Over a sixty-article corpus that cost the clustering most of its structure.

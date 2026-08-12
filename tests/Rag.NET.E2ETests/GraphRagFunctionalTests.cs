@@ -231,7 +231,7 @@ public sealed class GraphRagFunctionalTests : IAsyncLifetime
         Assert.True(
             snapshot.Communities.Count > 0,
             "Community detection produced no communities over a non-empty entity set — " +
-            "CommunityDetectionBehavior did not run, or the clusterer returned nothing.");
+            "CommunityDetectionBehavior did not run, or Leiden returned nothing.");
     }
 
     private static void AssertEntityPresent(GraphSnapshot snapshot, string nameFragment)
