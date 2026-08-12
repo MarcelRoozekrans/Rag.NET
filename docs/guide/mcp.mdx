@@ -208,7 +208,7 @@ Search the knowledge base and return ranked chunks.
 |---|---|---|---|
 | `query` | string | — | The natural-language query |
 | `topK` | int | 5 | Maximum number of results |
-| `useHybrid` | bool | true | BM25 + vector hybrid search |
+| `useHybrid` | bool | true | Hybrid retrieval. **Not always BM25** — see the note below |
 
 Returns a JSON array of `SearchResult` objects with `Chunk.Text`, `Chunk.DocumentId`, `Chunk.ChunkIndex`, `Score`, and `Chunk.Metadata`.
 
@@ -231,12 +231,35 @@ Add a document to the knowledge base at runtime.
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `content` | string | — | Document text (inline) |
-| `documentId` | string? | auto | Stable ID for updates/deletes |
+| `documentId` | string? | auto | Identifies the document. **Does not enable update or delete** — see the note below |
 | `fileName` | string? | `{id}.txt` | Used to infer content type |
 | `contentType` | string? | — | MIME type override |
-| `tags` | string[]? | — | Metadata as `key=value` pairs, e.g. `["author=Alice", "year=2024"]` |
+| `tags` | string[]? | — | Metadata as `key=value` pairs, e.g. `["author=Alice", "topic=AI"]`. **Every value is stored as a string** — see the note below |
 
 Returns `{ "DocumentId": "...", "ChunksStored": N }`.
+
+:::warning What these three parameters do not do
+
+Corrected 2026-08-12 after an audit of the tool surface against the code. All three were
+documented as doing more than they do.
+
+**`documentId` does not give you updates or deletes.** Updating an existing document needs
+`IngestionOptions.Overwrite`, and `rag_ingest` never passes an `IngestionOptions` at all — so
+re-ingesting the same id **appends a second copy** rather than replacing the first. There is no
+delete tool either, although `IRagPipeline.DeleteAsync` exists in the library. Over MCP, documents
+can currently be created but not changed or removed. Tracked in
+[#161](https://github.com/MarcelRoozekrans/Rag.NET/issues/161).
+
+**`useHybrid` does not always run BM25.** When the vector store implements `IHybridSearchable` and
+`MinScore` is `0.0` — which it always is over MCP, since no tool exposes it — the store's own
+server-side fusion runs and **no BM25 arm executes**. You get hybrid retrieval, but the store's,
+not this library's.
+
+**`tags` values are always strings.** The tool assigns every value as a string, so `year=2024` is
+stored as `"2024"` and a typed `MetadataFilter` comparing it against the number `2024` will not
+match. Use string comparisons, or set typed metadata through the library rather than the tool.
+
+:::
 
 ---
 
