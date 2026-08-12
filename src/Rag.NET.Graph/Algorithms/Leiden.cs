@@ -41,10 +41,15 @@ namespace Rag.NET.Graph.Algorithms;
 /// alone would not earn the name either.
 /// </para>
 /// <para>
-/// <b>Concretely, what is not guaranteed.</b> A refined sub-community is built by attaching nodes to
-/// sub-communities they have an edge to, but a node may later leave one it was the sole link
-/// through, so a returned community can be internally disconnected. Nothing in this suite pins
-/// otherwise: the clique tests assert community counts and sizes, none asserts connectedness.
+/// <b>Concretely, what is not guaranteed, and it has been measured rather than argued.</b> A refined
+/// sub-community is built by attaching nodes to sub-communities they have an edge to, but a node may
+/// later leave one it was the sole link through, and nothing puts the remainder back together — so a
+/// returned community can be internally disconnected. It does happen. A sweep of some 30,000
+/// detections found none on anything dense (cliques, planted partitions, Erdős–Rényi, barbells) and
+/// found them on sparse weighted graphs: 48 of 2,220 random weighted trees held a disconnected
+/// community for some resolution and seed, while 2,220 <i>unweighted</i> trees held none. A ten-node
+/// example is pinned in <c>LeidenCommunityConnectivityTests</c>, at the default resolution, where a
+/// returned community contains a node with no edge to any other member.
 /// </para>
 /// <para>
 /// <b>Why the name was kept anyway.</b> <c>Leiden</c> is public in a package shipped at 0.1.0, and

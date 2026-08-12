@@ -3442,6 +3442,14 @@ stops anyone finding it.
   quality increase rather than by best gain. **Implementing the seeding step alone would leave the
   name just as false and look like it had been fixed.** Renaming stays open: `Leiden` is public at
   0.1.0 and the name also reaches `LeidenOptions`, `options.Leiden` and the guide.
+- **The missing guarantee is not theoretical — it fires (#180).** Written as a disclaimer, then
+  tested, because this repository has twice learned that "it is implemented" and "it works" are
+  different claims. A ~30,000-detection sweep returns disconnected communities on sparse *weighted*
+  graphs — 48 of 2,220 random weighted trees, 14 of 520 tree-plus-chords, **0 of 2,220 unweighted
+  trees**, and 0 on anything dense. The weights open the gap, not the sparsity. A ten-node tree at
+  the default resolution is pinned in `LeidenCommunityConnectivityTests` as a still-false record.
+  **Extracted entity graphs are sparse and weighted, and whether this fires on the MultiHop-RAG
+  slice has not been checked** — that check is cheap and is the next thing worth doing.
 - **Retrieval-mode routing (#104) does not exist at all** — no `Mode` property, no
   `GraphRagRetrievalMode` enum, nothing in either behavior consulting one. **That issue's framing is
   itself wrong**: it reads as "a setting is not honoured" when the setting was deleted at 0.1.0
