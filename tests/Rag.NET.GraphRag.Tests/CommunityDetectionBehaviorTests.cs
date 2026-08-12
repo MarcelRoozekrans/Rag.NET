@@ -211,6 +211,47 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
         Assert.All(snapshot.Entities, entity => Assert.True(entity.PageRankScore > 0.0));
     }
 
+    /// <summary>The configured Leiden resolution actually reaches Leiden.</summary>
+    /// <remarks>
+    /// <b>The plumbing test above proves the option is stored; this one proves it is read.</b> That
+    /// is the distinction #108 was written about: <c>GraphRagOptions.EntityTypes</c> was settable,
+    /// documented and marked done for a release while being ignored at the point of use, and a test
+    /// asserting only that the setter round-trips would have stayed green throughout. Resolution
+    /// scales modularity's penalty term, so raising it splits communities that a lower one merges;
+    /// two runs over the same graph must therefore disagree.
+    /// </remarks>
+    [Fact]
+    public async Task HandleAsync_HigherLeidenResolution_ProducesMoreCommunities()
+    {
+        SetupChatClient("Community report text");
+        SetupEmbedder(4);
+        await PopulateGraphStore();
+
+        var coarse = await CountCommunitiesAtResolutionAsync(0.5);
+        var fine = await CountCommunitiesAtResolutionAsync(5.0);
+
+        Assert.True(
+            fine > coarse,
+            $"resolution 5.0 produced {fine} communities and 0.5 produced {coarse}; if they are " +
+            "equal the setting is not reaching Leiden.Detect");
+    }
+
+    /// <summary>Runs detection once at one resolution and reports how many communities it found.</summary>
+    private async Task<int> CountCommunitiesAtResolutionAsync(double resolution)
+    {
+        var options = new GraphRagOptions { Enabled = true };
+        options.Leiden.Resolution = resolution;
+        var sut = new CommunityDetectionBehavior(_chatClient, _embedder, _graphStore, options);
+        var ct = TestContext.Current.CancellationToken;
+
+        await sut.HandleAsync(CreateContext(), ct, (c, _) =>
+            ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+
+        var snapshot = await _graphStore.GetFullGraphAsync(ct);
+
+        return snapshot.Communities.Count;
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private static IngestionContext CreateContext()

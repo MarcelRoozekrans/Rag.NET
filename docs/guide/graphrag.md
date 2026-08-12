@@ -86,10 +86,17 @@ rag.UseGraphRag(options =>
     options.MaxEntityDescriptionLength = 500;         // Summarization threshold — must be greater than 0
     options.ExtractionChatClient = cheapModel;        // Optional cheaper model
     options.SummarizationChatClient = cheapModel;     // Optional for reports
+
+    options.Leiden.Resolution = 1.0;                  // Clustering granularity — must be > 0
+    options.Leiden.MaxIterations = 10;                // Local-moving passes per level — must be > 0
+    options.Leiden.MaxLevels = null;                  // null = aggregate until no improvement
+    options.Leiden.RandomSeed = 42;                   // Fixed, so clustering is reproducible
 });
 ```
 
-`UseGraphRag` validates the configured options at registration and throws `ArgumentException` from the configuring line. A negative `MaxEntityDescriptionLength` would throw mid-ingestion on the first extracted entity; zero would silently empty every entity description.
+`UseGraphRag` validates the configured options at registration and throws `ArgumentException` from the configuring line. A negative `MaxEntityDescriptionLength` would throw mid-ingestion on the first extracted entity; zero would silently empty every entity description. A `Leiden.Resolution` of zero or below is rejected the same way: resolution scales modularity's penalty term, so zero removes the penalty entirely and returns one community for every connected graph.
+
+`options.Leiden` reaches the clustering that community detection runs. Before it existed, `CommunityDetectionBehavior` called `Leiden.Detect(snapshot)` without options, so every setting on `LeidenOptions` was unreachable through `UseGraphRag` and the defaults were the only values that had ever run — despite this guide telling you to adjust them.
 
 `EntityTypes` and `RelationshipTypes` are enforced in two layers. The allowed lists are substituted into the extraction prompt's `{entity_types}` and `{relationship_types}` placeholders (when they are null the placeholders render the open-extraction guidance instead), and anything the LLM still returns outside a configured list is dropped — case-insensitively — before it reaches the graph store or the embedded chunks, including gleaning-pass output. A custom `EntityExtractionPrompt` without the placeholders still gets the filtering layer, so the constraint holds regardless of prompt. Relationships carry their kind in the `description` field (a concise verb phrase), so `RelationshipTypes` constrains that field. An empty array behaves like null rather than silently dropping every extraction.
 
@@ -205,7 +212,7 @@ Retrieval:  VectorStore → Ensemble → Filter → [GraphRAG Local/Global] → 
 - Try increasing chunk size — very short chunks may not contain extractable entities
 
 **Too many/few communities**
-- Adjust Leiden `Resolution` parameter via LeidenOptions
+- Adjust `options.Leiden.Resolution` in `UseGraphRag`'s ingestion options
 - Higher resolution = more, smaller communities
 
 **Global search returns empty**

@@ -39,8 +39,8 @@ public sealed class CommunityDetectionBehavior(
             return await next(ctx, ct).ConfigureAwait(false);
         }
 
-        // Run Leiden community detection
-        var communities = Leiden.Detect(snapshot);
+        // Run Leiden community detection, with the caller's settings rather than the defaults.
+        var communities = Leiden.Detect(snapshot, options.Leiden);
 
         // Compute PageRank and persist the scores -- only the scores.
         var ranks = PageRank.Compute(snapshot);
