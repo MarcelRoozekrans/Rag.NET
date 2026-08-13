@@ -1,6 +1,7 @@
 # Overnight run plan — 2026-08-13
 
-**Operator:** unattended. **Budget:** hard cap **$100** on OpenRouter, enforced in code, not by judgement.
+**Operator:** unattended. **Budget:** **$100** ceiling on OpenRouter — bounded by the corpus rather than
+by code; see Budget below for why no cap was built.
 **Starting point:** `main` at `06de0ab0`, build 0/0, all suites green.
 
 Written before starting because the last two nights each lost hours to something that would have
@@ -24,17 +25,17 @@ scheduled concurrently with a benchmark. **The agent does not poll a running ben
 
 | # | Task | Est. | Needs quiet | Cost | Gate |
 |---|---|---|---|---|---|
+| 1 | **Pilot** — 20 fresh articles, calibrate the real rate | ~12 m | no | ~$0.50 | — |
 | 2 | **Full BenchmarkDotNet suite**, 113 methods / 37 files | **72 m** measured | **yes** | $0 | #187 merged, so MapReduce now resolves |
 | 3 | Analyse vs `benchmarks.md`; regression check | ~30 m | no | $0 | |
 | 4 | **PR A** — GraphRAG rows invalidated by #180 | — | no | $0 | |
 | 5 | **PR B** — the other 19 sections | — | no | $0 | after A; same file |
-| 1 | **Pilot** — 20 fresh articles, calibrate the real rate | ~12 m | no | ~$0.50 | — |
-| 7 | **#173 extraction** — 609 articles | **~6 h** derived | no | ~$12 est | after 6 confirms the rate |
-| 8 | **#172** — real community reports | 20–40 m derived | no | ~$1–2 | after 7 |
-| 9 | **#173 comparative measurement** | 1–2 h derived | **yes** ideally | $0 | after 8 |
-| 10 | **#174** — cold re-measure of the Real leg | ~15 m | **yes** | $0 | only if time remains |
+| 6 | **#173 extraction** — 609 articles | **~6 h** derived | no | ~$12 est | after the pilot confirms the rate |
+| 7 | **#172** — real community reports | 20–40 m derived | no | ~$1–2 | after 7 |
+| 8 | **#173 comparative measurement** | 1–2 h derived | **yes** ideally | $0 | after 8 |
+| 9 | **#174** — cold re-measure of the Real leg | ~15 m | **yes** | $0 | only if time remains |
 
-Steps 2 and 9 both want quiet and sit at opposite ends of the night. If 9 arrives while the machine
+The benchmark suite and the comparative measurement both want quiet and sit at opposite ends of the night. If 9 arrives while the machine
 is busy, **defer it** rather than take a contended number — that is the whole content of #174.
 
 ## Estimates, and how much to trust them
@@ -43,11 +44,11 @@ Only two figures here are measured: **72 min** for the benchmark suite, and **2,
 60-article extraction. Everything else is scaled from those.
 
 **My scaling has been wrong by 3.4x twice this week** — the TREC-COVID leg (predicted 6 h 20 m,
-took 1 h 50 m) and "roughly 600 chunks" (actual 2,044). So step 6 exists specifically to replace the
+took 1 h 50 m) and "roughly 600 chunks" (actual 2,044). So the pilot exists specifically to replace the
 extraction estimate with a measurement before committing six hours to it. If the pilot disagrees
 with the estimate by more than ~2x, **stop and re-plan rather than proceeding on a broken model.**
 
-Step 8's duration is not derivable at all — nothing has ever generated a real community report at
+The community-report step's duration is not derivable at all — nothing has ever generated a real community report at
 scale here. Treat its estimate as a placeholder.
 
 ## Budget — bounded by the corpus, not by code
@@ -60,7 +61,7 @@ chunk plus a gleaning pass, so ~41,500 requests, ~$12 at gpt-4o-mini rates. Comm
 perhaps $13. The run cannot exceed the corpus — there is no loop that could run away.
 
 So $100 is roughly **7x** the expected total. For it to bind, the cost model would have to be wrong
-by nearly an order of magnitude, and step 1 exists to catch exactly that before six hours are
+by nearly an order of magnitude, and the pilot exists to catch exactly that before six hours are
 committed.
 
 **The control is therefore the pilot, not a limit.** 20 fresh articles measure the real rate. If the
@@ -96,5 +97,5 @@ letting it look like carelessness.
 
 - **The #184 bootstrapping design.** Needs a design pass, not an overnight slot.
 - **Milestone 6 issues** (#189–#199) beyond what the runs touch.
-- **Anything that evicts the shared embedding cache** except step 10, and only if it is reached —
+- **Anything that evicts the shared embedding cache** except the cold re-measure, and only if it is reached —
   it costs every other BEIR dataset its vectors.
