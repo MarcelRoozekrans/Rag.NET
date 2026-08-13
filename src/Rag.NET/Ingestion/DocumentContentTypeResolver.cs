@@ -53,7 +53,7 @@ internal static class DocumentContentTypeResolver
     /// else behaves exactly as before.
     /// </para>
     /// </remarks>
-    public static string Resolve(DocumentMetadata metadata)
+    public static string ResolveContentType(this DocumentMetadata metadata)
     {
         if (!string.IsNullOrWhiteSpace(metadata.ContentType))
         {

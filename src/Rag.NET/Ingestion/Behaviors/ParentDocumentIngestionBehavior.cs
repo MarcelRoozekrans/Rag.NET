@@ -39,7 +39,7 @@ public sealed class ParentDocumentIngestionBehavior : IIngestionBehavior
         // identical "nothing parses this" condition as a bare InvalidOperationException, which
         // PipelineIngestor does not map to RagError.NoParserFound, so only one of the two paths
         // was catchable as the documented error (issue #130).
-        var parentContentType = DocumentContentTypeResolver.Resolve(ctx.Metadata);
+        var parentContentType = ctx.Metadata.ResolveContentType();
         var parser = Parsers.FirstOrDefault(p => p.CanParse(parentContentType))
             ?? throw new NoParserFoundException(parentContentType);
         var parentBoundaries = new List<(int start, int end)>();

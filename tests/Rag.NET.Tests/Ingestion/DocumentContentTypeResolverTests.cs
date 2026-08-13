@@ -20,8 +20,8 @@ public class DocumentContentTypeResolverTests
     public void ADeclaredTypeWinsOverTheFilename()
     {
         // The caller knows better than the extension — a .txt holding JSON, say.
-        var resolved = DocumentContentTypeResolver.Resolve(
-            Metadata(fileName: "data.txt", contentType: "application/json"));
+        var resolved = Metadata(fileName: "data.txt", contentType: "application/json")
+            .ResolveContentType();
 
         Assert.Equal("application/json", resolved);
     }
@@ -32,7 +32,7 @@ public class DocumentContentTypeResolverTests
     [InlineData("notes.md", "text/markdown")]
     public void PdfWithNoDeclaredType_IsInferredFromTheFilename(string fileName, string expected)
     {
-        var resolved = DocumentContentTypeResolver.Resolve(Metadata(fileName, contentType: null));
+        var resolved = Metadata(fileName, contentType: null).ResolveContentType();
 
         Assert.Equal(expected, resolved);
     }
@@ -47,7 +47,7 @@ public class DocumentContentTypeResolverTests
         // ContentTypeMap answers application/octet-stream for a miss, and nothing parses that —
         // so using it would turn working ingestion of genuinely-textual files into a throw. The
         // fix is deliberately narrow: known formats parse correctly, everything else is unchanged.
-        var resolved = DocumentContentTypeResolver.Resolve(Metadata(fileName, contentType: null));
+        var resolved = Metadata(fileName, contentType: null).ResolveContentType();
 
         Assert.Equal("text/plain", resolved);
     }
@@ -58,7 +58,7 @@ public class DocumentContentTypeResolverTests
         // ContentTypeMap's own remarks depend on this: its fallback assumes no parser claims
         // application/octet-stream, which is what makes an unclaimed container attachment a
         // warn-and-skip rather than a hard failure.
-        var resolved = DocumentContentTypeResolver.Resolve(Metadata("mystery.zzz", contentType: null));
+        var resolved = Metadata("mystery.zzz", contentType: null).ResolveContentType();
 
         Assert.NotEqual("application/octet-stream", resolved, StringComparer.Ordinal);
     }
@@ -70,7 +70,7 @@ public class DocumentContentTypeResolverTests
     {
         // Otherwise an empty string from configuration binding would be handed to the parsers as
         // a content type, and nothing claims "".
-        var resolved = DocumentContentTypeResolver.Resolve(Metadata("report.pdf", contentType));
+        var resolved = Metadata("report.pdf", contentType).ResolveContentType();
 
         Assert.Equal("application/pdf", resolved);
     }
