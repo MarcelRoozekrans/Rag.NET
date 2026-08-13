@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Abstractions;
 using Rag.NET.AnswerEngines;
 using Rag.NET.Models;
@@ -39,7 +40,8 @@ public sealed class MapReduceAnswerEngine(
     public static MapReduceAnswerEngine CreateFromServices(IServiceProvider serviceProvider) =>
         new(
             serviceProvider.GetRequiredService<IChatClient>(),
-            serviceProvider.GetRequiredService<ILogger<MapReduceAnswerEngine>>(),
+            serviceProvider.GetService<ILogger<MapReduceAnswerEngine>>()
+                ?? NullLogger<MapReduceAnswerEngine>.Instance,
             serviceProvider.GetService<IConversationMemory>(),
             serviceProvider.GetService<IContextualCompressor>());
 

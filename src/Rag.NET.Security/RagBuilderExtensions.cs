@@ -14,7 +14,7 @@ public static class RagBuilderExtensions
         where TBuilder : IRagBuilder
     {
         builder.Services.AddSingleton<IChunkSanitiser>(sp =>
-            new RegexChunkSanitiser(sp.GetRequiredService<ILogger<RegexChunkSanitiser>>()));
+            new RegexChunkSanitiser(sp.GetService<ILogger<RegexChunkSanitiser>>()));
         return builder;
     }
 
@@ -24,7 +24,7 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton<IChunkSanitiser>(sp =>
             new LlmChunkSanitiser(
                 sp.GetRequiredService<IChatClient>(),
-                sp.GetRequiredService<ILogger<LlmChunkSanitiser>>()));
+                sp.GetService<ILogger<LlmChunkSanitiser>>()));
         return builder;
     }
 
@@ -32,7 +32,7 @@ public static class RagBuilderExtensions
         where TBuilder : IRagBuilder
     {
         builder.Services.AddSingleton<IQuerySanitiser>(sp =>
-            new RegexQuerySanitiser(sp.GetRequiredService<ILogger<RegexQuerySanitiser>>()));
+            new RegexQuerySanitiser(sp.GetService<ILogger<RegexQuerySanitiser>>()));
         EnsureQuerySanitiserDecorator(builder);
         return builder;
     }
@@ -43,7 +43,7 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton<IQuerySanitiser>(sp =>
             new LlmQuerySanitiser(
                 sp.GetRequiredService<IChatClient>(),
-                sp.GetRequiredService<ILogger<LlmQuerySanitiser>>()));
+                sp.GetService<ILogger<LlmQuerySanitiser>>()));
         EnsureQuerySanitiserDecorator(builder);
         return builder;
     }
@@ -65,7 +65,7 @@ public static class RagBuilderExtensions
         where TBuilder : IRagBuilder
     {
         builder.Services.AddSingleton<IRetrievalGuard>(sp =>
-            new RegexRetrievalGuard(sp.GetRequiredService<ILogger<RegexRetrievalGuard>>()));
+            new RegexRetrievalGuard(sp.GetService<ILogger<RegexRetrievalGuard>>()));
         return builder;
     }
 
@@ -79,7 +79,7 @@ public static class RagBuilderExtensions
         builder.Services.AddSingleton<IRetrievalGuard>(sp =>
             new TrustLevelRetrievalGuard(
                 sp.GetRequiredService<TrustLevelGuardOptions>(),
-                sp.GetRequiredService<ILogger<TrustLevelRetrievalGuard>>()));
+                sp.GetService<ILogger<TrustLevelRetrievalGuard>>()));
         return builder;
     }
 

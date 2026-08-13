@@ -28,7 +28,7 @@ public static class RagBuilderExtensions
             new ImageDocumentParser(
                 opts.ChatClient ?? sp.GetRequiredService<IChatClient>(),
                 opts,
-                sp.GetRequiredService<ILogger<ImageDocumentParser>>()));
+                sp.GetService<ILogger<ImageDocumentParser>>()));
         builder.Services.AddSingleton<IDocumentParser>(sp => sp.GetRequiredService<ImageDocumentParser>());
         builder.Services.AddSingleton<ImageChunkingStrategy>();
         builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<ImageChunkingStrategy>());
@@ -67,7 +67,7 @@ public static class RagBuilderExtensions
             new VideoDocumentParser(
                 opts.ChatClient ?? sp.GetRequiredService<IChatClient>(),
                 opts,
-                sp.GetRequiredService<ILogger<VideoDocumentParser>>()));
+                sp.GetService<ILogger<VideoDocumentParser>>()));
         builder.Services.AddSingleton<IDocumentParser>(sp => sp.GetRequiredService<VideoDocumentParser>());
         builder.Services.AddSingleton<VideoChunkingStrategy>();
         builder.Services.AddSingleton<IDocumentChunkingStrategy>(sp => sp.GetRequiredService<VideoChunkingStrategy>());

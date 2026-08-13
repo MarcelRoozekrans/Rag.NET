@@ -22,6 +22,30 @@ public class UseMapReduceAnswerEngineTests
         return services;
     }
 
+    /// <summary>
+    /// The minimum a user actually registers — vector store, embedding generator, chat client —
+    /// with no logging at all. A missing logger must degrade to no logging, never to a crash.
+    /// </summary>
+    private static IServiceCollection ServicesWithoutLogging()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Substitute.For<IChatClient>());
+        services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+        services.AddSingleton(Substitute.For<IVectorStore>());
+        return services;
+    }
+
+    [Fact]
+    public void UseMapReduceAnswerEngine_WithoutLoggingRegistered_ResolvesPipeline()
+    {
+        var sp = ServicesWithoutLogging()
+            .AddRagNet(rag => rag.UseMapReduceAnswerEngine())
+            .BuildServiceProvider();
+
+        Assert.NotNull(sp.GetRequiredService<IRagPipeline>());
+        Assert.IsType<MapReduceAnswerEngine>(sp.GetRequiredService<IAnswerEngine>());
+    }
+
     [Fact]
     public void UseMapReduceAnswerEngine_RegistersIAnswerEngine()
     {
