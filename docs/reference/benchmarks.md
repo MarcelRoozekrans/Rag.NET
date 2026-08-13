@@ -368,27 +368,44 @@ Hierarchical summarization and blended retrieval. `Ingestion_WithRaptor` measure
 
 Community detection, PageRank, entity extraction, and graph-aware retrieval. Baseline (`Ingestion_WithoutGraphRag`) is a no-op ingestion step.
 
+Re-measured **2026-08-14** against the Leiden implemented by #180 (`55e735d5`). The previous
+figures measured the pre-refinement algorithm and are not comparable row-for-row; the notes below
+give the one row where the difference is unambiguous.
+
 | Method | Nodes | Mean | Allocated |
 |--------|------:|-----:|----------:|
-| Leiden_Detect | 50 | 531 μs | 250 KB |
-| PageRank_Compute | 50 | 67 μs | 13 KB |
-| Ingestion_WithoutGraphRag | 50 | 6 μs | 712 B |
-| Ingestion_WithGraphEntityExtraction | 50 | 376 μs | 131 KB |
-| Retrieval_LocalSearch | 50 | 103 μs | 19 KB |
-| Retrieval_GlobalSearch | 50 | 26 μs | 6 KB |
-| Leiden_Detect | 200 | 2,605 μs | 1,077 KB |
-| PageRank_Compute | 200 | 228 μs | 51 KB |
-| Ingestion_WithGraphEntityExtraction | 200 | 370 μs | 131 KB |
-| Retrieval_LocalSearch | 200 | 134 μs | 50 KB |
-| Retrieval_GlobalSearch | 200 | 27 μs | 17 KB |
-| Leiden_Detect | 1,000 | 5,457 μs | 8,134 KB |
-| PageRank_Compute | 1,000 | 675 μs | 250 KB |
-| Ingestion_WithGraphEntityExtraction | 1,000 | 411 μs | 131 KB |
-| Retrieval_LocalSearch | 1,000 | 361 μs | 196 KB |
-| Retrieval_GlobalSearch | 1,000 | 76 μs | 76 KB |
+| Leiden_Detect | 50 | 436 μs | 238 KB |
+| PageRank_Compute | 50 | 53 μs | 13 KB |
+| Ingestion_WithoutGraphRag | 50 | 2.9 μs | 744 B |
+| Ingestion_WithGraphEntityExtraction | 50 | 471 μs | 183 KB |
+| Retrieval_LocalSearch | 50 | 68 μs | 19 KB |
+| Retrieval_GlobalSearch | 50 | 15 μs | 6 KB |
+| Leiden_Detect | 200 | 1,933 μs | 1,210 KB |
+| PageRank_Compute | 200 | 186 μs | 51 KB |
+| Ingestion_WithoutGraphRag | 200 | 3.4 μs | 744 B |
+| Ingestion_WithGraphEntityExtraction | 200 | 446 μs | 183 KB |
+| Retrieval_LocalSearch | 200 | 133 μs | 49 KB |
+| Retrieval_GlobalSearch | 200 | 21 μs | 18 KB |
+| Leiden_Detect | 1,000 | 11,853 μs | 8,771 KB |
+| PageRank_Compute | 1,000 | 621 μs | 250 KB |
+| Ingestion_WithoutGraphRag | 1,000 | 3.5 μs | 744 B |
+| Ingestion_WithGraphEntityExtraction | 1,000 | 466 μs | 183 KB |
+| Retrieval_LocalSearch | 1,000 | 439 μs | 196 KB |
+| Retrieval_GlobalSearch | 1,000 | 44 μs | 76 KB |
 
 **Notes:**
-- Leiden community detection scales super-linearly with node count — runs offline during ingestion, not on the query path. **These numbers predate #180**, which added the refinement's three well-connectedness constraints and a redraw when a refinement merges nothing; the cost per level and the number of levels both moved, and the table has not been re-recorded since.
+- **`Leiden_Detect` at 1,000 nodes more than doubled: 5,457 μs → 11,853 μs.** This is the cost of
+  #180 — the refinement's three well-connectedness constraints, plus the redraw when a refinement
+  merges nothing. It buys the connected communities the old implementation did not guarantee. The
+  effect is super-linear in node count and is not visible at 50 or 200 nodes, where the run-to-run
+  band on this machine (±10%, measured) covers the whole difference. Budget for it: community
+  detection runs offline during ingestion, not on the query path.
+- `Ingestion_WithGraphEntityExtraction` allocates 40% more than before (131 → 183 KB) at every node
+  count, with no matching change in the extraction path here. Allocation is deterministic and does
+  not drift between sessions, so this is a real change — but it was not bisected to a commit and is
+  not attributed to one.
+- `Ingestion_WithoutGraphRag` is now recorded at all three node counts; previously only the 50-node
+  row was published.
 - `Ingestion_WithGraphEntityExtraction` cost is dominated by LLM extraction calls (mocked here); real-world cost is 100–500 ms per document.
 - `Retrieval_GlobalSearch` generates community summaries via LLM (mocked); real-world cost is 50–200 ms.
 
