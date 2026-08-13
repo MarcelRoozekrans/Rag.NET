@@ -23,6 +23,31 @@ public class UseDispatchingAnswerEngineTests
         return services;
     }
 
+    /// <summary>
+    /// The minimum a user actually registers — vector store, embedding generator, chat client —
+    /// with no logging at all. A missing logger must degrade to no logging, never to a crash.
+    /// The dispatcher builds every engine eagerly, so it fails if any one of them demands a logger.
+    /// </summary>
+    private static IServiceCollection ServicesWithoutLogging()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Substitute.For<IChatClient>());
+        services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+        services.AddSingleton(Substitute.For<IVectorStore>());
+        return services;
+    }
+
+    [Fact]
+    public void UseDispatchingAnswerEngine_WithoutLoggingRegistered_ResolvesPipeline()
+    {
+        var sp = ServicesWithoutLogging()
+            .AddRagNet(rag => rag.UseDispatchingAnswerEngine())
+            .BuildServiceProvider();
+
+        Assert.NotNull(sp.GetRequiredService<IRagPipeline>());
+        Assert.IsType<DispatchingAnswerEngine>(sp.GetRequiredService<IAnswerEngine>());
+    }
+
     [Fact]
     public void UseDispatchingAnswerEngine_RegistersIAnswerEngine()
     {

@@ -19,6 +19,34 @@ public class RagBuilderExtensionsTests
         return services;
     }
 
+    /// <summary>
+    /// <see cref="BaseServices"/> minus <c>AddLogging()</c> — the minimum a user actually
+    /// registers. A missing logger must degrade to no logging, never to a crash.
+    /// </summary>
+    private static IServiceCollection ServicesWithoutLogging()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+        services.AddSingleton(Substitute.For<IChatClient>());
+        return services;
+    }
+
+    [Fact]
+    public void UseImageDescription_WithoutLoggingRegistered_Resolves()
+    {
+        var sp = ServicesWithoutLogging()
+            .AddRagNet(rag => rag.UseImageDescription()).BuildServiceProvider();
+        Assert.NotNull(sp.GetRequiredService<ImageDocumentParser>());
+    }
+
+    [Fact]
+    public void UseVideoDescription_WithoutLoggingRegistered_Resolves()
+    {
+        var sp = ServicesWithoutLogging()
+            .AddRagNet(rag => rag.UseVideoDescription()).BuildServiceProvider();
+        Assert.NotNull(sp.GetRequiredService<VideoDocumentParser>());
+    }
+
     [Fact]
     public void UseImageDescription_RegistersIDocumentParser()
     {
