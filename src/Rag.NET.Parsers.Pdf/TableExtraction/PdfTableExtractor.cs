@@ -98,7 +98,7 @@ internal static class PdfTableExtractor
     /// Renders a detected table as a Markdown pipe table. The first detected row is assumed
     /// to be the header row (separator emitted after row 1) — a heuristic assumption.
     /// </summary>
-    internal static string RenderMarkdown(DetectedTable table)
+    internal static string RenderMarkdown(this DetectedTable table)
     {
         var builder = new StringBuilder();
         AppendMarkdownRow(builder, table.Rows[0]);

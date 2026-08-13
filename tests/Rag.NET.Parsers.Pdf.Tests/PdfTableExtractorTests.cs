@@ -165,7 +165,7 @@ public class PdfTableExtractorTests
             AverageWordsPerCell = 1,
         };
 
-        var markdown = PdfTableExtractor.RenderMarkdown(table);
+        var markdown = table.RenderMarkdown();
 
         Assert.Equal("| Name | Age |\n| --- | --- |\n| A\\|B | 30 |", markdown);
     }

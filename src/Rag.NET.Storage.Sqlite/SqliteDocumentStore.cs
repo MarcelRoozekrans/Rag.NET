@@ -256,19 +256,19 @@ public sealed class SqliteDocumentStore : IRagDataManager
 
         if (_collectionName is not null)
         {
-            var storedName = SqliteStoreHelper.ReadMetadata(conn, "doc_store_collection_name");
+            var storedName = conn.ReadRagMetadata("doc_store_collection_name");
             if (storedName is not null &&
                 !string.Equals(storedName, _collectionName, StringComparison.Ordinal))
             {
                 ClearData(conn);
             }
-            SqliteStoreHelper.WriteMetadata(conn, "doc_store_collection_name", _collectionName);
+            conn.WriteRagMetadata("doc_store_collection_name", _collectionName);
         }
     }
 
     private static void CreateSchema(SqliteConnection conn)
     {
-        SqliteStoreHelper.EnsureMetadataTable(conn);
+        conn.EnsureRagMetadataTable();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             CREATE TABLE IF NOT EXISTS rag_documents (

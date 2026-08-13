@@ -133,10 +133,10 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
 
         if (_collectionName is not null)
         {
-            var storedName = SqliteStoreHelper.ReadMetadata(conn, "parent_chunks_collection_name");
+            var storedName = conn.ReadRagMetadata("parent_chunks_collection_name");
             if (storedName is not null && !string.Equals(storedName, _collectionName, StringComparison.Ordinal))
                 ClearData(conn);
-            SqliteStoreHelper.WriteMetadata(conn, "parent_chunks_collection_name", _collectionName);
+            conn.WriteRagMetadata("parent_chunks_collection_name", _collectionName);
         }
 
         LoadIntoMemory(conn);
@@ -144,7 +144,7 @@ public sealed class SqliteParentChunkStore : IParentChunkStore
 
     private static void CreateSchema(SqliteConnection conn)
     {
-        SqliteStoreHelper.EnsureMetadataTable(conn);
+        conn.EnsureRagMetadataTable();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             CREATE TABLE IF NOT EXISTS parent_chunks (

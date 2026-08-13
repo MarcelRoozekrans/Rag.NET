@@ -440,7 +440,7 @@ public sealed class PdfDocumentParser : IDocumentParser, IDisposable, IDeclaresC
             {
                 sections.Add(new DocumentSection
                 {
-                    Text = PdfTableExtractor.RenderMarkdown(tables[t]),
+                    Text = tables[t].RenderMarkdown(),
                     Heading = "table",
                     DocumentId = metadata.DocumentId,
                     PageNumber = page.Number,
