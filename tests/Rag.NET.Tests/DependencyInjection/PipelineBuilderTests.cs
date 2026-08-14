@@ -71,6 +71,27 @@ public class PipelineBuilderTests
         Assert.Equal(18, types.Count); // 17 defaults + 1 inserted
     }
 
+    /// <summary>
+    /// <c>AddFirst</c> is how satellites bolt an observer onto the outermost position, and layered
+    /// composition roots reach it more than once — <c>UseAuditLog</c> and <c>AddRagDiagnostics</c>
+    /// both did, each inserting its behaviour twice and so auditing and tracing every retrieval
+    /// twice. <c>Add</c>'s caller (<c>UseContextualCompressionInRetrieval</c>) already guards at the
+    /// call site; <c>AddFirst</c> guards here instead, once, for every caller.
+    /// </summary>
+    [Fact]
+    public void RetrievalBuilder_AddFirst_CalledTwice_InsertsOnce()
+    {
+        var builder = new RetrievalPipelineBuilder();
+        builder.AddFirst<NoOpRetrievalBehavior>();
+        builder.AddFirst<NoOpRetrievalBehavior>();
+
+        var types = builder.GetBehaviorTypes();
+
+        Assert.Equal(1, types.Count(t => t == typeof(NoOpRetrievalBehavior)));
+        Assert.Equal(typeof(NoOpRetrievalBehavior), types[0]);
+        Assert.Equal(18, types.Count); // 17 defaults + 1 inserted, not 2
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private sealed class NoOpIngestionBehavior : IIngestionBehavior

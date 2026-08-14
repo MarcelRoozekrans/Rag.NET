@@ -338,7 +338,8 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// Requires <c>IEmbeddingGenerator</c> to be registered.
     /// </summary>
     /// <remarks>
-    /// The decorator is wired by <c>AddRagNet</c> after the builder delegate returns.
+    /// The decorator is wired by <c>AddRagNet</c> after the builder delegate returns — calling
+    /// this method outside of <c>AddRagNet</c>'s configure delegate has no effect.
     /// When both <c>UseDeepResearch</c> and <c>UseTagRetrieval</c> are configured,
     /// the stacking order is <c>TagRetriever → DeepResearchRetriever → PipelineRetriever</c>.
     /// </remarks>
@@ -366,7 +367,8 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     /// Results are re-sorted by the combined score before being returned.
     /// </summary>
     /// <remarks>
-    /// The decorator is wired by <c>AddRagNet</c> after the builder delegate returns.
+    /// The decorator is wired by <c>AddRagNet</c> after the builder delegate returns — calling
+    /// this method outside of <c>AddRagNet</c>'s configure delegate has no effect.
     /// When combined with other decorators, stacking order (outermost first) is:
     /// <c>TagRetriever → TimeWeightedRetriever → DeepResearchRetriever → PipelineRetriever</c>.
     /// Per-call opt-out: pass <c>new RetrievalOptions { UseTimeWeighting = false }</c>.

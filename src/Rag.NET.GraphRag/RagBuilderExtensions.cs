@@ -1,7 +1,7 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Rag.NET.DependencyInjection;
+using Rag.NET.Abstractions;
 using Rag.NET.Graph;
 
 namespace Rag.NET.GraphRag;
@@ -18,11 +18,12 @@ public static class RagBuilderExtensions
     /// the configuring line rather than letting a bad value crash ingestion, hang global
     /// search, or silently corrupt the PageRank blend.
     /// </exception>
-    public static RagBuilder UseGraphRag(
-        this RagBuilder builder,
+    public static TBuilder UseGraphRag<TBuilder>(
+        this TBuilder builder,
         Action<GraphRagOptions>? configure = null,
         Action<GraphRagRetrievalOptions>? retrieval = null,
         Action<GraphStoreBuilder>? graph = null)
+        where TBuilder : IRagBuilder
     {
         var options = new GraphRagOptions();
         configure?.Invoke(options);
@@ -75,9 +76,10 @@ public static class RagBuilderExtensions
     /// via a single LLM call. Nodes are stored in IGraphStore (if registered) as GraphEntity
     /// with Type = "mind_map_node".
     /// </summary>
-    public static RagBuilder UseMindMapExtraction(
-        this RagBuilder builder,
+    public static TBuilder UseMindMapExtraction<TBuilder>(
+        this TBuilder builder,
         Action<MindMapOptions>? configure = null)
+        where TBuilder : IRagBuilder
     {
         var options = new MindMapOptions();
         configure?.Invoke(options);

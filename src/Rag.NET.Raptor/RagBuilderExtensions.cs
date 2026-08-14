@@ -1,6 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
-using Rag.NET.DependencyInjection;
+using Rag.NET.Abstractions;
 
 namespace Rag.NET.Raptor;
 
@@ -18,10 +18,11 @@ public static class RagBuilderExtensions
     /// the configuring line rather than letting a bad value silently disable RAPTOR, corrupt
     /// Boost-mode ranking, or empty every Filter-mode retrieval.
     /// </exception>
-    public static RagBuilder UseRaptor(
-        this RagBuilder builder,
+    public static TBuilder UseRaptor<TBuilder>(
+        this TBuilder builder,
         Action<RaptorOptions>? configure = null,
         Action<RaptorRetrievalOptions>? retrieval = null)
+        where TBuilder : IRagBuilder
     {
         var options = new RaptorOptions();
         configure?.Invoke(options);

@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using Rag.NET.DependencyInjection;
+using Rag.NET.Abstractions;
 using Rag.NET.Mediator.Handlers;
 using Rag.NET.Mediator.Internal;
 using ZeroAlloc.Mediator;
@@ -8,7 +8,8 @@ namespace Rag.NET.Mediator.DependencyInjection;
 
 public static class MediatorBuilderExtensions
 {
-    public static RagBuilder UseMediator(this RagBuilder builder)
+    public static TBuilder UseMediator<TBuilder>(this TBuilder builder)
+        where TBuilder : IRagBuilder
     {
         builder.Services.AddTransient<IngestCommandHandler>();
         builder.Services.AddTransient<RetrieveQueryHandler>();

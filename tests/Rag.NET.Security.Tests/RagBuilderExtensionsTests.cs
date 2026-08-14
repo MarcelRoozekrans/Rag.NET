@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
+using Rag.NET.Models;
+using Rag.NET.Models.Options;
 using Rag.NET.Security;
 using Xunit;
 
@@ -80,5 +82,44 @@ public class RagBuilderExtensionsTests
 
         var ex = Assert.Throws<InvalidOperationException>(() => builder.UseAuditLog());
         Assert.Contains("AddRagNet", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The compliance record must have one entry per retrieval, not one per <c>UseAuditLog</c> call.
+    /// <c>AddFirst</c> used to insert unconditionally, so a layered composition root that reached
+    /// this method twice put <c>AuditRetrievalBehavior</c> into the pipeline twice and every query
+    /// was audited twice — a duplicated audit trail, with nothing about the container looking wrong.
+    /// </summary>
+    [Fact]
+    public async Task UseAuditLog_CalledTwice_AuditsEachRetrievalOnce()
+    {
+        var auditLog = Substitute.For<IAuditLog>();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>());
+
+        var services = new ServiceCollection();
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(embedder);
+        // UseAuditLog also wraps the answer engine, whose ChatAnswerEngine fallback needs one.
+        services.AddSingleton(Substitute.For<IChatClient>());
+        services.AddRagNet(rag =>
+        {
+            rag.UseAuditLog();
+            rag.UseAuditLog();
+
+            // Registered last so it wins over the SqliteAuditLog the extension registers — the
+            // behaviour resolves IAuditLog, so this is what it will write through.
+            rag.Services.AddSingleton(auditLog);
+        });
+
+        var sp = services.BuildServiceProvider();
+        _ = await sp.GetRequiredService<IRagPipeline>()
+            .RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        await auditLog.Received(1).LogRetrievalAsync(Arg.Any<AuditRetrievalEvent>(), Arg.Any<CancellationToken>());
     }
 }

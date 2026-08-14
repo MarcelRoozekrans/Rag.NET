@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Rag.NET.Abstractions;
 using Rag.NET.Evaluation.Shadow;
+using Rag.NET.Raptor;
 using Xunit;
 
 namespace Rag.NET.Evaluation.Tests.Shadow;
@@ -131,7 +132,30 @@ public sealed class RagBuilderExtensionsTests
     public void UseShadow_NullBuilder_Throws()
     {
         Assert.Throws<ArgumentNullException>(
-            () => RagBuilderExtensions.UseShadow<ScriptedRagPipeline>(null!));
+            () => Evaluation.Shadow.RagBuilderExtensions.UseShadow<ScriptedRagPipeline>(null!));
+    }
+
+    /// <summary>
+    /// The builder convention: a <c>Use*</c> call is followed by the next one. <c>UseShadow</c>
+    /// hands back an <see cref="IRagBuilder"/> — it cannot hand back <c>RagBuilder</c> without
+    /// dragging a core dependency into this Abstractions-only package — so the satellites' own
+    /// <c>Use*</c> extensions have to accept what it returns. Before issue #197 they took
+    /// <c>this RagBuilder</c> and this expression did not compile at all.
+    /// </summary>
+    [Fact]
+    public void UseShadow_ChainsIntoASatelliteExtension()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IRagPipeline>(Primary());
+
+        var chained = NewBuilder(services)
+            .UseShadow<ScriptedRagPipeline>()
+            .UseRaptor();
+
+        // Same builder throughout — a chain that silently swapped instances would register the
+        // later calls into a different collection than the earlier ones.
+        Assert.Same(services, chained.Services);
+        Assert.NotNull(services.BuildServiceProvider().GetService<RaptorOptions>());
     }
 
     private static ScriptedRagPipeline Primary() => new((_, _, _) =>
