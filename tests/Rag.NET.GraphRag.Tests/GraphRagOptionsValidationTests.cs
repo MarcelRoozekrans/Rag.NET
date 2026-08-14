@@ -13,7 +13,7 @@ namespace Rag.NET.GraphRag.Tests;
 /// </summary>
 public class GraphRagOptionsValidationTests
 {
-    private static RagBuilder NewBuilder() => new(new ServiceCollection());
+    private static RagBuilder NewBuilder() => ConfiguredRagBuilder.Create();
 
     // ---- Ingestion options ----
 

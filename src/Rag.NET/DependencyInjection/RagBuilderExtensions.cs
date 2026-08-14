@@ -78,21 +78,11 @@ public static class RagBuilderExtensions
                 "UseContextualCompressionInRetrieval requires UseContextualCompression to be called first.");
         }
 
-        var pipelineBuilder = builder.Services
-            .FirstOrDefault(d => d.ServiceType == typeof(RetrievalPipelineBuilder))
-            ?.ImplementationInstance as RetrievalPipelineBuilder
-            ?? throw new InvalidOperationException(
-                "UseContextualCompressionInRetrieval requires AddRagNet to be called first so that " +
-                "RetrievalPipelineBuilder is registered in DI.");
-
-        // Idempotency guard: avoid inserting the behavior twice when the extension is called
-        // multiple times (e.g., from layered composition roots).
-        if (pipelineBuilder.GetBehaviorTypes().Contains(typeof(ContextualCompressionRetrievalBehavior)))
-        {
-            return builder;
-        }
-
-        pipelineBuilder.Add<ContextualCompressionRetrievalBehavior>(before: typeof(RetrievalGuardBehavior));
+        // Add is itself idempotent, so the call-site guard this used to carry is gone: a layered
+        // composition root reaching here twice inserts once and keeps the first position.
+        builder.Services
+            .RagRetrievalPipeline(nameof(UseContextualCompressionInRetrieval))
+            .Add<ContextualCompressionRetrievalBehavior>(before: typeof(RetrievalGuardBehavior));
 
         return builder;
     }

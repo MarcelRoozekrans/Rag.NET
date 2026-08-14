@@ -33,8 +33,15 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<InMemoryBm25Index>(sp => new InMemoryBm25Index(sp.GetService<SynonymMap>()));
 
         // Build and register pipelines — behaviors are resolved from the container by builders
+        // Both builders are registered as instances, not just as the factories that read them.
+        // The instance is the seam a Use* method in another package places its behaviour through
+        // (see PipelineBuilderAccessors). Only the retrieval half used to be registered, so
+        // UseRaptor, UseGraphRag and UseMindMapExtraction could reach nothing and silently
+        // enabled nothing — issue #191. Build runs lazily on first resolution, so a Use* method
+        // running later in configure still changes what the container composes.
         var ingestionBuilder = new IngestionPipelineBuilder();
         ingestion?.Invoke(ingestionBuilder);
+        services.AddSingleton(ingestionBuilder);
         services.AddSingleton(sp => ingestionBuilder.Build(sp));
 
         var retrievalBuilder = new RetrievalPipelineBuilder();

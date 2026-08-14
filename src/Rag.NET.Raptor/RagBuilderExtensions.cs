@@ -1,6 +1,9 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
+using Rag.NET.DependencyInjection;
+using Rag.NET.Ingestion.Behaviors;
+using Rag.NET.Retrieval.Behaviors;
 
 namespace Rag.NET.Raptor;
 
@@ -8,15 +11,35 @@ namespace Rag.NET.Raptor;
 public static class RagBuilderExtensions
 {
     /// <summary>
-    /// Enables RAPTOR — recursive abstractive tree-organized retrieval.
-    /// Registers <see cref="RaptorIngestionBehavior"/> and <see cref="RaptorRetrievalBehavior"/>
-    /// into the pipeline.
+    /// Enables RAPTOR — recursive abstractive tree-organized retrieval. Registers
+    /// <see cref="RaptorIngestionBehavior"/> and <see cref="RaptorRetrievalBehavior"/> and places
+    /// both in the pipeline: ingestion directly after <c>EmbeddingBehavior</c> (it needs the
+    /// embeddings) and retrieval directly before <c>RerankingBehavior</c> (its score adjustments
+    /// have to settle before reranking sees them).
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Placing them is the whole point of the call.</b> This method used to register both
+    /// behaviours and stop, and neither type is in either default pipeline, so <c>UseRaptor()</c>
+    /// on its own built no tree, threw nothing and logged nothing — the caller got a plain vector
+    /// pipeline and no signal that RAPTOR was off (issue #191).
+    /// </para>
+    /// <para>
+    /// The explicit form <c>docs/guide/raptor.md</c> teaches — naming both behaviours in
+    /// <c>AddRagNet</c>'s <c>ingestion:</c> and <c>retrieval:</c> delegates — is unchanged and
+    /// still wins. Those delegates run before <c>configure</c>, and <c>Add</c> is idempotent, so
+    /// a caller who places RAPTOR by hand keeps their own positions and gets it exactly once.
+    /// </para>
+    /// </remarks>
     /// <exception cref="ArgumentException">
     /// The configured <see cref="RaptorOptions"/> or <see cref="RaptorRetrievalOptions"/>
     /// violate a documented constraint — the generated validators reject the registration at
     /// the configuring line rather than letting a bad value silently disable RAPTOR, corrupt
     /// Boost-mode ranking, or empty every Filter-mode retrieval.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// <c>AddRagNet</c> has not been called, so there is no pipeline to place the behaviours in.
+    /// Registering them anyway is what made the silent no-op possible.
     /// </exception>
     public static TBuilder UseRaptor<TBuilder>(
         this TBuilder builder,
@@ -42,6 +65,11 @@ public static class RagBuilderExtensions
 
         builder.Services.AddSingleton<RaptorRetrievalBehavior>(sp =>
             new RaptorRetrievalBehavior(sp.GetRequiredService<RaptorRetrievalOptions>()));
+
+        builder.Services.RagIngestionPipeline(nameof(UseRaptor))
+            .Add<RaptorIngestionBehavior>(after: typeof(EmbeddingBehavior));
+        builder.Services.RagRetrievalPipeline(nameof(UseRaptor))
+            .Add<RaptorRetrievalBehavior>(before: typeof(RerankingBehavior));
 
         return builder;
     }
