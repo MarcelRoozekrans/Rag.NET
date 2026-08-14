@@ -42,6 +42,16 @@ Three modes control how RAPTOR chunks participate in search:
 ```csharp
 // Install: dotnet add package Rag.NET.Raptor
 
+services.AddRagNet(rag => rag.UseRaptor());
+```
+
+That is the whole registration. `UseRaptor` places `RaptorIngestionBehavior` directly after `EmbeddingBehavior` and `RaptorRetrievalBehavior` directly before `RerankingBehavior` — the two positions described under [Pipeline Positioning](#pipeline-positioning) — so the call enables RAPTOR rather than merely registering it.
+
+### Choosing the positions yourself
+
+Earlier versions of this page taught a three-delegate form, because `UseRaptor` used to register both behaviours without placing either and the delegates were the only way to get them into a pipeline. That form still works and still takes precedence — use it when you want RAPTOR somewhere other than its defaults:
+
+```csharp
 services.AddRagNet(
     configure: rag => rag.UseRaptor(),
     ingestion: pipeline => pipeline
@@ -50,6 +60,10 @@ services.AddRagNet(
         .Add<RaptorRetrievalBehavior>(before: typeof(RerankingBehavior))
 );
 ```
+
+`Add` is idempotent and the `ingestion:` and `retrieval:` delegates run before `configure` does, so your placement lands first and `UseRaptor`'s default is skipped. Each behaviour ends up in the chain exactly once, where you put it.
+
+`UseRaptor` throws `InvalidOperationException` if it is called on a `RagBuilder` that did not come from `AddRagNet`, since there is no pipeline to place anything in. It no longer returns quietly having enabled nothing.
 
 ## Configuration
 
@@ -122,6 +136,8 @@ Retrieval:  VectorStore → Ensemble → Filter → [RAPTOR] → Rerank → ...
 RAPTOR ingestion runs **after** EmbeddingBehavior (needs embeddings) and **before** StorageBehavior (adds summary chunks to the batch).
 
 RAPTOR retrieval runs **before** RerankingBehavior (score adjustments should happen before reranking) and after the vector store returns results.
+
+These are the positions `UseRaptor` places both behaviours at. Pass the `ingestion:` / `retrieval:` delegates only when you want different ones.
 
 ## Retrieval Modes in Detail
 

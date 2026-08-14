@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Rag.NET.Abstractions;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Evaluation.Shadow;
 using Rag.NET.Raptor;
 using Xunit;
@@ -146,6 +147,10 @@ public sealed class RagBuilderExtensionsTests
     public void UseShadow_ChainsIntoASatelliteExtension()
     {
         var services = new ServiceCollection();
+        // AddRagNet first: UseRaptor places its two behaviours into the pipelines AddRagNet
+        // registers, and throws when there are none (issue #191). The primary is registered
+        // after it, so UseShadow decorates this test's scripted pipeline rather than the real one.
+        services.AddRagNet();
         services.AddSingleton<IRagPipeline>(Primary());
 
         var chained = NewBuilder(services)

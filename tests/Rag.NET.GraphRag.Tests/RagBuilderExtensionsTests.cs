@@ -10,8 +10,8 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseGraphRag_RegistersOptions()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
+        var services = builder.Services;
 
         builder.UseGraphRag();
 
@@ -22,8 +22,8 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseGraphRag_ConfigureDelegateApplied()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
+        var services = builder.Services;
 
         builder.UseGraphRag(o => o.GleaningPasses = 5);
 
@@ -43,8 +43,8 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseGraphRag_LeidenOptionsAreConfigurable()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
+        var services = builder.Services;
 
         builder.UseGraphRag(o =>
         {
@@ -70,7 +70,7 @@ public class RagBuilderExtensionsTests
     [InlineData(double.NaN)]
     public void UseGraphRag_NonPositiveLeidenResolution_ThrowsAtTheConfiguringLine(double resolution)
     {
-        var builder = new RagBuilder(new ServiceCollection());
+        var builder = ConfiguredRagBuilder.Create();
 
         var ex = Assert.Throws<ArgumentException>(
             () => builder.UseGraphRag(o => o.Leiden.Resolution = resolution));
@@ -82,8 +82,8 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseGraphRag_RegistersGraphStore()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
+        var services = builder.Services;
 
         builder.UseGraphRag();
 
@@ -93,8 +93,8 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseGraphRag_RegistersAllBehaviors()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
+        var services = builder.Services;
 
         builder.UseGraphRag();
 
@@ -107,8 +107,7 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseGraphRag_ReturnsBuilderForChaining()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
 
         var result = builder.UseGraphRag();
 

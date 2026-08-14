@@ -12,7 +12,7 @@ namespace Rag.NET.Raptor.Tests;
 /// </summary>
 public class RaptorOptionsValidationTests
 {
-    private static RagBuilder NewBuilder() => new(new ServiceCollection());
+    private static RagBuilder NewBuilder() => ConfiguredRagBuilder.Create();
 
     // ---- Ingestion options ----
 

@@ -707,6 +707,8 @@ services.AddRagNet(rag => rag
     }));
 ```
 
+`UseMindMapExtraction` places `MindMapExtractionBehavior` into the ingestion pipeline after `ChunkSanitiserBehavior`, so `ExtractAtIngestion = true` is the only switch the second form needs. Until issue #191 it registered the behavior without placing it anywhere, so the second form above extracted nothing — the extractor was reachable only through the on-demand path in the first form.
+
 ---
 
 ## Security

@@ -2,7 +2,10 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
+using Rag.NET.DependencyInjection;
 using Rag.NET.Graph;
+using Rag.NET.Ingestion.Behaviors;
+using Rag.NET.Retrieval.Behaviors;
 
 namespace Rag.NET.GraphRag;
 
@@ -11,12 +14,40 @@ public static class RagBuilderExtensions
 {
     /// <summary>
     /// Enables GraphRAG — entity extraction, community detection, and graph-aware retrieval.
+    /// Places <see cref="GraphEntityExtractionBehavior"/> and, after it,
+    /// <see cref="CommunityDetectionBehavior"/> into ingestion following <c>EmbeddingBehavior</c>,
+    /// and <see cref="GraphLocalSearchBehavior"/> into retrieval before <c>RerankingBehavior</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Placing them is the whole point of the call.</b> This method used to register four
+    /// behaviours and stop, and none of those types is in either default pipeline, so
+    /// <c>UseGraphRag()</c> on its own extracted no entities, detected no communities and built no
+    /// graph — while retrieval quietly stayed a plain vector search (issue #191).
+    /// </para>
+    /// <para>
+    /// <b><see cref="GraphGlobalSearchBehavior"/> is deliberately not placed.</b> Which search
+    /// runs is the caller's decision, as <c>docs/guide/graphrag.md</c> states: local search is a
+    /// graph traversal over results retrieval already produced, while global search re-enters the
+    /// pipeline for community reports and runs an LLM map-reduce over them on every query.
+    /// Enabling that by default would be per-query spend nobody asked for. It stays registered, so
+    /// naming it in <c>AddRagNet</c>'s <c>retrieval:</c> delegate is all it takes.
+    /// </para>
+    /// <para>
+    /// The explicit form the guide teaches is unchanged and still wins: those delegates run before
+    /// <c>configure</c>, and <c>Add</c> is idempotent, so a caller who places these by hand keeps
+    /// their own positions and gets each behaviour exactly once.
+    /// </para>
+    /// </remarks>
     /// <exception cref="ArgumentException">
     /// The configured <see cref="GraphRagOptions"/> or <see cref="GraphRagRetrievalOptions"/>
     /// violate a documented constraint — the generated validators reject the registration at
     /// the configuring line rather than letting a bad value crash ingestion, hang global
     /// search, or silently corrupt the PageRank blend.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// <c>AddRagNet</c> has not been called, so there is no pipeline to place the behaviours in.
+    /// Registering them anyway is what made the silent no-op possible.
     /// </exception>
     public static TBuilder UseGraphRag<TBuilder>(
         this TBuilder builder,
@@ -68,14 +99,56 @@ public static class RagBuilderExtensions
                 retrievalOptions.GlobalChatClient ?? sp.GetRequiredService<IChatClient>(),
                 retrievalOptions));
 
+        PlaceGraphRagBehaviors(builder.Services);
+
         return builder;
+    }
+
+    /// <summary>
+    /// Puts the three behaviours a bare <c>UseGraphRag()</c> should run into the two pipelines,
+    /// at the positions <c>docs/guide/graphrag.md</c>'s quick start uses.
+    /// </summary>
+    /// <param name="services">The collection <c>AddRagNet</c> was called on.</param>
+    /// <exception cref="InvalidOperationException">There is no pipeline to place them in.</exception>
+    private static void PlaceGraphRagBehaviors(IServiceCollection services)
+    {
+        // Extraction needs the chunk embeddings, and detection needs the graph extraction wrote.
+        services.RagIngestionPipeline(nameof(UseGraphRag))
+            .Add<GraphEntityExtractionBehavior>(after: typeof(EmbeddingBehavior))
+            .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior));
+
+        // Local search only; GraphGlobalSearchBehavior is opt-in — see this method's caller.
+        services.RagRetrievalPipeline(nameof(UseGraphRag))
+            .Add<GraphLocalSearchBehavior>(before: typeof(RerankingBehavior));
     }
 
     /// <summary>
     /// Enables mind-map extraction — builds a hierarchical concept tree from document content
     /// via a single LLM call. Nodes are stored in IGraphStore (if registered) as GraphEntity
-    /// with Type = "mind_map_node".
+    /// with Type = "mind_map_node". Places <see cref="MindMapExtractionBehavior"/> into ingestion
+    /// directly after <c>ChunkSanitiserBehavior</c>, so extraction reads the same sanitised text
+    /// that gets embedded and stored.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This was the worst of the three silent no-ops in issue #191.</b> The behaviour was
+    /// registered and in no pipeline, exactly as with <c>UseRaptor</c> and <c>UseGraphRag</c> —
+    /// but mind-map extraction has no guide page, so unlike those two there was nowhere at all a
+    /// caller could have learned that the call needed an <c>ingestion:</c> delegate naming
+    /// <see cref="MindMapExtractionBehavior"/> before it did anything.
+    /// </para>
+    /// <para>
+    /// <see cref="MindMapOptions.ExtractAtIngestion"/> remains the on-switch and still defaults to
+    /// <see langword="false"/>: the placed behaviour passes the document straight through until it
+    /// is set. That default is deliberate — <see cref="MindMapExtractor"/> is registered for
+    /// callers who want to extract on demand rather than on every ingest — but it is now the
+    /// <em>only</em> thing standing between the call and a working extraction, and it is a
+    /// documented property rather than an undocumented second registration step.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// <c>AddRagNet</c> has not been called, so there is no pipeline to place the behaviour in.
+    /// </exception>
     public static TBuilder UseMindMapExtraction<TBuilder>(
         this TBuilder builder,
         Action<MindMapOptions>? configure = null)
@@ -96,6 +169,9 @@ public static class RagBuilderExtensions
             new MindMapExtractionBehavior(
                 sp.GetRequiredService<MindMapExtractor>(),
                 options));
+
+        builder.Services.RagIngestionPipeline(nameof(UseMindMapExtraction))
+            .Add<MindMapExtractionBehavior>(after: typeof(ChunkSanitiserBehavior));
 
         return builder;
     }

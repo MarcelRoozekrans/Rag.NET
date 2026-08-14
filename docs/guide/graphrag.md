@@ -50,7 +50,9 @@ Two packages:
 2. Map: LLM answers the query per batch of reports
 3. Reduce: LLM combines partial answers into a final response
 
-**Which search runs is decided by the behaviors you register**, not by a setting. Add `GraphLocalSearchBehavior`, `GraphGlobalSearchBehavior`, or both; each runs on the chunks it recognises.
+**Which search runs is decided by the behaviors you register**, not by a setting. `UseGraphRag` puts `GraphLocalSearchBehavior` in the pipeline for you; add `GraphGlobalSearchBehavior` yourself when you want it, or both — each runs on the chunks it recognises.
+
+Global search is left out of the default on cost, not on preference. Local search traverses the graph over results retrieval already produced; global search re-enters the pipeline to fetch community reports and runs an LLM map-reduce over them **on every query**. That is not something a bare `UseGraphRag()` should switch on.
 
 ## Quick Start
 
@@ -59,18 +61,34 @@ Two packages:
 // dotnet add package Rag.NET.GraphRag
 // dotnet add package Rag.NET.Graph
 
+services.AddRagNet(rag => rag.UseGraphRag(
+    options => { options.GleaningPasses = 1; },
+    retrieval: options => { options.LocalSearchDepth = 1; },
+    graph: store => store.UseSqlite("graphrag.db")));
+```
+
+That is the whole registration. `UseGraphRag` places `GraphEntityExtractionBehavior` after `EmbeddingBehavior`, `CommunityDetectionBehavior` after that, and `GraphLocalSearchBehavior` before `RerankingBehavior`.
+
+### Adding global search, or choosing the positions yourself
+
+Earlier versions of this page taught a four-delegate form, because `UseGraphRag` used to register its behaviors without placing any of them and the delegates were the only way into a pipeline. That form still works and still takes precedence — use it for global search, or to put anything somewhere other than its default:
+
+```csharp
 services.AddRagNet(
     configure: rag => rag.UseGraphRag(
-        options => { options.GleaningPasses = 1; },
-        retrieval: options => { options.LocalSearchDepth = 1; },
         graph: store => store.UseSqlite("graphrag.db")),
     ingestion: p => p
         .Add<GraphEntityExtractionBehavior>(after: typeof(EmbeddingBehavior))
         .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior)),
     retrieval: p => p
         .Add<GraphLocalSearchBehavior>(before: typeof(RerankingBehavior))
+        .Add<GraphGlobalSearchBehavior>(before: typeof(RerankingBehavior))
 );
 ```
+
+`Add` is idempotent and the `ingestion:` and `retrieval:` delegates run before `configure` does, so your placement lands first and `UseGraphRag`'s default is skipped. Each behavior ends up in the chain exactly once, where you put it.
+
+`UseGraphRag` throws `InvalidOperationException` if it is called on a `RagBuilder` that did not come from `AddRagNet`, since there is no pipeline to place anything in. It no longer returns quietly having enabled nothing.
 
 ## Configuration
 

@@ -13,7 +13,23 @@ dotnet add package Rag.NET.GraphRag
 
 ## Setup
 
-GraphRAG adds behaviors to both pipelines:
+GraphRAG adds behaviors to both pipelines, and `UseGraphRag` places them:
+
+```csharp
+using Rag.NET.DependencyInjection;
+using Rag.NET.GraphRag;
+
+services.AddRagNet(rag => rag.UseGraphRag(
+    options => options.GleaningPasses = 1,
+    retrieval: options => options.PageRankWeight = 0.3,
+    graph: store => store.UseSqlite("graphrag.db")));
+```
+
+`GraphEntityExtractionBehavior` lands after `EmbeddingBehavior`, `CommunityDetectionBehavior`
+after that, and `GraphLocalSearchBehavior` before `RerankingBehavior`. `GraphGlobalSearchBehavior`
+is deliberately left out: it runs an LLM map-reduce over community reports on every query, so it
+stays opt-in. Add it — or choose different positions — with the pipeline delegates. `Add` is
+idempotent and those delegates run first, so your placement wins and each behavior appears once:
 
 ```csharp
 using Rag.NET.DependencyInjection;
@@ -23,14 +39,13 @@ using Rag.NET.Retrieval.Behaviors;
 
 services.AddRagNet(
     configure: rag => rag.UseGraphRag(
-        options => options.GleaningPasses = 1,
-        retrieval: options => options.PageRankWeight = 0.3,
         graph: store => store.UseSqlite("graphrag.db")),
     ingestion: p => p
         .Add<GraphEntityExtractionBehavior>(after: typeof(EmbeddingBehavior))
         .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior)),
     retrieval: p => p
-        .Add<GraphLocalSearchBehavior>(before: typeof(RerankingBehavior)));
+        .Add<GraphLocalSearchBehavior>(before: typeof(RerankingBehavior))
+        .Add<GraphGlobalSearchBehavior>(before: typeof(RerankingBehavior)));
 ```
 
 ## Example
@@ -69,10 +84,11 @@ when communities come out too large to summarise usefully and lower it when the 
 fragments into many small ones. Values are checked when you configure them — a resolution of
 zero or below is rejected at that line rather than silently returning one community.
 
-Which search runs is decided by the behaviors you add to the retrieval pipeline:
-`GraphLocalSearchBehavior` for entity questions, `GraphGlobalSearchBehavior` for
-"what are the main themes?" questions over community reports. `UseMindMapExtraction`
-adds hierarchical mind-map nodes instead of flat entities.
+Which search runs is decided by the behaviors in the retrieval pipeline:
+`GraphLocalSearchBehavior` for entity questions (placed for you), `GraphGlobalSearchBehavior` for
+"what are the main themes?" questions over community reports (opt-in, as above).
+`UseMindMapExtraction` adds hierarchical mind-map nodes instead of flat entities; it places its
+own ingestion behavior, and `ExtractAtIngestion = true` switches it on.
 
 ## Full guide
 

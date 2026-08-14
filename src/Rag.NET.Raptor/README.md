@@ -13,7 +13,19 @@ dotnet add package Rag.NET.Raptor
 
 ## Setup
 
-RAPTOR adds one behavior to each pipeline:
+RAPTOR adds one behavior to each pipeline, and `UseRaptor` places both:
+
+```csharp
+using Rag.NET.DependencyInjection;
+using Rag.NET.Raptor;
+
+services.AddRagNet(rag => rag.UseRaptor());
+```
+
+`RaptorIngestionBehavior` lands directly after `EmbeddingBehavior` (it needs the embeddings) and
+`RaptorRetrievalBehavior` directly before `RerankingBehavior` (score adjustments settle before
+reranking sees them). To choose other positions, name them yourself — `Add` is idempotent and the
+pipeline delegates run first, so your placement wins and each behavior appears exactly once:
 
 ```csharp
 using Rag.NET.DependencyInjection;

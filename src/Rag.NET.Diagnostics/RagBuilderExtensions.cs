@@ -121,7 +121,9 @@ public static class RagBuilderExtensions
 
         // First in the pipeline, so it observes the results every other behavior has finished with —
         // the position AuditRetrievalBehavior takes, for the same reason.
-        RetrievalPipelineBuilderIn(services).AddFirst<DiagnosticsRetrievalBehavior>();
+        // Named for the failure message: WireTracing is reached from AddRagDiagnostics rather
+        // than written by the user, so it is that call they need to move after AddRagNet.
+        services.RagRetrievalPipeline(nameof(AddRagDiagnostics)).AddFirst<DiagnosticsRetrievalBehavior>();
 
         services.AddSingleton<IPromptObserver>(static sp => new TracePromptObserver(
             sp.GetRequiredService<ITraceCollector>(),
@@ -188,15 +190,4 @@ public static class RagBuilderExtensions
             DecorateAnswerEngine(ChatAnswerEngine.CreateFromServices(sp), sp));
     }
 
-    /// <summary>Finds the retrieval pipeline builder <c>AddRagNet</c> put in the collection.</summary>
-    /// <param name="services">The service collection.</param>
-    /// <returns>The builder, so a behavior can be inserted into the chain.</returns>
-    /// <exception cref="InvalidOperationException"><c>AddRagNet</c> has not been called.</exception>
-    private static RetrievalPipelineBuilder RetrievalPipelineBuilderIn(IServiceCollection services) =>
-        services.FirstOrDefault(static d => d.ServiceType == typeof(RetrievalPipelineBuilder))
-                ?.ImplementationInstance as RetrievalPipelineBuilder
-        ?? throw new InvalidOperationException(
-            "AddRagDiagnostics requires AddRagNet to have been called first, so that the " +
-            "RetrievalPipelineBuilder the retrieval behavior is inserted into exists. Call it from " +
-            "inside AddRagNet's configure delegate, or on a RagBuilder built afterwards.");
 }

@@ -9,8 +9,8 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseRaptor_RegistersOptionsAsSingleton()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
+        var services = builder.Services;
 
         builder.UseRaptor();
 
@@ -21,8 +21,8 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseRaptor_WithConfigure_AppliesOptions()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
+        var services = builder.Services;
 
         builder.UseRaptor(o => o.MinChunksForRaptor = 42);
 
@@ -34,8 +34,8 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseRaptor_WithRetrievalConfigure_AppliesOptions()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
+        var services = builder.Services;
 
         builder.UseRaptor(retrieval: o => o.Mode = RaptorRetrievalMode.Boost);
 
@@ -47,8 +47,8 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseRaptor_RegistersIngestionBehavior()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
+        var services = builder.Services;
 
         builder.UseRaptor();
 
@@ -58,8 +58,7 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseRaptor_ReturnsBuilderForChaining()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
 
         var result = builder.UseRaptor();
 
@@ -69,8 +68,8 @@ public class RagBuilderExtensionsTests
     [Fact]
     public void UseRaptor_RegistersRetrievalBehavior()
     {
-        var services = new ServiceCollection();
-        var builder = new RagBuilder(services);
+        var builder = ConfiguredRagBuilder.Create();
+        var services = builder.Services;
 
         builder.UseRaptor();
 
