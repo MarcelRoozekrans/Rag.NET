@@ -319,6 +319,7 @@ any of them:
 builder.Services.AddOpenTelemetry()
     .WithMetrics(m => m
         .AddMeter("Rag.NET")
+        .AddMeter("Rag.NET.Evaluation")
         .AddPrometheusExporter());
 
 app.MapPrometheusScrapingEndpoint();
@@ -348,6 +349,7 @@ builder.Services.AddOpenTelemetry()
         .AddConsoleExporter())
     .WithMetrics(m => m
         .AddMeter("Rag.NET")
+        .AddMeter("Rag.NET.Evaluation")
         .AddConsoleExporter());
 ```
 

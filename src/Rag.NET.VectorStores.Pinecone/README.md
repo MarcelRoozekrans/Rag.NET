@@ -35,7 +35,7 @@ using Rag.NET.Models;
 var results = await pipeline.RetrieveAsync("renewal terms", new RetrievalOptions
 {
     TopK = 8,
-    MetadataFilter = new Dictionary<string, string>
+    MetadataFilter = new Dictionary<string, MetadataValue>
     {
         ["contract_type"] = "enterprise",
     },

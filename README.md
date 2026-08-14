@@ -101,7 +101,7 @@ else
 
 ```csharp
 var response = await pipeline.AskAsync("What are the key findings?");
-Console.WriteLine(response.Text);
+Console.WriteLine(response.Answer);
 ```
 
 ### Streaming Responses
@@ -262,7 +262,7 @@ chunk.Metadata["heading_breadcrumb"] // "Chapter 1 > Section 2"
 // Filter retrieval to a specific section:
 var results = await pipeline.RetrieveAsync("query", new RetrievalOptions
 {
-    MetadataFilter = new Dictionary<string, string> { ["heading_breadcrumb"] = "Chapter 1 > Section 2" }
+    MetadataFilter = new Dictionary<string, MetadataValue> { ["heading_breadcrumb"] = "Chapter 1 > Section 2" }
 });
 ```
 

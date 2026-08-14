@@ -34,7 +34,7 @@ await pipeline.IngestAsync(stream, new DocumentMetadata
 {
     DocumentId = new DocumentId("hr-handbook-2024"),
     FileName   = "hr-handbook-2024.pdf",
-    Tags = new Dictionary<string, string>
+    Tags = new Dictionary<string, MetadataValue>
     {
         ["allowed_roles"] = "hr,finance",
     },

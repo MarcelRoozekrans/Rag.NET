@@ -33,7 +33,7 @@ flowchart LR
 | `Rag.NET.Api.Grpc` | gRPC service exposing `IRagPipeline` |
 | `Rag.NET.Api.Grpc.Client` | `IRagPipeline` implementation that calls `Rag.NET.Api.Grpc` over gRPC |
 | `Rag.NET.Mcp.Tool` | `ragnet-mcp` dotnet global tool — self-contained, no code required |
-| `Rag.NET.Hosting` | Configuration-driven pipeline wiring (`AddRagNetPipelineFromConfiguration`) shared by `Rag.NET.Mcp.Tool` and the `ragnet` CLI — not published, referenced internally |
+| `Rag.NET.Hosting` | Configuration-driven pipeline wiring (`AddRagNetPipelineFromConfiguration`) shared by `Rag.NET.Mcp.Tool` and the `ragnet` CLI — published, and usable directly if you want the same configuration-driven wiring in your own host |
 
 ---
 

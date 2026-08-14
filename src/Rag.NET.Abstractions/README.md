@@ -43,7 +43,7 @@ var metadata = new DocumentMetadata
     DocumentId  = new DocumentId("policy-hr-001"),
     FileName    = "hr-policy.docx",
     ContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    Tags = new Dictionary<string, string>
+    Tags = new Dictionary<string, MetadataValue>
     {
         ["category"] = "hr",
         ["version"]  = "2024-01",

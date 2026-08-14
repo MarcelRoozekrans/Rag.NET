@@ -95,7 +95,7 @@ var metadata = new DocumentMetadata
     DocumentId = new DocumentId("report-2024-q4"),   // your stable identifier — used for updates/deletes
     FileName   = "report.pdf",
     ContentType = "application/pdf",
-    Tags = new Dictionary<string, string>
+    Tags = new Dictionary<string, MetadataValue>
     {
         ["department"] = "finance",
         ["year"]       = "2024",

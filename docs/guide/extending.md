@@ -159,9 +159,9 @@ public interface IVectorStore
 ```csharp
 public sealed class SearchOptions
 {
-    public int TopK                                    { get; set; } = 5;
-    public double MinScore                             { get; set; } = 0.0;
-    public IDictionary<string, string>? MetadataFilter { get; set; }
+    public int TopK                                            { get; set; } = 5;
+    public double MinScore                                     { get; set; } = 0.0;
+    public IDictionary<string, MetadataValue>? MetadataFilter  { get; set; }
 }
 ```
 
@@ -296,13 +296,13 @@ public interface IChunkingStrategy
 ```csharp
 public sealed record TextChunk
 {
-    public required string Text        { get; init; }
-    public required string DocumentId  { get; init; }
-    public required int ChunkIndex     { get; init; }
-    public int StartPosition           { get; init; }
-    public int EndPosition             { get; init; }
-    public IDictionary<string, string> Metadata { get; init; }
-        = new Dictionary<string, string>(StringComparer.Ordinal);
+    public required string Text            { get; init; }
+    public required DocumentId DocumentId  { get; init; }
+    public required int ChunkIndex         { get; init; }
+    public int StartPosition               { get; init; }
+    public int EndPosition                 { get; init; }
+    public IDictionary<string, MetadataValue> Metadata { get; init; }
+        = new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
 }
 ```
 

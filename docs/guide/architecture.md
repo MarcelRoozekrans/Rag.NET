@@ -250,7 +250,7 @@ Behaviors catch non-cancellation exceptions and fall back gracefully. `Retrieval
 
 `InMemoryBm25Index` is a DI singleton (BM25 parameters: k1=1.5, b=0.75) shared between `StorageBehavior` (add/remove during ingestion) and `VectorStoreBehavior` (search during retrieval). Every chunk stored via `IngestAsync` is also added to this index. When `UseHybridSearch = true` and the vector store does not implement `IHybridSearchable`, the retrieval behavior queries both the dense index and the BM25 index concurrently and merges results using Reciprocal Rank Fusion (k=60).
 
-The BM25 index is process-scoped, not persisted. It is rebuilt from scratch each time the application starts. If you need persistence, use a vector store that natively implements `IHybridSearchable`.
+`InMemoryBm25Index` is process-scoped and not persisted — and nothing rebuilds it. It starts empty on every application start and fills only from `IngestAsync` calls made in that same process, so re-running ingestion is what repopulates it. If you need a BM25 index that survives a restart, use `SqliteBm25Index` (`Rag.NET.Storage.Sqlite`), which wraps this type write-through and does load its persisted rows on first use, or a vector store that natively implements `IHybridSearchable`.
 
 `InMemoryParentChunkStore` follows the same lifecycle: a DI singleton populated during ingestion and lost on restart. It must be rebuilt by re-running ingestion after each application start.
 
