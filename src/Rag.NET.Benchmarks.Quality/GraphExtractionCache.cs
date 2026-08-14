@@ -134,11 +134,33 @@ public sealed class GraphExtractionCache
     /// Validates the entry rather than testing that a file exists, so a truncated or corrupt
     /// leftover reads as absent and a resumed run regenerates it instead of skipping past it.
     /// </remarks>
-    public bool Contains(string prompt)
+    public bool Contains(string prompt) => TryGet(prompt) is not null;
+
+    /// <summary>
+    /// Returns the stored response for a prompt, or <see langword="null"/> when there is not a
+    /// complete and intact one — <b>without generating anything and without moving the tallies</b>.
+    /// </summary>
+    /// <param name="prompt">The rendered prompt, exactly as it would be sent.</param>
+    /// <returns>The stored response, or <see langword="null"/> on a miss.</returns>
+    /// <remarks>
+    /// <para>
+    /// This is what lets a run cost itself <i>before</i> spending: replaying the extraction with a
+    /// client that answers from here and never calls a model counts exactly which requests are
+    /// already paid for. It has to hand back the text rather than a yes or no, because the gleaning
+    /// pass's prompt embeds the previous extraction — so the second key of every chunk is only
+    /// reachable by continuing the chain the first response starts.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately outside <see cref="Hits"/> and <see cref="Misses"/>.</b> Those two report
+    /// what the run itself did, and a plan that inflated them by the size of its own dry pass would
+    /// make the summary line at the end say the run served twice what it served.
+    /// </para>
+    /// </remarks>
+    public string? TryGet(string prompt)
     {
         ArgumentNullException.ThrowIfNull(prompt);
 
-        return TryRead(ComputeKey(prompt)) is not null;
+        return TryRead(ComputeKey(prompt));
     }
 
     /// <summary>
