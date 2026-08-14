@@ -17,11 +17,21 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// </para>
 /// <para>
 /// <b>The assertions are ordered weakest first, so a failure reads as a diagnosis.</b> Extraction
-/// produced something; the something recurs across articles; the recurrence clustered; the clusters
-/// are searchable against ground truth; global search does something different from local. Asked in
-/// that order, the first red assertion names the stage that broke. Asked in any other order, a
-/// failure at the end sends the reader looking for a retrieval defect in a pipeline whose graph was
-/// empty all along.
+/// produced something; the something recurs across articles; the recurrence clustered; every cluster
+/// carries a report; the clusters are searchable against ground truth; global search does something
+/// different from local. Asked in that order, the first red assertion names the stage that broke.
+/// Asked in any other order, a failure at the end sends the reader looking for a retrieval defect in
+/// a pipeline whose graph was empty all along.
+/// </para>
+/// <para>
+/// <b>The reports are real now (#172).</b> They were the head of their own prompt, echoed back by
+/// <see cref="PromptEchoChatClient"/>, for as long as the report prompt was unbounded and there was
+/// no model to send it to. Bounding it made one cheap generation run possible, so the reports this
+/// guard indexes, retrieves and maps over are what <c>openai/gpt-4o-mini</c> returned at temperature
+/// 0 — cached and replayed refuse-on-miss exactly as the extractions are, out of
+/// <see cref="GraphExtractionCache.ReportsDirectoryName"/>. Only global search's map-reduce still
+/// goes to the stub, and for a different reason: its prompts depend on retrieval order, which is
+/// machine-specific.
 /// </para>
 /// <para>
 /// <b>Nothing here is a quality measurement.</b> There is no nDCG, no comparison against the dense
@@ -42,9 +52,11 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <para>
 /// Gated like every other case here: applicability first (an inapplicable dataset must not blame
 /// the environment), then provisioning, then <see cref="BeirRunBudget"/>. It additionally needs
-/// <see cref="GraphExtractionCache"/> filled by the generation tool — and, exactly like the Hyde
-/// cells, it FAILS refuse-on-miss rather than skipping when the cache is absent on a machine that
-/// opted in.
+/// <b>both</b> directories of <see cref="GraphExtractionCache"/> filled by the generation tool —
+/// <c>--stage extraction</c> and then <c>--stage reports</c> — and, exactly like the Hyde cells, it
+/// FAILS refuse-on-miss rather than skipping when either is absent on a machine that opted in. The
+/// failure names the missing key and the directory it belongs in, so which of the two stages has
+/// not been run is never a guess.
 /// </para>
 /// </summary>
 public sealed class GraphRagFunctionsTests
@@ -135,7 +147,7 @@ public sealed class GraphRagFunctionsTests
         await RunTheGuardAsync(descriptor, modelPath, vocabPath, cacheDirectory);
     }
 
-    /// <summary>Builds the graph and puts the five assertions to it, in order.</summary>
+    /// <summary>Builds the graph and puts the six assertions to it, in order.</summary>
     private async Task RunTheGuardAsync(
         BeirDatasetDescriptor descriptor, string modelPath, string vocabPath, string cacheDirectory)
     {
@@ -155,6 +167,11 @@ public sealed class GraphRagFunctionsTests
                 cacheDirectory,
                 GraphExtractionModelIdentity.For(GraphExtractionModelIdentity.ExtractionTemperature),
                 GraphExtractionCacheMode.RefuseOnMiss),
+            new GraphExtractionCache(
+                cacheDirectory,
+                GraphExtractionModelIdentity.For(GraphExtractionModelIdentity.ExtractionTemperature),
+                GraphExtractionCacheMode.RefuseOnMiss,
+                GraphExtractionCache.ReportsDirectoryName),
             ct);
 
         _output.WriteLine(Describe(documents, queries, run));
@@ -162,6 +179,7 @@ public sealed class GraphRagFunctionsTests
         AssertExtractionProducedEntitiesAndRelationships(run);
         AssertEntitiesRecurAcrossArticles(run);
         AssertCommunityDetectionClusteredTheGraph(run);
+        AssertEveryCommunityCarriesARealReport(run);
         await AssertLocalSearchFindsRelevantDocumentsAsync(run, queries, dataset, ct);
         await AssertGlobalSearchDiffersFromLocalAsync(run, queries[0], ct);
     }
@@ -311,7 +329,58 @@ public sealed class GraphRagFunctionsTests
     }
 
     /// <summary>
-    /// Assertion 4: local search retrieves a known-relevant document for a slice query.
+    /// Assertion 4: every community carries a report, and the run replayed one per community.
+    /// </summary>
+    /// <remarks>
+    /// <b>This assertion could not be written while the reports were echoes.</b> It would have been
+    /// a statement about <see cref="PromptEchoChatClient"/> — which returns a head of the prompt and
+    /// therefore never returns nothing — rather than about GraphRAG. Now that the reports come out
+    /// of the cache, a blank one means either that <c>CommunityDetectionBehavior</c> stopped storing
+    /// what the client returned, or that a community got no report at all, and both make global
+    /// search map over a theme with no text in it.
+    /// <para>
+    /// The count is asserted beside the text because the two fail differently: a report per
+    /// community with one of them blank is a storage defect, while fewer requests than communities
+    /// means the behavior did not ask about all of them. Nothing here asserts what a report
+    /// <i>says</i> — that is a quality question this file deliberately does not ask, and the
+    /// summaries are a hosted model's prose, not a fixture to match.
+    /// </para>
+    /// </remarks>
+    private void AssertEveryCommunityCarriesARealReport(GraphRagSliceRun run)
+    {
+        var communities = run.Graph.Communities;
+        var blank = 0;
+        for (var i = 0; i < communities.Count; i++)
+        {
+            blank += string.IsNullOrWhiteSpace(communities[i].ReportSummary) ? 1 : 0;
+        }
+
+        _output.WriteLine(FormattableString.Invariant(
+            $"community reports: {run.ReplayedReports} replayed for {communities.Count} communities, {blank} blank, longest prompt {run.LongestReportPrompt} characters"));
+
+        Assert.True(
+            blank == 0,
+            FormattableString.Invariant($"""
+                {blank} OF {communities.Count} COMMUNITIES CARRY A BLANK REPORT. Every report in
+                this run was generated once against openai/gpt-4o-mini and replayed from the report
+                cache, which refuses to store blank text — so a blank one here is not an empty
+                generation. Either CommunityDetectionBehavior stopped writing the client's response
+                onto the community, or detection produced a community it never asked about.
+                """));
+
+        Assert.True(
+            run.ReplayedReports == communities.Count,
+            FormattableString.Invariant($"""
+                {run.ReplayedReports} REPORT REQUESTS WENT THROUGH THE CACHE FOR
+                {communities.Count} COMMUNITIES. It is one call per community by construction, so a
+                mismatch means detection ran over a different community set than the one the graph
+                store now holds — which would also mean the report prompts, and therefore the cache
+                keys, belong to a graph this run did not build.
+                """));
+    }
+
+    /// <summary>
+    /// Assertion 5: local search retrieves a known-relevant document for a slice query.
     /// </summary>
     /// <remarks>
     /// <b>This is what makes the whole file a guard rather than a smoke test.</b> Every assertion
@@ -361,7 +430,7 @@ public sealed class GraphRagFunctionsTests
             """);
 
     /// <summary>
-    /// Assertion 5: global search returns results, actually maps over community reports, and
+    /// Assertion 6: global search returns results, actually maps over community reports, and
     /// produces a different set from local search's.
     /// </summary>
     /// <remarks>
@@ -385,21 +454,27 @@ public sealed class GraphRagFunctionsTests
     /// unfiltered call any caller would make.
     /// </para>
     /// <para>
-    /// <b>On this slice the refetch does not actually fire, and the reason is worth recording.</b>
-    /// Bounding the report prompt changed what the reports say: capped at 50,000 characters and
-    /// filled in PageRank order, they now lead with their community's most central entities instead
+    /// <b>Whether the refetch fires is measured, not assumed, and it did not on the last synthesised
+    /// run.</b> Bounding the report prompt changed what the reports say: capped at 50,000 characters
+    /// and filled in PageRank order, they lead with their community's most central entities instead
     /// of an arbitrary prefix of all of them, and the best of them moved from rank 1,098 to 209 —
-    /// inside the top-500, so the first retrieval already carries reports and the second is never
-    /// needed. The refetch remains the safety net for a corpus where they do not surface, and
+    /// inside the top-500, so the first retrieval already carried reports and the second was never
+    /// needed. Real reports are shorter and read nothing like their prompts, so that rank is not
+    /// theirs and either path may run now. Neither is asserted: what is asserted is that the
+    /// map-reduce happened. The refetch is the safety net for a corpus where reports do not surface,
+    /// and
     /// <c>GraphGlobalSearchBehaviorTests</c> is where it is exercised directly. The run prints the
     /// retrieval count so which of the two paths ran is never a guess.
     /// </para>
     /// <para>
-    /// Both of those rank figures are partly properties of this harness rather than of GraphRAG:
-    /// <see cref="PromptEchoChatClient"/> answers with the first 2,000 characters of the prompt, so
-    /// a "report" here is its community's own entity descriptions rather than the prose a model
-    /// would return. What does not depend on the stub is the structure — a few hundred general
-    /// reports against tens of thousands of specific chunks, with nothing reserving them a slot.
+    /// <b>Both of those rank figures were measured against synthesised reports and must not be
+    /// quoted about real ones (#172).</b> They were taken while <see cref="PromptEchoChatClient"/>
+    /// answered report generation with the first 2,000 characters of the prompt, so a "report" was
+    /// its community's own entity descriptions rather than prose. The reports are now a model's,
+    /// which changes their length, their vocabulary and therefore where they rank — the run prints
+    /// the rank it actually measures on every pass, and that printed number is the one to read.
+    /// What never depended on the stub is the structure: a few hundred general reports against tens
+    /// of thousands of specific chunks, with nothing reserving them a slot.
     /// </para>
     /// </remarks>
     private async Task AssertGlobalSearchDiffersFromLocalAsync(
@@ -557,13 +632,13 @@ public sealed class GraphRagFunctionsTests
         return FormattableString.Invariant($"""
             === multihop-rag GRAPHRAG (slice) ===
             {documents.Count} articles, {queries.Count} judged queries, {run.ChunkCount} chunks
-            {run.ReplayedRequests} extraction and report requests, every one replayed from the cache
+            {run.ReplayedRequests} extraction requests and {run.ReplayedReports} report requests, every one replayed from the cache
             graph: {run.Graph.Entities.Count} entities, {run.Graph.Relationships.Count} relationships
             entity recurrence: {run.EntityDocuments.Count} distinct names, most widespread "{best}" in {articles} articles
             communities: {run.Graph.Communities.Count}, of which {CountSingletons(run.Graph.Communities)} hold one entity
             largest community: {LargestCommunity(run)} entities, {(double)LargestCommunity(run) / run.Graph.Entities.Count:P1} of the graph (ceiling {LargestCommunityShareCeiling:P0})
             isolated entities: {IsolatedEntities(run)} of {run.Graph.Entities.Count} have no relationship -- recorded, not asserted; see the constant above
-            indexed: {run.ChunkCount} article chunks, {run.GraphChunkCount} entity/relationship chunks, {run.CommunityReportCount} community reports ({run.SynthesisedReports} synthesised, not generated -- see PromptEchoChatClient)
+            indexed: {run.ChunkCount} article chunks, {run.GraphChunkCount} entity/relationship chunks, {run.CommunityReportCount} community reports ({run.ReplayedReports} replayed from the report cache, generated once against openai/gpt-4o-mini)
             largest community report prompt: {run.LongestReportPrompt} characters
             """);
     }

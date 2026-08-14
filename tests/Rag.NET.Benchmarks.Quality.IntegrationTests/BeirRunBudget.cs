@@ -489,13 +489,21 @@ public static class BeirRunBudget
             "naming the missing key rather than skipping. " +
             "FitsTheNightly stays false for that reason before any timing argument: the nightly " +
             "has no cache to replay and cannot make the calls. " +
-            "**Two costs are NOT in these figures and would dominate if they were.** Community " +
-            "report generation is one LLM call per community over 655 communities, and the " +
-            "largest community's prompt is 976,425 characters of entity descriptions -- past any " +
-            "model's context, so the guard synthesises reports rather than generating them (see " +
-            "PromptEchoChatClient). And CommunityDetectionBehavior is an ingestion behavior, so a " +
-            "real pipeline re-detects and regenerates every report on every document: 60 passes " +
-            "over this slice, of which 59 are overwritten."),
+            "**A SECOND generation run is now part of the price, and it is bought the same way " +
+            "(#172).** Community reports are one LLM call per community, generated once by the " +
+            "tool's --stage reports into the graph-reports directory of the same cache and " +
+            "replayed refuse-on-miss ever after -- so the guard asserts against reports a model " +
+            "wrote instead of the head of their own prompt, and still makes no model calls. That " +
+            "became possible when the report prompt stopped being unbounded: it was 1,806,352 " +
+            "characters while Leiden over-merged, and is under 50,000 now that " +
+            "MaxCommunityReportPromptLength bounds it. The figures above predate that run and do " +
+            "not include the embedding of its reports; --stage reports --plan-only states its own " +
+            "cost before any of it is spent. " +
+            "**One cost is still NOT in these figures.** CommunityDetectionBehavior is an " +
+            "ingestion behavior, so a real pipeline re-detects and regenerates every report on " +
+            "every document: 60 passes over this slice, of which 59 are overwritten. Both the tool " +
+            "and the guard run it once, over the finished graph, which is what that behaviour " +
+            "converges to."),
     ];
 
     /// <summary>

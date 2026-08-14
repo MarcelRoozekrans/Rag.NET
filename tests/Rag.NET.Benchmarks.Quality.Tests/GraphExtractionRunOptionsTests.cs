@@ -28,7 +28,105 @@ public sealed class GraphExtractionRunOptionsTests
         Assert.NotNull(options);
         Assert.Equal(GraphExtractionCorpus.Slice, options.Corpus);
         Assert.Equal(int.MaxValue, options.MaxDocuments);
+        Assert.Equal(GraphRagGenerationStage.Extraction, options.Stage);
         Assert.Equal(GraphExtractionRunOptions.Default, options);
+    }
+
+    [Theory]
+    [InlineData("extraction", GraphRagGenerationStage.Extraction)]
+    [InlineData("reports", GraphRagGenerationStage.Reports)]
+    [InlineData("Reports", GraphRagGenerationStage.Reports)]
+    [InlineData("EXTRACTION", GraphRagGenerationStage.Extraction)]
+    public void TheStageFlag_NamesTheStage_InAnyCasing(string name, GraphRagGenerationStage expected)
+    {
+        var options = GraphExtractionRunOptions.Parse(["--stage", name]);
+
+        Assert.NotNull(options);
+        Assert.Equal(expected, options.Stage);
+        Assert.Equal(GraphExtractionCorpus.Slice, options.Corpus);
+    }
+
+    [Fact]
+    public void TheStageFlag_IsIndependentOfTheCorpusAndTheBound()
+    {
+        // The invocation that generates community reports over the whole corpus. All three flags
+        // are orthogonal: the stage decides which prompts are sent, the corpus decides which
+        // articles the graph is built from, and the bound is still a smoke-run bound over either.
+        var options = GraphExtractionRunOptions.Parse(
+            ["--stage", "reports", "--corpus", "full", "--max-documents", "20"]);
+
+        Assert.Equal(
+            new GraphExtractionRunOptions(
+                GraphExtractionCorpus.Full, MaxDocuments: 20, GraphRagGenerationStage.Reports),
+            options);
+    }
+
+    [Theory]
+    // An unknown stage name, including the near miss and the numeric one Enum.TryParse would take.
+    [InlineData("--stage", "report")]
+    [InlineData("--stage", "communities")]
+    [InlineData("--stage", "1")]
+    [InlineData("--stage", "")]
+    public void AnUnrecognisedStage_IsRefusedRatherThanDefaulted(string name, string value)
+    {
+        // Defaulting would run extraction — which is free once the cache is full, and would
+        // therefore look like a successful report run that generated nothing.
+        Assert.Null(GraphExtractionRunOptions.Parse([name, value]));
+    }
+
+    [Fact]
+    public void PlanOnly_IsOffUnlessAskedFor_AndTakesNoValue()
+    {
+        // The only valueless flag, so the parser's cursor has to advance by one here and by two
+        // everywhere else. A flag that swallowed the next argument would silently drop a --corpus.
+        Assert.False(GraphExtractionRunOptions.Default.PlanOnly);
+        Assert.False(GraphExtractionRunOptions.Parse([])!.PlanOnly);
+
+        var alone = GraphExtractionRunOptions.Parse(["--plan-only"]);
+        Assert.NotNull(alone);
+        Assert.True(alone.PlanOnly);
+        Assert.Equal(GraphExtractionCorpus.Slice, alone.Corpus);
+        Assert.Equal(GraphRagGenerationStage.Extraction, alone.Stage);
+    }
+
+    [Fact]
+    public void PlanOnly_ComposesWithTheOtherFlags_InAnyPosition()
+    {
+        // The invocation that answers "how many communities does the full corpus have" without
+        // committing to generating a report for any of them — and it must mean the same thing
+        // first, last and in the middle, since the valueless flag is what moves the cursor oddly.
+        var expected = new GraphExtractionRunOptions(
+            GraphExtractionCorpus.Full,
+            int.MaxValue,
+            GraphRagGenerationStage.Reports,
+            PlanOnly: true);
+
+        Assert.Equal(
+            expected,
+            GraphExtractionRunOptions.Parse(
+                ["--plan-only", "--stage", "reports", "--corpus", "full"]));
+        Assert.Equal(
+            expected,
+            GraphExtractionRunOptions.Parse(
+                ["--stage", "reports", "--plan-only", "--corpus", "full"]));
+        Assert.Equal(
+            expected,
+            GraphExtractionRunOptions.Parse(
+                ["--stage", "reports", "--corpus", "full", "--plan-only"]));
+    }
+
+    [Fact]
+    public void ARepeatedPlanOnlyFlag_IsRefused_LikeEveryOtherRepeat()
+    {
+        Assert.Null(GraphExtractionRunOptions.Parse(["--plan-only", "--plan-only"]));
+    }
+
+    [Fact]
+    public void ARepeatedStageFlag_IsRefused()
+    {
+        Assert.Null(
+            GraphExtractionRunOptions.Parse(["--stage", "reports", "--stage", "extraction"]));
+        Assert.Null(GraphExtractionRunOptions.Parse(["--stage"]));
     }
 
     [Theory]
@@ -119,12 +217,15 @@ public sealed class GraphExtractionRunOptionsTests
     }
 
     [Fact]
-    public void TheUsageLine_NamesBothCorporaAndTheBound()
+    public void TheUsageLine_NamesBothStagesBothCorporaAndTheBound()
     {
         // Printed on every rejection above, so it is the only guidance a mistyped invocation gets.
         Assert.Contains(GraphExtractionRunOptions.CorpusOption, GraphExtractionRunOptions.Usage, StringComparison.Ordinal);
         Assert.Contains(GraphExtractionRunOptions.SliceName, GraphExtractionRunOptions.Usage, StringComparison.Ordinal);
         Assert.Contains(GraphExtractionRunOptions.FullName, GraphExtractionRunOptions.Usage, StringComparison.Ordinal);
         Assert.Contains(GraphExtractionRunOptions.MaxDocumentsOption, GraphExtractionRunOptions.Usage, StringComparison.Ordinal);
+        Assert.Contains(GraphExtractionRunOptions.StageOption, GraphExtractionRunOptions.Usage, StringComparison.Ordinal);
+        Assert.Contains(GraphExtractionRunOptions.ExtractionStageName, GraphExtractionRunOptions.Usage, StringComparison.Ordinal);
+        Assert.Contains(GraphExtractionRunOptions.ReportsStageName, GraphExtractionRunOptions.Usage, StringComparison.Ordinal);
     }
 }
