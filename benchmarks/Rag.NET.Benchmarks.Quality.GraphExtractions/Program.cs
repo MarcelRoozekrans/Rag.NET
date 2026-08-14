@@ -10,15 +10,23 @@ using Rag.NET.Models;
 namespace Rag.NET.Benchmarks.Quality.GraphExtractions;
 
 /// <summary>
-/// The GraphRAG extraction generation tool. Selects a corpus of MultiHop-RAG articles, chunks it
-/// exactly as the guard will, drives <c>GraphEntityExtractionBehavior</c> over every chunk through
-/// OpenRouter, and writes every response into <see cref="GraphExtractionCache"/>.
+/// The GraphRAG generation tool. Selects a corpus of MultiHop-RAG articles, chunks it exactly as
+/// the guard will, drives one of GraphRAG's two LLM stages over it through OpenRouter, and writes
+/// every response into <see cref="GraphExtractionCache"/>.
 /// <para>
 /// <b>The cached text is the experiment.</b> Hosted LLMs are not bit-deterministic even at
 /// temperature 0, so the GraphRAG guard never calls a model: it reads what this tool wrote,
 /// verbatim, forever. That is also why this tool is resumable — every response already on disk is a
 /// hit and costs nothing — so an interrupted run continues rather than regenerating text it can
 /// never reproduce.
+/// </para>
+/// <para>
+/// <b>Two stages, and the default is the one the tool always did.</b> <c>--stage extraction</c>
+/// drives <c>GraphEntityExtractionBehavior</c> over every chunk, a call plus a gleaning pass each.
+/// <c>--stage reports</c> rebuilds the graph by replaying those extractions <b>refuse-on-miss</b> —
+/// it can never extract anything itself — and then drives <c>CommunityDetectionBehavior</c> once
+/// over the finished graph, one call per community, into the report directory of the same cache.
+/// Both stages cost themselves against the cache before they spend anything.
 /// </para>
 /// <para>
 /// <b>Two corpora, and the default is the one that is already paid for.</b>
@@ -31,11 +39,14 @@ namespace Rag.NET.Benchmarks.Quality.GraphExtractions;
 /// before anything is spent.
 /// </para>
 /// <para>
-/// Usage: <c>dotnet run [--corpus slice|full] [--max-documents N]</c>, with
-/// <see cref="BeirDatasetCache.CacheDirectoryVariable"/> pointing at the BEIR cache and
+/// Usage:
+/// <c>dotnet run [--stage extraction|reports] [--corpus slice|full] [--max-documents N] [--plan-only]</c>,
+/// with <see cref="BeirDatasetCache.CacheDirectoryVariable"/> pointing at the BEIR cache and
 /// <c>OPENROUTER_API_KEY</c> holding the key. The key is read from the environment and never
 /// logged. <c>--max-documents</c> bounds either corpus and exists for the smoke run: verify the
-/// plumbing on two or three articles before spending the whole budget.
+/// plumbing on two or three articles before spending the whole budget. <c>--plan-only</c> prints
+/// what a run would cost and stops without reading the key at all, which is how a number is
+/// obtained on a machine that must not be able to spend.
 /// </para>
 /// <para>
 /// <b>Documents run concurrently, chunks within a document do not.</b> The gleaning pass's prompt
@@ -57,7 +68,13 @@ internal static class Program
     /// Sixty articles at roughly twenty chunks each and two calls per chunk is a few thousand
     /// sequential requests, which is hours. Twelve at a time is minutes and stays well inside
     /// OpenRouter's per-key concurrency for this model; the retry in
-    /// <see cref="CachedGraphExtractionClient"/> absorbs the rate-limit responses that do arrive.
+    /// <see cref="CachedGraphRagClient"/> absorbs the rate-limit responses that do arrive.
+    /// <para>
+    /// <b>It applies to extraction only.</b> The report stage's calls are made by
+    /// <c>CommunityDetectionBehavior</c>, which loops over communities sequentially — so a report
+    /// run is as long as its community count times one round trip, and nothing here can widen it
+    /// without a second copy of a behavior the guard also runs.
+    /// </para>
     /// </remarks>
     private const int Concurrency = 12;
 
@@ -79,8 +96,11 @@ internal static class Program
             return 2;
         }
 
-        var apiKey = Environment.GetEnvironmentVariable(ApiKeyVariable);
-        if (string.IsNullOrWhiteSpace(apiKey))
+        // Not read at all in plan-only mode: a run that generates nothing needs no key, and a tool
+        // that demanded one anyway would make "what would this cost" impossible to ask on a machine
+        // that must not be able to spend.
+        var apiKey = options.PlanOnly ? null : Environment.GetEnvironmentVariable(ApiKeyVariable);
+        if (!options.PlanOnly && string.IsNullOrWhiteSpace(apiKey))
         {
             await Console.Error.WriteLineAsync(
                 $"Set {ApiKeyVariable} to an OpenRouter API key. It is read from the environment " +
@@ -88,26 +108,45 @@ internal static class Program
             return 2;
         }
 
-        return await RunAsync(cacheRoot, apiKey, options);
+        return options.Stage switch
+        {
+            GraphRagGenerationStage.Extraction => await RunExtractionAsync(cacheRoot, apiKey, options),
+            GraphRagGenerationStage.Reports => await RunReportsAsync(cacheRoot, apiKey, options),
+            _ => throw new InvalidOperationException(
+                $"There is no third stage, and {options.Stage} has no branch here. A stage that " +
+                "fell through to whichever branch is written first would spend the budget on the " +
+                "one nobody named."),
+        };
     }
 
-    /// <summary>Loads the corpus, fills the cache, and reports what it cost.</summary>
-    private static async Task<int> RunAsync(
-        string cacheRoot, string apiKey, GraphExtractionRunOptions options)
+    /// <summary>The identity every entry this tool writes is salted with.</summary>
+    /// <remarks>
+    /// One string for both stages: the reports are generated by the same model at the same
+    /// temperature as the extractions, and they are kept apart by their directory rather than by
+    /// their identity — see <see cref="GraphExtractionCache.ReportsDirectoryName"/>.
+    /// </remarks>
+    private static string Identity =>
+        GraphExtractionModelIdentity.For(GraphExtractionModelIdentity.ExtractionTemperature);
+
+    /// <summary>Loads the corpus, fills the extraction cache, and reports what it cost.</summary>
+    private static async Task<int> RunExtractionAsync(
+        string cacheRoot, string? apiKey, GraphExtractionRunOptions options)
     {
         var selection = await LoadCorpusAsync(cacheRoot, options);
         var chunked = await ChunkAsync(selection.Documents);
 
-        var cache = new GraphExtractionCache(
-            cacheRoot,
-            GraphExtractionModelIdentity.For(GraphExtractionModelIdentity.ExtractionTemperature),
-            GraphExtractionCacheMode.Fill);
-
-        using var model = CreateChatClient(apiKey);
-        using var client = new CachedGraphExtractionClient(
-            cache, model, GraphExtractionModelIdentity.ExtractionTemperature);
-
+        var cache = new GraphExtractionCache(cacheRoot, Identity, GraphExtractionCacheMode.Fill);
         await PrintPlanAsync(cache, selection, chunked);
+
+        if (options.PlanOnly)
+        {
+            PrintPlanOnly();
+            return 0;
+        }
+
+        using var model = CreateChatClient(apiKey!);
+        using var client = new CachedGraphRagClient(
+            cache, model, GraphExtractionModelIdentity.ExtractionTemperature);
 
         var startedAt = Stopwatch.GetTimestamp();
         await ExtractAllAsync(chunked, client, (completed, document) =>
@@ -125,27 +164,59 @@ internal static class Program
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>No LLM calls, and no community reports are cached.</b> That was this phase's original
-    /// intent and it does not survive contact with the numbers this prints. The report prompt is
-    /// built by pasting every member entity's whole merged description into one message, with no
-    /// bound of any kind — and Leiden puts most of this graph in one community, so that one
-    /// prompt runs to millions of characters. There is no model to send it to. The guard therefore
-    /// synthesises reports deterministically instead of generating them, and says so; this printout
-    /// is the evidence for that decision, and the thing to re-read if the report prompt ever grows
-    /// a bound.
+    /// <b>No LLM calls: this is the printout the report stage is planned from.</b> It says how many
+    /// communities the graph holds and how large their report prompts are before the entity
+    /// descriptions are even bounded — the numbers that once said reports could not be generated at
+    /// all. They could not: while <c>Leiden.BuildAggregatedEdges</c> discarded intra-community
+    /// weight, one community held most of the graph and its prompt ran past any model's context.
+    /// Fixing the clustering and bounding the prompt with
+    /// <c>GraphRagOptions.MaxCommunityReportPromptLength</c> changed that, which is why
+    /// <c>--stage reports</c> exists; this remains the cheapest place to see the shape regress.
     /// </para>
     /// <para>
     /// The rebuild is sequential and in corpus order, which matters: entity descriptions merge by
-    /// concatenation, so ingestion order decides what every merged description says. The guard
-    /// projects the slice the same way.
+    /// concatenation, so ingestion order decides what every merged description says — and therefore
+    /// what every report prompt, and every report cache key, is computed from. The guard and the
+    /// report stage project the slice the same way.
     /// </para>
     /// </remarks>
     private static async Task DescribeTheGraphAsync(
-        IReadOnlyList<ChunkedDocument> chunked, CachedGraphExtractionClient client)
+        IReadOnlyList<ChunkedDocument> chunked, CachedGraphRagClient client)
     {
-        var options = GraphRagSliceIngestion.CreateOptions();
         await using var graphStore = new SqliteGraphStore(":memory:");
         using var embedder = new StubEmbeddingGenerator();
+
+        var snapshot = await RebuildGraphAsync(chunked, client, graphStore, embedder);
+        PrintGraph(snapshot, Leiden.Detect(snapshot));
+    }
+
+    /// <summary>
+    /// Replays every article's extraction into <b>one</b> store, sequentially and in corpus order,
+    /// and returns the finished graph.
+    /// </summary>
+    /// <param name="chunked">The articles and their chunks, in corpus order.</param>
+    /// <param name="client">
+    /// The cached client the extractions come from. The report stage hands it a refuse-on-miss
+    /// cache and no model, so this cannot generate anything — a report stage that re-extracted
+    /// would be describing a graph built out of two generation runs.
+    /// </param>
+    /// <param name="graphStore">The store the whole corpus is merged into.</param>
+    /// <param name="embedder">Embeds the entity chunks nobody here reads.</param>
+    /// <returns>The graph every community report is written from.</returns>
+    /// <remarks>
+    /// Sequential and in corpus order because entity descriptions merge by concatenation: the order
+    /// documents arrive in decides what every merged description says, and those descriptions are
+    /// inside the report prompts the cache is keyed on. <c>ExtractAllAsync</c>'s concurrency is
+    /// safe only because it gives each article a throwaway store; here there is one graph, and its
+    /// contents have to match the guard's byte for byte.
+    /// </remarks>
+    private static async Task<GraphSnapshot> RebuildGraphAsync(
+        IReadOnlyList<ChunkedDocument> chunked,
+        CachedGraphRagClient client,
+        IGraphStore graphStore,
+        StubEmbeddingGenerator embedder)
+    {
+        var options = GraphRagSliceIngestion.CreateOptions();
 
         for (var i = 0; i < chunked.Count; i++)
         {
@@ -154,8 +225,131 @@ internal static class Program
                 CancellationToken.None);
         }
 
-        var snapshot = await graphStore.GetFullGraphAsync();
-        PrintGraph(snapshot, Leiden.Detect(snapshot));
+        return await graphStore.GetFullGraphAsync();
+    }
+
+    /// <summary>
+    /// Rebuilds the graph from cached extractions and generates the community report the cache is
+    /// missing for each community — <b>and nothing else</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Extraction is replayed refuse-on-miss, deliberately without a model.</b> The reports
+    /// describe a specific graph, and a stage that could quietly extract an article the cache does
+    /// not cover would write reports about a graph nothing can rebuild — the guard would then
+    /// replay reports whose communities it cannot reproduce, and every miss would look like an
+    /// empty cache. Missing extractions must be an error here, and are.
+    /// </para>
+    /// <para>
+    /// <b>Community detection runs once over the finished graph, through the same shared driver the
+    /// guard uses.</b> The cache key is the rendered report prompt, so a second copy that built the
+    /// prompt from its own idea of the graph would compute keys nothing ever wrote under.
+    /// </para>
+    /// </remarks>
+    private static async Task<int> RunReportsAsync(
+        string cacheRoot, string? apiKey, GraphExtractionRunOptions options)
+    {
+        var selection = await LoadCorpusAsync(cacheRoot, options);
+        var chunked = await ChunkAsync(selection.Documents);
+
+        var extractions = new GraphExtractionCache(
+            cacheRoot, Identity, GraphExtractionCacheMode.RefuseOnMiss);
+        var reports = new GraphExtractionCache(
+            cacheRoot, Identity, GraphExtractionCacheMode.Fill,
+            GraphExtractionCache.ReportsDirectoryName);
+
+        await using var graphStore = new SqliteGraphStore(":memory:");
+        using var embedder = new StubEmbeddingGenerator();
+        using var replay = new CachedGraphRagClient(
+            extractions, inner: null, GraphExtractionModelIdentity.ExtractionTemperature);
+
+        Console.WriteLine(FormattableString.Invariant(
+            $"Rebuilding the graph from {extractions.EntryDirectory}, refuse-on-miss — no model, no extraction…"));
+        var snapshot = await RebuildGraphAsync(chunked, replay, graphStore, embedder);
+        Console.WriteLine(FormattableString.Invariant(
+            $"Graph: {snapshot.Entities.Count} entities, {snapshot.Relationships.Count} relationships, from {replay.Calls} replayed extraction requests."));
+
+        var planned = await PrintReportPlanAsync(reports, graphStore, embedder);
+        if (options.PlanOnly)
+        {
+            PrintPlanOnly();
+            return 0;
+        }
+
+        return await GenerateReportsAsync(reports, graphStore, embedder, apiKey!, planned);
+    }
+
+    /// <summary>Says why the run stopped where it did, so a plan is never mistaken for a failure.</summary>
+    private static void PrintPlanOnly() =>
+        Console.WriteLine(
+            $"{GraphExtractionRunOptions.PlanOnlyOption}: nothing was generated, no model was " +
+            $"constructed and {ApiKeyVariable} was never read. Re-run without the flag to spend " +
+            "what the plan above states.");
+
+    /// <summary>
+    /// States what the report run will do <b>before it does any of it</b>: how many communities the
+    /// graph holds, how many of their reports are already on disk, and how many this run pays for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It is counted rather than derived, by running the real detection pass against
+    /// <see cref="GraphReportPlanProbe"/>, which calls no model. A community's prompt is what its
+    /// key is computed from, and which of its members fit inside
+    /// <c>GraphRagOptions.MaxCommunityReportPromptLength</c> is decided inside the behavior — so
+    /// anything short of building the prompts would be guessing at every key.
+    /// </para>
+    /// <para>
+    /// <b>The pass leaves the graph store as it found it, in every way that matters here.</b> It
+    /// writes PageRank scores and a set of placeholder reports, both of which the paying pass
+    /// immediately overwrites; what it cannot change is the entities and relationships the prompts
+    /// are built from, so the keys it counted are the keys the next pass computes.
+    /// </para>
+    /// </remarks>
+    /// <returns>How many reports this run will generate.</returns>
+    private static async Task<long> PrintReportPlanAsync(
+        GraphExtractionCache reports, IGraphStore graphStore, StubEmbeddingGenerator embedder)
+    {
+        Console.WriteLine("Costing the plan against the report cache — no model calls…");
+
+        using var probe = new GraphReportPlanProbe(reports);
+        _ = await GraphRagSliceIngestion.DetectCommunitiesAsync(
+            probe, embedder, graphStore, GraphRagSliceIngestion.CreateOptions(),
+            CancellationToken.None);
+
+        Console.WriteLine(FormattableString.Invariant(
+            $"Plan: {probe.Communities} communities, one report each. Already cached: {probe.Cached}. This run generates {probe.Uncached} and pays for those only."));
+        Console.WriteLine(FormattableString.Invariant(
+            $"CommunityDetectionBehavior generates sequentially, so budget {probe.Uncached} round trips end to end — this stage has no concurrency to widen."));
+        Console.WriteLine(FormattableString.Invariant(
+            $"Cache identity {reports.ModelIdentity}, entries in {reports.EntryDirectory}."));
+
+        return probe.Uncached;
+    }
+
+    /// <summary>Generates the missing reports and prints what the run cost.</summary>
+    private static async Task<int> GenerateReportsAsync(
+        GraphExtractionCache reports,
+        IGraphStore graphStore,
+        StubEmbeddingGenerator embedder,
+        string apiKey,
+        long planned)
+    {
+        using var model = CreateChatClient(apiKey);
+        using var client = new CachedGraphRagClient(
+            reports, model, GraphExtractionModelIdentity.ExtractionTemperature);
+        using var progress = new ReportProgressChatClient(client, planned);
+
+        var startedAt = Stopwatch.GetTimestamp();
+        var generated = await GraphRagSliceIngestion.DetectCommunitiesAsync(
+            progress, embedder, graphStore, GraphRagSliceIngestion.CreateOptions(),
+            CancellationToken.None);
+        var elapsed = Stopwatch.GetElapsedTime(startedAt);
+
+        Console.WriteLine(FormattableString.Invariant(
+            $"Done: {client.Calls} report requests over {generated.Count} communities — {reports.Hits} served from cache, {reports.Misses} generated — in {elapsed.TotalSeconds:F1} s."));
+        Console.WriteLine(FormattableString.Invariant(
+            $"Longest report prompt this run built: {client.LongestPrompt} characters, against the {GraphRagSliceIngestion.CreateOptions().MaxCommunityReportPromptLength}-character bound."));
+        return 0;
     }
 
     /// <summary>Prints the graph's shape and the community-report prompt sizes it implies.</summary>
@@ -229,7 +423,7 @@ internal static class Program
 
     /// <summary>Prints one article's completion, with the running cache tallies.</summary>
     private static void Report(
-        int completed, int total, CachedGraphExtractionClient client, ChunkedDocument document) =>
+        int completed, int total, CachedGraphRagClient client, ChunkedDocument document) =>
         Console.WriteLine(FormattableString.Invariant(
             $"[{completed}/{total}] {document.Chunks.Count} chunks — {document.Document.Id} (totals: {client.Cache.Hits} cached, {client.Cache.Misses} generated)"));
 
@@ -337,7 +531,7 @@ internal static class Program
     }
 
     private static void PrintSummary(
-        CachedGraphExtractionClient client, IReadOnlyList<ChunkedDocument> chunked, TimeSpan elapsed)
+        CachedGraphRagClient client, IReadOnlyList<ChunkedDocument> chunked, TimeSpan elapsed)
     {
         Console.WriteLine(FormattableString.Invariant(
             $"Done: {client.Calls} requests over {chunked.Count} articles — {client.Cache.Hits} served from cache, {client.Cache.Misses} generated — in {elapsed.TotalSeconds:F1} s."));

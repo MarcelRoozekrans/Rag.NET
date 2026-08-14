@@ -6,26 +6,46 @@ using System.Text;
 namespace Rag.NET.Benchmarks.Quality;
 
 /// <summary>
-/// A content-addressed store of GraphRAG's entity-extraction responses, keyed on <b>the model that
-/// produced them and the exact prompt it was sent</b>.
+/// A content-addressed store of the responses GraphRAG's LLM stages produced, keyed on <b>the model
+/// that produced them and the exact prompt it was sent</b>.
+/// <para>
+/// <b>Two stages live here, in two directories, and the split is what keeps them from being one
+/// experiment.</b> Entity extraction writes into <see cref="DirectoryName"/> and community-report
+/// generation into <see cref="ReportsDirectoryName"/> — the same file format, the same key
+/// construction, the same modes, because a report is a prompt sent to a model at a temperature
+/// exactly as an extraction is. They are kept apart so that a stage can be regenerated, counted or
+/// deleted on its own: a plan that said "41,000 entries are cached" over one pooled directory
+/// would be answering a question nobody asked, and dropping the reports to regenerate them would
+/// mean finding them among the extractions first.
+/// </para>
 /// <para>
 /// <b>The cached text is the experiment</b>, exactly as it is for <see cref="HypotheticalCache"/>.
 /// Hosted LLMs are not bit-deterministic even at temperature 0, so "regenerate and compare" does
 /// not exist: the graph the GraphRAG guard asserts against — its entities, its relationships, the
-/// communities Leiden finds in them — means one thing only if every extraction comes from one
-/// generation run, done once by a tool, and read back verbatim ever after. That is why
-/// <see cref="GraphExtractionCacheMode.RefuseOnMiss"/> exists and is the mode the guard runs in.
+/// communities Leiden finds in them and the reports written about those — means one thing only if
+/// every response comes from one generation run, done once by a tool, and read back verbatim ever
+/// after. That is why <see cref="GraphExtractionCacheMode.RefuseOnMiss"/> exists and is the mode
+/// the guard runs in.
 /// </para>
 /// <para>
 /// <b>Two components in the key, and the second one subsumes what the sibling cache spends three
 /// on.</b> <see cref="HypotheticalCache"/> keys on the model identity, the prompt template, the
 /// query and the hypothesis index, because it renders the prompt itself and can therefore key on
-/// the parts. Here the prompt arrives already rendered from
-/// <c>GraphEntityExtractionBehavior</c> — the extraction template with <c>{entity_types}</c>,
-/// <c>{relationship_types}</c> and <c>{text}</c> substituted, or the gleaning template with
-/// <c>{text}</c> and <c>{previous}</c> substituted — so the template, the type constraints and the
-/// chunk text are all inside it verbatim. Editing any of them changes the rendered prompt, changes
-/// the key, and misses. Adding them separately would key the same fact twice.
+/// the parts. Here the prompt arrives already rendered from the behavior that will send it —
+/// <c>GraphEntityExtractionBehavior</c>'s extraction template with <c>{entity_types}</c>,
+/// <c>{relationship_types}</c> and <c>{text}</c> substituted, its gleaning template with
+/// <c>{text}</c> and <c>{previous}</c> substituted, or <c>CommunityDetectionBehavior</c>'s report
+/// template with its community's entity and relationship blocks substituted — so the template, the
+/// type constraints, the chunk text and the community's own members are all inside it verbatim.
+/// Editing any of them changes the rendered prompt, changes the key, and misses. Adding them
+/// separately would key the same fact twice.
+/// </para>
+/// <para>
+/// <b>The report prompts are cacheable because they are deterministic, and they are deterministic
+/// on purpose.</b> <c>CommunityDetectionBehavior.BuildReportPrompt</c> emits members in PageRank
+/// order with an ordinal tie-break precisely so that entities sharing the flat baseline score
+/// cannot be ordered by the store's row order — two runs over one graph therefore build byte
+/// identical prompts, which is the property a prompt-keyed cache rests on.
 /// </para>
 /// <para>
 /// <b>What is <i>not</i> in the key is the model identity's job.</b> The rendered prompt says
@@ -50,8 +70,24 @@ namespace Rag.NET.Benchmarks.Quality;
 /// </summary>
 public sealed class GraphExtractionCache
 {
-    /// <summary>The subdirectory of the BEIR cache root that entries are written into.</summary>
+    /// <summary>
+    /// The subdirectory of the BEIR cache root that <b>extraction</b> entries are written into, and
+    /// the default: every call site that predates community-report caching means this one, and none
+    /// of the extractions already on disk is orphaned by the parameter existing.
+    /// </summary>
     public const string DirectoryName = "graph-extractions";
+
+    /// <summary>
+    /// The subdirectory <b>community-report</b> entries are written into, a sibling of
+    /// <see cref="DirectoryName"/>.
+    /// </summary>
+    /// <remarks>
+    /// Named here rather than at the two call sites for the reason
+    /// <see cref="GraphExtractionModelIdentity"/> is: the generation tool writes under it and the
+    /// guard reads under it, and a hand-copied string that drifted would not fail loudly — it would
+    /// address an empty directory and report a full cache as missing.
+    /// </remarks>
+    public const string ReportsDirectoryName = "graph-reports";
 
     /// <summary>
     /// The eight bytes every entry starts with, read as one little-endian integer. A file that does
@@ -96,15 +132,28 @@ public sealed class GraphExtractionCache
     /// What a miss does. The generation tool opens with <see cref="GraphExtractionCacheMode.Fill"/>;
     /// the guard opens with <see cref="GraphExtractionCacheMode.RefuseOnMiss"/>.
     /// </param>
+    /// <param name="subdirectoryName">
+    /// Which stage's entries this cache holds: <see cref="DirectoryName"/> — the default, and what
+    /// every call site meant before there was a second stage — or
+    /// <see cref="ReportsDirectoryName"/>.
+    /// <para>
+    /// It is a directory rather than a component of the key on purpose. Two stages whose entries
+    /// shared a directory would still never collide, since the rendered prompts differ; what they
+    /// would lose is the ability to be counted, resumed or discarded separately, which is exactly
+    /// what a plan that has to state what a run will cost needs.
+    /// </para>
+    /// </param>
     public GraphExtractionCache(
         string cacheRootDirectory,
         string modelIdentity,
-        GraphExtractionCacheMode mode)
+        GraphExtractionCacheMode mode,
+        string subdirectoryName = DirectoryName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheRootDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelIdentity);
+        ArgumentException.ThrowIfNullOrWhiteSpace(subdirectoryName);
 
-        _directory = Path.Combine(cacheRootDirectory, DirectoryName);
+        _directory = Path.Combine(cacheRootDirectory, subdirectoryName);
         _modelIdentity = modelIdentity;
         _mode = mode;
     }
@@ -209,8 +258,9 @@ public sealed class GraphExtractionCache
             throw new InvalidOperationException(
                 $"The model returned blank text for prompt key {key}. Blank parses to no entities " +
                 "and no relationships, which is indistinguishable from a chunk that genuinely " +
-                "contains none — so it is refused here, where the prompt is still on hand, rather " +
-                "than cached as a permanent empty answer.");
+                "contains none, and it makes a community report that embeds to a meaningless " +
+                "vector and retrieves like any other — so it is refused here, where the prompt is " +
+                "still on hand, rather than cached as a permanent empty answer.");
         }
 
         await WriteAsync(key, text, cancellationToken).ConfigureAwait(false);
@@ -226,15 +276,20 @@ public sealed class GraphExtractionCache
     /// </remarks>
     private InvalidOperationException MissingEntry(string key, string prompt) =>
         new(
-            $"No cached GraphRAG extraction {key} under model \"{_modelIdentity}\", for a prompt " +
+            $"No cached GraphRAG response {key} under model \"{_modelIdentity}\", for a prompt " +
             $"starting: {FirstLine(prompt)}\n" +
             $"Entries live in {_directory}. This cache was opened refuse-on-miss because the " +
             "cached text is the experiment: calling the model here would blend one generation run " +
-            "with another inside a single graph, with nothing to say so. Run the extraction " +
-            "generation tool to fill the cache, then re-run. If the cache looks full and this is " +
-            "the FIRST prompt to miss, the prompt itself changed — the extraction template, the " +
-            "configured entity or relationship types, or the chunking that produced the text — and " +
-            "every key in the run is new.");
+            "with another inside a single graph, with nothing to say so. Fill it with the " +
+            "generation tool, whose stage decides which directory it writes: " +
+            $"\"--stage extraction\" fills {DirectoryName}, \"--stage reports\" fills " +
+            $"{ReportsDirectoryName}. Then re-run. If the cache looks full and this is the FIRST " +
+            "prompt to miss, the prompt itself changed and every key in the run is new — for an " +
+            "extraction that is the extraction template, the configured entity or relationship " +
+            "types, or the chunking that produced the text; for a community report it is the " +
+            "report template, the prompt-length bound, or any change to the graph the report is " +
+            "written from, since a community's members and their merged descriptions are inside " +
+            "its prompt verbatim.");
 
     /// <summary>The prompt's first line, truncated, for a failure message.</summary>
     private static string FirstLine(string prompt)

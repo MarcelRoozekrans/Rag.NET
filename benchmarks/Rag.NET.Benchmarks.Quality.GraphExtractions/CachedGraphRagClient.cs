@@ -4,16 +4,26 @@ using Rag.NET.Benchmarks.Quality;
 namespace Rag.NET.Benchmarks.Quality.GraphExtractions;
 
 /// <summary>
-/// The <see cref="IChatClient"/> GraphRAG's behaviors are handed: every request is answered from
-/// <see cref="GraphExtractionCache"/>, and only a fill-mode miss reaches the model underneath.
+/// The <see cref="IChatClient"/> GraphRAG's behaviors are handed, <b>whichever stage they belong
+/// to</b>: every request is answered from <see cref="GraphExtractionCache"/>, and only a fill-mode
+/// miss reaches the model underneath.
+/// <para>
+/// <b>Nothing here is specific to extraction, and the name used to say otherwise.</b> The class
+/// takes a cache, an optional model and a temperature, and keys on the rendered prompt — so it
+/// serves <c>GraphEntityExtractionBehavior</c> and <c>CommunityDetectionBehavior</c> equally, over
+/// whichever directory of the cache the caller opened. It was called
+/// <c>CachedGraphExtractionClient</c> until community reports were cached the same way; a name that
+/// has stopped describing what the code does is the drift this repository renamed Leiden over.
+/// </para>
 /// <para>
 /// <b>The decorator is where the cache meets the library, and it is deliberately the only place.</b>
-/// <c>GraphEntityExtractionBehavior</c> renders its own prompts — the extraction template with the
-/// chunk text substituted, then a gleaning follow-up embedding the previous extraction as JSON —
-/// and neither the generation tool nor the guard is allowed to render them itself. Intercepting at
-/// the client means whatever the behavior asks is exactly what the key is computed from, and a
-/// change to the template or to the configured type constraints misses rather than silently
-/// reusing an extraction made under different instructions.
+/// The behaviors render their own prompts — the extraction template with the chunk text
+/// substituted, the gleaning follow-up embedding the previous extraction as JSON, the report
+/// template with a community's members and their merged descriptions substituted — and neither the
+/// generation tool nor the guard is allowed to render them itself. Intercepting at the client means
+/// whatever the behavior asks is exactly what the key is computed from, and a change to a template,
+/// to the configured type constraints or to the report prompt's length bound misses rather than
+/// silently reusing text produced under different instructions.
 /// </para>
 /// </summary>
 /// <remarks>
@@ -21,7 +31,7 @@ namespace Rag.NET.Benchmarks.Quality.GraphExtractions;
 /// quietly passed a streaming call through to the model would be an uncached, unrecorded LLM call
 /// inside a run whose whole claim is that it makes none.
 /// </remarks>
-public sealed class CachedGraphExtractionClient : IChatClient
+public sealed class CachedGraphRagClient : IChatClient
 {
     /// <summary>How many times one request is attempted before its failure propagates.</summary>
     private const int MaxAttempts = 5;
@@ -32,6 +42,7 @@ public sealed class CachedGraphExtractionClient : IChatClient
     private readonly IChatClient? _inner;
     private readonly ChatOptions _options;
     private long _calls;
+    private long _longestPrompt;
 
     /// <summary>Creates the decorator.</summary>
     /// <param name="cache">The cache every request is answered from.</param>
@@ -47,7 +58,7 @@ public sealed class CachedGraphExtractionClient : IChatClient
     /// prompt and therefore not part of the key — the model identity carries it, which is why the
     /// two must come from the same place.
     /// </param>
-    public CachedGraphExtractionClient(
+    public CachedGraphRagClient(
         GraphExtractionCache cache, IChatClient? inner, float temperature)
     {
         ArgumentNullException.ThrowIfNull(cache);
@@ -68,6 +79,28 @@ public sealed class CachedGraphExtractionClient : IChatClient
     /// <summary>Gets the cache behind this client.</summary>
     public GraphExtractionCache Cache => _cache;
 
+    /// <summary>
+    /// Gets the character length of the longest prompt this client was ever handed, summed over the
+    /// request's messages.
+    /// </summary>
+    /// <remarks>
+    /// <b>Measured on every run rather than quoted from one, and it lives here now because this is
+    /// where the report prompts pass.</b> It was <c>PromptEchoChatClient.LongestPrompt</c> while
+    /// the guard synthesised its reports; a figure that moved with the code that measures it would
+    /// have been dropped in the move, and this is the single most consequential number about the
+    /// community stage. The report prompt had no bound at all until
+    /// <c>GraphRagOptions.MaxCommunityReportPromptLength</c> was added: over sixty articles it
+    /// reached 1,806,352 characters, some 450,000 tokens against gpt-4o-mini's 128,000-token
+    /// context. An earlier note put it at 976,425, which was the entity block alone and about half
+    /// of what is actually sent — a number nobody re-measures drifts, so this one is re-measured.
+    /// <para>
+    /// Summed over every message rather than taken from the first: the report prompt is one message
+    /// today, but a behavior that split its instructions from its entity block would otherwise
+    /// report half of what it sends.
+    /// </para>
+    /// </remarks>
+    public long LongestPrompt => Interlocked.Read(ref _longestPrompt);
+
     /// <inheritdoc/>
     public async Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
@@ -80,6 +113,7 @@ public sealed class CachedGraphExtractionClient : IChatClient
         // a caller's lazy enumerable could yield different messages the second time.
         var sent = new List<ChatMessage>(messages);
         _ = Interlocked.Increment(ref _calls);
+        RecordPromptLength(sent);
 
         var text = await _cache.GetOrAddAsync(
             GraphExtractionPrompt.Render(sent), ct => CallModelAsync(sent, ct), cancellationToken);
@@ -93,7 +127,7 @@ public sealed class CachedGraphExtractionClient : IChatClient
         ChatOptions? options = null,
         CancellationToken cancellationToken = default) =>
         throw new NotSupportedException(
-            "The cached extraction client does not stream. Nothing in GraphRAG streams today, and " +
+            "The cached GraphRAG client does not stream. Nothing in GraphRAG streams today, and " +
             "passing a streaming call through would be an uncached, unrecorded model call inside a " +
             "run whose entire claim is that it makes none.");
 
@@ -107,6 +141,33 @@ public sealed class CachedGraphExtractionClient : IChatClient
 
     /// <inheritdoc/>
     public void Dispose() => _inner?.Dispose();
+
+    /// <summary>Keeps the high-water mark of how much text one request carried.</summary>
+    /// <remarks>
+    /// Recorded on the way in, before the cache is consulted, so a replay run measures the prompts
+    /// the pipeline built rather than only the ones it had to generate. The high-water mark is
+    /// updated with a compare-exchange loop because the generation tool runs articles concurrently.
+    /// </remarks>
+    private void RecordPromptLength(List<ChatMessage> messages)
+    {
+        long total = 0;
+        for (var i = 0; i < messages.Count; i++)
+        {
+            total += messages[i].Text.Length;
+        }
+
+        var seen = Interlocked.Read(ref _longestPrompt);
+        while (total > seen)
+        {
+            var previous = Interlocked.CompareExchange(ref _longestPrompt, total, seen);
+            if (previous == seen)
+            {
+                return;
+            }
+
+            seen = previous;
+        }
+    }
 
     /// <summary>
     /// Calls the model on a fill-mode miss, retrying transient failures with doubling delays.
@@ -124,7 +185,7 @@ public sealed class CachedGraphExtractionClient : IChatClient
         if (_inner is null)
         {
             throw new InvalidOperationException(
-                "The cached extraction client was constructed without a model, so a cache miss " +
+                "The cached GraphRAG client was constructed without a model, so a cache miss " +
                 "cannot be filled. A refuse-on-miss cache should have thrown before reaching here; " +
                 "a fill-mode cache was opened without a client to fill it from.");
         }

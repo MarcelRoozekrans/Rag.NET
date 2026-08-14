@@ -3433,9 +3433,16 @@ stops anyone finding it.
   bounds it: 20 of 147,021 weights altered, largest community 5,629 (**9.02%**), modularity 0.7496.
   Over these sixty articles the heaviest weight is 6.0, so the bound alters nothing and the slice
   guard's 7.3% was never evidence about the corpus.
-- **The guard never sees a real community report.** `PromptEchoChatClient` returns a bounded head of
-  the prompt, so a "report" is its community's own entity descriptions. **"Do real reports retrieve
-  well" is untested**, and the two rank figures (1,098 → 209) are partly properties of the stub.
+- **The guard never saw a real community report. Fixed 2026-08-13 (#172).** `PromptEchoChatClient`
+  returned a bounded head of the prompt, so a "report" was its community's own entity descriptions.
+  Reports are now generated once against `openai/gpt-4o-mini` at temperature 0 by the generation
+  tool's `--stage reports` and replayed refuse-on-miss out of the `graph-reports` directory of
+  `GraphExtractionCache` — the same treatment extraction has, made possible by bounding the report
+  prompt. **The two rank figures (1,098 → 209) were measured against the stub and remain properties
+  of it**; the run prints the rank it actually measures. Global search's map-reduce deliberately
+  stays on the stub: its prompts are built from whichever reports retrieval returned, and ONNX
+  kernel dispatch can reorder near-ties across machines, so caching them would make the guard
+  machine-specific for a reason unrelated to GraphRAG.
 - **`Leiden.RefineSingleNode` indexes `assignment[comm]` with a community id where a node index is
   wanted.** It is correct today only because refined community ids are always seed-node indices.
   Fragile, worth a follow-up, and not touched in this phase because it was found while reading rather
