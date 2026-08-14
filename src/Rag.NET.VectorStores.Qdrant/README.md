@@ -34,6 +34,7 @@ fields:
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
+using Rag.NET.Models;
 using Rag.NET.Qdrant;
 
 var store = provider.GetRequiredService<IVectorStore>() as QdrantVectorStore;
@@ -41,7 +42,7 @@ await store!.InitializeAsync();
 
 var results = await pipeline.RetrieveAsync("open incidents", new RetrievalOptions
 {
-    MetadataFilter = new Dictionary<string, string>
+    MetadataFilter = new Dictionary<string, MetadataValue>
     {
         ["department"] = "finance",   // matches the meta_department payload field
     },
