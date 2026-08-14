@@ -72,13 +72,36 @@ public sealed class GraphRagFunctionsTests
     /// extraction rather than a defect, and a bound on them would fail for an honest reason and
     /// pass for a dishonest one. The two counts are printed side by side because they do not match
     /// and the gap is itself informative: 273 of this slice's entities appear in no relationship at
-    /// all, while 396 communities hold one member — so some 123 entities have edges and still end
-    /// up alone, their neighbours having been drawn elsewhere. What cannot be legitimate is one
-    /// community swallowing the graph: at 89.7% — where this slice sat
-    /// while <c>Leiden.BuildAggregatedEdges</c> discarded intra-community weight — every assertion
-    /// about clustering below is satisfied while nothing has been clustered. The margin is wide on
-    /// purpose: this is a degeneracy detector, not a quality target, and a ceiling set just above
-    /// the measurement would go red on a corpus change that means nothing.
+    /// all, while 396 communities hold one member — so 123 entities have edges and still end up
+    /// alone.
+    /// <para>
+    /// <b>That gap was explained wrongly here for as long as it was written down, and the correct
+    /// explanation is a finding about extraction.</b> It said their neighbours had been drawn into
+    /// other communities. They have not: those 123 entities are not in the clustering's input at
+    /// all. <c>Leiden.BuildAdjacency</c> keeps an edge only when both endpoints resolve to an
+    /// extracted entity through <c>GraphNames.Comparer</c>, and over this slice 853 of 16,403
+    /// relationships — 5.20% — fail that: 837 name something the entity pass never extracted, and
+    /// 16 name the same entity at both ends. For 123 entities <i>every</i> edge is one of those, so
+    /// they arrive at Leiden isolated and it correctly emits one community each. 273 isolated plus
+    /// 123 stranded is exactly 396, which is why the two numbers reconcile to the singleton count
+    /// and not approximately. Over the full 609-article corpus the same drop is 5,492 of 147,021,
+    /// 3.74%.
+    /// </para>
+    /// <para>
+    /// What cannot be legitimate is one community swallowing the graph: at 89.7% — where this slice
+    /// sat while <c>Leiden.BuildAggregatedEdges</c> discarded intra-community weight — every
+    /// assertion about clustering below is satisfied while nothing has been clustered. The margin
+    /// is wide on purpose: this is a degeneracy detector, not a quality target, and a ceiling set
+    /// just above the measurement would go red on a corpus change that means nothing.
+    /// </para>
+    /// <para>
+    /// <b>This ceiling did not catch issue #209, and the reason is worth stating where it will be
+    /// read.</b> Unbounded relationship weights collapsed the <i>full</i> corpus to 92.13% in one
+    /// community while this slice stayed at 7.3%, because the heaviest weight the model returned
+    /// over these sixty articles is 6.0 and the two nine-figure ones are in articles the slice does
+    /// not contain. A degeneracy detector on a sixtieth of the corpus is worth having and is not
+    /// evidence about the corpus.
+    /// </para>
     /// </remarks>
     private const double LargestCommunityShareCeiling = 0.25;
 
@@ -547,9 +570,11 @@ public sealed class GraphRagFunctionsTests
 
     /// <summary>How many entities no relationship in the graph names at either end.</summary>
     /// <remarks>
-    /// <b>Printed and never asserted, deliberately.</b> These are the entities Leiden turns into
-    /// singleton communities, and they are a property of what extraction produced rather than of
-    /// how the graph was clustered: a model naming a subject once, in one article, in one phrasing.
+    /// <b>Printed and never asserted, deliberately.</b> These are 273 of the 396 entities Leiden
+    /// turns into singleton communities — the other 123 have edges that <c>BuildAdjacency</c> drops,
+    /// which the constant above works through — and they are a property of what extraction produced
+    /// rather than of how the graph was clustered: a model naming a subject once, in one article,
+    /// in one phrasing.
     /// A pass/fail bound would hide movement inside its band, and movement is the whole of what is
     /// interesting here — if an extraction change halves this number, that is a result worth
     /// seeing, and if it doubles it, that is a regression worth seeing, and neither is a reason for

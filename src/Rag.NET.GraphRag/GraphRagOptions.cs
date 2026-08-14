@@ -56,6 +56,62 @@ public sealed class GraphRagOptions
     public int MaxEntityDescriptionLength { get; set; } = 500;
 
     /// <summary>
+    /// The largest relationship weight an extraction may contribute to the graph. Default: 10.
+    /// <para>
+    /// <b>Without it, one sentence in one article decided the whole clustering.</b>
+    /// <see cref="EntityExtractionPrompt"/> asks the model for <c>"weight": 1.0</c> and nothing
+    /// checked the answer. Over the full 609-article MultiHop-RAG corpus the model returned
+    /// acquisition prices: <c>Microsoft -&gt; Mojang</c> at 2.5e9 and <c>Microsoft -&gt; Rare</c> at
+    /// 3.75e8. Two edges out of 147,021 held 99.99% of the graph's total weight — <c>m</c> =
+    /// 2,875,204,647 against a per-relationship mean of 1.0009 in the sixty-article slice — and
+    /// since modularity's gain term is <c>w − γ·k_i·k_c/2m</c>, the penalty for an ordinary pair
+    /// fell to about 1e-9, every merge paid, and Leiden returned <b>57,484 of 62,392 entities,
+    /// 92.13%, in one community</b> at modularity 0.0001. Eight weights were also non-positive or
+    /// not a number, the smallest −1.00, so negatives passed too.
+    /// </para>
+    /// <para>
+    /// <b>Bounded rather than discarded, and the measurement is why.</b> Rebuilding that graph from
+    /// the same cached extractions with this ceiling at 10 alters <b>20 of 147,021</b> weights — 12
+    /// clamped, 8 replaced — and moves the largest community to 5,629 entities, <b>9.02%</b>, at
+    /// modularity 0.7496. Forcing every weight to 1.0 instead changes 121 of them and lands at
+    /// 8.95% and 0.7492. The ordering below the ceiling is therefore worth about 0.03 points on
+    /// this corpus — little, but not nothing, and discarding 147,001 usable values to correct 20
+    /// bad ones is the wrong trade. A ceiling of 20,000 was also measured and is <i>worse</i>
+    /// (15.05%), which says the bound has to sit near the schema's own scale rather than merely be
+    /// finite. <see cref="LeidenOptions.Resolution"/> is not implicated and was not changed: a
+    /// hundred-fold sweep of it moved the largest community by 0.06 points.
+    /// </para>
+    /// <para>
+    /// <b>The sixty-article slice never saw any of this, which is why nothing caught it.</b>
+    /// <c>GraphRagFunctionsTests</c> already caps the largest community's share at 25%, but over the
+    /// slice the heaviest weight the model returned is 6.0 and this ceiling alters <b>no edge at
+    /// all</b>. The defect needed the corpus that contained the sentence about the Mojang price.
+    /// </para>
+    /// <para>
+    /// Must be a finite number greater than 0 — enforced by the validation attribute, which
+    /// <c>UseGraphRag</c> runs at registration. Infinity would type-check and reinstate the defect;
+    /// NaN would make every comparison against it false, which is the same thing written less
+    /// obviously. Weights above it are clamped, not dropped, and weights that are not finite or not
+    /// greater than zero are replaced with the schema's own 1.0 rather than costing the graph an
+    /// edge whose endpoints and description were perfectly good. <b>Every alteration is counted</b>
+    /// on the <c>ragnet.graphrag.extract</c> activity —
+    /// <c>graphrag.relationship.weight.replaced</c>, <c>.clamped</c> and <c>.largest</c> — and
+    /// warned about once per document, because the whole of what made this defect expensive was
+    /// that it was silent.
+    /// </para>
+    /// </summary>
+    [Must(nameof(WeightCeilingIsUsable), Message =
+        "MaxRelationshipWeight must be a finite number greater than 0. Infinity restores the " +
+        "unbounded behaviour this setting exists to prevent, and NaN silently disables the bound " +
+        "because every comparison against it is false.")]
+    public double MaxRelationshipWeight { get; set; } = 10.0;
+
+    /// <summary>Reports whether the weight ceiling is one that can actually bound anything.</summary>
+    /// <param name="value">The <see cref="MaxRelationshipWeight"/> value under validation.</param>
+    /// <returns>Whether it is finite and greater than zero.</returns>
+    internal bool WeightCeilingIsUsable(double value) => double.IsFinite(value) && value > 0.0;
+
+    /// <summary>
     /// LLM prompt template for entity/relationship extraction. {text} is replaced with chunk
     /// text. {entity_types} and {relationship_types} are replaced with type guidance derived
     /// from <see cref="EntityTypes"/> and <see cref="RelationshipTypes"/> — the open-extraction

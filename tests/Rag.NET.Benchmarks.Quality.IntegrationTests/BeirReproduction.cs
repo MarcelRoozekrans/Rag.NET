@@ -539,8 +539,20 @@ public static class BeirReproduction
             "796 (8.8%) before it and 661 (7.3%) after, because the paper's refinement splits the " +
             "one community that had been holding two weakly-joined halves. " +
             "273 entities genuinely have no relationship, which is a property " +
-            "of extraction rather than of clustering. Neither figure is a reason to skip the " +
-            "comparison; both are reasons not to predict its outcome from this entry."),
+            "of extraction rather than of clustering; a further 123 have relationships that name " +
+            "something extraction never made an entity of, so Leiden never sees them either -- " +
+            "853 of the slice's 16,403 relationships (5.20%) are dropped that way. " +
+            "**And the slice's numbers are not the corpus's, which issue #209 settled by " +
+            "measurement.** Extracting all 609 articles from the same cache gives 62,392 entities " +
+            "and 147,021 relationships, and the model returned two of the weights as acquisition " +
+            "prices -- Microsoft/Mojang at 2.5e9, Microsoft/Rare at 3.75e8. Those two edges carried " +
+            "99.99% of the graph's total weight, and Leiden put 57,484 of the 62,392 entities, " +
+            "92.13%, in ONE community at modularity 0.0001. Bounding the weight at extraction " +
+            "(GraphRagOptions.MaxRelationshipWeight, default 10) alters 20 of the 147,021 and " +
+            "brings that to 5,629 entities, 9.02%, at modularity 0.7496. The slice could not have " +
+            "shown it: its heaviest weight is 6.0 and the bound alters none of its edges. " +
+            "None of these figures is a reason to skip the comparison; all of them are reasons not " +
+            "to predict its outcome from this entry."),
     ];
 
     /// <summary>
