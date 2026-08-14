@@ -670,7 +670,26 @@ public static class BeirRunBudget
     };
 
     /// <summary>
-    /// The <c>--filter</c> that selects exactly this case.
+    /// Every cell in the table, paired with the <c>--filter</c> its skip message prints.
+    /// </summary>
+    /// <remarks>
+    /// Exists for <see cref="BeirRunBudgetTests.EveryCellsPrintedFilterCanSelectATest"/>, and it
+    /// yields <see cref="Filter"/>'s own output rather than rebuilding it. A guard that composed the
+    /// string itself would be checking its own copy, and the string that matched nothing for a
+    /// release was the one <see cref="Explain"/> printed — so that is the one that has to be under
+    /// test.
+    /// </remarks>
+    internal static IEnumerable<(string Dataset, BeirProtocol Protocol, string Filter)>
+        PrintedFilters()
+    {
+        foreach (var cost in Costs)
+        {
+            yield return (cost.Dataset, cost.Protocol, Filter(cost));
+        }
+    }
+
+    /// <summary>
+    /// The <c>--filter</c> that selects this case.
     /// </summary>
     /// <remarks>
     /// <c>DisplayName</c> on both halves, never <c>FullyQualifiedName</c>: the latter stops at the
@@ -680,15 +699,33 @@ public static class BeirRunBudget
     /// fragment of the test <i>method</i> name rather than the class name — the class alone would
     /// select all three cells and misreport what the quoted cost buys.
     /// <para>
-    /// <see cref="BeirProtocol.GraphRag"/>'s discriminator is a bare string because no test class
-    /// measures that protocol yet, so there is nothing to <c>nameof</c>. It is still the right
-    /// fragment: a class or method added for the graph path will carry <c>GraphRag</c> in its
-    /// display name, and a filter that selected nothing today would only be discovered by somebody
-    /// pasting it out of a skip message.
+    /// <b><see cref="BeirProtocol.GraphRag"/> is the exception, and it is the exception for exactly
+    /// the reason the dataset conjunct works everywhere else.</b> A dataset name reaches a display
+    /// name only as a theory argument, and
+    /// <see cref="GraphRagFunctionsTests.GraphRag_OverTheMultiHopRagSlice_ExtractsClustersAndRetrievesRelevantDocuments"/>
+    /// is a <c>[Fact]</c> over one pinned slice: it takes no <c>datasetName</c>, so no display name
+    /// in this assembly holds <c>multihop-rag</c> beside <c>GraphRag</c>. The conjunction therefore
+    /// matched <b>nothing</b> — and vstest answers an empty selection with "No test matches the
+    /// given testcase filter" and <b>exit code 0</b>, so somebody who pasted this very line out of
+    /// the skip message got a green run and nearly recorded a pass for a case that never ran. This
+    /// cell is selected by identity instead, through a <c>nameof</c> a rename breaks at compile
+    /// time.
+    /// </para>
+    /// <para>
+    /// The claim that the strings here select anything is now asserted rather than reasoned about:
+    /// <see cref="BeirRunBudgetTests.EveryCellsPrintedFilterCanSelectATest"/> puts every cell's
+    /// emitted filter to the assembly. The remark this replaces reasoned that a class added for the
+    /// graph path "will carry <c>GraphRag</c> in its display name", which was true and not enough,
+    /// and nothing checked the half it got wrong.
     /// </para>
     /// </remarks>
     private static string Filter(Cost cost)
     {
+        if (cost.Protocol is BeirProtocol.GraphRag)
+        {
+            return $"FullyQualifiedName~{nameof(GraphRagFunctionsTests)}";
+        }
+
         var discriminator = cost.Protocol switch
         {
             BeirProtocol.Parity => nameof(BeirParityTests),
@@ -701,7 +738,6 @@ public static class BeirRunBudget
             BeirProtocol.LangChain => "ThroughLangChain",
             BeirProtocol.LlamaIndex => "ThroughLlamaIndex",
             BeirProtocol.Haystack => "ThroughHaystack",
-            BeirProtocol.GraphRag => "GraphRag",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 
