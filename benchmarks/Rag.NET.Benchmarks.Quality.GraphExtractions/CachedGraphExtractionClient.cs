@@ -82,7 +82,7 @@ public sealed class CachedGraphExtractionClient : IChatClient
         _ = Interlocked.Increment(ref _calls);
 
         var text = await _cache.GetOrAddAsync(
-            RenderPrompt(sent), ct => CallModelAsync(sent, ct), cancellationToken);
+            GraphExtractionPrompt.Render(sent), ct => CallModelAsync(sent, ct), cancellationToken);
 
         return new ChatResponse(new ChatMessage(ChatRole.Assistant, text));
     }
@@ -107,28 +107,6 @@ public sealed class CachedGraphExtractionClient : IChatClient
 
     /// <inheritdoc/>
     public void Dispose() => _inner?.Dispose();
-
-    /// <summary>
-    /// Flattens a request into the one string the cache keys on: each message as
-    /// <c>role: text</c>, newline separated.
-    /// </summary>
-    /// <remarks>
-    /// GraphRAG sends exactly one user message today, so this is the prompt with six characters in
-    /// front of it. The role prefix and the loop are there anyway because the alternative — take
-    /// the single message's text — would key a two-message conversation as its first message the
-    /// day a system prompt is added, and serve that day's extractions out of the day before's
-    /// cache.
-    /// </remarks>
-    private static string RenderPrompt(List<ChatMessage> messages)
-    {
-        var rendered = new List<string>(messages.Count);
-        for (var i = 0; i < messages.Count; i++)
-        {
-            rendered.Add(messages[i].Role.ToString() + ": " + messages[i].Text);
-        }
-
-        return string.Join("\n", rendered);
-    }
 
     /// <summary>
     /// Calls the model on a fill-mode miss, retrying transient failures with doubling delays.
