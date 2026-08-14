@@ -37,13 +37,23 @@ public sealed class PipelineRetriever : IRetriever
             Logger = (ILogger?)Logger ?? NullLogger.Instance,
         };
 
-        var queryHash = HashQuery(query);
-
+        var logger = Logger;
         using var activity = RagTelemetry.ActivitySource.StartActivity("ragnet.retrieve");
+
+        // The hash has exactly two readers — the span tag and the log scope — and by default
+        // neither exists: no OpenTelemetry listener leaves `activity` null, and the logger is
+        // [Inject(Required = false)]. It used to be an argument to `activity?.SetTag`, where the
+        // null-conditional short-circuited it away; hoisting it into a local to share with the
+        // scope made it unconditional, and every retrieval has paid for a SHA-256 and four
+        // string allocations nothing read since. The two readers have independent lifetimes, so
+        // the guard asks about both — and still computes the hash at most once.
+        var queryHash = activity is null && logger is null ? null : HashQuery(query);
         activity?.SetTag("query.hash", queryHash);
         activity?.SetTag("top.k", resolvedOptions.TopK);
 
-        using var scope = Logger?.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal) { ["query_hash"] = queryHash });
+        using var scope = queryHash is null
+            ? null
+            : logger?.BeginScope(new Dictionary<string, object>(StringComparer.Ordinal) { ["query_hash"] = queryHash });
 
         var sw = Stopwatch.StartNew();
         try

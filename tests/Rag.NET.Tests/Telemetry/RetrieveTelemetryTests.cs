@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.Diagnostics.Metrics.Testing;
+using Microsoft.Extensions.Logging.Testing;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Pipeline;
@@ -57,6 +58,45 @@ public class RetrieveTelemetryTests
         Assert.NotNull(span.GetTagItem("query.hash")); // 8-char hex SHA-256 prefix — don't assert exact value
         Assert.NotNull(span.GetTagItem("top.k"));
         Assert.Equal("0", span.GetTagItem("result.count")?.ToString()); // empty result from fake store
+    }
+
+    /// <summary>
+    /// The span tag and the log scope are the query hash's only two readers, and they have
+    /// independent lifetimes — a listener without a logger, a logger without a listener, or
+    /// both. Because the hash is now computed only when one of them exists, the case where
+    /// both do is the one that pins the remaining requirement: they share a single computed
+    /// value rather than each hashing the query for themselves.
+    /// </summary>
+    [Fact]
+    public async Task RetrieveAsync_WithListenerAndLogger_SpanTagAndLogScopeCarryTheSameHash()
+    {
+        var (activities, listener) = CreateListener();
+        using var _ = listener;
+
+        var logger = new FakeLogger<PipelineRetriever>();
+        var pipeline = new Pipeline<RetrievalContext, IReadOnlyList<SearchResult>>((ctx, _) =>
+        {
+            ScopeProbeLog.Emit(ctx.Logger);
+            return ValueTask.FromResult<IReadOnlyList<SearchResult>>([]);
+        });
+        var retriever = new PipelineRetriever { Pipeline = pipeline, Logger = logger };
+        using var parent = new Activity("test-parent").Start();
+
+        var __ = await retriever.RetrieveAsync("what is RAG?",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var span = activities
+            .Where(a => a.TraceId == parent.TraceId)
+            .FirstOrDefault(a => string.Equals(a.OperationName, "ragnet.retrieve", StringComparison.Ordinal));
+        Assert.NotNull(span);
+
+        var record = Assert.Single(logger.Collector.GetSnapshot());
+        var scopeState = Assert.IsAssignableFrom<IEnumerable<KeyValuePair<string, object>>>(
+            Assert.Single(record.Scopes));
+        var scopeHash = Assert.Single(scopeState).Value;
+
+        Assert.Equal(PipelineRetriever.HashQuery("what is RAG?"), scopeHash);
+        Assert.Equal(scopeHash, span.GetTagItem("query.hash"));
     }
 
     [Fact]
