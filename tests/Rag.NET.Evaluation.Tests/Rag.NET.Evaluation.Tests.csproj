@@ -7,6 +7,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Evaluation\Rag.NET.Evaluation.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.Evaluation.Ragas\Rag.NET.Evaluation.Ragas.csproj" />
+    <!-- Test-only. Rag.NET.Evaluation itself stays Abstractions-only on purpose — UseShadow needs
+         nothing beyond IRagBuilder.Services. This reference exists so the chaining test can pin the
+         cross-package expression from issue #197, rag.UseShadow<X>().UseRaptor(), against a real
+         core satellite rather than a stand-in. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Raptor\Rag.NET.Raptor.csproj" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" />

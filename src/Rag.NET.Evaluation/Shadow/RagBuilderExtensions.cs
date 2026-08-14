@@ -26,7 +26,13 @@ public static class RagBuilderExtensions
     /// nobody should discover a doubled bill by upgrading a package. An out-of-range rate throws
     /// here, at registration, rather than being clamped to a rate nobody chose.
     /// </param>
-    /// <returns>The builder.</returns>
+    /// <returns>
+    /// The builder, so this call chains into the next one. The static type is
+    /// <see cref="IRagBuilder"/> rather than <c>RagBuilder</c> — this package depends on
+    /// <c>Rag.NET.Abstractions</c> alone, and needs nothing here beyond
+    /// <see cref="IRagBuilder.Services"/>. The satellites' <c>Use*</c> extensions accept any
+    /// <see cref="IRagBuilder"/>, so <c>rag.UseShadow&lt;T&gt;().UseRaptor()</c> composes.
+    /// </returns>
     /// <remarks>
     /// <para>
     /// <b>Call this after the pipeline exists</b> — the same ordering rule <c>AddRagDiagnostics</c>

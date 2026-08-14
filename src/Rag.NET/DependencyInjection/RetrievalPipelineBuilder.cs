@@ -52,9 +52,22 @@ public sealed class RetrievalPipelineBuilder
     /// (first-to-run) behavior. Use for cross-cutting concerns that should observe the final
     /// results returned to the caller after all inner behaviors have executed.
     /// </summary>
+    /// <remarks>
+    /// Idempotent: a second call for a behavior already in the pipeline leaves it where it is.
+    /// The callers are registration extensions — <c>UseAuditLog</c>, <c>AddRagDiagnostics</c> —
+    /// and layered composition roots reach those more than once. Inserting twice would run the
+    /// observer twice per retrieval, so every query would be audited twice and traced twice,
+    /// with nothing about the container looking wrong. Guarding here rather than at each call
+    /// site covers callers outside this assembly, which cannot see the behavior list.
+    /// </remarks>
     public RetrievalPipelineBuilder AddFirst<T>()
         where T : IRetrievalBehavior
     {
+        if (_types.Contains(typeof(T)))
+        {
+            return this;
+        }
+
         _types.Insert(0, typeof(T));
         return this;
     }
