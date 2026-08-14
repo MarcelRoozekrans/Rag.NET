@@ -49,18 +49,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(retrievalBuilder);
         services.AddSingleton(sp => retrievalBuilder.Build(sp));
 
-        services.AddSingleton<RagPipeline>(sp =>
-        {
-            var r = sp.GetRequiredService<IRetriever>();
-            var i = sp.GetRequiredService<IIngestor>();
-            IAnswerEngine? answerEngine = sp.GetService<IAnswerEngine>();
-            if (answerEngine is null && sp.GetService<IChatClient>() is not null)
-            {
-                answerEngine = ChatAnswerEngine.CreateFromServices(sp);
-            }
-            var pipelineLogger = sp.GetService<ILogger<RagPipeline>>();
-            return new RagPipeline(r, i, answerEngine, pipelineLogger);
-        });
+        // Answer-engine decorations are applied here rather than by the packages that add them,
+        // so an audit or trace decorator wraps the engine that is actually used whichever order
+        // the calls were made in — including a chat client registered after AddRagNet returned.
+        var answerEngineDecorations = new AnswerEngineDecorationBuilder();
+        services.AddSingleton(answerEngineDecorations);
+        services.AddSingleton(sp => new ComposedAnswerEngine(ComposeAnswerEngine(sp, answerEngineDecorations)));
+
+        services.AddSingleton<RagPipeline>(BuildPipeline);
         services.AddSingleton<IRagPipeline>(sp => sp.GetRequiredService<RagPipeline>());
 
         var builder = new RagBuilder(services);
@@ -75,6 +71,47 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IBm25Index>(sp => sp.GetRequiredService<InMemoryBm25Index>());
 
         return services;
+    }
+
+    /// <summary>Builds the pipeline, after checking that every decoration the user asked for applies.</summary>
+    /// <param name="serviceProvider">The provider the pipeline is resolved from.</param>
+    /// <returns>The pipeline.</returns>
+    /// <remarks>
+    /// The composition check runs first and throws: a container whose <c>ConfigureResilience</c>,
+    /// <c>UseCostBudgeting</c> or <c>UseFallbackChain</c> call decorated nothing is misconfigured,
+    /// and the whole point of issue #195 is that it must not keep working quietly. This is the one
+    /// place every entry point passes through, and the last moment at which the registrations made
+    /// after <c>AddRagNet</c> returned are all visible.
+    /// </remarks>
+    private static RagPipeline BuildPipeline(IServiceProvider serviceProvider)
+    {
+        serviceProvider.GetService<CompositionClaimRegistry>()?.Validate(serviceProvider);
+
+        return new RagPipeline(
+            serviceProvider.GetRequiredService<IRetriever>(),
+            serviceProvider.GetRequiredService<IIngestor>(),
+            serviceProvider.GetRequiredService<ComposedAnswerEngine>().Engine,
+            serviceProvider.GetService<ILogger<RagPipeline>>());
+    }
+
+    /// <summary>Picks the answer engine and applies every decoration registered against it.</summary>
+    /// <param name="serviceProvider">The provider to resolve from.</param>
+    /// <param name="decorations">The decorations collected during registration.</param>
+    /// <returns>
+    /// The decorated engine, or <see langword="null"/> when neither an <see cref="IAnswerEngine"/>
+    /// nor an <see cref="IChatClient"/> is registered — a retrieval-only pipeline, which stays one.
+    /// </returns>
+    private static IAnswerEngine? ComposeAnswerEngine(
+        IServiceProvider serviceProvider,
+        AnswerEngineDecorationBuilder decorations)
+    {
+        IAnswerEngine? answerEngine = serviceProvider.GetService<IAnswerEngine>();
+        if (answerEngine is null && serviceProvider.GetService<IChatClient>() is not null)
+        {
+            answerEngine = ChatAnswerEngine.CreateFromServices(serviceProvider);
+        }
+
+        return decorations.Apply(answerEngine, serviceProvider);
     }
 
     /// <summary>

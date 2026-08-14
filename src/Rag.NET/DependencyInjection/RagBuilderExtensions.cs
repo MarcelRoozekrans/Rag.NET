@@ -106,7 +106,10 @@ public static class RagBuilderExtensions
     /// spend limits are only enforced within a single process lifetime — a warning naming
     /// <c>UseSqliteCostLedger()</c> is logged when the default is used. Each registered surface
     /// is decorated; at least one must be registered before this call (same ordering rule
-    /// as <c>UseRateLimiting</c>) — a surface registered afterwards is not tracked.
+    /// as <c>UseRateLimiting</c>). A surface registered <b>afterwards</b> is not tracked, and no
+    /// longer silently: resolving the RAG pipeline then throws an <see cref="InvalidOperationException"/>
+    /// naming this method and the surface it missed. Half a budget — chat capped, ingestion
+    /// uncapped — used to look exactly like a whole one (issue #195).
     /// Idempotent: repeated calls are no-ops keyed on a sentinel registration, so
     /// decorators never stack and the first configuration wins (same first-wins
     /// convention as <c>UseRateLimiting</c>). The budget gate is pre-call: every call
@@ -171,21 +174,50 @@ public static class RagBuilderExtensions
             return new InMemoryCostLedger(sp.GetService<TimeProvider>());
         });
 
+        TrackSurfaces(builder.Services, options, trackChat, trackEmbedding);
+
+        return builder;
+    }
+
+    /// <summary>Decorates the registered surfaces, and claims both so the missing one is not silent.</summary>
+    /// <param name="services">The collection being registered into.</param>
+    /// <param name="options">The prices and limits the decorators enforce.</param>
+    /// <param name="trackChat">Whether an <see cref="IChatClient"/> is there to decorate.</param>
+    /// <param name="trackEmbedding">Whether an embedding generator is there to decorate.</param>
+    /// <remarks>
+    /// Both surfaces are claimed whether or not they are registered yet: a surface registered
+    /// afterwards is not tracked, and an unmarked probe is how that is caught when the pipeline is
+    /// resolved (issue #195).
+    /// </remarks>
+    private static void TrackSurfaces(
+        IServiceCollection services,
+        CostBudgetOptions options,
+        bool trackChat,
+        bool trackEmbedding)
+    {
+        var chatProbe = CompositionClaims.Claim<IChatClient>(services, nameof(UseCostBudgeting));
+        var embeddingProbe = CompositionClaims.Claim<IEmbeddingGenerator<string, Embedding<float>>>(
+            services, nameof(UseCostBudgeting));
+
         if (trackChat)
         {
-            ServiceDecorationHelper.Decorate<IChatClient>(builder.Services, (inner, sp) =>
-                new CostTrackingChatClient(inner, sp.GetRequiredService<ICostLedger>(), options,
-                    sp.GetService<ILogger<CostTrackingChatClient>>()));
+            ServiceDecorationHelper.Decorate<IChatClient>(services, (inner, sp) =>
+            {
+                chatProbe.Applied = true;
+                return new CostTrackingChatClient(inner, sp.GetRequiredService<ICostLedger>(), options,
+                    sp.GetService<ILogger<CostTrackingChatClient>>());
+            });
         }
 
         if (trackEmbedding)
         {
-            ServiceDecorationHelper.Decorate<IEmbeddingGenerator<string, Embedding<float>>>(builder.Services, (inner, sp) =>
-                new CostTrackingEmbeddingGenerator(inner, sp.GetRequiredService<ICostLedger>(), options,
-                    sp.GetService<ILogger<CostTrackingEmbeddingGenerator>>()));
+            ServiceDecorationHelper.Decorate<IEmbeddingGenerator<string, Embedding<float>>>(services, (inner, sp) =>
+            {
+                embeddingProbe.Applied = true;
+                return new CostTrackingEmbeddingGenerator(inner, sp.GetRequiredService<ICostLedger>(), options,
+                    sp.GetService<ILogger<CostTrackingEmbeddingGenerator>>());
+            });
         }
-
-        return builder;
     }
 
     private static void ValidateCostBudgetOptions(CostBudgetOptions options, string paramName)

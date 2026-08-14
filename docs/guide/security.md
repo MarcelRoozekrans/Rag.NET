@@ -302,3 +302,5 @@ services.AddRagNetAspNetCoreSecurity(); // wires ClaimsPrincipalCallerContext fo
 The registration order within the builder determines sanitiser chain order (regex before LLM). RBAC filtering and audit logging are independent of registration order relative to PII.
 
 > **Note:** `UseAuditLog` must be called after `AddRagNet` so that `RetrievalPipelineBuilder` is already registered in DI. Calling it before `AddRagNet` throws `InvalidOperationException`.
+
+Answer auditing is independent of registration order relative to the answer engines. `UseAuditLog` adds its decorator to the answer-engine decorations `RagPipeline` applies when it composes its engine, so `rag.UseAuditLog().UseMapReduceAnswerEngine()` and the reverse both audit every answer. Both used to register `IAnswerEngine` directly, so last-wins dropped whichever ran first — while retrieval auditing kept working, leaving an audit log that read as complete and recorded no answers at all ([#195](https://github.com/MarcelRoozekrans/Rag.NET/issues/195)). Resolving `IAnswerEngine` yields the *registered* engine, undecorated; `ComposedAnswerEngine` is the audited one.

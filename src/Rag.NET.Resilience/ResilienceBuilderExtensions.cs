@@ -43,6 +43,10 @@ public static class ResilienceBuilderExtensions
     /// Only the surfaces registered at the time of the call are decorated — ordering matters
     /// (same rule as <c>UseRateLimiting</c>/<c>UseCostBudgeting</c>): register the store and
     /// the embedding generator first, e.g. <c>rag.UsePgVector(cs).ConfigureResilience()</c>.
+    /// A surface registered <b>afterwards</b> is not retried, and since issue #195 not quietly:
+    /// resolving the RAG pipeline throws an <see cref="InvalidOperationException"/> naming this
+    /// method and the surface it missed. Finding one of the two surfaces used to satisfy the
+    /// "nothing to apply to" check below and skip the other in silence.
     /// Not calling this method leaves the container graph completely undecorated.
     /// Idempotent: repeated calls re-configure the named pipeline (last wins) but never stack a
     /// second decorator layer.
@@ -114,16 +118,30 @@ public static class ResilienceBuilderExtensions
 
         builder.Services.AddKeyedSingleton<object>(ResilienceAppliedKey, static (_, _) => new object());
 
+        // Both surfaces are claimed even when only one is registered: finding one of the two used to
+        // satisfy the guard above and skip the other in silence (issue #195).
+        var embeddingProbe = CompositionClaims.Claim<IEmbeddingGenerator<string, Embedding<float>>>(
+            builder.Services, nameof(ConfigureResilience));
+        var storeProbe = CompositionClaims.Claim<IVectorStore>(builder.Services, nameof(ConfigureResilience));
+
         if (decorateEmbedding)
         {
             ServiceDecorationHelper.Decorate<IEmbeddingGenerator<string, Embedding<float>>>(
-                builder.Services, static (inner, sp) => new ResilientEmbeddingGenerator(inner, ResolvePipeline(sp)));
+                builder.Services, (inner, sp) =>
+                {
+                    embeddingProbe.Applied = true;
+                    return new ResilientEmbeddingGenerator(inner, ResolvePipeline(sp));
+                });
         }
 
         if (decorateStore)
         {
             ServiceDecorationHelper.Decorate<IVectorStore>(
-                builder.Services, static (inner, sp) => ResilientVectorStore.Create(inner, ResolvePipeline(sp)));
+                builder.Services, (inner, sp) =>
+                {
+                    storeProbe.Applied = true;
+                    return ResilientVectorStore.Create(inner, ResolvePipeline(sp));
+                });
         }
 
         return builder;
@@ -174,7 +192,12 @@ public static class ResilienceBuilderExtensions
     /// <remarks>
     /// This registration supersedes any prior <see cref="IChatClient"/> registration
     /// (standard last-wins container semantics, same convention as
-    /// <c>UseFederatedSearch</c>). Clients are configured as factories so each
+    /// <c>UseFederatedSearch</c>). That is the supported direction and only that one: an
+    /// <see cref="IChatClient"/> registered <b>after</b> this call replaces the chain, so
+    /// resolving the RAG pipeline throws an <see cref="InvalidOperationException"/> rather than
+    /// leaving failover configured and unreachable (issue #195). Add every provider client to the
+    /// chain through <see cref="FallbackChainOptions.AddClient"/> instead of registering one
+    /// separately. Clients are configured as factories so each
     /// per-provider client can be built from the service provider without the chain
     /// wrapping itself — do not resolve <see cref="IChatClient"/> inside a factory:
     /// that resolves the chain recursively. Construct the provider client directly, e.g.
@@ -209,8 +232,14 @@ public static class ResilienceBuilderExtensions
                 "FallbackChainOptions.PerClientTimeout must be greater than zero when set.");
         }
 
+        // The chain superseding a prior IChatClient is the documented direction; the reverse is a
+        // fallback chain that was configured, validated and unreachable, which is only ever found
+        // during the outage it was configured for (issue #195).
+        var probe = CompositionClaims.Claim<IChatClient>(builder.Services, nameof(UseFallbackChain));
+
         builder.Services.AddSingleton<IChatClient>(sp =>
         {
+            probe.Applied = true;
             var chain = new List<IChatClient>(options.Clients.Count);
             foreach (var factory in options.Clients)
             {
@@ -244,7 +273,9 @@ public static class ResilienceBuilderExtensions
     /// decorates whatever is registered when it runs, so register the underlying client
     /// (provider registration, <c>UseFallbackChain</c>, …) before calling
     /// <c>UseRateLimiting</c> — a configured surface with no underlying registration fails
-    /// at registration time, before either surface is decorated (no half-applied state).
+    /// at registration time, before either surface is decorated (no half-applied state), and a
+    /// registration that <b>replaces</b> a decorated surface afterwards fails when the RAG
+    /// pipeline is resolved (issue #195) rather than dropping the limiter in silence.
     /// Idempotent per surface: a surface whose limiter is already registered keeps its
     /// first configuration (same first-wins convention as <c>UseEmbeddingVersioning</c>) —
     /// budgets are never stacked or re-applied; a repeat call only adds surfaces that were
@@ -290,19 +321,28 @@ public static class ResilienceBuilderExtensions
         if (limitChat)
         {
             int chatRpm = options.ChatRequestsPerMinute!.Value;
+            var probe = CompositionClaims.Claim<IChatClient>(builder.Services, nameof(UseRateLimiting));
             builder.Services.AddKeyedSingleton<IRateLimiter>(ChatRateLimiterKey,
                 (_, _) => new TokenBucketRateLimiterAdapter(chatRpm, "chat", maxQueuedRequests));
             ServiceDecorationHelper.Decorate<IChatClient>(builder.Services, (inner, sp) =>
-                new RateLimitedChatClient(inner, sp.GetRequiredKeyedService<IRateLimiter>(ChatRateLimiterKey)));
+            {
+                probe.Applied = true;
+                return new RateLimitedChatClient(inner, sp.GetRequiredKeyedService<IRateLimiter>(ChatRateLimiterKey));
+            });
         }
 
         if (limitEmbedding)
         {
             int embeddingRpm = options.EmbeddingRequestsPerMinute!.Value;
+            var probe = CompositionClaims.Claim<IEmbeddingGenerator<string, Embedding<float>>>(
+                builder.Services, nameof(UseRateLimiting));
             builder.Services.AddKeyedSingleton<IRateLimiter>(EmbeddingRateLimiterKey,
                 (_, _) => new TokenBucketRateLimiterAdapter(embeddingRpm, "embedding", maxQueuedRequests));
             ServiceDecorationHelper.Decorate<IEmbeddingGenerator<string, Embedding<float>>>(builder.Services, (inner, sp) =>
-                new RateLimitedEmbeddingGenerator(inner, sp.GetRequiredKeyedService<IRateLimiter>(EmbeddingRateLimiterKey)));
+            {
+                probe.Applied = true;
+                return new RateLimitedEmbeddingGenerator(inner, sp.GetRequiredKeyedService<IRateLimiter>(EmbeddingRateLimiterKey));
+            });
         }
 
         return builder;

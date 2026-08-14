@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using NSubstitute;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Resilience;
@@ -112,5 +113,39 @@ public class ResilienceStackingTests
             client.GetResponseAsync([new ChatMessage(ChatRole.User, "hi")], cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(new[] { "ledger-read:Day" }, log, StringComparer.Ordinal); // no permit consumed, no provider touched
+    }
+
+    /// <summary>
+    /// The false-positive boundary of the issue #195 composition check. Every layer here replaces
+    /// the descriptor the previous one wrote — three times for <c>IChatClient</c>, twice for the
+    /// embedding generator — which is indistinguishable from a superseded registration by reading
+    /// the collection. Resolving the surface and asking each decorator whether it was actually
+    /// constructed is what tells a working stack apart from a replaced one, so this documented
+    /// composition must resolve rather than report itself broken.
+    /// </summary>
+    [Fact]
+    public void DocumentedOrder_StackedDecorations_DoNotTripTheCompositionCheck()
+    {
+        var log = new List<string>();
+        var services = new ServiceCollection();
+        services.AddSingleton(Substitute.For<IVectorStore>());
+        services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+        services.AddRagNet(rag =>
+        {
+            rag.Services.AddSingleton<ICostLedger>(new FakeCostLedger(log));
+            rag.UseFallbackChain(o =>
+            {
+                o.AddClient(_ => new RecordingChatClient(log, "provider-primary"));
+                o.AddClient(_ => new RecordingChatClient(log, "provider-secondary"));
+            });
+            rag.UseRateLimiting(o => o.ChatRequestsPerMinute = 600);
+            rag.UseCostBudgeting(o => o.DailyLimit = 10m);
+            rag.ConfigureResilience();
+        });
+
+        using var sp = services.BuildServiceProvider();
+
+        Assert.NotNull(sp.GetRequiredService<IRagPipeline>());
+        Assert.IsType<CostTrackingChatClient>(sp.GetRequiredService<IChatClient>());
     }
 }

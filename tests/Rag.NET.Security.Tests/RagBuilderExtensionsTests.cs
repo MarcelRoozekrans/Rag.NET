@@ -85,6 +85,48 @@ public class RagBuilderExtensionsTests
     }
 
     /// <summary>
+    /// Issue #195: <c>UseAuditLog</c> and every answer-engine <c>Use*</c> both registered
+    /// <c>IAnswerEngine</c>, so whichever ran last won and calling them in this order dropped the
+    /// audit decorator. Retrieval auditing kept working, which makes it a <i>partial</i> silent
+    /// failure — an audit log that reads as complete and records no answers at all.
+    /// </summary>
+    [Fact]
+    public async Task UseAuditLog_ThenAnAnswerEngineRegistration_StillAuditsTheAnswer()
+    {
+        var auditLog = Substitute.For<IAuditLog>();
+        var engine = Substitute.For<IAnswerEngine>();
+        engine.AskAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new RagResponse { Answer = "from the engine", Sources = [] });
+
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        var vectorStore = Substitute.For<IVectorStore>();
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>());
+
+        var services = new ServiceCollection();
+        services.AddSingleton(embedder);
+        services.AddSingleton(vectorStore);
+        services.AddRagNet(rag =>
+        {
+            rag.UseAuditLog();
+
+            // What UseMapReduceAnswerEngine, UseRefineAnswerEngine, UseFlare and the rest all do.
+            rag.Services.AddSingleton(engine);
+
+            rag.Services.AddSingleton(auditLog);
+        });
+
+        var sp = services.BuildServiceProvider();
+        var response = await sp.GetRequiredService<IRagPipeline>()
+            .AskAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("from the engine", response.Answer);
+        await auditLog.Received(1).LogAnswerAsync(Arg.Any<AuditAnswerEvent>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// The compliance record must have one entry per retrieval, not one per <c>UseAuditLog</c> call.
     /// <c>AddFirst</c> used to insert unconditionally, so a layered composition root that reached
     /// this method twice put <c>AuditRetrievalBehavior</c> into the pipeline twice and every query
@@ -121,5 +163,43 @@ public class RagBuilderExtensionsTests
             .RetrieveAsync("query", cancellationToken: TestContext.Current.CancellationToken);
 
         await auditLog.Received(1).LogRetrievalAsync(Arg.Any<AuditRetrievalEvent>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The answer half of the same rule. Last-wins on <c>IAnswerEngine</c> used to collapse a
+    /// repeated call by itself; a decoration list does not, so the collapsing is now the seam's
+    /// first-wins key rather than a side effect of how the registration happened to work.
+    /// </summary>
+    [Fact]
+    public async Task UseAuditLog_CalledTwice_AuditsEachAnswerOnce()
+    {
+        var auditLog = Substitute.For<IAuditLog>();
+        var engine = Substitute.For<IAnswerEngine>();
+        engine.AskAsync(Arg.Any<string>(), Arg.Any<IReadOnlyList<SearchResult>>(), Arg.Any<RagOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new RagResponse { Answer = "from the engine", Sources = [] });
+
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+        var vectorStore = Substitute.For<IVectorStore>();
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>());
+
+        var services = new ServiceCollection();
+        services.AddSingleton(embedder);
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(engine);
+        services.AddRagNet(rag =>
+        {
+            rag.UseAuditLog();
+            rag.UseAuditLog();
+            rag.Services.AddSingleton(auditLog);
+        });
+
+        var sp = services.BuildServiceProvider();
+        _ = await sp.GetRequiredService<IRagPipeline>()
+            .AskAsync("query", cancellationToken: TestContext.Current.CancellationToken);
+
+        await auditLog.Received(1).LogAnswerAsync(Arg.Any<AuditAnswerEvent>(), Arg.Any<CancellationToken>());
     }
 }

@@ -112,7 +112,9 @@ internal static class ServiceDecorationHelper
     }
 
     /// <summary>Type name without the generic-arity suffix (e.g. <c>IEmbeddingGenerator</c>, not <c>IEmbeddingGenerator`2</c>).</summary>
-    private static string FriendlyName(Type type) =>
+    /// <param name="type">The type to name.</param>
+    /// <returns>The name a user would recognise from their own registration call.</returns>
+    internal static string FriendlyName(Type type) =>
         type.IsGenericType ? type.Name[..type.Name.IndexOf('`')] : type.Name;
 
     private static TService MaterialiseOriginal<TService>(

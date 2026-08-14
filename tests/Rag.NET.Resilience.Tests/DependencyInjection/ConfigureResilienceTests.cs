@@ -663,6 +663,34 @@ public class ConfigureResilienceTests
     }
 
     /// <summary>
+    /// Issue #195: the "nothing to apply to" guard fires only when <b>neither</b> surface is
+    /// registered, so registering one of the two and the other afterwards left the second silently
+    /// undecorated — retried store, unretried embedding calls, and no exception because one surface
+    /// <i>was</i> found. A registration that happens later cannot be seen at registration time, so
+    /// this is caught when the pipeline is resolved instead.
+    /// </summary>
+    [Fact]
+    public void ConfigureResilience_BeforeTheEmbeddingGenerator_FailsLoudlyRatherThanSkippingIt()
+    {
+        var services = new ServiceCollection();
+        services.AddRagNet(rag =>
+        {
+            rag.Services.AddSingleton<IVectorStore>(new CountingVectorStore(0, Transient));
+            rag.ConfigureResilience(ImmediateRetry);
+        });
+
+        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
+            new CountingEmbeddingGenerator(0, Transient));
+
+        var provider = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IRagPipeline>());
+
+        Assert.Contains("ConfigureResilience", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("IEmbeddingGenerator", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// One layer means 4 attempts (1 + 3 retries); two stacked layers would multiply to 16.
     /// A store that fails exactly 4 times therefore still throws when there is one layer and
     /// would silently succeed if the decorators had stacked.

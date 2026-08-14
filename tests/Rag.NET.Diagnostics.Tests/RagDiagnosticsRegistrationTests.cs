@@ -122,10 +122,13 @@ public sealed class RagDiagnosticsRegistrationTests
             rag.AddRagDiagnostics();
         });
 
-        // AddRagNet registers no IAnswerEngine — its RagPipeline factory builds a ChatAnswerEngine
-        // itself when it finds none — so in the commonest setup of all there is nothing to decorate,
-        // and answer capture would have been missing from exactly the configuration most people have.
-        Assert.IsType<DiagnosticsAnswerEngineDecorator>(provider.GetService<IAnswerEngine>());
+        // AddRagNet registers no IAnswerEngine — it builds a ChatAnswerEngine itself when it finds
+        // none — so in the commonest setup of all there is nothing registered to decorate, and
+        // answer capture would have been missing from exactly the configuration most people have.
+        // The composed engine is where the decoration lands; IAnswerEngine stays the registration.
+        Assert.IsType<DiagnosticsAnswerEngineDecorator>(
+            provider.GetRequiredService<ComposedAnswerEngine>().Engine);
+        Assert.Null(provider.GetService<IAnswerEngine>());
     }
 
     [Fact]
@@ -141,7 +144,8 @@ public sealed class RagDiagnosticsRegistrationTests
             rag.AddRagDiagnostics();
         });
 
-        var engine = Assert.IsType<DiagnosticsAnswerEngineDecorator>(provider.GetService<IAnswerEngine>());
+        var engine = Assert.IsType<DiagnosticsAnswerEngineDecorator>(
+            provider.GetRequiredService<ComposedAnswerEngine>().Engine);
 
         // Wrapped, not swapped: whatever the security package or the user registered still generates
         // the answer, and the decorator only observes it.
@@ -155,10 +159,76 @@ public sealed class RagDiagnosticsRegistrationTests
     {
         using var provider = Build(rag => rag.AddRagDiagnostics());
 
-        // A retrieval-only pipeline has no answer engine on purpose. Registering one whose factory
-        // calls ChatAnswerEngine.CreateFromServices would make RagPipeline throw the moment it is
-        // resolved — registering diagnostics must never break a pipeline that worked without it.
+        // A retrieval-only pipeline has no answer engine on purpose. Composing one from
+        // ChatAnswerEngine.CreateFromServices so there was something to decorate would make
+        // RagPipeline throw the moment it is resolved — registering diagnostics must never break a
+        // pipeline that worked without it.
         Assert.Null(provider.GetService<IAnswerEngine>());
+        Assert.Null(provider.GetRequiredService<ComposedAnswerEngine>().Engine);
+    }
+
+    /// <summary>
+    /// Issue #195: the chat client registered <b>after</b> <c>AddRagNet</c> — the order every
+    /// walkthrough uses, because <c>AddRagNet</c> comes first in all of them — left the trace's
+    /// <c>Answer</c> permanently <see langword="null"/> while asking returned an answer perfectly
+    /// well. Registration-time detection cannot see a registration that has not happened yet, so the
+    /// decoration has to be applied when the engine is composed rather than when it is registered.
+    /// </summary>
+    [Fact]
+    public async Task AChatClientRegisteredAfterDiagnostics_StillHasItsAnswersTraced()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(EmptyVectorStore());
+        services.AddSingleton(OneVectorGenerator());
+        services.AddRagNet(rag => rag.AddRagDiagnostics(o => o.CaptureAnswerText = true));
+
+        services.AddSingleton(RespondingChatClient("the answer"));
+
+        using var provider = services.BuildServiceProvider();
+        var response = await provider.GetRequiredService<IRagPipeline>()
+            .AskAsync("q", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("the answer", response.Answer);
+
+        var trace = Assert.Single(provider.GetRequiredService<ITraceStore>().Snapshot());
+        Assert.Equal("the answer", trace.Answer);
+    }
+
+    /// <summary>An empty store: retrieval succeeds with no chunks, which is all the ask needs.</summary>
+    /// <returns>The substitute.</returns>
+    private static IVectorStore EmptyVectorStore()
+    {
+        var store = Substitute.For<IVectorStore>();
+        store.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>());
+
+        return store;
+    }
+
+    /// <summary>A generator that answers every request with one one-dimensional vector.</summary>
+    /// <returns>The substitute.</returns>
+    private static IEmbeddingGenerator<string, Embedding<float>> OneVectorGenerator()
+    {
+        var generator = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        generator.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EmbeddingGenerationOptions?>(),
+                Arg.Any<CancellationToken>())
+            .Returns(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 0.1f })]));
+
+        return generator;
+    }
+
+    /// <summary>A chat client that always answers <paramref name="text"/>.</summary>
+    /// <param name="text">The answer to return.</param>
+    /// <returns>The substitute.</returns>
+    private static IChatClient RespondingChatClient(string text)
+    {
+        var client = Substitute.For<IChatClient>();
+        client.GetResponseAsync(Arg.Any<IList<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new ChatResponse(new ChatMessage(ChatRole.Assistant, text)));
+
+        return client;
     }
 
     [Fact]
