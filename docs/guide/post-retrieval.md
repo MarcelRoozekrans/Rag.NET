@@ -149,12 +149,15 @@ MMR selects results that are both relevant to the query and maximally different 
 
 ### Enabling
 
-Register `UseMmr()` on the builder. An `IEmbeddingGenerator` must already be registered — no `IChatClient` required.
+There is nothing to register. `MmrBehavior` is unconditionally part of the default retrieval pipeline and gates on the per-call flag alone, so MMR is enabled entirely from `RetrievalOptions`. An `IEmbeddingGenerator` must be registered — no `IChatClient` required.
 
 ```csharp
-services.AddRagNet(b => b
-    .UseMmr());
+services.AddRagNet();
+
+var results = await pipeline.RetrieveAsync("query", new RetrievalOptions { UseMmr = true });
 ```
+
+> Removed in this milestone: a `UseMmr()` builder method existed but registered a marker no code ever read, so it never gated anything. Delete the call — `UseMmr = true` alone has always been what activates MMR.
 
 ### How it works
 
@@ -220,7 +223,7 @@ They can be used together. The redundancy filter runs before MMR in the decorato
 
 ### Disabling per call
 
-`UseMmr` is opt-in — the decorator is active only when the call explicitly sets `UseMmr = true`. This differs from other registered features (HyDE, reranking, multi-query) which default to `true` and require explicit opt-out.
+`UseMmr` is opt-in — the behavior is active only when the call explicitly sets `UseMmr = true`. This differs from other features (HyDE, reranking, multi-query) which default to `true` and require explicit opt-out — though those also need their seam registered, whereas MMR needs nothing beyond the flag.
 
 ### API reference
 

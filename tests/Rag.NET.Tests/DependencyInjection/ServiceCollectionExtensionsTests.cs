@@ -281,8 +281,12 @@ public class ServiceCollectionExtensionsTests
         Assert.Equal("small child", result.Value[0].Chunk.Text);
     }
 
+    // MmrBehavior sits unconditionally in the default retrieval pipeline and gates on the
+    // per-call flag alone. There is no builder registration to make — the deleted UseMmr()
+    // registered a marker nothing ever read (issue #190). This test pins that: a bare
+    // AddRagNet, no MMR opt-in of any kind at configuration time, still runs MMR selection.
     [Fact]
-    public async Task AddRagNet_WithMmr_CallsEmbedderTwiceForMmrSelection()
+    public async Task AddRagNet_WithoutAnyMmrRegistration_MmrRunsOnThePerCallFlagAlone()
     {
         var services = new ServiceCollection();
         var vectorStore = Substitute.For<IVectorStore>();
@@ -307,7 +311,7 @@ public class ServiceCollectionExtensionsTests
                 new() { Chunk = new TextChunk { Text = "candidate doc", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 }, Score = 0.9 }
             });
 
-        services.AddRagNet(b => b.UseMmr());
+        services.AddRagNet();
 
         var sp = services.BuildServiceProvider();
         var pipeline = sp.GetRequiredService<IRagPipeline>();
@@ -317,6 +321,48 @@ public class ServiceCollectionExtensionsTests
 
         // With UseMmr=true: embedder called once for vector search + once for query embedding in MMR
         await embedder.Received(2).GenerateAsync(
+            Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    // The other half of the pin above: the flag is the whole gate, so clearing it stops MMR even
+    // though MmrBehavior is still in the pipeline. Together these two forbid reintroducing a
+    // registration-shaped gate without the tests noticing.
+    [Fact]
+    public async Task AddRagNet_WithoutAnyMmrRegistration_FlagOff_SkipsMmrSelection()
+    {
+        var services = new ServiceCollection();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+        services.AddSingleton(vectorStore);
+        services.AddSingleton(embedder);
+
+        var singleVec = new float[] { 1f, 0f };
+        embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                var count = ci.Arg<IEnumerable<string>>()!.Count();
+                var embeddings = Enumerable.Range(0, count)
+                    .Select(_ => new Embedding<float>(singleVec))
+                    .ToList();
+                return new GeneratedEmbeddings<Embedding<float>>(embeddings);
+            });
+        vectorStore.SearchAsync(Arg.Any<ReadOnlyMemory<float>>(), Arg.Any<SearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<SearchResult>
+            {
+                new() { Chunk = new TextChunk { Text = "candidate doc", DocumentId = new DocumentId("doc1"), ChunkIndex = 0 }, Score = 0.9 }
+            });
+
+        services.AddRagNet();
+
+        var sp = services.BuildServiceProvider();
+        var pipeline = sp.GetRequiredService<IRagPipeline>();
+
+        _ = await pipeline.RetrieveAsync("query", new RetrievalOptions { UseMmr = false },
+            TestContext.Current.CancellationToken);
+
+        // Only the vector-search embed — no second call for MMR's query embedding.
+        await embedder.Received(1).GenerateAsync(
             Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
     }
 

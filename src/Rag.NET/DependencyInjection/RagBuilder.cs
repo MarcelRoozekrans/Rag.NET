@@ -454,23 +454,6 @@ public sealed class RagBuilder(IServiceCollection services) : IRagBuilder
     }
 
     /// <summary>
-    /// Registers <see cref="MmrRetriever"/> in the post-retrieval chain.
-    /// When registered, MMR selection is opt-in per call: set
-    /// <c>new RetrievalOptions { UseMmr = true }</c> to activate.
-    /// </summary>
-    /// <remarks>
-    /// MMR over-fetches candidates (<see cref="RetrievalOptions.MmrCandidateCount"/>, default TopK × 3),
-    /// then selects <see cref="RetrievalOptions.TopK"/> results balancing relevance and diversity.
-    /// Requires <c>IEmbeddingGenerator</c> to be registered in DI.
-    /// Per-call activation: pass <c>new RetrievalOptions { UseMmr = true }</c>.
-    /// </remarks>
-    public RagBuilder UseMmr()
-    {
-        Services.AddSingleton<MmrEnabled>();
-        return this;
-    }
-
-    /// <summary>
     /// Registers a <see cref="SynonymMap"/> that expands tokens at both BM25 index time and query time.
     /// Synonyms are bidirectional: any term in a group matches all other terms in that group.
     /// The map is a singleton — call <see cref="SynonymMap.AddGroup"/> or
