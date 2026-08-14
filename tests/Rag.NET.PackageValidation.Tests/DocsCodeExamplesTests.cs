@@ -49,8 +49,48 @@ namespace Rag.NET.PackageValidation.Tests;
 /// again, not that the list needs to be longer.
 /// </para>
 /// <para>
+/// <b>What is in the set, and why each is.</b> Every <c>.md</c> <em>and</em> <c>.mdx</c> under
+/// <c>docs/</c>, plus the repository root <c>README.md</c>. Both additions close holes this
+/// guard shipped with, found in issue #194 and both the same mistake — deciding what to check by
+/// where a file sits rather than by who reads it:
+/// <list type="bullet">
+/// <item><c>.mdx</c> was excluded by extension alone. The walk asked for <c>*.md</c>, so
+/// <c>docs/guide/mcp.mdx</c> — Docusaurus's JSX flavour, an ordinary published page whose
+/// <c>```csharp</c> fences this extractor reads exactly as it reads any other page's — was
+/// checked by nothing, while <c>src/Rag.NET.Mcp/README.md</c> pointed readers at it as "a
+/// complete, working HTTP host".</item>
+/// <item>The root <c>README.md</c> was checked by nothing at all, and uniquely so:
+/// <see cref="PackageReadmeTests"/> reads each README from inside the produced <c>.nupkg</c> and
+/// <see cref="PackageReadmeTests.EveryPackageShipsItsOwnReadme"/> <em>forbids</em> a package
+/// shipping the root one, so no package ever carries it into that guard's reach; and this class
+/// walked only <c>docs/</c>. The project's most-read page fell through the gap between the two
+/// guards precisely because each was doing its job.</item>
+/// </list>
+/// </para>
+/// <para>
+/// <b>Not in the set: <c>src/*/README.md</c>.</b> Already covered, and covered harder.
+/// <c>Directory.Build.props</c> packs each project's own README into its own package, so every
+/// one of them is read by
+/// <see cref="PackageReadmeTests.EveryReadmeExampleResolvesAgainstTheAssembly"/> — against that
+/// package's own dependency closure, which is a strictly narrower resolvable set than the
+/// every-produced-package catalog this class uses. Walking them here as well would add a second,
+/// weaker check of the same bytes and a second place for an allow-list entry to have to live.
+/// The correspondence is exact in both directions, not assumed: every <c>src/*/README.md</c>
+/// belongs to a packed package and every packed package has one.
+/// </para>
+/// <para>
 /// <c>docs/plans/</c> is excluded: those are dated historical design records, not live
 /// documentation, and their snippets can describe code that never shipped or was later removed.
+/// </para>
+/// <para>
+/// <b>The covered set is itself asserted.</b> Widening the walk closes the two holes #194 found;
+/// it does nothing about the third one nobody has opened yet, because until now no test said
+/// which files were supposed to be checked — a walk that quietly narrows goes green exactly as
+/// convincingly as a walk that covers everything, which is how both holes survived every review
+/// this guard has had. <see cref="EveryPublishedDocumentationFileIsCheckedBySomething"/> states
+/// the covered set as a fact and fails on anything outside it, deriving "ought to be checked"
+/// from a deliberately wider markdown-family extension list than the walk's own, so the two
+/// cannot agree with each other by construction.
 /// </para>
 /// <para>
 /// Discovery and skip behaviour are shared with <see cref="ProducedPackageTests"/>: no
@@ -71,9 +111,39 @@ namespace Rag.NET.PackageValidation.Tests;
 /// The honest summary is that this catches <i>names that exist nowhere</i> — a renamed or deleted
 /// API, a package id used as a namespace, a method invented for a tutorial — and not <i>names on
 /// the wrong type</i>. Closing that gap means compiling each fence against the packages, which is
-/// a different and much larger tool; it is worth building only if wrong-type references turn out
-/// to be common, and one instance is not evidence of that. Recorded so the next person reads this
-/// guard's green as the narrower claim it is.
+/// a different and much larger tool.
+/// </para>
+/// <para>
+/// <b>That gap is not hypothetical, and the count is now known.</b> This paragraph used to end
+/// "it is worth building only if wrong-type references turn out to be common, and one instance is
+/// not evidence of that". They turned out to be common. Widening the walk for #194 was paired
+/// with an audit of every live page against the current API, and it found <b>ten</b> snippets
+/// that name only real members and still would not compile — the one <c>response.Text</c> above
+/// (issue #56's defect, fixed in <c>docs/guide/memory.md</c> and never on the front page: #193),
+/// and nine sites where the <c>IDictionary&lt;string, string&gt;</c> →
+/// <c>IDictionary&lt;string, MetadataValue&gt;</c> migration stopped short (#192). Every one of
+/// the nine writes <c>new Dictionary&lt;string, string&gt;</c> into a <c>Tags</c> or
+/// <c>MetadataFilter</c> that is now typed on <see cref="Rag.NET.Models.MetadataValue"/>. Nothing
+/// in the shape scan can see it: <c>Dictionary</c> is a real type, <c>Tags</c> and
+/// <c>MetadataFilter</c> are real members, and the generic arguments are the keyword
+/// <c>string</c>, which the extractor skips as not-PascalCase. So the guard reads the fence,
+/// resolves every name in it, and passes — which is why the migration could stall in nine
+/// published places without one red run.
+/// </para>
+/// <para>
+/// <b>Why type checking is still not built here, stated as a decision rather than an
+/// oversight.</b> Not because the gap is small — it is the larger half — but because a catalogue
+/// cannot be grown into a compiler by degrees. These fences are snippets, not compilation units:
+/// <c>var response = await pipeline.AskAsync(…)</c> never declares <c>pipeline</c>, and the
+/// dominant docs shape is a fragment whose surrounding context the reader supplies. Type-checking
+/// them means a Roslyn compilation per fence, a synthesized enclosing context per fence, a
+/// resolved <c>MetadataReference</c> set built from the same packages, and a policy for the
+/// undeclared identifiers that are correct documentation today — a tool of a different order from
+/// <see cref="ApiSurfaceCatalog"/>, and one whose false-positive budget would have to be argued
+/// out on its own terms. It is the right next tool; it is not a widening of this one, and pairing
+/// it with the widening would have buried both. Recorded here, with its evidence and its size, so
+/// the next person reads this guard's green as the narrower claim it is and has the case for
+/// building the other half already made.
 /// </para>
 /// </remarks>
 public sealed class DocsCodeExamplesTests
@@ -216,6 +286,141 @@ public sealed class DocsCodeExamplesTests
     }
 
     /// <summary>
+    /// Every extension the markdown family is written under, deliberately wider than
+    /// <see cref="DocumentationExtensions"/> and deliberately not derived from it. This is the
+    /// list <see cref="EveryPublishedDocumentationFileIsCheckedBySomething"/> uses to decide what
+    /// <em>ought</em> to be checked; if the two were the same list, that test would be asking the
+    /// walk to agree with itself and would have passed just as green through #194's holes.
+    /// </summary>
+    private static readonly HashSet<string> MarkdownFamilyExtensions =
+        new([".md", ".mdx", ".markdown", ".mdown"], StringComparer.OrdinalIgnoreCase);
+
+    [Fact]
+    public void EveryPublishedDocumentationFileIsCheckedBySomething()
+    {
+        // The guard for the guards, and the one #194 actually needed. Widening the walk to take
+        // in .mdx and the root README fixes two holes; it does nothing to stop a third opening,
+        // because nothing anywhere asserted which files are checked — a walk that quietly narrows
+        // reports success exactly as loudly as a walk that covers everything. So the covered set
+        // is stated here as a fact about the repository rather than left implicit in an
+        // enumeration pattern: every markdown-family file a reader can reach must be checked by
+        // this class or, for a package README, by PackageReadmeTests via the package it ships in.
+        var repositoryRoot = ProducedPackageTests.FindRepositoryRoot();
+        var packagedIds = ApiSurfaceCatalog.MapPackagesById(ProducedPackageTests.DiscoverPackages());
+
+        var walked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in DiscoverDocFiles(repositoryRoot))
+        {
+            _ = walked.Add(RelativePath(repositoryRoot, file));
+        }
+
+        var failures = new List<string>();
+        CheckDocsTreeIsWalked(repositoryRoot, walked, failures);
+        CheckRootReadmeIsWalked(repositoryRoot, walked, failures);
+        CheckPackageReadmesArePacked(repositoryRoot, packagedIds, failures);
+
+        Assert.True(
+            failures.Count == 0,
+            ApiSurfaceCatalog.DescribeFailures(
+                "Every markdown-family file a reader can reach must be checked by some guard: " +
+                "the docs/ tree and the repository root README.md by this class, each " +
+                "src/*/README.md by PackageReadmeTests via the package that ships it. A file " +
+                "reachable by neither is documentation nothing verifies — the state " +
+                "docs/guide/mcp.mdx and README.md were both in until #194, each for its own " +
+                "reason, neither of them announced. Add the file to the walk, or pack the " +
+                "project that owns it; do not narrow this test.",
+                failures));
+    }
+
+    /// <summary>
+    /// Asserts every markdown-family file under <c>docs/</c> outside <c>docs/plans/</c> is walked.
+    /// Uses <see cref="MarkdownFamilyExtensions"/>, not the walk's own extension list, so an
+    /// extension the walk stops asking for fails here instead of silently dropping its pages —
+    /// which is exactly how <c>.mdx</c> went unchecked.
+    /// </summary>
+    private static void CheckDocsTreeIsWalked(
+        string repositoryRoot, HashSet<string> walked, List<string> failures)
+    {
+        var docsRoot = Path.Combine(repositoryRoot, "docs");
+        var excludedRoot = $"{Path.Combine(docsRoot, ExcludedDirectoryName)}{Path.DirectorySeparatorChar}";
+
+        foreach (var file in Directory.EnumerateFiles(docsRoot, "*", SearchOption.AllDirectories))
+        {
+            if (file.StartsWith(excludedRoot, StringComparison.OrdinalIgnoreCase) ||
+                !MarkdownFamilyExtensions.Contains(Path.GetExtension(file)))
+            {
+                continue;
+            }
+
+            var relativePath = RelativePath(repositoryRoot, file);
+            if (!walked.Contains(relativePath))
+            {
+                failures.Add(
+                    $"{relativePath}: a documentation page under docs/ that this class's walk " +
+                    "does not reach, so none of its C# examples is checked against anything.");
+            }
+        }
+    }
+
+    private static void CheckRootReadmeIsWalked(
+        string repositoryRoot, HashSet<string> walked, List<string> failures)
+    {
+        if (!walked.Contains("README.md"))
+        {
+            failures.Add(
+                "README.md: the repository root README is not in the walk. No package may ship " +
+                "it (PackageReadmeTests.EveryPackageShipsItsOwnReadme forbids exactly that), so " +
+                "if this class does not read it from the working tree, nothing reads it at all — " +
+                "which is how the project's most-read page carried issue #56's defect on line " +
+                "104 long after the same defect was fixed in docs/.");
+        }
+        else if (!File.Exists(Path.Combine(repositoryRoot, "README.md")))
+        {
+            failures.Add("README.md: the walk names it but the repository has no such file.");
+        }
+    }
+
+    /// <summary>
+    /// Asserts every <c>src/*/README.md</c> is reachable by <see cref="PackageReadmeTests"/> —
+    /// which means its project packs, since that class reads READMEs from inside the produced
+    /// <c>.nupkg</c> and never from the working tree. A README whose project stopped packing is
+    /// still a page on GitHub and would be checked by nothing at all, the same shape of hole as
+    /// the root README's, and this class deliberately does not paper over it by walking
+    /// <c>src/</c> too: package READMEs resolve against their own package's closure there, which
+    /// is stricter than the every-package catalog here.
+    /// </summary>
+    private static void CheckPackageReadmesArePacked(
+        string repositoryRoot, Dictionary<string, string> packagedIds, List<string> failures)
+    {
+        var sourceRoot = Path.Combine(repositoryRoot, "src");
+        if (!Directory.Exists(sourceRoot))
+        {
+            return;
+        }
+
+        foreach (var projectDirectory in Directory.EnumerateDirectories(sourceRoot))
+        {
+            var readme = Path.Combine(projectDirectory, "README.md");
+            if (!File.Exists(readme))
+            {
+                continue;
+            }
+
+            var id = Path.GetFileName(projectDirectory);
+            if (!packagedIds.ContainsKey(id))
+            {
+                failures.Add(
+                    $"{RelativePath(repositoryRoot, readme)}: no produced package has the id " +
+                    $"'{id}', so PackageReadmeTests never sees this README and nothing checks " +
+                    "its examples.");
+            }
+        }
+    }
+
+    private static string RelativePath(string repositoryRoot, string filePath) =>
+        Path.GetRelativePath(repositoryRoot, filePath).Replace('\\', '/');
+
+    /// <summary>
     /// Runs the full scan — every non-excluded docs file, every fence, every extracted reference,
     /// resolved against every produced package — without applying the allow-list. Both
     /// <see cref="EveryDocsCodeExampleResolvesAgainstTheProducedPackages"/> and
@@ -253,7 +458,7 @@ public sealed class DocsCodeExamplesTests
             return; // Nothing for shape-extraction to check; see ApiSurfaceCatalog's remarks.
         }
 
-        var relativePath = Path.GetRelativePath(repositoryRoot, filePath).Replace('\\', '/');
+        var relativePath = RelativePath(repositoryRoot, filePath);
 
         // Declared types accumulate across every fence on the page: extending.md's pattern
         // throughout is "implement in one fence, register in the next" — see ApiSurfaceCatalog's
@@ -281,25 +486,42 @@ public sealed class DocsCodeExamplesTests
         $"{relativePath}: {message}.";
 
     /// <summary>
-    /// Finds every markdown file under <c>docs/</c>, <c>docs/plans/</c> excluded — see the class
-    /// remarks for why.
+    /// The documentation extensions walked under <c>docs/</c>. <c>.mdx</c> is Docusaurus's
+    /// JSX-in-markdown flavour — its <c>```csharp</c> fences are ordinary fences and its pages are
+    /// ordinary published documentation, so extension is no reason to check one and not the other.
+    /// </summary>
+    private static readonly string[] DocumentationExtensions = ["*.md", "*.mdx"];
+
+    /// <summary>
+    /// Finds every documentation file to check: every <c>.md</c> and <c>.mdx</c> under
+    /// <c>docs/</c> with <c>docs/plans/</c> excluded, plus the repository root
+    /// <c>README.md</c> — see the class remarks for why each is in the set and why
+    /// <c>src/*/README.md</c> is not.
     /// </summary>
     /// <param name="repositoryRoot">The repository root, as found by
     /// <see cref="ProducedPackageTests.FindRepositoryRoot"/>.</param>
-    /// <returns>The absolute paths of the markdown files to check, sorted for stable output.</returns>
+    /// <returns>The absolute paths of the files to check, sorted for stable output.</returns>
     private static List<string> DiscoverDocFiles(string repositoryRoot)
     {
         var docsRoot = Path.Combine(repositoryRoot, "docs");
         var excludedRoot = $"{Path.Combine(docsRoot, ExcludedDirectoryName)}{Path.DirectorySeparatorChar}";
         var files = new List<string>();
 
-        foreach (var file in Directory.EnumerateFiles(docsRoot, "*.md", SearchOption.AllDirectories))
+        foreach (var pattern in DocumentationExtensions)
         {
-            if (!file.StartsWith(excludedRoot, StringComparison.OrdinalIgnoreCase))
+            foreach (var file in Directory.EnumerateFiles(docsRoot, pattern, SearchOption.AllDirectories))
             {
-                files.Add(file);
+                if (!file.StartsWith(excludedRoot, StringComparison.OrdinalIgnoreCase))
+                {
+                    files.Add(file);
+                }
             }
         }
+
+        // The repository root README: the project's front page, read by more people than any
+        // docs/ page, and — because PackageReadmeTests forbids a package shipping it — the one
+        // documentation file no guard reached before.
+        files.Add(Path.Combine(repositoryRoot, "README.md"));
 
         files.Sort(StringComparer.Ordinal);
         return files;
