@@ -134,8 +134,9 @@ public sealed record RetrievalOptions
 
     /// <summary>
     /// Set to <see langword="true"/> to enable Maximal Marginal Relevance selection for this call.
-    /// Requires <c>RagBuilder.UseMmr()</c>. Unlike most retrieval features, MMR is opt-in per call.
-    /// Has no effect when <c>UseMmr()</c> is not registered.
+    /// Unlike most retrieval features, MMR is opt-in per call: <c>MmrBehavior</c> is unconditionally
+    /// part of the default retrieval pipeline and gates on this flag alone, so no builder
+    /// registration is needed — only an <c>IEmbeddingGenerator</c> in DI, which the behavior requires.
     /// </summary>
     public bool UseMmr { get; init; } = false;
 
