@@ -20,15 +20,47 @@ namespace Rag.NET.Api.DependencyInjection;
 
 public static class EndpointRouteBuilderExtensions
 {
+    /// <summary>
+    /// Adds the <c>X-Api-Key</c> middleware to the pipeline, and records that it was added so
+    /// <see cref="MapRagNetApi"/> can tell an authenticated pipeline from an open one. Call it
+    /// before <see cref="MapRagNetApi"/>.
+    /// </summary>
+    /// <param name="app">The application builder.</param>
+    /// <returns>The same <paramref name="app"/>, for chaining.</returns>
     public static IApplicationBuilder UseRagNetApiAuthentication(this IApplicationBuilder app)
     {
+        ArgumentNullException.ThrowIfNull(app);
+
+        app.ApplicationServices.GetService<ApiKeyMiddlewareMarker>()?.MarkRegistered();
         app.UseMiddleware<Authentication.ApiKeyMiddleware>();
         return app;
     }
 
+    /// <summary>
+    /// Maps the ingest, retrieve, ask, ask-stream and delete endpoints under
+    /// <see cref="RagApiOptions.RoutePrefix"/>. Requires <c>AddRagNetApi</c>, and — unless
+    /// <see cref="RagApiOptions.AllowAnonymous"/> was set — requires that
+    /// <see cref="UseRagNetApiAuthentication"/> has already run.
+    /// </summary>
+    /// <param name="app">The endpoint route builder.</param>
+    /// <returns>The same <paramref name="app"/>, for chaining.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when <c>AddRagNetApi</c> was not called, when the authentication middleware is
+    /// missing from the pipeline, and when an exempt path prefix would cover one of the mapped
+    /// routes — each of which would otherwise serve endpoints unauthenticated.
+    /// </exception>
     public static IEndpointRouteBuilder MapRagNetApi(this IEndpointRouteBuilder app)
     {
-        var options = app.ServiceProvider.GetService<RagApiOptions>() ?? new RagApiOptions();
+        ArgumentNullException.ThrowIfNull(app);
+
+        // Not a defaulted lookup: falling back to a fresh RagApiOptions let an application skip
+        // AddRagNetApi — and with it the whole authentication decision — and still get endpoints.
+        var options = app.ServiceProvider.GetService<RagApiOptions>()
+            ?? throw new InvalidOperationException(
+                "RagApiOptions not registered. Call services.AddRagNetApi(o => ...) before MapRagNetApi(). " +
+                "That call is where authentication is decided; without it these endpoints would be mapped " +
+                "with default options and served to anyone.");
+        ThrowIfAuthenticationMiddlewareIsMissing(app.ServiceProvider, options);
         var prefix = options.RoutePrefix.TrimEnd('/');
 
         // The single source of the mapped paths: the guard below checks exactly the strings
@@ -48,6 +80,34 @@ public static class EndpointRouteBuilderExtensions
         app.MapDelete(deleteDocument, HandleDeleteDocumentAsync);
 
         return app;
+    }
+
+    /// <summary>
+    /// The mapping-time middleware guard: <c>AddRagNetApi</c> makes an application decide
+    /// whether to authenticate, but nothing used to check that the decision was carried out.
+    /// Omitting <see cref="UseRagNetApiAuthentication"/> left <c>ApiKeyMiddleware</c> out of the
+    /// pipeline and served every mapped endpoint to every caller — silently, since the
+    /// configured keys were still there to be read and simply never consulted. Detection is by
+    /// the marker the <c>Use</c> call sets, not by inspecting the pipeline, which an
+    /// <see cref="IEndpointRouteBuilder"/> cannot see; the corollary is that the <c>Use</c> call
+    /// must come first, which is the documented order and the only one this check accepts.
+    /// <para>
+    /// <see cref="RagApiOptions.AllowAnonymous"/> exits early: the opt-out stays a real opt-out,
+    /// and the middleware is a pass-through for an anonymous API anyway.
+    /// </para>
+    /// </summary>
+    private static void ThrowIfAuthenticationMiddlewareIsMissing(
+        IServiceProvider services, RagApiOptions options)
+    {
+        if (options.AllowAnonymous || services.GetService<ApiKeyMiddlewareMarker>()?.IsRegistered == true)
+            return;
+
+        throw new InvalidOperationException(
+            "app.UseRagNetApiAuthentication() has not been called, so ApiKeyMiddleware is not in the " +
+            "request pipeline and MapRagNetApi() would serve every endpoint unauthenticated — the " +
+            $"{options.ApiKeys.Length} configured API key(s) would never be checked. Call " +
+            "app.UseRagNetApiAuthentication() before MapRagNetApi(), or opt out of authentication " +
+            "explicitly with services.AddRagNetApi(o => o.AllowAnonymous = true).");
     }
 
     /// <summary>

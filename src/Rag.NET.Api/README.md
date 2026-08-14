@@ -36,6 +36,12 @@ upstream). Setting both at once is rejected as a contradiction. The middleware a
 fails closed at request time — if the options end up with no keys and no opt-out,
 requests get `401` rather than an accidentally open API.
 
+Deciding it is not the same as applying it, so both calls above are required, in that
+order. `MapRagNetApi()` throws at startup if `AddRagNetApi` was never called, and — unless
+you set `AllowAnonymous` — if `app.UseRagNetApiAuthentication()` has not already put the
+middleware in the pipeline. Either omission used to map the endpoints anyway and serve
+every one of them to every caller, with the configured keys sitting unread.
+
 ## Example
 
 Event-driven ingestion via the webhook endpoint — callers authenticate with an
