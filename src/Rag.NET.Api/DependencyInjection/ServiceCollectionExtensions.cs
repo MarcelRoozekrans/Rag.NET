@@ -13,6 +13,10 @@ public static class ServiceCollectionExtensions
     /// one key in <see cref="RagApiOptions.ApiKeys"/>, or opt out with
     /// <see cref="RagApiOptions.AllowAnonymous"/> — neither (an accidentally open API) and
     /// both (a contradiction) fail here, so misconfiguration fails at registration time.
+    /// Deciding authentication is not applying it: unless you opted out,
+    /// <see cref="EndpointRouteBuilderExtensions.MapRagNetApi"/> additionally refuses to map
+    /// anything until <see cref="EndpointRouteBuilderExtensions.UseRagNetApiAuthentication"/>
+    /// has put the middleware in the pipeline.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="configure">Configures <see cref="RagApiOptions"/>.</param>
@@ -46,6 +50,9 @@ public static class ServiceCollectionExtensions
         }
 
         services.AddSingleton(options);
+        // Set by UseRagNetApiAuthentication, read by MapRagNetApi: deciding authentication and
+        // actually applying it are two different things, and the second one used to go unchecked.
+        services.TryAddSingleton<ApiKeyMiddlewareMarker>();
         services.Configure<ApiKeyOptions>(o =>
         {
             o.ApiKeys = options.ApiKeys;
