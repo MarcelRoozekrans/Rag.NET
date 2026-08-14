@@ -49,7 +49,9 @@ internal static class CompositionClaims
     {
         for (var i = 0; i < services.Count; i++)
         {
-            if (services[i].ImplementationInstance is CompositionClaimRegistry existing)
+            // Keyed descriptors keep their instance in a different field and are skipped rather
+            // than read: nothing registers this registry under a key, so nothing is missed.
+            if (!services[i].IsKeyedService && services[i].ImplementationInstance is CompositionClaimRegistry existing)
                 return existing;
         }
 
