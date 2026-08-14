@@ -525,8 +525,27 @@ public static class BeirReproduction
             "AssertReproduces prints and checks nothing for this pair, which is the correct " +
             "behaviour, and the run's own assertions are its gate. " +
             "**What would fill it** is the comparative run the roadmap defers -- the whole corpus " +
-            "under the graph path, differenced against the Real entry's 0.63967 -- and that run " +
-            "does not exist yet. Two things measured on 2026-08-12 say what it would cost and " +
+            "under the graph path, differenced against the Real entry's 0.63967. " +
+            "**The harness for that run now exists and the run has still not happened (#173).** " +
+            "BeirGraphRagCorpusTests measures all 609 articles under the graph path and scores " +
+            "LOCAL search -- GraphLocalSearchBehavior returns document chunks, so pooling them to " +
+            "documents measures the same quantity the Real entry measures -- over all 2,255 judged " +
+            "queries. Global search is exercised and described there and deliberately never scored: " +
+            "it map-reduces community reports into a synthesised answer and these qrels judge " +
+            "documents, so an nDCG for it would be a category error wearing a comparison's clothes. " +
+            "The list below the run's own output stays empty until a human puts the measured value " +
+            "here, and AssertReproduces is already called with it, so the day the figure lands the " +
+            "case starts pinning without another change. " +
+            "**The chunking confound that would have made the delta meaningless was checked before " +
+            "the harness was built, and it is clear.** The extraction cache was filled through the " +
+            "generation tool's chunker and the Real entry's 0.63967 through the Real protocol's; " +
+            "measured 2026-08-13, both cut the 609 articles into the identical 17,648 units, text " +
+            "for text, document for document, index for index -- asserted every run by " +
+            "Chunking_UnderTheGraphPath_IsIdenticalToTheRealProtocols, which needs no model and " +
+            "takes 165 ms. **What is NOT matched is candidate depth**, and any delta carries it: " +
+            "the Real leg searched a 17,648-chunk store and took the top 2,010 per query, while the " +
+            "graph leg searches roughly 251,000 chunks and takes the top 500. " +
+            "Two things measured on 2026-08-12 say what it would cost and " +
             "what it would find. Extraction is one LLM call per chunk plus a gleaning pass: 4,088 " +
             "calls for 60 articles, so the 609-article corpus is roughly 41,000. And the graph the " +
             "60 articles produced was degenerate when this entry was first written -- 475 of 655 " +

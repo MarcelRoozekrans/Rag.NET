@@ -11,9 +11,18 @@ using Rag.NET.Storage;
 namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 
 /// <summary>
-/// One end-to-end pass of <c>Rag.NET.GraphRag</c> over the pinned MultiHop-RAG slice: extract,
+/// One end-to-end pass of <c>Rag.NET.GraphRag</c> over a list of MultiHop-RAG articles: extract,
 /// detect communities, index, and search — the thing <see cref="GraphRagFunctionsTests"/> asserts
-/// about.
+/// about over the pinned sixty-article slice, and the thing
+/// <see cref="BeirGraphRagCorpusTests"/> measures nDCG@10 on over all 609.
+/// <para>
+/// <b>One class for both, and it was never a slice-shaped one.</b> <see cref="BuildAsync"/> has
+/// always taken whatever documents it was handed; only the name said otherwise, and it was renamed
+/// from <c>GraphRagSliceRun</c> rather than copied when the corpus run landed. A second copy that
+/// ingested differently would compute extraction keys nothing wrote under, and that failure looks
+/// exactly like an empty cache — which is the same reason the ingestion driver below is shared with
+/// the generation tool rather than reimplemented.
+/// </para>
 /// <para>
 /// <b>Every LLM call that decides what the graph contains is replayed, not made.</b> Extraction and
 /// community reports both come out of <see cref="GraphExtractionCache"/> in refuse-on-miss mode —
@@ -36,7 +45,7 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// would look exactly like an empty cache.
 /// </para>
 /// </summary>
-internal sealed class GraphRagSliceRun : IAsyncDisposable
+internal sealed class GraphRagRun : IAsyncDisposable
 {
     /// <summary>
     /// How many chunks the vector search hands the graph behaviors before they do their work.
@@ -76,7 +85,10 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
     private readonly Dictionary<string, HashSet<string>> _entityDocuments =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private GraphRagSliceRun(
+    private readonly Dictionary<string, int> _articleChunksPerDocument =
+        new(StringComparer.Ordinal);
+
+    private GraphRagRun(
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         GraphExtractionCache extractions,
@@ -106,8 +118,24 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
     /// </remarks>
     public IReadOnlyDictionary<string, HashSet<string>> EntityDocuments => _entityDocuments;
 
-    /// <summary>Gets how many text chunks the slice's articles were cut into.</summary>
+    /// <summary>Gets how many text chunks the run's articles were cut into.</summary>
     public int ChunkCount { get; private set; }
+
+    /// <summary>Gets how many articles contributed at least one chunk of their own text.</summary>
+    /// <remarks>
+    /// Article chunks only, deliberately. It answers <see cref="BeirRunResult"/>'s
+    /// <c>IndexedDocumentCount</c> question — "which documents are retrievable at all" — and an
+    /// article that produced no chunk is unretrievable however many entities were extracted from
+    /// it. Counting graph chunks here would hide exactly that.
+    /// </remarks>
+    public int IndexedDocumentCount => _articleChunksPerDocument.Count;
+
+    /// <summary>Gets the largest number of article chunks any one article was cut into.</summary>
+    /// <remarks>
+    /// The Real protocol's <c>MaxChunksPerDocument</c>, re-derived here off the same chunker, so
+    /// the two legs' reported shapes are comparable rather than merely similarly named.
+    /// </remarks>
+    public int MaxChunksPerDocument { get; private set; }
 
     /// <summary>Gets how many entity and relationship chunks extraction embedded and indexed.</summary>
     public int GraphChunkCount { get; private set; }
@@ -167,7 +195,7 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
     /// </param>
     /// <param name="cancellationToken">Cancels the run.</param>
     /// <returns>The finished run, ready to search.</returns>
-    public static async Task<GraphRagSliceRun> BuildAsync(
+    public static async Task<GraphRagRun> BuildAsync(
         IReadOnlyList<BeirDocument> documents,
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
@@ -175,7 +203,7 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
         GraphExtractionCache reports,
         CancellationToken cancellationToken)
     {
-        var run = new GraphRagSliceRun(generator, embeddings, extractions, reports);
+        var run = new GraphRagRun(generator, embeddings, extractions, reports);
         await run.IngestAsync(documents, cancellationToken);
         await run.DetectCommunitiesAsync(cancellationToken);
 
@@ -184,11 +212,39 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
 
     /// <summary>Runs local search for one query and returns what it produced.</summary>
     public async Task<IReadOnlyList<SearchResult>> LocalSearchAsync(
+        string query, CancellationToken cancellationToken) =>
+        (await LocalSearchWithCandidatesAsync(query, cancellationToken)).Results;
+
+    /// <summary>
+    /// Runs local search for one query and returns <b>both</b> what the dense retrieval underneath
+    /// it found and what the behavior made of that.
+    /// </summary>
+    /// <param name="query">The query text.</param>
+    /// <param name="cancellationToken">Cancels the search.</param>
+    /// <returns>The candidate set and the blended result.</returns>
+    /// <remarks>
+    /// <b>The candidate set is the control the graph behavior is differenced against, and without
+    /// it a corpus-scale nDCG cannot be attributed to anything.</b> Two things change at once when
+    /// the graph path is measured against the dense one: the store gains a quarter of a million
+    /// entity, relationship and community-report chunks, and
+    /// <see cref="GraphLocalSearchBehavior"/> reorders and deduplicates whatever comes out of it.
+    /// Scoring the candidates as well as the results separates them — same query, same store, same
+    /// scan, one extra pooling — so a difference from the Real leg's figure can be laid at the door
+    /// of the store's contents or of the behavior rather than at "GraphRAG" as an undivided thing.
+    /// It costs one <see cref="DocumentRanking"/> pass per query and no retrieval.
+    /// </remarks>
+    public async Task<GraphLocalSearchOutcome> LocalSearchWithCandidatesAsync(
         string query, CancellationToken cancellationToken)
     {
         var behavior = new GraphLocalSearchBehavior(_graphStore, _retrievalOptions);
+        IReadOnlyList<SearchResult> candidates = [];
 
-        return await behavior.HandleAsync(CreateContext(query), cancellationToken, RetrieveAsync);
+        var results = await behavior.HandleAsync(
+            CreateContext(query),
+            cancellationToken,
+            async (context, token) => candidates = await RetrieveAsync(context, token));
+
+        return new GraphLocalSearchOutcome(candidates, results);
     }
 
     /// <summary>
@@ -263,6 +319,7 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
         {
             var chunks = await GraphRagSliceIngestion.ChunkAsync(documents[i], cancellationToken);
             ChunkCount += chunks.Count;
+            RecordArticleChunkShape(documents[i], chunks.Count);
 
             var graphChunks = await GraphRagSliceIngestion.ExtractAsync(
                 documents[i], chunks, _chat, _embedder, _graphStore, _options, cancellationToken);
@@ -271,6 +328,29 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
             RecordEntityDocuments(graphChunks);
             await _vectorStore.StoreAsync(graphChunks, cancellationToken);
             await IndexArticleChunksAsync(chunks, cancellationToken);
+        }
+    }
+
+    /// <summary>Notes how many chunks one article's own text produced.</summary>
+    /// <remarks>
+    /// A document yielding no chunk is never recorded, which is the point: an empty article is
+    /// unretrievable and <see cref="IndexedDocumentCount"/> has to say so rather than counting
+    /// every article the loop walked past.
+    /// </remarks>
+    private void RecordArticleChunkShape(BeirDocument document, int chunkCount)
+    {
+        if (chunkCount == 0)
+        {
+            return;
+        }
+
+        _articleChunksPerDocument.TryGetValue(document.Id, out var existing);
+        var total = existing + chunkCount;
+        _articleChunksPerDocument[document.Id] = total;
+
+        if (total > MaxChunksPerDocument)
+        {
+            MaxChunksPerDocument = total;
         }
     }
 
@@ -383,4 +463,18 @@ internal sealed class GraphRagSliceRun : IAsyncDisposable
             },
             cancellationToken);
     }
+
+    /// <summary>What one local search saw and what it made of it.</summary>
+    /// <param name="Candidates">
+    /// What the dense retrieval underneath the behavior returned — the pipeline's candidate set,
+    /// <see cref="BaseTopK"/> chunks deep, before any graph work.
+    /// </param>
+    /// <param name="Results">
+    /// What <see cref="GraphLocalSearchBehavior"/> returned: the same chunks blended with PageRank
+    /// and deduplicated. It can hold <b>fewer</b> entries than
+    /// <paramref name="Candidates"/> — see <see cref="BeirGraphRagCorpusTests"/>, which measures by
+    /// how many and why that matters to the metric.
+    /// </param>
+    internal sealed record GraphLocalSearchOutcome(
+        IReadOnlyList<SearchResult> Candidates, IReadOnlyList<SearchResult> Results);
 }
