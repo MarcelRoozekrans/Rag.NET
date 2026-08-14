@@ -3416,9 +3416,23 @@ stops anyone finding it.
 **Recorded, not fixed:**
 
 - **65% of communities are singletons** (396 of 607). 273 of them are entities appearing in no
-  relationship at all, so roughly 123 have edges and still end up alone. Printed on every run and
-  deliberately not asserted: a pass/fail bound would hide movement inside its band, and movement is
-  the whole of what is interesting.
+  relationship at all; the other **123 have edges and still end up alone because every one of those
+  edges is dropped before Leiden sees it** — `BuildAdjacency` keeps an edge only when both endpoints
+  resolve to an extracted entity, and 853 of the slice's 16,403 relationships (5.20%) fail that: 837
+  name something the entity pass never extracted, 16 name the same entity twice. 273 + 123 = 396
+  exactly. (An earlier version of this note, and of the comment in `GraphRagFunctionsTests`, said
+  their neighbours had been drawn into other communities. That was wrong: they are not in the
+  clustering's input at all. Over the full 609-article corpus the same drop is 5,492 of 147,021,
+  3.74%.) Printed on every run and deliberately not asserted: a pass/fail bound would hide movement
+  inside its band, and movement is the whole of what is interesting.
+- **Relationship weights were unbounded until #209, and the slice could never have shown it.** The
+  extraction prompt asks for `"weight": 1.0`; over the full corpus the model returned acquisition
+  prices, `Microsoft -> Mojang` at 2.5e9 and `Microsoft -> Rare` at 3.75e8, and those two edges of
+  147,021 carried 99.99% of the graph's weight. Leiden returned **57,484 of 62,392 entities (92.13%)
+  in one community** at modularity 0.0001. `GraphRagOptions.MaxRelationshipWeight` (default 10)
+  bounds it: 20 of 147,021 weights altered, largest community 5,629 (**9.02%**), modularity 0.7496.
+  Over these sixty articles the heaviest weight is 6.0, so the bound alters nothing and the slice
+  guard's 7.3% was never evidence about the corpus.
 - **The guard never sees a real community report.** `PromptEchoChatClient` returns a bounded head of
   the prompt, so a "report" is its community's own entity descriptions. **"Do real reports retrieve
   well" is untested**, and the two rank figures (1,098 → 209) are partly properties of the stub.
