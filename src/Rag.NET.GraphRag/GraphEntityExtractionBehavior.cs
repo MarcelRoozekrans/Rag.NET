@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -15,6 +16,21 @@ namespace Rag.NET.GraphRag;
 /// </summary>
 public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
 {
+    /// <summary>
+    /// What an unusable weight becomes: the value
+    /// <see cref="GraphRagOptions.EntityExtractionPrompt"/>'s own schema asks the model for, and the
+    /// value 99.99% of the real corpus's 147,021 relationships already carried.
+    /// </summary>
+    /// <remarks>
+    /// Substituted rather than the relationship dropped. The endpoints and the description were
+    /// never in question — only one scalar was — and <c>Leiden.BuildAdjacency</c> already discards
+    /// 5,492 of the real corpus's relationships, 3.74%, because their endpoints name no extracted
+    /// entity or name the same one twice. Adding a second silent way to lose an edge in order to
+    /// fix a problem of silence would be the wrong trade, and the all-weights-at-1.0 arm of the
+    /// measurement puts the cost of the substitution at 0.03 modularity points.
+    /// </remarks>
+    private const double DefaultRelationshipWeight = 1.0;
+
     private static readonly JsonSerializerOptions s_jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -58,17 +74,19 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
 
         var allEntities = new List<GraphEntity>();
         var allRelationships = new List<GraphRelationship>();
+        var weights = new RelationshipWeightAudit();
 
 #pragma warning disable HLQ012 // CollectionsMarshal.AsSpan cannot cross await boundaries
         for (var i = 0; i < ctx.Chunks.Count; i++)
         {
             await ExtractFromChunkAsync(
-                client, ctx.Chunks[i], documentId, allEntities, allRelationships, ct).ConfigureAwait(false);
+                client, ctx.Chunks[i], documentId, allEntities, allRelationships, weights, ct).ConfigureAwait(false);
         }
 #pragma warning restore HLQ012
 
         activity?.SetTag("graphrag.entity.count", allEntities.Count);
         activity?.SetTag("graphrag.relationship.count", allRelationships.Count);
+        ReportWeightAudit(activity, weights, documentId);
 
         await EmbedEntitiesAsync(ctx, allEntities, ct).ConfigureAwait(false);
         await EmbedRelationshipsAsync(ctx, allEntities.Count, allRelationships, ct).ConfigureAwait(false);
@@ -82,6 +100,7 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         string documentId,
         List<GraphEntity> allEntities,
         List<GraphRelationship> allRelationships,
+        RelationshipWeightAudit weights,
         CancellationToken ct)
     {
         var chunkId = $"{chunk.DocumentId}_{chunk.ChunkIndex}";
@@ -96,7 +115,7 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         await PerformGleaningAsync(client, chunk.Text, entities, relationships, ct).ConfigureAwait(false);
 
         var graphEntities = ConvertEntities(entities, documentId, chunkId);
-        var graphRelationships = ConvertRelationships(relationships, _options.RelationshipTypes, documentId);
+        var graphRelationships = ConvertRelationships(relationships, _options, documentId, weights);
 
         if (graphEntities.Count > 0)
         {
@@ -204,22 +223,72 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         return result;
     }
 
-    private static List<GraphRelationship> ConvertRelationships(
-        List<ExtractedRelationship> relationships, string[]? allowedTypes, string documentId)
+    /// <summary>
+    /// Turns the model's relationships into graph edges, bounding the one field on them the model
+    /// is free to invent: the weight.
+    /// </summary>
+    /// <remarks>
+    /// Issue #209. Weights reach modularity's null model directly, so an unbounded one is not a bad
+    /// number in a report — it is the clustering. See <see cref="RelationshipWeightAudit"/> for the
+    /// measurement and <see cref="GraphRagOptions.MaxRelationshipWeight"/> for why the bound is a
+    /// clamp rather than a rejection.
+    /// </remarks>
+    internal static List<GraphRelationship> ConvertRelationships(
+        List<ExtractedRelationship> relationships,
+        GraphRagOptions options,
+        string documentId,
+        RelationshipWeightAudit weights)
     {
         var result = new List<GraphRelationship>(relationships.Count);
         for (var i = 0; i < relationships.Count; i++)
         {
             var r = relationships[i];
             if (string.IsNullOrWhiteSpace(r.Source) || string.IsNullOrWhiteSpace(r.Target)) continue;
-            if (!IsAllowedType(allowedTypes, r.Description)) continue;
-            result.Add(new GraphRelationship(r.Source, r.Target, r.Description, r.Weight)
+            if (!IsAllowedType(options.RelationshipTypes, r.Description)) continue;
+
+            var weight = BoundWeight(r.Weight, options.MaxRelationshipWeight, weights);
+            result.Add(new GraphRelationship(r.Source, r.Target, r.Description, weight)
             {
                 SourceDocumentId = documentId,
             });
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Brings one model-supplied weight into the range Leiden can use, recording what it had to do.
+    /// </summary>
+    /// <param name="weight">The weight exactly as the model returned it.</param>
+    /// <param name="ceiling">
+    /// <see cref="GraphRagOptions.MaxRelationshipWeight"/>, already validated finite and positive.
+    /// </param>
+    /// <param name="weights">The document's audit; every alteration is counted on it.</param>
+    /// <returns>A finite weight in <c>(0, ceiling]</c>.</returns>
+    /// <remarks>
+    /// <b>The order of the two tests matters and the negated form is deliberate.</b>
+    /// <c>weight is > 0.0</c> is false for <see cref="double.NaN"/>, which
+    /// <c>!(weight &lt;= 0.0)</c> would not be — a NaN weight would then fall through to the clamp,
+    /// where <c>NaN &gt; ceiling</c> is also false, and reach the graph untouched. That is exactly
+    /// the class of silence this method exists to end.
+    /// </remarks>
+    private static double BoundWeight(double weight, double ceiling, RelationshipWeightAudit weights)
+    {
+        weights.Observe(weight);
+
+        if (!double.IsFinite(weight) || weight is not > 0.0)
+        {
+            weights.RecordReplaced();
+            return DefaultRelationshipWeight;
+        }
+
+        if (weight > ceiling)
+        {
+            weights.RecordClamped();
+            return ceiling;
+        }
+
+        return weight;
     }
 
     private async Task EmbedEntitiesAsync(
@@ -329,12 +398,40 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         }
     }
 
+    /// <summary>
+    /// Publishes what was done to this document's relationship weights: always as activity tags,
+    /// and as a warning when anything was altered.
+    /// </summary>
+    /// <remarks>
+    /// <b>Tagged unconditionally, logged only on change.</b> A span that carries the counters even
+    /// when they are zero makes "this corpus needs no bounding" a positive observation rather than
+    /// the absence of one — which is exactly what was missing while 92% of the graph sat in one
+    /// community. A warning on every document, by contrast, would be one line per article on a
+    /// corpus where nothing is wrong.
+    /// </remarks>
+    private void ReportWeightAudit(Activity? activity, RelationshipWeightAudit weights, string documentId)
+    {
+        activity?.SetTag("graphrag.relationship.weight.replaced", weights.Replaced);
+        activity?.SetTag("graphrag.relationship.weight.clamped", weights.Clamped);
+        activity?.SetTag("graphrag.relationship.weight.largest", weights.LargestWeight);
+
+        if (weights.Altered)
+        {
+            LogWeightsAdjusted(
+                _logger, documentId, weights.Replaced, weights.Clamped, weights.LargestWeight);
+        }
+    }
+
     private string TruncateDescription(string description)
     {
         return description.Length > _options.MaxEntityDescriptionLength
             ? description[.._options.MaxEntityDescriptionLength]
             : description;
     }
+
+    [LoggerMessage(EventId = 1085291744, EventName = "log_weights_adjusted", Level = LogLevel.Warning, Message = "Relationship weights outside the usable range were adjusted while extracting {DocumentId}: {Replaced} replaced with 1.0 for not being a finite number greater than zero, {Clamped} clamped to GraphRagOptions.MaxRelationshipWeight; the largest weight the model returned was {LargestWeight}. Weights far above the schema's 1.0 dominate modularity's null model and collapse community detection into a single community")]
+    private static partial void LogWeightsAdjusted(
+        ILogger logger, string documentId, int replaced, int clamped, double largestWeight);
 
     [LoggerMessage(EventId = 1144623303, EventName = "log_extraction_failed", Level = LogLevel.Warning, Message = "Failed to parse entity extraction JSON from LLM response")]
     private static partial void LogExtractionFailed(ILogger logger, Exception ex);

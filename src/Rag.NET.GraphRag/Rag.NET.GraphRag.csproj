@@ -17,6 +17,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- ConvertRelationships and RelationshipWeightAudit are the seam issue #209's regression is
+         asserted at. The defect was a scalar the LLM controls reaching the clusterer unchecked, so
+         the test that pins it has to be able to hand that scalar in directly — including NaN, which
+         no JSON number can express and which therefore cannot be reached through the behaviour's
+         public surface at all. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.GraphRag.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
     <ProjectReference Include="..\Rag.NET.Graph\Rag.NET.Graph.csproj" />
     <!-- The runtime library flows transitively through Rag.NET, but the generator is
