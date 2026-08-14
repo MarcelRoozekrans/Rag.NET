@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
+using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Models.Options;
 using Rag.NET.Resilience;
@@ -161,5 +162,31 @@ public class UseFallbackChainTests
             .BuildServiceProvider();
 
         Assert.IsType<FallbackChatClient>(sp.GetRequiredService<IChatClient>());
+    }
+
+    /// <summary>
+    /// Issue #195: superseding a prior registration is the documented direction, and the reverse is
+    /// not. A provider client registered <b>after</b> the chain replaced it wholesale, leaving a
+    /// fallback chain that was configured, validated ("at least 2 clients") and unreachable —
+    /// discovered during the outage it was configured for.
+    /// </summary>
+    [Fact]
+    public void UseFallbackChain_SupersededByALaterChatClient_FailsLoudly()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Substitute.For<IVectorStore>());
+        services.AddSingleton(Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>());
+        services.AddRagNet(rag => rag.UseFallbackChain(o => o
+            .AddClient(_ => RespondingClient("a"))
+            .AddClient(_ => RespondingClient("b"))));
+
+        services.AddSingleton(RespondingClient("the provider client"));
+
+        var sp = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => sp.GetRequiredService<IRagPipeline>());
+
+        Assert.Contains("UseFallbackChain", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("IChatClient", ex.Message, StringComparison.Ordinal);
     }
 }

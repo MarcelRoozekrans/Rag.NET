@@ -1,8 +1,6 @@
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
-using Rag.NET.AnswerGeneration;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Diagnostics.Internal;
 
@@ -25,26 +23,28 @@ public static class RagBuilderExtensions
     /// <returns>The builder.</returns>
     /// <remarks>
     /// <para>
-    /// <b>Call this last.</b> It reads the service collection <i>at the time of the call</i> — the same
-    /// ordering rule <c>ConfigureResilience</c> and <c>UseRateLimiting</c> carry. It decorates the
-    /// <c>IRetrievalGuard</c>, <c>IChunkSanitiser</c>, <c>IQuerySanitiser</c> and <c>IAnswerEngine</c>
-    /// registrations that exist by then, and it also <b>looks for an <c>IChatClient</c></b>. A guard
-    /// registered afterwards still runs; it is simply not traced, and its absence from a trace then
-    /// means "not registered when diagnostics was" rather than "never fired", which is a misleading
-    /// answer to the question traces exist to answer.
+    /// <b>Call this last.</b> It reads the service collection <i>at the time of the call</i> for the
+    /// guards and sanitisers — the same ordering rule <c>ConfigureResilience</c> and
+    /// <c>UseRateLimiting</c> carry. It decorates the <c>IRetrievalGuard</c>, <c>IChunkSanitiser</c>
+    /// and <c>IQuerySanitiser</c> registrations that exist by then. A guard registered afterwards
+    /// still runs; it is simply not traced, and its absence from a trace then means "not registered
+    /// when diagnostics was" rather than "never fired", which is a misleading answer to the question
+    /// traces exist to answer.
     /// </para>
     /// <para>
-    /// <b>The <c>IChatClient</c> case reads as a bug rather than a misconfiguration</b>, so it is worth
-    /// recognising. With no <c>IAnswerEngine</c> registered, this method supplies a traced one only if
-    /// an <c>IChatClient</c> is already in the collection — see
-    /// <see cref="AddAnswerEngineIfAChatClientIsRegistered"/>. Register the chat client afterwards, as
-    /// in <c>AddRagNet(rag => rag.AddRagDiagnostics())</c> followed by
-    /// <c>services.AddSingleton&lt;IChatClient&gt;(…)</c>, and there is nothing to find: no
-    /// <c>IAnswerEngine</c> is registered, <c>RagPipeline</c> builds its own untraced one, and answers
-    /// are never recorded. <b>The symptom</b> is a trace that has a query, chunks, stages and a prompt
-    /// but whose <c>Answer</c> is always <see langword="null"/> even with
-    /// <see cref="RagTraceOptions.CaptureAnswerText"/> on — while asking still returns an answer
-    /// perfectly well. Register the <c>IChatClient</c> first and it is captured.
+    /// <b>The answer is the exception, and no longer order-sensitive.</b> Answer capture goes through
+    /// <c>RagAnswerEngineDecorations</c>, which is applied when <c>RagPipeline</c> composes its
+    /// engine, so it wraps whatever the container ends up answering with: an <c>IAnswerEngine</c>
+    /// registered before or after this call, or the <c>ChatAnswerEngine</c> that <c>AddRagNet</c>
+    /// builds from an <c>IChatClient</c> registered after <c>AddRagNet</c> returned. That last shape —
+    /// <c>AddRagNet(rag => rag.AddRagDiagnostics())</c> followed by
+    /// <c>services.AddSingleton&lt;IChatClient&gt;(…)</c>, which is the order every walkthrough
+    /// produces — used to give a trace with a query, chunks, stages and a prompt whose <c>Answer</c>
+    /// was always <see langword="null"/> even with <see cref="RagTraceOptions.CaptureAnswerText"/> on,
+    /// while asking returned an answer perfectly well (issue #195). A retrieval-only pipeline still
+    /// gets no engine: there is nothing to observe, and inventing one would break a pipeline that
+    /// worked without diagnostics. Note that resolving <c>IAnswerEngine</c> from the container yields
+    /// the <i>registered</i> engine, undecorated; <c>ComposedAnswerEngine</c> is the traced one.
     /// </para>
     /// <para>
     /// Finding nothing to decorate is a <b>no-op, not a failure</b>. A pipeline with no guards and no
@@ -150,8 +150,11 @@ public static class RagBuilderExtensions
             sp.GetRequiredService<ITraceCollector>(),
             sp.GetService<ILogger<TracingQuerySanitiser>>()));
 
-        if (ServiceDecoration.DecorateAll<IAnswerEngine>(services, DecorateAnswerEngine) == 0)
-            AddAnswerEngineIfAChatClientIsRegistered(services);
+        // Not decorated like the three above: the answer engine is composed when the pipeline is
+        // resolved, so this wraps whatever the container ends up answering with — an engine
+        // registered later, or the ChatAnswerEngine built from a chat client registered later.
+        services.RagAnswerEngineDecorations(nameof(AddRagDiagnostics))
+            .Add(nameof(AddRagDiagnostics), DecorateAnswerEngine);
     }
 
     /// <summary>Wraps one answer engine so the answers it generates are recorded.</summary>
@@ -163,31 +166,4 @@ public static class RagBuilderExtensions
             inner,
             serviceProvider.GetRequiredService<ITraceCollector>(),
             serviceProvider.GetService<ILogger<DiagnosticsAnswerEngineDecorator>>());
-
-    /// <summary>Supplies a traced answer engine when the pipeline was going to build its own.</summary>
-    /// <param name="services">The service collection.</param>
-    /// <remarks>
-    /// <para>
-    /// The common shape — <c>AddRagNet</c> plus an <c>IChatClient</c>, with none of the security
-    /// package's answer-engine decorators — registers <b>no</b> <c>IAnswerEngine</c> at all:
-    /// <c>AddRagNet</c>'s <c>RagPipeline</c> factory calls <c>ChatAnswerEngine.CreateFromServices</c>
-    /// itself when it finds none. There is nothing there to decorate, so without this the headline
-    /// capability — capturing the answer — would be missing from exactly the setup most people have.
-    /// </para>
-    /// <para>
-    /// Gated on an <c>IChatClient</c> being registered, because <c>CreateFromServices</c> requires one
-    /// and would otherwise turn a retrieval-only pipeline — which has no answer engine on purpose —
-    /// into one that throws the moment <c>RagPipeline</c> is resolved. Registering diagnostics must
-    /// never be able to break a pipeline that worked without it.
-    /// </para>
-    /// </remarks>
-    private static void AddAnswerEngineIfAChatClientIsRegistered(IServiceCollection services)
-    {
-        if (!services.Any(static d => d.ServiceType == typeof(IChatClient)))
-            return;
-
-        services.AddSingleton<IAnswerEngine>(static sp =>
-            DecorateAnswerEngine(ChatAnswerEngine.CreateFromServices(sp), sp));
-    }
-
 }

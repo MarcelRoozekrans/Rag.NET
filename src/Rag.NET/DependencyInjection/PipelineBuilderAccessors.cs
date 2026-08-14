@@ -53,6 +53,24 @@ public static class PipelineBuilderAccessors
         Find<RetrievalPipelineBuilder>(services)
         ?? throw MissingAddRagNet(calledBy, nameof(RetrievalPipelineBuilder));
 
+    /// <summary>Gets the answer-engine decorations the container will apply.</summary>
+    /// <param name="services">The collection <c>AddRagNet</c> was called on.</param>
+    /// <param name="calledBy">
+    /// The <c>Use*</c> or <c>Add*</c> method asking, named in the failure message so the caller is
+    /// told which of their own lines is in the wrong place.
+    /// </param>
+    /// <returns>The live builder, ready for <see cref="AnswerEngineDecorationBuilder.Add"/>.</returns>
+    /// <remarks>
+    /// The seam for <i>observing</i> answers. Registering <c>IAnswerEngine</c> is how a package
+    /// <i>chooses</i> the engine, and doing both through one registration is what made
+    /// <c>UseAuditLog</c> and the answer engines silently cancel each other out (issue #195).
+    /// </remarks>
+    /// <exception cref="InvalidOperationException"><c>AddRagNet</c> has not been called.</exception>
+    public static AnswerEngineDecorationBuilder RagAnswerEngineDecorations(
+        this IServiceCollection services, string calledBy) =>
+        Find<AnswerEngineDecorationBuilder>(services)
+        ?? throw MissingAddRagNet(calledBy, nameof(AnswerEngineDecorationBuilder));
+
     /// <summary>
     /// Finds the builder instance without resolving anything: these accessors run during
     /// registration, when no <see cref="IServiceProvider"/> exists yet.

@@ -44,7 +44,7 @@ At least 2 clients are required (validated at registration). When the primary cl
 
 Two things to know about the registration:
 
-- **It supersedes any prior `IChatClient` registration** (standard last-wins container semantics — the same convention as `UseFederatedSearch`). Call `UseFallbackChain` after your provider registrations.
+- **It supersedes any prior `IChatClient` registration** (standard last-wins container semantics — the same convention as `UseFederatedSearch`). Call `UseFallbackChain` after your provider registrations. Only that direction is supported: an `IChatClient` registered *after* the chain replaces it, so resolving the RAG pipeline throws an `InvalidOperationException` naming `UseFallbackChain` rather than leaving failover configured, validated and unreachable until the outage it was configured for ([#195](https://github.com/MarcelRoozekrans/Rag.NET/issues/195)). Add every provider client to the chain with `AddClient` instead of registering one separately.
 - **Clients are supplied as factories** (`Func<IServiceProvider, IChatClient>`) so each per-provider client can be built from DI without the chain wrapping itself. Do **not** resolve `IChatClient` inside a factory — because the chain *is* the `IChatClient` registration, that would recurse into the chain. Construct the provider client directly, as in the snippet above.
 
 ### Per-client timeout
@@ -205,6 +205,8 @@ services.AddRagNet(rag => rag
 ```
 
 It follows the same ordering rule as the decorators above — it wraps whatever is registered at that point, so register the store and embedding generator first. Calling it with neither registered throws with an actionable message instead of silently doing nothing. Repeated calls re-configure the pipeline (last wins) but never stack a second decorator layer.
+
+Registering *one* of the two surfaces afterwards used to slip through that check: finding the other one satisfied it, and the late surface was skipped in silence — a retried store and unretried embedding calls, with nothing to see. Since [#195](https://github.com/MarcelRoozekrans/Rag.NET/issues/195) that is caught when the RAG pipeline is resolved, and the exception names the call and the surface it missed. The same check covers `UseRateLimiting` and `UseCostBudgeting`, whose decorators are equally dead if a later registration replaces the surface they wrapped.
 
 Cancellation is never retried: the caller's token flows into every attempt and the default retry predicate excludes `OperationCanceledException`, so a cancelled call fails on its first attempt. `BudgetExceededException` is excluded for the same reason — it is a deliberate kill switch, not a provider blip. Supply a `configure` delegate to replace the default policy; a custom pipeline owns its own predicates and should exclude both too.
 

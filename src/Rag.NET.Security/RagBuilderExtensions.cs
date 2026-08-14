@@ -170,31 +170,23 @@ public static class RagBuilderExtensions
         // UseAuditLog must be called after AddRagNet — the accessor throws clearly if it was not.
         builder.Services.RagRetrievalPipeline(nameof(UseAuditLog)).AddFirst<AuditRetrievalBehavior>();
 
-        // Wire answer engine decorator — wrap PromptHardeningAnswerEngineDecorator if registered,
-        // otherwise fall back to ChatAnswerEngine.
-        // NOTE: do NOT resolve via IAnswerEngine here; IAnswerEngine already points to this decorator
-        //       and would cause a circular dependency → stack overflow.
-        EnsureChatAnswerEngine(builder);
-        builder.Services.AddSingleton<AuditAnswerEngineDecorator>(sp =>
-            new AuditAnswerEngineDecorator(
-                (IAnswerEngine?)sp.GetService<PromptHardeningAnswerEngineDecorator>()
-                    ?? sp.GetRequiredService<ChatAnswerEngine>(),
+        // Wire the answer-engine decorator through the decoration seam rather than by registering
+        // IAnswerEngine. Registering it is how an answer engine is *chosen* (UseMapReduceAnswerEngine,
+        // UseFlare, UsePromptHardening, …), so doing both through one registration made the two
+        // cancel each other out on last-wins and dropped whichever ran first — with retrieval
+        // auditing still working, so the audit log read as complete and recorded no answers at all
+        // (issue #195). Through the seam the decorator wraps whatever engine the pipeline composes,
+        // in either order, and there is no circular resolution to avoid: the inner engine is handed
+        // in rather than resolved.
+        builder.Services.RagAnswerEngineDecorations(nameof(UseAuditLog)).Add(
+            nameof(UseAuditLog),
+            static (inner, sp) => new AuditAnswerEngineDecorator(
+                inner,
                 sp.GetRequiredService<IAuditLog>(),
                 sp.GetRequiredService<AuditCorrelationContext>(),
                 sp.GetRequiredService<AuditLogOptions>(),
                 sp.GetService<ILogger<AuditAnswerEngineDecorator>>()));
-        builder.Services.AddSingleton<IAnswerEngine>(sp =>
-            sp.GetRequiredService<AuditAnswerEngineDecorator>());
 
         return builder;
-    }
-
-    private static void EnsureChatAnswerEngine<TBuilder>(TBuilder builder)
-        where TBuilder : IRagBuilder
-    {
-        if (!builder.Services.Any(d => d.ServiceType == typeof(ChatAnswerEngine)))
-        {
-            builder.Services.AddSingleton(ChatAnswerEngine.CreateFromServices);
-        }
     }
 }

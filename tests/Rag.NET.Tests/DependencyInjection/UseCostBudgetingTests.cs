@@ -74,6 +74,34 @@ public sealed class UseCostBudgetingTests
         Assert.Null(sp.GetService<IEmbeddingGenerator<string, Embedding<float>>>());
     }
 
+    /// <summary>
+    /// Issue #195: the "no surface to decorate" guard fires only when <b>neither</b> surface is
+    /// registered, so a chat client present and an embedding generator registered afterwards left
+    /// ingestion spend untracked and uncapped while the user believed the budget was gating both.
+    /// Half a budget is worse than none, and nothing said so.
+    /// </summary>
+    [Fact]
+    public void UseCostBudgeting_BeforeTheEmbeddingGenerator_FailsLoudlyRatherThanSkippingIt()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Substitute.For<IVectorStore>());
+        services.AddRagNet(rag =>
+        {
+            rag.Services.AddSingleton(RespondingChatClient("ok"));
+            rag.Services.AddSingleton<ICostLedger>(new InMemoryCostLedger());
+            rag.UseCostBudgeting(o => o.DailyLimit = 10m);
+        });
+
+        services.AddSingleton(RespondingEmbeddingGenerator());
+
+        var sp = services.BuildServiceProvider();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => sp.GetRequiredService<IRagPipeline>());
+
+        Assert.Contains("UseCostBudgeting", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("IEmbeddingGenerator", ex.Message, StringComparison.Ordinal);
+    }
+
     // ── Ledger registration ──────────────────────────────────────────────────
 
     [Fact]
