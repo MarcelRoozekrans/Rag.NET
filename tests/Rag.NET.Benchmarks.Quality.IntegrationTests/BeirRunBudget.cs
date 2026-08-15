@@ -433,35 +433,47 @@ public static class BeirRunBudget
             "multihop-rag",
             BeirProtocol.Real,
             FitsTheNightly: false,
-            "MEASURED 2026-08-12: 600.2 s for the real leg and 78.9 s for the parity control it " +
-            "is differenced against, 11 m 19 s for the case. Cold embedding cache, which is what " +
-            "a fresh machine has: 20,453 texts embedded across the two legs, 17,648 of them the " +
-            "chunks of 609 articles. The derivation this replaces declined to guess and said so, " +
-            "which was right -- 609 documents is one order of magnitude under SciFact's corpus " +
-            "and cost about the same, because the articles average 10,340 characters and it is " +
-            "the chunk count, not the document count, that the embedding bill tracks. " +
-            "**This is an UPPER BOUND, not a clean-room figure.** It was taken on a machine " +
-            "running other work -- a media player, three browsers, four editor instances and " +
-            "several MCP servers, 45% CPU across 20 logical processors before the run started -- " +
-            "so an idle machine will be faster by an unknown margin and this number should be " +
-            "re-measured on one before anybody schedules against it. It is published in that " +
-            "state deliberately, because for a gating decision the error is safe in exactly one " +
-            "direction: an over-statement gates a case OUT of the nightly that might have fitted, " +
-            "which costs coverage and is visible, while an under-statement lets a case in that " +
-            "does not fit and silently blows a 120-minute job. Over-estimating fails safe; " +
-            "under-estimating does not. " +
-            "FitsTheNightly stays false for the same reason. 11 m 19 s looks like it would fit " +
-            "beside a solution build, and it may well -- but flipping the gate on a figure known " +
-            "to be inflated by an unmeasured amount is the decision this cell exists to prevent " +
-            "somebody making casually. Re-measure idle, then decide. " +
-            "**Cache state moves this number more than the corpus does, so read the two runs " +
-            "together.** The same case measured 7 m 14 s earlier the same day off a partly warm " +
-            "cache (11,501 hits, 8,402 misses), against 11 m 19 s cold -- a 1.6x spread from " +
-            "nothing but which vectors happened to be on disk. The cold figure is the one " +
-            "recorded because the nightly starts cold; the warm one is recorded here so that a " +
-            "later reader who measures 7 minutes knows why and does not file it as an " +
-            "improvement. Both runs produced identical nDCG@10 to five decimals, so none of this " +
-            "touches the figure in BeirReproduction -- only what it costs to obtain."),
+            "MEASURED COLD AND IDLE, TWICE, 2026-08-15 (#174): **343.5 s and 388.5 s for the " +
+            "real leg**, 34.1 s and 58.1 s for the parity control it is differenced against, " +
+            "**6 m 18 s and 7 m 27 s for the case**. Windows 11, .NET 10.0.11, CPU ONNX Runtime, " +
+            "20 logical processors at 2-4% load before each run, nothing else of this " +
+            "repository's running. Cold by the nightly's own definition: each run went against a " +
+            "fresh cache root holding only the converted dataset, the model and the vocabulary, " +
+            "with the embeddings directory absent -- 0 hits and 2,864 misses on the parity leg, " +
+            "2,314 hits (the query vectors the parity leg had just written) and 17,589 misses on " +
+            "the real leg, 20,453 texts embedded per run -- and the directory was deleted between " +
+            "the two. Both runs produced nDCG@10 = 0.63967, Recall@10 = 0.78684, MRR@10 = " +
+            "0.70150 to five decimals, and the parity control 0.55724 both times, so none of this " +
+            "touches the figures in BeirReproduction -- only what it costs to obtain them. " +
+            "**The 13% between the two real legs is the honest width of an idle measurement " +
+            "here**, and the two are quoted rather than averaged; the parity leg's 34-58 s spread " +
+            "is a small leg's warm-up noise and is not a finding. " +
+            "**What this replaces: 600.2 s real, 78.9 s parity, 11 m 19 s for the case, taken " +
+            "2026-08-12 on this machine at 45% CPU under a media player, three browsers, four " +
+            "editors and several MCP servers, and published as an UPPER BOUND with an instruction " +
+            "to re-measure idle before anybody scheduled against it.** Idle is 1.5-1.75x faster " +
+            "on the real leg, so the bound held and was loose by that much; over-estimating " +
+            "failed safe, as that cell said it would. The same day's partly-warm 7 m 14 s (11,501 " +
+            "hits, 8,402 misses) sits between the two states and is kept so a reader who " +
+            "measures seven minutes knows why. The derivation before all of these declined to " +
+            "guess, which was right: 609 documents is an order of magnitude under SciFact's " +
+            "corpus and costs about the same, because the articles average 10,340 characters and " +
+            "the embedding bill tracks chunks, not documents. " +
+            "**FitsTheNightly: DECIDED, and it stays false -- for a different reason than " +
+            "before.** The old reason was that the figure was inflated by an unmeasured amount; " +
+            "that is gone. The reason now is that this figure is about this machine and the " +
+            "nightly runs on another: a hosted ubuntu-latest runner with 4 vCPUs against 20 " +
+            "logical processors here, and CPU ONNX embedding of 20,453 texts scales with cores, " +
+            "so the runner's cold cost is plausibly 3-5x this one -- 20-35 minutes for the case " +
+            "-- and unmeasured. Flipping a 120-minute job's gate on a local figure that the " +
+            "runner may not reproduce is the same casual decision the old cell refused, one " +
+            "machine over. Two more things weigh the same way: every Real leg in this table is " +
+            "opt-in by policy, SciFact's 10 m 43 s included, and #175 records that the nightly's " +
+            "MultiHop-RAG footprint (the download and conversion the ungated chunking check " +
+            "triggers) is already unbudgeted there. **What would flip it** is a runner-side " +
+            "measurement -- one opted-in dispatch of this case on ubuntu-latest, timed -- and " +
+            "then a decision about the nightly's total, not this cell alone. Until then this is " +
+            "the fastest opt-in Real leg in the table and the command below runs it."),
         new(
             "multihop-rag",
             BeirProtocol.GraphRag,

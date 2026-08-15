@@ -487,7 +487,9 @@ public static class BeirReproduction
             "and MRR@10 by nothing at all. That is the expected result -- the protocol is " +
             "deterministic given the corpus, the pinned model and the judged set -- but it is " +
             "worth recording, because it separates the figure pinned here from the timing in " +
-            "BeirRunBudget, which is load-sensitive and is flagged there as an upper bound. " +
+            "BeirRunBudget, which is load-sensitive and was flagged there as an upper bound until " +
+            "#174 re-took it idle and cold, twice, on 2026-08-15 -- 343.5 s and 388.5 s, and a " +
+            "third and fourth reproduction of every figure here to five decimals. " +
             "**This figure is pinned on its own authority, and that phrase is doing real work.** " +
             "No published figure exists for all-MiniLM-L6-v2 on this dataset under any metric " +
             "this repository reports. The paper's Table 5 gives MAP@K, MRR@K and Hit@K for " +

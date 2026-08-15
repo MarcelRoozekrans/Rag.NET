@@ -40,7 +40,7 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
       decomposes the deficit the run measured, #174 re-takes the wall clock it was told to, #226
       fixes the sequential report loop it had to pay for. The operator's call was to finish this
       milestone whole rather than carry three open issues from an evaluation milestone into a
-      hardening one. Re-ticks when 5.2.1 closes — **and stays open past that for 5.2.2**, added 2026-08-15 at the operator's request to score answers rather than rankings; it re-ticks when 5.2.2 closes.)*
+      hardening one. **5.2.1 closed 2026-08-15** with #174, the last of its three PRs — #232 measured, #226 done, #174 done — **and the box stays open for 5.2.2**, added the same day at the operator's request to score answers rather than rankings; it re-ticks when 5.2.2 closes.)*
 - [x] **No cross-ecosystem latency figure is published without the confound statement beside it.**
       *(Met 2026-08-10; re-verified 2026-08-11 when the table was republished after the
       dense-search optimisation. The latency table is cross-ecosystem and carries the
@@ -64,7 +64,8 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
       Re-checked and still met for **MultiHop-RAG**, 2026-08-12: 609 documents, 2,556 queries of
       which 2,255 are judged, and 5,908 qrels rows, every count measured from the pinned revision
       `71ac0d0b…` rather than taken from the paper; timing measured (600.2 s Real, 41.1 s parity
-      control) and flagged an upper bound because the machine was under load; licence `odc-by` read
+      control) and flagged an upper bound because the machine was under load — **re-taken idle and
+      cold, twice, 2026-08-15 (#174): 343.5 s and 388.5 s Real, figures identical**; licence `odc-by` read
       from the authors' own Hugging Face repository; nDCG@10 = 0.63967 pinned in `BeirReproduction`.
       **The "published reference where one exists" clause is what this dataset tests**, and the
       answer is that none exists for our configuration — the paper's Table 5 has no MiniLM row and
@@ -72,11 +73,11 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
       holds `double.NaN`, which admits no measurement rather than quietly admitting any. Re-check
       this box if NFCorpus or EnronQA later land.)*
 - [ ] **All test projects passing; solution builds 0 warnings / 0 errors from a clean restore.**
-      A close-time check: true on 2026-08-11. 5.3 and both halves of 5.2 have landed since, and
-      none of it has been re-checked from a clean restore, so this stays open until the milestone
-      closes. Between 5.2's close and 5.2.1's addition on 2026-08-15 this was the milestone's only
-      open box; now it and 5.2.1 are what stand between Milestone 5 and its close, and this one is
-      checked last, after 5.2.1's code (#226) has landed.
+      A close-time check: true on 2026-08-11. 5.3, both halves of 5.2 and all of 5.2.1 have landed
+      since, and none of it has been re-checked from a clean restore, so this stays open until the
+      milestone closes. **With 5.2.1 closed this is again the milestone's only open box**, and it is
+      the close audit itself: a clean restore, a 0/0 build and every test project, on the `main`
+      that holds #234, #235 and #237.
 
 ## Phases
 
@@ -90,7 +91,7 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
 | 5.1 | Library Performance Comparison | — | **complete** 2026-08-10 — full matrix gated and published |
 | 5.1.1 | The Cost Figure Read Back | — | **complete** 2026-08-11 — optimised, verified and republished |
 | 5.2 | Multi-Hop Retrieval | #168 (functions), #172 (real reports), #173 (comparative) — all resolved | **complete** 2026-08-15 — MultiHop-RAG landed and measured; GraphRAG proved to function and six library defects fixed; and the comparative run answered "does it help" with **no**: nDCG@10 0.56897 against 0.59658 for the candidate-set control, **−0.02761**, needing #231 to be reproducible |
-| 5.2.1 | The GraphRAG Deficit Read Back | #232 (decompose the −0.043) — **measured**; #226 (parallel reports) — **done**; #174 (cold wall clock, twice) | **in progress** — added 2026-08-15 so the milestone finishes whole. #232 answered the same day: depth costs **0.00000** (the depth control reproduces the Real leg to five decimals), so the −0.04309 is store pollution entire. #226 landed the same day: `CommunityReportConcurrency` (default 4), deterministic by construction, measured 4.62 → 1.13 → 0.63 s per report at 1 → 4 → 8 in flight with zero retries. #174 open |
+| 5.2.1 | The GraphRAG Deficit Read Back | #232 (decompose the −0.043) — **measured**; #226 (parallel reports) — **done**; #174 (cold wall clock, twice) — **done** | **complete** 2026-08-15 — all three landed the day the phase was added, so the milestone finishes whole. #232: depth costs **0.00000** (the depth control reproduces the Real leg to five decimals), so the −0.04309 is store pollution entire. #226: `CommunityReportConcurrency` (default 4), deterministic by construction, measured 4.62 → 1.13 → 0.63 s per report at 1 → 4 → 8 in flight with zero retries. #174: Real leg 343.5 s and 388.5 s idle-cold against 600.2 s under load, figures identical, `FitsTheNightly` decided and kept false because the nightly runs on a 4-vCPU runner this figure says nothing about. |
 | 5.2.2 | Does GraphRAG Help Answers? | — (design: `docs/plans/2026-08-15-graphrag-answer-level-evaluation.md`; #239 informs arm B′) | **pending** — added 2026-08-15 at the operator's request after 5.2's finding. Three arms (dense, GraphRAG local as shipped, GraphRAG global) answer all 2,255 judged queries with one model, judged by the paper's own `qa_evaluate.py` rule against the gold answers; pilot 100 queries (~$1) before the full run ($20–30 derived) |
 | 5.3 | Deferred Datasets — NFCorpus, TREC-COVID, EnronQA | — | **complete** 2026-08-12 — TREC-COVID landed; NFCorpus declined on its licence; EnronQA blocked, undeclared |
 | 5.4 | Precision@k and MAP | #75 | **implemented** 2026-08-09 |
