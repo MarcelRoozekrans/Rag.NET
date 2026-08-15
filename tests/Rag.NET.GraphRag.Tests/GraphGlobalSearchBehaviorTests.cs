@@ -18,6 +18,22 @@ public class GraphGlobalSearchBehaviorTests
     };
 
     [Fact]
+    public void StableSeed_IsAPureFunctionOfTheQuery_AndNotOfTheProcess()
+    {
+        // #241: the shuffle seeded from string.GetHashCode, which .NET randomises per process, so
+        // the "deterministic" report order — and every map prompt built from it — changed on every
+        // run. A hard-coded expected value is the only assertion a per-process seed cannot pass:
+        // FNV-1a (32-bit) over the UTF-16 code units of "What are the main themes?".
+        Assert.Equal(unchecked((int)0xFED538B4), GraphGlobalSearchBehavior.StableSeed("What are the main themes?"));
+        Assert.Equal(
+            GraphGlobalSearchBehavior.StableSeed("the same query"),
+            GraphGlobalSearchBehavior.StableSeed("the same query"));
+        Assert.NotEqual(
+            GraphGlobalSearchBehavior.StableSeed("one query"),
+            GraphGlobalSearchBehavior.StableSeed("another query"));
+    }
+
+    [Fact]
     public async Task HandleAsync_CollectsCommunityReportsAndMapReduces()
     {
         var options = new GraphRagRetrievalOptions { GlobalBatchSize = 5 };
