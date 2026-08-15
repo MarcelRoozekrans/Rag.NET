@@ -26,16 +26,21 @@ datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` doe
 Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifiable style Phase
 4.0 established — every criterion can be false, and something checks it.
 
-- [x] **Phases 5.1–5.4 complete.** 5.5 deliberately schedules nothing and is outside this box by
-      design. *(Met 2026-08-15, when 5.2's comparative run finished and closed the last open phase.
-      This box stayed open for months on the half of 5.2 that was expensive, deliberately: closing
-      it on the cheap half — "does GraphRAG function" — would have been the same move as the
-      `✅ Done` that stood over a package nothing had ever executed. The run answered "does it
-      help", and it answered **no**: GraphRAG's local search scored nDCG@10 = 0.56897 against
-      **0.59658** for the candidate-set control that was handed the same dense top-500 over the same
-      321,151-chunk store, so the graph behaviour costs **−0.02761** where the only variable is the
-      behaviour itself. A finding is a completion; the box is about whether the question was asked,
-      not about which way it came out.)*
+- [ ] **Phases 5.1–5.4 complete, sub-phases included.** 5.5 deliberately schedules nothing and is
+      outside this box by design. *(Was ticked 2026-08-15, when 5.2's comparative run finished and
+      closed the last open phase. This box stayed open for months on the half of 5.2 that was
+      expensive, deliberately: closing it on the cheap half — "does GraphRAG function" — would have
+      been the same move as the `✅ Done` that stood over a package nothing had ever executed. The
+      run answered "does it help", and it answered **no**: GraphRAG's local search scored
+      nDCG@10 = 0.56897 against **0.59658** for the candidate-set control that was handed the same
+      dense top-500 over the same 321,151-chunk store, so the graph behaviour costs **−0.02761**
+      where the only variable is the behaviour itself. A finding is a completion; the box is about
+      whether the question was asked, not about which way it came out.
+      **Re-opened the same day, on purpose, when Phase 5.2.1 was added** to act on that run — #232
+      decomposes the deficit the run measured, #174 re-takes the wall clock it was told to, #226
+      fixes the sequential report loop it had to pay for. The operator's call was to finish this
+      milestone whole rather than carry three open issues from an evaluation milestone into a
+      hardening one. Re-ticks when 5.2.1 closes.)*
 - [x] **No cross-ecosystem latency figure is published without the confound statement beside it.**
       *(Met 2026-08-10; re-verified 2026-08-11 when the table was republished after the
       dense-search optimisation. The latency table is cross-ecosystem and carries the
@@ -69,8 +74,9 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
 - [ ] **All test projects passing; solution builds 0 warnings / 0 errors from a clean restore.**
       A close-time check: true on 2026-08-11. 5.3 and both halves of 5.2 have landed since, and
       none of it has been re-checked from a clean restore, so this stays open until the milestone
-      closes. **This is now the milestone's only open box** — everything else above is ticked, so
-      the clean-restore check is the whole of what stands between Milestone 5 and its close.
+      closes. Between 5.2's close and 5.2.1's addition on 2026-08-15 this was the milestone's only
+      open box; now it and 5.2.1 are what stand between Milestone 5 and its close, and this one is
+      checked last, after 5.2.1's code (#226) has landed.
 
 ## Phases
 
@@ -84,6 +90,7 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
 | 5.1 | Library Performance Comparison | — | **complete** 2026-08-10 — full matrix gated and published |
 | 5.1.1 | The Cost Figure Read Back | — | **complete** 2026-08-11 — optimised, verified and republished |
 | 5.2 | Multi-Hop Retrieval | #168 (functions), #172 (real reports), #173 (comparative) — all resolved | **complete** 2026-08-15 — MultiHop-RAG landed and measured; GraphRAG proved to function and six library defects fixed; and the comparative run answered "does it help" with **no**: nDCG@10 0.56897 against 0.59658 for the candidate-set control, **−0.02761**, needing #231 to be reproducible |
+| 5.2.1 | The GraphRAG Deficit Read Back | #232 (decompose the −0.043), #174 (cold wall clock, twice), #226 (parallel reports) | **pending** — added 2026-08-15 so the milestone finishes whole; the run's three owed follow-ons, none started |
 | 5.3 | Deferred Datasets — NFCorpus, TREC-COVID, EnronQA | — | **complete** 2026-08-12 — TREC-COVID landed; NFCorpus declined on its licence; EnronQA blocked, undeclared |
 | 5.4 | Precision@k and MAP | #75 | **implemented** 2026-08-09 |
 | 5.5 | Tier 3 Suites | — | recorded — deliberately not scheduled |
@@ -119,7 +126,13 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
   GraphRAG does not help on this corpus; it hurts**, by −0.02761 of nDCG@10 against the
   candidate-set control. The full account, including why the control rather than the dense 0.63967
   is the comparison that carries the claim, is in `BeirReproduction`'s `multihop-rag` / `GraphRag`
-  cell and in the ROADMAP's Phase 5.2 entry.
+  cell and in the ROADMAP's Phase 5.2 entry. **The run left three things owed, and they are
+  scheduled rather than carried: Phase 5.2.1**, added 2026-08-15 — #232 (the −0.04309 between the
+  control and the Real leg is store pollution or candidate depth, and one twenty-minute run without
+  an LLM says which), #174 (the 600.2 s Real wall clock was taken on a loaded machine and
+  `FitsTheNightly` cannot be reconsidered until it is taken cold, twice), and #226 (community
+  reports are generated one at a time — 3,587 round trips on this corpus — which is the seventh
+  library defect the run surfaced and the only one not fixed in-phase).
 - **Running GraphRAG once cost six library fixes, and the tests are the finding.** `6f86f0a7`,
   `e9178aee`, `929d45a3`, `46ff566b`, `c34d270e`, `49da36ae` + `2abc17e4`, all in packages published
   at 0.1.0. Three tests had been written *around* the broken behaviour rather than through it —
