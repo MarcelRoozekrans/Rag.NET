@@ -5,7 +5,12 @@
     <PackageId>Rag.NET.GraphRag</PackageId>
     <Description>GraphRAG — entity extraction, community detection, local + global search for Rag.NET</Description>
     <PackageTags>$(PackageTags);graphrag;knowledge-graph;entity-extraction</PackageTags>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- benchmark: extraction, community detection, local and global search run end to end
+         over the whole MultiHop-RAG corpus with every model call replayed — nDCG pinned in
+         BeirReproduction (GraphRag 0.56897, GraphRagDepthControl 0.63967) and answer accuracy in
+         MultiHopRagAnswerReproduction (dense 0.3499, control 0.1384, local 0.2102, global
+         0.5951). The runs that found eight shipping defects and #247. Milestone 6.0, 2026-08-15. -->
+    <VerifiedBy>benchmark</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

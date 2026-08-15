@@ -4078,7 +4078,7 @@ and something checks it):
       so that cannot recur at the tag.
 - [ ] Release tagged v1.0
 
-### Phase 6.0: The Inventory [status: pending — added 2026-08-15 by the re-plan]
+### Phase 6.0: The Inventory [status: complete 2026-08-15 — added and closed the same day; the two guards ship failing-behind-a-work-list: 57 packages at bare unit and 49 Done sections without an exercise pointer, each owned by 6.1, 6.2 or 6.2.1]
 **Goal:** turn "battle-tested" from a mood into a list with checkboxes before any of 6.1–6.3
 starts. Three things, all mechanical and all checked: (1) the **per-kind definitions** from the
 re-plan, written into `docs/reference/features.md`'s preamble so every later row is held to a
@@ -4093,6 +4093,34 @@ allowlist that 6.1–6.2.1 empty; a guard that only turns on when everything alr
 inert-guard shape this repository keeps deleting.
 
 **Exit condition:** the column exists, both guards run on every push, every ✅ row and every
+
+**Done 2026-08-15, the day it was added.** Both guards are in `Rag.NET.RepoConventions.Tests`, on
+every push, and both **fail behind a work list rather than pass by default**:
+
+- **`PackageVerificationTests.NoPackageStaysAtBareUnit`** — the ledger gained `benchmark` and
+  `<VerifiedByReason>`; a `unit` package with neither a better level nor a reason must be in
+  `PackagesAllowedToStayUnit`, keyed by name, valued by the phase that owes it a run; the staleness
+  twin fails an entry the moment its package leaves bare `unit`. **Five packages earned
+  `benchmark` from Milestone 5's measurements and left the list on day one** — `Embeddings.Onnx`
+  (every BEIR figure), `Reranking.Onnx` (the +reranker cell), `Chunking` (the Real protocol on all
+  five corpora), `Graph` and `GraphRag` (the corpus and answer runs) — each csproj naming its pin.
+  **57 remain**: 24 under 6.1 (live services), 30 under 6.2, 3 under 6.2.1 (`AnswerEngines`,
+  `QueryTechniques`, `Raptor`).
+- **`FeatureExerciseTests`** — every ✅ Done section of `features.md` carries
+  `**Exercised by:** kind — text naming a test or benchmark class`, kind ∈ benchmark / container /
+  test / recorded / declared, the class checked to exist under `tests/` or `benchmarks/`; the
+  preamble defines what each kind is allowed to mean. A section without the line must be in
+  `SectionsAwaitingExercise` under its phase; the staleness twin fails an entry whose section gains
+  the line. **51 Done sections: 2 exercised** (ONNX Cross-Encoder Reranking, GraphRAG), **49
+  owned** — 18 under 6.2.1, 20 under 6.2, 11 under 6.1.
+
+Two things the inventory found that the re-plan did not know: the vector-store sections say
+"Delivered" rather than "✅ Done" and so sit outside both feature guards — 6.2 normalises the status
+lines; and the ONNX reranker's only figure is the parity-corpus cell whose Recall@10 is frozen by
+construction (3.15's own note), so its `benchmark` is honest and thin until 6.2.1 re-measures it
+under the Real protocol. Nothing was exercised in this phase, as its goal said; the ledger stopped
+being a feeling.
+
 package is in exactly one of the three states, and the allowlist is the work list for the rest of
 the milestone. Nothing is exercised in this phase; it is where the ledger stops being a feeling.
 

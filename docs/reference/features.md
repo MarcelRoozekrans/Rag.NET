@@ -8,6 +8,27 @@ sidebar_position: 2
 
 Candidate features for future design and implementation. Completed features are documented in their own pages.
 
+## What a ✅ Done row has to carry, since Milestone 6.0
+
+A status line reading "✅ Done" says the code exists and `FeatureClaimTests` checks it does. Milestone 5
+showed that is not enough — `Rag.NET.GraphRag` was Done, green and published with eight defects
+that running it once found — so every Done section also carries **`**Exercised by:**`**, one line
+saying what runs the real thing, checked by `FeatureExerciseTests`: the kind, a dash, and text
+naming the test or benchmark class in backticks. The kinds, and what each is allowed to mean:
+
+| Kind | Means | The bar |
+|---|---|---|
+| `benchmark` | a measured run on a real corpus with a real model | a figure pinned in a reproduction table at ±0.005, with a control it is differenced against — the GraphRAG method |
+| `container` | a Docker-tier suite against the real dependency | the suite is `RequiresDocker` and runs in CI's Docker tier |
+| `test` | a fast-tier test that drives the real path | a real file, a real pipeline, a real store — not a fake of it |
+| `recorded` | a scrubbed, dated real-service exchange replayed | the recording is committed and its date and version are in it |
+| `declared` | cannot be exercised here | the text names what would be needed and what stays unverified |
+
+A Done section without the line is on `FeatureExerciseTests.SectionsAwaitingExercise` under the
+Milestone 6 phase that owes it one, and that list must reach empty before v1.0. A section marked
+"Delivered" rather than "✅ Done" is outside both guards today — a gap 6.0 recorded and 6.2 closes by
+normalising the status lines.
+
 ---
 
 ## Chunking
@@ -269,6 +290,7 @@ rag.UseCohereReranking(o =>
 
 ### ONNX Cross-Encoder Reranking (Local)
 **Status:** ✅ Done
+**Exercised by:** benchmark — the +reranker ablation cell on SciFact, FiQA and ArguAna in `BeirAblationTests`, pinned in `BeirReproduction` at ±0.005; the run that found `OnnxReranker` mapping 26% of every document to `[UNK]` (Phase 3.15) and now guards the fix. Recall@10 is frozen by construction there — the cell permutes only the top-10 it is evaluated on — which the Milestone 6.2.1 re-measure under the Real protocol will lift.
 
 **Package:** `Rag.NET.Reranking.Onnx`
 
@@ -641,6 +663,7 @@ Three constraints, because an archive is the first parser to take an untrusted s
 
 ### GraphRAG — Entity Extraction + Community Summarization
 **Status:** ✅ Done — shipped, exercised end to end since 2026-08-12, and benchmarked against the dense baseline since 2026-08-15. Six defects that first run found are fixed, a seventh (#209, unbounded relationship weights) that only the full corpus could show is fixed with it. **The benchmark's answer is that on MultiHop-RAG the graph path costs 0.02761 of nDCG@10 against the same candidates scored without it** — the tick means the feature is implemented and works, never that it improves retrieval; see below.
+**Exercised by:** benchmark — the whole 609-article MultiHop-RAG corpus, every model call replayed: `BeirGraphRagCorpusTests` (nDCG@10 pinned in `BeirReproduction`: GraphRag 0.56897, GraphRagDepthControl 0.63967, plus the #239 ablations), `BeirGraphRagAnswerTests` (accuracy against the gold answers pinned in `MultiHopRagAnswerReproduction`: dense 0.3499, control 0.1384, local 0.2102, global 0.5951), and `GraphRagFunctionsTests` over the pinned 60-article slice. The runs that found eight shipping defects and #247.
 **Package:** `Rag.NET.GraphRag`
 
 Full Microsoft GraphRAG pipeline: LLM-driven entity and relationship extraction from chunks using iterative "gleaning" — with the model-supplied relationship weight bounded at the extraction boundary by `GraphRagOptions.MaxRelationshipWeight` (default 10), because it feeds modularity's null model directly and an unbounded one is not a bad number in a report, it is the clustering — hierarchical Leiden community detection (Traag/Waltman/van Eck over modularity — Louvain's local moving and aggregation with the paper's refinement phase between them, so every returned community is connected; see the `Leiden` type's own remarks), PageRank-weighted entity scoring, and LLM-generated community summary reports. At query time, combines dense entity retrieval, relation retrieval by text similarity, and community report retrieval — merged and scored by cosine similarity and PageRank.

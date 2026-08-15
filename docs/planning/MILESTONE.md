@@ -53,7 +53,7 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 
 | Phase | Name | Issues | Status |
 |---|---|---|---|
-| 6.0 | The Inventory | — | pending — the *Exercised by* column, the per-kind definitions, ledger values `recorded`/`benchmark`, the two guards, and a first classification of all 56 rows and 71 packages |
+| 6.0 | The Inventory | — | **complete** 2026-08-15 — both guards on every push, failing behind a work list: 5 packages at `benchmark`, 57 at bare `unit` owned by 6.1/6.2/6.2.1; 51 Done sections, 2 exercised, 49 owned |
 | 6.1 | Recorded Responses | — | pending — as planned since 2026-08-03 |
 | 6.2 | Raise the Floor on Unit-Only Packages | — | pending — now defined per kind: parsers/chunkers via a real file, stores via the parity leg, utilities via one real run |
 | 6.2.1 | Retrieval & Answer Sweep | #247, #239, #176, #200 | pending — the GraphRAG method applied to the rest; #247 fixed and re-measured first; the pipeline-parity test |

@@ -5,10 +5,12 @@
     <PackageId>Rag.NET.Embeddings.Onnx</PackageId>
     <Description>ONNX Runtime token-level embeddings for Rag.NET (late chunking)</Description>
     <PackageTags>$(PackageTags);onnx;late-chunking;local-embeddings</PackageTags>
-    <!-- unit: tokenisation, pooling and stitching are covered with fixtures on every run;
-         the real-model tests are env-gated local inference (RAGNET_ONNX_EMBED_*) — a local
-         fixture, not a container or a service. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- benchmark: OnnxEmbeddingGenerator is the embedder behind every BEIR figure in
+         BeirReproduction — SciFact 0.64593, FiQA 0.37086, ArguAna 0.50432 within 0.003 of MTEB's
+         published all-MiniLM-L6-v2 numbers, TREC-COVID in band — re-checked at ±0.005 on every
+         opt-in run. Tokenisation, pooling and truncation are pinned by those figures; the
+         fixture-only unit tests still run on every push. Milestone 6.0, 2026-08-15. -->
+    <VerifiedBy>benchmark</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>
