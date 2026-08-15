@@ -116,6 +116,55 @@ public sealed class GraphExtractionRunOptionsTests
     }
 
     [Fact]
+    public void ReportConcurrency_IsAbsentUnlessAskedFor_SoTheLibraryDefaultApplies()
+    {
+        // #226: absent means "whatever GraphRagOptions.CommunityReportConcurrency defaults to",
+        // not a copy of that default here — a copy would drift from the library the day the
+        // library changed its mind, and the tool would quietly measure a bound nobody ships.
+        Assert.Null(GraphExtractionRunOptions.Default.ReportConcurrency);
+        Assert.Null(GraphExtractionRunOptions.Parse([])!.ReportConcurrency);
+        Assert.Null(GraphExtractionRunOptions.Parse(["--stage", "reports"])!.ReportConcurrency);
+    }
+
+    [Fact]
+    public void ReportConcurrency_OverridesTheBound_AndComposesWithTheOtherFlags()
+    {
+        // The invocation that measures the bound against the provider: the same graph at 1 and
+        // at N, differing in nothing but how many calls are in flight.
+        var options = GraphExtractionRunOptions.Parse(
+            ["--stage", "reports", "--max-documents", "8", "--report-concurrency", "1"]);
+
+        Assert.Equal(
+            new GraphExtractionRunOptions(
+                GraphExtractionCorpus.Slice,
+                MaxDocuments: 8,
+                GraphRagGenerationStage.Reports,
+                ReportConcurrency: 1),
+            options);
+    }
+
+    [Theory]
+    // Not a positive count: zero and negative would be refused by the library too, but at
+    // registration inside the tool — after the graph has been rebuilt — rather than before.
+    [InlineData("--report-concurrency", "0")]
+    [InlineData("--report-concurrency", "-1")]
+    [InlineData("--report-concurrency", "1.5")]
+    [InlineData("--report-concurrency", "four")]
+    [InlineData("--report-concurrency", "")]
+    public void AnUnusableReportConcurrency_IsRefusedRatherThanDefaulted(string name, string value)
+    {
+        Assert.Null(GraphExtractionRunOptions.Parse([name, value]));
+    }
+
+    [Fact]
+    public void ARepeatedReportConcurrencyFlag_IsRefused()
+    {
+        Assert.Null(GraphExtractionRunOptions.Parse(
+            ["--report-concurrency", "1", "--report-concurrency", "4"]));
+        Assert.Null(GraphExtractionRunOptions.Parse(["--report-concurrency"]));
+    }
+
+    [Fact]
     public void ARepeatedPlanOnlyFlag_IsRefused_LikeEveryOtherRepeat()
     {
         Assert.Null(GraphExtractionRunOptions.Parse(["--plan-only", "--plan-only"]));

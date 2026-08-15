@@ -44,6 +44,21 @@ public class GraphRagOptionsValidationTests
         Assert.Equal(0, options.GleaningPasses);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void NonPositiveCommunityReportConcurrency_ThrowsAtRegistration(int concurrency)
+    {
+        // #226: the bound on how many community-report calls are in flight. Zero would hand
+        // Parallel.ForEachAsync a degree of parallelism it rejects mid-ingestion, on the first
+        // corpus large enough to have communities; negative would read as "unbounded" to that API
+        // and turn a 3,587-community graph into 3,587 simultaneous requests at the provider.
+        var ex = Assert.Throws<ArgumentException>(() =>
+            NewBuilder().UseGraphRag(o => o.CommunityReportConcurrency = concurrency));
+
+        Assert.Contains("CommunityReportConcurrency", ex.Message, StringComparison.Ordinal);
+    }
+
     // ---- Retrieval options ----
 
     [Theory]

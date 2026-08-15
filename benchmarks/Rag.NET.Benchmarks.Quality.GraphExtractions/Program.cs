@@ -5,6 +5,7 @@ using OpenAI;
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Graph;
 using Rag.NET.Graph.Algorithms;
+using Rag.NET.GraphRag;
 using Rag.NET.Models;
 
 namespace Rag.NET.Benchmarks.Quality.GraphExtractions;
@@ -71,9 +72,12 @@ internal static class Program
     /// <see cref="CachedGraphRagClient"/> absorbs the rate-limit responses that do arrive.
     /// <para>
     /// <b>It applies to extraction only.</b> The report stage's calls are made by
-    /// <c>CommunityDetectionBehavior</c>, which loops over communities sequentially — so a report
-    /// run is as long as its community count times one round trip, and nothing here can widen it
-    /// without a second copy of a behavior the guard also runs.
+    /// <c>CommunityDetectionBehavior</c>, whose own bound is
+    /// <c>GraphRagOptions.CommunityReportConcurrency</c> — until #226 that loop was sequential
+    /// and a report run was its community count times one round trip. The report stage takes
+    /// the library's default unless <see cref="GraphExtractionRunOptions.ReportConcurrency"/>
+    /// overrides it, which exists so the bound can be measured against the provider rather than
+    /// assumed; it never touches a prompt, so the cache keys are the guard's either way.
     /// </para>
     /// </remarks>
     private const int Concurrency = 12;
@@ -269,14 +273,38 @@ internal static class Program
         Console.WriteLine(FormattableString.Invariant(
             $"Graph: {snapshot.Entities.Count} entities, {snapshot.Relationships.Count} relationships, from {replay.Calls} replayed extraction requests."));
 
-        var planned = await PrintReportPlanAsync(reports, graphStore, embedder);
+        var graphRagOptions = CreateReportOptions(options);
+        var planned = await PrintReportPlanAsync(reports, graphStore, embedder, graphRagOptions);
         if (options.PlanOnly)
         {
             PrintPlanOnly();
             return 0;
         }
 
-        return await GenerateReportsAsync(reports, graphStore, embedder, apiKey!, planned);
+        return await GenerateReportsAsync(
+            reports, graphStore, embedder, apiKey!, planned, graphRagOptions);
+    }
+
+    /// <summary>
+    /// The guard's own options, with the report concurrency overridden when the command line asks.
+    /// </summary>
+    /// <remarks>
+    /// The override changes how many calls are in flight and nothing about any prompt, so the
+    /// cache keys this run writes under are the keys the guard computes at any concurrency —
+    /// <c>CommunityDetectionBehavior</c> builds every prompt before it sends one, in the same
+    /// order regardless of the bound. Anything else about the options stays the guard's, because
+    /// a report written from a differently configured graph would be replayed by a guard that
+    /// cannot rebuild it.
+    /// </remarks>
+    private static GraphRagOptions CreateReportOptions(GraphExtractionRunOptions runOptions)
+    {
+        var options = GraphRagSliceIngestion.CreateOptions();
+        if (runOptions.ReportConcurrency is { } concurrency)
+        {
+            options.CommunityReportConcurrency = concurrency;
+        }
+
+        return options;
     }
 
     /// <summary>Says why the run stopped where it did, so a plan is never mistaken for a failure.</summary>
@@ -307,19 +335,21 @@ internal static class Program
     /// </remarks>
     /// <returns>How many reports this run will generate.</returns>
     private static async Task<long> PrintReportPlanAsync(
-        GraphExtractionCache reports, IGraphStore graphStore, StubEmbeddingGenerator embedder)
+        GraphExtractionCache reports,
+        IGraphStore graphStore,
+        StubEmbeddingGenerator embedder,
+        GraphRagOptions options)
     {
         Console.WriteLine("Costing the plan against the report cache — no model calls…");
 
         using var probe = new GraphReportPlanProbe(reports);
         _ = await GraphRagSliceIngestion.DetectCommunitiesAsync(
-            probe, embedder, graphStore, GraphRagSliceIngestion.CreateOptions(),
-            CancellationToken.None);
+            probe, embedder, graphStore, options, CancellationToken.None);
 
         Console.WriteLine(FormattableString.Invariant(
             $"Plan: {probe.Communities} communities, one report each. Already cached: {probe.Cached}. This run generates {probe.Uncached} and pays for those only."));
         Console.WriteLine(FormattableString.Invariant(
-            $"CommunityDetectionBehavior generates sequentially, so budget {probe.Uncached} round trips end to end — this stage has no concurrency to widen."));
+            $"CommunityDetectionBehavior keeps {options.CommunityReportConcurrency} report call(s) in flight (GraphRagOptions.CommunityReportConcurrency; {GraphExtractionRunOptions.ReportConcurrencyOption} overrides it), so budget roughly {probe.Uncached} / {options.CommunityReportConcurrency} round trips end to end — the provider's rate limit is the real ceiling."));
         Console.WriteLine(FormattableString.Invariant(
             $"Cache identity {reports.ModelIdentity}, entries in {reports.EntryDirectory}."));
 
@@ -327,12 +357,18 @@ internal static class Program
     }
 
     /// <summary>Generates the missing reports and prints what the run cost.</summary>
+    /// <remarks>
+    /// The rate it prints — seconds per <b>generated</b> report — is the figure that measures the
+    /// concurrency bound against the provider: cached reports cost nothing and would flatter it,
+    /// so they are excluded from the divisor and named separately.
+    /// </remarks>
     private static async Task<int> GenerateReportsAsync(
         GraphExtractionCache reports,
         IGraphStore graphStore,
         StubEmbeddingGenerator embedder,
         string apiKey,
-        long planned)
+        long planned,
+        GraphRagOptions options)
     {
         using var model = CreateChatClient(apiKey);
         using var client = new CachedGraphRagClient(
@@ -341,14 +377,19 @@ internal static class Program
 
         var startedAt = Stopwatch.GetTimestamp();
         var generated = await GraphRagSliceIngestion.DetectCommunitiesAsync(
-            progress, embedder, graphStore, GraphRagSliceIngestion.CreateOptions(),
-            CancellationToken.None);
+            progress, embedder, graphStore, options, CancellationToken.None);
         var elapsed = Stopwatch.GetElapsedTime(startedAt);
 
         Console.WriteLine(FormattableString.Invariant(
-            $"Done: {client.Calls} report requests over {generated.Count} communities — {reports.Hits} served from cache, {reports.Misses} generated — in {elapsed.TotalSeconds:F1} s."));
+            $"Done: {client.Calls} report requests over {generated.Count} communities — {reports.Hits} served from cache, {reports.Misses} generated — in {elapsed.TotalSeconds:F1} s at {options.CommunityReportConcurrency} in flight."));
+        if (reports.Misses > 0)
+        {
+            Console.WriteLine(FormattableString.Invariant(
+                $"Rate: {elapsed.TotalSeconds / reports.Misses:F2} s per generated report ({reports.Misses} generated, cached ones excluded); {client.Retries} rate-limit or transient retries."));
+        }
+
         Console.WriteLine(FormattableString.Invariant(
-            $"Longest report prompt this run built: {client.LongestPrompt} characters, against the {GraphRagSliceIngestion.CreateOptions().MaxCommunityReportPromptLength}-character bound."));
+            $"Longest report prompt this run built: {client.LongestPrompt} characters, against the {options.MaxCommunityReportPromptLength}-character bound."));
         return 0;
     }
 

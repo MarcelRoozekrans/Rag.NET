@@ -180,6 +180,39 @@ public sealed class GraphRagOptions
     [GreaterThan(0)]
     public int MaxCommunityReportPromptLength { get; set; } = 50_000;
 
+    /// <summary>
+    /// How many community-report LLM calls may be in flight at once. Default: 4.
+    /// <para>
+    /// <b>Until this existed the report loop awaited one community at a time, and nothing said
+    /// so.</b> Over the 609-article MultiHop-RAG corpus that is 3,587 sequential round trips —
+    /// hours in a loop that is embarrassingly parallel, since each report depends only on its own
+    /// community and every community is known before the first call — and the cost was found by a
+    /// benchmark that had to pay for it rather than by a user, who would have seen only a long
+    /// ingestion with no progress signal. Entity extraction next door had been run at twelve
+    /// articles in flight the whole time.
+    /// </para>
+    /// <para>
+    /// <b>Parallel and still deterministic.</b> Every prompt is built first, in the community
+    /// order Leiden returned and in PageRank order inside each — the ordering the report cache is
+    /// keyed on — and each response is written back to the community whose prompt produced it,
+    /// so completion order decides nothing. Two runs at different concurrencies produce the same
+    /// reports on the same communities in the same order; <c>CommunityDetectionBehaviorTests</c>
+    /// asserts it.
+    /// </para>
+    /// <para>
+    /// Must be greater than 0 — enforced by the validation attribute, which <c>UseGraphRag</c>
+    /// runs at registration. The provider's rate limit is the real ceiling, not this number:
+    /// parallelising into a 429 storm trades one wait for another, so measure against the
+    /// provider before raising it. 4 is deliberately modest for that reason and matches the
+    /// concurrency the map-reduce answer engine and the evaluation harness already use for calls
+    /// of the same shape. Measured 2026-08-15 against OpenRouter's <c>openai/gpt-4o-mini</c>
+    /// with the prompt bounded at 50,000 characters: 4.62 s per report at 1 in flight, 1.13 s at
+    /// 4, 0.63 s at 8, zero retries at every level — one provider, one model, one day.
+    /// </para>
+    /// </summary>
+    [GreaterThan(0)]
+    public int CommunityReportConcurrency { get; set; } = 4;
+
     /// <summary>Prompt template for community report generation. {entities} and {relationships} are replaced.</summary>
     public string CommunityReportPrompt { get; set; } = """
         You are analyzing a community of related entities in a knowledge graph.

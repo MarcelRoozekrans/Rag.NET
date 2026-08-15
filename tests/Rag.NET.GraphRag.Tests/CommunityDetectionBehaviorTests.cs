@@ -311,7 +311,259 @@ public class CommunityDetectionBehaviorTests : IAsyncDisposable
         Assert.NotNull(hubPrompt);
     }
 
+    [Fact]
+    public async Task HandleAsync_GeneratesReports_WithCommunityReportConcurrencyCallsInFlight()
+    {
+        // #226: report generation awaited one community at a time. On the 609-article
+        // MultiHop-RAG corpus that is 3,587 sequential round trips, and the only reason anybody
+        // noticed is that a benchmark had to pay for it. The bound is asserted from both sides:
+        // the stub below refuses to answer any request until CommunityReportConcurrency of them
+        // are in flight together, so a sequential loop deadlocks on its first call and fails on
+        // the timeout instead of passing slowly; and the peak it observes must never exceed the
+        // bound, which is the half a real provider's rate limit cares about.
+        var ct = TestContext.Current.CancellationToken;
+        await PopulateDisjointCliques(cliques: 8, size: 3);
+        SetupEmbedder(4);
+
+        var chat = new ConcurrencyProbeChatClient(expectedInFlight: 3);
+        var options = new GraphRagOptions { Enabled = true, CommunityReportConcurrency = 3 };
+        var sut = new CommunityDetectionBehavior(chat, _embedder, _graphStore, options);
+
+        await sut.HandleAsync(CreateContext(), ct, (c, _) =>
+            ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+
+        Assert.Equal(8, chat.Calls);
+        Assert.Equal(3, chat.PeakInFlight);
+    }
+
+    [Fact]
+    public async Task HandleAsync_CommunityReportConcurrencyOfOne_IsTheOldSequentialLoop()
+    {
+        // The other side of the bound, and deterministic: at 1 the peak is exactly 1, however
+        // many communities there are and however slowly each answers. This is what a caller whose
+        // provider allows one request at a time gets, and it is exactly what the behavior did
+        // before the option existed.
+        var ct = TestContext.Current.CancellationToken;
+        await PopulateDisjointCliques(cliques: 8, size: 3);
+        SetupEmbedder(4);
+
+        var chat = new ConcurrencyProbeChatClient(expectedInFlight: 1);
+        var options = new GraphRagOptions { Enabled = true, CommunityReportConcurrency = 1 };
+        var sut = new CommunityDetectionBehavior(chat, _embedder, _graphStore, options);
+
+        await sut.HandleAsync(CreateContext(), ct, (c, _) =>
+            ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+
+        Assert.Equal(8, chat.Calls);
+        Assert.Equal(1, chat.PeakInFlight);
+    }
+
+    [Fact]
+    public async Task HandleAsync_ParallelReports_LandOnTheirOwnCommunity_InTheSameOrderAsSequential()
+    {
+        // The property parallelism must not cost. The report prompt is built in PageRank order
+        // with an ordinal tie-break precisely so two runs over the same graph agree, and a
+        // parallel fill that let completion order decide which report went to which community —
+        // or reordered the community list — would break that while every individual report still
+        // looked right. So: a stub that answers each prompt with the member names it can read in
+        // it, answered in a deliberately scrambled order; then the same graph run at 1 and at 4,
+        // and the two community lists compared element for element.
+        var ct = TestContext.Current.CancellationToken;
+        await PopulateDisjointCliques(cliques: 8, size: 3);
+        SetupEmbedder(4);
+
+        var parallel = await DetectWithMemberEchoAsync(_graphStore, concurrency: 4, ct);
+
+        await using var sequentialStore = new SqliteGraphStore(":memory:");
+        await PopulateDisjointCliques(sequentialStore, cliques: 8, size: 3);
+        var sequential = await DetectWithMemberEchoAsync(sequentialStore, concurrency: 1, ct);
+
+        Assert.Equal(8, parallel.Count);
+        Assert.Equal(sequential.Count, parallel.Count);
+
+        for (int i = 0; i < parallel.Count; i++)
+        {
+            // Every member of this community, and no member of any other, is in its report.
+            foreach (var member in parallel[i].MemberEntities)
+            {
+                Assert.Contains(member, parallel[i].ReportSummary, StringComparison.Ordinal);
+            }
+
+            for (int j = 0; j < parallel.Count; j++)
+            {
+                if (j == i)
+                {
+                    continue;
+                }
+
+                foreach (var other in parallel[j].MemberEntities)
+                {
+                    Assert.DoesNotContain(other, parallel[i].ReportSummary, StringComparison.Ordinal);
+                }
+            }
+
+            // And the parallel run is the sequential run, position for position.
+            Assert.Equal(sequential[i].Id, parallel[i].Id);
+            Assert.Equal(sequential[i].Level, parallel[i].Level);
+            Assert.Equal(sequential[i].MemberEntities, parallel[i].MemberEntities);
+            Assert.Equal(sequential[i].ReportSummary, parallel[i].ReportSummary);
+        }
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>Runs detection over <paramref name="store"/> with the member-echo stub and returns what it stored.</summary>
+    private async Task<IReadOnlyList<Community>> DetectWithMemberEchoAsync(
+        SqliteGraphStore store, int concurrency, CancellationToken ct)
+    {
+        var chat = new MemberEchoChatClient();
+        var options = new GraphRagOptions { Enabled = true, CommunityReportConcurrency = concurrency };
+        var sut = new CommunityDetectionBehavior(chat, _embedder, store, options);
+
+        await sut.HandleAsync(CreateContext(), ct, (c, _) =>
+            ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
+
+        return (await store.GetFullGraphAsync(ct)).Communities;
+    }
+
+    /// <summary>
+    /// Refuses to answer any request until <c>expectedInFlight</c> are waiting together, and
+    /// records the most it ever saw waiting at once.
+    /// </summary>
+    /// <remarks>
+    /// The gate makes "it ran in parallel" a deterministic assertion rather than a race: under a
+    /// sequential loop the first call waits alone until the timeout, and under a bound lower than
+    /// expected the gate is never released either. Once released it stays released, so the calls
+    /// after the first batch flow through and the run completes; only the peak is checked, and it
+    /// is checked from both sides by the two tests that use this.
+    /// </remarks>
+    private sealed class ConcurrencyProbeChatClient(int expectedInFlight) : IChatClient
+    {
+        private static readonly TimeSpan GateTimeout = TimeSpan.FromSeconds(10);
+        private readonly TaskCompletionSource _gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _inFlight;
+        private int _peak;
+        private int _calls;
+
+        public int Calls => Volatile.Read(ref _calls);
+
+        public int PeakInFlight => Volatile.Read(ref _peak);
+
+        public async Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            _ = Interlocked.Increment(ref _calls);
+            var now = Interlocked.Increment(ref _inFlight);
+            RaisePeak(now);
+            if (now >= expectedInFlight)
+            {
+                _ = _gate.TrySetResult();
+            }
+
+            try
+            {
+                await _gate.Task.WaitAsync(GateTimeout, cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                throw new TimeoutException(
+                    $"Only {now} report request(s) were ever in flight together; the behavior " +
+                    $"was configured for {expectedInFlight} and this stub waits for that many " +
+                    "before answering any. A sequential loop deadlocks here by design.");
+            }
+            finally
+            {
+                _ = Interlocked.Decrement(ref _inFlight);
+            }
+
+            return new ChatResponse([new ChatMessage(ChatRole.Assistant, "report")]);
+        }
+
+        private void RaisePeak(int seen)
+        {
+            int peak;
+            do
+            {
+                peak = Volatile.Read(ref _peak);
+            }
+            while (seen > peak && Interlocked.CompareExchange(ref _peak, seen, peak) != peak);
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>
+    /// Answers each report prompt with the entity names it can read out of it, after a delay that
+    /// scrambles completion order on purpose.
+    /// </summary>
+    private sealed class MemberEchoChatClient : IChatClient
+    {
+        private int _calls;
+
+        public async Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
+        {
+            var prompt = string.Concat(messages.Select(m => m.Text));
+            var names = new List<string>();
+            foreach (var line in prompt.Split('\n'))
+            {
+                // Entity lines are rendered as "- {Name} ({Type}): {Description}".
+                var open = line.IndexOf(" (", StringComparison.Ordinal);
+                if (line.StartsWith("- ", StringComparison.Ordinal) && open > 2 && line.Contains("):", StringComparison.Ordinal))
+                {
+                    names.Add(line[2..open]);
+                }
+            }
+
+            // Later calls finish first, so completion order is the reverse of dispatch order.
+            var call = Interlocked.Increment(ref _calls);
+            await Task.Delay(Math.Max(0, 40 - (call * 4)), cancellationToken);
+
+            return new ChatResponse([new ChatMessage(ChatRole.Assistant, "members: " + string.Join(", ", names))]);
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    /// <summary>Disjoint cliques, which Leiden always keeps apart — one community each.</summary>
+    private Task PopulateDisjointCliques(int cliques, int size) =>
+        PopulateDisjointCliques(_graphStore, cliques, size);
+
+    private static async Task PopulateDisjointCliques(SqliteGraphStore store, int cliques, int size)
+    {
+        var entities = new List<GraphEntity>(cliques * size);
+        var rels = new List<GraphRelationship>();
+        for (int c = 0; c < cliques; c++)
+        {
+            for (int i = 0; i < size; i++)
+            {
+                entities.Add(new GraphEntity($"C{c}N{i}", "Org", $"Member {i} of clique {c}"));
+            }
+
+            for (int i = 0; i < size; i++)
+                for (int j = i + 1; j < size; j++)
+                    rels.Add(new GraphRelationship($"C{c}N{i}", $"C{c}N{j}", "works with"));
+        }
+
+        await store.AddEntitiesAsync(entities);
+        await store.AddRelationshipsAsync(rels);
+    }
 
     /// <summary>Runs detection over one padded clique and returns the prompts it built.</summary>
     private async Task<List<string>> CapturePromptsAsync(int budget, int entities, int descriptionLength)

@@ -546,7 +546,7 @@ public static class BeirRunBudget
             "**It needs a report cache covering the FULL corpus graph, which is not the slice's.** " +
             "Report cache keys are the rendered report prompts, and those are a function of the " +
             "graph: the corpus graph's ~3,587 communities are ~3,587 entries the slice's 607 do " +
-            "not provide (#226 is the sequential cost of generating them). An opted-in run against " +
+            "not provide (#226 made that generation parallel; it was sequential). An opted-in run against " +
             "a partly-filled report cache FAILS refuse-on-miss naming the missing key, which is the " +
             "correct behaviour and is not a bug to work around. " +
             "The extraction side needs nothing new: 35,296 requests over the corpus resolve to " +

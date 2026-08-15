@@ -58,8 +58,14 @@ rag.UseGraphRag(options =>
     options.GleaningPasses             = 1;                        // follow-up extraction passes
     options.EntityTypes                = ["Person", "Organization"]; // null = open set
     options.MaxEntityDescriptionLength = 500;                      // summarisation threshold
+    options.CommunityReportConcurrency = 4;                        // report LLM calls in flight; must be > 0
 });
 ```
+
+Community reports are generated up to `CommunityReportConcurrency` at a time, and the result is
+the same at any value: every prompt is built first, in order, and each answer is written back to
+the community whose prompt produced it. The provider's rate limit is the real ceiling — measure
+before raising it.
 
 Tune the clustering itself through `options.Leiden`:
 
