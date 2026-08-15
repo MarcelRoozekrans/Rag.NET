@@ -2834,7 +2834,7 @@ by this entry**: Milestone 4's "All planned phases complete" stays open (4.5 rem
 "No package declares `VerifiedBy=none`" stays open (`Rag.NET.Security.AspNetCore`) — both updated
 above to say so rather than left stale.)
 
-## Milestone 5: Evaluation Depth [status: active — 5.1, 5.1.1, 5.2, 5.3 and 5.4 complete; 5.2 closed 2026-08-15 when its comparative run measured GraphRAG at −0.02761 against the candidate-set control. 5.2.1 added the same day to act on that run (#232, #174, #226) and is pending; it and the clean-restore DoD box are what remain]
+## Milestone 5: Evaluation Depth [status: active — 5.1, 5.1.1, 5.2, 5.3 and 5.4 complete; 5.2 closed 2026-08-15 when its comparative run measured GraphRAG at −0.02761 against the candidate-set control. 5.2.1 (added the same day to act on that run) is landing PR by PR, and 5.2.2 (added the same day at the operator's request, to score answers rather than rankings) is pending; those two and the clean-restore DoD box are what remain]
 **Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:
 what each library **costs** rather than what it scores, multi-hop retrieval, graded relevance and
 the datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` does not compute.
@@ -2852,7 +2852,7 @@ shape, though that box is still here doing its share):
       asked, not which way it came out. **Re-opened the same day, deliberately, when Phase 5.2.1
       was added inside the milestone** to act on that run — #232, #174, #226 — rather than carry
       them into Milestone 6. A ticked box over a pending phase in its own range would be the drift
-      this milestone's file warns about at its top; the box re-ticks when 5.2.1 closes.)*
+      this milestone's file warns about at its top; the box re-ticks when 5.2.1 closes — and stays open past that for **5.2.2**, added 2026-08-15 at the operator's request to score answers rather than rankings.)*
 - [x] **No cross-ecosystem latency figure is published without the confound statement beside
       it**: the results page states the mechanism that made in-process .NET and subprocess Python
       rows comparable, or publishes them per-ecosystem labelled non-comparable. A latency number
@@ -3710,6 +3710,46 @@ stated; #174's cell carries a cold two-run figure with `FitsTheNightly` decided 
 concurrency option, a determinism test, and a measured statement of what it saved. Then the three
 issues close and Milestone 5's phases box is ticked again — it is opened below for exactly as long
 as this phase is pending.
+
+### Phase 5.2.2: Does GraphRAG Help Answers? [status: pending — added 2026-08-15; design in `docs/plans/2026-08-15-graphrag-answer-level-evaluation.md`]
+
+**Goal:** ask the question 5.2 could not: not "does the graph path rank documents better" but
+"does it produce better *answers*" — in MultiHop-RAG's own currency, against the gold answer every
+judged query carries, with the paper's own accuracy rule. **Added at the operator's request** the
+day 5.2.1 closed, after they read 5.2's finding and asked whether it was the dataset or an
+implementation mistake. The honest answer to that (recorded in the design) is that 5.2 measured a
+currency GraphRAG does not claim to earn — document nDCG — and that the currency it does claim,
+answer quality, has never been scored here. This phase scores it.
+
+**Three arms, one graph build, one answering model, one prompt, top-6 context** (the paper's):
+**A** dense over the article-only store; **B** GraphRAG local search *as shipped* (`w = 0.3`,
+entity/relationship/report chunks in the context as they come); **C** GraphRAG global search, the
+arm 5.2 could not score at all and the one Microsoft's claim is actually about. `openai/gpt-4o-mini`
+at temperature 0 answers all three; every call is cached and replayed refuse-on-miss like
+extractions and reports, so the figures are reproductions and the guard calls no model. **The judge
+is the authors' `qa_evaluate.py` rule** — extract `The answer to the question is "…"`, lower-case,
+count a hit on any shared word — re-implemented and unit-tested, with a strict-equality rule beside
+it because that rule is lenient and the entry must say so. Per query type (inference 816,
+comparison 856, temporal 583) and overall; the 301 null queries reported separately as abstention.
+Pinned as three new protocols with three budget cells, because three figures with three costs.
+
+**Spend is bounded and staged.** A and B are ~2,255 calls each (~$2 together, derived); C is
+map/reduce over up to 50 community reports per query, ~25,000 calls, $15–25 derived — the pilot
+(100 stratified queries, all arms, ~$1) decides whether C runs at 50 reports or 20. Nothing is
+tuned to win: one shipped configuration per arm, and if #239's ablation lands as predicted, a
+`B′` at `w = 0` is one extra arm at generation cost only, named as an extra.
+
+**How it reads is written down before the number exists**, in the design: A ≥ B, C confirms 5.2 in
+both currencies and answers the operator's question with "no, on this dataset with this
+implementation and this model" — and says which parts of "this implementation" are design (#232's
+shared store, #239's blend) and which are the graph. B > A reverses 5.2's headline. C > A is
+Microsoft's claim holding, per type. Any of the four is a completion.
+
+**Exit condition, falsifiable:** all three arms run in full over the 2,255 judged queries; three
+figures pinned in `BeirReproduction`, three cells in `BeirRunBudget`; the sidecar of gold answers is
+part of the converted dataset with its counts pinned; the judge has a unit test per rule; and this
+entry names which reading the numbers support. **The milestone's phases box re-opens for this
+phase and re-ticks when it closes** — the same discipline 5.2.1 followed, for the same reason.
 
 ### Phase 5.3: Deferred Datasets — NFCorpus, TREC-COVID, EnronQA [status: complete 2026-08-12 — TREC-COVID landed and measured; NFCorpus declined on its licence; EnronQA still blocked, undeclared]
 **Goal:** Land the three datasets the evaluation programme still lacks, together: the small hard
