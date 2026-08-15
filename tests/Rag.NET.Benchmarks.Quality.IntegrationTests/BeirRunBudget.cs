@@ -719,7 +719,26 @@ public static class BeirRunBudget
     };
 
     /// <summary>
-    /// The <c>--filter</c> that selects exactly this case.
+    /// Every cell in the table, paired with the <c>--filter</c> its skip message prints.
+    /// </summary>
+    /// <remarks>
+    /// Exists for <see cref="BeirRunBudgetTests.EveryCellsPrintedFilterCanSelectATest"/>, and it
+    /// yields <see cref="Filter"/>'s own output rather than rebuilding it. A guard that composed the
+    /// string itself would be checking its own copy, and the string that matched nothing for a
+    /// release was the one <see cref="Explain"/> printed — so that is the one that has to be under
+    /// test.
+    /// </remarks>
+    internal static IEnumerable<(string Dataset, BeirProtocol Protocol, string Filter)>
+        PrintedFilters()
+    {
+        foreach (var cost in Costs)
+        {
+            yield return (cost.Dataset, cost.Protocol, Filter(cost));
+        }
+    }
+
+    /// <summary>
+    /// The <c>--filter</c> that selects this case.
     /// </summary>
     /// <remarks>
     /// <c>DisplayName</c> on both halves, never <c>FullyQualifiedName</c>: the latter stops at the

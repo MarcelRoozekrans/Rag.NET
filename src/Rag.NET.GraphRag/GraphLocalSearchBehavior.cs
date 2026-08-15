@@ -64,23 +64,36 @@ public sealed class GraphLocalSearchBehavior(
         return pageRankByName;
     }
 
+    /// <summary>
+    /// Blends PageRank into each candidate's score and collapses duplicates, keeping the
+    /// highest-scoring instance of each chunk.
+    /// </summary>
+    /// <remarks>
+    /// Keyed on <c>(DocumentId, ChunkIndex)</c> — the pair that identifies a chunk, and the same
+    /// key <c>InMemoryVectorStore</c>, <c>RrfMerger</c> and every other dedup path in the pipeline
+    /// use. A chunk index alone is a position within one document, not an identity: article chunks
+    /// run <c>0..n</c> and <c>GraphEntityExtractionBehavior</c> assigns entity and relationship
+    /// chunks negative indices per document, so index <c>0</c> and index <c>-1</c> exist in every
+    /// document of a corpus. Keying on it alone made candidates from unrelated documents collide,
+    /// and discarded the lower-scoring one — a silent loss of roughly a third of the candidate set
+    /// over a multi-document corpus, chosen by a score comparison across documents that have
+    /// nothing to do with each other.
+    /// </remarks>
     private IReadOnlyList<SearchResult> BlendAndDeduplicate(
         IReadOnlyList<SearchResult> results,
         Dictionary<string, double> pageRankByName)
     {
-        var combined = new Dictionary<int, SearchResult>();
+        var combined = new Dictionary<(string DocId, int ChunkIndex), SearchResult>();
 
         for (var i = 0; i < results.Count; i++)
         {
             var result = results[i];
             var score = ComputeScore(result, pageRankByName);
             var updated = result with { Score = score };
+            var key = (result.Chunk.DocumentId.Value, result.Chunk.ChunkIndex);
 
-            if (!combined.TryGetValue(result.Chunk.ChunkIndex, out var existing)
-                || existing.Score < score)
-            {
-                combined[result.Chunk.ChunkIndex] = updated;
-            }
+            if (!combined.TryGetValue(key, out var existing) || existing.Score < score)
+                combined[key] = updated;
         }
 
         return combined.Values

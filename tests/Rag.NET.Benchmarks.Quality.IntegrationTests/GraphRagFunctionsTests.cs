@@ -438,10 +438,21 @@ public sealed class GraphRagFunctionsTests
     /// Two behaviors sitting on one retrieval must not be interchangeable, and "the two lists
     /// differ" is not enough on its own to establish that. It is satisfied by global search doing
     /// <b>nothing</b>: it returns its input untouched when the candidate set holds no community
-    /// report, and local search's deduplication shortens the same list, so the counts differ while
-    /// neither behavior has done any work. That is not a hypothetical — it is what the first run of
+    /// report, while the counts differ anyway because the two behaviors do different arithmetic on
+    /// the same candidate set. That is not a hypothetical — it is what the first run of
     /// this guard measured, and it is why the map-reduce call count is asserted rather than only
     /// printed.
+    /// </para>
+    /// <para>
+    /// <b>That count difference used to come from local search's deduplication, and no longer does
+    /// (#230).</b> It keyed on <c>ChunkIndex</c> alone, so candidates from unrelated documents that
+    /// happened to share an index collided and the lower-scoring one was discarded: local search
+    /// returned 288–412 of its 500 candidates over this slice, a mean loss of roughly a third,
+    /// chosen by a score comparison between documents with nothing to do with each other. Keying on
+    /// <c>(DocumentId, ChunkIndex)</c> makes it 500 for all 27 queries — the candidate set arrives
+    /// intact — and the counts still differ, because global search partitions the community reports
+    /// out and prepends one synthesised result. Every figure this file printed for local search
+    /// before that fix was measured through the defect.
     /// </para>
     /// <para>
     /// <b>This is now asserted unfiltered, which it could not be before.</b> Over this slice a
