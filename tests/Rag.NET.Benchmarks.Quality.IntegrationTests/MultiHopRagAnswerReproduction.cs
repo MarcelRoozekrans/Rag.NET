@@ -39,6 +39,14 @@ internal static class MultiHopRagAnswerReproduction
             "queries. The full run replaces this text with the figure and the pilot that preceded it."),
         new(
             "multihop-rag",
+            AnswerArm.Control,
+            [],
+            "NEVER RUN in full -- Phase 5.2.2. The candidate-set control at answer level: dense " +
+            "top-6 over the graph run's 321,151-unit store with no graph behaviour. Against the " +
+            "dense arm it prices what the graph-derived units do to the context; against the local " +
+            "arm it prices the behaviour -- the same decomposition #229 and #232 made for rankings."),
+        new(
+            "multihop-rag",
             AnswerArm.Local,
             [],
             "NEVER RUN in full -- Phase 5.2.2. The GraphRAG local arm as shipped (PageRankWeight " +

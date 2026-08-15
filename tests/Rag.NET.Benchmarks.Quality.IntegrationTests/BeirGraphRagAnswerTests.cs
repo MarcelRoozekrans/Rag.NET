@@ -324,12 +324,14 @@ public sealed class BeirGraphRagAnswerTests
 
         // Local search retrieval, sequentially, for every query that needs it.
         var localContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
-        if (arms.Contains(AnswerArm.Local, StringComparer.Ordinal))
+        var controlContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
+        if (arms.Contains(AnswerArm.Local, StringComparer.Ordinal) || arms.Contains(AnswerArm.Control, StringComparer.Ordinal))
         {
             for (var i = 0; i < selection.Queries.Count; i++)
             {
                 var local = await run.LocalSearchWithCandidatesAsync(selection.Queries[i].Text, ct);
                 localContexts[selection.Queries[i].Id] = Head(local.Results, ContextChunks);
+                controlContexts[selection.Queries[i].Id] = Head(local.Candidates, ContextChunks);
                 if ((i + 1) % ProgressEvery == 0)
                 {
                     _output.WriteLine(FormattableString.Invariant(
@@ -351,6 +353,7 @@ public sealed class BeirGraphRagAnswerTests
                     var context = arm switch
                     {
                         AnswerArm.Local => localContexts[query.Id],
+                        AnswerArm.Control => controlContexts[query.Id],
                         _ => await RetrieveContextAsync(arm, query.Text, run, articles, generator, embeddings, answering, token),
                     };
                     var prompt = PromptTemplate
@@ -483,7 +486,7 @@ public sealed class BeirGraphRagAnswerTests
     }
 
     private static string DescribeType(ArmTally t, string type, string label) => FormattableString.Invariant(
-        $"        {label}  paper {t.Rate(type, Rule.Paper):F4}  raw {t.Rate(type, Rule.PaperRaw):F4}  strict {t.Rate(type, Rule.Strict):F4}  (n={t.Total(type)})");
+        $"        {label}  paper {t.Rate(type, Rule.Paper):F4}  raw {t.Rate(type, Rule.PaperRaw):F4}  strict {t.Rate(type, Rule.Strict):F4}  (n={t.Total(type)})  answers: {t.Shapes(type)}");
 
     /// <summary>
     /// Writes every scored answer to a JSONL file beside the answer cache, so a run can be read
@@ -544,13 +547,30 @@ public sealed class BeirGraphRagAnswerTests
 
     /// <summary>One scored answer, kept so a run can be read query by query afterwards.</summary>
     private sealed record ScoredAnswer(
-        string QueryId, string Type, string Gold, string Arm, string Prediction, bool Paper, bool PaperRaw, bool Strict, bool UsedSentence);
+        string QueryId, string Type, string Gold, string Arm, string Prediction, bool Paper, bool PaperRaw, bool Strict, bool UsedSentence, string Shape);
+
+    /// <summary>
+    /// What kind of answer a prediction is, so the report can say whether an arm committed, abstained,
+    /// or leaned one way on the yes/no types — the pilot showed global search never saying "no", which
+    /// an accuracy alone would have read as comprehension.
+    /// </summary>
+    private static string ShapeOf(string prediction)
+    {
+        var p = prediction.Trim().TrimStart('*').ToLowerInvariant();
+        if (p.StartsWith("insufficient information", StringComparison.Ordinal)) return "abstain";
+        if (p.StartsWith("yes", StringComparison.Ordinal)) return "yes";
+        if (p.StartsWith("no", StringComparison.Ordinal) && (p.Length == 2 || !char.IsLetter(p[2]))) return "no";
+        if (p.StartsWith("before", StringComparison.Ordinal)) return "before";
+        if (p.StartsWith("after", StringComparison.Ordinal)) return "after";
+        return "other";
+    }
 
     /// <summary>Correct/total per type under each rule, for one arm, and every scored answer behind them.</summary>
     private sealed class ArmTally
     {
         private readonly Dictionary<string, int[]> _byType = new(StringComparer.Ordinal);
         private readonly List<ScoredAnswer> _answers = [];
+        private readonly Dictionary<string, Dictionary<string, int>> _shapes = new(StringComparer.Ordinal);
         private readonly Lock _gate = new();
 
         public int Answered { get; private set; }
@@ -567,10 +587,18 @@ public sealed class BeirGraphRagAnswerTests
                 MultiHopRagAnswerJudge.MatchesByThePaperRuleIgnoringPunctuation(prediction, expected.Answer),
                 MultiHopRagAnswerJudge.MatchesByThePaperRule(prediction, expected.Answer),
                 MultiHopRagAnswerJudge.MatchesStrictly(prediction, expected.Answer),
-                MultiHopRagAnswerJudge.UsedTheAnswerSentence(reply));
+                MultiHopRagAnswerJudge.UsedTheAnswerSentence(reply),
+                ShapeOf(prediction));
 
             lock (_gate)
             {
+                if (!_shapes.TryGetValue(expected.QuestionType, out var shapes))
+                {
+                    shapes = new Dictionary<string, int>(StringComparer.Ordinal);
+                    _shapes[expected.QuestionType] = shapes;
+                }
+
+                shapes[scored.Shape] = shapes.GetValueOrDefault(scored.Shape) + 1;
                 if (!_byType.TryGetValue(expected.QuestionType, out var counts))
                 {
                     counts = new int[4];
@@ -588,6 +616,12 @@ public sealed class BeirGraphRagAnswerTests
         }
 
         public int Total(string type) => _byType.TryGetValue(type, out var c) ? c[3] : 0;
+
+        /// <summary>How the arm answered one type: "yes 17, abstain 10, no 0, other 2", most common first.</summary>
+        public string Shapes(string type) =>
+            _shapes.TryGetValue(type, out var s)
+                ? string.Join(", ", s.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Key + " " + kv.Value.ToString(CultureInfo.InvariantCulture)))
+                : "-";
 
         public double Rate(string type, Rule rule) =>
             _byType.TryGetValue(type, out var c) && c[3] > 0 ? c[(int)rule] / (double)c[3] : double.NaN;
