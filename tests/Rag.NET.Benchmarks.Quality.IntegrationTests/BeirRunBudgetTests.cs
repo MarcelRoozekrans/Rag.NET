@@ -123,6 +123,14 @@ public sealed class BeirRunBudgetTests
         // the second conjunct subtracts everything the first found. That second property is the
         // GraphRag defect exactly.
         //
+        // Both properties are per-ALTERNATIVE, and that distinction is not decoration. vstest's
+        // filter grammar has two operators over the subset this table emits: `&` conjoins within an
+        // alternative and `|` separates alternatives, with `|` binding looser. A guard that knew
+        // only `&` read `A|B` as the single discriminator "A|B", found no method carrying a pipe in
+        // its name, and failed a correct filter while reporting a rename that had not happened — a
+        // false positive, which costs more than the defect it imitates, because the person who hits
+        // it fixes the guard rather than the code.
+        //
         // What this deliberately does not assert is that the theory's data actually contains this
         // dataset — that pairing is what the applicability guard above is for, and reaching into
         // MemberData here would duplicate it badly.
@@ -140,19 +148,195 @@ public sealed class BeirRunBudgetTests
 
         Assert.True(
             failures.Count == 0,
-            $"{failures.Count} of the budget table's cells print a --filter that cannot select a " +
-            "test. vstest answers an empty selection with \"No test matches the given testcase " +
-            "filter\" and EXIT CODE 0, so a reader who follows the skip message sees a successful " +
-            "run and records a pass for a measurement that never happened." + Environment.NewLine +
+            $"{failures.Count} of the budget table's cells print a --filter that cannot select " +
+            "every test it names. vstest answers an empty selection with \"No test matches the " +
+            "given testcase filter\" and EXIT CODE 0, so a reader who follows the skip message sees " +
+            "a successful run and records a pass for a measurement that never happened — and an " +
+            "alternation with a dead branch does the same thing more quietly, selecting a subset " +
+            "under an exit code that says everything the cell prices ran." + Environment.NewLine +
             "  - " + string.Join(Environment.NewLine + "  - ", failures));
     }
 
+    [Fact]
+    public void TheFilterParserReadsVstestsAlternationRatherThanSwallowingIt()
+    {
+        // Pinned here rather than left to the table, because no cell emits a `|` on this branch —
+        // the first one that will is #229's GraphRag cell, which names the two classes now sharing
+        // that cost. Without this the alternation support above is untested until that merges, and
+        // "untested until somebody else's branch lands" is how the swallowed-pipe defect got here.
+        //
+        // Synthetic filters throughout, over this assembly's real test methods, so the cases are
+        // stated rather than borrowed from whatever the table happens to hold today.
+        const string Dataset = "scifact";
+        var tests = TestMethods();
+
+        // 1. Both alternatives name a real class: the filter selects tests, and the parser must not
+        //    read "A|FullyQualifiedName~B" as one class name.
+        Assert.Null(WhyNothingCanMatch(
+            $"FullyQualifiedName~{nameof(BeirRunBudgetTests)}" +
+            $"|FullyQualifiedName~{nameof(BeirParityTests)}",
+            Dataset,
+            tests));
+
+        // 2. `|` binds looser than `&`. Read with the right precedence this is
+        //    (DisplayName~GraphRag_OverTheMultiHopRagSlice & DisplayName~scifact) | (the class),
+        //    whose left branch is dead for the ORIGINAL GraphRag reason — a [Fact] takes no
+        //    datasetName, so no display name can carry a dataset — and whose right branch is fine.
+        //    Split on `&` first and the branches interleave, and the dataset conjunct lands in the
+        //    wrong alternative.
+        var precedence = WhyNothingCanMatch(
+            "DisplayName~GraphRag_OverTheMultiHopRagSlice&DisplayName~scifact" +
+            $"|FullyQualifiedName~{nameof(GraphRagFunctionsTests)}",
+            Dataset,
+            tests);
+        Assert.NotNull(precedence);
+        Assert.Contains("DisplayName~scifact conjunct excludes every test", precedence, StringComparison.Ordinal);
+        Assert.Contains("`datasetName` parameter", precedence, StringComparison.Ordinal);
+        Assert.Contains(
+            $"still selects tests through \"FullyQualifiedName~{nameof(GraphRagFunctionsTests)}\"",
+            precedence,
+            StringComparison.Ordinal);
+
+        // 3. A filter with no `|` at all still produces the single, unwrapped reason it always did.
+        //    The alternation vocabulary would be noise on a filter that has no alternatives, and
+        //    every message the table can print today goes down this path.
+        var single = WhyNothingCanMatch("DisplayName~NoSuchTestsClass", Dataset, tests);
+        Assert.NotNull(single);
+        Assert.StartsWith("no test method among the", single, StringComparison.Ordinal);
+        Assert.DoesNotContain("alternative", single, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnAlternativeThatSelectsNothingFailsEvenWhenItsSiblingMatches()
+    {
+        // The decision the alternation support above could have papered over, pinned so that it is
+        // a decision rather than a side effect. "At least one alternative matches" is vstest's
+        // SELECTION rule, and it is not this guard's PASS rule.
+        //
+        // The cell prices every case its filter names. A branch naming a class that has been
+        // renamed away therefore means the pasted command measures a strict subset of what the
+        // quoted cost bought — and exits 0 while doing it, because the surviving branch selected
+        // something. That is the same silent-subset failure the empty selection was, minus the one
+        // signal ("No test matches the given testcase filter") that made the empty one noticeable
+        // at all. A sibling that saves the selection makes the rename quieter, not more correct, so
+        // it fails; and it fails with different words from the everything-is-dead case, because a
+        // reader who sees tests run needs telling why that is not the reassurance it looks like.
+        const string Dataset = "scifact";
+        var tests = TestMethods();
+
+        var oneDeadBranch = WhyNothingCanMatch(
+            $"FullyQualifiedName~{nameof(BeirRunBudgetTests)}|FullyQualifiedName~NoSuchTestsClass",
+            Dataset,
+            tests);
+        Assert.NotNull(oneDeadBranch);
+        Assert.Contains("1 of its 2 `|` alternatives", oneDeadBranch, StringComparison.Ordinal);
+        Assert.Contains("NoSuchTestsClass", oneDeadBranch, StringComparison.Ordinal);
+        Assert.Contains("strict subset", oneDeadBranch, StringComparison.Ordinal);
+
+        // Every branch dead is the harder failure and has to say so differently: nothing is
+        // selected at all, so there is no surviving side for a reader to be reassured by.
+        var allDead = WhyNothingCanMatch(
+            "FullyQualifiedName~NoSuchTestsClass|FullyQualifiedName~NorThisOne", Dataset, tests);
+        Assert.NotNull(allDead);
+        Assert.Contains("not one of its 2 `|` alternatives", allDead, StringComparison.Ordinal);
+        Assert.Contains("selects nothing at all", allDead, StringComparison.Ordinal);
+    }
+
     /// <summary>
-    /// Says why no test in this assembly can match one filter, or <see langword="null"/> when one
-    /// can.
+    /// Says why one printed filter cannot select every test it names, or <see langword="null"/>
+    /// when it can.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>|</c> first, because it binds looser than <c>&amp;</c> in vstest's grammar: the filter is
+    /// a list of alternatives, each of which is a conjunction. Splitting on <c>&amp;</c> first
+    /// would put the operators the other way round and scatter one alternative's conjuncts across
+    /// its neighbours.
+    /// </para>
+    /// <para>
+    /// <b>Every alternative has to be able to match, not merely one of them.</b> One is what vstest
+    /// needs to select something, and selecting something is not what a skip message promises — it
+    /// promises the command that runs the case the quoted cost was measured for. A cell whose
+    /// filter names two classes prices two runs; if one of those names has been renamed away, the
+    /// pasted command runs the other and exits 0, and the cell is recorded as measured on half the
+    /// work. That is the failure this guard exists for, with its one visible symptom — vstest's
+    /// "No test matches the given testcase filter" — removed by the surviving branch.
+    /// </para>
+    /// </remarks>
     private static string? WhyNothingCanMatch(
         string filter, string dataset, IReadOnlyList<MethodInfo> tests)
+    {
+        var alternatives = filter.Split('|');
+        var alone = alternatives.Length == 1;
+        var dead = new List<string>(alternatives.Length);
+        var alive = new List<string>(alternatives.Length);
+
+        foreach (var alternative in alternatives)
+        {
+            // The subject travels down rather than being patched up on the way back, because the
+            // sentence it lands in is a different claim in the two cases. "The filter selects
+            // nothing at all" is true of a lone conjunction and false of one branch of an
+            // alternation whose sibling matches — and printing it there would have this message
+            // contradict its own opening clause in the reader's next breath.
+            var failure = WhyThisAlternativeCannotMatch(
+                alternative, dataset, tests, alone ? "the filter" : "this alternative");
+            if (failure is null)
+            {
+                alive.Add(alternative);
+                continue;
+            }
+
+            dead.Add(alone
+                ? failure
+                : $"The alternative \"{alternative}\" cannot match because {failure}");
+        }
+
+        if (dead.Count == 0)
+        {
+            return null;
+        }
+
+        if (alone)
+        {
+            return dead[0];
+        }
+
+        return alive.Count == 0
+            ? NoAlternativeCanMatch(dead, alternatives.Length)
+            : SomeAlternativesCannotMatch(dead, alive, alternatives.Length);
+    }
+
+    /// <summary>The message for an alternation in which nothing at all can be selected.</summary>
+    private static string NoAlternativeCanMatch(IReadOnlyList<string> dead, int alternatives) =>
+        $"not one of its {alternatives} `|` alternatives can match, so the filter selects nothing " +
+        "at all — vstest reports \"No test matches the given testcase filter\" and EXITS 0. " +
+        string.Join(" ", dead);
+
+    /// <summary>
+    /// The message for the alternation that still selects something, and is still wrong.
+    /// </summary>
+    private static string SomeAlternativesCannotMatch(
+        IReadOnlyList<string> dead, IReadOnlyList<string> alive, int alternatives) =>
+        $"{dead.Count} of its {alternatives} `|` alternatives cannot match. vstest ORs " +
+        $"alternatives, so the filter still selects tests through \"{string.Join("\", \"", alive)}\" " +
+        "and exits 0 looking correct — which makes this quieter than an empty selection rather " +
+        "than better than one. The cell's cost covers every case its filter names, so a dead " +
+        "branch means whoever pastes the command measures a strict subset of it and records the " +
+        "whole cell as run. " + string.Join(" ", dead);
+
+    /// <summary>
+    /// Says why no test in this assembly can match one <c>&amp;</c>-conjoined alternative, or
+    /// <see langword="null"/> when one can.
+    /// </summary>
+    /// <param name="filter">The alternative, with its <c>|</c> separators already removed.</param>
+    /// <param name="dataset">The dataset whose conjunct is the second property checked.</param>
+    /// <param name="tests">Every test method in this assembly.</param>
+    /// <param name="subject">
+    /// What selects nothing when the discriminators name nothing — the whole filter when it holds
+    /// one alternative, and this alternative when it is one branch of several.
+    /// </param>
+    private static string? WhyThisAlternativeCannotMatch(
+        string filter, string dataset, IReadOnlyList<MethodInfo> tests, string subject)
     {
         var conjuncts = filter.Split('&');
         var discriminators = new List<string>(conjuncts.Length);
@@ -173,7 +357,7 @@ public sealed class BeirRunBudgetTests
         var named = NamedBy(tests, discriminators);
         if (named.Count == 0)
         {
-            return NothingIsNamed(discriminators, tests.Count);
+            return NothingIsNamed(discriminators, tests.Count, subject);
         }
 
         if (conjoinsTheDataset && !AnyTakesDatasetName(named))
@@ -235,10 +419,11 @@ public sealed class BeirRunBudgetTests
     }
 
     /// <summary>The message for a discriminator that names nothing: a rename or a deletion.</summary>
-    private static string NothingIsNamed(IReadOnlyList<string> discriminators, int scanned) =>
+    private static string NothingIsNamed(
+        IReadOnlyList<string> discriminators, int scanned, string subject) =>
         $"no test method among the {scanned} in this assembly carries " +
         $"\"{string.Join("\" and \"", discriminators)}\" in its name. The discriminator names a " +
-        "class or a method that has been renamed or removed, so the filter selects nothing at all.";
+        $"class or a method that has been renamed or removed, so {subject} selects nothing at all.";
 
     /// <summary>The message for the defect this guard was written for.</summary>
     private static string NothingCarriesTheDataset(string dataset, IReadOnlyList<MethodInfo> named) =>
