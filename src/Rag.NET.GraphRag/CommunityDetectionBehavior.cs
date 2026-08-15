@@ -65,6 +65,7 @@ public sealed class CommunityDetectionBehavior(
         await graphStore.SetCommunitiesAsync(updatedCommunities, ct).ConfigureAwait(false);
         activity?.SetTag("graphrag.community.count", updatedCommunities.Count);
         activity?.SetTag("graphrag.community.report.truncated", generated.TruncatedReports);
+        activity?.SetTag("graphrag.community.report.concurrency", options.CommunityReportConcurrency);
 
         // Embed community reports
         await EmbedCommunityReports(ctx, updatedCommunities, ct).ConfigureAwait(false);
@@ -78,6 +79,29 @@ public sealed class CommunityDetectionBehavior(
     private sealed record ReportGeneration(
         IReadOnlyList<Community> Communities, int TruncatedReports);
 
+    /// <summary>
+    /// Writes one report per community: every prompt first, in order, then the model calls with
+    /// at most <see cref="GraphRagOptions.CommunityReportConcurrency"/> in flight, each answer
+    /// written back by index to the community whose prompt produced it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This loop awaited one community at a time until #226, and the shape of the fix is what
+    /// keeps it deterministic.</b> The prompts are built sequentially and up front, so their
+    /// content and their order are exactly what the sequential loop produced — the community order
+    /// Leiden returned, PageRank order inside each, the ordinal tie-break in
+    /// <see cref="OrderByCentrality"/> — and that ordering is what the report cache is keyed on.
+    /// Only the calls run in parallel, and each result lands in <c>reports[i]</c> for the
+    /// <c>prompts[i]</c> that produced it, so which call finished first decides nothing about
+    /// which community carries which report or about the order the list is returned in.
+    /// </para>
+    /// <para>
+    /// <see cref="Parallel.ForEachAsync{TSource}(IEnumerable{TSource}, ParallelOptions, Func{TSource, CancellationToken, ValueTask})"/>
+    /// over the indices rather than a semaphore around <see cref="Task.WhenAll(Task[])"/>, because
+    /// a corpus can hold thousands of communities and it schedules the bound's worth of workers
+    /// rather than one task per community waiting on a gate.
+    /// </para>
+    /// </remarks>
     private async Task<ReportGeneration> GenerateCommunityReports(
         IReadOnlyList<Community> communities,
         GraphSnapshot snapshot,
@@ -86,23 +110,38 @@ public sealed class CommunityDetectionBehavior(
         CancellationToken ct)
     {
         var entityLookup = BuildEntityLookup(snapshot);
-        var updated = new List<Community>(communities.Count);
+        var prompts = new string[communities.Count];
         var truncated = 0;
 
         for (int i = 0; i < communities.Count; i++)
         {
-            var community = communities[i];
-            var prompt = BuildReportPrompt(
-                community, snapshot, entityLookup, ranks, out var wasTruncated);
-
+            prompts[i] = BuildReportPrompt(
+                communities[i], snapshot, entityLookup, ranks, out var wasTruncated);
             truncated += wasTruncated ? 1 : 0;
+        }
 
-            var response = await client.GetResponseAsync(
-                [new ChatMessage(ChatRole.User, prompt)],
-                cancellationToken: ct).ConfigureAwait(false);
+        var reports = new string[communities.Count];
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, communities.Count),
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = options.CommunityReportConcurrency,
+                CancellationToken = ct,
+            },
+            async (i, token) =>
+            {
+                var response = await client.GetResponseAsync(
+                    [new ChatMessage(ChatRole.User, prompts[i])],
+                    cancellationToken: token).ConfigureAwait(false);
 
-            var report = response.Text ?? string.Empty;
-            updated.Add(new Community(community.Id, community.Level, community.MemberEntities, report));
+                reports[i] = response.Text ?? string.Empty;
+            }).ConfigureAwait(false);
+
+        var updated = new List<Community>(communities.Count);
+        for (int i = 0; i < communities.Count; i++)
+        {
+            var community = communities[i];
+            updated.Add(new Community(community.Id, community.Level, community.MemberEntities, reports[i]));
         }
 
         return new ReportGeneration(updated, truncated);

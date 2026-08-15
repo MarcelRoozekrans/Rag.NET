@@ -3572,7 +3572,7 @@ stops anyone finding it.
 `features.md`'s GraphRAG row is corrected accordingly: it still says `✅ Done`, which was never false
 about the code shipping, and it now says what is exercised and what is not.
 
-### Phase 5.2.1: The GraphRAG Deficit Read Back [status: in progress — added 2026-08-15; #232 measured the same day, depth costs nothing; #174 and #226 open]
+### Phase 5.2.1: The GraphRAG Deficit Read Back [status: in progress — added 2026-08-15; #232 measured the same day, depth costs nothing; #226 done the same day, reports parallel and measured 4.1x at 4; #174 open]
 
 **Goal:** act on what 5.2's comparative run measured instead of filing it, the way 5.1.1 acted on
 5.1's cost figure. Three things came out of #173's close and none had a home: a deficit the run
@@ -3664,6 +3664,46 @@ tie-break so two runs agree, and a parallel fill must preserve that per report r
 overall. **Measure it against the provider rather than assume it**: the rate limit is the real
 ceiling and a 429 storm trades one wait for another. The replayed cache means the benchmark cannot
 show the gain; a bounded probe can, and its cost is stated derived until #200 exists.
+
+**Done 2026-08-15.** `GraphRagOptions.CommunityReportConcurrency`, default 4, validated `> 0` at
+registration. One correction to the paragraph above first: **"the shape `GraphRagOptions` already
+has for extraction" was wrong** — the library has no extraction concurrency; the `Concurrency = 12`
+lives in the generation tool, which runs *articles* in parallel with a throwaway store each. So the
+option is the library's first, and it takes the shape `MapReduceOptions.MapConcurrency` and
+`EvaluationCallOptions.MaxConcurrentCalls` already use for calls of this kind. **The determinism is
+in the shape of the fix**: every prompt is built first, sequentially, in Leiden's community order
+and PageRank order inside each — the ordering the report cache is keyed on — and only the calls run
+in parallel, through `Parallel.ForEachAsync` over the indices, each response written to `reports[i]`
+for `prompts[i]`. Three tests: a probe client that refuses to answer until the configured number of
+calls are waiting together, so a sequential loop deadlocks and fails on a 10 s timeout rather than
+passing slowly (checked by mutation — bound forced to 1, test failed with the intended message); the
+same probe at 1 asserting a peak of exactly 1; and the same graph run at 1 and at 4 with a stub that
+echoes each prompt's member names in scrambled completion order, asserting every report names its
+own community's members and none of any other's, and that the two community lists are equal
+position for position. **The guard still replays 607 of 607 slice reports refuse-on-miss under the
+new default**, which is the check that parallelism changed no key.
+
+**Measured against the provider, as the entry demanded, and it pays.** Three disjoint sets of
+uncached reports through the generation tool's new `--report-concurrency` — one flag, no prompt
+touched, so the entries it wrote are keys the guard would compute — against OpenRouter's
+`openai/gpt-4o-mini` at temperature 0:
+
+| in flight | reports | wall clock | s / report | retries |
+|---|---|---|---|---|
+| 1 | 45 | 208.1 s | **4.62** | 0 |
+| 4 | 70 | 79.0 s | **1.13** | 0 |
+| 8 | 49 | 30.8 s | **0.63** | 0 |
+
+Near-linear to 8 with no rate-limit pressure at all on that provider that day; the sequential set
+had the *shortest* prompts (longest 29,917 characters against ~49,900 for the other two) and was
+still the slowest per report, so the effect is if anything understated. Extrapolated to the corpus's
+3,587 reports: about 4.6 h at 1, 68 min at 4, 38 min at 8. **The default stays at 4**, because
+one provider on one day is not a rate-limit policy and 8 is a measured, documented option rather
+than a default. Cost of the probe: 164 generated reports, **derived** at roughly $0.60 from the
+report run's own rate — the tool still records no `Usage` (#200) — and it left 164 extra entries in
+the shared report cache under keys nothing else computes, which is harmless. `CachedGraphRagClient`
+gained a `Retries` counter so the tool can print rate-limit pressure beside the rate, and the
+report plan now states the bound and divides by it instead of announcing "no concurrency to widen".
 
 **Exit condition, falsifiable:** #232's fourth row is published and pinned with the decomposition
 stated; #174's cell carries a cold two-run figure with `FitsTheNightly` decided on it; #226 has a

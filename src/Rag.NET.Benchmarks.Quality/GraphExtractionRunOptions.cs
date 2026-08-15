@@ -35,11 +35,24 @@ namespace Rag.NET.Benchmarks.Quality;
 /// key is read and no model is constructed, so a run that would spend cannot begin by accident.
 /// </para>
 /// </param>
+/// <param name="ReportConcurrency">
+/// How many community-report calls the report stage keeps in flight, or <see langword="null"/>
+/// to take the library's own default from <c>GraphRagOptions.CommunityReportConcurrency</c>.
+/// <para>
+/// <b>It exists so the bound can be measured against the provider rather than assumed</b> (#226):
+/// the same graph run at 1 and at N differs in nothing but how many calls are in flight, and the
+/// tool prints seconds per generated report and the retry count for each. It touches no prompt,
+/// so the cache keys are the guard's at any value. <see langword="null"/> rather than a copy of
+/// the library's default here, because a copy would drift the day the library changed its mind
+/// and the tool would quietly measure a bound nobody ships. Only used by the report stage.
+/// </para>
+/// </param>
 public sealed record GraphExtractionRunOptions(
     GraphExtractionCorpus Corpus,
     int MaxDocuments,
     GraphRagGenerationStage Stage = GraphRagGenerationStage.Extraction,
-    bool PlanOnly = false)
+    bool PlanOnly = false,
+    int? ReportConcurrency = null)
 {
     /// <summary>The flag naming the corpus.</summary>
     public const string CorpusOption = "--corpus";
@@ -52,6 +65,9 @@ public sealed record GraphExtractionRunOptions(
 
     /// <summary>The valueless flag that prints the plan and stops.</summary>
     public const string PlanOnlyOption = "--plan-only";
+
+    /// <summary>The flag overriding how many report calls the report stage keeps in flight.</summary>
+    public const string ReportConcurrencyOption = "--report-concurrency";
 
     /// <summary>The value of <see cref="CorpusOption"/> selecting the pinned slice.</summary>
     public const string SliceName = "slice";
@@ -67,13 +83,15 @@ public sealed record GraphExtractionRunOptions(
 
     /// <summary>The usage line printed when parsing fails.</summary>
     public const string Usage =
-        "Usage: Rag.NET.Benchmarks.Quality.GraphExtractions [--stage extraction|reports] [--corpus slice|full] [--max-documents N]\n" +
+        "Usage: Rag.NET.Benchmarks.Quality.GraphExtractions [--stage extraction|reports] [--corpus slice|full] [--max-documents N] [--report-concurrency N] [--plan-only]\n" +
         "  --stage extraction  entities and relationships, one call per chunk plus gleaning (default)\n" +
         "  --stage reports     community reports over the graph those extractions build, one call per community;\n" +
         "                      it replays extraction refuse-on-miss and never extracts anything itself\n" +
         "  --corpus slice   the pinned sixty-article MultiHop-RAG slice the GraphRAG guard reads (default)\n" +
         "  --corpus full    every article in the converted corpus — hours of wall clock and real money\n" +
         "  --max-documents  take at most N articles of whichever corpus, for a smoke run\n" +
+        "  --report-concurrency  keep N report calls in flight in the reports stage (default: the library's\n" +
+        "                   GraphRagOptions.CommunityReportConcurrency); changes no prompt and no cache key\n" +
         "  --plan-only      print what the run would cost and stop; reads no API key and calls no model";
 
     /// <summary>
@@ -147,6 +165,9 @@ public sealed record GraphExtractionRunOptions(
             StageOption => TryParseStage(value, out var stage)
                 ? options with { Stage = stage }
                 : null,
+            ReportConcurrencyOption => TryParsePositiveCount(value, out var concurrency)
+                ? options with { ReportConcurrency = concurrency }
+                : null,
             _ => null,
         };
 
@@ -207,6 +228,10 @@ public sealed record GraphExtractionRunOptions(
 
     /// <summary>Parses a positive document bound; no sign, no separators, invariant.</summary>
     private static bool TryParseMaxDocuments(string value, out int maxDocuments) =>
-        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out maxDocuments)
-        && maxDocuments > 0;
+        TryParsePositiveCount(value, out maxDocuments);
+
+    /// <summary>Parses a positive count; no sign, no separators, invariant.</summary>
+    private static bool TryParsePositiveCount(string value, out int count) =>
+        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out count)
+        && count > 0;
 }

@@ -43,6 +43,7 @@ public sealed class CachedGraphRagClient : IChatClient
     private readonly ChatOptions _options;
     private long _calls;
     private long _longestPrompt;
+    private long _retries;
 
     /// <summary>Creates the decorator.</summary>
     /// <param name="cache">The cache every request is answered from.</param>
@@ -100,6 +101,19 @@ public sealed class CachedGraphRagClient : IChatClient
     /// </para>
     /// </remarks>
     public long LongestPrompt => Interlocked.Read(ref _longestPrompt);
+
+    /// <summary>
+    /// Gets how many model attempts failed and were retried — rate-limit responses, transient
+    /// errors and blank replies alike.
+    /// </summary>
+    /// <remarks>
+    /// The figure that says whether a concurrency bound is inside the provider's tolerance:
+    /// <c>GraphRagOptions.CommunityReportConcurrency</c> widens the report stage, and a bound that
+    /// finishes faster while this climbs is trading wall clock for retried requests rather than
+    /// saving anything. Counted here rather than parsed out of the console, so the tool can print
+    /// it beside the rate it measured.
+    /// </remarks>
+    public long Retries => Interlocked.Read(ref _retries);
 
     /// <inheritdoc/>
     public async Task<ChatResponse> GetResponseAsync(
@@ -203,6 +217,7 @@ public sealed class CachedGraphRagClient : IChatClient
             }
             catch (Exception ex) when (attempt < MaxAttempts)
             {
+                _ = Interlocked.Increment(ref _retries);
                 await Console.Error.WriteLineAsync(FormattableString.Invariant(
                     $"  attempt {attempt}/{MaxAttempts} failed, retrying in {delay.TotalSeconds:F0}s: {ex.Message}"));
                 await Task.Delay(delay, cancellationToken);

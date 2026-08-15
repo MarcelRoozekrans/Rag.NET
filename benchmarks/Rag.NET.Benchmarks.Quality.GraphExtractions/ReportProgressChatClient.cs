@@ -9,15 +9,18 @@ namespace Rag.NET.Benchmarks.Quality.GraphExtractions;
 /// <para>
 /// <b>It exists because the report stage has no other place to say where it is.</b> Extraction
 /// reports progress per article, from the loop that runs the articles; community reports are
-/// generated inside <c>CommunityDetectionBehavior</c>, one at a time, and that behavior is the
-/// library's — the guard runs it too, so it cannot be taught to print. A stage that spends hundreds
-/// of sequential round trips in silence is one nobody can tell from a hung one.
+/// generated inside <c>CommunityDetectionBehavior</c> — up to
+/// <c>GraphRagOptions.CommunityReportConcurrency</c> at a time since #226, one at a time before
+/// it — and that behavior is the library's: the guard runs it too, so it cannot be taught to
+/// print. A stage that spends hundreds of round trips in silence is one nobody can tell from a
+/// hung one.
 /// </para>
 /// </summary>
 /// <remarks>
 /// It passes the messages through untouched, which is the only property that matters here: the
 /// cache key is the rendered prompt, and a decorator that rewrote so much as a separator would make
-/// the run write entries under keys the guard never computes.
+/// the run write entries under keys the guard never computes. Its counters are interlocked because
+/// the calls now arrive concurrently; the line it prints is a running count, not a position.
 /// </remarks>
 public sealed class ReportProgressChatClient : IChatClient
 {
