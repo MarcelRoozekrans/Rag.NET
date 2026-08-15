@@ -66,6 +66,9 @@ public sealed class BeirGraphRagAnswerTests
     private const int ContextChunks = 6;
 
     private const int ProgressEvery = 100;
+
+    /// <summary>Queries in flight at once through the parallel phase — the bound #226 measured clean against OpenRouter.</summary>
+    private const int AnswerConcurrency = 8;
     private const int SlabSize = 512;
     private const string ApiKeyVariable = "OPENROUTER_API_KEY";
     private static readonly Uri OpenRouterEndpoint = new("https://openrouter.ai/api/v1");
@@ -293,6 +296,14 @@ public sealed class BeirGraphRagAnswerTests
 
     // ── Answering ─────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Answers every selected query under every arm: local search's retrieval sequentially, since
+    /// it walks the SQLite graph store, which holds one connection; everything else —
+    /// dense retrieval, global search's map/reduce, and the answering calls themselves — under a
+    /// bounded degree of parallelism, since 2,255 queries times a dozen calls apiece is a day if
+    /// taken one at a time. Query vectors are embedded up front so the parallel phase reads them
+    /// from the cache rather than racing into the embedder.
+    /// </summary>
     private async Task<Dictionary<string, ArmTally>> AnswerAllAsync(
         QuerySelection selection,
         IReadOnlyList<string> arms,
@@ -307,33 +318,77 @@ public sealed class BeirGraphRagAnswerTests
         var tallies = arms.ToDictionary(a => a, _ => new ArmTally(), StringComparer.Ordinal);
         var startedAt = Stopwatch.GetTimestamp();
 
-        for (var i = 0; i < selection.Queries.Count; i++)
+        await EmbedEveryQueryAsync(selection, generator, embeddings, ct);
+
+        // Local search retrieval, sequentially, for every query that needs it.
+        var localContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
+        if (arms.Contains(AnswerArm.Local, StringComparer.Ordinal))
         {
-            var query = selection.Queries[i];
-            var expected = gold[query.Id];
-
-            foreach (var arm in arms)
+            for (var i = 0; i < selection.Queries.Count; i++)
             {
-                var context = await RetrieveContextAsync(arm, query.Text, run, articles, generator, embeddings, answering, ct);
-                var prompt = PromptTemplate
-                    .Replace("{question}", query.Text, StringComparison.Ordinal)
-                    .Replace("{context}", RenderContext(context), StringComparison.Ordinal);
-
-                var response = await answering.GetResponseAsync([new ChatMessage(ChatRole.User, prompt)], cancellationToken: ct);
-                tallies[arm].Record(expected, response.Text ?? string.Empty);
-            }
-
-            if ((i + 1) % ProgressEvery == 0)
-            {
-                _output.WriteLine(FormattableString.Invariant(
-                    $"  answered {i + 1} of {selection.Queries.Count} queries x {arms.Count} arms, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far, {answering.Cache.Hits} cached / {answering.Cache.Misses} generated"));
+                var local = await run.LocalSearchWithCandidatesAsync(selection.Queries[i].Text, ct);
+                localContexts[selection.Queries[i].Id] = Head(local.Results, ContextChunks);
+                if ((i + 1) % ProgressEvery == 0)
+                {
+                    _output.WriteLine(FormattableString.Invariant(
+                        $"  local search retrieval: {i + 1} of {selection.Queries.Count}, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far"));
+                }
             }
         }
+
+        // Dense and global retrieval, and every answer, in parallel under the same bound.
+        var done = 0;
+        await Parallel.ForEachAsync(
+            selection.Queries,
+            new ParallelOptions { MaxDegreeOfParallelism = AnswerConcurrency, CancellationToken = ct },
+            async (query, token) =>
+            {
+                var expected = gold[query.Id];
+                foreach (var arm in arms)
+                {
+                    var context = arm switch
+                    {
+                        AnswerArm.Local => localContexts[query.Id],
+                        _ => await RetrieveContextAsync(arm, query.Text, run, articles, generator, embeddings, answering, token),
+                    };
+                    var prompt = PromptTemplate
+                        .Replace("{question}", query.Text, StringComparison.Ordinal)
+                        .Replace("{context}", RenderContext(context), StringComparison.Ordinal);
+
+                    var response = await answering.GetResponseAsync([new ChatMessage(ChatRole.User, prompt)], cancellationToken: token);
+                    tallies[arm].Record(expected, response.Text ?? string.Empty);
+                }
+
+                var completed = Interlocked.Increment(ref done);
+                if (completed % ProgressEvery == 0)
+                {
+                    _output.WriteLine(FormattableString.Invariant(
+                        $"  answered {completed} of {selection.Queries.Count} queries x {arms.Count} arms, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far, {answering.Cache.Hits} cached / {answering.Cache.Misses} generated"));
+                }
+            });
 
         return tallies;
     }
 
-    /// <summary>The six chunks each arm hands the model, in the arm's own order.</summary>
+    /// <summary>Every selected query.s vector, once, sequentially, so the parallel phase reads them from the cache.</summary>
+    private static async Task EmbedEveryQueryAsync(
+        QuerySelection selection, OnnxEmbeddingGenerator generator, EmbeddingCache embeddings, CancellationToken ct)
+    {
+        var texts = new string[selection.Queries.Count];
+        for (var i = 0; i < texts.Length; i++)
+        {
+            texts[i] = selection.Queries[i].Text;
+        }
+
+        for (var start = 0; start < texts.Length; start += SlabSize)
+        {
+            var slab = new string[Math.Min(SlabSize, texts.Length - start)];
+            Array.Copy(texts, start, slab, 0, slab.Length);
+            _ = await BeirHarness.EmbedAsync(generator, embeddings, slab, ct);
+        }
+    }
+
+    /// <summary>The six chunks the dense and global arms hand the model, in the arm's own order.</summary>
     private static async Task<IReadOnlyList<SearchResult>> RetrieveContextAsync(
         string arm,
         string query,
@@ -349,15 +404,26 @@ public sealed class BeirGraphRagAnswerTests
             case AnswerArm.Dense:
                 var vectors = await BeirHarness.EmbedAsync(generator, embeddings, [query], ct);
                 return await articles.SearchAsync(vectors[0], new SearchOptions { TopK = ContextChunks }, ct);
-            case AnswerArm.Local:
-                var local = await run.LocalSearchWithCandidatesAsync(query, ct);
-                return local.Results.Take(ContextChunks).ToList();
             case AnswerArm.Global:
                 var global = await run.GlobalSearchAsync(query, answering, ct);
-                return global.Take(ContextChunks).ToList();
+                return Head(global, ContextChunks);
             default:
-                throw new ArgumentOutOfRangeException(nameof(arm), arm, "Not an arm.");
+                throw new ArgumentOutOfRangeException(nameof(arm), arm, "Not an arm retrieved here.");
         }
+    }
+
+
+    /// <summary>The first <paramref name="count"/> results, or all of them when there are fewer.</summary>
+    private static IReadOnlyList<SearchResult> Head(IReadOnlyList<SearchResult> results, int count)
+    {
+        var take = Math.Min(count, results.Count);
+        var head = new SearchResult[take];
+        for (var i = 0; i < take; i++)
+        {
+            head[i] = results[i];
+        }
+
+        return head;
     }
 
     private static string RenderContext(IReadOnlyList<SearchResult> context)
@@ -423,6 +489,7 @@ public sealed class BeirGraphRagAnswerTests
     private sealed class ArmTally
     {
         private readonly Dictionary<string, (int Paper, int Strict, int Total)> _byType = new(StringComparer.Ordinal);
+        private readonly Lock _gate = new();
 
         public int Answered { get; private set; }
 
@@ -433,10 +500,14 @@ public sealed class BeirGraphRagAnswerTests
             var prediction = MultiHopRagAnswerJudge.ExtractAnswer(reply);
             var paper = MultiHopRagAnswerJudge.MatchesByThePaperRule(prediction, expected.Answer);
             var strict = MultiHopRagAnswerJudge.MatchesStrictly(prediction, expected.Answer);
-            var current = _byType.GetValueOrDefault(expected.QuestionType);
-            _byType[expected.QuestionType] = (current.Paper + (paper ? 1 : 0), current.Strict + (strict ? 1 : 0), current.Total + 1);
-            Answered++;
-            UsedSentence += MultiHopRagAnswerJudge.UsedTheAnswerSentence(reply) ? 1 : 0;
+            var usedSentence = MultiHopRagAnswerJudge.UsedTheAnswerSentence(reply);
+            lock (_gate)
+            {
+                var current = _byType.GetValueOrDefault(expected.QuestionType);
+                _byType[expected.QuestionType] = (current.Paper + (paper ? 1 : 0), current.Strict + (strict ? 1 : 0), current.Total + 1);
+                Answered++;
+                UsedSentence += usedSentence ? 1 : 0;
+            }
         }
 
         public int Total(string type) => _byType.GetValueOrDefault(type).Total;
