@@ -102,6 +102,44 @@ public static partial class MultiHopRagAnswerJudge
     }
 
     /// <summary>
+    /// The paper's rule over punctuation-stripped tokens: lower-case both, drop punctuation and
+    /// symbols, split, correct when any word is shared.
+    /// </summary>
+    /// <param name="prediction">What the model answered, as <see cref="ExtractAnswer"/> returns it.</param>
+    /// <param name="gold">The published answer.</param>
+    /// <returns><see langword="true"/> when the two normalised word sets intersect.</returns>
+    /// <remarks>
+    /// <b>This is the headline rule, and it exists because the pilot measured why the raw one
+    /// cannot be.</b> Over 100 stratified queries on 2026-08-15, <c>openai/gpt-4o-mini</c> put the
+    /// full stop inside the quotes — <c>The answer to the question is "Google."</c> — on most
+    /// replies, and <see cref="MatchesByThePaperRule"/> then scored every comparison query in every
+    /// arm at exactly 0.0000 while the strict rule, which strips punctuation, scored the same
+    /// replies at 0.18–0.52: the raw rule was measuring the model's punctuation habit, not its
+    /// answers. The authors' models evidently did not do this; the rule's intent — a
+    /// straightforward accuracy over one-to-three-word answers — is unchanged by stripping the
+    /// punctuation before the split, and that is the only change. The raw rule is still computed
+    /// and printed beside this one, so the gap is a number rather than a footnote.
+    /// </remarks>
+    public static bool MatchesByThePaperRuleIgnoringPunctuation(string prediction, string gold)
+    {
+        ArgumentNullException.ThrowIfNull(prediction);
+        ArgumentNullException.ThrowIfNull(gold);
+
+        var predicted = new HashSet<string>(
+            Normalise(prediction).Split(' ', StringSplitOptions.RemoveEmptyEntries), StringComparer.Ordinal);
+
+        foreach (var word in Normalise(gold).Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (predicted.Contains(word))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// The strict rule: lower-cased, punctuation stripped, whitespace collapsed, and equal.
     /// </summary>
     /// <param name="prediction">What the model answered, as <see cref="ExtractAnswer"/> returns it.</param>

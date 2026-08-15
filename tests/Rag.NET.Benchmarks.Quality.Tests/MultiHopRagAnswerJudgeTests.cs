@@ -50,6 +50,23 @@ public sealed class MultiHopRagAnswerJudgeTests
         Assert.Equal(expected, MultiHopRagAnswerJudge.MatchesStrictly(prediction, gold));
     }
 
+    [Theory]
+    // The pilot's finding: the model closes the quote after a full stop, and the raw rule scores it
+    // zero. Stripping punctuation before the split is the only change.
+    [InlineData("Google.", "Google", true)]
+    [InlineData("Yes.", "yes", true)]
+    [InlineData("No, the two disagree.", "no", true)]
+    [InlineData("Insufficient information.", "Insufficient information", true)]
+    [InlineData("YouTube Music", "YouTube", true)]
+    [InlineData("Alphabet", "Google", false)]
+    public void MatchesByThePaperRuleIgnoringPunctuation_IsThePaperRuleOverStrippedTokens(
+        string prediction, string gold, bool expected)
+    {
+        Assert.Equal(expected, MultiHopRagAnswerJudge.MatchesByThePaperRuleIgnoringPunctuation(prediction, gold));
+        // And it can only be true where the raw rule is true or the two differ by punctuation alone.
+        Assert.False(MultiHopRagAnswerJudge.MatchesByThePaperRule("Google.", "Google"));
+    }
+
     [Fact]
     public void TheTwoRules_DisagreeExactlyWhereThePaperRuleIsGenerous()
     {

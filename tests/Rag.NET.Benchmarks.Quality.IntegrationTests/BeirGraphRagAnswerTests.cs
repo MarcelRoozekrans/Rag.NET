@@ -2,6 +2,7 @@ using System.ClientModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using Rag.NET.Benchmarks.Quality;
@@ -133,6 +134,7 @@ public sealed class BeirGraphRagAnswerTests
 
         var tallies = await AnswerAllAsync(selection, arms, run, articles, generator, embeddings, answering, gold, ct);
         _output.WriteLine(DescribeResults(descriptor, selection, tallies, answering, Stopwatch.GetElapsedTime(startedAt)));
+        _output.WriteLine("every scored answer: " + DumpAnswers(cacheDirectory, tallies, selection.IsPilot));
 
         foreach (var (arm, tally) in tallies)
         {
@@ -150,7 +152,7 @@ public sealed class BeirGraphRagAnswerTests
         foreach (var (arm, tally) in tallies)
         {
             MultiHopRagAnswerReproduction.AssertReproduces(
-                descriptor.Name, arm, tally.PaperRuleAccuracy(selection.JudgedCount), _output);
+                descriptor.Name, arm, tally.Accuracy(selection.JudgedCount, Rule.Paper), _output);
         }
     }
 
@@ -356,7 +358,7 @@ public sealed class BeirGraphRagAnswerTests
                         .Replace("{context}", RenderContext(context), StringComparison.Ordinal);
 
                     var response = await answering.GetResponseAsync([new ChatMessage(ChatRole.User, prompt)], cancellationToken: token);
-                    tallies[arm].Record(expected, response.Text ?? string.Empty);
+                    tallies[arm].Record(arm, query.Id, expected, response.Text ?? string.Empty);
                 }
 
                 var completed = Interlocked.Increment(ref done);
@@ -459,23 +461,65 @@ public sealed class BeirGraphRagAnswerTests
         builder.Append(FormattableString.Invariant($"""
 
             === {descriptor.Name} ACCURACY AGAINST THE GOLD ANSWERS — {elapsed.TotalSeconds:F1} s, {answering.Calls} answer requests, {answering.Cache.Hits} cached / {answering.Cache.Misses} generated, {answering.Retries} retries ===
-            paper rule = any shared word after lower-casing (qa_evaluate.py); strict = normalised equality; per type over the selected queries
+            paper = qa_evaluate.py's any-shared-word rule over punctuation-stripped tokens (headline); raw = that rule with punctuation attached, as the script wrote it; strict = normalised equality
+            over the {selection.JudgedCount} judged queries; the null queries are an abstention rate and are reported separately
 
             """));
 
         foreach (var (arm, t) in tallies)
         {
+            var judged = selection.JudgedCount;
             builder.Append(FormattableString.Invariant($"""
-                {arm,-7} overall (judged {selection.JudgedCount}): paper {t.PaperRuleAccuracy(selection.JudgedCount):F4}  strict {t.StrictAccuracy(selection.JudgedCount):F4}  | used the answer sentence {t.UsedSentence} of {t.Answered}
-                        inference   paper {t.Rate(MultiHopRagAnswers.InferenceType, strict: false):F4}  strict {t.Rate(MultiHopRagAnswers.InferenceType, strict: true):F4}  (n={t.Total(MultiHopRagAnswers.InferenceType)})
-                        comparison  paper {t.Rate(MultiHopRagAnswers.ComparisonType, strict: false):F4}  strict {t.Rate(MultiHopRagAnswers.ComparisonType, strict: true):F4}  (n={t.Total(MultiHopRagAnswers.ComparisonType)})
-                        temporal    paper {t.Rate(MultiHopRagAnswers.TemporalType, strict: false):F4}  strict {t.Rate(MultiHopRagAnswers.TemporalType, strict: true):F4}  (n={t.Total(MultiHopRagAnswers.TemporalType)})
-                        null (abstention, reported separately)  paper {t.Rate(MultiHopRagAnswers.NullType, strict: false):F4}  strict {t.Rate(MultiHopRagAnswers.NullType, strict: true):F4}  (n={t.Total(MultiHopRagAnswers.NullType)})
+                {arm,-7} overall: paper {t.Accuracy(judged, Rule.Paper):F4}  raw {t.Accuracy(judged, Rule.PaperRaw):F4}  strict {t.Accuracy(judged, Rule.Strict):F4}  | answer sentence used {t.UsedSentence} of {t.Answered}
+                {DescribeType(t, MultiHopRagAnswers.InferenceType, "inference ")}
+                {DescribeType(t, MultiHopRagAnswers.ComparisonType, "comparison")}
+                {DescribeType(t, MultiHopRagAnswers.TemporalType, "temporal  ")}
+                {DescribeType(t, MultiHopRagAnswers.NullType, "null      ")}
 
                 """));
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    private static string DescribeType(ArmTally t, string type, string label) => FormattableString.Invariant(
+        $"        {label}  paper {t.Rate(type, Rule.Paper):F4}  raw {t.Rate(type, Rule.PaperRaw):F4}  strict {t.Rate(type, Rule.Strict):F4}  (n={t.Total(type)})");
+
+    /// <summary>
+    /// Writes every scored answer to a JSONL file beside the answer cache, so a run can be read
+    /// query by query — which is how the pilot found that the raw paper rule was scoring the
+    /// model's punctuation rather than its answers.
+    /// </summary>
+    private static string DumpAnswers(string cacheDirectory, Dictionary<string, ArmTally> tallies, bool pilot)
+    {
+        var directory = Path.Combine(cacheDirectory, AnswersDirectoryName + "-results");
+        _ = Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, (pilot ? "pilot-" : "full-") + DateTime.UtcNow.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture) + ".jsonl");
+
+        using var stream = File.Create(path);
+        using var writer = new Utf8JsonWriter(stream);
+        foreach (var tally in tallies.Values)
+        {
+            foreach (var a in tally.Answers)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("query", a.QueryId);
+                writer.WriteString("type", a.Type);
+                writer.WriteString("arm", a.Arm);
+                writer.WriteString("gold", a.Gold);
+                writer.WriteString("prediction", a.Prediction);
+                writer.WriteBoolean("paper", a.Paper);
+                writer.WriteBoolean("raw", a.PaperRaw);
+                writer.WriteBoolean("strict", a.Strict);
+                writer.WriteBoolean("usedSentence", a.UsedSentence);
+                writer.WriteEndObject();
+                writer.Flush();
+                stream.WriteByte((byte)'\n');
+                writer.Reset();
+            }
+        }
+
+        return path;
     }
 
     // ── Types ─────────────────────────────────────────────────────────────
@@ -485,56 +529,87 @@ public sealed class BeirGraphRagAnswerTests
         public int Count => Queries.Count;
     }
 
-    /// <summary>Correct/total per type under both rules, for one arm.</summary>
+    /// <summary>The three rules an answer is scored under.</summary>
+    private enum Rule
+    {
+        /// <summary>The paper's rule over punctuation-stripped tokens — the headline.</summary>
+        Paper,
+
+        /// <summary>The paper's rule as the script wrote it, punctuation attached — the diagnostic.</summary>
+        PaperRaw,
+
+        /// <summary>Normalised equality.</summary>
+        Strict,
+    }
+
+    /// <summary>One scored answer, kept so a run can be read query by query afterwards.</summary>
+    private sealed record ScoredAnswer(
+        string QueryId, string Type, string Gold, string Arm, string Prediction, bool Paper, bool PaperRaw, bool Strict, bool UsedSentence);
+
+    /// <summary>Correct/total per type under each rule, for one arm, and every scored answer behind them.</summary>
     private sealed class ArmTally
     {
-        private readonly Dictionary<string, (int Paper, int Strict, int Total)> _byType = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, int[]> _byType = new(StringComparer.Ordinal);
+        private readonly List<ScoredAnswer> _answers = [];
         private readonly Lock _gate = new();
 
         public int Answered { get; private set; }
 
         public int UsedSentence { get; private set; }
 
-        public void Record(MultiHopRagAnswer expected, string reply)
+        public IReadOnlyList<ScoredAnswer> Answers => _answers;
+
+        public void Record(string arm, string queryId, MultiHopRagAnswer expected, string reply)
         {
             var prediction = MultiHopRagAnswerJudge.ExtractAnswer(reply);
-            var paper = MultiHopRagAnswerJudge.MatchesByThePaperRule(prediction, expected.Answer);
-            var strict = MultiHopRagAnswerJudge.MatchesStrictly(prediction, expected.Answer);
-            var usedSentence = MultiHopRagAnswerJudge.UsedTheAnswerSentence(reply);
+            var scored = new ScoredAnswer(
+                queryId, expected.QuestionType, expected.Answer, arm, prediction,
+                MultiHopRagAnswerJudge.MatchesByThePaperRuleIgnoringPunctuation(prediction, expected.Answer),
+                MultiHopRagAnswerJudge.MatchesByThePaperRule(prediction, expected.Answer),
+                MultiHopRagAnswerJudge.MatchesStrictly(prediction, expected.Answer),
+                MultiHopRagAnswerJudge.UsedTheAnswerSentence(reply));
+
             lock (_gate)
             {
-                var current = _byType.GetValueOrDefault(expected.QuestionType);
-                _byType[expected.QuestionType] = (current.Paper + (paper ? 1 : 0), current.Strict + (strict ? 1 : 0), current.Total + 1);
+                if (!_byType.TryGetValue(expected.QuestionType, out var counts))
+                {
+                    counts = new int[4];
+                    _byType[expected.QuestionType] = counts;
+                }
+
+                counts[(int)Rule.Paper] += scored.Paper ? 1 : 0;
+                counts[(int)Rule.PaperRaw] += scored.PaperRaw ? 1 : 0;
+                counts[(int)Rule.Strict] += scored.Strict ? 1 : 0;
+                counts[3]++;
                 Answered++;
-                UsedSentence += usedSentence ? 1 : 0;
+                UsedSentence += scored.UsedSentence ? 1 : 0;
+                _answers.Add(scored);
             }
         }
 
-        public int Total(string type) => _byType.GetValueOrDefault(type).Total;
+        public int Total(string type) => _byType.TryGetValue(type, out var c) ? c[3] : 0;
 
-        public double Rate(string type, bool strict)
+        public double Rate(string type, Rule rule) =>
+            _byType.TryGetValue(type, out var c) && c[3] > 0 ? c[(int)rule] / (double)c[3] : double.NaN;
+
+        /// <summary>Accuracy over the judged types (null queries excluded) under one rule.</summary>
+        public double Accuracy(int judged, Rule rule)
         {
-            var (paper, strictCount, total) = _byType.GetValueOrDefault(type);
-            return total == 0 ? double.NaN : (strict ? strictCount : paper) / (double)total;
-        }
+            if (judged == 0)
+            {
+                return double.NaN;
+            }
 
-        /// <summary>The headline: paper-rule accuracy over the judged types (null queries excluded).</summary>
-        public double PaperRuleAccuracy(int judged) => judged == 0 ? double.NaN : JudgedCorrect(strict: false) / (double)judged;
-
-        public double StrictAccuracy(int judged) => judged == 0 ? double.NaN : JudgedCorrect(strict: true) / (double)judged;
-
-        private int JudgedCorrect(bool strict)
-        {
             var sum = 0;
             foreach (var (type, counts) in _byType)
             {
                 if (!string.Equals(type, MultiHopRagAnswers.NullType, StringComparison.Ordinal))
                 {
-                    sum += strict ? counts.Strict : counts.Paper;
+                    sum += counts[(int)rule];
                 }
             }
 
-            return sum;
+            return sum / (double)judged;
         }
     }
 }
