@@ -3393,6 +3393,15 @@ it GraphRAG is **−0.02761**, with Recall@10 and MRR@10 moving the same way (�
 so it must never be quoted without that sentence attached. Both numbers belong in any account of
 the run; only the control answers "does the graph path help".
 
+> **Correction, 2026-08-15, the same day (Phase 5.2.1, #232): "depth-confounded" was a plausible
+> reading and it is measured false.** A dense run over the Real leg's own 17,648-chunk store at
+> top-500 reproduces the Real leg's nDCG@10, Recall@10 and MRR@10 **to five decimals** — the same
+> ten documents in the same order on every one of the 2,255 queries. Depth contributes 0.00000 of
+> the −0.07070. It decomposes exactly: **−0.04309 is store pollution** — 303,503 graph-derived units
+> competing with the article chunks for rank at the same depth — and **−0.02761 is the graph
+> behaviour**. The sentence above stands so the correction has something to correct; the entry
+> below carries the measurement.
+
 **One visible mechanism, part artefact and part real.** A community report reached the top 10 on
 **891 of the 2,255 queries (39.5%)**. Reports are indexed under a synthetic document id no qrels
 row judges, so each is a rank slot scoring zero. The artefact half: a user asking a synthesis
@@ -3563,7 +3572,7 @@ stops anyone finding it.
 `features.md`'s GraphRAG row is corrected accordingly: it still says `✅ Done`, which was never false
 about the code shipping, and it now says what is exercised and what is not.
 
-### Phase 5.2.1: The GraphRAG Deficit Read Back [status: pending — added 2026-08-15; #232, #174, #226]
+### Phase 5.2.1: The GraphRAG Deficit Read Back [status: in progress — added 2026-08-15; #232 measured the same day, depth costs nothing; #174 and #226 open]
 
 **Goal:** act on what 5.2's comparative run measured instead of filing it, the way 5.1.1 acted on
 5.1's cost figure. Three things came out of #173's close and none had a home: a deficit the run
@@ -3597,6 +3606,38 @@ than tuning the behaviour and applicable to RAPTOR too, which also indexes synth
 real ones; mostly depth means a fairness caveat on the protocol and no defect at all. Publish the
 fourth row beside the three in 5.2's table, with the two differences it prices stated in the same
 sentence, and pin it in `BeirReproduction` — the figure is deterministic and needs no quiet machine.
+
+**Measured 2026-08-15 — three runs at 120.0 s, 8 s and 7.0 s, identical figures every time, the spread being the OS page cache over 19,903 vector files — and the answer is the sharper of the two.** The fourth row is
+`BeirProtocol.GraphRagDepthControl` — its own protocol, because both registries key on the pair
+and it has its own cost and its own figure — run through `BeirHarness.MeasureAsync` with one
+argument changed, so "nothing else moved" is a property of the call:
+
+| Leg | nDCG@10 | Recall@10 | MRR@10 | Store | Depth |
+|---|---|---|---|---|---|
+| Real leg (2026-08-12) | 0.63967 | 0.78684 | 0.70150 | 17,648 units | top-2,010 |
+| **Depth control (this run)** | **0.63967** | **0.78684** | **0.70150** | 17,648 units | top-500 |
+| Candidate-set control | 0.59658 | 0.74254 | 0.66785 | 321,151 units | top-500 |
+| GraphRAG local search | 0.56897 | 0.71696 | 0.63302 | 321,151 units | top-500 |
+
+**Identical to five decimals on all three metrics** — not close, identical: cutting the candidate
+set from 2,010 to 500 changed the top-10 document ranking of none of the 2,255 queries. So the
+depth prices at **0.00000** and the whole **−0.04309 is store pollution**: 303,503 graph-derived
+units competing with the article chunks for rank at the same depth over the same article text. The
+−0.07070 against the Real leg therefore decomposes exactly, −0.04309 pollution and −0.02761
+behaviour, and 5.2's "depth-confounded" is corrected in place above and in `BeirReproduction`
+rather than deleted. Two consequences. **The lever is a ranking or filtering policy for synthetic
+chunks**, and it is worth more than the behaviour — 0.043 against 0.028 — and it applies to RAPTOR,
+which indexes synthetic chunks beside real ones the same way; that is a design question and it is
+recorded, not decided, here. **And the guard's second finding, the community report in the top 10
+on 39.5% of queries, is a lower bound on this pollution and was already the mechanism.** What the
+figure does not say is that top-500 is a safe depth in general: the ten best documents' best chunks
+survived the cut on this corpus, where the deepest article runs to 201 chunks; a corpus whose top
+documents each stack more chunks above the tenth's best could lose it. The measurement is pinned on
+its own authority for drift, as the Real and GraphRag figures are. **Its clock is the phase's own
+small lesson re-learned**: all three runs were warm by the embedding cache's count (19,903 hits, 0
+misses — it embeds nothing the Real leg has not) and still spread 17x, because the first run read
+those 19,903 files off disk and the next two out of the page cache. Both ends are in the budget
+cell, and 7–8 s is the compute.
 
 **2. Re-take the Real wall clock cold, twice — [#174](https://github.com/MarcelRoozekrans/Rag.NET/issues/174).**
 `BeirRunBudget`'s `multihop-rag` / `Real` cell records **600.2 s**, taken on 2026-08-12 at ~45% CPU

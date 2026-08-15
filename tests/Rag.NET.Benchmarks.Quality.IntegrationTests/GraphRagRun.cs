@@ -57,8 +57,13 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// top-5 over a store holding tens of thousands of chunks would exercise neither, and the guard
     /// would pass while measuring the dense retriever. This is the pipeline's candidate set, not
     /// its answer.
+    /// <para>
+    /// Internal rather than private because <see cref="BeirProtocol.GraphRagDepthControl"/> is a
+    /// dense run at <i>this</i> depth, and a control that carried its own copy of the number could
+    /// drift from the run it controls for without anything noticing.
+    /// </para>
     /// </remarks>
-    private const int BaseTopK = 500;
+    internal const int BaseTopK = 500;
 
     /// <summary>Document chunks embedded per call — a working-set bound, nothing more.</summary>
     private const int SlabSize = 512;

@@ -164,8 +164,9 @@ public sealed record BeirDatasetDescriptor(
     public IBeirDatasetSource? Source { get; init; }
 
     /// <summary>
-    /// Every protocol except <see cref="BeirProtocol.GraphRag"/> — what a BEIR-published dataset is
-    /// measurable under.
+    /// Every protocol except the graph pair — <see cref="BeirProtocol.GraphRag"/> and its
+    /// depth-matched control <see cref="BeirProtocol.GraphRagDepthControl"/> — which is what a
+    /// BEIR-published dataset is measurable under.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -173,8 +174,10 @@ public sealed record BeirDatasetDescriptor(
     /// from the day applicability was added until <see cref="BeirProtocol.GraphRag"/> arrived, and
     /// <see langword="null"/> means "all of them" — which would now enrol all four in a graph
     /// protocol none of them can be judged under. Naming the ten is the smaller change than making
-    /// the eleventh protocol opt-in on the enum's side, and it keeps the descriptor the single place
-    /// a reader asks what a dataset can be measured under.
+    /// the graph protocols opt-in on the enum's side, and it keeps the descriptor the single place
+    /// a reader asks what a dataset can be measured under. The control is excluded with the
+    /// protocol it controls for: it is a dense run at the graph path's candidate depth, and on a
+    /// corpus with no graph run there is nothing for that depth to be matched to.
     /// </para>
     /// <para>
     /// Declared <b>above</b> the descriptors that read it, because static field and property
@@ -191,7 +194,7 @@ public sealed record BeirDatasetDescriptor(
     /// hold on to.
     /// </para>
     /// </remarks>
-    private static readonly BeirProtocolSet EveryProtocolExceptGraphRag = BeirProtocolSet.Of(
+    private static readonly BeirProtocolSet EveryProtocolExceptTheGraphPair = BeirProtocolSet.Of(
         BeirProtocol.Parity,
         BeirProtocol.Real,
         BeirProtocol.HybridBm25,
@@ -231,7 +234,7 @@ public sealed record BeirDatasetDescriptor(
         ExcludesSelfRetrievedDocument: false,
         ParityTarget: new BeirParityTarget(0.645, SciFactPublishedSource))
     {
-        ApplicableProtocols = EveryProtocolExceptGraphRag,
+        ApplicableProtocols = EveryProtocolExceptTheGraphPair,
     };
 
     /// <summary>
@@ -283,7 +286,7 @@ public sealed record BeirDatasetDescriptor(
         ExcludesSelfRetrievedDocument: true,
         ParityTarget: new BeirParityTarget(0.36867, FiQAPublishedSource))
     {
-        ApplicableProtocols = EveryProtocolExceptGraphRag,
+        ApplicableProtocols = EveryProtocolExceptTheGraphPair,
     };
 
     /// <summary>
@@ -323,7 +326,7 @@ public sealed record BeirDatasetDescriptor(
         ExcludesSelfRetrievedDocument: true,
         ParityTarget: new BeirParityTarget(0.50167, ArguAnaPublishedSource))
     {
-        ApplicableProtocols = EveryProtocolExceptGraphRag,
+        ApplicableProtocols = EveryProtocolExceptTheGraphPair,
     };
 
     /// <summary>
@@ -373,7 +376,7 @@ public sealed record BeirDatasetDescriptor(
         ExcludesSelfRetrievedDocument: false,
         ParityTarget: new BeirParityTarget(0.47232, TrecCovidPublishedSource))
     {
-        ApplicableProtocols = EveryProtocolExceptGraphRag,
+        ApplicableProtocols = EveryProtocolExceptTheGraphPair,
     };
 
     /// <summary>
@@ -401,8 +404,10 @@ public sealed record BeirDatasetDescriptor(
     /// and <c>QueryCount</c> differ here for a reason no other dataset in this file has.
     /// </para>
     /// <para>
-    /// <b>Two protocols, not eleven.</b> <see cref="BeirProtocol.Real"/> and
-    /// <see cref="BeirProtocol.GraphRag"/>. Parity is excluded because it would produce a number
+    /// <b>Three protocols, not twelve.</b> <see cref="BeirProtocol.Real"/>,
+    /// <see cref="BeirProtocol.GraphRag"/>, and <see cref="BeirProtocol.GraphRagDepthControl"/> —
+    /// the last one only because the graph run exists here and needs a dense control at its own
+    /// candidate depth. Parity is excluded because it would produce a number
     /// rather than a measurement: these articles average 10,340 characters and the parity protocol
     /// indexes one chunk per document truncated at the model's 256 tokens, so the run would score
     /// roughly the first tenth of each article and report the result as retrieval quality. The
@@ -454,7 +459,8 @@ public sealed record BeirDatasetDescriptor(
         ExcludesSelfRetrievedDocument: false,
         ParityTarget: new BeirParityTarget(double.NaN, MultiHopRagNoPublishedReference))
     {
-        ApplicableProtocols = BeirProtocolSet.Of(BeirProtocol.Real, BeirProtocol.GraphRag),
+        ApplicableProtocols = BeirProtocolSet.Of(
+            BeirProtocol.Real, BeirProtocol.GraphRag, BeirProtocol.GraphRagDepthControl),
         Source = new MultiHopRagSource(),
     };
 
