@@ -239,6 +239,92 @@ public sealed class MultiHopRagSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task ConvertAsync_WritesTheGoldAnswerSidecar_UnderTheQueryIds()
+    {
+        // Phase 5.2.2: the answers are what the answer-level evaluation scores against, and they
+        // have to travel under the same ids queries.jsonl uses or a score lands on the wrong query.
+        var directory = await ConvertAsync(
+            Corpus((Alpha, "Alpha", "Alpha body."), (Beta, "Beta", "Beta body.")),
+            Queries(
+                ("Who bought what?", "inference_query", [Alpha, Beta]),
+                ("Insufficient information.", "null_query", [])),
+            new MultiHopRagCounts(2, 2, 1, 2));
+
+        Assert.True(MultiHopRagAnswers.IsPresentAt(directory));
+        var answers = MultiHopRagAnswers.Load(directory);
+
+        Assert.Equal(2, answers.Count);
+        Assert.Equal(new MultiHopRagAnswer("mhr-0000", "An answer.", "inference_query"), answers["mhr-0000"]);
+        Assert.Equal(new MultiHopRagAnswer("mhr-0001", "An answer.", "null_query"), answers["mhr-0001"]);
+    }
+
+    [Fact]
+    public async Task ConvertAsync_CountsQueriesByType_AndRefusesAWrongPinnedSplit()
+    {
+        // The per-type accuracy's denominators are the paper's; a conversion that wrote a
+        // different split under the same name would report a mean over the wrong population.
+        var corpus = Corpus((Alpha, "Alpha", "Alpha body."), (Beta, "Beta", "Beta body."));
+        var queries = Queries(
+            ("Who bought what?", "inference_query", [Alpha, Beta]),
+            ("Which two agree?", "comparison_query", [Alpha]),
+            ("Insufficient information.", "null_query", []));
+
+        var datasetDirectory = Path.Combine(_root, "multihop-rag-types");
+        await MultiHopRagConversion.ConvertAsync(
+            WriteFixture("corpus-types.json", corpus),
+            WriteFixture("MultiHopRAG-types.json", queries),
+            datasetDirectory,
+            new MultiHopRagCounts(2, 3, 2, 3),
+            new MultiHopRagQuestionTypeCounts(Inference: 1, Comparison: 1, Temporal: 0, Null: 1),
+            TestContext.Current.CancellationToken);
+        Assert.True(MultiHopRagAnswers.IsPresentAt(datasetDirectory));
+
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() => MultiHopRagConversion.ConvertAsync(
+            WriteFixture("corpus-types2.json", corpus),
+            WriteFixture("MultiHopRAG-types2.json", queries),
+            Path.Combine(_root, "multihop-rag-types2"),
+            new MultiHopRagCounts(2, 3, 2, 3),
+            new MultiHopRagQuestionTypeCounts(Inference: 2, Comparison: 0, Temporal: 0, Null: 1),
+            TestContext.Current.CancellationToken));
+
+        Assert.Contains("1 inference", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("2 inference", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConvertAsync_AFifthQuestionType_IsRefusedRatherThanFiledUnderOther()
+    {
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() => ConvertAsync(
+            Corpus((Alpha, "Alpha", "Alpha body.")),
+            Queries(("Who bought what?", "speculative_query", [Alpha])),
+            new MultiHopRagCounts(1, 1, 1, 1)));
+
+        Assert.Contains("speculative_query", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void IsPresent_ADatasetDirectoryWithoutTheSidecar_IsIncomplete_SoTheCacheRePrepares()
+    {
+        // A cache converted before the sidecar existed has BEIR's three files and no answers. It
+        // must read as absent to BeirDatasetCache, or the first test that asks for an answer fails
+        // on a file that will never appear; the source says so through IsComplete.
+        var datasetDirectory = Path.Combine(_root, "multihop-rag");
+        _ = Directory.CreateDirectory(Path.Combine(datasetDirectory, "qrels"));
+        File.WriteAllText(Path.Combine(datasetDirectory, "corpus.jsonl"), "");
+        File.WriteAllText(Path.Combine(datasetDirectory, "queries.jsonl"), "");
+        File.WriteAllText(Path.Combine(datasetDirectory, "qrels", "test.tsv"), "");
+
+        var cache = new BeirDatasetCache(_root);
+        var sourced = Descriptor("multihop-rag") with { Source = new MultiHopRagSource() };
+
+        Assert.True(cache.IsPresent(Descriptor("multihop-rag")));
+        Assert.False(cache.IsPresent(sourced));
+
+        File.WriteAllText(Path.Combine(datasetDirectory, MultiHopRagAnswers.FileName), "");
+        Assert.True(cache.IsPresent(sourced));
+    }
+
+    [Fact]
     public async Task ConvertAsync_AFailurePartWayThrough_LeavesNothingTheCacheWouldAccept()
     {
         // BeirDatasetCache.IsPresent checks corpus.jsonl, queries.jsonl and that qrels/ is a
@@ -253,6 +339,7 @@ public sealed class MultiHopRagSourceTests : IDisposable
             WriteFixture("MultiHopRAG.json", Queries(("Who bought what?", "inference_query", [Missing]))),
             datasetDirectory,
             new MultiHopRagCounts(1, 1, 1, 1),
+            expectedQuestionTypes: null,
             TestContext.Current.CancellationToken));
 
         var cache = new BeirDatasetCache(_root);
@@ -298,6 +385,7 @@ public sealed class MultiHopRagSourceTests : IDisposable
             WriteFixture("MultiHopRAG.json", queries),
             datasetDirectory,
             expected,
+            expectedQuestionTypes: null,
             TestContext.Current.CancellationToken);
 
         return datasetDirectory;

@@ -94,8 +94,18 @@ public sealed class BeirDatasetCache
 
     /// <summary>Reports whether <paramref name="dataset"/> is already fully extracted.</summary>
     /// <param name="dataset">The dataset.</param>
-    /// <returns><see langword="true"/> when every required file and the qrels directory are present.</returns>
-    public bool IsPresent(BeirDatasetDescriptor dataset) => IsExtractedAt(DirectoryFor(dataset));
+    /// <returns>
+    /// <see langword="true"/> when every required file and the qrels directory are present, and
+    /// the dataset's source, if it has one, finds nothing of its own missing beside them
+    /// (<see cref="IBeirDatasetSource.IsComplete"/>).
+    /// </returns>
+    public bool IsPresent(BeirDatasetDescriptor dataset)
+    {
+        ArgumentNullException.ThrowIfNull(dataset);
+
+        var datasetDirectory = DirectoryFor(dataset);
+        return IsExtractedAt(datasetDirectory) && (dataset.Source?.IsComplete(datasetDirectory) ?? true);
+    }
 
     /// <summary>
     /// Reports whether a directory holds a complete dataset — the postcondition
