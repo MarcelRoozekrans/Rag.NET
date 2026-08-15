@@ -6,7 +6,8 @@ namespace Rag.NET.RepoConventions.Tests;
 /// <summary>
 /// Asserts that every package under <c>src/</c> declares how it has actually been verified, in a
 /// <c>&lt;VerifiedBy&gt;</c> property in its csproj: <c>unit</c>, <c>container</c>,
-/// <c>recorded</c>, <c>live</c>, or <c>none</c>.
+/// <c>benchmark</c>, <c>recorded</c>, <c>live</c>, or <c>none</c> — and, since Milestone 6.0, a
+/// <c>&lt;VerifiedByReason&gt;</c> beside a <c>unit</c> that says why the package stays there.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -45,13 +46,15 @@ public sealed class PackageVerificationTests
 
     /// <summary>
     /// The verification levels, weakest claim last. <c>unit</c>: fakes and fixtures only —
-    /// not a failure state, and exactly what late chunking was for five phases. <c>container</c>:
+    /// not a failure state, and exactly what late chunking was for five phases. <c>benchmark</c>:
+    /// exercised by a measured run on a real corpus with a real model, pinned in a reproduction
+    /// table — Milestone 5's method, and the level five packages earned there. <c>container</c>:
     /// exercised against a real dependency in Docker. <c>recorded</c>: exercised against a
     /// recorded real-service response. <c>live</c>: exercised against the real service.
     /// <c>none</c>: no meaningful test at all — honest, and the release gate's whole subject.
     /// </summary>
     private static readonly string[] VerificationLevels =
-        ["unit", "container", "recorded", "live", "none"];
+        ["unit", "container", "benchmark", "recorded", "live", "none"];
 
     /// <summary>
     /// The packages currently allowed to declare <c>none</c>, each with its reason and owning
@@ -63,6 +66,91 @@ public sealed class PackageVerificationTests
     /// </summary>
     private static readonly Dictionary<string, string> PackagesAllowedToDeclareNone =
         new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The packages allowed to sit at a bare <c>unit</c> — no better level, no
+    /// <c>&lt;VerifiedByReason&gt;</c> — each with the Milestone 6 phase that owes it a real run.
+    /// </summary>
+    /// <remarks>
+    /// <b>This list is Milestone 6's work list, written as the thing that fails.</b> Phase 6.0 (the
+    /// re-plan, <c>docs/plans/2026-08-15-milestone-6-battle-tested-replan.md</c>) classified every
+    /// package: five earned <c>benchmark</c> from Milestone 5's measurements and left this list on
+    /// the day it was written; the rest are here, each under the phase that supplies its run —
+    /// <b>6.1</b> for packages that talk to a live service (a recording, or a
+    /// <c>&lt;VerifiedByReason&gt;</c> naming the service and the gap), <b>6.2</b> for packages with
+    /// no external dependency (one real file, one real store, one real run), <b>6.2.1</b> for the
+    /// retrieval techniques and answer engines (a pinned figure with a control). A package leaves
+    /// by climbing above <c>unit</c> or by gaining a reason; either makes its entry stale and
+    /// <see cref="EveryPackageAllowedToStayUnitIsStillBareUnit"/> fails until the entry is deleted.
+    /// A bare <c>unit</c> not on this list fails <see cref="NoPackageStaysAtBareUnit"/> outright —
+    /// so a new package cannot arrive unverified and unowned. The Definition of Done requires the
+    /// list to reach empty.
+    /// </remarks>
+    private static readonly Dictionary<string, string> PackagesAllowedToStayUnit = new(StringComparer.Ordinal)
+    {
+        // ── 6.1 Recorded Responses: talks to a live service ─────────────────────────────────
+        ["Rag.NET.DataProviders.Airtable"] = "6.1 — Airtable API",
+        ["Rag.NET.DataProviders.Asana"] = "6.1 — Asana API",
+        ["Rag.NET.DataProviders.AzureBlob"] = "6.1 — Azure Blob Storage (Azurite is a container option; decide in 6.1)",
+        ["Rag.NET.DataProviders.Bitbucket"] = "6.1 — Bitbucket API",
+        ["Rag.NET.DataProviders.Box"] = "6.1 — Box API",
+        ["Rag.NET.DataProviders.Confluence"] = "6.1 — Confluence API",
+        ["Rag.NET.DataProviders.Dropbox"] = "6.1 — Dropbox API",
+        ["Rag.NET.DataProviders.GitHub"] = "6.1 — GitHub API",
+        ["Rag.NET.DataProviders.GitLab"] = "6.1 — GitLab API",
+        ["Rag.NET.DataProviders.Gmail"] = "6.1 — Gmail API",
+        ["Rag.NET.DataProviders.GoogleDrive"] = "6.1 — Google Drive API",
+        ["Rag.NET.DataProviders.Jira"] = "6.1 — Jira API",
+        ["Rag.NET.DataProviders.Linear"] = "6.1 — Linear API",
+        ["Rag.NET.DataProviders.Microsoft365"] = "6.1 — Microsoft Graph",
+        ["Rag.NET.DataProviders.Notion"] = "6.1 — Notion API",
+        ["Rag.NET.DataProviders.Slack"] = "6.1 — Slack API",
+        ["Rag.NET.DataProviders.Web"] = "6.1 — live HTTP crawl, sitemap and RSS (a local server is a 6.2 option; decide in 6.1)",
+        ["Rag.NET.DataProviders.Zendesk"] = "6.1 — Zendesk API",
+        ["Rag.NET.Parsers.Audio"] = "6.1 — a hosted transcription model",
+        ["Rag.NET.Parsers.Pdf.AzureDocumentIntelligence"] = "6.1 — Azure Document Intelligence; the live half Milestone 4 recorded as never run",
+        ["Rag.NET.Parsers.Vision"] = "6.1 — a hosted vision model",
+        ["Rag.NET.Reranking.Cohere"] = "6.1 — Cohere Rerank API",
+        ["Rag.NET.VectorStores.AzureAISearch"] = "6.1 — Azure AI Search; its Docker-tier suite runs against an emulator and may already qualify as container, to be decided there",
+        ["Rag.NET.WebSearch.Tavily"] = "6.1 — Tavily API",
+
+        // ── 6.2 Raise the Floor: no external dependency; one real file / store / run ─────────
+        ["Rag.NET.Abstractions"] = "6.2 — types only; exercised by every real run of the packages built on it, and the reason will say so",
+        ["Rag.NET.Api"] = "6.2 — the E2E suite runs it against a host; the ledger has not been told",
+        ["Rag.NET.Api.Client"] = "6.2 — the E2E suite",
+        ["Rag.NET.Api.Grpc"] = "6.2 — the E2E suite",
+        ["Rag.NET.Api.Grpc.Client"] = "6.2 — the E2E suite",
+        ["Rag.NET.Benchmarks.Quality"] = "6.2 — the harness itself; its correctness is the parity agreement of four datasets, and the reason will name that",
+        ["Rag.NET.Caching"] = "6.2 — a real store behind it, one round trip observed",
+        ["Rag.NET.Chunking.CSharp"] = "6.2 — a real C# file through Roslyn",
+        ["Rag.NET.Chunking.Templates"] = "6.2 — a real document of each template's kind",
+        ["Rag.NET.Cli"] = "6.2 — the E2E suite drives it",
+        ["Rag.NET.DataProviders"] = "6.2 — the abstraction and queue; a real provider through it",
+        ["Rag.NET.Diagnostics"] = "6.2 — a real pipeline traced",
+        ["Rag.NET.Diagnostics.AspNetCore"] = "6.2 — the E2E suite",
+        ["Rag.NET.Evaluation"] = "6.2 — the answer harness of 5.2.2 could have used it and did not; one real judge run",
+        ["Rag.NET.Evaluation.Ragas"] = "6.2 — one real metric run",
+        ["Rag.NET.Hosting"] = "6.2 — the E2E suite",
+        ["Rag.NET.Mcp"] = "6.2 — the E2E suite",
+        ["Rag.NET.Mcp.Tool"] = "6.2 — the E2E suite",
+        ["Rag.NET.Mediator"] = "6.2 — a real pipeline dispatched",
+        ["Rag.NET.Memory"] = "6.2 — a real store",
+        ["Rag.NET.Parsers.Archive"] = "6.2 — a real ZIP",
+        ["Rag.NET.Parsers.Email"] = "6.2 — a real EML and MSG",
+        ["Rag.NET.Parsers.Epub"] = "6.2 — a real EPUB",
+        ["Rag.NET.Parsers.Html"] = "6.2 — a real page",
+        ["Rag.NET.Parsers.Office"] = "6.2 — a real DOCX / XLSX / PPTX",
+        ["Rag.NET.Parsers.Pdf"] = "6.2 — a real PDF with tables",
+        ["Rag.NET.Resilience"] = "6.2 — a real failure injected",
+        ["Rag.NET.Security.AspNetCore"] = "6.2 — the E2E suite",
+        ["Rag.NET.Storage.Sqlite"] = "6.2 — a real database file",
+        ["Rag.NET.Telemetry"] = "6.2 — a real exporter observed",
+
+        // ── 6.2.1 Retrieval & Answer Sweep: a pinned figure with a control ───────────────────
+        ["Rag.NET.AnswerEngines"] = "6.2.1 — MapReduce, Refine and FLARE as arms of the 5.2.2 answer harness",
+        ["Rag.NET.QueryTechniques"] = "6.2.1 — HyDE's cell uses only its options today; the behaviour itself under the Real protocol",
+        ["Rag.NET.Raptor"] = "6.2.1 — the same store shape as GraphRAG, likely the same finding and the same fix (#247)",
+    };
 
     private readonly ITestOutputHelper _output;
 
@@ -182,6 +270,88 @@ public sealed class PackageVerificationTests
     /// </summary>
     /// <param name="packages">Every package the scan found.</param>
     /// <returns>The package names, in directory order.</returns>
+    [Fact]
+    public void NoPackageStaysAtBareUnit()
+    {
+        // Milestone 6's release gate, and the twin of NoPackageIsVerifiedByNothing one level up. A
+        // package at `unit` is honest — fakes and fixtures — and it is exactly the state
+        // Rag.NET.GraphRag was in when running it once found eight defects, so `unit` alone is no
+        // longer a resting state: it needs either a better level or a <VerifiedByReason> saying why
+        // it cannot have one, or it needs an owner in PackagesAllowedToStayUnit. Listed packages
+        // are reported as a skip with the phase that owes them; an unlisted bare `unit` fails, so
+        // nothing new arrives unverified and unowned.
+        var packages = DiscoverPackages();
+        var bare = CollectPackagesAtBareUnit(packages);
+
+        foreach (var package in packages)
+        {
+            if (package.Reason is not null)
+            {
+                Assert.True(
+                    package.Reason.Length > 0,
+                    $"{package.Name} declares an empty <VerifiedByReason> in {package.RelativePath}. " +
+                    "A reason names the service or dependency and what stays unverified without " +
+                    "it; an empty one is a bare `unit` wearing a hat.");
+            }
+        }
+
+        foreach (var name in bare)
+        {
+            Assert.True(
+                PackagesAllowedToStayUnit.ContainsKey(name),
+                $"{name} declares <VerifiedBy>unit</VerifiedBy> with no <VerifiedByReason>, and " +
+                $"{nameof(PackagesAllowedToStayUnit)} has no entry for it. Either exercise it for " +
+                "real and raise the level (container, benchmark, recorded, live), or add a " +
+                "<VerifiedByReason> naming what it talks to and what stays unverified, or list it " +
+                "here under the Milestone 6 phase that owes it a run. What must not happen is a " +
+                "package at bare `unit` with no owner and nothing going red — that is how a package " +
+                "marked Done ships with eight defects.");
+        }
+
+        Assert.SkipWhen(
+            bare.Count > 0,
+            $"{bare.Count} of {packages.Count} packages are at bare <VerifiedBy>unit</VerifiedBy>, " +
+            $"each owned by a Milestone 6 phase in {nameof(PackagesAllowedToStayUnit)}: " +
+            string.Join(", ", bare) + ". The Definition of Done requires zero before v1.0.");
+    }
+
+    [Fact]
+    public void EveryPackageAllowedToStayUnitIsStillBareUnit()
+    {
+        // The staleness guard: the moment a listed package climbs above `unit`, gains a
+        // <VerifiedByReason>, or leaves src/, its entry is stale, and a stale entry is a hole in
+        // the release gate, so it fails here until it is deleted. This is what turns the allowlist
+        // into a work list that shrinks rather than a list that grows furniture.
+        var packages = DiscoverPackages();
+        var bare = new HashSet<string>(CollectPackagesAtBareUnit(packages), StringComparer.Ordinal);
+
+        foreach (var (name, owner) in PackagesAllowedToStayUnit)
+        {
+            Assert.True(
+                bare.Contains(name),
+                $"{name} is listed in {nameof(PackagesAllowedToStayUnit)} ({owner}) but is no " +
+                "longer at bare `unit` — it climbed a level, gained a <VerifiedByReason>, or left " +
+                "src/. Delete its entry: the list must say only what is still true.");
+        }
+    }
+
+    private static List<string> CollectPackagesAtBareUnit(IReadOnlyList<Package> packages)
+    {
+        var bare = new List<string>();
+
+        foreach (var package in packages)
+        {
+            if (package.Declarations.Count == 1 &&
+                string.Equals(package.Declarations[0], "unit", StringComparison.Ordinal) &&
+                string.IsNullOrEmpty(package.Reason))
+            {
+                bare.Add(package.Name);
+            }
+        }
+
+        return bare;
+    }
+
     private static List<string> CollectPackagesDeclaringNone(IReadOnlyList<Package> packages)
     {
         var unverified = new List<string>();
@@ -266,17 +436,24 @@ public sealed class PackageVerificationTests
         {
             foreach (var projectFile in Directory.EnumerateFiles(directory, "*.csproj", SearchOption.TopDirectoryOnly))
             {
+                var root = XDocument.Load(projectFile).Root!;
                 var declarations = new List<string>();
-                foreach (var property in XDocument.Load(projectFile).Root!
-                    .Elements("PropertyGroup").Elements("VerifiedBy"))
+                foreach (var property in root.Elements("PropertyGroup").Elements("VerifiedBy"))
                 {
                     declarations.Add(property.Value.Trim());
+                }
+
+                string? reason = null;
+                foreach (var property in root.Elements("PropertyGroup").Elements("VerifiedByReason"))
+                {
+                    reason = property.Value.Trim();
                 }
 
                 packages.Add(new Package(
                     Path.GetFileName(directory),
                     Path.GetRelativePath(repositoryRoot, projectFile).Replace('\\', '/'),
-                    declarations));
+                    declarations,
+                    reason));
             }
         }
 
@@ -288,5 +465,5 @@ public sealed class PackageVerificationTests
     /// <paramref name="RelativePath"/>, and every <c>&lt;VerifiedBy&gt;</c> value it
     /// <paramref name="Declarations"/> — the well-formed case being exactly one.
     /// </summary>
-    private sealed record Package(string Name, string RelativePath, IReadOnlyList<string> Declarations);
+    private sealed record Package(string Name, string RelativePath, IReadOnlyList<string> Declarations, string? Reason);
 }

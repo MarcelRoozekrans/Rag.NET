@@ -5,7 +5,13 @@
     <PackageId>Rag.NET.Graph</PackageId>
     <Description>Standalone graph library — Leiden community detection, PageRank, IGraphStore abstraction</Description>
     <PackageTags>$(PackageTags);graph;leiden;pagerank;community-detection</PackageTags>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- benchmark: Leiden and PageRank run over the whole 609-article MultiHop-RAG graph
+         (62,392 entities, 147,021 relationships, 3,587 communities) in BeirGraphRagCorpusTests,
+         and Leiden's connectivity guarantee was swept over 40,000 random weighted graphs
+         (#180: 0 disconnected of 3,359,331). The runs that found the over-merge (929d45a3),
+         the casing drop (e9178aee) and the refinement index confusion (#170). Milestone 6.0,
+         2026-08-15. -->
+    <VerifiedBy>benchmark</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

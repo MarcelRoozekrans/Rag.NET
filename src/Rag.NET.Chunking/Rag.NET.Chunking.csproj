@@ -5,7 +5,12 @@
     <PackageId>Rag.NET.Chunking</PackageId>
     <Description>Chunking strategies for Rag.NET: hierarchical-merge, code-aware, late, proposition, token-aware and embedding-based semantic chunking</Description>
     <PackageTags>$(PackageTags);late-chunking;propositions</PackageTags>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- benchmark: RecursiveChunkingStrategy at its defaults is the Real protocol on all five
+         BEIR corpora, pinned in BeirReproduction (SciFact 0.67742, FiQA 0.35569, ArguAna
+         0.47559, TREC-COVID, MultiHop-RAG 0.63967) — the runs that found the one-chunk-per-word
+         packing defect (3.16) and the surrogate-pair split (5.2). Semantic, hierarchical and
+         late chunking are not yet under a pin: Milestone 6.2.1. Milestone 6.0, 2026-08-15. -->
+    <VerifiedBy>benchmark</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>
