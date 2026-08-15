@@ -1,0 +1,469 @@
+using System.ClientModel;
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using Microsoft.Extensions.AI;
+using OpenAI;
+using Rag.NET.Benchmarks.Quality;
+using Rag.NET.Benchmarks.Quality.GraphExtractions;
+using Rag.NET.Embeddings.Onnx;
+using Rag.NET.Models;
+using Rag.NET.Models.Options;
+using Rag.NET.Storage;
+using Xunit;
+
+namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
+
+/// <summary>
+/// Phase 5.2.2: does GraphRAG help <b>answers</b>? Three retrieval arms answer MultiHop-RAG's
+/// queries with one model, one prompt and top-6 context, and every answer is scored against the
+/// dataset's gold answer by the dataset authors' own rule — the currency the paper reports in,
+/// which the retrieval measurements of 5.2 could not see.
+/// <para>
+/// <b>Arms.</b> <c>dense</c>: the Real leg's article chunks alone, dense top-6. <c>local</c>:
+/// the graph run's store, dense top-500 through <c>GraphLocalSearchBehavior</c> as shipped
+/// (<c>PageRankWeight = 0.3</c>), top-6 of what it returns — article, entity, relationship and
+/// report chunks as they come. <c>global</c>: <c>GraphGlobalSearchBehavior</c>'s map/reduce over
+/// the community reports, its synthesised answer first and the next five candidates behind it.
+/// Same corpus, same queries, same embedder, same answering model at temperature 0.
+/// </para>
+/// <para>
+/// <b>Every model call is cached and replayed refuse-on-miss, like extractions and reports.</b>
+/// The answers live in <see cref="AnswersDirectoryName"/> under the same cache root and identity;
+/// the default run reads them and calls no model. Generation is opted into explicitly with
+/// <see cref="GenerateVariable"/> and an <c>OPENROUTER_API_KEY</c>, and is bounded by
+/// <see cref="MaxQueriesVariable"/> for the pilot — the design says 100 stratified queries before
+/// the full run, and the pilot's cost is what decides how the <c>global</c> arm runs. <b>This is a
+/// deviation from the programme's rule that generation is a tool, not a test</b>, recorded here and
+/// in the phase entry: the graph build, the embedder and the retrieval paths this needs all live in
+/// <see cref="GraphRagRun"/> and <see cref="BeirHarness"/>, in this project, and moving them into
+/// the generation tool is a refactor with its own name. Until then the gate is the same shape as
+/// the tool's: nothing is spent unless the operator asks for it in the environment.
+/// </para>
+/// <para>
+/// <b>Scored two ways, and both are printed.</b> The paper's rule (any shared word after
+/// lower-casing) is what makes the figures comparable in shape to its Table 6, and the strict rule
+/// beside it says how much of that is the rule being generous. Per query type and overall; the
+/// 301 null queries separately, as an abstention rate. Pinned in
+/// <see cref="MultiHopRagAnswerReproduction"/> on a full run, never on a pilot.
+/// </para>
+/// </summary>
+public sealed class BeirGraphRagAnswerTests
+{
+    /// <summary>The cache directory the answers live in, beside extractions and reports.</summary>
+    public const string AnswersDirectoryName = "graph-answers";
+
+    /// <summary>Set to anything but 0/false, with an <c>OPENROUTER_API_KEY</c>, to fill the answer cache.</summary>
+    public const string GenerateVariable = "RAGNET_GRAPHRAG_ANSWERS_GENERATE";
+
+    /// <summary>Bounds the run to N queries, stratified by type — the pilot. Absent means every query.</summary>
+    public const string MaxQueriesVariable = "RAGNET_GRAPHRAG_ANSWERS_MAX_QUERIES";
+
+    /// <summary>Comma-separated arms to run: <c>dense</c>, <c>local</c>, <c>global</c>. Absent means all three.</summary>
+    public const string ArmsVariable = "RAGNET_GRAPHRAG_ANSWERS_ARMS";
+
+    /// <summary>The paper's context depth: six chunks.</summary>
+    private const int ContextChunks = 6;
+
+    private const int ProgressEvery = 100;
+    private const int SlabSize = 512;
+    private const string ApiKeyVariable = "OPENROUTER_API_KEY";
+    private static readonly Uri OpenRouterEndpoint = new("https://openrouter.ai/api/v1");
+
+    /// <summary>
+    /// The one prompt every arm answers with. Versioned in its text: changing a character changes
+    /// every cache key and the run refuses on the first miss until regenerated.
+    /// </summary>
+    private const string PromptTemplate =
+        "Answer the question using only the context below. If the context does not contain enough " +
+        "information to answer, answer exactly: Insufficient information\n" +
+        MultiHopRagAnswerJudge.AnswerInstruction + "\n\n" +
+        "Question: {question}\n\nContext:\n{context}";
+
+    private readonly ITestOutputHelper _output;
+
+    public BeirGraphRagAnswerTests(ITestOutputHelper output)
+    {
+        _output = output;
+    }
+
+    public static TheoryData<string> Datasets() => BeirGraphRagCorpusTests.Datasets();
+
+    [Theory]
+    [MemberData(nameof(Datasets))]
+    public async Task Accuracy_AgainstTheGoldAnswers_ThreeArms(string datasetName)
+    {
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.GraphRag),
+            $"{datasetName} does not declare the GraphRag protocol applicable.");
+
+        Assert.SkipUnless(
+            BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
+            BeirHarness.SkipReason);
+
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(descriptor.Name, BeirProtocol.GraphRag, out var budgetReason),
+            budgetReason);
+
+        var ct = TestContext.Current.CancellationToken;
+        var dataset = await BeirHarness.LoadAsync(
+            descriptor, cacheDirectory, BeirLoader.DefaultTitleTextSeparator, ct);
+        var gold = MultiHopRagAnswers.Load(new BeirDatasetCache(cacheDirectory).DirectoryFor(descriptor));
+        var selection = SelectQueries(dataset, gold);
+        var arms = SelectArms();
+
+        using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
+        var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
+        using var answering = OpenAnsweringClient(cacheDirectory, out var generating);
+
+        _output.WriteLine(DescribePlan(descriptor, selection, arms, generating, answering.Cache));
+
+        var startedAt = Stopwatch.GetTimestamp();
+        await using var run = await GraphRagRun.BuildAsync(
+            dataset.Documents, generator, embeddings, OpenExtractions(cacheDirectory),
+            OpenReports(cacheDirectory), ct);
+        using var articles = await IndexArticlesAsync(dataset, generator, embeddings, ct);
+        _output.WriteLine(FormattableString.Invariant(
+            $"graph and article store built in {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s"));
+
+        var tallies = await AnswerAllAsync(selection, arms, run, articles, generator, embeddings, answering, gold, ct);
+        _output.WriteLine(DescribeResults(descriptor, selection, tallies, answering, Stopwatch.GetElapsedTime(startedAt)));
+
+        foreach (var (arm, tally) in tallies)
+        {
+            Assert.True(
+                tally.Answered == selection.Count,
+                $"The {arm} arm answered {tally.Answered} of {selection.Count} selected queries.");
+        }
+
+        if (selection.IsPilot)
+        {
+            _output.WriteLine("PILOT — nothing is pinned. Run without " + MaxQueriesVariable + " to pin.");
+            return;
+        }
+
+        foreach (var (arm, tally) in tallies)
+        {
+            MultiHopRagAnswerReproduction.AssertReproduces(
+                descriptor.Name, arm, tally.PaperRuleAccuracy(selection.JudgedCount), _output);
+        }
+    }
+
+    // ── Selection and gates ───────────────────────────────────────────────
+
+    /// <summary>The queries to answer: every judged one plus every null one, or a stratified pilot.</summary>
+    private static QuerySelection SelectQueries(BeirDataset dataset, IReadOnlyDictionary<string, MultiHopRagAnswer> gold)
+    {
+        var max = ReadPositiveInt(MaxQueriesVariable);
+        var byType = new Dictionary<string, int>(StringComparer.Ordinal);
+        var quota = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var answer in gold.Values)
+        {
+            byType[answer.QuestionType] = byType.GetValueOrDefault(answer.QuestionType) + 1;
+        }
+
+        if (max is { } bound)
+        {
+            // Proportional stratification, largest remainders last, so a 100-query pilot mirrors
+            // 816/856/583/301 rather than taking the first hundred inference queries.
+            foreach (var (type, count) in byType)
+            {
+                quota[type] = (int)Math.Round(bound * (double)count / gold.Count, MidpointRounding.AwayFromZero);
+            }
+        }
+
+        var selected = new List<BeirQuery>();
+        var taken = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var query in dataset.Queries)
+        {
+            var type = gold[query.Id].QuestionType;
+            if (max is not null && taken.GetValueOrDefault(type) >= quota.GetValueOrDefault(type))
+            {
+                continue;
+            }
+
+            taken[type] = taken.GetValueOrDefault(type) + 1;
+            selected.Add(query);
+        }
+
+        var judged = selected.Count(q => !string.Equals(gold[q.Id].QuestionType, MultiHopRagAnswers.NullType, StringComparison.Ordinal));
+        return new QuerySelection(selected, judged, max is not null);
+    }
+
+    private static IReadOnlyList<string> SelectArms()
+    {
+        var value = Environment.GetEnvironmentVariable(ArmsVariable);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return AnswerArm.All;
+        }
+
+        var arms = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(a => a.ToLowerInvariant()).ToList();
+        foreach (var arm in arms)
+        {
+            Assert.True(AnswerArm.All.Contains(arm, StringComparer.Ordinal), $"{ArmsVariable} names an unknown arm '{arm}'.");
+        }
+
+        return arms;
+    }
+
+    private static int? ReadPositiveInt(string variable)
+    {
+        var value = Environment.GetEnvironmentVariable(variable);
+        return int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var n) && n > 0 ? n : null;
+    }
+
+    private static bool IsOn(string variable)
+    {
+        var value = Environment.GetEnvironmentVariable(variable);
+        return !string.IsNullOrWhiteSpace(value)
+            && !string.Equals(value, "0", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The answering client: fill mode with a real model when asked for, refuse-on-miss otherwise.</summary>
+    private static CachedGraphRagClient OpenAnsweringClient(string cacheDirectory, out bool generating)
+    {
+        generating = IsOn(GenerateVariable);
+        var identity = GraphExtractionModelIdentity.For(GraphExtractionModelIdentity.ExtractionTemperature);
+        var cache = new GraphExtractionCache(
+            cacheDirectory, identity,
+            generating ? GraphExtractionCacheMode.Fill : GraphExtractionCacheMode.RefuseOnMiss,
+            AnswersDirectoryName);
+
+        if (!generating)
+        {
+            return new CachedGraphRagClient(cache, inner: null, GraphExtractionModelIdentity.ExtractionTemperature);
+        }
+
+        var apiKey = Environment.GetEnvironmentVariable(ApiKeyVariable);
+        Assert.False(
+            string.IsNullOrWhiteSpace(apiKey),
+            $"{GenerateVariable} is set but {ApiKeyVariable} is not; nothing can be generated without a key.");
+
+        var model = new OpenAIClient(new ApiKeyCredential(apiKey), new OpenAIClientOptions { Endpoint = OpenRouterEndpoint })
+            .GetChatClient(GraphExtractionModelIdentity.ModelName)
+            .AsIChatClient();
+        return new CachedGraphRagClient(cache, model, GraphExtractionModelIdentity.ExtractionTemperature);
+    }
+
+    private static GraphExtractionCache OpenExtractions(string cacheDirectory) =>
+        new(cacheDirectory,
+            GraphExtractionModelIdentity.For(GraphExtractionModelIdentity.ExtractionTemperature),
+            GraphExtractionCacheMode.RefuseOnMiss);
+
+    private static GraphExtractionCache OpenReports(string cacheDirectory) =>
+        new(cacheDirectory,
+            GraphExtractionModelIdentity.For(GraphExtractionModelIdentity.ExtractionTemperature),
+            GraphExtractionCacheMode.RefuseOnMiss,
+            GraphExtractionCache.ReportsDirectoryName);
+
+    // ── The article-only store for the dense arm ──────────────────────────
+
+    /// <summary>Indexes the Real leg's chunks — the same units, through the same chunker — into their own store.</summary>
+    private static async Task<InMemoryVectorStore> IndexArticlesAsync(
+        BeirDataset dataset, OnnxEmbeddingGenerator generator, EmbeddingCache embeddings, CancellationToken ct)
+    {
+        var units = await BeirRealChunkingTests.ChunkAsync(dataset.Documents, ct);
+        var store = new InMemoryVectorStore();
+        for (var start = 0; start < units.Count; start += SlabSize)
+        {
+            var end = Math.Min(start + SlabSize, units.Count);
+            var texts = new string[end - start];
+            for (var i = start; i < end; i++)
+            {
+                texts[i - start] = units[i].Text;
+            }
+
+            var vectors = await BeirHarness.EmbedAsync(generator, embeddings, texts, ct);
+            var stored = new EmbeddedChunk[end - start];
+            for (var i = start; i < end; i++)
+            {
+                stored[i - start] = new EmbeddedChunk { Chunk = units[i], Embedding = vectors[i - start] };
+            }
+
+            await store.StoreAsync(stored, ct);
+        }
+
+        return store;
+    }
+
+    // ── Answering ─────────────────────────────────────────────────────────
+
+    private async Task<Dictionary<string, ArmTally>> AnswerAllAsync(
+        QuerySelection selection,
+        IReadOnlyList<string> arms,
+        GraphRagRun run,
+        InMemoryVectorStore articles,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings,
+        CachedGraphRagClient answering,
+        IReadOnlyDictionary<string, MultiHopRagAnswer> gold,
+        CancellationToken ct)
+    {
+        var tallies = arms.ToDictionary(a => a, _ => new ArmTally(), StringComparer.Ordinal);
+        var startedAt = Stopwatch.GetTimestamp();
+
+        for (var i = 0; i < selection.Queries.Count; i++)
+        {
+            var query = selection.Queries[i];
+            var expected = gold[query.Id];
+
+            foreach (var arm in arms)
+            {
+                var context = await RetrieveContextAsync(arm, query.Text, run, articles, generator, embeddings, answering, ct);
+                var prompt = PromptTemplate
+                    .Replace("{question}", query.Text, StringComparison.Ordinal)
+                    .Replace("{context}", RenderContext(context), StringComparison.Ordinal);
+
+                var response = await answering.GetResponseAsync([new ChatMessage(ChatRole.User, prompt)], cancellationToken: ct);
+                tallies[arm].Record(expected, response.Text ?? string.Empty);
+            }
+
+            if ((i + 1) % ProgressEvery == 0)
+            {
+                _output.WriteLine(FormattableString.Invariant(
+                    $"  answered {i + 1} of {selection.Queries.Count} queries x {arms.Count} arms, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far, {answering.Cache.Hits} cached / {answering.Cache.Misses} generated"));
+            }
+        }
+
+        return tallies;
+    }
+
+    /// <summary>The six chunks each arm hands the model, in the arm's own order.</summary>
+    private static async Task<IReadOnlyList<SearchResult>> RetrieveContextAsync(
+        string arm,
+        string query,
+        GraphRagRun run,
+        InMemoryVectorStore articles,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings,
+        CachedGraphRagClient answering,
+        CancellationToken ct)
+    {
+        switch (arm)
+        {
+            case AnswerArm.Dense:
+                var vectors = await BeirHarness.EmbedAsync(generator, embeddings, [query], ct);
+                return await articles.SearchAsync(vectors[0], new SearchOptions { TopK = ContextChunks }, ct);
+            case AnswerArm.Local:
+                var local = await run.LocalSearchWithCandidatesAsync(query, ct);
+                return local.Results.Take(ContextChunks).ToList();
+            case AnswerArm.Global:
+                var global = await run.GlobalSearchAsync(query, answering, ct);
+                return global.Take(ContextChunks).ToList();
+            default:
+                throw new ArgumentOutOfRangeException(nameof(arm), arm, "Not an arm.");
+        }
+    }
+
+    private static string RenderContext(IReadOnlyList<SearchResult> context)
+    {
+        var builder = new StringBuilder();
+        for (var i = 0; i < context.Count; i++)
+        {
+            builder.Append('[').Append(i + 1).Append("] ").Append(context[i].Chunk.Text).Append("\n\n");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    // ── Reporting ─────────────────────────────────────────────────────────
+
+    private static string DescribePlan(
+        BeirDatasetDescriptor descriptor, QuerySelection selection, IReadOnlyList<string> arms, bool generating, GraphExtractionCache cache) =>
+        FormattableString.Invariant($"""
+            === {descriptor.Name} ANSWER-LEVEL EVALUATION (Phase 5.2.2) ===
+            {selection.Queries.Count} queries selected ({selection.JudgedCount} judged, {selection.Queries.Count - selection.JudgedCount} null){(selection.IsPilot ? " — PILOT, stratified by type" : "")}
+            arms: {string.Join(", ", arms)}; context: top-{ContextChunks}; model: {GraphExtractionModelIdentity.ModelName} at temperature {GraphExtractionModelIdentity.ExtractionTemperature}
+            answers: {(generating ? "FILL mode — misses call the model and are cached" : "refuse-on-miss — no model is called")}, entries in {cache.EntryDirectory}
+            """);
+
+    private static string DescribeResults(
+        BeirDatasetDescriptor descriptor,
+        QuerySelection selection,
+        Dictionary<string, ArmTally> tallies,
+        CachedGraphRagClient answering,
+        TimeSpan elapsed)
+    {
+        var builder = new StringBuilder();
+        builder.Append(FormattableString.Invariant($"""
+
+            === {descriptor.Name} ACCURACY AGAINST THE GOLD ANSWERS — {elapsed.TotalSeconds:F1} s, {answering.Calls} answer requests, {answering.Cache.Hits} cached / {answering.Cache.Misses} generated, {answering.Retries} retries ===
+            paper rule = any shared word after lower-casing (qa_evaluate.py); strict = normalised equality; per type over the selected queries
+
+            """));
+
+        foreach (var (arm, t) in tallies)
+        {
+            builder.Append(FormattableString.Invariant($"""
+                {arm,-7} overall (judged {selection.JudgedCount}): paper {t.PaperRuleAccuracy(selection.JudgedCount):F4}  strict {t.StrictAccuracy(selection.JudgedCount):F4}  | used the answer sentence {t.UsedSentence} of {t.Answered}
+                        inference   paper {t.Rate(MultiHopRagAnswers.InferenceType, strict: false):F4}  strict {t.Rate(MultiHopRagAnswers.InferenceType, strict: true):F4}  (n={t.Total(MultiHopRagAnswers.InferenceType)})
+                        comparison  paper {t.Rate(MultiHopRagAnswers.ComparisonType, strict: false):F4}  strict {t.Rate(MultiHopRagAnswers.ComparisonType, strict: true):F4}  (n={t.Total(MultiHopRagAnswers.ComparisonType)})
+                        temporal    paper {t.Rate(MultiHopRagAnswers.TemporalType, strict: false):F4}  strict {t.Rate(MultiHopRagAnswers.TemporalType, strict: true):F4}  (n={t.Total(MultiHopRagAnswers.TemporalType)})
+                        null (abstention, reported separately)  paper {t.Rate(MultiHopRagAnswers.NullType, strict: false):F4}  strict {t.Rate(MultiHopRagAnswers.NullType, strict: true):F4}  (n={t.Total(MultiHopRagAnswers.NullType)})
+
+                """));
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
+    // ── Types ─────────────────────────────────────────────────────────────
+
+    private sealed record QuerySelection(IReadOnlyList<BeirQuery> Queries, int JudgedCount, bool IsPilot)
+    {
+        public int Count => Queries.Count;
+    }
+
+    /// <summary>Correct/total per type under both rules, for one arm.</summary>
+    private sealed class ArmTally
+    {
+        private readonly Dictionary<string, (int Paper, int Strict, int Total)> _byType = new(StringComparer.Ordinal);
+
+        public int Answered { get; private set; }
+
+        public int UsedSentence { get; private set; }
+
+        public void Record(MultiHopRagAnswer expected, string reply)
+        {
+            var prediction = MultiHopRagAnswerJudge.ExtractAnswer(reply);
+            var paper = MultiHopRagAnswerJudge.MatchesByThePaperRule(prediction, expected.Answer);
+            var strict = MultiHopRagAnswerJudge.MatchesStrictly(prediction, expected.Answer);
+            var current = _byType.GetValueOrDefault(expected.QuestionType);
+            _byType[expected.QuestionType] = (current.Paper + (paper ? 1 : 0), current.Strict + (strict ? 1 : 0), current.Total + 1);
+            Answered++;
+            UsedSentence += MultiHopRagAnswerJudge.UsedTheAnswerSentence(reply) ? 1 : 0;
+        }
+
+        public int Total(string type) => _byType.GetValueOrDefault(type).Total;
+
+        public double Rate(string type, bool strict)
+        {
+            var (paper, strictCount, total) = _byType.GetValueOrDefault(type);
+            return total == 0 ? double.NaN : (strict ? strictCount : paper) / (double)total;
+        }
+
+        /// <summary>The headline: paper-rule accuracy over the judged types (null queries excluded).</summary>
+        public double PaperRuleAccuracy(int judged) => judged == 0 ? double.NaN : JudgedCorrect(strict: false) / (double)judged;
+
+        public double StrictAccuracy(int judged) => judged == 0 ? double.NaN : JudgedCorrect(strict: true) / (double)judged;
+
+        private int JudgedCorrect(bool strict)
+        {
+            var sum = 0;
+            foreach (var (type, counts) in _byType)
+            {
+                if (!string.Equals(type, MultiHopRagAnswers.NullType, StringComparison.Ordinal))
+                {
+                    sum += strict ? counts.Strict : counts.Paper;
+                }
+            }
+
+            return sum;
+        }
+    }
+}
