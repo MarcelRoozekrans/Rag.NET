@@ -503,7 +503,56 @@ public static class BeirRunBudget
             "ingestion behavior, so a real pipeline re-detects and regenerates every report on " +
             "every document: 60 passes over this slice, of which 59 are overwritten. Both the tool " +
             "and the guard run it once, over the finished graph, which is what that behaviour " +
-            "converges to."),
+            "converges to. " +
+            "**SECOND CASE UNDER THIS SAME CELL, and it is the expensive one (#173).** " +
+            "BeirGraphRagCorpusTests measures the WHOLE 609-article corpus under the graph path and " +
+            "scores local search with nDCG@10 over all 2,255 judged queries, where " +
+            "GraphRagFunctionsTests above runs 60 articles and 27 queries and scores nothing. The " +
+            "gate is keyed on (dataset, protocol), so the two share this cell and the filter in the " +
+            "skip message selects BOTH -- which is right for a cell that prices both, and wrong for " +
+            "an operator who wanted only one. For the corpus run alone: " +
+            "--filter \"FullyQualifiedName~BeirGraphRagCorpusTests&DisplayName~NdcgAt10\". For the " +
+            "slice guard alone: --filter \"FullyQualifiedName~GraphRagFunctionsTests\". The " +
+            "confound check that has to pass before either number means anything is " +
+            "--filter \"DisplayName~Chunking_UnderTheGraphPath\", which needs no model and takes " +
+            "under a second. " +
+            "**Its cost is now MEASURED, 2026-08-15: 43 m 29 s wall clock (01:16-01:59), of " +
+            "which 1,338.1 s (22 m 18 s) is graph construction**, 2,564.3 s the scored " +
+            "local-search pass over all 2,255 judged queries, and 1,226.2 s the candidate-set " +
+            "control pass. Windows 11, .NET 10.0.11, CPU ONNX Runtime, same machine as the Real " +
+            "leg's figures. The embedding cache took 145,840 hits against 177,566 misses, so " +
+            "this is close to but not exactly the cold price a fresh machine pays. The store " +
+            "came out at 321,151 indexed units: 17,648 article chunks, 299,916 entity and " +
+            "relationship chunks, 3,587 community reports. It needs #231 to be the run this " +
+            "figure describes -- without it local search discards about a third of every " +
+            "candidate set and both the timing and the nDCG are of something else. " +
+            "**The derivation this replaces was wrong in both directions and is kept so the next " +
+            "estimate is better.** It said 1.5-3 h wall clock against a measured 43 m 29 s, so " +
+            "it OVERSHOT the time by 2-4x -- and it UNDERSHOT the store, predicting ~251,000 " +
+            "vectors where 321,151 were indexed (~230,000 entity and relationship chunks against " +
+            "299,916 actual, scaled from the slice's 33,100 at 6.9x). Its two named error bars, " +
+            "both superlinear and both in graph construction, are where the overshoot lived: " +
+            "SqliteGraphStore rewriting each entity description on every occurrence " +
+            "(O(occurrences^2) bytes, derived at ~48x the slice's cost), and " +
+            "GraphLocalSearchBehavior traversing per query through GetNeighborsAsync, " +
+            "GetRelationshipsAsync and GetCommunitiesForEntityAsync over a `relationships` table " +
+            "with no index on source_entity or target_entity -- ~45,000 full scans of 147,021 " +
+            "rows over the run, derived at 15-40 min. Graph construction measured 22 m 18 s in " +
+            "total, so those terms are real but were priced above what they cost. The lesson is " +
+            "the ordinary one: a derivation that names which of its terms it distrusts is " +
+            "correctable, and this one was, in both directions at once. " +
+            "**It needs a report cache covering the FULL corpus graph, which is not the slice's.** " +
+            "Report cache keys are the rendered report prompts, and those are a function of the " +
+            "graph: the corpus graph's ~3,587 communities are ~3,587 entries the slice's 607 do " +
+            "not provide (#226 is the sequential cost of generating them). An opted-in run against " +
+            "a partly-filled report cache FAILS refuse-on-miss naming the missing key, which is the " +
+            "correct behaviour and is not a bug to work around. " +
+            "The extraction side needs nothing new: 35,296 requests over the corpus resolve to " +
+            "35,176 cache entries, because exactly 60 of the 17,648 chunk texts repeat verbatim and " +
+            "share a key -- counted, not assumed, by " +
+            "BeirGraphRagCorpusTests.Chunking_UnderTheGraphPath_IsIdenticalToTheRealProtocols. " +
+            "FitsTheNightly stays false for the cell's existing reason before any timing argument: " +
+            "the nightly has no cache to replay and cannot make the calls."),
     ];
 
     /// <summary>
@@ -699,31 +748,32 @@ public static class BeirRunBudget
     /// fragment of the test <i>method</i> name rather than the class name — the class alone would
     /// select all three cells and misreport what the quoted cost buys.
     /// <para>
-    /// <b><see cref="BeirProtocol.GraphRag"/> is the exception, and it is the exception for exactly
+    /// <b><see cref="BeirProtocol.GraphRag"/> is the exception, and the shape of the exception is
     /// the reason the dataset conjunct works everywhere else.</b> A dataset name reaches a display
-    /// name only as a theory argument, and
-    /// <see cref="GraphRagFunctionsTests.GraphRag_OverTheMultiHopRagSlice_ExtractsClustersAndRetrievesRelevantDocuments"/>
-    /// is a <c>[Fact]</c> over one pinned slice: it takes no <c>datasetName</c>, so no display name
-    /// in this assembly holds <c>multihop-rag</c> beside <c>GraphRag</c>. The conjunction therefore
-    /// matched <b>nothing</b> — and vstest answers an empty selection with "No test matches the
-    /// given testcase filter" and <b>exit code 0</b>, so somebody who pasted this very line out of
-    /// the skip message got a green run and nearly recorded a pass for a case that never ran. This
-    /// cell is selected by identity instead, through a <c>nameof</c> a rename breaks at compile
-    /// time.
+    /// name only as a theory argument, and the older discriminator — the bare string
+    /// <c>"GraphRag"</c>, conjoined with <c>multihop-rag</c> — was written while nothing measured
+    /// this protocol at all, on the reasoning that a class added for the graph path would carry
+    /// <c>GraphRag</c> in its display name. That was true and it was not enough:
+    /// <see cref="GraphRagFunctionsTests"/> is a <c>[Fact]</c> over one pinned slice and takes no
+    /// <c>datasetName</c>, so the conjunction selected <b>nothing</b> — and vstest answers an empty
+    /// selection with "No test matches the given testcase filter" and <b>exit code 0</b>, so
+    /// pasting that line out of a skip message produced a green run for a case that never ran.
     /// </para>
     /// <para>
-    /// The claim that the strings here select anything is now asserted rather than reasoned about:
-    /// <see cref="BeirRunBudgetTests.EveryCellsPrintedFilterCanSelectATest"/> puts every cell's
-    /// emitted filter to the assembly. The remark this replaces reasoned that a class added for the
-    /// graph path "will carry <c>GraphRag</c> in its display name", which was true and not enough,
-    /// and nothing checked the half it got wrong.
+    /// Two cases now share this cell — the slice guard and
+    /// <see cref="BeirGraphRagCorpusTests"/>'s whole-corpus measurement — and the cell prices both,
+    /// so the filter selects both, by identity rather than by display name. Each half is a
+    /// <c>nameof</c> a rename breaks at compile time, and <c>FullyQualifiedName</c> rather than
+    /// <c>DisplayName</c> because the class name is the part that identifies them and it is in the
+    /// fully-qualified name whether or not a case is a theory.
     /// </para>
     /// </remarks>
     private static string Filter(Cost cost)
     {
         if (cost.Protocol is BeirProtocol.GraphRag)
         {
-            return $"FullyQualifiedName~{nameof(GraphRagFunctionsTests)}";
+            return $"FullyQualifiedName~{nameof(GraphRagFunctionsTests)}" +
+                   $"|FullyQualifiedName~{nameof(BeirGraphRagCorpusTests)}";
         }
 
         var discriminator = cost.Protocol switch

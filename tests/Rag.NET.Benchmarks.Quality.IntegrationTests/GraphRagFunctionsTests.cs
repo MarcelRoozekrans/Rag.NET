@@ -159,7 +159,7 @@ public sealed class GraphRagFunctionsTests
         var queries = MultiHopRagSlice.Queries(dataset.Queries);
 
         using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
-        await using var run = await GraphRagSliceRun.BuildAsync(
+        await using var run = await GraphRagRun.BuildAsync(
             documents,
             generator,
             new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity),
@@ -192,7 +192,7 @@ public sealed class GraphRagFunctionsTests
     /// the schema and not the relationship half, which leaves every later stage a graph of isolated
     /// nodes that Leiden will faithfully report as one community per entity.
     /// </remarks>
-    private static void AssertExtractionProducedEntitiesAndRelationships(GraphRagSliceRun run)
+    private static void AssertExtractionProducedEntitiesAndRelationships(GraphRagRun run)
     {
         Assert.True(
             run.Graph.Entities.Count > 0,
@@ -224,7 +224,7 @@ public sealed class GraphRagFunctionsTests
     /// job: it was built that way precisely because a multi-hop question cites two to four articles
     /// that share subjects.
     /// </remarks>
-    private static void AssertEntitiesRecurAcrossArticles(GraphRagSliceRun run)
+    private static void AssertEntitiesRecurAcrossArticles(GraphRagRun run)
     {
         var (best, articles) = MostRecurrentEntity(run);
 
@@ -285,7 +285,7 @@ public sealed class GraphRagFunctionsTests
     /// over-merged rather than finding anything new to cluster.
     /// </para>
     /// </remarks>
-    private static void AssertCommunityDetectionClusteredTheGraph(GraphRagSliceRun run)
+    private static void AssertCommunityDetectionClusteredTheGraph(GraphRagRun run)
     {
         var communities = run.Graph.Communities;
         var clustered = communities.Count - CountSingletons(communities);
@@ -346,7 +346,7 @@ public sealed class GraphRagFunctionsTests
     /// summaries are a hosted model's prose, not a fixture to match.
     /// </para>
     /// </remarks>
-    private void AssertEveryCommunityCarriesARealReport(GraphRagSliceRun run)
+    private void AssertEveryCommunityCarriesARealReport(GraphRagRun run)
     {
         var communities = run.Graph.Communities;
         var blank = 0;
@@ -391,7 +391,7 @@ public sealed class GraphRagFunctionsTests
     /// retrieval path is broken.
     /// </remarks>
     private async Task AssertLocalSearchFindsRelevantDocumentsAsync(
-        GraphRagSliceRun run,
+        GraphRagRun run,
         IReadOnlyList<BeirQuery> queries,
         BeirDataset dataset,
         CancellationToken cancellationToken)
@@ -489,7 +489,7 @@ public sealed class GraphRagFunctionsTests
     /// </para>
     /// </remarks>
     private async Task AssertGlobalSearchDiffersFromLocalAsync(
-        GraphRagSliceRun run, BeirQuery query, CancellationToken cancellationToken)
+        GraphRagRun run, BeirQuery query, CancellationToken cancellationToken)
     {
         var local = await run.LocalSearchAsync(query.Text, cancellationToken);
         var rank = await run.FirstCommunityReportRankAsync(query.Text, cancellationToken);
@@ -519,7 +519,7 @@ public sealed class GraphRagFunctionsTests
 
     /// <summary>Asserts global search returned something and got there by doing its own work.</summary>
     private static void AssertGlobalSearchRan(
-        GraphRagSliceRun run,
+        GraphRagRun run,
         BeirQuery query,
         IReadOnlyList<SearchResult> global,
         long callsBefore,
@@ -602,7 +602,7 @@ public sealed class GraphRagFunctionsTests
     }
 
     /// <summary>Finds the entity extracted from the most distinct articles.</summary>
-    private static (string Name, int Articles) MostRecurrentEntity(GraphRagSliceRun run)
+    private static (string Name, int Articles) MostRecurrentEntity(GraphRagRun run)
     {
         var best = string.Empty;
         var articles = 0;
@@ -636,7 +636,7 @@ public sealed class GraphRagFunctionsTests
 
     /// <summary>What the run produced, printed before anything is asserted about it.</summary>
     private static string Describe(
-        IReadOnlyList<BeirDocument> documents, IReadOnlyList<BeirQuery> queries, GraphRagSliceRun run)
+        IReadOnlyList<BeirDocument> documents, IReadOnlyList<BeirQuery> queries, GraphRagRun run)
     {
         var (best, articles) = MostRecurrentEntity(run);
 
@@ -666,7 +666,7 @@ public sealed class GraphRagFunctionsTests
     /// seeing, and if it doubles it, that is a regression worth seeing, and neither is a reason for
     /// this file to go red.
     /// </remarks>
-    private static int IsolatedEntities(GraphRagSliceRun run)
+    private static int IsolatedEntities(GraphRagRun run)
     {
         var connected = new HashSet<string>(GraphNames.Comparer);
         var relationships = run.Graph.Relationships;
@@ -688,7 +688,7 @@ public sealed class GraphRagFunctionsTests
     }
 
     /// <summary>How many entities the largest community holds.</summary>
-    private static int LargestCommunity(GraphRagSliceRun run)
+    private static int LargestCommunity(GraphRagRun run)
     {
         var largest = 0;
         for (var i = 0; i < run.Graph.Communities.Count; i++)

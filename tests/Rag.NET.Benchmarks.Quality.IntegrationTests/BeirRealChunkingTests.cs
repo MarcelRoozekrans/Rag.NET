@@ -292,8 +292,19 @@ public sealed class BeirRealChunkingTests
     /// as <see cref="BeirRunResult.UnindexedDocumentCount"/> rather than papered over with a
     /// placeholder chunk.
     /// </para>
+    /// <para>
+    /// <b>Internal rather than private, and the reason is a confound.</b> The GraphRAG corpus run's
+    /// extraction cache was filled through <c>GraphRagSliceIngestion.ChunkAsync</c>, a second copy
+    /// of this method living in the generation tool — and if the two ever cut the corpus
+    /// differently, the difference between that run's nDCG@10 and this leg's pinned 0.63967 would
+    /// be chunking and GraphRAG mixed together, with no way to tell which moved it. Re-chunking is
+    /// not available as a fix: it would invalidate every one of the 35,296 cached extraction keys,
+    /// which cost real money. So
+    /// <see cref="BeirGraphRagCorpusTests.Chunking_UnderTheGraphPath_IsIdenticalToTheRealProtocols"/>
+    /// asserts the two agree chunk for chunk, which it can only do by calling this one.
+    /// </para>
     /// </remarks>
-    private static async Task<IReadOnlyList<TextChunk>> ChunkAsync(
+    internal static async Task<IReadOnlyList<TextChunk>> ChunkAsync(
         IReadOnlyList<BeirDocument> documents, CancellationToken cancellationToken)
     {
         var strategy = new RecursiveChunkingStrategy();
