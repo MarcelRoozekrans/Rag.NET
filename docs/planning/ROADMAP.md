@@ -2834,7 +2834,7 @@ by this entry**: Milestone 4's "All planned phases complete" stays open (4.5 rem
 "No package declares `VerifiedBy=none`" stays open (`Rag.NET.Security.AspNetCore`) — both updated
 above to say so rather than left stale.)
 
-## Milestone 5: Evaluation Depth [status: active — every phase complete: 5.1, 5.1.1, 5.2, 5.2.1, 5.2.2, 5.3 and 5.4. 5.2 closed 2026-08-15 with the comparative run (GraphRAG −0.02761 against the candidate-set control); 5.2.1 and 5.2.2 were both added and closed the same day, and between them the retrieval deficit is decomposed (pollution + PageRank blend, none of it the graph) and the answer question is answered (local hurts, global helps on entity questions). Only the clean-restore DoD box is open, and it is the close audit]
+## Milestone 5: Evaluation Depth [status: complete — audited and archived 2026-08-15, docs/plans/2026-08-15-milestone-5-audit.md, verdict PASS on all five criteria]
 **Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:
 what each library **costs** rather than what it scores, multi-hop retrieval, graded relevance and
 the datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` does not compute.
@@ -2887,9 +2887,12 @@ shape, though that box is still here doing its share):
       at 0.63967 — and **"where one exists" is doing real work in its row**: there is no published
       reference for `all-MiniLM-L6-v2` at nDCG@10 on this dataset, so the target holds `NaN`,
       recorded as a determination and not as an omission.)*
-- [ ] All test projects passing; solution builds 0 warnings / 0 errors from a clean restore
-      — to be re-run at close. True on 2026-08-11; 5.2's branch has not been re-checked from a
-      clean restore.
+- [x] All test projects passing; solution builds 0 warnings / 0 errors from a clean restore
+      — re-run at close. *(Met 2026-08-15 by the close audit,
+      `docs/plans/2026-08-15-milestone-5-audit.md`: every `bin/` and `obj/` deleted, restore
+      forced, `dotnet build -c Release` 0 warnings / 0 errors, all 73 suites green on `main` at
+      `32fa597f`. The first pass reported twelve failures — Docker Desktop not running, and a stale
+      `artifacts/packages` — both recorded there as the artefacts they were, and re-run green.)*
 
 > **Where this milestone comes from (2026-08-03).** An external handover document ("RAG.net —
 > Evaluation & Benchmarking Handover") proposed an evaluation programme. **Most of it Milestone 3
@@ -4005,7 +4008,7 @@ commitments; whichever is picked up first gets a real phase entry with a scope a
 way every scheduled phase on this roadmap has, and the DoD's first box deliberately excludes
 this one.
 
-## Milestone 6: Hardening & v1.0 [status: pending]
+## Milestone 6: Hardening & v1.0 — Battle-Tested [status: active — opened 2026-08-15 from `docs/plans/2026-08-15-milestone-6-battle-tested-replan.md`, the day Milestone 5 was audited and archived; two of the re-plan's decisions are the operator's and open]
 **Goal:** Exercise every package beyond fakes — or record, per package, exactly why that cannot
 be done and what it leaves unverified — and then, and only then, tag v1.0. The terminal
 milestone, created 2026-08-03 when the tag was postponed out of Milestone 4: this project's own
@@ -4014,6 +4017,20 @@ that already pass, so the release comes after the work that runs real things. Mi
 its number, its phases and its gates as the shipping-readiness work; Milestone 5 is unchanged;
 this milestone carries the hardening and the tag.
 
+
+> **Re-planned before it opened, 2026-08-15, at the operator's request** — *"make Milestone 6
+> about testing every available feature so we are battle-tested"* — from
+> `docs/plans/2026-08-15-milestone-6-battle-tested-replan.md`. Milestone 5's last week is why: a
+> package that was `VerifiedBy=unit`, `✅ Done`, green and published had eight defects found by
+> running it once, and the dense path — calibrated against four published figures — is the
+> counter-example whose every defect was found *by* that calibration. The unit that matters is the
+> **feature**, defined per kind so the criterion can be false: retrieval techniques get a pinned
+> figure with a control; answer engines an accuracy through the 5.2.2 harness; vector stores must
+> reproduce the SciFact parity figure through themselves; parsers/chunkers a real file with shape
+> assertions; live services a recording or a stated reason; pipeline plumbing a parity test.
+> Two decisions the note leaves to the operator, still open: whether 6.1's recordings gate v1.0 or
+> `<VerifiedByReason>` does where no credentials exist; and whether the #247 / #239 fixes ship in
+> v1.0. The note's recommendation stands in until they are made.
 > **"Find all bugs before going 1.0" is the intent behind this milestone, and it is deliberately
 > not its Definition of Done.** "No bugs remain" is not a claim this — or any — milestone can
 > make: nothing can check it, it can only be falsified by the next defect, so a milestone
@@ -4026,9 +4043,21 @@ this milestone carries the hardening and the tag.
 
 **Definition of Done** (in Phase 4.0's falsifiable style — every criterion below can be false,
 and something checks it):
-- [ ] Milestones 4 and 5 complete — their own DoDs, checked at their own closes, not
-      re-litigated here; this box is false while either is open
-- [ ] All planned phases complete
+- [x] Milestones 4 and 5 complete — their own DoDs, checked at their own closes, not
+      re-litigated here; this box is false while either is open *(both closed by audit: 4 on 2026-08-11, 5 on 2026-08-15)*
+- [ ] All planned phases complete — 6.0 Inventory, 6.1 Recorded Responses, 6.2 Raise the Floor,
+      6.2.1 Retrieval & Answer Sweep, 6.3 Release v1.0
+- [ ] **Every `✅ Done` row in `features.md` names what exercises it** (Phase 6.0): an
+      *Exercised by* column pointing at a test or benchmark that runs the real thing — a pinned
+      figure, a container suite, a recording, a real-file test — and a conventions test that fails a
+      ✅ row whose column is empty. On 2026-08-15: 56 rows, 0 pointers. Checked, not asserted.
+- [ ] **Every retrieval technique and answer engine has a pinned figure with a control** (Phase
+      6.2.1): the GraphRAG method — a real corpus, a real model, a control it is differenced against,
+      a `BeirReproduction`-style pin at ±0.005 — applied to RAPTOR, HyDE, hybrid, reranking, late
+      chunking and SPLADE; the three answer engines through the 5.2.2 harness against MultiHop-RAG's
+      gold answers; every vector store reproducing the SciFact parity figure through itself; and a
+      **pipeline-parity** test holding a real `AddRagNet` pipeline to the harness's top-k on every
+      push. A feature measured and found wanting passes this box; a feature nobody ran does not.
 - [ ] **Every package talking to a live service has either a scrubbed, dated recording or a
       recorded reason** (Phase 6.1): `VerifiedBy=recorded` backed by committed fixtures, or
       `VerifiedBy=unit` with a `<VerifiedByReason>` beside it in the csproj naming the service,
@@ -4048,6 +4077,24 @@ and something checks it):
       a suite that was red on Windows while the Linux nightly was green; this criterion exists
       so that cannot recur at the tag.
 - [ ] Release tagged v1.0
+
+### Phase 6.0: The Inventory [status: pending — added 2026-08-15 by the re-plan]
+**Goal:** turn "battle-tested" from a mood into a list with checkboxes before any of 6.1–6.3
+starts. Three things, all mechanical and all checked: (1) the **per-kind definitions** from the
+re-plan, written into `docs/reference/features.md`'s preamble so every later row is held to a
+stated bar; (2) an **Exercised by** column on that table — a pointer to the test or benchmark
+that runs the real thing — plus a conventions test that fails any `✅ Done` row whose column is
+empty, and the ledger values `recorded` and `benchmark` beside `unit` and `container` with the
+existing ledger test extended to fail a bare `unit`; (3) a **first classification** of all 56 ✅
+rows and 71 packages as *exercised* (pointer already exists — the four BEIR datasets, the nine
+container packages, the E2E suites), *plan* (a phase below will supply it), or *declared*
+(`<VerifiedByReason>`, with the reason). The two guards ship in this phase **failing**, behind an
+allowlist that 6.1–6.2.1 empty; a guard that only turns on when everything already passes is the
+inert-guard shape this repository keeps deleting.
+
+**Exit condition:** the column exists, both guards run on every push, every ✅ row and every
+package is in exactly one of the three states, and the allowlist is the work list for the rest of
+the milestone. Nothing is exercised in this phase; it is where the ledger stops being a feeling.
 
 ### Phase 6.1: Recorded Responses [status: pending]
 **Goal:** For each of the ~20 packages that talk to live services, either commit a scrubbed,
@@ -4118,6 +4165,30 @@ phase's own first task; this entry states the question and the evidence, not the
 **Exit condition:** no package remains at bare `VerifiedBy=unit` — each is upgraded under
 whatever definition this phase settles, or carries a `<VerifiedByReason>` stating why it stays.
 That is Milestone 6's second DoD criterion, and this phase owns it.
+
+### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: pending — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at]
+**Goal:** every retrieval technique and every answer engine gets what GraphRAG got in Milestone 5:
+one real run on a real corpus with a real model, differenced against a control, pinned, and read
+honestly. **#247 first** — the shared-store policy for graph-derived chunks is the largest measured
+cost in the programme (−0.043 nDCG, −0.21 answer accuracy) and the one fix every measurement pointed
+at; fix it, re-run the four answer arms at top-6 (everything else replays, ~$5), and *then* the
+question 5.2.2 could not answer — can local search beat dense when it is not starving the model —
+gets its number. Then, in whatever order the pilot costs suggest: RAPTOR (same store shape as
+GraphRAG, likely the same finding, and the same fix), HyDE and reranking (already have parity-corpus
+cells — re-measure under the Real protocol), hybrid BM25, late chunking, SPLADE; the three answer
+engines (MapReduce, Refine, FLARE) through `BeirGraphRagAnswerTests`' harness as arms; every vector
+store through the SciFact parity leg, reproducing 0.64593 ± 0.005 through itself; and the
+**pipeline-parity test** — the same query through a real `AddRagNet` pipeline and through the
+harness, top-k identical, on every push — which closes the gap 5.2.2 named. #239's blend and
+traversal are decided here (rescale, drop, or use), with the ablation numbers in hand. #176 and
+#200 ride along.
+
+**What it costs:** one BEIR run per retrieval feature (minutes to an hour, embeddings cached); one
+answer arm per engine (~$3 derived each, replayed after); one container run per store; a fast-tier
+test for parity. What it does not promise: that any of them are good. Measured is the bar.
+
+**Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; #247 is fixed
+and re-measured; the pipeline-parity test is in the fast tier; the guards' allowlist is empty.
 
 ### Phase 6.3: Release v1.0 [status: pending]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
