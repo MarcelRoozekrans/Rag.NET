@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Benchmarks.Quality.GraphExtractions;
+using Rag.NET.GraphRag;
 using Rag.NET.Models;
 using Xunit;
 
@@ -393,6 +394,234 @@ public sealed class BeirGraphRagCorpusTests
                 ids reach IrMetrics instead of document ids; no chunk id ever matches a qrels row.
                 """));
     }
+
+    /// <summary>
+    /// The two ablations issue #239 asks for, over one graph build: local search at
+    /// <c>PageRankWeight = 0</c>, and the reach of the graph walk local search performs but does
+    /// not use.
+    /// </summary>
+    /// <param name="datasetName">The dataset to measure.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>Ablation 1 — the blend.</b> <c>GraphLocalSearchBehavior</c> re-scores every entity chunk
+    /// whose entity its walk reached as <c>(1 − w)·cosine + w·PageRank</c>. PageRank is normalised
+    /// to sum to one over the whole entity set, so on this corpus its values are 1e-5 to 1e-2
+    /// against cosines of 0.3–0.6, and the blend at the default <c>w = 0.3</c> demotes exactly the
+    /// chunks the graph reached by roughly 30% of their score. Reading the code says <c>w = 0</c>
+    /// makes the behavior an identity over its input (the deduplication drops nothing since #231),
+    /// so its nDCG@10 should equal the candidate-set control's 0.59658 to the last digit. This
+    /// repository has learned twice that "the code says" and "it does" differ, so it is run.
+    /// </para>
+    /// <para>
+    /// <b>Ablation 2 — the reach.</b> The behavior's walk collects PageRank scores and adds no
+    /// candidate, so whether the graph <i>knows</i> documents dense missed cannot be asked through
+    /// it. It is asked of the walk itself, through <see cref="GraphRagRun.ExpandDocumentsAsync"/>:
+    /// the same seeds, the same depth, and the articles each reached entity was extracted from,
+    /// appended below the pooled candidate ranking. Recall@k over that list against Recall@k over
+    /// the candidates alone is the graph's contribution to recall, upper-bounded — an expansion
+    /// that placed its additions perfectly could not do better than "present in the list", and one
+    /// that placed them at the bottom, as this does, is the honest lower reading of what appending
+    /// them buys.
+    /// </para>
+    /// <para>
+    /// Nothing here is pinned in <see cref="BeirReproduction"/>: these are ablations recorded in
+    /// the phase entry, not protocols the harness promises to reproduce, and they share the GraphRag
+    /// budget cell because they cost that cell's graph build. Shape is asserted, quality is not.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(Datasets))]
+    public async Task Ablations_UnderTheGraphPath_PageRankWeightZero_AndGraphReach(string datasetName)
+    {
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.GraphRag),
+            $"{datasetName} does not declare the GraphRag protocol applicable.");
+
+        Assert.SkipUnless(
+            BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
+            BeirHarness.SkipReason);
+
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(descriptor.Name, BeirProtocol.GraphRag, out var budgetReason),
+            budgetReason);
+
+        var ct = TestContext.Current.CancellationToken;
+        var dataset = await BeirHarness.LoadAsync(
+            descriptor, cacheDirectory, BeirLoader.DefaultTitleTextSeparator, ct);
+
+        using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
+        var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
+
+        var startedAt = Stopwatch.GetTimestamp();
+        await using var run = await GraphRagRun.BuildAsync(
+            dataset.Documents, generator, embeddings, OpenExtractions(cacheDirectory),
+            OpenReports(cacheDirectory), ct);
+        _output.WriteLine(DescribeTheGraph(dataset, run, Stopwatch.GetElapsedTime(startedAt)));
+
+        var ablation = await RunAblationsAsync(descriptor, dataset, run, ct);
+        _output.WriteLine(DescribeAblations(descriptor, dataset, ablation));
+
+        AssertTheWholeCorpusWentThroughTheGraphPath(descriptor, run);
+        Assert.True(
+            ablation.Control.EvaluatedQueryCount == descriptor.TestQueryCount,
+            FormattableString.Invariant($"""
+                {ablation.Control.EvaluatedQueryCount} OF {descriptor.TestQueryCount} JUDGED QUERIES
+                WERE SCORED. Every figure below is a mean over the judged set, and a mean over a
+                subset is a different quantity from every anchor it is read against.
+                """));
+        Assert.True(
+            ablation.Control.NormalizedDiscountedCumulativeGain > 0,
+            "The candidate-set control scored zero, which is chunk ids reaching IrMetrics.");
+    }
+
+    /// <summary>Walks every judged query once and scores both ablations from the same candidates.</summary>
+    private async Task<AblationSummary> RunAblationsAsync(
+        BeirDatasetDescriptor descriptor,
+        BeirDataset dataset,
+        GraphRagRun run,
+        CancellationToken ct)
+    {
+        const int ReachCutoff = 100;
+        var queries = BeirHarness.JudgedQueries(dataset);
+        var unweighted = new GraphRagRetrievalOptions { PageRankWeight = 0.0 };
+        var defaults = new GraphRagRetrievalOptions();
+
+        var controlAt10 = new Dictionary<string, IReadOnlyList<string>>(queries.Count, StringComparer.Ordinal);
+        var unweightedAt10 = new Dictionary<string, IReadOnlyList<string>>(queries.Count, StringComparer.Ordinal);
+        var controlAtReach = new Dictionary<string, IReadOnlyList<string>>(queries.Count, StringComparer.Ordinal);
+        var expandedAtReach = new Dictionary<string, IReadOnlyList<string>>(queries.Count, StringComparer.Ordinal);
+        var additionsOnly = new Dictionary<string, IReadOnlyList<string>>(queries.Count, StringComparer.Ordinal);
+        long candidateDocuments = 0;
+        long added = 0;
+        var identical = 0;
+        var startedAt = Stopwatch.GetTimestamp();
+
+        for (var i = 0; i < queries.Count; i++)
+        {
+            var excluded = descriptor.ExcludesSelfRetrievedDocument ? queries[i].Id : null;
+            var outcome = await run.LocalSearchWithCandidatesAsync(queries[i].Text, unweighted, ct);
+            var candidateHits = ToHits(outcome.Candidates);
+            var resultHits = ToHits(outcome.Results);
+
+            var control = DocumentRanking.TopDocumentIds(candidateHits, Cutoff, excluded);
+            var atZero = DocumentRanking.TopDocumentIds(resultHits, Cutoff, excluded);
+            controlAt10[queries[i].Id] = control;
+            unweightedAt10[queries[i].Id] = atZero;
+            identical += control.SequenceEqual(atZero, StringComparer.Ordinal) ? 1 : 0;
+
+            var controlDocuments = DocumentRanking.TopDocumentIds(candidateHits, ReachCutoff, excluded);
+            var additions = await run.ExpandDocumentsAsync(outcome.Candidates, defaults, ct);
+            var expanded = AppendAdditions(controlDocuments, additions, excluded, ReachCutoff);
+
+            controlAtReach[queries[i].Id] = controlDocuments;
+            expandedAtReach[queries[i].Id] = expanded;
+            additionsOnly[queries[i].Id] = additions;
+            candidateDocuments += controlDocuments.Count;
+            added += expanded.Count - controlDocuments.Count;
+
+            if ((i + 1) % ProgressEvery == 0)
+            {
+                _output.WriteLine(FormattableString.Invariant(
+                    $"  ablations: {i + 1} of {queries.Count} queries, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far"));
+            }
+        }
+
+        return new AblationSummary(
+            IrMetrics.Evaluate(controlAt10, dataset.Qrels, Cutoff),
+            IrMetrics.Evaluate(unweightedAt10, dataset.Qrels, Cutoff),
+            identical,
+            IrMetrics.Evaluate(controlAtReach, dataset.Qrels, ReachCutoff),
+            IrMetrics.Evaluate(expandedAtReach, dataset.Qrels, ReachCutoff),
+            IrMetrics.Evaluate(additionsOnly, dataset.Qrels, ReachCutoff),
+            (double)candidateDocuments / queries.Count,
+            (double)added / queries.Count,
+            Stopwatch.GetElapsedTime(startedAt));
+    }
+
+    /// <summary>The pooled candidate ranking with the walk's additions appended below it, cut at the reach cutoff.</summary>
+    private static List<string> AppendAdditions(
+        IReadOnlyList<string> controlDocuments,
+        IReadOnlyList<string> additions,
+        string? excludedDocumentId,
+        int cutoff)
+    {
+        var expanded = new List<string>(controlDocuments);
+        for (var j = 0; j < additions.Count && expanded.Count < cutoff; j++)
+        {
+            if (!string.Equals(additions[j], excludedDocumentId, StringComparison.Ordinal))
+            {
+                expanded.Add(additions[j]);
+            }
+        }
+
+        return expanded;
+    }
+
+    /// <summary>Both ablations beside the anchors they are read against.</summary>
+    private static string DescribeAblations(
+        BeirDatasetDescriptor descriptor, BeirDataset dataset, AblationSummary a) =>
+        FormattableString.Invariant($"""
+
+            === {descriptor.Name} GRAPHRAG ABLATIONS (#239) — {a.Elapsed.TotalSeconds:F1} s over {a.Control.EvaluatedQueryCount} judged queries ===
+
+            ABLATION 1 — local search at PageRankWeight = 0 (default is 0.3), max-pooled to documents:
+              candidate-set control:  nDCG@{Cutoff} = {a.Control.NormalizedDiscountedCumulativeGain:F5}, Recall@{Cutoff} = {a.Control.Recall:F5}, MRR@{Cutoff} = {a.Control.MeanReciprocalRank:F5}
+              local search, w = 0:    nDCG@{Cutoff} = {a.Unweighted.NormalizedDiscountedCumulativeGain:F5}, Recall@{Cutoff} = {a.Unweighted.Recall:F5}, MRR@{Cutoff} = {a.Unweighted.MeanReciprocalRank:F5}
+              top-{Cutoff} document rankings identical to the control on {a.IdenticalTop10} of {a.Control.EvaluatedQueryCount} queries
+              anchor: local search at the default w = 0.3 measured nDCG@{Cutoff} = 0.56897 on this corpus (BeirReproduction, GraphRag);
+              whatever w = 0 recovers of the 0.02761 between that and the control is the price of blending PageRank (sums to 1 over
+              the entity set) against cosine on the same axis.
+
+            ABLATION 2 — the reach of the walk local search performs and does not use (seeds = top LocalTopEntities entity chunks,
+            depth = LocalSearchDepth, a reached entity contributes the articles it was extracted from):
+              candidate documents per query (dense top-{GraphRagRun.BaseTopK}, pooled):  {a.MeanCandidateDocuments:F1}
+              documents the walk adds per query, appended below them, cut at 100:      {a.MeanAdded:F1}
+              Recall@100, candidates alone:                                            {a.ControlAtReach.Recall:F5}
+              Recall@100, candidates + graph additions:                                {a.ExpandedAtReach.Recall:F5}   (delta {a.ExpandedAtReach.Recall - a.ControlAtReach.Recall:+0.00000;-0.00000;0.00000})
+              Recall@100 of the additions on their own (what the graph reaches that dense did not): {a.AdditionsAtReach.Recall:F5}
+              this is reach, not ranking: it bounds what an expansion could contribute and says nothing about where one would place it.
+            """);
+
+    /// <summary>
+    /// Projects search results to the shape <see cref="DocumentRanking"/> takes, which is the one
+    /// place the qrels join happens.
+    /// </summary>
+    /// <remarks>
+    /// The parent document id is <see cref="TextChunk.DocumentId"/> for every chunk in the store,
+    /// and for entity and relationship chunks that is the article extraction ran over — so a graph
+    /// chunk retrieving is that article retrieving, which is exactly the credit GraphRAG is
+    /// claiming. The exception is the community reports, whose synthetic document id is judged by
+    /// nothing; they are left in rather than filtered out, because a pipeline returning them is a
+    /// pipeline whose caller sees them, and hiding them here would flatter the run.
+    /// </remarks>
+    private static IReadOnlyList<ChunkHit> ToHits(IReadOnlyList<SearchResult> results)
+    {
+        var hits = new ChunkHit[results.Count];
+        for (var i = 0; i < results.Count; i++)
+        {
+            var chunk = results[i].Chunk;
+            hits[i] = new ChunkHit(
+                FormattableString.Invariant($"{chunk.DocumentId.Value}#{chunk.ChunkIndex}"),
+                chunk.DocumentId.Value,
+                results[i].Score);
+        }
+
+        return hits;
+    }
+
+    /// <summary>What one ablation pass produced.</summary>
+    private sealed record AblationSummary(
+        IrEvaluation Control,
+        IrEvaluation Unweighted,
+        int IdenticalTop10,
+        IrEvaluation ControlAtReach,
+        IrEvaluation ExpandedAtReach,
+        IrEvaluation AdditionsAtReach,
+        double MeanCandidateDocuments,
+        double MeanAdded,
+        TimeSpan Elapsed);
 
     /// <summary>Builds the corpus graph, scores every judged query against it, and reports.</summary>
     private async Task MeasureTheCorpusAsync(
@@ -910,34 +1139,6 @@ public sealed class BeirGraphRagCorpusTests
         }
 
         private double Mean(long total) => QueryCount == 0 ? 0 : (double)total / QueryCount;
-
-        /// <summary>
-        /// Projects search results to the shape <see cref="DocumentRanking"/> takes, which is the
-        /// one place the qrels join happens.
-        /// </summary>
-        /// <remarks>
-        /// The parent document id is <see cref="TextChunk.DocumentId"/> for every chunk in the
-        /// store, and for entity and relationship chunks that is the article extraction ran over —
-        /// so a graph chunk retrieving is that article retrieving, which is exactly the credit
-        /// GraphRAG is claiming. The exception is the community reports, whose synthetic document
-        /// id is judged by nothing; they are left in rather than filtered out, because a pipeline
-        /// returning them is a pipeline whose caller sees them, and hiding them here would flatter
-        /// the run.
-        /// </remarks>
-        private static IReadOnlyList<ChunkHit> ToHits(IReadOnlyList<SearchResult> results)
-        {
-            var hits = new ChunkHit[results.Count];
-            for (var i = 0; i < results.Count; i++)
-            {
-                var chunk = results[i].Chunk;
-                hits[i] = new ChunkHit(
-                    FormattableString.Invariant($"{chunk.DocumentId.Value}#{chunk.ChunkIndex}"),
-                    chunk.DocumentId.Value,
-                    results[i].Score);
-            }
-
-            return hits;
-        }
 
         /// <summary>How many distinct parent documents a hit list names.</summary>
         private static int CountDistinctDocuments(IReadOnlyList<ChunkHit> hits)

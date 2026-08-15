@@ -168,6 +168,18 @@ The behavior:
 2. Traverses the graph to find neighbors within `LocalSearchDepth` hops, collecting their PageRank scores
 3. Blends entity scores: `(1 - PageRankWeight) * similarity + PageRankWeight * pageRank`
 
+**Read step 3 with its scale in mind, because it was measured** (issue #239, 2026-08-15). PageRank
+is normalised to sum to one over all entities, so on a 62,000-entity graph its values are around
+1e-5, against similarities of 0.3–0.6; at the default `PageRankWeight = 0.3` the blend therefore
+*lowers* every graph-connected entity chunk's score by roughly 30% relative to chunks the walk did
+not reach. On MultiHop-RAG that was the entire measured difference between local search and plain
+dense retrieval of the same candidates: at `PageRankWeight = 0` the two rankings were identical on
+2,255 of 2,255 queries. Note also what the behavior does **not** do: it adds no candidates — the
+traversal only collects PageRank scores — so it can reorder what retrieval found and cannot raise
+recall above it. What it is for, then, is the *shape* of the context it hands the model (entity,
+relationship and report chunks beside article chunks), which is what the answer-level evaluation in
+Phase 5.2.2 measures.
+
 ### Global Search
 
 Best for: "What are the main themes in this document?" or "Summarize the key findings"

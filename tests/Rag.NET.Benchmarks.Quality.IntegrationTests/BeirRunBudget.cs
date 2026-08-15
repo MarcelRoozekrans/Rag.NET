@@ -526,7 +526,9 @@ public static class BeirRunBudget
             "--filter \"FullyQualifiedName~BeirGraphRagCorpusTests.NdcgAt10_UnderTheGraphPath\" -- " +
             "the method, not the class, because since Phase 5.2.1 the class also holds the depth " +
             "control's run, which is priced by its own cell. For the " +
-            "slice guard alone: --filter \"FullyQualifiedName~GraphRagFunctionsTests\". The " +
+            "slice guard alone: --filter \"FullyQualifiedName~GraphRagFunctionsTests\". A THIRD case " +
+            "shares the cell since #239: BeirGraphRagCorpusTests.Ablations_UnderTheGraphPath, one more " +
+            "graph build plus one query pass, recorded in Phase 5.2.1 rather than pinned. The " +
             "confound check that has to pass before either number means anything is " +
             "--filter \"DisplayName~Chunking_UnderTheGraphPath\", which needs no model and takes " +
             "under a second. " +
@@ -828,7 +830,9 @@ public static class BeirRunBudget
         {
             return $"FullyQualifiedName~{nameof(GraphRagFunctionsTests)}" +
                    $"|FullyQualifiedName~{nameof(BeirGraphRagCorpusTests)}." +
-                   nameof(BeirGraphRagCorpusTests.NdcgAt10_UnderTheGraphPath_IsMeasuredOverTheWholeCorpus);
+                   nameof(BeirGraphRagCorpusTests.NdcgAt10_UnderTheGraphPath_IsMeasuredOverTheWholeCorpus) +
+                   $"|FullyQualifiedName~{nameof(BeirGraphRagCorpusTests)}." +
+                   nameof(BeirGraphRagCorpusTests.Ablations_UnderTheGraphPath_PageRankWeightZero_AndGraphReach);
         }
 
         var discriminator = cost.Protocol switch
