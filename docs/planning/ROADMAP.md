@@ -3574,7 +3574,7 @@ stops anyone finding it.
 `features.md`'s GraphRAG row is corrected accordingly: it still says `✅ Done`, which was never false
 about the code shipping, and it now says what is exercised and what is not.
 
-### Phase 5.2.1: The GraphRAG Deficit Read Back [status: complete 2026-08-15 — added and closed the same day, all three items landed: #232 measured, depth costs nothing; #226 done, reports parallel and measured 4.1x at 4; #174 done, idle-cold Real leg 343.5 s and 388.5 s, FitsTheNightly stays false, decided]
+### Phase 5.2.1: The GraphRAG Deficit Read Back [status: complete 2026-08-15 — added and closed the same day, all three items landed: #232 measured, depth costs nothing; #226 done, reports parallel and measured 4.1x at 4; #174 done, idle-cold Real leg 343.5 s and 388.5 s, FitsTheNightly stays false, decided; #239 ablations measured the same day, the whole behaviour cost is the PageRank blend and the walk adds no recall]
 
 **Goal:** act on what 5.2's comparative run measured instead of filing it, the way 5.1.1 acted on
 5.1's cost figure. Three things came out of #173's close and none had a home: a deficit the run
@@ -3732,6 +3732,29 @@ report run's own rate — the tool still records no `Usage` (#200) — and it le
 the shared report cache under keys nothing else computes, which is harmless. `CachedGraphRagClient`
 gained a `Retries` counter so the tool can print rate-limit pressure beside the rate, and the
 report plan now states the bound and divides by it instead of announcing "no concurrency to widen".
+
+**4. Two ablations the operator asked for on reading the result — [#239](https://github.com/MarcelRoozekrans/Rag.NET/issues/239), added and measured 2026-08-15.**
+Reading `GraphLocalSearchBehavior` to design them found the mechanism before the run did: the blend
+is `(1 − w)·cosine + w·PageRank` with PageRank normalised to sum to one over 62,392 entities (mean
+1.6e-5) against cosines of 0.3–0.6, so at the default `w = 0.3` every graph-connected entity chunk
+is *demoted* by ~30%; the walk collects PageRank scores and adds no candidate; and two store calls
+per seed fetch relationships and communities that are then discarded. Measured over one graph build
+and one query pass (53 m 54 s, everything replayed):
+
+| Ablation | Result |
+|---|---|
+| **1. `PageRankWeight = 0`** | nDCG@10 **0.59658**, Recall@10 0.74254, MRR@10 0.66785 — the candidate-set control to five decimals, **identical top-10 on 2,255 of 2,255 queries**. The whole −0.02761 is the blend. |
+| **2. Reach of the walk** (seeds = top-10 entity chunks, depth 1, reached entities contribute their source articles, appended below the pooled candidates) | dense top-500 pools to 75.8 documents/query and already holds **Recall@100 = 0.98566**; the walk adds 24.0 documents/query for **+0.00148**; the additions alone reach **0.00610** of relevant documents. |
+
+**So the retrieval deficit decomposes completely, and none of it is the graph.** 0.63967 dense →
+−0.04309 store pollution (#232) → 0.59658 → −0.02761 PageRank blend on the wrong scale (#239) →
+0.56897; the traversal contributes neither harm nor recall, because dense already retrieves 98.6% of
+the relevant documents on this corpus and the graph knows 0.6% of them that dense does not. What is
+left for local search to be *for* is context assembly — entity, relationship and report chunks in
+the model's context — which is exactly the question 5.2.2 asks. Both ablations are recorded here
+rather than pinned; they share the GraphRag budget cell, and `GraphRagRun.ExpandDocumentsAsync` is
+the harness-side walk the behaviour does not perform. Fixing #239 is a design decision (rescale or
+drop the blend; use or drop the traversal) and is not made in this phase.
 
 **Exit condition, falsifiable:** #232's fourth row is published and pinned with the decomposition
 stated; #174's cell carries a cold two-run figure with `FitsTheNightly` decided on it; #226 has a

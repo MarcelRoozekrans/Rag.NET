@@ -238,10 +238,29 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// of the store's contents or of the behavior rather than at "GraphRAG" as an undivided thing.
     /// It costs one <see cref="DocumentRanking"/> pass per query and no retrieval.
     /// </remarks>
+    public Task<GraphLocalSearchOutcome> LocalSearchWithCandidatesAsync(
+        string query, CancellationToken cancellationToken) =>
+        LocalSearchWithCandidatesAsync(query, _retrievalOptions, cancellationToken);
+
+    /// <summary>
+    /// <see cref="LocalSearchWithCandidatesAsync(string, CancellationToken)"/> under retrieval
+    /// options the caller chooses instead of the run's defaults.
+    /// </summary>
+    /// <param name="query">The query text.</param>
+    /// <param name="retrievalOptions">The options the behavior is constructed with.</param>
+    /// <param name="cancellationToken">Cancels the search.</param>
+    /// <returns>The candidate set and the blended result.</returns>
+    /// <remarks>
+    /// Exists for the ablations issue #239 asks for — chiefly <c>PageRankWeight = 0</c>, which
+    /// the code says turns the behavior into a re-ordering-free pass over its input. The
+    /// candidate set is retrieved identically whatever the options say, since the options only
+    /// reach the behavior; that is what makes two runs under different options a comparison of
+    /// the behavior alone.
+    /// </remarks>
     public async Task<GraphLocalSearchOutcome> LocalSearchWithCandidatesAsync(
-        string query, CancellationToken cancellationToken)
+        string query, GraphRagRetrievalOptions retrievalOptions, CancellationToken cancellationToken)
     {
-        var behavior = new GraphLocalSearchBehavior(_graphStore, _retrievalOptions);
+        var behavior = new GraphLocalSearchBehavior(_graphStore, retrievalOptions);
         IReadOnlyList<SearchResult> candidates = [];
 
         var results = await behavior.HandleAsync(
@@ -250,6 +269,91 @@ internal sealed class GraphRagRun : IAsyncDisposable
             async (context, token) => candidates = await RetrieveAsync(context, token));
 
         return new GraphLocalSearchOutcome(candidates, results);
+    }
+
+    /// <summary>
+    /// The documents the graph reaches from a candidate set's seed entities and that the candidate
+    /// set itself does not name — the expansion <see cref="GraphLocalSearchBehavior"/> does not
+    /// perform, done here so it can be measured.
+    /// </summary>
+    /// <param name="candidates">The dense candidate set for one query.</param>
+    /// <param name="retrievalOptions">
+    /// Supplies <see cref="GraphRagRetrievalOptions.LocalTopEntities"/> and
+    /// <see cref="GraphRagRetrievalOptions.LocalSearchDepth"/>, so the seeds and the walk are the
+    /// behavior's own.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the walk.</param>
+    /// <returns>
+    /// The document ids the walk reaches that no candidate chunk belongs to, ordered by the highest
+    /// PageRank of the entity that reached each, ties by document id. Documents the candidate set
+    /// already names are excluded, so the caller appends this to its own pooled ranking.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The behavior traverses and adds nothing</b> (#239): its walk harvests PageRank scores and
+    /// its output is its input re-scored. So "does the graph find documents dense missed" cannot be
+    /// asked through the behavior at all — it has to be asked here, of the walk's reach. Seeds are
+    /// exactly what <c>CollectTopEntities</c> takes, the walk is exactly
+    /// <see cref="IGraphStore.GetNeighborsAsync"/> at the configured depth, and a neighbour's
+    /// documents are the articles its entity chunks were extracted from
+    /// (<see cref="EntityDocuments"/>) — the same credit an entity chunk earns when it retrieves.
+    /// </para>
+    /// <para>
+    /// Appended below the caller's own pooled candidate ranking, the expansion can only <i>add</i>:
+    /// a Recall@k over that list against the same k over the candidates alone is the graph's
+    /// contribution and nothing else. Which is also its limit — this measures reach, not ranking,
+    /// and it says nothing about where a real expansion would place what it adds.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> ExpandDocumentsAsync(
+        IReadOnlyList<SearchResult> candidates,
+        GraphRagRetrievalOptions retrievalOptions,
+        CancellationToken cancellationToken)
+    {
+        var seeds = candidates
+            .Where(r => r.Chunk.Metadata.TryGetValue("graph_type", out var kind) && kind == "entity")
+            .OrderByDescending(r => r.Score)
+            .Take(retrievalOptions.LocalTopEntities)
+            .ToList();
+
+        var reached = new Dictionary<string, double>(StringComparer.Ordinal);
+        for (var i = 0; i < seeds.Count; i++)
+        {
+            if (!seeds[i].Chunk.Metadata.TryGetValue("graph_entity_name", out var nameValue))
+            {
+                continue;
+            }
+
+            var neighbours = await _graphStore.GetNeighborsAsync(
+                nameValue.ToString(), retrievalOptions.LocalSearchDepth, cancellationToken);
+            for (var j = 0; j < neighbours.Count; j++)
+            {
+                if (!_entityDocuments.TryGetValue(neighbours[j].Name, out var documents))
+                {
+                    continue;
+                }
+
+                foreach (var document in documents)
+                {
+                    reached[document] = Math.Max(
+                        reached.GetValueOrDefault(document, double.NegativeInfinity),
+                        neighbours[j].PageRankScore);
+                }
+            }
+        }
+
+        var named = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            _ = named.Add(candidates[i].Chunk.DocumentId.Value);
+        }
+
+        return reached
+            .Where(pair => !named.Contains(pair.Key))
+            .OrderByDescending(pair => pair.Value)
+            .ThenBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => pair.Key)
+            .ToList();
     }
 
     /// <summary>
