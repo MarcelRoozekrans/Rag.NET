@@ -26,7 +26,7 @@ datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` doe
 Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifiable style Phase
 4.0 established — every criterion can be false, and something checks it.
 
-- [ ] **Phases 5.1–5.4 complete, sub-phases included.** 5.5 deliberately schedules nothing and is
+- [x] **Phases 5.1–5.4 complete, sub-phases included.** 5.5 deliberately schedules nothing and is
       outside this box by design. *(Was ticked 2026-08-15, when 5.2's comparative run finished and
       closed the last open phase. This box stayed open for months on the half of 5.2 that was
       expensive, deliberately: closing it on the cheap half — "does GraphRAG function" — would have
@@ -40,7 +40,7 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
       decomposes the deficit the run measured, #174 re-takes the wall clock it was told to, #226
       fixes the sequential report loop it had to pay for. The operator's call was to finish this
       milestone whole rather than carry three open issues from an evaluation milestone into a
-      hardening one. **5.2.1 closed 2026-08-15** with #174, the last of its three PRs — #232 measured, #226 done, #174 done — **and the box stays open for 5.2.2**, added the same day at the operator's request to score answers rather than rankings; it re-ticks when 5.2.2 closes.)*
+      hardening one. **5.2.1 closed 2026-08-15** with #174, the last of its three PRs — #232 measured, #226 done, #174 done — **and the box stays open for 5.2.2**, added the same day at the operator's request to score answers rather than rankings — **re-ticked the same day, with 5.2.2's close**: every phase in the range is complete, sub-phases included, and the last one landed the day it was opened.)*
 - [x] **No cross-ecosystem latency figure is published without the confound statement beside it.**
       *(Met 2026-08-10; re-verified 2026-08-11 when the table was republished after the
       dense-search optimisation. The latency table is cross-ecosystem and carries the
@@ -92,7 +92,7 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
 | 5.1.1 | The Cost Figure Read Back | — | **complete** 2026-08-11 — optimised, verified and republished |
 | 5.2 | Multi-Hop Retrieval | #168 (functions), #172 (real reports), #173 (comparative) — all resolved | **complete** 2026-08-15 — MultiHop-RAG landed and measured; GraphRAG proved to function and six library defects fixed; and the comparative run answered "does it help" with **no**: nDCG@10 0.56897 against 0.59658 for the candidate-set control, **−0.02761**, needing #231 to be reproducible |
 | 5.2.1 | The GraphRAG Deficit Read Back | #232 (decompose the −0.043) — **measured**; #226 (parallel reports) — **done**; #174 (cold wall clock, twice) — **done**; #239 (ablations, added on the operator's question) — **measured** | **complete** 2026-08-15 — all three landed the day the phase was added, so the milestone finishes whole, and the two #239 ablations landed the same day: `PageRankWeight = 0` reproduces the candidate-set control on 2,255 of 2,255 queries, so the whole −0.028 behaviour cost is the PageRank blend; the walk adds +0.0015 Recall@100 to a dense 0.986 — the retrieval deficit is entirely pollution + blend, none of it the graph. #232: depth costs **0.00000** (the depth control reproduces the Real leg to five decimals), so the −0.04309 is store pollution entire. #226: `CommunityReportConcurrency` (default 4), deterministic by construction, measured 4.62 → 1.13 → 0.63 s per report at 1 → 4 → 8 in flight with zero retries. #174: Real leg 343.5 s and 388.5 s idle-cold against 600.2 s under load, figures identical, `FitsTheNightly` decided and kept false because the nightly runs on a 4-vCPU runner this figure says nothing about. |
-| 5.2.2 | Does GraphRAG Help Answers? | — (design: `docs/plans/2026-08-15-graphrag-answer-level-evaluation.md`; #239 informs arm B′) | **pending** — added 2026-08-15 at the operator's request after 5.2's finding. Three arms (dense, GraphRAG local as shipped, GraphRAG global) answer all 2,255 judged queries with one model, judged by the paper's own `qa_evaluate.py` rule against the gold answers; pilot 100 queries (~$1) before the full run ($20–30 derived) |
+| 5.2.2 | Does GraphRAG Help Answers? | #241 (fixed on the way) — design: `docs/plans/2026-08-15-graphrag-answer-level-evaluation.md` | **complete** 2026-08-15 — added and closed the same day at the operator's request. Four arms over all 2,556 queries, judged by the paper's own rule: dense **0.350**, control 0.138, local 0.210, global **0.595** overall — but read per type: on entity questions global 0.844 beats dense 0.772 (real, +59 of 816); on yes/no questions no arm beats always-yes and global's lead is commitment bias; store pollution costs answers −0.21 (five times what it cost rankings); local as shipped is worse than dense. Figures pinned in `MultiHopRagAnswerReproduction`; ~$10 derived |
 | 5.3 | Deferred Datasets — NFCorpus, TREC-COVID, EnronQA | — | **complete** 2026-08-12 — TREC-COVID landed; NFCorpus declined on its licence; EnronQA blocked, undeclared |
 | 5.4 | Precision@k and MAP | #75 | **implemented** 2026-08-09 |
 | 5.5 | Tier 3 Suites | — | recorded — deliberately not scheduled |

@@ -191,6 +191,23 @@ The behavior:
 4. Reduce phase: LLM combines all partial answers
 5. Prepends the single synthesized answer to the remaining results
 
+Step 2's shuffle is seeded from a stable hash of the query since #241 — it was seeded from
+`string.GetHashCode`, which .NET randomises per process, so the batches and every map prompt
+differed run to run for the same query, and nothing keyed on those prompts could be replayed. The
+same query over the same reports now produces the same order in every process.
+
+**What was measured** (Phase 5.2.2, 2026-08-15, MultiHop-RAG, `gpt-4o-mini`, top-6 context, the
+dataset authors' own accuracy rule): on the 816 questions whose answer is an entity, global search
+answered **0.844** correctly against dense retrieval's **0.772** — a real gain, and the one place
+in this programme where the graph path beats plain dense. On yes/no questions no arm beat an
+always-"yes" baseline and global's apparent lead there is that it commits (it said "yes" 532
+times and "no" 55); and it abstained on only 9% of unanswerable questions where dense abstained on
+49%. So use it for questions where an answer must be *found* — synthesis across articles — and
+expect it to guess rather than decline. Local search as shipped scored **0.210** against dense's
+0.350 on the same questions, and dense over the graph store with no behaviour 0.138: what hurts
+is the shared store handing the model entity and report chunks instead of article text, not the
+graph. `docs/plans/2026-08-15-graphrag-answer-level-evaluation.md` has the design and the reading.
+
 ### Automatic routing
 
 Not implemented, and not declared. Routing a query to Local or Global by classifying it as specific/factual versus broad/thematic is a real feature and a real cost — an extra LLM call per query — so it will arrive as one, with a benchmark behind it, rather than as an enum member that does nothing. Register the behaviors you want in the meantime.

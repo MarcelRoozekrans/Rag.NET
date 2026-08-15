@@ -2834,7 +2834,7 @@ by this entry**: Milestone 4's "All planned phases complete" stays open (4.5 rem
 "No package declares `VerifiedBy=none`" stays open (`Rag.NET.Security.AspNetCore`) — both updated
 above to say so rather than left stale.)
 
-## Milestone 5: Evaluation Depth [status: active — 5.1, 5.1.1, 5.2, 5.2.1, 5.3 and 5.4 complete; 5.2 closed 2026-08-15 when its comparative run measured GraphRAG at −0.02761 against the candidate-set control, and 5.2.1 — added the same day to act on that run — closed the same day with #232, #226 and #174 all landed. 5.2.2 (added the same day at the operator's request, to score answers rather than rankings) is pending; it and the clean-restore DoD box are what remain]
+## Milestone 5: Evaluation Depth [status: active — every phase complete: 5.1, 5.1.1, 5.2, 5.2.1, 5.2.2, 5.3 and 5.4. 5.2 closed 2026-08-15 with the comparative run (GraphRAG −0.02761 against the candidate-set control); 5.2.1 and 5.2.2 were both added and closed the same day, and between them the retrieval deficit is decomposed (pollution + PageRank blend, none of it the graph) and the answer question is answered (local hurts, global helps on entity questions). Only the clean-restore DoD box is open, and it is the close audit]
 **Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:
 what each library **costs** rather than what it scores, multi-hop retrieval, graded relevance and
 the datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` does not compute.
@@ -2844,7 +2844,7 @@ its work needs to yield.
 **Definition of Done** (written in the falsifiable style Phase 4.0 established for Milestone 4 —
 every criterion below can be false, and something checks it — not the older "all phases complete"
 shape, though that box is still here doing its share):
-- [ ] Phases 5.1–5.4 complete, sub-phases included (5.5 deliberately schedules nothing and is
+- [x] Phases 5.1–5.4 complete, sub-phases included (5.5 deliberately schedules nothing and is
       outside this box by design — see its entry)
       *(Was ticked 2026-08-15, when 5.2's comparative run closed the last open phase. It answered
       "does GraphRAG help" with **no** — nDCG@10 0.56897 against 0.59658 for the candidate-set
@@ -2852,7 +2852,7 @@ shape, though that box is still here doing its share):
       asked, not which way it came out. **Re-opened the same day, deliberately, when Phase 5.2.1
       was added inside the milestone** to act on that run — #232, #174, #226 — rather than carry
       them into Milestone 6. A ticked box over a pending phase in its own range would be the drift
-      this milestone's file warns about at its top. **5.2.1 closed 2026-08-15** with #174, the last of its three PRs — #232 measured, #226 done, #174 done — and the box stays open past that for **5.2.2**, added the same day at the operator's request to score answers rather than rankings; it re-ticks when 5.2.2 closes.)*
+      this milestone's file warns about at its top. **5.2.1 closed 2026-08-15** with #174, the last of its three PRs — #232 measured, #226 done, #174 done — and the box stays open past that for **5.2.2**, added the same day at the operator's request to score answers rather than rankings — **re-ticked the same day, with 5.2.2's close**: every phase in the range is complete, sub-phases included.)*
 - [x] **No cross-ecosystem latency figure is published without the confound statement beside
       it**: the results page states the mechanism that made in-process .NET and subprocess Python
       rows comparable, or publishes them per-ecosystem labelled non-comparable. A latency number
@@ -3762,7 +3762,7 @@ concurrency option, a determinism test, and a measured statement of what it save
 issues close and Milestone 5's phases box is ticked again — it is opened below for exactly as long
 as this phase is pending.
 
-### Phase 5.2.2: Does GraphRAG Help Answers? [status: pending — added 2026-08-15; design in `docs/plans/2026-08-15-graphrag-answer-level-evaluation.md`]
+### Phase 5.2.2: Does GraphRAG Help Answers? [status: complete 2026-08-15 — added and closed the same day: local search does not help answers (0.210 vs dense 0.350, pollution), global search does on entity questions (0.844 vs 0.772) and not on yes/no ones; design in `docs/plans/2026-08-15-graphrag-answer-level-evaluation.md`]
 
 **Goal:** ask the question 5.2 could not: not "does the graph path rank documents better" but
 "does it produce better *answers*" — in MultiHop-RAG's own currency, against the gold answer every
@@ -3801,6 +3801,71 @@ figures pinned in `BeirReproduction`, three cells in `BeirRunBudget`; the sideca
 part of the converted dataset with its counts pinned; the judge has a unit test per rule; and this
 entry names which reading the numbers support. **The milestone's phases box re-opens for this
 phase and re-ticks when it closes** — the same discipline 5.2.1 followed, for the same reason.
+
+
+**Done 2026-08-15, the day it was added.** Four arms rather than three — a **control** joined,
+dense top-6 over the *graph* store with no behaviour, the answer-level analogue of #229's
+candidate-set control — over all 2,556 queries (2,255 judged, 301 null), 19,674 model calls of which
+17,668 were generated (2,006 came from the pilot), 1 retry, 1 h 25 m, replayed since. Three
+deviations from the design, each stated: the figures are pinned in `MultiHopRagAnswerReproduction`
+rather than `BeirReproduction`, because that table's entries and messages are about nDCG and
+"nDCG@10 = 0.35" for an accuracy would mislead; the case shares the GraphRag budget cell rather
+than owning three, because it is one graph build; and generation lives in the test class behind
+`RAGNET_GRAPHRAG_ANSWERS_GENERATE` rather than in the tool, because the graph build and the
+embedder live in the test project — recorded as debt on the class. Two things the pilot found before
+the money was spent: **the model closes its quote after a full stop** (`"Google."`), which scores
+zero under the authors' `split()` rule, so the headline is that rule over punctuation-stripped
+tokens with the raw rule printed beside it; and **global search never says "no"**, which an
+accuracy would have read as comprehension, so every figure below carries its answer distribution.
+Also found on the way: `GraphGlobalSearchBehavior`'s "deterministic" shuffle was seeded from
+`string.GetHashCode`, randomised per process — **#241, fixed** — without which arm C could not be
+replayed at all.
+
+| Arm | overall | inference (816) | comparison (856) | temporal (583) | abstains on nulls (301) |
+|---|---|---|---|---|---|
+| **dense** (article-only store) | **0.3499** | 0.7721 | 0.1636 | 0.0326 | 48.5% |
+| control (graph store, no behaviour) | 0.1384 | 0.2806 | 0.0876 | 0.0137 | 41.5% |
+| local (as shipped, w = 0.3) | 0.2102 | 0.4620 | 0.1005 | 0.0189 | 40.5% |
+| **global** (map/reduce over reports) | **0.5951** | **0.8444** | 0.4953 | 0.3928 | 9.3% |
+| *always-yes baseline* | — | — | *0.598* | *0.463* | — |
+
+Paper rule over the 2,255 judged queries (strict: 0.3242 / 0.1215 / 0.1898 / 0.4523). **Read per
+type, because the overall figure mixes two different things.**
+
+- **Inference — the column that cannot be guessed — is the finding: global 0.844 against dense
+  0.772**, 59 more entity questions right of 816. Global commits on 99% at precision 0.85; dense
+  commits on 82% at precision 0.94. That is more coverage at somewhat lower precision, and it is a
+  real, honestly earned gain from the arm 5.2 could not score at all.
+- **Comparison and temporal measure willingness to guess, not retrieval.** Comparison gold is 60%
+  "yes", temporal 46%; always-yes scores 0.598 and 0.463, and **no arm beats it** — global's 0.495
+  and 0.393 come from committing on ~70% at a precision of 0.57–0.68, i.e. the base rate (it
+  answers "yes" 532 times and "no" 55 on comparison); dense abstains on 78% and 95%. The paper's
+  Table 6 aggregates these types the same way, which is worth knowing when reading its 0.44 / 0.56.
+- **Store pollution is five times worse for answers than for rankings: control 0.138 against
+  dense 0.350**, −0.21 overall and −0.49 on inference, where #232 priced it at −0.043 for the
+  ranking. Six chunks is a small window, and 303,503 graph-derived units fill it.
+- **Local search as shipped does not help answers either — 0.210 against dense 0.350 —** and
+  5.2's finding stands in both currencies. It sits *above* the control (+0.072) because the blend
+  #239 measured as a pure cost to the ranking pushes entity chunks out of the top-6, which is a
+  strange way to help and the reason the pollution, not the behaviour, is the thing to fix.
+- **Global guesses on unanswerable questions**: it abstains on 9.3% of the nulls where dense
+  abstains on 48.5%.
+
+**Which of the four pre-registered readings the numbers support: two of them at once.** *A ≥ B* —
+local does not help; the retrieval finding holds in the answer currency, and the mechanism is
+pollution. *C > A* — global helps, on entity questions, by a margin the strict rule and the
+commitment rates both survive; its lead on yes/no questions and its overall 0.595 do not survive
+the base rates and are not claimed. **The owner's question, answered:** on this dataset, with this
+implementation and this model, GraphRAG's *local* search is worse than dense for answers and the
+reason is a design choice (one shared store) rather than the graph; GraphRAG's *global* search is
+better than dense for the questions where an answer must be found rather than guessed. Neither
+half was visible from document nDCG. Cost: **derived at roughly $10** for the 17,668 generated
+calls, at gpt-4o-mini's rates over the observed prompt sizes; #200 still records no usage.
+
+**Recorded, not done:** a design for the shared store (filter or rank policy for graph-derived
+chunks — the lever every measurement here points at, and it applies to RAPTOR); global search's
+abstention; `B′` at `w = 0`, which the control arm made redundant since #239 showed `w = 0` *is*
+the control. **The phases box re-ticks with this close.**
 
 ### Phase 5.3: Deferred Datasets — NFCorpus, TREC-COVID, EnronQA [status: complete 2026-08-12 — TREC-COVID landed and measured; NFCorpus declined on its licence; EnronQA still blocked, undeclared]
 **Goal:** Land the three datasets the evaluation programme still lacks, together: the small hard
