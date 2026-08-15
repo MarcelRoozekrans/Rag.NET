@@ -26,12 +26,16 @@ datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` doe
 Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifiable style Phase
 4.0 established — every criterion can be false, and something checks it.
 
-- [ ] **Phases 5.1–5.4 complete.** 5.5 deliberately schedules nothing and is outside this box by
-      design. *(5.1, 5.1.1, 5.3 and 5.4 are complete. **5.2 is partial and the box stays open for
-      it**: its dataset landed, and its first goal — "does GraphRAG function at all" — is answered,
-      but the comparative run the phase was written for is unrun. Closing this box on the half that
-      was cheap would be the same move as the `✅ Done` that stood over a package nothing had ever
-      executed.)*
+- [x] **Phases 5.1–5.4 complete.** 5.5 deliberately schedules nothing and is outside this box by
+      design. *(Met 2026-08-15, when 5.2's comparative run finished and closed the last open phase.
+      This box stayed open for months on the half of 5.2 that was expensive, deliberately: closing
+      it on the cheap half — "does GraphRAG function" — would have been the same move as the
+      `✅ Done` that stood over a package nothing had ever executed. The run answered "does it
+      help", and it answered **no**: GraphRAG's local search scored nDCG@10 = 0.56897 against
+      **0.59658** for the candidate-set control that was handed the same dense top-500 over the same
+      321,151-chunk store, so the graph behaviour costs **−0.02761** where the only variable is the
+      behaviour itself. A finding is a completion; the box is about whether the question was asked,
+      not about which way it came out.)*
 - [x] **No cross-ecosystem latency figure is published without the confound statement beside it.**
       *(Met 2026-08-10; re-verified 2026-08-11 when the table was republished after the
       dense-search optimisation. The latency table is cross-ecosystem and carries the
@@ -63,20 +67,26 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
       holds `double.NaN`, which admits no measurement rather than quietly admitting any. Re-check
       this box if NFCorpus or EnronQA later land.)*
 - [ ] **All test projects passing; solution builds 0 warnings / 0 errors from a clean restore.**
-      A close-time check: true on 2026-08-11. 5.3 has since landed and 5.2 has landed its first
-      half, and neither has been re-checked from a clean restore, so this stays open until the
-      milestone closes.
+      A close-time check: true on 2026-08-11. 5.3 and both halves of 5.2 have landed since, and
+      none of it has been re-checked from a clean restore, so this stays open until the milestone
+      closes. **This is now the milestone's only open box** — everything else above is ticked, so
+      the clean-restore check is the whole of what stands between Milestone 5 and its close.
 
 ## Phases
 
-| Phase | Name | Status |
-|---|---|---|
-| 5.1 | Library Performance Comparison | **complete** 2026-08-10 — full matrix gated and published |
-| 5.1.1 | The Cost Figure Read Back | **complete** 2026-08-11 — optimised, verified and republished |
-| 5.2 | Multi-Hop Retrieval | **partial** 2026-08-12 — MultiHop-RAG landed and measured; GraphRAG proved to function and six library defects fixed; the comparative "does it help" run is unrun |
-| 5.3 | Deferred Datasets — NFCorpus, TREC-COVID, EnronQA | **complete** 2026-08-12 — TREC-COVID landed; NFCorpus declined on its licence; EnronQA blocked, undeclared |
-| 5.4 | Precision@k and MAP | **implemented** 2026-08-09 (#75) |
-| 5.5 | Tier 3 Suites | recorded — deliberately not scheduled |
+> **This table names the issues each phase is waiting on, and it did not before.** 5.2 sat at
+> `partial` for three days while #172 and #173 — the two things it was actually waiting on — were
+> invisible from here, so "what is left" could only be recovered by reading the ROADMAP entry. The
+> issue column is not decoration; a phase that is not complete must say what would complete it.
+
+| Phase | Name | Issues | Status |
+|---|---|---|---|
+| 5.1 | Library Performance Comparison | — | **complete** 2026-08-10 — full matrix gated and published |
+| 5.1.1 | The Cost Figure Read Back | — | **complete** 2026-08-11 — optimised, verified and republished |
+| 5.2 | Multi-Hop Retrieval | #168 (functions), #172 (real reports), #173 (comparative) — all resolved | **complete** 2026-08-15 — MultiHop-RAG landed and measured; GraphRAG proved to function and six library defects fixed; and the comparative run answered "does it help" with **no**: nDCG@10 0.56897 against 0.59658 for the candidate-set control, **−0.02761**, needing #231 to be reproducible |
+| 5.3 | Deferred Datasets — NFCorpus, TREC-COVID, EnronQA | — | **complete** 2026-08-12 — TREC-COVID landed; NFCorpus declined on its licence; EnronQA blocked, undeclared |
+| 5.4 | Precision@k and MAP | #75 | **implemented** 2026-08-09 |
+| 5.5 | Tier 3 Suites | — | recorded — deliberately not scheduled |
 
 ## Known debt carried into this milestone
 
@@ -102,11 +112,14 @@ Authoritative copy in the ROADMAP's Milestone 5 section. Written in the falsifia
   criterion; NFCorpus was declined, because upstream asks non-academic users to contact the author
   rather than offering a licence to read, and TREC-COVID had already taken the biomedical and
   graded-relevance ground it was wanted for; EnronQA stays blocked, its licence re-verified absent
-  against the HuggingFace API the same day. **5.2 is the milestone's only remaining substance.**
-  **Half of it landed 2026-08-12**: MultiHop-RAG is in, and GraphRAG has been run end to end for the
-  first time. What remains is the comparative run — the graph path over the whole corpus,
-  differenced against the dense 0.63967 — which is roughly 41,000 extraction calls and has not been
-  started.
+  against the HuggingFace API the same day. **5.2 closed 2026-08-15.** Its first half landed
+  2026-08-12 — MultiHop-RAG in, GraphRAG run end to end for the first time — and its second half,
+  the comparative run over the whole corpus, finished on 2026-08-15 in 43 m 29 s after the roughly
+  41,000 extraction calls and 3,587 report calls were bought and cached. **The answer is that
+  GraphRAG does not help on this corpus; it hurts**, by −0.02761 of nDCG@10 against the
+  candidate-set control. The full account, including why the control rather than the dense 0.63967
+  is the comparison that carries the claim, is in `BeirReproduction`'s `multihop-rag` / `GraphRag`
+  cell and in the ROADMAP's Phase 5.2 entry.
 - **Running GraphRAG once cost six library fixes, and the tests are the finding.** `6f86f0a7`,
   `e9178aee`, `929d45a3`, `46ff566b`, `c34d270e`, `49da36ae` + `2abc17e4`, all in packages published
   at 0.1.0. Three tests had been written *around* the broken behaviour rather than through it —

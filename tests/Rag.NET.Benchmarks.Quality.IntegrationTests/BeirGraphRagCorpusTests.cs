@@ -48,12 +48,22 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// cells can, and an opted-in run without them fails naming the missing key.
 /// </para>
 /// <para>
-/// <b>No figure is pinned here.</b> <see cref="BeirReproduction"/>'s <c>multihop-rag</c> /
-/// <c>GraphRag</c> cell is deliberately empty and stays empty until a human puts the measured value
-/// in it; <see cref="BeirReproduction.AssertReproduces"/> prints and checks nothing while it is, so
-/// the call below costs nothing today and starts pinning the moment the cell is filled. What is
-/// asserted meanwhile is collapse, not quality: the corpus went through whole, every judged query
-/// was scored, and document ids rather than chunk ids reached the metrics.
+/// <b>It has run, and the figure is pinned.</b> Measured 2026-08-15 in 43 m 29 s:
+/// nDCG@10 = <c>0.56897</c> for the graph path against <c>0.59658</c> for the candidate-set control,
+/// so <b>the graph behaviour costs 0.02761 of nDCG over the candidates it was handed</b> —
+/// <see cref="BeirReproduction"/>'s <c>multihop-rag</c> / <c>GraphRag</c> cell holds the figure, the
+/// provenance and the two comparisons, and the call below now pins it. What is asserted here
+/// besides is collapse, not quality: the corpus went through whole, every judged query was scored,
+/// and document ids rather than chunk ids reached the metrics. No quality band is asserted and none
+/// may be added — <see cref="BeirReproduction"/>'s ±0.005 is the drift check and this file's
+/// assertions must stay answerable without knowing what GraphRAG ought to score.
+/// </para>
+/// <para>
+/// <b>The figure is reproducible only with issue #230's fix (#231) applied.</b> Before it,
+/// <c>GraphLocalSearchBehavior</c> deduplicated on <c>ChunkIndex</c> alone rather than on
+/// <c>(DocumentId, ChunkIndex)</c> and discarded roughly a third of every candidate set at corpus
+/// scale, arbitrarily by document. The run's own <c>chunks in / chunks out</c> counters are the
+/// check: this measurement printed 500.0 in, 500.0 out, 0.0 dropped.
 /// </para>
 /// <para>
 /// Gated like every other expensive case: applicability, then provisioning, then
@@ -478,9 +488,13 @@ public sealed class BeirGraphRagCorpusTests
     /// can detect without knowing what the answer should be.
     /// </summary>
     /// <remarks>
-    /// <b>Not a quality band, and nothing here may become one.</b> Nobody knows what GraphRAG should
-    /// score on this corpus; the run exists to find out, and an envelope around the dense figure
-    /// would decide the answer in advance. What is caught is the failure that scores exactly zero
+    /// <b>Not a quality band, and nothing here may become one.</b> What GraphRAG scores on this
+    /// corpus is now measured — 0.56897, below the candidate-set control it was handed — but that
+    /// belongs in <see cref="BeirReproduction"/>, where drift is checked at ±0.005 against a figure
+    /// carrying its machine and its date. An envelope in this file would be a second, looser opinion
+    /// on the same number, and the reviewer of Phase 3.12 showed what those are worth: a
+    /// cut-then-pool mutation passed a ±0.02 band and a 0.5x-1.5x envelope green. What is caught
+    /// here instead is the failure that scores exactly zero
     /// and looks like a result: chunk ids reaching <see cref="IrMetrics"/> instead of document ids,
     /// which never matches a qrels row and never throws.
     /// </remarks>

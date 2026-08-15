@@ -516,25 +516,31 @@ public static class BeirRunBudget
             "confound check that has to pass before either number means anything is " +
             "--filter \"DisplayName~Chunking_UnderTheGraphPath\", which needs no model and takes " +
             "under a second. " +
-            "**Its cost is DERIVED and has NEVER BEEN RUN — every figure in this paragraph is an " +
-            "estimate and none of it is a measurement.** Roughly 1.5-3 h wall clock from a cold " +
-            "embedding cache, and roughly 1.5-2.5 GB of peak working set. The derivation, so a " +
-            "later reader can see which part was wrong: the store holds ~230,000 entity and " +
-            "relationship chunks (the slice's 60 articles produced 33,100 for 8,999 entities; the " +
-            "corpus has 62,392, 6.9x) plus the 17,648 article chunks and ~3,587 community reports, " +
-            "so ~251,000 vectors are indexed against the slice run's ~35,800 and the Real leg's " +
-            "17,648. Embedding the ~234,000 new ones at the slice run's measured ~104 vectors/s is " +
-            "~40 min; retrieval is 2,255 queries against a 251,000-entry linear scan, ~20-30 ms " +
-            "each, so under 2 min for the scan itself. **The two numbers most likely to be wrong " +
-            "are both in graph construction, and both are superlinear.** SqliteGraphStore merges " +
-            "entity descriptions with `description = description || char(10) || $description`, " +
-            "which rewrites the whole string on every occurrence, so a hub entity costs " +
-            "O(occurrences^2) bytes -- at 6.9x the slice's scale that term is ~48x, not 6.9x. And " +
-            "GraphLocalSearchBehavior traverses per query through GetNeighborsAsync, " +
-            "GetRelationshipsAsync and GetCommunitiesForEntityAsync, none of which has an index to " +
-            "use: `relationships` carries no index on source_entity or target_entity, so each is a " +
-            "full scan of 147,021 rows, ~20 of them per query, ~45,000 scans over the run. That is " +
-            "derived at 15-40 min and is the single largest error bar here. " +
+            "**Its cost is now MEASURED, 2026-08-15: 43 m 29 s wall clock (01:16-01:59), of " +
+            "which 1,338.1 s (22 m 18 s) is graph construction**, 2,564.3 s the scored " +
+            "local-search pass over all 2,255 judged queries, and 1,226.2 s the candidate-set " +
+            "control pass. Windows 11, .NET 10.0.11, CPU ONNX Runtime, same machine as the Real " +
+            "leg's figures. The embedding cache took 145,840 hits against 177,566 misses, so " +
+            "this is close to but not exactly the cold price a fresh machine pays. The store " +
+            "came out at 321,151 indexed units: 17,648 article chunks, 299,916 entity and " +
+            "relationship chunks, 3,587 community reports. It needs #231 to be the run this " +
+            "figure describes -- without it local search discards about a third of every " +
+            "candidate set and both the timing and the nDCG are of something else. " +
+            "**The derivation this replaces was wrong in both directions and is kept so the next " +
+            "estimate is better.** It said 1.5-3 h wall clock against a measured 43 m 29 s, so " +
+            "it OVERSHOT the time by 2-4x -- and it UNDERSHOT the store, predicting ~251,000 " +
+            "vectors where 321,151 were indexed (~230,000 entity and relationship chunks against " +
+            "299,916 actual, scaled from the slice's 33,100 at 6.9x). Its two named error bars, " +
+            "both superlinear and both in graph construction, are where the overshoot lived: " +
+            "SqliteGraphStore rewriting each entity description on every occurrence " +
+            "(O(occurrences^2) bytes, derived at ~48x the slice's cost), and " +
+            "GraphLocalSearchBehavior traversing per query through GetNeighborsAsync, " +
+            "GetRelationshipsAsync and GetCommunitiesForEntityAsync over a `relationships` table " +
+            "with no index on source_entity or target_entity -- ~45,000 full scans of 147,021 " +
+            "rows over the run, derived at 15-40 min. Graph construction measured 22 m 18 s in " +
+            "total, so those terms are real but were priced above what they cost. The lesson is " +
+            "the ordinary one: a derivation that names which of its terms it distrusts is " +
+            "correctable, and this one was, in both directions at once. " +
             "**It needs a report cache covering the FULL corpus graph, which is not the slice's.** " +
             "Report cache keys are the rendered report prompts, and those are a function of the " +
             "graph: the corpus graph's ~3,587 communities are ~3,587 entries the slice's 607 do " +

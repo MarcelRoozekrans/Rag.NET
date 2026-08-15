@@ -509,69 +509,94 @@ public static class BeirReproduction
         new(
             "multihop-rag",
             BeirProtocol.GraphRag,
-            [],
-            "RUN 2026-08-12, and it produced NO nDCG@10 -- which is why the figure list is empty " +
-            "and will stay empty until somebody asks a different question of this protocol. " +
-            "GraphRagFunctionsTests runs the graph path end to end over a pinned 60-article slice " +
-            "of the corpus and asserts that it FUNCTIONS: extraction produced 8,999 entities and " +
-            "16,403 relationships, entities recur across articles (\"Google\" in 16 of the 60), " +
-            "Leiden returned 607 communities, local search retrieved a known-relevant document in " +
-            "the top 10 for all 27 of the slice's judged queries, and global search's map-reduce " +
-            "ran over the community reports. **None of that is a retrieval quality figure.** It is " +
-            "scored over 60 of 609 documents and 27 of 2,255 queries, so an nDCG computed from it " +
-            "would not be comparable to the Real entry above, to any other row here, or to " +
-            "anything outside this repository -- and a number in this cell is read as comparable " +
-            "by construction. The empty list is therefore a determination, not a gap: " +
-            "AssertReproduces prints and checks nothing for this pair, which is the correct " +
-            "behaviour, and the run's own assertions are its gate. " +
-            "**What would fill it** is the comparative run the roadmap defers -- the whole corpus " +
-            "under the graph path, differenced against the Real entry's 0.63967. " +
-            "**The harness for that run now exists and the run has still not happened (#173).** " +
-            "BeirGraphRagCorpusTests measures all 609 articles under the graph path and scores " +
-            "LOCAL search -- GraphLocalSearchBehavior returns document chunks, so pooling them to " +
-            "documents measures the same quantity the Real entry measures -- over all 2,255 judged " +
-            "queries. Global search is exercised and described there and deliberately never scored: " +
-            "it map-reduces community reports into a synthesised answer and these qrels judge " +
-            "documents, so an nDCG for it would be a category error wearing a comparison's clothes. " +
-            "The list below the run's own output stays empty until a human puts the measured value " +
-            "here, and AssertReproduces is already called with it, so the day the figure lands the " +
-            "case starts pinning without another change. " +
-            "**The chunking confound that would have made the delta meaningless was checked before " +
-            "the harness was built, and it is clear.** The extraction cache was filled through the " +
-            "generation tool's chunker and the Real entry's 0.63967 through the Real protocol's; " +
-            "measured 2026-08-13, both cut the 609 articles into the identical 17,648 units, text " +
-            "for text, document for document, index for index -- asserted every run by " +
-            "Chunking_UnderTheGraphPath_IsIdenticalToTheRealProtocols, which needs no model and " +
-            "takes 165 ms. **What is NOT matched is candidate depth**, and any delta carries it: " +
-            "the Real leg searched a 17,648-chunk store and took the top 2,010 per query, while the " +
-            "graph leg searches roughly 251,000 chunks and takes the top 500. " +
-            "Two things measured on 2026-08-12 say what it would cost and " +
-            "what it would find. Extraction is one LLM call per chunk plus a gleaning pass: 4,088 " +
-            "calls for 60 articles, so the 609-article corpus is roughly 41,000. And the graph the " +
-            "60 articles produced was degenerate when this entry was first written -- 475 of 655 " +
-            "communities held one entity and one held 7,954 of the 8,999. **That was six library " +
-            "defects, not a property of the corpus, and this entry asserted it as current state " +
-            "for as long as it took to notice.** After the fixes of 2026-08-12 the same slice " +
-            "gives 607 communities, 396 singletons, and a largest community of 661 -- 7.3% of the " +
-            "graph against 88.4%. The community and singleton counts are unchanged by the " +
-            "well-connectedness fix (#180) that came later the same day; the largest community was " +
-            "796 (8.8%) before it and 661 (7.3%) after, because the paper's refinement splits the " +
-            "one community that had been holding two weakly-joined halves. " +
-            "273 entities genuinely have no relationship, which is a property " +
-            "of extraction rather than of clustering; a further 123 have relationships that name " +
-            "something extraction never made an entity of, so Leiden never sees them either -- " +
-            "853 of the slice's 16,403 relationships (5.20%) are dropped that way. " +
-            "**And the slice's numbers are not the corpus's, which issue #209 settled by " +
-            "measurement.** Extracting all 609 articles from the same cache gives 62,392 entities " +
-            "and 147,021 relationships, and the model returned two of the weights as acquisition " +
-            "prices -- Microsoft/Mojang at 2.5e9, Microsoft/Rare at 3.75e8. Those two edges carried " +
-            "99.99% of the graph's total weight, and Leiden put 57,484 of the 62,392 entities, " +
-            "92.13%, in ONE community at modularity 0.0001. Bounding the weight at extraction " +
-            "(GraphRagOptions.MaxRelationshipWeight, default 10) alters 20 of the 147,021 and " +
-            "brings that to 5,629 entities, 9.02%, at modularity 0.7496. The slice could not have " +
-            "shown it: its heaviest weight is 6.0 and the bound alters none of its edges. " +
-            "None of these figures is a reason to skip the comparison; all of them are reasons not " +
-            "to predict its outcome from this entry."),
+            [0.56897],
+            "MEASURED 2026-08-15 on Windows 11, .NET 10.0.11, CPU ONNX Runtime -- the same " +
+            "machine as every other figure in this file. BeirGraphRagCorpusTests over the WHOLE " +
+            "609-article corpus under the graph path, local search max-pooled to documents, all " +
+            "2,255 judged queries scored and none excluded for lacking a positive judgement. " +
+            "Recall@10 = 0.71696, MRR@10 = 0.63302. 43 m 29 s wall clock (01:16-01:59): 1,338.1 s " +
+            "to build the graph, 2,564.3 s for the scored local-search pass, 1,226.2 s for the " +
+            "candidate-set control pass. 35,296 extraction requests and 3,587 report requests, " +
+            "every one replayed from the cache -- no model was called. The graph: 62,392 " +
+            "entities, 147,021 relationships, 3,587 communities. Indexed: 321,151 units over 609 " +
+            "of 609 documents (17,648 article chunks + 299,916 entity/relationship chunks + " +
+            "3,587 community reports), max 201 article chunks from one document, none " +
+            "contributing nothing; largest community report prompt 49,938 characters; embedding " +
+            "cache 145,840 hits against 177,566 misses. " +
+            "**THIS FIGURE IS REPRODUCIBLE ONLY WITH #231 (fix/230-local-search-dedup-key) " +
+            "APPLIED, and that fix must land before or with this entry.** It was measured in a " +
+            "worktree carrying main + the #173 harness (#229) + #231. Until #231, " +
+            "GraphLocalSearchBehavior keyed its deduplication on ChunkIndex alone rather than on " +
+            "(DocumentId, ChunkIndex): entity chunks use per-document negative indices and " +
+            "article chunks 0..n, so across 609 documents candidates from DIFFERENT documents " +
+            "collided and roughly a third of every candidate set was discarded -- arbitrarily by " +
+            "document rather than by relevance. This run shows the fix in place and says so in " +
+            "its own counters: 500.0 chunks in, 500.0 out, 0.0 dropped by the deduplication, " +
+            "85.8 distinct documents in and 85.8 out. Run without #231, this case is measuring a " +
+            "different behaviour and 0.56897 will not come back. " +
+            "**THE FINDING: GRAPHRAG DOES NOT HELP ON THIS DATASET. IT HURTS.** " +
+            "**And the honest comparison is against the CANDIDATE-SET CONTROL, not against the " +
+            "Real leg's 0.63967.** The control scores the SAME dense top-500 the behaviour was " +
+            "handed, over the SAME 321,151-chunk store, so store size and candidate depth are " +
+            "held constant and the graph behaviour is the only variable: nDCG@10 = 0.59658, " +
+            "Recall@10 = 0.74254, MRR@10 = 0.66785. Against it the graph path is **-0.02761**, " +
+            "and Recall@10 and MRR@10 move the same way (-0.02558 and -0.03483). That is the " +
+            "comparison that answers 'does the graph path help', because it is the only one in " +
+            "which the graph behaviour is the sole difference. " +
+            "**The delta against the Real leg's 0.63967 is -0.07070, it is DEPTH-CONFOUNDED, and " +
+            "it must never be quoted without that.** The Real leg searched a 17,648-chunk store " +
+            "at top-2,010 per query; this one searched 321,151 at top-500. Both numbers belong " +
+            "in any account of this run -- the confounded one because it is the difference a " +
+            "reader coming from the Real entry will compute anyway -- and the control is the one " +
+            "that carries the claim. " +
+            "**One visible mechanism, and it is honestly part artefact and part real.** A " +
+            "community report reached the top 10 on 891 of the 2,255 queries, 39.5% of them. " +
+            "Community reports are indexed under a synthetic document id that no qrels row " +
+            "judges, so each of those is a rank slot scoring zero. The artefact half: a user " +
+            "asking a synthesis question might genuinely WANT the report, and this protocol has " +
+            "no way to credit it. The real half: the slot is spent either way, so a judged " +
+            "document is displaced down the ranking for a reader who wanted a document. Both " +
+            "halves are true and this entry does not resolve the tension by asserting one of " +
+            "them. The reports are left in rather than filtered out because a pipeline that " +
+            "returns them is a pipeline whose caller sees them, and hiding them here would " +
+            "flatter the run. " +
+            "**What this does NOT say.** One dataset, one embedder (all-MiniLM-L6-v2), one " +
+            "implementation. It says that GraphRAG's local search AS IMPLEMENTED HERE does not " +
+            "beat plain dense scoring of the same candidates on MultiHop-RAG. It does not say " +
+            "GraphRAG is worthless, and nobody may generalise it that far from a single corpus. " +
+            "**Pinned on its own authority**, like the Real entry and for the same reason: no " +
+            "published figure exists for all-MiniLM-L6-v2 on this dataset under any metric this " +
+            "repository reports, so nothing outside this repository checked 0.56897 and nothing " +
+            "outside it can. What it is good for is drift. " +
+            "**Global search was exercised and deliberately NOT scored**, which is a decision " +
+            "rather than a gap: it map-reduces community reports into a synthesised answer while " +
+            "these qrels judge documents, so an nDCG for it would be a category error wearing a " +
+            "comparison's clothes. Described from this run: query mhr-0000 returned 491 results " +
+            "through 3 map/reduce calls in 44.4 s, it reached its reports in 1 retrieval, and " +
+            "the best community report ranks 50 in an unfiltered scan of the whole store. " +
+            "**The chunking confound that would have made the delta meaningless was checked " +
+            "before the harness was built, and it is clear.** The extraction cache was filled " +
+            "through the generation tool's chunker and the Real entry's 0.63967 through the Real " +
+            "protocol's; measured 2026-08-13, both cut the 609 articles into the identical " +
+            "17,648 units, text for text, document for document, index for index -- asserted " +
+            "every run by Chunking_UnderTheGraphPath_IsIdenticalToTheRealProtocols, which needs " +
+            "no model and takes 165 ms. **What is NOT matched is candidate depth**, which is why " +
+            "the control above exists and why the -0.07070 is the confounded number. " +
+            "**The graph this figure was measured over is the post-#209 one, and the difference " +
+            "is not cosmetic.** The model returned two relationship weights as acquisition " +
+            "prices -- Microsoft/Mojang at 2.5e9, Microsoft/Rare at 3.75e8 -- and those two " +
+            "edges of 147,021 carried 99.99% of the graph's total weight, putting 57,484 of the " +
+            "62,392 entities (92.13%) in ONE community at modularity 0.0001. Bounding the weight " +
+            "at extraction (GraphRagOptions.MaxRelationshipWeight, default 10) alters 20 of the " +
+            "147,021 and brings that to 5,629 entities, 9.02%, at modularity 0.7496. A run " +
+            "against an unbounded graph would measure the degenerate clustering instead and is " +
+            "not comparable to this. The pinned 60-article slice could never have shown it: its " +
+            "heaviest weight is 6.0 and the bound alters none of its edges. " +
+            "**GraphRagFunctionsTests still publishes no nDCG and this figure does not come from " +
+            "it.** That guard runs the graph path over 60 of 609 documents and 27 of 2,255 " +
+            "queries and asserts that the pipeline FUNCTIONS; a number computed from it would " +
+            "not be comparable to anything, which is why the comparative run had to be the whole " +
+            "corpus."),
     ];
 
     /// <summary>

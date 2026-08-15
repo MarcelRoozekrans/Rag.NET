@@ -2834,7 +2834,7 @@ by this entry**: Milestone 4's "All planned phases complete" stays open (4.5 rem
 "No package declares `VerifiedBy=none`" stays open (`Rag.NET.Security.AspNetCore`) — both updated
 above to say so rather than left stale.)
 
-## Milestone 5: Evaluation Depth [status: active — 5.1, 5.1.1, 5.3 and 5.4 complete; 5.2 partial — its dataset landed and GraphRAG functions, its comparative run does not exist]
+## Milestone 5: Evaluation Depth [status: active — all four phases complete; 5.2 closed 2026-08-15 when its comparative run measured GraphRAG at −0.02761 against the candidate-set control. Only the clean-restore DoD box is open]
 **Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:
 what each library **costs** rather than what it scores, multi-hop retrieval, graded relevance and
 the datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` does not compute.
@@ -2844,8 +2844,12 @@ its work needs to yield.
 **Definition of Done** (written in the falsifiable style Phase 4.0 established for Milestone 4 —
 every criterion below can be false, and something checks it — not the older "all phases complete"
 shape, though that box is still here doing its share):
-- [ ] Phases 5.1–5.4 complete (5.5 deliberately schedules nothing and is outside this box by
+- [x] Phases 5.1–5.4 complete (5.5 deliberately schedules nothing and is outside this box by
       design — see its entry)
+      *(Met 2026-08-15, when 5.2's comparative run closed the last open phase. It answered "does
+      GraphRAG help" with **no** — nDCG@10 0.56897 against 0.59658 for the candidate-set control,
+      **−0.02761** — and a finding is a completion: this box asks whether the question was asked,
+      not which way it came out.)*
 - [x] **No cross-ecosystem latency figure is published without the confound statement beside
       it**: the results page states the mechanism that made in-process .NET and subprocess Python
       rows comparable, or publishes them per-ecosystem labelled non-comparable. A latency number
@@ -3217,7 +3221,7 @@ since SK's indexing moved similarly without any code change.
 **Still owed:** one sweep of all five entrants in a single session, which collapses the union
 ranges back to three-run spreads and removes the caveat entirely.
 
-### Phase 5.2: Multi-Hop Retrieval [status: partial 2026-08-12 — MultiHop-RAG landed and measured, and GraphRAG functions; the comparative run this phase was written for is still not run]
+### Phase 5.2: Multi-Hop Retrieval [status: complete 2026-08-15 (#168 functions, #172 real reports, #173 comparative) — MultiHop-RAG landed and measured, GraphRAG functions, and the comparative run says GraphRAG does not help on this corpus: −0.02761 against the candidate-set control]
 **Goal:** Measure multi-hop retrieval — HotpotQA, MuSiQue, 2WikiMultiHopQA, MultiHop-RAG. (Not a
 features.md row — evaluation depth past single-hop BEIR.)
 
@@ -3358,17 +3362,65 @@ nDCG@10, Recall@10 and MRR@10 were identical to five decimals across the two. Th
 result for a deterministic protocol, and it is the point: the *figure* is stable and the *timing* is
 not, so they are pinned in different files with different confidence.
 
-**Goal (1) is answered. Goal (2) is not.** `GraphRagFunctionsTests` runs `Rag.NET.GraphRag` end to
+**Goal (1) was answered 2026-08-12.** `GraphRagFunctionsTests` runs `Rag.NET.GraphRag` end to
 end over a pinned 60-article slice — 8,999 entities, 16,403 relationships, 607 communities, a
 known-relevant document in the top 10 for all 27 of the slice's judged queries, and a global-search
 map/reduce that runs over the community reports it finds in the unfiltered candidate set. It
-publishes **no nDCG**, and the `multihop-rag` / `GraphRag` cell in `BeirReproduction` is
-deliberately empty: 60 of 609 documents and 27 of 2,255 queries would not be comparable to the Real
-row above, to any other row, or to anything outside this repository, and a number in that cell is
-read as comparable by construction. The comparative run — the whole corpus under the graph path,
-differenced against 0.63967 — remains unrun, and two measurements say what it would cost: extraction
-is one LLM call per chunk plus a gleaning pass, **4,088 calls for 60 articles**, so the full corpus
-is roughly **41,000**.
+publishes **no nDCG**, and it never will: 60 of 609 documents and 27 of 2,255 queries would not be
+comparable to the Real row above, to any other row, or to anything outside this repository, and a
+number in `BeirReproduction`'s cell is read as comparable by construction.
+
+**Goal (2) was answered 2026-08-15, and the answer is no.** `BeirGraphRagCorpusTests` measured the
+whole 609-article corpus under the graph path — 43 m 29 s wall clock, 22 m 18 s of it graph
+construction, 35,296 extraction requests and 3,587 report requests all replayed from cache with no
+model called. Local search, max-pooled to documents over all 2,255 judged queries:
+
+| Leg | nDCG@10 | Recall@10 | MRR@10 | Store | Depth |
+|---|---|---|---|---|---|
+| GraphRAG local search | **0.56897** | 0.71696 | 0.63302 | 321,151 units | top-500 |
+| Candidate-set control | **0.59658** | 0.74254 | 0.66785 | 321,151 units | top-500 |
+| Real leg (2026-08-12) | 0.63967 | 0.78684 | 0.70150 | 17,648 units | top-2,010 |
+
+**The honest comparison is the middle row, not the bottom one.** The candidate-set control scores
+the *same* dense top-500 the behaviour was handed, over the *same* 321,151-chunk store, so store
+size and candidate depth are held constant and the graph behaviour is the only variable. Against
+it GraphRAG is **−0.02761**, with Recall@10 and MRR@10 moving the same way (−0.02558, −0.03483).
+**GraphRAG does not help on this dataset. It hurts.** The delta against the Real leg's 0.63967 is
+**−0.07070** and is **depth-confounded** — 17,648 chunks at top-2,010 against 321,151 at top-500 —
+so it must never be quoted without that sentence attached. Both numbers belong in any account of
+the run; only the control answers "does the graph path help".
+
+**One visible mechanism, part artefact and part real.** A community report reached the top 10 on
+**891 of the 2,255 queries (39.5%)**. Reports are indexed under a synthetic document id no qrels
+row judges, so each is a rank slot scoring zero. The artefact half: a user asking a synthesis
+question might genuinely *want* the report, and this protocol cannot credit it. The real half: the
+slot is spent either way, so a judged document is displaced down the ranking for a reader who
+wanted a document. Both are true, and neither this entry nor the reproduction cell resolves the
+tension by asserting one of them. Reports are deliberately not filtered out, because a pipeline
+that returns them is a pipeline whose caller sees them.
+
+**Reproducible only with #231 applied**, the fix for #230: `GraphLocalSearchBehavior` keyed its
+deduplication on `ChunkIndex` alone rather than on `(DocumentId, ChunkIndex)`, so at corpus scale
+candidates from different documents collided and roughly a third of every candidate set was
+discarded, arbitrarily by document. The run's own counters are the check — 500.0 chunks in, 500.0
+out, 0.0 dropped, 85.8 distinct documents in and out.
+
+**What this does not say.** One dataset, one embedder, one implementation. It says GraphRAG's local
+search *as implemented here* does not beat plain dense scoring of the same candidates on
+MultiHop-RAG. It does not say GraphRAG is worthless, and it may not be generalised that far from a
+single corpus. Global search was exercised and deliberately **not** scored: it map-reduces
+community reports into a synthesised answer while these qrels judge documents, so an nDCG for it
+would be a category error wearing a comparison's clothes. Described only — query `mhr-0000`, 491
+results, 3 map/reduce calls in 44.4 s, reports reached in 1 retrieval, best report at rank 50 in an
+unfiltered scan.
+
+**What it cost to get there.** Extraction is one LLM call per chunk plus a gleaning pass — **4,088
+calls for 60 articles**, so the full corpus was roughly **41,000**, generated once against
+`openai/gpt-4o-mini` at temperature 0 and cached; community reports are a second generation run of
+3,587 calls (#172, #226). Neither cache is ever committed, so this case can no more run on a fresh
+runner than the Hyde cells can. The derived cost this replaces said 1.5–3 h and ~251,000 indexed
+vectors; measured, it was 43 m 29 s and 321,151 vectors — **wrong in both directions at once**,
+overshooting the clock by 2–4x while undershooting the store by 28%.
 
 **Running it once found six defects in shipping library code.** All six were live in packages
 published at 0.1.0; none was found by a test, a review or a user.
