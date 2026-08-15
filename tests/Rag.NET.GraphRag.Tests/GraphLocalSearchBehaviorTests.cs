@@ -1,4 +1,4 @@
-using NSubstitute;
+﻿using NSubstitute;
 using Rag.NET.Graph;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -154,6 +154,87 @@ public class GraphLocalSearchBehaviorTests
         // Expected: (1 - 0.4) * 0.9 + 0.4 * 0.0 = 0.54 + 0.0 = 0.54
         Assert.Equal(0.54, aliceResult.Score, precision: 5);
     }
+
+    [Fact]
+    public async Task HandleAsync_ChunksFromDifferentDocumentsSharingChunkIndex_BothSurvive()
+    {
+        var options = new GraphRagRetrievalOptions { LocalTopEntities = 10, LocalSearchDepth = 1 };
+        var sut = new GraphLocalSearchBehavior(_graphStore, options);
+        StubEmptyGraph();
+
+        var results = (IReadOnlyList<SearchResult>)new List<SearchResult>
+        {
+            CreateAliceEntityResult(),
+            CreateChunkResult("docA", 3, 0.8),
+            CreateChunkResult("docB", 3, 0.4),
+        }.AsReadOnly();
+
+        var actual = await sut.HandleAsync(
+            CreateContext(), CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
+
+        Assert.Equal(3, actual.Count);
+        Assert.Contains(actual, r => string.Equals(r.Chunk.DocumentId.Value, "docA", StringComparison.Ordinal) && r.Chunk.ChunkIndex == 3);
+        Assert.Contains(actual, r => string.Equals(r.Chunk.DocumentId.Value, "docB", StringComparison.Ordinal) && r.Chunk.ChunkIndex == 3);
+    }
+
+    [Fact]
+    public async Task HandleAsync_DuplicateChunkWithinOneDocument_CollapsesToHighestScore()
+    {
+        var options = new GraphRagRetrievalOptions { LocalTopEntities = 10, LocalSearchDepth = 1 };
+        var sut = new GraphLocalSearchBehavior(_graphStore, options);
+        StubEmptyGraph();
+
+        var results = (IReadOnlyList<SearchResult>)new List<SearchResult>
+        {
+            CreateAliceEntityResult(),
+            CreateChunkResult("docA", 3, 0.4),
+            CreateChunkResult("docA", 3, 0.8),
+        }.AsReadOnly();
+
+        var actual = await sut.HandleAsync(
+            CreateContext(), CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
+
+        Assert.Equal(2, actual.Count);
+        var deduplicated = Assert.Single(actual, r => string.Equals(r.Chunk.DocumentId.Value, "docA", StringComparison.Ordinal));
+        Assert.Equal(0.8, deduplicated.Score, precision: 5);
+    }
+
+    private void StubEmptyGraph()
+    {
+        _graphStore.GetNeighborsAsync("Alice", Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns([]);
+        _graphStore.GetRelationshipsAsync("Alice", Arg.Any<CancellationToken>())
+            .Returns([]);
+        _graphStore.GetCommunitiesForEntityAsync("Alice", Arg.Any<CancellationToken>())
+            .Returns([]);
+    }
+
+    private static SearchResult CreateAliceEntityResult() => new()
+    {
+        Chunk = new TextChunk
+        {
+            Text = "Alice is a person",
+            DocumentId = new DocumentId("docEntities"),
+            ChunkIndex = -1,
+            Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+            {
+                ["graph_type"] = "entity",
+                ["graph_entity_name"] = "Alice",
+            },
+        },
+        Score = 0.9,
+    };
+
+    private static SearchResult CreateChunkResult(string documentId, int chunkIndex, double score) => new()
+    {
+        Chunk = new TextChunk
+        {
+            Text = $"{documentId} chunk {chunkIndex}",
+            DocumentId = new DocumentId(documentId),
+            ChunkIndex = chunkIndex,
+        },
+        Score = score,
+    };
 
     private static IReadOnlyList<SearchResult> CreateEntityResults() =>
         new List<SearchResult>
