@@ -2834,7 +2834,7 @@ by this entry**: Milestone 4's "All planned phases complete" stays open (4.5 rem
 "No package declares `VerifiedBy=none`" stays open (`Rag.NET.Security.AspNetCore`) — both updated
 above to say so rather than left stale.)
 
-## Milestone 5: Evaluation Depth [status: active — 5.1, 5.1.1, 5.2, 5.3 and 5.4 complete; 5.2 closed 2026-08-15 when its comparative run measured GraphRAG at −0.02761 against the candidate-set control. 5.2.1 added the same day to act on that run (#232, #174, #226) and is pending; it and the clean-restore DoD box are what remain]
+## Milestone 5: Evaluation Depth [status: active — every phase complete: 5.1, 5.1.1, 5.2, 5.2.1, 5.3 and 5.4; 5.2 closed 2026-08-15 when its comparative run measured GraphRAG at −0.02761 against the candidate-set control, and 5.2.1 — added the same day to act on that run — closed the same day with #232, #226 and #174 all landed. Only the clean-restore DoD box is open, and it is the close audit]
 **Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:
 what each library **costs** rather than what it scores, multi-hop retrieval, graded relevance and
 the datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` does not compute.
@@ -2844,7 +2844,7 @@ its work needs to yield.
 **Definition of Done** (written in the falsifiable style Phase 4.0 established for Milestone 4 —
 every criterion below can be false, and something checks it — not the older "all phases complete"
 shape, though that box is still here doing its share):
-- [ ] Phases 5.1–5.4 complete, sub-phases included (5.5 deliberately schedules nothing and is
+- [x] Phases 5.1–5.4 complete, sub-phases included (5.5 deliberately schedules nothing and is
       outside this box by design — see its entry)
       *(Was ticked 2026-08-15, when 5.2's comparative run closed the last open phase. It answered
       "does GraphRAG help" with **no** — nDCG@10 0.56897 against 0.59658 for the candidate-set
@@ -2852,7 +2852,7 @@ shape, though that box is still here doing its share):
       asked, not which way it came out. **Re-opened the same day, deliberately, when Phase 5.2.1
       was added inside the milestone** to act on that run — #232, #174, #226 — rather than carry
       them into Milestone 6. A ticked box over a pending phase in its own range would be the drift
-      this milestone's file warns about at its top; the box re-ticks when 5.2.1 closes.)*
+      this milestone's file warns about at its top. **Re-ticked with the merge that closes 5.2.1**: all three of its items landed 2026-08-15 — #232 measured, #226 done, #174 done — each in its own PR, and this is the last of them.)*
 - [x] **No cross-ecosystem latency figure is published without the confound statement beside
       it**: the results page states the mechanism that made in-process .NET and subprocess Python
       rows comparable, or publishes them per-ecosystem labelled non-comparable. A latency number
@@ -3363,7 +3363,9 @@ a machine at 45% CPU with other applications running; it wants an idle re-measur
 quoted as a cost. A partly warm first attempt read **392.6 s** — a **1.6x cache artefact** — and
 nDCG@10, Recall@10 and MRR@10 were identical to five decimals across the two. That is the expected
 result for a deterministic protocol, and it is the point: the *figure* is stable and the *timing* is
-not, so they are pinned in different files with different confidence.
+not, so they are pinned in different files with different confidence. *(Re-taken idle and cold,
+twice, 2026-08-15 — Phase 5.2.1, #174: 343.5 s and 388.5 s. The bound held and was loose by
+1.5–1.75x.)*
 
 **Goal (1) was answered 2026-08-12.** `GraphRagFunctionsTests` runs `Rag.NET.GraphRag` end to
 end over a pinned 60-article slice — 8,999 entities, 16,403 relationships, 607 communities, a
@@ -3572,7 +3574,7 @@ stops anyone finding it.
 `features.md`'s GraphRAG row is corrected accordingly: it still says `✅ Done`, which was never false
 about the code shipping, and it now says what is exercised and what is not.
 
-### Phase 5.2.1: The GraphRAG Deficit Read Back [status: in progress — added 2026-08-15; #232 measured the same day, depth costs nothing; #226 done the same day, reports parallel and measured 4.1x at 4; #174 open]
+### Phase 5.2.1: The GraphRAG Deficit Read Back [status: complete 2026-08-15 — added and closed the same day, all three items landed: #232 measured, depth costs nothing; #226 done, reports parallel and measured 4.1x at 4; #174 done, idle-cold Real leg 343.5 s and 388.5 s, FitsTheNightly stays false, decided]
 
 **Goal:** act on what 5.2's comparative run measured instead of filing it, the way 5.1.1 acted on
 5.1's cost figure. Three things came out of #173's close and none had a home: a deficit the run
@@ -3650,6 +3652,32 @@ with every metric identical to five decimals, and 5.1.1 recorded a 23x artefact 
 producing three false findings in one day. Kill strays by assembly name first, per the overnight
 plan; do not poll the run. Only the timing moves — the nDCG is pinned separately and stays. Then
 reconsider `FitsTheNightly` on the clean figure, and record whichever way it goes.
+
+**Done 2026-08-15.** Cold by the nightly's own definition — a fresh cache root holding the
+converted dataset, the model and the vocabulary and nothing else, the `embeddings` directory absent
+and deleted again between the runs — on this machine at 2–4% load with nothing else of the
+repository's running, and not polled:
+
+| Run | Real leg | Parity control | Case | Embedding cache (real leg) | nDCG@10 |
+|---|---|---|---|---|---|
+| 2026-08-12, cold, under load | 600.2 s | 78.9 s | 11 m 19 s | cold | 0.63967 |
+| 2026-08-15, cold, idle #1 | **343.5 s** | 34.1 s | 6 m 18 s | 2,314 hits, 17,589 misses | 0.63967 |
+| 2026-08-15, cold, idle #2 | **388.5 s** | 58.1 s | 7 m 27 s | 2,314 hits, 17,589 misses | 0.63967 |
+
+Recall@10 and MRR@10 identical to five decimals across all three, the parity control 0.55724 every
+time. **The bound held and was loose by 1.5–1.75x**, which is what "over-estimating fails safe"
+predicted, and the two idle figures are quoted rather than averaged: 13% apart is the honest width
+of an idle measurement here, and the parity leg's 34–58 s is a small leg's warm-up noise, not a
+finding. **`FitsTheNightly` is decided, and it stays `false` — for a different reason.** The old
+reason, an inflated figure, is gone. The reason now is that this figure is about this machine and
+the nightly runs on another: a 4-vCPU hosted runner against 20 logical processors here, and CPU
+ONNX embedding of 20,453 texts scales with cores, so the runner's cold cost is plausibly 3–5x this
+— 20–35 minutes for the case — and unmeasured. Flipping a 120-minute job's gate on a local figure
+the runner may not reproduce is the casual decision the old cell refused, one machine over; every
+Real leg in the table is opt-in by policy, and #175 already records the nightly's MultiHop-RAG
+footprint as unbudgeted. **What would flip it** is one opted-in, timed dispatch of the case on
+`ubuntu-latest`, and then a decision about the nightly's total rather than about this cell alone.
+The cell says all of this in place, with the command that runs it.
 
 **3. Community reports in parallel — [#226](https://github.com/MarcelRoozekrans/Rag.NET/issues/226).**
 `CommunityDetectionBehavior` awaits one report at a time. There is no concurrency option and
