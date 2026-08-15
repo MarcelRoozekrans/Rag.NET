@@ -2834,7 +2834,7 @@ by this entry**: Milestone 4's "All planned phases complete" stays open (4.5 rem
 "No package declares `VerifiedBy=none`" stays open (`Rag.NET.Security.AspNetCore`) — both updated
 above to say so rather than left stale.)
 
-## Milestone 5: Evaluation Depth [status: active — all four phases complete; 5.2 closed 2026-08-15 when its comparative run measured GraphRAG at −0.02761 against the candidate-set control. Only the clean-restore DoD box is open]
+## Milestone 5: Evaluation Depth [status: active — 5.1, 5.1.1, 5.2, 5.3 and 5.4 complete; 5.2 closed 2026-08-15 when its comparative run measured GraphRAG at −0.02761 against the candidate-set control. 5.2.1 added the same day to act on that run (#232, #174, #226) and is pending; it and the clean-restore DoD box are what remain]
 **Goal:** Extend the evaluation programme along the axes Milestone 3 deliberately did not take:
 what each library **costs** rather than what it scores, multi-hop retrieval, graded relevance and
 the datasets declined at Milestone 3's close, and the two IR metrics `IrMetrics` does not compute.
@@ -2844,12 +2844,15 @@ its work needs to yield.
 **Definition of Done** (written in the falsifiable style Phase 4.0 established for Milestone 4 —
 every criterion below can be false, and something checks it — not the older "all phases complete"
 shape, though that box is still here doing its share):
-- [x] Phases 5.1–5.4 complete (5.5 deliberately schedules nothing and is outside this box by
-      design — see its entry)
-      *(Met 2026-08-15, when 5.2's comparative run closed the last open phase. It answered "does
-      GraphRAG help" with **no** — nDCG@10 0.56897 against 0.59658 for the candidate-set control,
-      **−0.02761** — and a finding is a completion: this box asks whether the question was asked,
-      not which way it came out.)*
+- [ ] Phases 5.1–5.4 complete, sub-phases included (5.5 deliberately schedules nothing and is
+      outside this box by design — see its entry)
+      *(Was ticked 2026-08-15, when 5.2's comparative run closed the last open phase. It answered
+      "does GraphRAG help" with **no** — nDCG@10 0.56897 against 0.59658 for the candidate-set
+      control, **−0.02761** — and a finding is a completion: this box asks whether the question was
+      asked, not which way it came out. **Re-opened the same day, deliberately, when Phase 5.2.1
+      was added inside the milestone** to act on that run — #232, #174, #226 — rather than carry
+      them into Milestone 6. A ticked box over a pending phase in its own range would be the drift
+      this milestone's file warns about at its top; the box re-ticks when 5.2.1 closes.)*
 - [x] **No cross-ecosystem latency figure is published without the confound statement beside
       it**: the results page states the mechanism that made in-process .NET and subprocess Python
       rows comparable, or publishes them per-ecosystem labelled non-comparable. A latency number
@@ -3559,6 +3562,73 @@ stops anyone finding it.
 
 `features.md`'s GraphRAG row is corrected accordingly: it still says `✅ Done`, which was never false
 about the code shipping, and it now says what is exercised and what is not.
+
+### Phase 5.2.1: The GraphRAG Deficit Read Back [status: pending — added 2026-08-15; #232, #174, #226]
+
+**Goal:** act on what 5.2's comparative run measured instead of filing it, the way 5.1.1 acted on
+5.1's cost figure. Three things came out of #173's close and none had a home: a deficit the run
+measured but did not decompose (#232), a wall clock the run was told to re-take cold and has not
+(#174), and a library defect the run had to pay for to notice (#226). **Added the day the milestone's
+last phase closed, so the milestone finishes whole** — the operator's call, 2026-08-15: close
+Milestone 5 with its own follow-on inside it rather than carry three open issues from an evaluation
+milestone into a hardening one and let "what is left" become unrecoverable from the phase table
+again. That is the same gap 5.2's phase row was rewritten to close, and the reason this entry names
+its issues in its header.
+
+**Why these three and not more.** Each is bounded, each is cheap, and each is *owed by the run* —
+it left a question the run itself created. Not here: the report-in-top-10 tension (artefact or
+real), which is a design question and not a measurement; retrieval-mode routing (#104), which 5.2
+recorded as a feature and not a defect; and the singleton-community rate (#176), which is an
+extraction-quality question with no cheap experiment attached. Those stay where 5.2 left them.
+
+**1. Decompose the deficit — [#232](https://github.com/MarcelRoozekrans/Rag.NET/issues/232).**
+5.2 measured three points and separated one gap: the **−0.02761** between local search and the
+candidate-set control is the graph behaviour alone, and that finding stands. **The −0.04309 between
+the control (0.59658) and the Real leg (0.63967) is not separated.** Same corpus, chunking asserted
+identical, and two things differ at once: the store holds 321,151 units against 17,648 — 299,916
+entity/relationship chunks and 3,587 community reports competing for rank against judged documents
+— and the depth is 500 against 2,010. One run separates them: **dense retrieval at top-500 over the
+17,648-chunk article-only store**. Against the Real leg it prices depth; against the control it
+prices pollution. No LLM call, no new cache; it is the control leg `BeirGraphRagCorpusTests` already
+runs, pointed at the smaller store — 1,226 s for the control pass on 2026-08-15, so about twenty
+minutes. **The two answers lead to opposite work**, which is why the run is worth twenty minutes:
+mostly pollution means a ranking or filtering policy for graph-derived chunks, plausibly worth more
+than tuning the behaviour and applicable to RAPTOR too, which also indexes synthetic chunks beside
+real ones; mostly depth means a fairness caveat on the protocol and no defect at all. Publish the
+fourth row beside the three in 5.2's table, with the two differences it prices stated in the same
+sentence, and pin it in `BeirReproduction` — the figure is deterministic and needs no quiet machine.
+
+**2. Re-take the Real wall clock cold, twice — [#174](https://github.com/MarcelRoozekrans/Rag.NET/issues/174).**
+`BeirRunBudget`'s `multihop-rag` / `Real` cell records **600.2 s**, taken on 2026-08-12 at ~45% CPU
+with other applications running, and labels itself an upper bound; `FitsTheNightly` is deliberately
+`false` on it because flipping a gate on a knowingly inflated figure is what the cell exists to
+prevent. Over-estimates fail safe for a budget — they keep a case *out* — which is why the figure was
+publishable at all and why nobody should schedule against it. **Take it cold and take it twice**:
+the same run read 392.6 s partly warm against 600.2 s cold during #168, a 1.6x page-cache artefact
+with every metric identical to five decimals, and 5.1.1 recorded a 23x artefact of the same kind
+producing three false findings in one day. Kill strays by assembly name first, per the overnight
+plan; do not poll the run. Only the timing moves — the nDCG is pinned separately and stays. Then
+reconsider `FitsTheNightly` on the clean figure, and record whichever way it goes.
+
+**3. Community reports in parallel — [#226](https://github.com/MarcelRoozekrans/Rag.NET/issues/226).**
+`CommunityDetectionBehavior` awaits one report at a time. There is no concurrency option and
+nothing reports the cost: 607 round trips on the slice, **3,587 on the corpus**, while entity
+extraction next door runs `Concurrency = 12`. Ingestion is the path a user runs — `UseGraphRag()` on
+a 60k-entity corpus is a multi-hour loop with no progress signal, and it was noticed only because
+a benchmark had to pay for it. That makes it the seventh library defect 5.2's run surfaced, and the
+precedent for the other six is that they were fixed in-phase rather than routed onward. Bound the
+concurrency with an option in the shape `GraphRagOptions` already has for extraction, and **keep the
+per-community determinism** — the report prompt is filled in PageRank order with an ordinal
+tie-break so two runs agree, and a parallel fill must preserve that per report rather than merely
+overall. **Measure it against the provider rather than assume it**: the rate limit is the real
+ceiling and a 429 storm trades one wait for another. The replayed cache means the benchmark cannot
+show the gain; a bounded probe can, and its cost is stated derived until #200 exists.
+
+**Exit condition, falsifiable:** #232's fourth row is published and pinned with the decomposition
+stated; #174's cell carries a cold two-run figure with `FitsTheNightly` decided on it; #226 has a
+concurrency option, a determinism test, and a measured statement of what it saved. Then the three
+issues close and Milestone 5's phases box is ticked again — it is opened below for exactly as long
+as this phase is pending.
 
 ### Phase 5.3: Deferred Datasets — NFCorpus, TREC-COVID, EnronQA [status: complete 2026-08-12 — TREC-COVID landed and measured; NFCorpus declined on its licence; EnronQA still blocked, undeclared]
 **Goal:** Land the three datasets the evaluation programme still lacks, together: the small hard
