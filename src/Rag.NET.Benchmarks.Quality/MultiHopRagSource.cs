@@ -89,6 +89,23 @@ public sealed class MultiHopRagSource : IBeirDatasetSource
         JudgedQueryCount: 2255,
         JudgementCount: 5908);
 
+    /// <summary>
+    /// How the 2,556 queries split by <c>question_type</c> at the pinned revision: 816 inference,
+    /// 856 comparison, 583 temporal, 301 null.
+    /// </summary>
+    /// <remarks>
+    /// The paper's Table 1 figures (arXiv 2401.15391, read 2026-08-15), and they sum to 2,556 —
+    /// the null count is also the difference between <see cref="MultiHopRagCounts.QueryCount"/>
+    /// and <see cref="MultiHopRagCounts.JudgedQueryCount"/> above, measured independently by the
+    /// conversion since 2026-08-12. The conversion asserts all four, so they are checked against
+    /// the file every time rather than trusted from the paper.
+    /// </remarks>
+    public static MultiHopRagQuestionTypeCounts PublishedQuestionTypeCounts { get; } = new(
+        Inference: 816,
+        Comparison: 856,
+        Temporal: 583,
+        Null: 301);
+
     /// <inheritdoc/>
     /// <exception cref="InvalidDataException">
     /// A downloaded file's length or MD5 does not match the pinned revision, or the conversion did
@@ -118,7 +135,9 @@ public sealed class MultiHopRagSource : IBeirDatasetSource
                 .ConfigureAwait(false);
 
             await MultiHopRagConversion
-                .ConvertAsync(corpusPath, queriesPath, datasetDirectory, PublishedCounts, cancellationToken)
+                .ConvertAsync(
+                    corpusPath, queriesPath, datasetDirectory, PublishedCounts,
+                    PublishedQuestionTypeCounts, cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
@@ -131,6 +150,14 @@ public sealed class MultiHopRagSource : IBeirDatasetSource
             }
         }
     }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The gold-answer sidecar (<see cref="MultiHopRagAnswers.FileName"/>) is written by the same
+    /// conversion that writes the three BEIR files, so a directory without it was converted before
+    /// the sidecar existed and is re-converted once, from the same pinned revision.
+    /// </remarks>
+    public bool IsComplete(string datasetDirectory) => MultiHopRagAnswers.IsPresentAt(datasetDirectory);
 
     private static Uri FileUrl(string fileName) => new(
         "https://huggingface.co/datasets/yixuantt/MultiHopRAG/resolve/" + Revision + "/" + fileName);

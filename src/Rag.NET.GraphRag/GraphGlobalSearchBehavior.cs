@@ -134,11 +134,39 @@ public sealed class GraphGlobalSearchBehavior(
         return await ReducePhase(ctx, partialAnswers, client, ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Shuffles the reports in an order that depends on the query and on nothing else — the same
+    /// query over the same reports gives the same order in every process, forever.
+    /// </summary>
+    /// <remarks>
+    /// <b>It seeded from <c>string.GetHashCode</c> until #241, and that was random per process.</b>
+    /// .NET randomises string hash codes at process start by design, so the "deterministic" shuffle
+    /// produced a different report order — and therefore different map prompts and a different
+    /// synthesised answer — on every run of the same query at temperature 0, and nothing keyed on
+    /// those prompts could ever be replayed. The seed is now FNV-1a over the query's UTF-16 code
+    /// units, which is a pure function of the text; <see cref="StableSeed"/> is internal so a test
+    /// can pin one query's order across processes.
+    /// </remarks>
     private static List<SearchResult> ShuffleDeterministic(List<SearchResult> reports, string query)
     {
-        var seed = string.GetHashCode(query, StringComparison.Ordinal);
-        var rng = new Random(seed);
+        var rng = new Random(StableSeed(query));
         return [.. reports.OrderBy(_ => rng.Next())];
+    }
+
+    /// <summary>FNV-1a (32-bit) over the query's UTF-16 code units: the same value in every process.</summary>
+    internal static int StableSeed(string query)
+    {
+        const uint OffsetBasis = 2166136261;
+        const uint Prime = 16777619;
+
+        var hash = OffsetBasis;
+        foreach (var c in query)
+        {
+            hash ^= c;
+            hash *= Prime;
+        }
+
+        return unchecked((int)hash);
     }
 
     private List<List<SearchResult>> BatchReports(List<SearchResult> shuffled)

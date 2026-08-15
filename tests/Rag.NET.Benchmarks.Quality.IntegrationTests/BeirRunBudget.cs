@@ -528,7 +528,10 @@ public static class BeirRunBudget
             "control's run, which is priced by its own cell. For the " +
             "slice guard alone: --filter \"FullyQualifiedName~GraphRagFunctionsTests\". A THIRD case " +
             "shares the cell since #239: BeirGraphRagCorpusTests.Ablations_UnderTheGraphPath, one more " +
-            "graph build plus one query pass, recorded in Phase 5.2.1 rather than pinned. The " +
+            "graph build plus one query pass, recorded in Phase 5.2.1 rather than pinned. A FOURTH " +
+            "since Phase 5.2.2: BeirGraphRagAnswerTests, the same graph build plus one answering pass " +
+            "per arm replayed from the graph-answers cache; its own pins live in " +
+            "MultiHopRagAnswerReproduction and its generation gate is described on the class. The " +
             "confound check that has to pass before either number means anything is " +
             "--filter \"DisplayName~Chunking_UnderTheGraphPath\", which needs no model and takes " +
             "under a second. " +
@@ -832,7 +835,8 @@ public static class BeirRunBudget
                    $"|FullyQualifiedName~{nameof(BeirGraphRagCorpusTests)}." +
                    nameof(BeirGraphRagCorpusTests.NdcgAt10_UnderTheGraphPath_IsMeasuredOverTheWholeCorpus) +
                    $"|FullyQualifiedName~{nameof(BeirGraphRagCorpusTests)}." +
-                   nameof(BeirGraphRagCorpusTests.Ablations_UnderTheGraphPath_PageRankWeightZero_AndGraphReach);
+                   nameof(BeirGraphRagCorpusTests.Ablations_UnderTheGraphPath_PageRankWeightZero_AndGraphReach) +
+                   $"|FullyQualifiedName~{nameof(BeirGraphRagAnswerTests)}";
         }
 
         var discriminator = cost.Protocol switch

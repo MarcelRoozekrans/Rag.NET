@@ -68,6 +68,7 @@ public static class MultiHopRagConversion
         string queriesJsonPath,
         string datasetDirectory,
         MultiHopRagCounts expected,
+        MultiHopRagQuestionTypeCounts? expectedQuestionTypes,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(corpusJsonPath);
@@ -86,10 +87,11 @@ public static class MultiHopRagConversion
             _ = Directory.CreateDirectory(Path.Combine(stagingDirectory, "qrels"));
 
             var documentIds = WriteCorpus(corpusJson.RootElement, stagingDirectory, corpusJsonPath);
-            var written = WriteQueriesAndQrels(
+            var (written, types) = WriteQueriesQrelsAndAnswers(
                 queriesJson.RootElement, stagingDirectory, documentIds, queriesJsonPath);
 
             RequireExpectedTotals(expected, written, datasetDirectory);
+            RequireExpectedQuestionTypes(expectedQuestionTypes, types, datasetDirectory);
 
             await PublishRename
                 .PublishDirectoryAsync(stagingDirectory, datasetDirectory, cancellationToken)
@@ -156,50 +158,87 @@ public static class MultiHopRagConversion
     /// this loop, just the empty-list outcome, and is exactly what BEIR itself does with SciFact's
     /// 809 unjudged queries.
     /// </remarks>
-    private static MultiHopRagCounts WriteQueriesAndQrels(
+    private static (MultiHopRagCounts Counts, MultiHopRagQuestionTypeCounts Types) WriteQueriesQrelsAndAnswers(
         JsonElement queries, string stagingDirectory, HashSet<string> documentIds, string sourcePath)
     {
         var queryCount = 0;
         var judgedQueryCount = 0;
         var judgementCount = 0;
+        var types = new QuestionTypeTally();
         var relevant = new List<string>();
         var alreadyCited = new HashSet<string>(StringComparer.Ordinal);
 
-        var queryWriter = new BeirJsonlWriter(Path.Combine(stagingDirectory, "queries.jsonl"));
-        using (queryWriter)
+        using var queryWriter = new BeirJsonlWriter(Path.Combine(stagingDirectory, "queries.jsonl"));
+        using var answerWriter = new AnswerJsonlWriter(Path.Combine(stagingDirectory, MultiHopRagAnswers.FileName));
+        using var qrelsWriter = new StreamWriter(Path.Combine(stagingDirectory, "qrels", Split + ".tsv"))
         {
-            var qrelsWriter = new StreamWriter(Path.Combine(stagingDirectory, "qrels", Split + ".tsv"))
+            NewLine = "\n",
+        };
+
+        qrelsWriter.WriteLine(BeirLoader.QrelsHeader);
+
+        foreach (var query in queries.EnumerateArray())
+        {
+            var queryId = QueryIdPrefix +
+                queryCount.ToString(QueryIdFormat, CultureInfo.InvariantCulture);
+
+            queryWriter.WriteRecord(
+                queryId, title: null, RequiredString(query, "query", sourcePath, queryCount));
+
+            var questionType = RequiredString(query, "question_type", sourcePath, queryCount);
+            answerWriter.WriteRecord(
+                queryId, RequiredString(query, "answer", sourcePath, queryCount), questionType);
+            types.Count(questionType, sourcePath, queryId);
+
+            CollectEvidence(query, documentIds, relevant, alreadyCited, sourcePath, queryId);
+
+            foreach (ref readonly var documentId in CollectionsMarshal.AsSpan(relevant))
             {
-                NewLine = "\n",
-            };
+                qrelsWriter.WriteLine(string.Concat(queryId, "\t", documentId, "\t1"));
+            }
 
-            using (qrelsWriter)
+            judgedQueryCount += relevant.Count == 0 ? 0 : 1;
+            judgementCount += relevant.Count;
+            queryCount++;
+        }
+
+        return (
+            new MultiHopRagCounts(documentIds.Count, queryCount, judgedQueryCount, judgementCount),
+            types.ToCounts());
+    }
+
+    /// <summary>Counts queries by <c>question_type</c>, refusing a fifth value.</summary>
+    /// <remarks>
+    /// Refusing rather than lumping into "other": the four types are the paper's, each has its own
+    /// answer shape, and the answer scorer branches on them — a query filed under a name nobody
+    /// scores would be silently excluded from every per-type figure and quietly present in the
+    /// overall one.
+    /// </remarks>
+    private sealed class QuestionTypeTally
+    {
+        private int _inference;
+        private int _comparison;
+        private int _temporal;
+        private int _null;
+
+        public void Count(string questionType, string sourcePath, string queryId)
+        {
+            switch (questionType)
             {
-                qrelsWriter.WriteLine(BeirLoader.QrelsHeader);
-
-                foreach (var query in queries.EnumerateArray())
-                {
-                    var queryId = QueryIdPrefix +
-                        queryCount.ToString(QueryIdFormat, CultureInfo.InvariantCulture);
-
-                    queryWriter.WriteRecord(
-                        queryId, title: null, RequiredString(query, "query", sourcePath, queryCount));
-
-                    CollectEvidence(query, documentIds, relevant, alreadyCited, sourcePath, queryId);
-
-                    foreach (ref readonly var documentId in CollectionsMarshal.AsSpan(relevant))
-                    {
-                        qrelsWriter.WriteLine(string.Concat(queryId, "\t", documentId, "\t1"));
-                    }
-
-                    judgedQueryCount += relevant.Count == 0 ? 0 : 1;
-                    judgementCount += relevant.Count;
-                    queryCount++;
-                }
+                case MultiHopRagAnswers.InferenceType: _inference++; break;
+                case MultiHopRagAnswers.ComparisonType: _comparison++; break;
+                case MultiHopRagAnswers.TemporalType: _temporal++; break;
+                case MultiHopRagAnswers.NullType: _null++; break;
+                default:
+                    throw new InvalidDataException(
+                        $"'{sourcePath}' query {queryId} has question_type '{questionType}', which is " +
+                        "none of the four MultiHop-RAG publishes (inference_query, comparison_query, " +
+                        "temporal_query, null_query). The answer scorer branches on the type, so an " +
+                        "unknown one would be silently left out of every per-type figure.");
             }
         }
 
-        return new MultiHopRagCounts(documentIds.Count, queryCount, judgedQueryCount, judgementCount);
+        public MultiHopRagQuestionTypeCounts ToCounts() => new(_inference, _comparison, _temporal, _null);
     }
 
     /// <summary>
@@ -274,6 +313,36 @@ public static class MultiHopRagConversion
             "published: a short conversion loads and scores like a complete one, so the difference " +
             "would otherwise surface as a retrieval figure nobody can tell is wrong.");
     }
+
+    /// <summary>
+    /// Asserts the per-type query counts match what the pinned revision holds, when the caller
+    /// pinned them.
+    /// </summary>
+    /// <remarks>
+    /// <see langword="null"/> skips the check rather than failing it, for the conversion tests
+    /// that build two-query fixtures — the totals check above still runs for them. The real source
+    /// always passes its published counts.
+    /// </remarks>
+    private static void RequireExpectedQuestionTypes(
+        MultiHopRagQuestionTypeCounts? expected,
+        MultiHopRagQuestionTypeCounts written,
+        string datasetDirectory)
+    {
+        if (expected is null || expected == written)
+        {
+            return;
+        }
+
+        throw new InvalidDataException(
+            $"Converting MultiHop-RAG for '{datasetDirectory}' produced {Describe(written)}, but " +
+            $"the pinned revision holds {Describe(expected)}. Nothing was published: the answer " +
+            "scorer reports accuracy per type, and a type short by any amount is a different " +
+            "denominator under the same name.");
+    }
+
+    private static string Describe(MultiHopRagQuestionTypeCounts counts) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{counts.Inference} inference, {counts.Comparison} comparison, {counts.Temporal} temporal and {counts.Null} null queries");
 
     private static string Describe(MultiHopRagCounts counts) => string.Create(
         CultureInfo.InvariantCulture,
@@ -367,6 +436,42 @@ public static class MultiHopRagConversion
             }
 
             _writer.WriteString("text", text);
+            _writer.WriteEndObject();
+            _writer.Flush();
+
+            _stream.WriteByte((byte)'\n');
+            _writer.Reset();
+        }
+
+        public void Dispose()
+        {
+            _writer.Dispose();
+            _stream.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Writes the gold-answer sidecar: one <c>{"_id", "answer", "question_type"}</c> per line, in
+    /// query order, under the query ids — the shape <see cref="MultiHopRagAnswers.Load"/> reads.
+    /// </summary>
+    /// <remarks>Same writer discipline as <see cref="BeirJsonlWriter"/>, for the same reasons.</remarks>
+    private sealed class AnswerJsonlWriter : IDisposable
+    {
+        private readonly FileStream _stream;
+        private readonly Utf8JsonWriter _writer;
+
+        public AnswerJsonlWriter(string path)
+        {
+            _stream = File.Create(path);
+            _writer = new Utf8JsonWriter(_stream);
+        }
+
+        public void WriteRecord(string id, string answer, string questionType)
+        {
+            _writer.WriteStartObject();
+            _writer.WriteString("_id", id);
+            _writer.WriteString("answer", answer);
+            _writer.WriteString("question_type", questionType);
             _writer.WriteEndObject();
             _writer.Flush();
 

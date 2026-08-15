@@ -323,6 +323,30 @@ RAGNET_IDENTITY_BATTERY_DIR="$RAGNET_BEIR_CACHE/identity-battery" \
   --filter "DisplayName~DumpsEachBatteryInputsVector"
 ```
 
+**The answer-level GraphRAG evaluation (Phase 5.2.2) has three more, and they gate spend, not
+coverage.** `BeirGraphRagAnswerTests` replays every model reply from the `graph-answers` cache
+refuse-on-miss by default; the variables below exist so filling that cache is an explicit act.
+`RAGNET_GRAPHRAG_ANSWERS_GENERATE` switches the cache to fill mode and requires `OPENROUTER_API_KEY`;
+`RAGNET_GRAPHRAG_ANSWERS_MAX_QUERIES` bounds the run to N queries stratified by type — the pilot the
+design calls for before the full run — and `RAGNET_GRAPHRAG_ANSWERS_ARMS` restricts the arms
+(`dense`, `local`, `global`). All three read only by that class; none is set by any workflow, and the
+nightly never spends. The pilot, then the full run, on a machine holding the extraction and report
+caches (the case is opt-in through the `multihop-rag` / `GraphRag` budget cell like the rest of the
+graph work):
+
+```bash
+# Pilot: 100 stratified queries, all three arms, generating what the cache lacks (~$1 derived).
+RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 RAGNET_GRAPHRAG_ANSWERS_MAX_QUERIES=100 \
+RAGNET_GRAPHRAG_ANSWERS_ARMS=dense,local,global \
+RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
+  --filter "FullyQualifiedName~BeirGraphRagAnswerTests"
+
+# Full run, all 2,255 judged and 301 null queries; drop GENERATE to replay only, which is what the pin checks.
+RAGNET_GRAPHRAG_ANSWERS_GENERATE=1 \
+RAGNET_BEIR_LONG_RUNS=1 dotnet test tests/Rag.NET.Benchmarks.Quality.IntegrationTests --no-build \
+  --filter "FullyQualifiedName~BeirGraphRagAnswerTests"
+```
+
 The split keeps the *parity* number under nightly regression guard on two datasets, which is the
 number the milestone exists to protect and the only one that can be checked against a published
 figure at all. **What it gives up is stated rather than buried:** no chunk-to-document max-pooling

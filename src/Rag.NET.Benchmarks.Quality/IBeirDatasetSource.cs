@@ -23,4 +23,22 @@ public interface IBeirDatasetSource
     /// </param>
     /// <param name="cancellationToken">Cancels the acquisition.</param>
     Task PrepareAsync(string datasetDirectory, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reports whether a directory that already has BEIR's three files also has everything this
+    /// source's <see cref="PrepareAsync"/> would have put beside them.
+    /// </summary>
+    /// <param name="datasetDirectory">A directory <see cref="BeirDatasetCache"/> found present.</param>
+    /// <returns>
+    /// <see langword="true"/> when nothing is missing. The default is <see langword="true"/>: BEIR's
+    /// layout is the whole postcondition for a source that converts nothing extra.
+    /// </returns>
+    /// <remarks>
+    /// Exists for the sidecar case. MultiHop-RAG's conversion writes the gold answers beside the
+    /// queries, and a cache converted before that existed has the three BEIR files and no answers —
+    /// present by BEIR's rule, incomplete by the source's. Answering <see langword="false"/> here
+    /// makes <see cref="BeirDatasetCache.EnsureAsync"/> re-prepare it once, rather than letting the
+    /// first test that asks for an answer fail on a file that will never appear.
+    /// </remarks>
+    bool IsComplete(string datasetDirectory) => true;
 }

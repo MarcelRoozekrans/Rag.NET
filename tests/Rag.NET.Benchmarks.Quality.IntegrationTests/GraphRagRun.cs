@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Benchmarks.Quality.GraphExtractions;
 using Rag.NET.Embeddings.Onnx;
@@ -368,10 +369,28 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// its own metadata filter and this — the unfiltered call any caller would make — is what gets
     /// asserted.
     /// </remarks>
+    public Task<IReadOnlyList<SearchResult>> GlobalSearchAsync(
+        string query, CancellationToken cancellationToken) =>
+        GlobalSearchAsync(query, _globalChat, cancellationToken);
+
+    /// <summary>
+    /// Runs global search for one query with the map/reduce going through
+    /// <paramref name="chatClient"/> instead of the run's prompt-echo stub.
+    /// </summary>
+    /// <param name="query">The query text.</param>
+    /// <param name="chatClient">The client the map and reduce calls go to.</param>
+    /// <param name="cancellationToken">Cancels the search.</param>
+    /// <returns>The synthesised answer chunk first, then the non-report candidates.</returns>
+    /// <remarks>
+    /// The stub is right for the guard, whose reason for not caching global search's prompts is
+    /// recorded on <see cref="GraphRagRun"/>. The answer-level evaluation (Phase 5.2.2) needs the
+    /// real map/reduce, replayed from its own cache — which became possible when #241 made the
+    /// report order a function of the query rather than of the process.
+    /// </remarks>
     public async Task<IReadOnlyList<SearchResult>> GlobalSearchAsync(
-        string query, CancellationToken cancellationToken)
+        string query, IChatClient chatClient, CancellationToken cancellationToken)
     {
-        var behavior = new GraphGlobalSearchBehavior(_globalChat, _retrievalOptions);
+        var behavior = new GraphGlobalSearchBehavior(chatClient, _retrievalOptions);
 
         return await behavior.HandleAsync(CreateContext(query), cancellationToken, RetrieveAsync);
     }
