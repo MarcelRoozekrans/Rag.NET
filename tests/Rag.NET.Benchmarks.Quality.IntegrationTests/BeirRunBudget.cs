@@ -511,7 +511,9 @@ public static class BeirRunBudget
             "gate is keyed on (dataset, protocol), so the two share this cell and the filter in the " +
             "skip message selects BOTH -- which is right for a cell that prices both, and wrong for " +
             "an operator who wanted only one. For the corpus run alone: " +
-            "--filter \"FullyQualifiedName~BeirGraphRagCorpusTests&DisplayName~NdcgAt10\". For the " +
+            "--filter \"FullyQualifiedName~BeirGraphRagCorpusTests.NdcgAt10_UnderTheGraphPath\" -- " +
+            "the method, not the class, because since Phase 5.2.1 the class also holds the depth " +
+            "control's run, which is priced by its own cell. For the " +
             "slice guard alone: --filter \"FullyQualifiedName~GraphRagFunctionsTests\". The " +
             "confound check that has to pass before either number means anything is " +
             "--filter \"DisplayName~Chunking_UnderTheGraphPath\", which needs no model and takes " +
@@ -553,6 +555,34 @@ public static class BeirRunBudget
             "BeirGraphRagCorpusTests.Chunking_UnderTheGraphPath_IsIdenticalToTheRealProtocols. " +
             "FitsTheNightly stays false for the cell's existing reason before any timing argument: " +
             "the nightly has no cache to replay and cannot make the calls."),
+        new(
+            "multihop-rag",
+            BeirProtocol.GraphRagDepthControl,
+            FitsTheNightly: false,
+            "MEASURED 2026-08-15, three times in a row on Windows 11, .NET 10.0.11, CPU ONNX " +
+            "Runtime: **120.0 s, then 8 s, then 7.0 s** -- the same nDCG@10, Recall@10 and " +
+            "MRR@10 to five decimals all three times, and a 17x spread on the clock. Phase 5.2.1 " +
+            "(#232): the depth-matched dense control, BeirRealChunkingTests' 17,648 article " +
+            "chunks indexed alone -- the Real leg's store exactly -- and retrieved for the 2,255 " +
+            "judged queries at the graph path's candidate depth of 500 rather than the Real " +
+            "protocol's derived 2,010. **All three runs were 'warm' by the embedding cache's " +
+            "own count** -- 19,903 hits, 0 misses, every vector the Real leg had already written " +
+            "-- so the 17x is not embedding: it is the OS page cache over 19,903 small vector " +
+            "files in a directory of 857,000, cold on the first read and hot on the next two. " +
+            "That is the same artefact library-comparison.md records at 23x and #174 records at " +
+            "1.6x, and it is why this cell quotes both ends rather than one of them: **7-8 s is " +
+            "the compute** -- chunk loading, index construction, 2,255 top-500 scans over 17,648 " +
+            "entries -- **and 120 s is what a first run on this machine pays in disk reads on " +
+            "top of it.** A machine that has never run the Real leg pays the Real cell's cold " +
+            "embedding price on top of that (600.2 s upper bound, itself flagged as taken under " +
+            "load, #174), so the fresh-runner cost of this case is the Real cell's, not this " +
+            "one's. The derivation this replaces said 'under the Real leg's time'; it was right, " +
+            "and by more than it guessed. No graph is built, no extraction or report cache is " +
+            "touched, no model is called. The figure -- 0.63967, the Real leg's own -- is in " +
+            "BeirReproduction with what it means. " +
+            "FitsTheNightly is false for the Real cell's reason: on a nightly whose cache is " +
+            "fresh this costs the Real leg's cold embedding first, and that figure is not yet " +
+            "clean. Revisit both together when #174 lands."),
     ];
 
     /// <summary>
@@ -715,6 +745,9 @@ public static class BeirRunBudget
         BeirProtocol.GraphRag =>
             "GRAPHRAG (entities and relations extracted into a graph, communities detected, " +
             "local and global search over the result)",
+        BeirProtocol.GraphRagDepthControl =>
+            "GRAPHRAG DEPTH CONTROL (the Real leg's article chunks alone, dense-retrieved at the " +
+            "graph path's candidate depth, max-pooled to documents)",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -767,13 +800,23 @@ public static class BeirRunBudget
     /// <c>DisplayName</c> because the class name is the part that identifies them and it is in the
     /// fully-qualified name whether or not a case is a theory.
     /// </para>
+    /// <para>
+    /// The corpus half names the <b>method</b>, not just the class, since Phase 5.2.1 put a third
+    /// case in that class: <see cref="BeirProtocol.GraphRagDepthControl"/>'s run, which has its own
+    /// cell and its own price. A class-level identity would select it under this cell's cost and
+    /// misreport what the quoted 43 minutes buys — the same silent-subset shape as a dead branch,
+    /// inverted. The cheap chunking check in the same class is left unselected by either filter,
+    /// which is fine: it is ungated, needs no model, and the cell text tells the reader to run it
+    /// first by its own name.
+    /// </para>
     /// </remarks>
     private static string Filter(Cost cost)
     {
         if (cost.Protocol is BeirProtocol.GraphRag)
         {
             return $"FullyQualifiedName~{nameof(GraphRagFunctionsTests)}" +
-                   $"|FullyQualifiedName~{nameof(BeirGraphRagCorpusTests)}";
+                   $"|FullyQualifiedName~{nameof(BeirGraphRagCorpusTests)}." +
+                   nameof(BeirGraphRagCorpusTests.NdcgAt10_UnderTheGraphPath_IsMeasuredOverTheWholeCorpus);
         }
 
         var discriminator = cost.Protocol switch
@@ -788,6 +831,7 @@ public static class BeirRunBudget
             BeirProtocol.LangChain => "ThroughLangChain",
             BeirProtocol.LlamaIndex => "ThroughLlamaIndex",
             BeirProtocol.Haystack => "ThroughHaystack",
+            BeirProtocol.GraphRagDepthControl => "DenseAtTheGraphPathsDepth",
             _ => throw new ArgumentOutOfRangeException(nameof(cost), cost.Protocol, null),
         };
 

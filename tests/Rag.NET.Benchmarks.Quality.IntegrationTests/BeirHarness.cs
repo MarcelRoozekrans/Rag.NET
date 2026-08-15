@@ -271,6 +271,48 @@ public static class BeirHarness
     /// <param name="embeddings">The vector cache; every embed call goes through it.</param>
     /// <param name="cancellationToken">Cancels the run.</param>
     /// <returns>The metrics and the shape of the run that produced them.</returns>
+    public static Task<BeirRunResult> MeasureAsync(
+        BeirDatasetDescriptor descriptor,
+        BeirDataset dataset,
+        IReadOnlyList<TextChunk> units,
+        AblationRow row,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings,
+        CancellationToken cancellationToken) =>
+        MeasureAsync(
+            descriptor, dataset, units, row, generator, embeddings, candidateDepth: null,
+            cancellationToken);
+
+    /// <summary>
+    /// <see cref="MeasureAsync(BeirDatasetDescriptor, BeirDataset, IReadOnlyList{TextChunk}, AblationRow, OnnxEmbeddingGenerator, EmbeddingCache, CancellationToken)"/>
+    /// with the candidate depth fixed by the caller instead of derived from the units.
+    /// </summary>
+    /// <param name="descriptor">The dataset, for its retrieval protocol.</param>
+    /// <param name="dataset">The loaded corpus, queries and qrels.</param>
+    /// <param name="units">What to index.</param>
+    /// <param name="row">How to retrieve.</param>
+    /// <param name="generator">The embedder.</param>
+    /// <param name="embeddings">The vector cache; every embed call goes through it.</param>
+    /// <param name="candidateDepth">
+    /// How many chunks to retrieve per query before pooling, or <see langword="null"/> for the
+    /// protocol's own over-retrieval — the cutoff times the largest number of units any document
+    /// contributed, which is what every pinned Real figure was measured at.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the run.</param>
+    /// <returns>The metrics and the shape of the run that produced them.</returns>
+    /// <remarks>
+    /// <b>Exists for one comparison, and a fixed depth is a different protocol from the derived
+    /// one.</b> <see cref="BeirProtocol.GraphRagDepthControl"/> needs the Real leg's exact
+    /// retrieval and pooling — same store contents, same dense scan, same
+    /// <see cref="DocumentRanking"/> pass, same self-exclusion rule — with the candidate depth
+    /// moved to the graph path's 500 and nothing else touched, so that its difference from the
+    /// Real leg is the depth alone. Routing it through this method rather than a copy in the graph
+    /// test file is what makes "nothing else touched" a property of the code instead of a claim
+    /// about it. A depth below the derived one can hand pooling a list top-k already truncated,
+    /// which is the ordering defect <see cref="DocumentRanking"/> exists to prevent; that is
+    /// precisely the effect the control is measuring, and it must not be used for a figure that is
+    /// meant to stand on its own.
+    /// </remarks>
     public static async Task<BeirRunResult> MeasureAsync(
         BeirDatasetDescriptor descriptor,
         BeirDataset dataset,
@@ -278,6 +320,7 @@ public static class BeirHarness
         AblationRow row,
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
+        int? candidateDepth,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
@@ -295,7 +338,7 @@ public static class BeirHarness
         await IndexAsync(generator, embeddings, store, units, cancellationToken);
         var (runs, pooledQueries, _) = await RetrieveAsync(
             row, generator, embeddings, store, JudgedQueries(dataset), descriptor, maxPerDocument,
-            cancellationToken);
+            candidateDepth, cancellationToken);
 
         return new BeirRunResult(
             IrMetrics.Evaluate(ProjectDocumentIds(runs), dataset.Qrels, Cutoff),
@@ -374,7 +417,7 @@ public static class BeirHarness
         var indexingSeconds = Stopwatch.GetElapsedTime(indexingStartedAt).TotalSeconds;
         var (runs, _, latencies) = await RetrieveAsync(
             row, generator, embeddings, store, judged, descriptor, maxPerDocument,
-            cancellationToken);
+            candidateDepth: null, cancellationToken);
 
         return new TimedScoredRuns(runs, indexingSeconds, latencies, units.Count, maxPerDocument);
     }
@@ -558,6 +601,8 @@ public static class BeirHarness
     /// that factor is 1 and this is the cutoff exactly, as it always was. Under a chunking protocol
     /// it has to be more, or pooling is handed a list top-k already truncated — the ordering defect
     /// <see cref="DocumentRanking"/> exists to prevent, reintroduced one level up.
+    /// <paramref name="candidateDepth"/> overrides that derivation when a caller needs the depth
+    /// held to another run's, and the caller then owns the truncation it may be choosing.
     /// </para>
     /// <para>
     /// The exclusion is BEIR's own: <c>DenseRetrievalExactSearch.search</c> pushes a hit only
@@ -582,6 +627,7 @@ public static class BeirHarness
             IReadOnlyList<BeirQuery> queries,
             BeirDatasetDescriptor descriptor,
             int maxUnitsPerDocument,
+            int? candidateDepth,
             CancellationToken cancellationToken)
     {
         var excludesSelf = descriptor.ExcludesSelfRetrievedDocument;
@@ -590,7 +636,7 @@ public static class BeirHarness
         var latencies = new Dictionary<string, double>(queries.Count, StringComparer.Ordinal);
         var options = new SearchOptions
         {
-            TopK = (Cutoff + (excludesSelf ? 1 : 0)) * maxUnitsPerDocument,
+            TopK = candidateDepth ?? (Cutoff + (excludesSelf ? 1 : 0)) * maxUnitsPerDocument,
         };
 
         var pooledQueries = 0;

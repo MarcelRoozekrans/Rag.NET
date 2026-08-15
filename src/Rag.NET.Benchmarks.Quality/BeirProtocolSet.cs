@@ -43,7 +43,7 @@ namespace Rag.NET.Benchmarks.Quality;
 public readonly record struct BeirProtocolSet
 {
     /// <summary>
-    /// How many protocols a mask can hold. <see cref="BeirProtocol"/> declares eleven.
+    /// How many protocols a mask can hold. <see cref="BeirProtocol"/> declares twelve.
     /// </summary>
     /// <remarks>
     /// Checked rather than assumed, because the failure would be silent and specific:

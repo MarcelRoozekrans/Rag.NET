@@ -597,6 +597,50 @@ public static class BeirReproduction
             "queries and asserts that the pipeline FUNCTIONS; a number computed from it would " +
             "not be comparable to anything, which is why the comparative run had to be the whole " +
             "corpus."),
+        new(
+            "multihop-rag",
+            BeirProtocol.GraphRagDepthControl,
+            [0.63967],
+            "MEASURED 2026-08-15 on Windows 11, .NET 10.0.11, CPU ONNX Runtime -- the same " +
+            "machine as every other figure in this file. Phase 5.2.1 (#232): the depth-matched " +
+            "dense control, BeirRealChunkingTests' 17,648 article chunks indexed alone and " +
+            "retrieved through BeirHarness.MeasureAsync at the graph path's candidate depth of " +
+            "500 rather than the Real protocol's derived 2,010, max-pooled to documents over all " +
+            "2,255 judged queries, none excluded. Three runs: 120.0 s, 8 s, 7.0 s -- identical figures, " +
+            "an OS page-cache spread on the clock, BeirRunBudget has both ends -- off a warm embedding cache (19,903 " +
+            "hits, 0 misses -- 17,648 units and 2,255 queries, every vector the Real leg had " +
+            "already written). " +
+            "**nDCG@10 = 0.63967, Recall@10 = 0.78684, MRR@10 = 0.70150 -- the Real leg's three " +
+            "figures to five decimals.** Not close: identical. Cutting the candidate set from " +
+            "2,010 to 500 changed the top-10 document ranking of not one of the 2,255 queries, " +
+            "which says the ten best documents' best chunks always sit inside the dense top-500 " +
+            "on this corpus. **DEPTH COSTS NOTHING HERE, and that settles what #232 asked.** " +
+            "The -0.04309 between the graph run's candidate-set control (0.59658) and the Real " +
+            "leg is store pollution, entire and alone: 303,503 entity, relationship and " +
+            "community-report units competing with 17,648 judged article chunks for rank at " +
+            "the same depth over the same article text. " +
+            "**So the GraphRag entry's framing above is corrected, not merely refined.** It " +
+            "calls the -0.07070 against the Real leg 'depth-confounded' and says it must never " +
+            "be quoted without that. Measured, the depth contributes 0.00000 of it; the -0.07070 " +
+            "decomposes exactly into -0.04309 of store pollution and -0.02761 of graph " +
+            "behaviour, and both halves are attributable. The word 'depth-confounded' was a " +
+            "plausible reading of two protocols that differed in two things at once, written " +
+            "before anybody had moved one of them alone. It is left standing in that entry, " +
+            "with this one beside it, because a corrected record is more useful than a clean " +
+            "one. " +
+            "**What follows from it, and what does not.** The pollution is a ranking-policy " +
+            "problem, not a graph-quality one: the graph-derived units are competing at the " +
+            "same depth over the same article text, so a filter or a rank policy for synthetic " +
+            "chunks is the lever, and it applies to RAPTOR too, which also indexes synthetic " +
+            "chunks beside real ones. That is a design question and it is not decided here. " +
+            "What this figure does NOT say is that top-500 is a safe depth in general -- it " +
+            "says the top-10 documents survived the cut on this corpus with this chunker, where " +
+            "the deepest document runs to 201 chunks; a corpus whose top documents each " +
+            "contribute more chunks above the tenth document's best could lose it. " +
+            "**Pinned on its own authority**, like the Real and GraphRag entries: no published " +
+            "figure exists for this configuration, and its job is drift. A re-run that lands " +
+            "away from the Real leg's figure has moved either the chunker or the pooling, " +
+            "because this run holds everything else still."),
     ];
 
     /// <summary>

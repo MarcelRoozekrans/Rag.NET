@@ -46,6 +46,14 @@ public sealed class ProtocolApplicabilityTests
             "fiqa/GraphRag",
             "arguana/GraphRag",
             "trec-covid/GraphRag",
+
+            // Phase 5.2.1 (#232): the graph path's depth-matched dense control is inapplicable
+            // exactly where the graph path is — a control with no graph run to control for would
+            // be a dense run at an arbitrary depth, and it would owe a cell and a pin for nothing.
+            "scifact/GraphRagDepthControl",
+            "fiqa/GraphRagDepthControl",
+            "arguana/GraphRagDepthControl",
+            "trec-covid/GraphRagDepthControl",
         };
 
         var actual = new HashSet<string>(

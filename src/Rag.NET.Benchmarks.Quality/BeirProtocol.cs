@@ -125,4 +125,26 @@ public enum BeirProtocol
     /// </para>
     /// </summary>
     GraphRag,
+
+    /// <summary>
+    /// The depth-matched dense control for <see cref="GraphRag"/>: the article chunks alone —
+    /// exactly what <see cref="Real"/> indexes, cut by the same chunker — retrieved at the graph
+    /// path's candidate depth rather than at the Real protocol's, and max-pooled to documents the
+    /// same way. <b>Applies to MultiHop-RAG and to nothing else here.</b>
+    /// <para>
+    /// It exists to separate two things the graph run changed at once. Against the Real leg the
+    /// graph path's store held 321,151 units instead of 17,648 and its candidate set was 500 deep
+    /// instead of 2,010, and the gap between the graph run's own candidate-set control (0.59658)
+    /// and the Real leg (0.63967) could be either. This protocol moves only the depth: same store as
+    /// Real, same chunks, same pooling, top-500. Its difference from the Real leg prices the depth,
+    /// and its difference from the graph run's candidate-set control prices what the extra
+    /// 303,503 graph-derived units cost the judged documents by competing with them for rank.
+    /// </para>
+    /// <para>
+    /// A protocol rather than a second figure inside <see cref="GraphRag"/>'s cell because it has
+    /// its own cost — no graph is built, no cache is replayed, it needs the article vectors and
+    /// nothing else — and its own figure to pin, and both tables are keyed on the pair.
+    /// </para>
+    /// </summary>
+    GraphRagDepthControl,
 }

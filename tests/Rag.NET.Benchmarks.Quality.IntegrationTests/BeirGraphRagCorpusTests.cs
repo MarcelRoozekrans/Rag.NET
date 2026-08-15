@@ -194,6 +194,206 @@ public sealed class BeirGraphRagCorpusTests
         await MeasureTheCorpusAsync(descriptor, modelPath, vocabPath, cacheDirectory);
     }
 
+    /// <summary>Gets every dataset that declares the depth control applicable, by name.</summary>
+    /// <returns>Dataset names.</returns>
+    /// <remarks>
+    /// Its own theory data rather than <see cref="Datasets"/>, because the two protocols are
+    /// declared separately on the descriptor and a dataset could in principle carry one without the
+    /// other — the enrolment has to come from the declaration that names this protocol, or the
+    /// biconditional <c>BeirReproductionTests</c> asserts would hold for a reason it does not check.
+    /// </remarks>
+    public static TheoryData<string> DepthControlDatasets()
+    {
+        var data = new TheoryData<string>();
+        foreach (var descriptor in BeirDatasetDescriptor.All)
+        {
+            if (descriptor.Supports(BeirProtocol.GraphRagDepthControl))
+            {
+                data.Add(descriptor.Name);
+            }
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    /// The depth-matched dense control: the article chunks alone, retrieved at the graph path's
+    /// candidate depth, pooled the way the Real leg pools.
+    /// </summary>
+    /// <param name="datasetName">The dataset to measure.</param>
+    /// <remarks>
+    /// <para>
+    /// <b>The whole-corpus run measured three points and separated one gap.</b> Local search
+    /// against the candidate-set control isolates the graph behaviour, and that finding stands. What
+    /// it did not separate is the gap between that control (0.59658, a 321,151-unit store at
+    /// top-500) and the Real leg (0.63967, a 17,648-unit store at top-2,010): two things differ at
+    /// once, the store's contents and the candidate depth, and nothing distinguished them. This run
+    /// moves only the depth — <see cref="BeirRealChunkingTests.ChunkAsync"/>'s units, which the
+    /// chunking check above proves are the graph path's article chunks to the byte, indexed alone
+    /// and retrieved at <see cref="GraphRagRun.BaseTopK"/>. Its difference from the Real leg prices
+    /// the depth; its difference from the candidate-set control prices what the 303,503
+    /// graph-derived units cost the judged documents by competing with them for rank.
+    /// </para>
+    /// <para>
+    /// <b>Through <see cref="BeirHarness.MeasureAsync(BeirDatasetDescriptor, BeirDataset, IReadOnlyList{TextChunk}, AblationRow, OnnxEmbeddingGenerator, EmbeddingCache, int?, CancellationToken)"/>,
+    /// deliberately.</b> That is the Real leg's own path — same dense row, same store type, same
+    /// <see cref="DocumentRanking"/> pass — with one argument changed, so "the only difference is
+    /// the depth" is a property of the call rather than a claim about a second copy of the
+    /// retrieval. The graph run's candidates came from the same operations in
+    /// <see cref="GraphRagRun"/>: embed the query through the cache, scan the store, take the top
+    /// 500.
+    /// </para>
+    /// <para>
+    /// No graph is built and no cache is replayed. It needs the article vectors and the query
+    /// vectors, both of which the Real leg already wrote, and it finishes in seconds once the vector files are in the page cache — 120 s the first time they are not. Gated
+    /// by <see cref="BeirRunBudget"/> like every measured case, and pinned in
+    /// <see cref="BeirReproduction"/> under its own protocol, because it is a figure of its own and
+    /// both tables key on the pair.
+    /// </para>
+    /// <para>
+    /// <b>It has run, and the answer is that depth costs nothing.</b> Measured 2026-08-15: nDCG@10
+    /// = <c>0.63967</c>, Recall@10 = 0.78684, MRR@10 = 0.70150 — the Real leg's three figures to
+    /// five decimals, so top-500 and top-2,010 ranked the same ten documents in the same order on
+    /// every one of the 2,255 queries. The whole −0.04309 between the candidate-set control and the
+    /// Real leg is store pollution, and the graph run's "depth-confounded" caveat is corrected in
+    /// <see cref="BeirReproduction"/> rather than deleted.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(DepthControlDatasets))]
+    public async Task NdcgAt10_DenseAtTheGraphPathsDepth_OverTheArticleOnlyStore(string datasetName)
+    {
+        var descriptor = BeirDatasetDescriptor.ByName(datasetName);
+
+        Assert.SkipUnless(
+            descriptor.Supports(BeirProtocol.GraphRagDepthControl),
+            $"{datasetName} does not declare the GraphRag depth control applicable: there is no " +
+            "graph run on it for a depth-matched control to control for.");
+
+        Assert.SkipUnless(
+            BeirHarness.IsProvisioned(out var modelPath, out var vocabPath, out var cacheDirectory),
+            BeirHarness.SkipReason);
+
+        Assert.SkipWhen(
+            BeirRunBudget.IsGatedOff(descriptor.Name, BeirProtocol.GraphRagDepthControl, out var budgetReason),
+            budgetReason);
+
+        var ct = TestContext.Current.CancellationToken;
+        var dataset = await BeirHarness.LoadAsync(
+            descriptor, cacheDirectory, BeirLoader.DefaultTitleTextSeparator, ct);
+
+        using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
+        var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
+
+        var units = await BeirRealChunkingTests.ChunkAsync(dataset.Documents, ct);
+        var result = await BeirHarness.MeasureAsync(
+            descriptor, dataset, units, AblationRow.Dense, generator, embeddings,
+            GraphRagRun.BaseTopK, ct);
+
+        _output.WriteLine(DescribeDepthControl(descriptor, result));
+
+        AssertTheArticleStoreWentThroughWhole(descriptor, result);
+        AssertEveryJudgedQueryWasScoredAtTheGraphPathsDepth(descriptor, result);
+        AssertDocumentIdsReachedTheMetricsAtTheGraphPathsDepth(descriptor, result);
+
+        BeirReproduction.AssertReproduces(
+            descriptor.Name, BeirProtocol.GraphRagDepthControl, result.NdcgAt10, _output);
+    }
+
+    /// <summary>
+    /// The control's figure with the two runs it sits between named, and what each difference
+    /// prices stated in the same breath as the number.
+    /// </summary>
+    /// <remarks>
+    /// The two anchors are quoted as literals here for the same reason the graph run's description
+    /// quotes 0.63967: <see cref="BeirReproduction"/> holds them as pinned measurements of other
+    /// cases and this test must not silently depend on the table's contents to describe itself.
+    /// Unlike that description, this one <i>does</i> print the subtractions — decomposing them is
+    /// the whole reason the run exists — but each one is printed beside the sentence that says
+    /// which single variable it prices, so it cannot be lifted out without the sentence.
+    /// </remarks>
+    private static string DescribeDepthControl(
+        BeirDatasetDescriptor descriptor, BeirRunResult result) =>
+        FormattableString.Invariant($"""
+
+            === {descriptor.Name} DENSE AT THE GRAPH PATH'S DEPTH (article chunks only, top-{GraphRagRun.BaseTopK}, max-pooled to documents) ===
+            {result.Describe()}
+
+            this run sits between two others over the same {descriptor.DocumentCount} articles and the same {descriptor.TestQueryCount} queries:
+              Real leg (pinned 2026-08-12):        nDCG@{Cutoff} = 0.63967 — {result.IndexedChunkCount} units, top-{Cutoff * result.MaxChunksPerDocument}
+              this run:                            nDCG@{Cutoff} = {result.NdcgAt10:F5} — {result.IndexedChunkCount} units, top-{GraphRagRun.BaseTopK}
+              candidate-set control (2026-08-15):  nDCG@{Cutoff} = 0.59658 — 321,151 units, top-{GraphRagRun.BaseTopK}
+            Real leg minus this run     = {0.63967 - result.NdcgAt10:+0.00000;-0.00000;0.00000} — the price of DEPTH alone: same store, same chunks, same pooling, top-{Cutoff * result.MaxChunksPerDocument} against top-{GraphRagRun.BaseTopK}
+            this run minus the control  = {result.NdcgAt10 - 0.59658:+0.00000;-0.00000;0.00000} — the price of STORE POLLUTION alone: same depth, same article chunks, 303,503 graph-derived units present or absent
+            neither difference is the graph behaviour; that is the -0.02761 between local search and the candidate-set control, and it is unchanged by this run
+            """);
+
+    /// <summary>Asserts the store held the whole corpus and the run actually chunked and pooled.</summary>
+    /// <remarks>
+    /// The Real leg's own three shape checks, because this is the Real leg's store at a different
+    /// depth: every article contributed a chunk, the chunker chunked, and pooling had work to do —
+    /// which at top-500 over up to 201 chunks from one article is not guaranteed by construction,
+    /// and is precisely the mechanism the depth difference acts through.
+    /// </remarks>
+    private static void AssertTheArticleStoreWentThroughWhole(
+        BeirDatasetDescriptor descriptor, BeirRunResult result)
+    {
+        Assert.True(
+            result.IndexedDocumentCount == descriptor.DocumentCount,
+            FormattableString.Invariant($"""
+                {result.IndexedDocumentCount} OF {descriptor.Name}'s {descriptor.DocumentCount}
+                ARTICLES CONTRIBUTED A CHUNK. This figure is compared to the Real leg's, measured
+                over all of them; a corpus short by any amount is a smaller experiment reported under
+                the same name.
+                """));
+
+        Assert.True(
+            result.Chunked,
+            FormattableString.Invariant($"""
+                THE CHUNKER DID NOT CHUNK. {descriptor.Name} produced {result.IndexedChunkCount} units
+                for {result.DocumentCount} documents, so this is not the Real leg's store and the
+                depth comparison against 0.63967 is between two different corpora.
+                """));
+
+        Assert.True(
+            result.PooledQueryCount > 0,
+            FormattableString.Invariant($"""
+                THE AGGREGATION DID NOT AGGREGATE. {descriptor.Name} indexed {result.IndexedChunkCount}
+                units, up to {result.MaxChunksPerDocument} from one document, and no query retrieved
+                two units of the same document at top-{GraphRagRun.BaseTopK} — which cannot be true
+                of this corpus, where the Real leg pooled on every judged query.
+                """));
+    }
+
+    /// <summary>Asserts the metric was averaged over the query set both anchors were averaged over.</summary>
+    private static void AssertEveryJudgedQueryWasScoredAtTheGraphPathsDepth(
+        BeirDatasetDescriptor descriptor, BeirRunResult result)
+    {
+        Assert.True(
+            result.Evaluation.EvaluatedQueryCount == descriptor.TestQueryCount,
+            FormattableString.Invariant($"""
+                {result.Evaluation.EvaluatedQueryCount} OF {descriptor.Name}'s
+                {descriptor.TestQueryCount} JUDGED QUERIES WERE SCORED, with
+                {result.Evaluation.ExcludedQueryCount} excluded for lacking a positive judgement.
+                Both anchors are means over all of them; a mean over a subset is a different
+                quantity and the decomposition would be between two query sets rather than two
+                depths.
+                """));
+    }
+
+    /// <summary>The zero-score collapse check, for a run whose figure is otherwise unbounded here.</summary>
+    private static void AssertDocumentIdsReachedTheMetricsAtTheGraphPathsDepth(
+        BeirDatasetDescriptor descriptor, BeirRunResult result)
+    {
+        Assert.True(
+            result.NdcgAt10 > 0,
+            FormattableString.Invariant($"""
+                {descriptor.Name} AT THE GRAPH PATH'S DEPTH SCORED nDCG@{Cutoff} = 0 over
+                {result.Evaluation.EvaluatedQueryCount} queries. Zero is what a run scores when chunk
+                ids reach IrMetrics instead of document ids; no chunk id ever matches a qrels row.
+                """));
+    }
+
     /// <summary>Builds the corpus graph, scores every judged query against it, and reports.</summary>
     private async Task MeasureTheCorpusAsync(
         BeirDatasetDescriptor descriptor, string modelPath, string vocabPath, string cacheDirectory)
@@ -539,9 +739,12 @@ public sealed class BeirGraphRagCorpusTests
     /// The delta against the Real leg is deliberately <b>not</b> computed here.
     /// <see cref="BeirReproduction"/> holds 0.63967 as a pinned measurement of a different case, and
     /// a subtraction printed by this test would turn into a headline the moment somebody quoted it
-    /// without the caveats underneath — chief among them that the two runs' candidate depths differ
-    /// by construction. The number is printed, the anchor is named, and the arithmetic is left to a
-    /// human who has read both entries.
+    /// without the caveats underneath. When this was written the chief caveat was that the two
+    /// runs' candidate depths differ by construction; Phase 5.2.1 then measured that difference at
+    /// exactly zero and the caveat became a decomposition — the gap is store pollution — which
+    /// <see cref="NdcgAt10_DenseAtTheGraphPathsDepth_OverTheArticleOnlyStore"/> prints with each
+    /// term named. The number is printed, the anchor is named, and the arithmetic is left to a
+    /// human who has read all three entries.
     /// </remarks>
     private static string Describe(
         BeirDatasetDescriptor descriptor,
@@ -564,7 +767,9 @@ public sealed class BeirGraphRagCorpusTests
               {descriptor.TestQueryCount} queries. That leg's store held {run.ChunkCount} chunks and it retrieved
               {Cutoff * run.MaxChunksPerDocument} of them per query; this one held {run.ChunkCount + run.GraphChunkCount + run.CommunityReportCount}
               and retrieved {scored.MaxCandidates}. The chunking is identical — Chunking_UnderTheGraphPath_IsIdenticalToTheRealProtocols
-              asserts it — but the candidate depth is not, and any delta carries that with it.
+              asserts it — and the depth difference is measured to cost nothing: NdcgAt10_DenseAtTheGraphPathsDepth_OverTheArticleOnlyStore
+              retrieves the Real leg's store at top-{scored.MaxCandidates} and reproduces 0.63967 to five decimals, so the gap between
+              the candidate-set control above and the Real leg is store pollution alone (BeirReproduction, GraphRagDepthControl).
             """);
 
     /// <summary>

@@ -272,22 +272,23 @@ public sealed class BeirDatasetDescriptorTests
     }
 
     [Fact]
-    public void TheFourBeirDatasetsSupportEveryProtocolExceptGraphRag_SoNoMeasuredCellIsGatedOff()
+    public void TheFourBeirDatasetsSupportEveryProtocolExceptTheGraphPair_SoNoMeasuredCellIsGatedOff()
     {
         // Originally EveryExistingDatasetSupportsEveryProtocol_SoThisChangeMovesNothing, over
         // BeirDatasetDescriptor.All and every protocol. Landing MultiHop-RAG made that false twice
         // over, both times by design: All now holds a fifth descriptor that declares nine protocols
         // inapplicable, and BeirProtocol gained an eleventh member — GraphRag — that the four BEIR
-        // datasets cannot be judged under, so they now name the ten they can.
+        // datasets cannot be judged under, so they now name the ten they can. Phase 5.2.1 added a
+        // twelfth, GraphRagDepthControl, which is excluded with the protocol it controls for.
         //
         // The scope narrowed rather than the assertion weakening, because the job has not changed.
         // What this catches is somebody quietly restricting one of the four datasets whose cells are
         // already measured and pinned in BeirRunBudget and BeirReproduction: a restriction there
         // gates off a measured cell, and a gated-off cell reads from a test summary exactly like a
         // cell that passed. Naming the four and the ten is what keeps that catchable while letting
-        // a fifth dataset — and an eleventh protocol — exist. Weakening it to "All, where
-        // applicable" would have been the same test asserting nothing, since it would agree with
-        // whatever the descriptors happen to say.
+        // a fifth dataset — and the graph pair — exist. Weakening it to "All, where applicable"
+        // would have been the same test asserting nothing, since it would agree with whatever the
+        // descriptors happen to say.
         BeirDatasetDescriptor[] beirDatasets =
             [
                 BeirDatasetDescriptor.SciFact,
@@ -300,13 +301,14 @@ public sealed class BeirDatasetDescriptorTests
         {
             foreach (var protocol in Enum.GetValues<BeirProtocol>())
             {
-                if (protocol == BeirProtocol.GraphRag)
+                if (protocol is BeirProtocol.GraphRag or BeirProtocol.GraphRagDepthControl)
                 {
                     Assert.False(
                         descriptor.Supports(protocol),
-                        $"{descriptor.Name} started supporting GraphRag. The graph protocol is " +
-                        "MultiHop-RAG's; a BEIR dataset claiming it would owe a budget cell and a " +
-                        "reproduction entry for a run whose judgements cannot reward a graph.");
+                        $"{descriptor.Name} started supporting {protocol}. The graph protocol and " +
+                        "its depth control are MultiHop-RAG's; a BEIR dataset claiming either would " +
+                        "owe a budget cell and a reproduction entry for a run whose judgements " +
+                        "cannot reward a graph, or for a control with no graph run to control for.");
                     continue;
                 }
 
