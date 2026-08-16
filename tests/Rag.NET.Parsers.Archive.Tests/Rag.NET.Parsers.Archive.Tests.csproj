@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- No <RequiresDocker> and no <RequiresLlm>: these tests build zip fixtures in memory and assert
-       on byte counts. A stale tier declaration fails Rag.NET.RepoConventions.Tests as loudly as a
-       missing one, so neither is declared. -->
+       on byte counts, or read Resources/sample.zip off disk. A stale tier declaration fails
+       Rag.NET.RepoConventions.Tests as loudly as a missing one, so neither is declared. -->
   <PropertyGroup>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
@@ -22,6 +22,12 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Milestone 6, Phase 6.2: a real ZIP, written by CPython's zipfile rather than by the
+         System.IO.Compression that ZipDocumentParser reads with. -->
+    <EmbeddedResource Include="Resources\**\*" />
   </ItemGroup>
 
 </Project>

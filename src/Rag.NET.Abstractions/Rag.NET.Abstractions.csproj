@@ -5,6 +5,14 @@
     <PackageId>Rag.NET.Abstractions</PackageId>
     <Description>Interfaces and models for the Rag.NET library</Description>
     <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2 §2(e). This package ships interfaces, records and option types and
+         no executable behaviour of its own, so there is nothing here to run against a real model,
+         a real file or a real service — "exercised beyond fakes" has no referent for it. What
+         exercises these types is every real run of every package built on them: the BEIR
+         reproductions, the container suites, the real-file parser tests. Upgrading the level would
+         claim a run this package cannot have; a bare unit would hide that the question was asked
+         and answered. This is a completion, not a concession. -->
+    <VerifiedByReason>Interfaces, records and option types only — no executable behaviour to exercise. Verified transitively by every real run of the packages built on it; nothing is left unverified that a run of this package could cover.</VerifiedByReason>
   </PropertyGroup>
 
   <ItemGroup>

@@ -9,6 +9,16 @@
          a support surface nobody asked for. -->
     <IsPackable>false</IsPackable>
     <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2 §2(e). This is the measurement harness, so "exercise it against
+         something real" is circular — it is the thing that does the exercising. Its correctness is
+         established the only way a harness's can be: by agreement with published figures it did not
+         author. BeirReproduction pins four of them at ±0.005 (SciFact 0.64593 among them), and
+         every defect ever found in the dense path was found BY that agreement failing, not by a
+         test of this package. That is a stronger check than any run of the harness against itself
+         would be, and it is why the level stays unit rather than climbing to benchmark: the
+         benchmark level means a package was measured by this harness, and this harness cannot
+         measure itself. -->
+    <VerifiedByReason>The measurement harness itself; it cannot be exercised against itself without circularity. Its correctness is the four-dataset parity agreement pinned in BeirReproduction at ±0.005, which is what has actually caught every defect in the dense path.</VerifiedByReason>
   </PropertyGroup>
 
   <ItemGroup>
