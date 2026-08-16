@@ -65,7 +65,7 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 | 6.2 | Raise the Floor on Unit-Only Packages | — | pending — now defined per kind: parsers/chunkers via a real file, stores via the parity leg, utilities via one real run |
 | 6.2.1 | Retrieval & Answer Sweep | #247, #239, #176, #200 | pending — the GraphRAG method applied to the rest; #247 fixed and re-measured first; the pipeline-parity test |
 | 6.2.2 | Requested Features | #252 | **complete** 2026-08-16 — #252 built, both open design questions settled, exercised in the fast tier and over a real HTTP server |
-| 6.3 | Release v1.0 | — | pending — as planned; first work is the nuget.org account, key and 70 reserved IDs |
+| 6.3 | Release v1.0 | — | pending — **but its first work is already done**: 71 packages live on nuget.org at 0.1.0 since 2026-08-11 (verified 2026-08-16), so the account, key and every package ID are settled. Only the v1.0 tag remains |
 
 ## Known debt carried into this milestone
 
