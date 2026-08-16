@@ -45,6 +45,15 @@ public sealed class CachedGraphRagClient : IChatClient
     private long _longestPrompt;
     private long _retries;
 
+    // Token usage, accumulated across every LIVE call. Cache hits contribute nothing, which is
+    // the point: these figures are what the run actually paid for, not what it would have paid
+    // with a cold cache. Issue #200.
+    private long _inputTokens;
+    private long _outputTokens;
+    private long _totalTokens;
+    private long _callsWithUsage;
+    private long _callsWithoutUsage;
+
     /// <summary>Creates the decorator.</summary>
     /// <param name="cache">The cache every request is answered from.</param>
     /// <param name="inner">
@@ -114,6 +123,59 @@ public sealed class CachedGraphRagClient : IChatClient
     /// it beside the rate it measured.
     /// </remarks>
     public long Retries => Interlocked.Read(ref _retries);
+
+    /// <summary>Input (prompt) tokens billed across every live call this run made.</summary>
+    public long InputTokens => Interlocked.Read(ref _inputTokens);
+
+    /// <summary>Output (completion) tokens billed across every live call this run made.</summary>
+    public long OutputTokens => Interlocked.Read(ref _outputTokens);
+
+    /// <summary>Total tokens as the provider reported them.</summary>
+    /// <remarks>
+    /// Reported rather than derived: a provider's total is not always input + output — reasoning
+    /// and cached-prompt tokens are billed separately by some models — so adding the two halves
+    /// would quietly invent a number. Where they disagree, the provider's total is the one that
+    /// matches the invoice.
+    /// </remarks>
+    public long TotalTokens => Interlocked.Read(ref _totalTokens);
+
+    /// <summary>Live calls that carried a usage figure.</summary>
+    public long CallsWithUsage => Interlocked.Read(ref _callsWithUsage);
+
+    /// <summary>
+    /// Live calls that returned <b>no</b> usage at all, so are absent from the totals above.
+    /// </summary>
+    /// <remarks>
+    /// Counted separately rather than treated as zero. <c>ChatResponse.Usage</c> is optional in
+    /// <c>Microsoft.Extensions.AI</c> and a provider may omit it — silently folding those into the
+    /// totals would understate the cost by exactly the amount nobody can see, which is the failure
+    /// mode issue #200 exists to end. A non-zero count here means the reported spend is a floor.
+    /// </remarks>
+    public long CallsWithoutUsage => Interlocked.Read(ref _callsWithoutUsage);
+
+    /// <summary>One line describing what this run's live calls cost, in tokens.</summary>
+    public string DescribeUsage()
+    {
+        var withUsage = CallsWithUsage;
+        var withoutUsage = CallsWithoutUsage;
+        if (withUsage == 0 && withoutUsage == 0)
+        {
+            return "Tokens: no live calls — everything replayed from cache, so this run cost nothing.";
+        }
+
+        var line = FormattableString.Invariant(
+            $"Tokens: {InputTokens:N0} in + {OutputTokens:N0} out = {TotalTokens:N0} total, over {withUsage:N0} live call(s) that reported usage.");
+
+        if (withoutUsage == 0)
+        {
+            return line;
+        }
+
+        var caveat = FormattableString.Invariant(
+            $" WARNING: {withoutUsage:N0} live call(s) reported no usage and are NOT in these totals, so treat the figures as a floor rather than the cost.");
+
+        return line + caveat;
+    }
 
     /// <inheritdoc/>
     public async Task<ChatResponse> GetResponseAsync(
@@ -231,9 +293,29 @@ public sealed class CachedGraphRagClient : IChatClient
         List<ChatMessage> messages, CancellationToken cancellationToken)
     {
         var response = await _inner!.GetResponseAsync(messages, _options, cancellationToken);
+        RecordUsage(response);
         return string.IsNullOrWhiteSpace(response.Text)
             ? throw new InvalidOperationException(
                 "The model returned blank text; retrying rather than caching it.")
             : response.Text;
+    }
+
+    /// <summary>
+    /// Accumulates one live response's token usage. Called on every attempt, including retried
+    /// ones, because a retried request is billed too.
+    /// </summary>
+    private void RecordUsage(ChatResponse response)
+    {
+        var usage = response.Usage;
+        if (usage is null)
+        {
+            _ = Interlocked.Increment(ref _callsWithoutUsage);
+            return;
+        }
+
+        _ = Interlocked.Increment(ref _callsWithUsage);
+        _ = Interlocked.Add(ref _inputTokens, usage.InputTokenCount ?? 0);
+        _ = Interlocked.Add(ref _outputTokens, usage.OutputTokenCount ?? 0);
+        _ = Interlocked.Add(ref _totalTokens, usage.TotalTokenCount ?? 0);
     }
 }

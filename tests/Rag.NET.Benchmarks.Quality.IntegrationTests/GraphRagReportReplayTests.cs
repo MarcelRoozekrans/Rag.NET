@@ -252,6 +252,132 @@ public sealed class GraphRagReportReplayTests : IDisposable
         return relationships;
     }
 
+    // ── Token usage accounting (issue #200) ─────────────────────────────────
+
+    /// <remarks>
+    /// <para>
+    /// <b>The instrument that tells a paid run what it cost, exercised before it is trusted.</b>
+    /// #200's argument is that the 60-article run on 2026-08-12 made 4,088 requests and produced no
+    /// cost figure at all, so the only estimate available was reasoned backwards from cache-file
+    /// sizes on disk — "paying for a measurement and not getting one". An accounting bug reproduces
+    /// that outcome exactly, and would only surface after the money was gone.
+    /// </para>
+    /// <para>
+    /// Driven through the real <see cref="CachedGraphRagClient"/> rather than a copy of its
+    /// arithmetic: the usage is recorded inside <c>CallOnceAsync</c>, which is only reached through
+    /// a genuine cache miss and a live client, and a test of a mirrored implementation would prove
+    /// only that the mirror adds up.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task LiveCalls_AccumulateTheTokenUsageTheModelReported()
+    {
+        var model = new UsageReportingChatClient(input: 100, output: 20, total: 120);
+        using var client = new CachedGraphRagClient(Fill(), model, temperature: 0f);
+
+        _ = await DetectAsync(client, "-usage-accumulates");
+
+        Assert.True(client.CallsWithUsage > 0, "the run made no live calls, so there is nothing to account for");
+        Assert.Equal(model.Calls, client.CallsWithUsage);
+        Assert.Equal(0, client.CallsWithoutUsage);
+        Assert.Equal(model.Calls * 100, client.InputTokens);
+        Assert.Equal(model.Calls * 20, client.OutputTokens);
+        Assert.Equal(model.Calls * 120, client.TotalTokens);
+    }
+
+    /// <remarks>
+    /// A replay run calls nothing, so it must report nothing rather than reporting a stale or
+    /// inherited figure. This is the run shape every guard in this repository uses, so a cost line
+    /// that lied here would be the one seen most often.
+    /// </remarks>
+    [Fact]
+    public async Task AReplayRun_ReportsThatItCostNothing()
+    {
+        var model = new UsageReportingChatClient(input: 100, output: 20, total: 120);
+        using var filling = new CachedGraphRagClient(Fill(), model, temperature: 0f);
+        _ = await DetectAsync(filling, "-usage-replay");
+
+        using var replaying = new CachedGraphRagClient(Refuse(), inner: null, temperature: 0f);
+        _ = await DetectAsync(replaying, "-usage-replay");
+
+        Assert.Equal(0, replaying.CallsWithUsage);
+        Assert.Equal(0, replaying.TotalTokens);
+        Assert.Contains("cost nothing", replaying.DescribeUsage(), StringComparison.Ordinal);
+    }
+
+    /// <remarks>
+    /// The failure worth preventing: a response carrying no usage must not be counted as a
+    /// zero-cost call. <c>ChatResponse.Usage</c> is optional in Microsoft.Extensions.AI and a
+    /// provider may omit it — folding those in as zero understates the bill by exactly the amount
+    /// nobody can see, which is #200's failure mode wearing a different hat.
+    /// </remarks>
+    [Fact]
+    public async Task CallsReportingNoUsage_AreCountedSeparatelyAndWarnedAbout()
+    {
+        var model = new UsageReportingChatClient(input: 100, output: 20, total: 120, reportUsage: false);
+        using var client = new CachedGraphRagClient(Fill(), model, temperature: 0f);
+
+        _ = await DetectAsync(client, "-usage-absent");
+
+        Assert.True(client.CallsWithoutUsage > 0);
+        Assert.Equal(0, client.CallsWithUsage);
+        Assert.Equal(0, client.TotalTokens);
+
+        var described = client.DescribeUsage();
+        Assert.Contains("WARNING", described, StringComparison.Ordinal);
+        Assert.Contains("floor", described, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A model that reports a fixed usage per call — optionally none at all.
+    /// </summary>
+    /// <remarks>
+    /// Its text mirrors <see cref="CountingChatClient"/>'s so the community-report path accepts it;
+    /// only the usage differs, which is the variable under test.
+    /// </remarks>
+    private sealed class UsageReportingChatClient(
+        long input, long output, long total, bool reportUsage = true) : IChatClient
+    {
+        private long _calls;
+
+        public long Calls => Interlocked.Read(ref _calls);
+
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(messages);
+            _ = Interlocked.Increment(ref _calls);
+
+            var prompt = GraphExtractionPrompt.Render(new List<ChatMessage>(messages));
+            var response = new ChatResponse(
+                new ChatMessage(ChatRole.Assistant, $"report for {prompt.Length} characters"));
+
+            if (reportUsage)
+            {
+                response.Usage = new UsageDetails
+                {
+                    InputTokenCount = input,
+                    OutputTokenCount = output,
+                    TotalTokenCount = total,
+                };
+            }
+
+            return Task.FromResult(response);
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("Nothing in GraphRAG streams.");
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose() { }
+    }
+
     private GraphExtractionCache Fill() =>
         new(_root, Identity, GraphExtractionCacheMode.Fill,
             GraphExtractionCache.ReportsDirectoryName);
