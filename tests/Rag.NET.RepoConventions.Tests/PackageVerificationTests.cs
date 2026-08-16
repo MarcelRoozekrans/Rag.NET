@@ -154,7 +154,16 @@ public sealed class PackageVerificationTests
         ["Rag.NET.Parsers.Email"] = "6.2 — a real EML and MSG",
         ["Rag.NET.Parsers.Epub"] = "6.2 — a real EPUB",
         ["Rag.NET.Parsers.Html"] = "6.2 — a real page",
-        ["Rag.NET.Parsers.Office"] = "6.2 — a real DOCX / XLSX / PPTX",
+        // 2026-08-16: the RUN now exists — Resources/sample.docx, sample.xlsx and sample.pptx are
+        // produced by the real Microsoft Word, Excel and PowerPoint (docProps/app.xml names each
+        // Application), replacing fixtures that DocumentFormat.OpenXml built and handed straight
+        // back to a DocumentFormat.OpenXml parser. This entry stays only because the LEDGER CANNOT
+        // EXPRESS IT: VerificationLevels is unit/container/benchmark/recorded/live/none, and the
+        // milestone's DoD enumerates the same set — none of which means "exercised against real
+        // input", which is the whole of 6.2's bar for this kind. Resolving that is a DoD change and
+        // therefore the operator's; until then this package is honestly bare unit with a real run
+        // behind it, which is better than a value that overstates or a reason that understates.
+        ["Rag.NET.Parsers.Office"] = "6.2 — a real DOCX / XLSX / PPTX (DONE 2026-08-16; blocked on a ledger value for 'real input' — see comment above)",
         ["Rag.NET.Parsers.Pdf"] = "6.2 — a real PDF with tables",
         ["Rag.NET.Resilience"] = "6.2 — a real failure injected",
         ["Rag.NET.Security.AspNetCore"] = "6.2 — the ONLY one of the ten whose own tests already start a real host (TestServer + HostBuilder); 6.0 under-credited it rather than over-credited it, so this is a ledger correction and needs no new test",

@@ -1,6 +1,3 @@
-using DocumentFormat.OpenXml;
-using DocumentFormat.OpenXml.Packaging;
-using DocumentFormat.OpenXml.Spreadsheet;
 using Rag.NET.Models;
 using Rag.NET.Parsers.Email;
 using Rag.NET.Parsers.Epub;
@@ -10,9 +7,6 @@ using Rag.NET.Parsers.Pdf;
 using Rag.NET.Parsers.PowerPoint;
 using Rag.NET.Parsers.Word;
 using Xunit;
-using Drawing = DocumentFormat.OpenXml.Drawing;
-using P = DocumentFormat.OpenXml.Presentation;
-using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Rag.NET.Parsers.IntegrationTests;
 
@@ -127,6 +121,11 @@ public sealed class DocumentParserTests
 
         Assert.NotEmpty(sections);
         Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+
+        // Phase 6.2: a content assertion, not merely "did not throw". This test asserted only
+        // non-emptiness until 2026-08-16 — the shape that let the default chunker emit one chunk
+        // per word while every test in the repository stayed green.
+        Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -153,7 +152,7 @@ public sealed class DocumentParserTests
     // ── Word ─────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task WordParser_ParsesGeneratedDocx_ReturnsNonEmptySections()
+    public async Task WordParser_ParsesRealWordDocx_ReturnsNonEmptySections()
     {
         var sut = new WordDocumentParser();
         var meta = new DocumentMetadata
@@ -163,19 +162,29 @@ public sealed class DocumentParserTests
             ContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         };
 
-        using var stream = CreateDocx("Integration Test Document", "This document is used for integration testing.");
+        await using var stream = OpenResource("sample.docx");
         var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(sections);
         Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
         Assert.Contains(sections, s => s.Text.Contains("Integration Test Document", StringComparison.Ordinal));
+        Assert.Contains(sections, s => s.Text.Contains("Produced by Microsoft Word", StringComparison.Ordinal));
     }
 
     // ── Excel ────────────────────────────────────────────────────────────────
 
+    /// <remarks>
+    /// This one test replaces the two it succeeded. The second was
+    /// <c>ExcelParser_ParsesSharedStringXlsx</c>, which hand-built a shared-string table to prove
+    /// the parser reads cells stored by reference rather than inline. It is not needed: **real
+    /// Excel writes shared strings by default**, so <c>sample.xlsx</c> ships an
+    /// <c>xl/sharedStrings.xml</c> with all six of its strings interned, and the assertions below
+    /// cross that path on the way to every value. A real file covering a feature beats a synthetic
+    /// file built to demonstrate it.
+    /// </remarks>
     [Fact]
-    public async Task ExcelParser_ParsesGeneratedXlsx_ReturnsNonEmptySections()
+    public async Task ExcelParser_ParsesRealExcelXlsx_ReturnsNonEmptySections()
     {
         var sut = new ExcelDocumentParser();
         var meta = new DocumentMetadata
@@ -185,37 +194,23 @@ public sealed class DocumentParserTests
             ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         };
 
-        using var stream = CreateXlsx("Sheet1", [["Title", "Description"], ["Integration Test Document", "This document is used for integration testing."]]);
+        await using var stream = OpenResource("sample.xlsx");
         var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(sections);
         Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
-    }
 
-    [Fact]
-    public async Task ExcelParser_ParsesSharedStringXlsx_ReturnsNonEmptySections()
-    {
-        var sut = new ExcelDocumentParser();
-        var meta = new DocumentMetadata
-        {
-            DocumentId = new DocumentId("excel-2"),
-            FileName = "sample-shared.xlsx",
-            ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        };
-
-        using var stream = CreateXlsxWithSharedStrings();
-        var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
-            .ToListAsync(TestContext.Current.CancellationToken);
-
-        Assert.NotEmpty(sections);
-        Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+        var text = string.Join('\n', sections.Select(s => s.Text));
+        Assert.Contains("Integration Test Document", text, StringComparison.Ordinal);
+        Assert.Contains("Alice", text, StringComparison.Ordinal);
+        Assert.Contains("Paris", text, StringComparison.Ordinal);
     }
 
     // ── PowerPoint ───────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task PowerPointParser_ParsesGeneratedPptx_ReturnsNonEmptySections()
+    public async Task PowerPointParser_ParsesRealPowerPointPptx_ReturnsNonEmptySections()
     {
         var sut = new PowerPointDocumentParser();
         var meta = new DocumentMetadata
@@ -225,28 +220,56 @@ public sealed class DocumentParserTests
             ContentType = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
         };
 
-        using var stream = CreatePptx("Integration Test Document", "This document is used for integration testing.");
+        await using var stream = OpenResource("sample.pptx");
         var sections = await sut.ParseAsync(stream, meta, TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(sections);
         Assert.All(sections, s => Assert.False(string.IsNullOrWhiteSpace(s.Text)));
+
+        var text = string.Join('\n', sections.Select(s => s.Text));
+        Assert.Contains("Integration Test Document", text, StringComparison.Ordinal);
+        Assert.Contains("integration testing", text, StringComparison.Ordinal);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
     //
-    // Fixture provenance (Resources/):
+    // Fixture provenance (Resources/). Phase 6.2's bar is that a fixture must not be produced by
+    // the library that parses it — a file DocumentFormat.OpenXml wrote and DocumentFormat.OpenXml
+    // reads only proves the library round-trips itself. Recorded per file, because this repository
+    // has been wrong about a file's origin or licence three times:
+    //
+    // - sample.docx / sample.xlsx / sample.pptx — produced 2026-08-16 by the REAL Microsoft Office
+    //   applications (Word, Excel, PowerPoint; app.xml records Application and AppVersion 16) via
+    //   COM automation, then scrubbed. Before 2026-08-16 these three formats had no fixture at all:
+    //   the tests built a DOCX/XLSX/PPTX in-process with DocumentFormat.OpenXml and handed it
+    //   straight back to a DocumentFormat.OpenXml parser. Two things were scrubbed after saving,
+    //   neither visible in the document and neither suppressible beforehand — Office stamps them at
+    //   save time: cp:lastModifiedBy in docProps/core.xml (the operator's real name) and
+    //   x15ac:absPath in xl/workbook.xml (the full local save path, which carries the Windows
+    //   username). Every entry of all three packages was then scanned for both, and for any
+    //   residual user-profile path, before commit. PowerPoint's docProps/thumbnail.jpeg is a
+    //   render of the slide itself and is retained: deleting it left a dangling relationship that
+    //   made PresentationDocument.Open throw, so the package is kept intact and the thumbnail
+    //   scanned instead.
     // - sample.epub  — generated by the in-code EPUB builder mirrored in
     //   tests/Rag.NET.Parsers.Epub.Tests/EpubDocumentParserTests.CreateEpub (write its output to disk to regenerate).
     // - sample.eml   — hand-written minimal RFC 5322 message; edit the text file directly.
     // - sample.msg   — generated by the in-code CFB builder mirrored in
     //   tests/Rag.NET.Parsers.Email.Tests/MsgFixtureBuilder (write its output to disk to regenerate).
-    // - sample.html / sample.pdf — pre-existing static fixtures.
+    // - sample.html  — pre-existing static fixture.
+    // - sample.pdf   — pre-existing static fixture. It carries no /Producer or /Creator, so its
+    //   origin is genuinely unrecorded; that is stated rather than guessed at.
     // - sample-table.pdf — generated by the in-code PdfPig PdfDocumentBuilder mirrored in
     //   tests/Rag.NET.Parsers.Pdf.Tests/TableFixtureGenerator (write its output to disk to regenerate).
     // - sample-scanned.pdf — generated by tests/Rag.NET.Parsers.Pdf.Tests/ScannedFixtureGenerator
     //   (embeds that project's Resources/ocr-sample.png; exercised by the Pdf tests' OCR suite —
     //   no matrix entry here because OCR needs the EnableOcr compile gate).
+    //
+    // Still self-produced, and therefore still owed a real fixture by Phase 6.2: epub, msg and
+    // sample-table.pdf. They are weaker than the Office three were, not stronger — the reason they
+    // are not fixed in the same change is that no independent producer for them exists on this
+    // machine, where Word, Excel and PowerPoint did.
 
     private static Stream OpenResource(string fileName)
     {
@@ -256,199 +279,4 @@ public sealed class DocumentParserTests
             ?? throw new InvalidOperationException($"Embedded resource '{resourceName}' not found.");
         return stream;
     }
-
-    private static MemoryStream CreateDocx(string heading, string body)
-    {
-        var stream = new MemoryStream();
-        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
-        {
-            var mainPart = doc.AddMainDocumentPart();
-            mainPart.Document = new W.Document(
-                new W.Body(
-                    new W.Paragraph(new W.Run(new W.Text(heading))),
-                    new W.Paragraph(new W.Run(new W.Text(body)))));
-            mainPart.Document.Save();
-        }
-
-        stream.Position = 0;
-        return stream;
-    }
-
-    private static MemoryStream CreateXlsx(string sheetName, string[][] rows)
-    {
-        var stream = new MemoryStream();
-        using (var doc = SpreadsheetDocument.Create(stream, SpreadsheetDocumentType.Workbook))
-        {
-            var workbookPart = doc.AddWorkbookPart();
-            workbookPart.Workbook = new Workbook(new Sheets());
-            var docSheets = workbookPart.Workbook.GetFirstChild<Sheets>()!;
-
-            var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
-            var sheetData = new SheetData();
-
-            uint rowIndex = 1;
-            foreach (var row in rows)
-            {
-                var sheetRow = new Row { RowIndex = rowIndex };
-                int colIndex = 0;
-                foreach (var cellValue in row)
-                {
-                    var colLetter = (char)('A' + colIndex);
-                    sheetRow.AppendChild(new Cell
-                    {
-                        CellReference = $"{colLetter}{rowIndex}",
-                        DataType = CellValues.InlineString,
-                        InlineString = new InlineString(new DocumentFormat.OpenXml.Spreadsheet.Text(cellValue)),
-                    });
-                    colIndex++;
-                }
-                sheetData.AppendChild(sheetRow);
-                rowIndex++;
-            }
-
-            worksheetPart.Worksheet = new Worksheet(sheetData);
-            worksheetPart.Worksheet.Save();
-
-            docSheets.AppendChild(new Sheet
-            {
-                Id = workbookPart.GetIdOfPart(worksheetPart),
-                SheetId = 1,
-                Name = sheetName,
-            });
-
-            workbookPart.Workbook.Save();
-        }
-
-        stream.Position = 0;
-        return stream;
-    }
-
-    private static MemoryStream CreateXlsxWithSharedStrings()
-    {
-        var stream = new MemoryStream();
-        using (var doc = SpreadsheetDocument.Create(stream, SpreadsheetDocumentType.Workbook))
-        {
-            var workbookPart = doc.AddWorkbookPart();
-            workbookPart.Workbook = new Workbook(new Sheets());
-            var docSheets = workbookPart.Workbook.GetFirstChild<Sheets>()!;
-
-            // Build shared string table with two entries: index 0 = "Header", index 1 = "Integration Test data"
-            var sharedStringPart = workbookPart.AddNewPart<SharedStringTablePart>();
-            sharedStringPart.SharedStringTable = new SharedStringTable(
-                new SharedStringItem(new DocumentFormat.OpenXml.Spreadsheet.Text("Header")),
-                new SharedStringItem(new DocumentFormat.OpenXml.Spreadsheet.Text("Integration Test data")));
-            sharedStringPart.SharedStringTable.Save();
-
-            var worksheetPart = workbookPart.AddNewPart<WorksheetPart>();
-            var sheetData = new SheetData(
-                // Row 1: header row using shared string index 0
-                new Row(new Cell
-                {
-                    CellReference = "A1",
-                    DataType = CellValues.SharedString,
-                    CellValue = new CellValue("0"),
-                }) { RowIndex = 1U },
-                // Row 2: data row using shared string index 1
-                new Row(new Cell
-                {
-                    CellReference = "A2",
-                    DataType = CellValues.SharedString,
-                    CellValue = new CellValue("1"),
-                }) { RowIndex = 2U });
-
-            worksheetPart.Worksheet = new Worksheet(sheetData);
-            worksheetPart.Worksheet.Save();
-
-            docSheets.AppendChild(new Sheet
-            {
-                Id = workbookPart.GetIdOfPart(worksheetPart),
-                SheetId = 1,
-                Name = "SharedStrings",
-            });
-
-            workbookPart.Workbook.Save();
-        }
-
-        stream.Position = 0;
-        return stream;
-    }
-
-    private static MemoryStream CreatePptx(string title, string body)
-    {
-        var stream = new MemoryStream();
-        using (var doc = PresentationDocument.Create(stream, PresentationDocumentType.Presentation))
-        {
-            var presentationPart = doc.AddPresentationPart();
-            presentationPart.Presentation = new P.Presentation();
-
-            var slideIdList = new P.SlideIdList();
-            var slideLayoutIdList = new P.SlideLayoutIdList();
-            var sldSz = new P.SlideSize { Cx = 9144000, Cy = 6858000, Type = P.SlideSizeValues.Screen4x3 };
-            var notesSz = new P.NotesSize { Cx = 6858000, Cy = 9144000 };
-
-            AddSlideMasterParts(presentationPart);
-
-            var slidePart = presentationPart.AddNewPart<SlidePart>();
-            BuildSlide(slidePart, title, body);
-
-            slideIdList.Append(new P.SlideId
-            {
-                Id = 256U,
-                RelationshipId = presentationPart.GetIdOfPart(slidePart),
-            });
-
-            presentationPart.Presentation.Append(slideIdList, slideLayoutIdList, sldSz, notesSz);
-            presentationPart.Presentation.AddNamespaceDeclaration("a", "http://schemas.openxmlformats.org/drawingml/2006/main");
-            presentationPart.Presentation.AddNamespaceDeclaration("r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships");
-            presentationPart.Presentation.Save();
-        }
-
-        stream.Position = 0;
-        return stream;
-    }
-
-    private static void AddSlideMasterParts(PresentationPart presentationPart)
-    {
-        var slideMasterPart = presentationPart.AddNewPart<SlideMasterPart>();
-        var slideLayoutPart = slideMasterPart.AddNewPart<SlideLayoutPart>();
-        slideLayoutPart.SlideLayout = new P.SlideLayout(new P.CommonSlideData(new P.ShapeTree()));
-        slideLayoutPart.SlideLayout.Save();
-        slideMasterPart.SlideMaster = new P.SlideMaster(
-            new P.CommonSlideData(new P.ShapeTree()),
-            new P.SlideLayoutIdList(new P.SlideLayoutId
-            {
-                Id = 2049U,
-                RelationshipId = slideMasterPart.GetIdOfPart(slideLayoutPart),
-            }));
-        slideMasterPart.SlideMaster.Save();
-    }
-
-    private static void BuildSlide(SlidePart slidePart, string title, string body)
-    {
-        var shapeTree = new P.ShapeTree(
-            new P.NonVisualGroupShapeProperties(
-                new P.NonVisualDrawingProperties { Id = 0U, Name = string.Empty },
-                new P.NonVisualGroupShapeDrawingProperties(),
-                new P.ApplicationNonVisualDrawingProperties()),
-            new P.GroupShapeProperties(new Drawing.TransformGroup()),
-            BuildTextShape(1U, "Title 1", title),
-            BuildTextShape(2U, "Content 2", body));
-
-        slidePart.Slide = new P.Slide(new P.CommonSlideData(shapeTree));
-        slidePart.Slide.AddNamespaceDeclaration("a", "http://schemas.openxmlformats.org/drawingml/2006/main");
-        slidePart.Slide.AddNamespaceDeclaration("r", "http://schemas.openxmlformats.org/officeDocument/2006/relationships");
-        slidePart.Slide.Save();
-    }
-
-    private static P.Shape BuildTextShape(uint id, string name, string text) =>
-        new(
-            new P.NonVisualShapeProperties(
-                new P.NonVisualDrawingProperties { Id = id, Name = name },
-                new P.NonVisualShapeDrawingProperties(),
-                new P.ApplicationNonVisualDrawingProperties()),
-            new P.ShapeProperties(),
-            new P.TextBody(
-                new Drawing.BodyProperties(),
-                new Drawing.ListStyle(),
-                new Drawing.Paragraph(new Drawing.Run(new Drawing.Text(text)))));
 }
