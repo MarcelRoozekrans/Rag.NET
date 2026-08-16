@@ -138,12 +138,10 @@ public sealed class PackageVerificationTests
         ["Rag.NET.WebSearch.Tavily"] = "6.1 — Tavily API",
 
         // ── 6.2 Raise the Floor: no external dependency; one real file / store / run ─────────
-        ["Rag.NET.Abstractions"] = "6.2 — types only; exercised by every real run of the packages built on it, and the reason will say so",
         ["Rag.NET.Api"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): Rag.NET.Api.Tests/Integration/RagApiIntegrationTests.cs runs a real TestServer and asserts 401 without a key, 200 with one, and a deserialised body from POST /rag/retrieve and /rag/ingest. Blocked only on a ledger value for 'real run'",
         ["Rag.NET.Api.Client"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): HttpRagPipelineIntegrationTests.cs, TestServer + CreateClient, 5 tests. Blocked only on a ledger value",
         ["Rag.NET.Api.Grpc"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): GrpcApiKeyConfigurationTests.cs, TestServer + GrpcChannel.ForAddress, 4 tests. Blocked only on a ledger value",
         ["Rag.NET.Api.Grpc.Client"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): GrpcRagPipelineIntegrationTests.cs, TestServer + GrpcChannel.ForAddress, 4 tests. Blocked only on a ledger value",
-        ["Rag.NET.Benchmarks.Quality"] = "6.2 — the harness itself; its correctness is the parity agreement of four datasets, and the reason will name that",
         ["Rag.NET.Caching"] = "6.2 — a real store behind it, one round trip observed",
         ["Rag.NET.Chunking.CSharp"] = "6.2 — a real C# file through Roslyn",
         ["Rag.NET.Chunking.Templates"] = "6.2 — a real document of each template's kind",
