@@ -606,6 +606,24 @@ var provider = new SitemapDataProvider("https://docs.example.com/sitemap.xml", h
 services.AddSingleton<IFileContentProvider>(provider);
 ```
 
+Skip sections you do not want ingested — by prefix, by regular expression, or both:
+
+```csharp
+var provider = new SitemapDataProvider(
+    "https://docs.example.com/sitemap.xml",
+    httpClient,
+    new SitemapOptions
+    {
+        // Matched against the whole URL as the sitemap publishes it, case-insensitively.
+        ExcludedUrlPrefixes = ["https://docs.example.com/changelog/"],
+        // Each pattern carries a one-second match timeout.
+        ExcludedUrlPatterns = [@"/tags?/", @"\?page=\d+$"],
+        // Default true: an excluded <sitemapindex> link is pruned without being fetched.
+        // Set false when the index is partitioned by date or shard rather than by section.
+        ExcludeNestedSitemaps = true,
+    });
+```
+
 ### Web — RSS / Atom feed
 
 ```csharp

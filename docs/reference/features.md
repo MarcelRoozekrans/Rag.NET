@@ -439,6 +439,11 @@ Fetch a seed URL and follow links up to a configurable depth, loading all discov
 
 Read a `sitemap.xml` and load all listed URLs. A structured, polite alternative to recursive crawling for sites that publish sitemaps.
 
+URLs can be skipped by prefix or by regular expression via `SitemapOptions` (issue #252): a large
+site's sitemap routinely lists sections nobody wants ingested. Excluding a `<sitemapindex>` link
+prunes every page under it *without fetching it* — on by default, and switchable off for an index
+partitioned by something unrelated to the URLs inside it.
+
 **Why:** Simpler and more reliable than link-following for well-maintained sites.
 
 ---

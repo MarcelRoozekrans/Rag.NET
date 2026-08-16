@@ -4229,7 +4229,7 @@ test for parity. What it does not promise: that any of them are good. Measured i
 **Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; #247 is fixed
 and re-measured; the pipeline-parity test is in the fast tier; the guards' allowlist is empty.
 
-### Phase 6.2.2: Requested Features [status: pending — added 2026-08-16; a sub-phase, so 6.3 keeps the number every release note already points at]
+### Phase 6.2.2: Requested Features [status: complete 2026-08-16 — #252 built and exercised; the phase stays open in spirit for any further request filed before the tag]
 **Goal:** the feature requests reported against the shipped packages, built and exercised to this
 milestone's bar rather than deferred past the tag. This phase exists because Milestone 6 is the
 terminal milestone: a request filed against a published package has nowhere else to land, and the
@@ -4245,7 +4245,15 @@ name".
 collide.
 
 **Contents:**
-- **#252 — `SitemapDataProvider`: skip URLs by prefix or regex.** Reported 2026-08-15 against the
+- **#252 — `SitemapDataProvider`: skip URLs by prefix or regex. DONE 2026-08-16.** Both design
+  questions below were settled and are recorded in `SitemapOptions`' own XML docs: the filter
+  applies to nested `<sitemapindex>` links as well as page URLs (`ExcludeNestedSitemaps`, default
+  true, because pruning an index avoids fetching it at all), and prefix and regex are two
+  mechanisms rather than one predicate (a `Func<string,bool>` cannot come from an
+  `appsettings.json`, and this provider is routinely configured from one). Patterns carry a
+  one-second match timeout — they come from a human, and a sitemap can carry tens of thousands of
+  URLs to apply them to.
+- *(original entry)* **#252 — `SitemapDataProvider`: skip URLs by prefix or regex.** Reported 2026-08-15 against the
   shipped provider, with a working reference implementation in the issue. Today
   `SitemapDataProvider` has no filtering at all (`src/Rag.NET.DataProviders.Web/SitemapDataProvider.cs`,
   verified 2026-08-16): every `<loc>` in the sitemap and every nested `<sitemapindex>` link is

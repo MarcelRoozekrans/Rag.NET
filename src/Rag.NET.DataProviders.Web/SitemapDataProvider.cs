@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Rag.NET.DataProviders;
 using Rag.NET.Models;
@@ -24,12 +25,47 @@ public sealed class SitemapDataProvider : IFileContentProvider
 
     private readonly string _sitemapUrl;
     private readonly HttpClient _httpClient;
+    private readonly SitemapOptions _options;
+    private readonly IReadOnlyList<string> _excludedPrefixes;
+    private readonly IReadOnlyList<Regex> _excludedPatterns;
 
-    public SitemapDataProvider(string sitemapUrl, HttpClient httpClient)
+    public SitemapDataProvider(string sitemapUrl, HttpClient httpClient, SitemapOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sitemapUrl);
         _sitemapUrl = sitemapUrl;
         _httpClient = httpClient;
+        _options = options ?? new SitemapOptions();
+        // Compiled once here, not per URL: a sitemap index can carry tens of thousands of entries.
+        _excludedPrefixes = _options.NormalisedPrefixes();
+        _excludedPatterns = _options.CompilePatterns();
+    }
+
+    /// <summary>
+    /// Whether <paramref name="url"/> is excluded by <see cref="SitemapOptions"/>.
+    /// </summary>
+    /// <remarks>
+    /// Prefixes are checked before patterns because a prefix cannot be slow and a pattern can:
+    /// on a large sitemap the cheap test should be the one that runs on every URL.
+    /// </remarks>
+    private bool IsExcluded(string url)
+    {
+        foreach (var prefix in _excludedPrefixes)
+        {
+            if (url.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        foreach (var pattern in _excludedPatterns)
+        {
+            if (pattern.IsMatch(url))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public async IAsyncEnumerable<Result<FileEntry, RagError>> GetFilesAsync(
@@ -52,6 +88,9 @@ public sealed class SitemapDataProvider : IFileContentProvider
             {
                 var loc = sitemap.Element(s_ns + "loc")?.Value;
                 if (loc is null) continue;
+                // Pruning here skips every page under this index without fetching it, which is why
+                // it is opt-out (SitemapOptions.ExcludeNestedSitemaps) rather than implied.
+                if (_options.ExcludeNestedSitemaps && IsExcluded(loc)) continue;
                 await foreach (var entry in LoadSitemapAsync(loc, cancellationToken).ConfigureAwait(false))
                     yield return entry;
             }
@@ -62,6 +101,7 @@ public sealed class SitemapDataProvider : IFileContentProvider
             {
                 var loc = urlEl.Element(s_ns + "loc")?.Value;
                 if (loc is null) continue;
+                if (IsExcluded(loc)) continue;
                 var lastMod = urlEl.Element(s_ns + "lastmod")?.Value;
                 var capturedLoc = loc;
 
