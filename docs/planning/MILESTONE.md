@@ -33,7 +33,7 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 
 - [x] **Milestone 5 complete** — closed 2026-08-15 by audit, verdict PASS.
 - [ ] **All planned phases complete** — 6.0 Inventory, 6.1 Recorded Responses, 6.2 Raise the
-      Floor, 6.2.1 Retrieval & Answer Sweep, 6.3 Release v1.0.
+      Floor, 6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, 6.3 Release v1.0.
 - [ ] **Every `✅ Done` row in `features.md` names what exercises it** — an *Exercised by* column,
       pointing at a test or benchmark that runs the real thing, and a conventions test that fails a
       ✅ row with an empty column. Today: 56 rows, 0 pointers.
@@ -57,6 +57,7 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 | 6.1 | Recorded Responses | — | pending — as planned since 2026-08-03 |
 | 6.2 | Raise the Floor on Unit-Only Packages | — | pending — now defined per kind: parsers/chunkers via a real file, stores via the parity leg, utilities via one real run |
 | 6.2.1 | Retrieval & Answer Sweep | #247, #239, #176, #200 | pending — the GraphRAG method applied to the rest; #247 fixed and re-measured first; the pipeline-parity test |
+| 6.2.2 | Requested Features | #252 | pending — added 2026-08-16; feature requests filed against shipped packages, held to 6.0's bar |
 | 6.3 | Release v1.0 | — | pending — as planned; first work is the nuget.org account, key and 70 reserved IDs |
 
 ## Known debt carried into this milestone
@@ -65,8 +66,12 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
   answer accuracy; the largest lever any Milestone 5 measurement found. 6.2.1, first.
 - **#239** the PageRank blend on the wrong scale and the discarded traversal — measured, decision
   pending. 6.2.1.
-- **#176** 65% singleton communities; **#200** no usage recording; **#104** routing declared not
-  built; **#246** Service Bus emulator lock race on a loaded runner.
+- **#176** 65% singleton communities; **#200** no usage recording; **#246** Service Bus emulator
+  lock race on a loaded runner. *(**#104** — routing declared not built — was listed here in
+  error: it was closed 2026-08-10, before this milestone opened. Removed 2026-08-16 by the issue
+  triage that also assigned #239/#246/#247 to the GitHub milestone.)*
+- **#252** `SitemapDataProvider` cannot skip URLs — reported 2026-08-15 against a shipped package.
+  6.2.2.
 - **TREC-COVID's weakest-of-the-datasets agreement** (−0.018 in ±0.02) — nothing yet looks into
   it; 6.2's parity-through-stores runs the same leg many more times and is where it would show.
 - **Generation lives in the answer test class rather than the tool** (5.2.2's stated deviation).
@@ -76,7 +81,10 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 ## Explicitly not in scope
 
 - **Making every feature good.** Battle-tested means measured; a feature measured and found wanting
-  is a completion, as 5.2 was.
+  is a completion, as 5.2 was. *(6.2.2 is the one deliberate exception, and is scoped to named,
+  reported requests against shipped packages — not to improvement in general. It exists because
+  this is the terminal milestone, so a request filed against a published package has nowhere
+  later to land.)*
 - **Every option on every feature.** One real run per feature at its shipped defaults, differenced
   against a control, is the bar; anything above it is a phase with its own name.
 - **Anything on the "Beyond v1.0: Recorded, Not Scheduled" list.**

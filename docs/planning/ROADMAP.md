@@ -4046,7 +4046,7 @@ and something checks it):
 - [x] Milestones 4 and 5 complete — their own DoDs, checked at their own closes, not
       re-litigated here; this box is false while either is open *(both closed by audit: 4 on 2026-08-11, 5 on 2026-08-15)*
 - [ ] All planned phases complete — 6.0 Inventory, 6.1 Recorded Responses, 6.2 Raise the Floor,
-      6.2.1 Retrieval & Answer Sweep, 6.3 Release v1.0
+      6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, 6.3 Release v1.0
 - [ ] **Every `✅ Done` row in `features.md` names what exercises it** (Phase 6.0): an
       *Exercised by* column pointing at a test or benchmark that runs the real thing — a pinned
       figure, a container suite, a recording, a real-file test — and a conventions test that fails a
@@ -4217,6 +4217,36 @@ test for parity. What it does not promise: that any of them are good. Measured i
 
 **Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; #247 is fixed
 and re-measured; the pipeline-parity test is in the fast tier; the guards' allowlist is empty.
+
+### Phase 6.2.2: Requested Features [status: pending — added 2026-08-16; a sub-phase, so 6.3 keeps the number every release note already points at]
+**Goal:** the feature requests reported against the shipped packages, built and exercised to this
+milestone's bar rather than deferred past the tag. This phase exists because Milestone 6 is the
+terminal milestone: a request filed against a published package has nowhere else to land, and the
+alternative — "Beyond v1.0" — means shipping v1.0 with a known, small, reported gap. It stays a
+*sub*-phase of 6.2 and not a milestone of its own so that the scope line above holds: this is not
+"make every feature good", it is "the specific things people asked for, each one small enough to
+name".
+
+**The bar is 6.0's, not a lower one.** Anything built here is a new `✅ Done` row, so it needs its
+*Exercised by* pointer like every other row, and it must not push its package back onto
+`PackagesAllowedToStayUnit`. `Rag.NET.DataProviders.Web` is a 6.2 package (bare `unit` today), so
+#252's real-file test is also the run that takes it off that list — the phases compose rather than
+collide.
+
+**Contents:**
+- **#252 — `SitemapDataProvider`: skip URLs by prefix or regex.** Reported 2026-08-15 against the
+  shipped provider, with a working reference implementation in the issue. Today
+  `SitemapDataProvider` has no filtering at all (`src/Rag.NET.DataProviders.Web/SitemapDataProvider.cs`,
+  verified 2026-08-16): every `<loc>` in the sitemap and every nested `<sitemapindex>` link is
+  yielded. Two design questions this phase owns rather than assumes, because the issue's sample
+  answers one of them by accident: whether the filter applies to nested sitemap-index links as well
+  as page URLs (the sample applies it to both, which is a real decision — it prunes whole subtrees,
+  not just pages), and whether prefix and regex are one mechanism or two. Additive and
+  non-breaking — an optional constructor parameter, defaulting to no filtering, so no existing
+  caller changes.
+
+**Exit condition:** every issue listed above is closed by a merged PR, each with an *Exercised by*
+pointer in `features.md`, and no new bare-`unit` entry is created.
 
 ### Phase 6.3: Release v1.0 [status: pending]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
