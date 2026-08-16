@@ -86,19 +86,27 @@ public sealed class PackageVerificationTests
     /// so a new package cannot arrive unverified and unowned. The Definition of Done requires the
     /// list to reach empty.
     /// <para>
-    /// <b>Corrected 2026-08-16, at the start of Phase 6.2</b>
-    /// (<c>docs/plans/2026-08-16-milestone-6-2-raise-the-floor-design.md</c> §0). Ten entries here
-    /// said <i>"the E2E suite"</i>, which reads as <i>the run already exists and only the ledger is
-    /// behind</i>. It was false for nine of them: <c>Rag.NET.E2ETests</c> references exactly six
-    /// projects — <c>Rag.NET</c>, <c>AnswerEngines</c>, <c>Graph</c>, <c>GraphRag</c>,
-    /// <c>VectorStores.PgVector</c>, <c>Testing</c> — and none of the ten is among them. The tenth,
-    /// <c>Security.AspNetCore</c>, was under-credited: its own tests do start a real host.
-    /// Phase 6.0's classification was written from memory of what the suite covers and never
-    /// checked against the csproj — the same shape as the two false <c>features.md</c> claims a
-    /// mechanical check caught in Milestone 3. The entries below now state the run each package
-    /// actually needs. <b>That this was catchable at all is the guard working:</b> the allowlist
+    /// <b>Corrected 2026-08-16, twice, at the start of Phase 6.2</b>
+    /// (<c>docs/plans/2026-08-16-milestone-6-2-raise-the-floor-design.md</c> §0).
+    /// <b>First correction:</b> ten entries said <i>"the E2E suite"</i>, which reads as <i>the run
+    /// already exists and only the ledger is behind</i>. That names the wrong suite —
+    /// <c>Rag.NET.E2ETests</c> references exactly six projects (<c>Rag.NET</c>,
+    /// <c>AnswerEngines</c>, <c>Graph</c>, <c>GraphRag</c>, <c>VectorStores.PgVector</c>,
+    /// <c>Testing</c>) and none of the ten is among them.
+    /// <b>Second correction, to the first:</b> the conclusion drawn from that — <i>"nine of the ten
+    /// have no real host coverage"</i> — was itself false. Six of them run a real
+    /// <c>TestServer</c> in their own test projects, under <c>Integration/</c> subdirectories that
+    /// the first check could not see because it globbed <c>tests/&lt;project&gt;/*.cs</c>, which
+    /// does not recurse. <b>Four</b> genuinely owe a run: <c>Cli</c>, <c>Hosting</c>, <c>Mcp</c>,
+    /// <c>Mcp.Tool</c>.
+    /// <para>
+    /// Both errors are the same error, and it is the one this ledger exists to catch: a claim about
+    /// verification, asserted from an incomplete look. 6.0 consulted its memory; the first
+    /// correction consulted one directory. <b>The guard is what caught both</b> — the allowlist
     /// forces every package to name its owner in prose that can be read and falsified, where an
-    /// empty ledger field would have hidden it.
+    /// empty ledger field would have hidden all of it. Every entry below now cites the file that
+    /// substantiates it, or the recursive search that found nothing.
+    /// </para>
     /// </para>
     /// </remarks>
     private static readonly Dictionary<string, string> PackagesAllowedToStayUnit = new(StringComparer.Ordinal)
@@ -131,23 +139,23 @@ public sealed class PackageVerificationTests
 
         // ── 6.2 Raise the Floor: no external dependency; one real file / store / run ─────────
         ["Rag.NET.Abstractions"] = "6.2 — types only; exercised by every real run of the packages built on it, and the reason will say so",
-        ["Rag.NET.Api"] = "6.2 — started for real via WebApplicationFactory/TestServer, one round trip over HTTP (corrected 2026-08-16: 6.0 recorded 'the E2E suite runs it', which is false — Rag.NET.E2ETests references neither this package nor a host for it)",
-        ["Rag.NET.Api.Client"] = "6.2 — one round trip against a really-started Api (corrected 2026-08-16: 6.0's 'the E2E suite' claim is false)",
-        ["Rag.NET.Api.Grpc"] = "6.2 — started for real, one call over the real gRPC transport (corrected 2026-08-16: 6.0's 'the E2E suite' claim is false)",
-        ["Rag.NET.Api.Grpc.Client"] = "6.2 — one call against a really-started Api.Grpc (corrected 2026-08-16: 6.0's 'the E2E suite' claim is false)",
+        ["Rag.NET.Api"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): Rag.NET.Api.Tests/Integration/RagApiIntegrationTests.cs runs a real TestServer and asserts 401 without a key, 200 with one, and a deserialised body from POST /rag/retrieve and /rag/ingest. Blocked only on a ledger value for 'real run'",
+        ["Rag.NET.Api.Client"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): HttpRagPipelineIntegrationTests.cs, TestServer + CreateClient, 5 tests. Blocked only on a ledger value",
+        ["Rag.NET.Api.Grpc"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): GrpcApiKeyConfigurationTests.cs, TestServer + GrpcChannel.ForAddress, 4 tests. Blocked only on a ledger value",
+        ["Rag.NET.Api.Grpc.Client"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): GrpcRagPipelineIntegrationTests.cs, TestServer + GrpcChannel.ForAddress, 4 tests. Blocked only on a ledger value",
         ["Rag.NET.Benchmarks.Quality"] = "6.2 — the harness itself; its correctness is the parity agreement of four datasets, and the reason will name that",
         ["Rag.NET.Caching"] = "6.2 — a real store behind it, one round trip observed",
         ["Rag.NET.Chunking.CSharp"] = "6.2 — a real C# file through Roslyn",
         ["Rag.NET.Chunking.Templates"] = "6.2 — a real document of each template's kind",
-        ["Rag.NET.Cli"] = "6.2 — invoked as a real process, one command asserted on its real output (corrected 2026-08-16: 6.0 recorded 'the E2E suite drives it', which is false — no test starts this process)",
+        ["Rag.NET.Cli"] = "6.2 — invoked as a real process, one command asserted on its real stdout and exit code (verified 2026-08-16 by recursive search: no Process.Start anywhere in tests/Rag.NET.Cli.Tests)",
         ["Rag.NET.DataProviders"] = "6.2 — the abstraction and queue; a real provider through it",
         ["Rag.NET.Diagnostics"] = "6.2 — a real pipeline traced",
-        ["Rag.NET.Diagnostics.AspNetCore"] = "6.2 — a real host started, its endpoint called, the real diagnostics read back (corrected 2026-08-16: 6.0's 'the E2E suite' claim is false)",
+        ["Rag.NET.Diagnostics.AspNetCore"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): Rag.NET.Diagnostics.Tests/TraceEndpointTests.cs, host.GetTestClient() with real GETs asserting 401/404/200. Blocked only on a ledger value",
         ["Rag.NET.Evaluation"] = "6.2 — the answer harness of 5.2.2 could have used it and did not; one real judge run",
         ["Rag.NET.Evaluation.Ragas"] = "6.2 — one real metric run",
-        ["Rag.NET.Hosting"] = "6.2 — a real host built and started, the hosted service observed doing its work (corrected 2026-08-16: 6.0's 'the E2E suite' claim is false)",
-        ["Rag.NET.Mcp"] = "6.2 — a real MCP server serving one real tool call (corrected 2026-08-16: 6.0's 'the E2E suite' claim is false)",
-        ["Rag.NET.Mcp.Tool"] = "6.2 — the tool run over the real stdio transport, one call asserted (corrected 2026-08-16: 6.0's 'the E2E suite' claim is false)",
+        ["Rag.NET.Hosting"] = "6.2 — a real host built and started, the hosted service observed doing its work (verified 2026-08-16 by recursive search: no HostBuilder anywhere in tests/Rag.NET.Hosting.Tests)",
+        ["Rag.NET.Mcp"] = "6.2 — a real MCP server serving one real tool call (verified 2026-08-16 by recursive search: no host machinery in tests/Rag.NET.Mcp.Tests)",
+        ["Rag.NET.Mcp.Tool"] = "6.2 — the tool run over the real stdio transport, one call asserted (verified 2026-08-16 by recursive search: no host machinery in tests/Rag.NET.Mcp.Tool.Tests)",
         ["Rag.NET.Mediator"] = "6.2 — a real pipeline dispatched",
         ["Rag.NET.Memory"] = "6.2 — a real store",
         ["Rag.NET.Parsers.Archive"] = "6.2 — a real ZIP",
@@ -157,7 +165,7 @@ public sealed class PackageVerificationTests
         ["Rag.NET.Parsers.Office"] = "6.2 — a real DOCX / XLSX / PPTX",
         ["Rag.NET.Parsers.Pdf"] = "6.2 — a real PDF with tables",
         ["Rag.NET.Resilience"] = "6.2 — a real failure injected",
-        ["Rag.NET.Security.AspNetCore"] = "6.2 — the ONLY one of the ten whose own tests already start a real host (TestServer + HostBuilder); 6.0 under-credited it rather than over-credited it, so this is a ledger correction and needs no new test",
+        ["Rag.NET.Security.AspNetCore"] = "6.2 — ALREADY MEETS THE BAR: SecurityServiceCollectionExtensionsTests.cs uses UseTestServer() + SendAsync through the real ASP.NET pipeline. Blocked only on a ledger value",
         ["Rag.NET.Storage.Sqlite"] = "6.2 — a real database file",
         ["Rag.NET.Telemetry"] = "6.2 — a real exporter observed",
 
