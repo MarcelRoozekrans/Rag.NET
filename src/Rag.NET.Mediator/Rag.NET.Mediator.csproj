@@ -13,7 +13,8 @@
          (catch blocks that only read ex.Message for the activity status) — not our code.
          Confirmed still firing after the 4.1.4 -> 5.0.0 generator bump (2026-08). -->
     <NoWarn>ZAM003;EPC12</NoWarn>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: dispatch through a real DI container, asserted to reach the handler's dependency (RagMediatorTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

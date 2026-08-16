@@ -4,7 +4,8 @@
     <RootNamespace>Rag.NET.Diagnostics.AspNetCore</RootNamespace>
     <PackageId>Rag.NET.Diagnostics.AspNetCore</PackageId>
     <Description>Opt-in HTTP endpoint for Rag.NET pipeline traces — an explicit MapRagNetTrace(), never automatic.</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: real host via GetTestClient(), real GETs asserting 401/404/200 (TraceEndpointTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

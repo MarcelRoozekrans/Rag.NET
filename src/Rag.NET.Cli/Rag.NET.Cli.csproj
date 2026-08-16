@@ -17,7 +17,8 @@
          build the host, dispatch to those two) and is not exercised directly — the same split
          Rag.NET.Mcp.Tool's own VerifiedBy note describes for its ProgramArguments/
          ApiKeyAuthorization pair. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: the shipped binary spawned as a real process; real stdout, stderr and exit codes (CliProcessTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

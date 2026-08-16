@@ -5,7 +5,8 @@
     <PackageId>Rag.NET.Chunking.CSharp</PackageId>
     <Description>Roslyn-based C# semantic chunking strategy for Rag.NET</Description>
     <PackageTags>$(PackageTags);roslyn;code-chunking</PackageTags>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: a real C# file through real Roslyn, asserting exactly 4 chunks and three named methods. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

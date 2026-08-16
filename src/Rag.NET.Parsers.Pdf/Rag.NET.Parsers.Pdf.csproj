@@ -10,7 +10,8 @@
          4.1's recorded decision; Azure Document Intelligence is the packaged OCR engine). The
          OCR half is verified by the fenced -p:EnableOcr=true procedure in
          docs/reference/ci.md, first executed green 2026-08-03. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: real PDFs parsed with content assertions, including a table emitted as a table section. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

@@ -6,7 +6,8 @@
     <Description>Retrieval caching activation for Rag.NET: UseCaching() registers the HybridCache implementation and the CachingOptions that switch on core's embedding and result cache behaviours</Description>
     <!-- unit: the registration path is exercised in-process by Rag.NET.Caching.Tests through
          the real HybridCache implementation over the real pipeline — no container is involved. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: a real HybridCache round trip through the real pipeline, with a control: caching on, embedder called once; off, twice. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

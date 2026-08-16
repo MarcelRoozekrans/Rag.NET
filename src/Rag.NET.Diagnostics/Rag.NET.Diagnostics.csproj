@@ -4,7 +4,8 @@
     <RootNamespace>Rag.NET.Diagnostics</RootNamespace>
     <PackageId>Rag.NET.Diagnostics</PackageId>
     <Description>Disposable in-memory pipeline traces for Rag.NET: the last N query executions, with chunk scores, stage latencies and guard actions</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: real Activity spans through the real collector, asserted (StageActivityListenerTests, TraceCollectorTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

@@ -5,7 +5,8 @@
     <Description>gRPC client for Rag.NET.Api.Grpc — implements IRagPipeline over gRPC</Description>
     <!-- EPS05 is triggered by generated gRPC client stub code (Nullable<T> passed without in-modifier) -->
     <NoWarn>$(NoWarn);EPS05</NoWarn>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: real TestServer + GrpcChannel.ForAddress (GrpcRagPipelineIntegrationTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

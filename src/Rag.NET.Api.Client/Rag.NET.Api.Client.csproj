@@ -3,7 +3,8 @@
     <RootNamespace>Rag.NET.Api.Client</RootNamespace>
     <PackageId>Rag.NET.Api.Client</PackageId>
     <Description>HTTP client for Rag.NET.Api — implements IRagPipeline over HTTP</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: real TestServer + CreateClient, 5 round trips (HttpRagPipelineIntegrationTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

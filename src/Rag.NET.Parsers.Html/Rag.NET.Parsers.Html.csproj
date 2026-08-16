@@ -4,7 +4,8 @@
     <RootNamespace>Rag.NET.Parsers.Html</RootNamespace>
     <PackageId>Rag.NET.Parsers.Html</PackageId>
     <Description>HTML document parser for Rag.NET</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: a real .html page parsed with content assertions. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

@@ -5,7 +5,8 @@
     <PackageId>Rag.NET.Evaluation</PackageId>
     <Description>LLM-judge and embedding-distance evaluators, A/B comparison with confidence intervals, dataset generation and shadow capture for Rag.NET pipelines</Description>
     <PackageTags>$(PackageTags);llm-judge;ab-testing;evaluation</PackageTags>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: real evaluator runs (61 EvaluateAsync calls) rather than assertions about registration. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

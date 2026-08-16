@@ -3,7 +3,8 @@
     <RootNamespace>Rag.NET.DataProviders</RootNamespace>
     <PackageId>Rag.NET.DataProviders</PackageId>
     <Description>Shared OAuth and base class infrastructure for Rag.NET data provider connectors</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: the real channel queue, the real job processor and the real polling trigger, end to end. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />

@@ -4,7 +4,10 @@
     <RootNamespace>Rag.NET.Parsers.Archive</RootNamespace>
     <PackageId>Rag.NET.Parsers.Archive</PackageId>
     <Description>ZIP archive parser for Rag.NET</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: Resources/sample.zip is written by CPython's zipfile, not by the
+         System.IO.Compression that ZipDocumentParser reads with; entries under directory
+         prefixes asserted present (RealZipFixtureTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

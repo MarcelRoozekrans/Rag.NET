@@ -7,7 +7,8 @@
     <!-- unit: AddRagNetInstrumentation is exercised in-process against a real OpenTelemetry
          TracerProvider/MeterProvider with an in-memory exporter — no backend, container or
          wall clock involved; see Rag.NET.Telemetry.Tests. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: a real MeterProvider and TracerProvider; a real counter emitted and read back off the EXPORTED metrics. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

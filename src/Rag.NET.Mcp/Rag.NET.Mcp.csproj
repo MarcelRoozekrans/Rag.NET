@@ -4,7 +4,8 @@
     <PackageId>Rag.NET.Mcp</PackageId>
     <Description>Model Context Protocol server exposing Rag.NET pipelines as MCP tools</Description>
     <PackageTags>$(PackageTags);mcp;model-context-protocol</PackageTags>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: tools resolved from the real AddRagNetMcpServer() registration; discovery, descriptions and generated schema. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>
