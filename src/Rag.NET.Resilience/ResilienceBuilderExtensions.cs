@@ -109,7 +109,7 @@ public static class ResilienceBuilderExtensions
                 "it wraps whatever is registered at that point.");
         }
 
-        builder.Services.AddResiliencePipeline(ResiliencePipelineName, b => BuildPipeline(b, configure));
+        RegisterPipeline(builder.Services, configure);
 
         if (alreadyApplied)
         {
@@ -146,6 +146,38 @@ public static class ResilienceBuilderExtensions
 
         return builder;
     }
+
+    /// <summary>
+    /// Registers the <c>"rag-net"</c> pipeline, taking its <see cref="TimeProvider"/> from DI when
+    /// one is registered.
+    /// </summary>
+    /// <remarks>
+    /// Polly's <c>(builder, context)</c> overload rather than the builder-only one, purely so the
+    /// clock is reachable. <b>Milestone 6, Phase 6.2 (#263):</b> with no seam, the shipped default's
+    /// 1 s exponential back-off could not be asserted without a ~7 s wall-clock sleep — so every
+    /// retry test substituted its own zero-delay pipeline, and the default this method actually
+    /// installs was never executed by anything. A default that retried once, or not at all, or with
+    /// no back-off would have passed the whole suite.
+    /// <para>
+    /// <b>Nothing registers a <see cref="TimeProvider"/> in production</b>, so the builder keeps
+    /// <c>TimeProvider.System</c> and behaviour is unchanged. A test registers a
+    /// <c>FakeTimeProvider</c> and advances the clock itself.
+    /// </para>
+    /// </remarks>
+    private static void RegisterPipeline(
+        IServiceCollection services,
+        Action<ResiliencePipelineBuilder>? configure) =>
+        services.AddResiliencePipeline(
+            ResiliencePipelineName,
+            (b, context) =>
+            {
+                if (context.ServiceProvider.GetService<TimeProvider>() is { } timeProvider)
+                {
+                    b.TimeProvider = timeProvider;
+                }
+
+                BuildPipeline(b, configure);
+            });
 
     private static ResiliencePipeline ResolvePipeline(IServiceProvider serviceProvider) =>
         serviceProvider.GetRequiredService<ResiliencePipelineProvider<string>>()
