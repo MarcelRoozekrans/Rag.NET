@@ -4,7 +4,8 @@
     <RootNamespace>Rag.NET.Parsers.Office</RootNamespace>
     <PackageId>Rag.NET.Parsers.Office</PackageId>
     <Description>Word, Excel and PowerPoint document parsers for Rag.NET</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: sample.docx/.xlsx/.pptx produced by the REAL Microsoft Word, Excel and PowerPoint, not by DocumentFormat.OpenXml. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

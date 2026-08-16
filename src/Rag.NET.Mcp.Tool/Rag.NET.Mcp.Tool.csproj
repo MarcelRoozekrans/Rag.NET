@@ -19,7 +19,8 @@
          What `unit` does NOT cover: choosing between the stdio and HTTP hosts, and actually
          running either one — those are launching a process or a Kestrel listener, not a
          computation, and are not exercised here. See ProgramArguments' remarks. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: the tool run as a real process on the real stdio transport; JSON-RPC initialize then tools/list (StdioTransportTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

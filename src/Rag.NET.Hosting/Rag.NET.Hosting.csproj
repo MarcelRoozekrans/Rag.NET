@@ -9,7 +9,8 @@
          IConfiguration. Client and store construction never dials out (Uri/credential setup and
          gRPC/Npgsql client construction are lazy about the network), so this is real coverage of
          what gets registered, not a fake standing in for a network call. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: a real IHost built and started, resolved through its own provider, incl. a scoped resolve (RealHostTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

@@ -4,7 +4,8 @@
     <RootNamespace>Rag.NET.Parsers.Email</RootNamespace>
     <PackageId>Rag.NET.Parsers.Email</PackageId>
     <Description>EML/MSG email parser for Rag.NET</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: a real .eml and .msg parsed with content assertions (Parsers.IntegrationTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

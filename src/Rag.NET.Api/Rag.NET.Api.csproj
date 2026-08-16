@@ -3,7 +3,8 @@
     <RootNamespace>Rag.NET.Api</RootNamespace>
     <PackageId>Rag.NET.Api</PackageId>
     <Description>ASP.NET Core REST API for Rag.NET pipelines</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: real TestServer; 401 without a key, 200 with one, deserialised body from POST /rag/retrieve and /rag/ingest. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

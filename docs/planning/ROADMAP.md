@@ -4070,6 +4070,17 @@ and something checks it):
       package is upgraded past `unit` under the definition 6.2 settles — its ledger value says
       so — or carries a `<VerifiedByReason>` stating why it stays. A bare `unit` fails; the
       check is the same ledger test, extended.
+      *(**The definition 6.2 settled, 2026-08-16, and it needed a new ledger value.** This
+      criterion always said "under the definition 6.2 settles" and deliberately did not name the
+      levels; the sibling criterion in `MILESTONE.md` did enumerate them, and that enumeration was
+      wrong once the definition existed. `integration` — exercised against something real that is
+      not an external service: a real file this repository did not generate with the library that
+      reads it, a real process, a real host over its real transport, a real storage engine
+      surviving a reopen. Weaker than `container` and `benchmark` by design; stronger than `unit`.
+      It does not mean "well tested" — it means the thing under test was not replaced by a
+      substitute of itself, which is the distinction every defect in this repository's record
+      turned on. Twenty-five packages moved to it on the day it was added, taking the allowlist
+      from 57 to 32.)*
 - [ ] **The release commit is green on both operating systems `ci.yml` matrices** — one
       required check per OS, `build-test (ubuntu-latest)` and `build-test (windows-latest)` —
       and the Docker tier and the latest nightly are green on Linux, the one OS they run on by

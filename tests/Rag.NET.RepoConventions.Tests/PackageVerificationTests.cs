@@ -5,9 +5,10 @@ namespace Rag.NET.RepoConventions.Tests;
 
 /// <summary>
 /// Asserts that every package under <c>src/</c> declares how it has actually been verified, in a
-/// <c>&lt;VerifiedBy&gt;</c> property in its csproj: <c>unit</c>, <c>container</c>,
-/// <c>benchmark</c>, <c>recorded</c>, <c>live</c>, or <c>none</c> — and, since Milestone 6.0, a
-/// <c>&lt;VerifiedByReason&gt;</c> beside a <c>unit</c> that says why the package stays there.
+/// <c>&lt;VerifiedBy&gt;</c> property in its csproj: <c>unit</c>, <c>integration</c>,
+/// <c>container</c>, <c>benchmark</c>, <c>recorded</c>, <c>live</c>, or <c>none</c> — and, since
+/// Milestone 6.0, a <c>&lt;VerifiedByReason&gt;</c> beside a <c>unit</c> that says why the package
+/// stays there.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -46,15 +47,43 @@ public sealed class PackageVerificationTests
 
     /// <summary>
     /// The verification levels, weakest claim last. <c>unit</c>: fakes and fixtures only —
-    /// not a failure state, and exactly what late chunking was for five phases. <c>benchmark</c>:
-    /// exercised by a measured run on a real corpus with a real model, pinned in a reproduction
-    /// table — Milestone 5's method, and the level five packages earned there. <c>container</c>:
-    /// exercised against a real dependency in Docker. <c>recorded</c>: exercised against a
-    /// recorded real-service response. <c>live</c>: exercised against the real service.
+    /// not a failure state, and exactly what late chunking was for five phases.
+    /// <c>integration</c>: exercised against something real that is not an external service —
+    /// a real file this repository did not generate with the library that reads it, a real
+    /// process, a real host over its real transport, a real storage engine surviving a reopen.
+    /// <c>benchmark</c>: exercised by a measured run on a real corpus with a real model, pinned in
+    /// a reproduction table — Milestone 5's method, and the level five packages earned there.
+    /// <c>container</c>: exercised against a real dependency in Docker. <c>recorded</c>: exercised
+    /// against a recorded real-service response. <c>live</c>: exercised against the real service.
     /// <c>none</c>: no meaningful test at all — honest, and the release gate's whole subject.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>integration</c> was added 2026-08-16, in Phase 6.2, and the gap it fills is the
+    /// phase's central finding.</b> §2 of the phase design defines a per-kind bar — a real file for
+    /// parsers, a reopen for stores, a real transport for hosted surfaces, an observed effect for
+    /// plumbing — and by the time twenty-five packages satisfied it, <b>the ledger had no way to
+    /// say so</b>. Every one of them was stuck at bare <c>unit</c>, which was by then a false
+    /// statement: <c>unit</c> means "fakes and fixtures only", and these packages start real
+    /// processes, parse files written by Microsoft Word and CPython, and reopen real SQLite
+    /// databases.
+    /// </para>
+    /// <para>
+    /// The alternatives were both dishonest. <c>container</c> claims Docker, which none of them
+    /// use. <c>benchmark</c> claims a pinned figure on a real corpus, which is Milestone 5's much
+    /// higher bar. A <c>&lt;VerifiedByReason&gt;</c> beside <c>unit</c> would have said "here is
+    /// why this package cannot be exercised" about twenty-five packages that <i>are</i> exercised —
+    /// the escape hatch used as a filing cabinet, which is how a ledger becomes fiction.
+    /// </para>
+    /// <para>
+    /// The level is deliberately weaker than <c>container</c> and <c>benchmark</c>, and deliberately
+    /// stronger than <c>unit</c>. It does not mean "well tested". It means <b>the thing under test
+    /// was not replaced by a substitute of itself</b> — which is the exact distinction every defect
+    /// in this repository's record turned on.
+    /// </para>
+    /// </remarks>
     private static readonly string[] VerificationLevels =
-        ["unit", "container", "benchmark", "recorded", "live", "none"];
+        ["unit", "integration", "container", "benchmark", "recorded", "live", "none"];
 
     /// <summary>
     /// The packages currently allowed to declare <c>none</c>, each with its reason and owning
@@ -138,43 +167,8 @@ public sealed class PackageVerificationTests
         ["Rag.NET.WebSearch.Tavily"] = "6.1 — Tavily API",
 
         // ── 6.2 Raise the Floor: no external dependency; one real file / store / run ─────────
-        ["Rag.NET.Api"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): Rag.NET.Api.Tests/Integration/RagApiIntegrationTests.cs runs a real TestServer and asserts 401 without a key, 200 with one, and a deserialised body from POST /rag/retrieve and /rag/ingest. Blocked only on a ledger value for 'real run'",
-        ["Rag.NET.Api.Client"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): HttpRagPipelineIntegrationTests.cs, TestServer + CreateClient, 5 tests. Blocked only on a ledger value",
-        ["Rag.NET.Api.Grpc"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): GrpcApiKeyConfigurationTests.cs, TestServer + GrpcChannel.ForAddress, 4 tests. Blocked only on a ledger value",
-        ["Rag.NET.Api.Grpc.Client"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): GrpcRagPipelineIntegrationTests.cs, TestServer + GrpcChannel.ForAddress, 4 tests. Blocked only on a ledger value",
-        ["Rag.NET.Caching"] = "6.2 — a real store behind it, one round trip observed",
-        ["Rag.NET.Chunking.CSharp"] = "6.2 — a real C# file through Roslyn",
         ["Rag.NET.Chunking.Templates"] = "6.2 — a real document of each template's kind",
-        ["Rag.NET.Cli"] = "6.2 — invoked as a real process, one command asserted on its real stdout and exit code (verified 2026-08-16 by recursive search: no Process.Start anywhere in tests/Rag.NET.Cli.Tests)",
-        ["Rag.NET.DataProviders"] = "6.2 — the abstraction and queue; a real provider through it",
-        ["Rag.NET.Diagnostics"] = "6.2 — a real pipeline traced",
-        ["Rag.NET.Diagnostics.AspNetCore"] = "6.2 — ALREADY MEETS THE BAR (corrected 2026-08-16): Rag.NET.Diagnostics.Tests/TraceEndpointTests.cs, host.GetTestClient() with real GETs asserting 401/404/200. Blocked only on a ledger value",
-        ["Rag.NET.Evaluation"] = "6.2 — the answer harness of 5.2.2 could have used it and did not; one real judge run",
-        ["Rag.NET.Evaluation.Ragas"] = "6.2 — one real metric run",
-        ["Rag.NET.Hosting"] = "6.2 — a real host built and started, the hosted service observed doing its work (verified 2026-08-16 by recursive search: no HostBuilder anywhere in tests/Rag.NET.Hosting.Tests)",
-        ["Rag.NET.Mcp"] = "6.2 — a real MCP server serving one real tool call (verified 2026-08-16 by recursive search: no host machinery in tests/Rag.NET.Mcp.Tests)",
-        ["Rag.NET.Mcp.Tool"] = "6.2 — the tool run over the real stdio transport, one call asserted (verified 2026-08-16 by recursive search: no host machinery in tests/Rag.NET.Mcp.Tool.Tests)",
-        ["Rag.NET.Mediator"] = "6.2 — a real pipeline dispatched",
-        ["Rag.NET.Memory"] = "6.2 — a real store",
-        ["Rag.NET.Parsers.Archive"] = "6.2 — a real ZIP",
-        ["Rag.NET.Parsers.Email"] = "6.2 — a real EML and MSG",
-        ["Rag.NET.Parsers.Epub"] = "6.2 — a real EPUB",
-        ["Rag.NET.Parsers.Html"] = "6.2 — a real page",
-        // 2026-08-16: the RUN now exists — Resources/sample.docx, sample.xlsx and sample.pptx are
-        // produced by the real Microsoft Word, Excel and PowerPoint (docProps/app.xml names each
-        // Application), replacing fixtures that DocumentFormat.OpenXml built and handed straight
-        // back to a DocumentFormat.OpenXml parser. This entry stays only because the LEDGER CANNOT
-        // EXPRESS IT: VerificationLevels is unit/container/benchmark/recorded/live/none, and the
-        // milestone's DoD enumerates the same set — none of which means "exercised against real
-        // input", which is the whole of 6.2's bar for this kind. Resolving that is a DoD change and
-        // therefore the operator's; until then this package is honestly bare unit with a real run
-        // behind it, which is better than a value that overstates or a reason that understates.
-        ["Rag.NET.Parsers.Office"] = "6.2 — a real DOCX / XLSX / PPTX (DONE 2026-08-16; blocked on a ledger value for 'real input' — see comment above)",
-        ["Rag.NET.Parsers.Pdf"] = "6.2 — a real PDF with tables",
         ["Rag.NET.Resilience"] = "6.2 — a real failure injected",
-        ["Rag.NET.Security.AspNetCore"] = "6.2 — ALREADY MEETS THE BAR: SecurityServiceCollectionExtensionsTests.cs uses UseTestServer() + SendAsync through the real ASP.NET pipeline. Blocked only on a ledger value",
-        ["Rag.NET.Storage.Sqlite"] = "6.2 — a real database file",
-        ["Rag.NET.Telemetry"] = "6.2 — a real exporter observed",
 
         // ── 6.2.1 Retrieval & Answer Sweep: a pinned figure with a control ───────────────────
         ["Rag.NET.AnswerEngines"] = "6.2.1 — MapReduce, Refine and FLARE as arms of the 5.2.2 answer harness",

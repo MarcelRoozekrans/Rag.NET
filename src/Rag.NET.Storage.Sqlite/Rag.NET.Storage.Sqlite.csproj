@@ -6,7 +6,8 @@
     <Description>SQLite-backed storage for Rag.NET: BM25 and parent-chunk persistence, the document sidecar, the content-hash record manager, the embedding-version store, and the persistent cost ledger</Description>
     <!-- unit: every store is exercised against real SQLite database files in-process by
          Rag.NET.Storage.Sqlite.Tests — SQLite is embedded, so no container is involved. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: all six stores write to a real SQLite file and are reopened by a second instance that reads the data back. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

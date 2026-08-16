@@ -37,9 +37,16 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 - [ ] **Every `✅ Done` row in `features.md` names what exercises it** — an *Exercised by* column,
       pointing at a test or benchmark that runs the real thing, and a conventions test that fails a
       ✅ row with an empty column. Today: 56 rows, 0 pointers.
-- [ ] **No package remains at bare `VerifiedBy=unit`** — each is `container`, `recorded`,
-      `benchmark`, or carries `<VerifiedByReason>` naming the service and the gap; the ledger test
-      fails a bare `unit`. Today: 62 of 71 are bare `unit`.
+- [ ] **No package remains at bare `VerifiedBy=unit`** — each is `integration`, `container`,
+      `recorded`, `benchmark`, or carries `<VerifiedByReason>` naming the service and the gap; the
+      ledger test fails a bare `unit`. Today: **32 of 71**, down from 62 when this milestone opened.
+      *(`integration` was added 2026-08-16 in Phase 6.2. The level set enumerated here could not
+      express "exercised against something real that is not an external service" — a real file, a
+      real process, a real host over its real transport, a real store reopened — which is exactly
+      what §2 of the 6.2 design defines as the bar for twenty-five of these packages. They met it
+      and the ledger had no way to say so. Amending a DoD mid-milestone is not free, and the
+      alternative was worse: leaving twenty-five packages at a `unit` that had become false, or
+      spending the `<VerifiedByReason>` escape hatch on packages that are exercised.)*
 - [ ] **Every retrieval technique and answer engine has a pinned figure with a control** — the
       GraphRAG method (5.2 / 5.2.1 / 5.2.2) applied to RAPTOR, HyDE, hybrid, reranking, late
       chunking, SPLADE, and the three answer engines; every vector store reproduces the SciFact

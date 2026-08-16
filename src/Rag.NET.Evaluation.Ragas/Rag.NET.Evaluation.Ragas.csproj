@@ -4,7 +4,8 @@
     <RootNamespace>Rag.NET.Evaluation.Ragas</RootNamespace>
     <PackageId>Rag.NET.Evaluation.Ragas</PackageId>
     <Description>RAGAS-style evaluation metrics for Rag.NET pipelines</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: each Ragas metric evaluated for real — precision, recall, faithfulness, answer relevance. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

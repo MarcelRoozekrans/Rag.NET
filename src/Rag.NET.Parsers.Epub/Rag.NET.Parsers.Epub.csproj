@@ -4,7 +4,8 @@
     <RootNamespace>Rag.NET.Parsers.Epub</RootNamespace>
     <PackageId>Rag.NET.Parsers.Epub</PackageId>
     <Description>EPUB document parser for Rag.NET</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: a real .epub parsed with content assertions across two chapters. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

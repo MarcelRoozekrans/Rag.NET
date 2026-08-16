@@ -5,7 +5,8 @@
     <PackageId>Rag.NET.Memory</PackageId>
     <Description>Persistent SQLite-backed conversation memory for Rag.NET</Description>
     <PackageTags>$(PackageTags);conversation-memory;chat-history;sqlite</PackageTags>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: an exchange stored into a real vector store and recalled by a FRESH instance over the same store (RealStoreRoundTripTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

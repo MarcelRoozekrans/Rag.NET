@@ -11,7 +11,8 @@
          `unit` does not cover: a real reverse proxy or authentication handler populating the
          ClaimsPrincipal (Kestrel/JWT/cookie middleware) — TestServer's in-memory pipeline stands in
          for that, same limitation TraceEndpointTests documents for Rag.NET.Diagnostics.AspNetCore. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2: UseTestServer() + SendAsync through the real ASP.NET pipeline. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>
