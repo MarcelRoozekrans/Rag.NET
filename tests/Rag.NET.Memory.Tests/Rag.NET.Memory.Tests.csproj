@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Milestone 6, Phase 6.2: Rag.NET.Memory had no test project of its own. Its only
+         coverage came from Rag.NET.Tests, which references it transitively. -->
+    <ProjectReference Include="..\..\src\Rag.NET.Memory\Rag.NET.Memory.csproj" />
+    <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>
