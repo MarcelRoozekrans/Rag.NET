@@ -40,6 +40,15 @@ public sealed class ServiceBusEmulatorFixture : IAsyncLifetime
     private const string SaPassword = "R4gNet!Emulator";
     private const int AmqpPort = 5672;
 
+    // LockDuration is PT5M, not the PT1M this started with (#246, raised 2026-08-16). A message
+    // lock that expires before a test settles its message surfaces as
+    // "The lock supplied is invalid ... (MessageLockLost)", and it is a property of how loaded the
+    // runner is, not of the code under test: the Docker tier runs several emulators at once and the
+    // failure has only ever been seen on ubuntu. It tripped again on PR #270, which added an
+    // Azurite container to that same tier — so the load that causes it is now higher than when the
+    // flake was filed, and raising the ceiling is the fix #246 itself prescribed. Five minutes is
+    // far beyond any of these tests' Bound, so a real hang still fails on the timeout rather than
+    // being masked by a longer lock.
     private const string ConfigJson = $$"""
         {
           "UserConfig": {
@@ -52,7 +61,7 @@ public sealed class ServiceBusEmulatorFixture : IAsyncLifetime
                     "Properties": {
                       "DeadLetteringOnMessageExpiration": false,
                       "DefaultMessageTimeToLive": "PT1H",
-                      "LockDuration": "PT1M",
+                      "LockDuration": "PT5M",
                       "MaxDeliveryCount": 5,
                       "RequiresDuplicateDetection": false,
                       "RequiresSession": false
@@ -63,7 +72,7 @@ public sealed class ServiceBusEmulatorFixture : IAsyncLifetime
                     "Properties": {
                       "DeadLetteringOnMessageExpiration": false,
                       "DefaultMessageTimeToLive": "PT1H",
-                      "LockDuration": "PT1M",
+                      "LockDuration": "PT5M",
                       "MaxDeliveryCount": 5,
                       "RequiresDuplicateDetection": false,
                       "RequiresSession": true
