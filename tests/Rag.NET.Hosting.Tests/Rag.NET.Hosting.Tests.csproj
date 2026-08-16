@@ -9,6 +9,9 @@
     <ProjectReference Include="..\..\src\Rag.NET\Rag.NET.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.VectorStores.Qdrant\Rag.NET.VectorStores.Qdrant.csproj" />
     <ProjectReference Include="..\..\src\Rag.NET.VectorStores.PgVector\Rag.NET.VectorStores.PgVector.csproj" />
+    <!-- The real IHost, for Integration/RealHostTests: the rest of this project builds a bare
+         ServiceCollection, which skips host startup, ValidateOnBuild and ValidateScopes. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
