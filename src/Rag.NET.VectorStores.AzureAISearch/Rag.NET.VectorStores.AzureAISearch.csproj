@@ -9,7 +9,15 @@
          expressions (the filtered-search test is permanently skipped) and nothing has ever
          confirmed it behaves like real Azure AI Search. A simulator of unverified fidelity
          is a fake with a port number. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.1: 13 tests against ghcr.io/ellerbach/azure-ai-search-simulator via
+         Testcontainers, in the Docker tier. Phase 4.0 recorded the judgment that this is `unit`
+         despite having Docker-tier tests, "its container is a community simulator without OData
+         filters and of unconfirmed fidelity". 6.1 reverses the level and keeps the caveat, because
+         the two are separable: the mechanism IS a container, and pretending otherwise hides a real
+         suite; the fidelity gap is a property of that container and belongs in a reason, where it
+         is machine-readable, rather than in a level that says nothing about it. -->
+    <VerifiedBy>container</VerifiedBy>
+    <VerifiedByReason>Exercised against a THIRD-PARTY simulator (ghcr.io/ellerbach/azure-ai-search-simulator), not Microsoft's service and not a vendor emulator — weaker than the vendor-published containers the other stores use. Unverified as a result: OData filter expressions, which the simulator does not implement (one test is skipped outright for this, and it is Milestone 4's recorded coverage gap), and any behaviour where the simulator's fidelity to the real service is unconfirmed — the suite already asserts that its hybrid fusion arithmetic is NOT the real service's.</VerifiedByReason>
   </PropertyGroup>
 
   <ItemGroup>

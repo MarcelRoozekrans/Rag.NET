@@ -7,7 +7,11 @@
     <!-- unit: every decorator and registration path is exercised in-process by
          Rag.NET.Resilience.Tests with deterministic counter fakes and manual-replenishment
          token buckets — no provider, container, or wall clock is involved. -->
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- Milestone 6, Phase 6.2 (#263, #267): the SHIPPED default retry policy is executed —
+         3 retries for 4 attempts, every hop costing positive simulated time, and no retry
+         firing while the clock is frozen. Until #267 every retry test substituted a zero-delay
+         pipeline and the default was never run by anything (DefaultPolicyBackoffTests). -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

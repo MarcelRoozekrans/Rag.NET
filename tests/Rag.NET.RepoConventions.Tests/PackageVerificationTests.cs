@@ -143,7 +143,6 @@ public sealed class PackageVerificationTests
         // ── 6.1 Recorded Responses: talks to a live service ─────────────────────────────────
         ["Rag.NET.DataProviders.Airtable"] = "6.1 — Airtable API",
         ["Rag.NET.DataProviders.Asana"] = "6.1 — Asana API",
-        ["Rag.NET.DataProviders.AzureBlob"] = "6.1 — Azure Blob Storage (Azurite is a container option; decide in 6.1)",
         ["Rag.NET.DataProviders.Bitbucket"] = "6.1 — Bitbucket API",
         ["Rag.NET.DataProviders.Box"] = "6.1 — Box API",
         ["Rag.NET.DataProviders.Confluence"] = "6.1 — Confluence API",
@@ -163,12 +162,10 @@ public sealed class PackageVerificationTests
         ["Rag.NET.Parsers.Pdf.AzureDocumentIntelligence"] = "6.1 — Azure Document Intelligence; the live half Milestone 4 recorded as never run",
         ["Rag.NET.Parsers.Vision"] = "6.1 — a hosted vision model",
         ["Rag.NET.Reranking.Cohere"] = "6.1 — Cohere Rerank API",
-        ["Rag.NET.VectorStores.AzureAISearch"] = "6.1 — Azure AI Search; its Docker-tier suite runs against an emulator and may already qualify as container, to be decided there",
         ["Rag.NET.WebSearch.Tavily"] = "6.1 — Tavily API",
 
         // ── 6.2 Raise the Floor: no external dependency; one real file / store / run ─────────
         ["Rag.NET.Chunking.Templates"] = "6.2 — a real document of each template's kind",
-        ["Rag.NET.Resilience"] = "6.2 — a real failure injected",
 
         // ── 6.2.1 Retrieval & Answer Sweep: a pinned figure with a control ───────────────────
         ["Rag.NET.AnswerEngines"] = "6.2.1 — MapReduce, Refine and FLARE as arms of the 5.2.2 answer harness",
