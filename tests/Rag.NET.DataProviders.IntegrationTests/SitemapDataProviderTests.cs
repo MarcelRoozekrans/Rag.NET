@@ -98,4 +98,44 @@ public sealed class SitemapDataProviderTests
         await using var stream = await first.Value.OpenContentAsync(TestContext.Current.CancellationToken);
         Assert.True(stream.Length > 0);
     }
+
+    /// <remarks>
+    /// Issue #252 over a real HTTP server. The fast-tier suite
+    /// (<c>Rag.NET.DataProviders.Web.Tests/SitemapFilteringTests</c>) covers the filter's
+    /// semantics exhaustively; this asserts the feature survives the real transport, which is the
+    /// bar this package is held to since Phase 6.1.
+    /// </remarks>
+    [Fact]
+    public async Task ExcludedPrefixes_AreSkippedOverRealHttp()
+    {
+        using var httpClient = CreateHttpClient();
+        var sut = new SitemapDataProvider(
+            $"{_fixture.BaseUrl}/sitemap.xml",
+            httpClient,
+            new SitemapOptions { ExcludedUrlPrefixes = [$"{_fixture.BaseUrl}/page1"] });
+
+        var entries = await sut
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        var only = Assert.Single(entries).Value;
+        Assert.Equal($"{_fixture.BaseUrl}/page2", only.Id.Value);
+    }
+
+    /// <remarks>The pattern mechanism, likewise over the real transport.</remarks>
+    [Fact]
+    public async Task ExcludedPatterns_AreSkippedOverRealHttp()
+    {
+        using var httpClient = CreateHttpClient();
+        var sut = new SitemapDataProvider(
+            $"{_fixture.BaseUrl}/sitemap.xml",
+            httpClient,
+            new SitemapOptions { ExcludedUrlPatterns = [@"/page\d$"] });
+
+        var entries = await sut
+            .GetFilesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Empty(entries);
+    }
 }

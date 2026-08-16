@@ -64,7 +64,7 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 | 6.1 | Recorded Responses | — | pending — as planned since 2026-08-03 |
 | 6.2 | Raise the Floor on Unit-Only Packages | — | pending — now defined per kind: parsers/chunkers via a real file, stores via the parity leg, utilities via one real run |
 | 6.2.1 | Retrieval & Answer Sweep | #247, #239, #176, #200 | pending — the GraphRAG method applied to the rest; #247 fixed and re-measured first; the pipeline-parity test |
-| 6.2.2 | Requested Features | #252 | pending — added 2026-08-16; feature requests filed against shipped packages, held to 6.0's bar |
+| 6.2.2 | Requested Features | #252 | **complete** 2026-08-16 — #252 built, both open design questions settled, exercised in the fast tier and over a real HTTP server |
 | 6.3 | Release v1.0 | — | pending — as planned; first work is the nuget.org account, key and 70 reserved IDs |
 
 ## Known debt carried into this milestone
@@ -78,7 +78,8 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
   error: it was closed 2026-08-10, before this milestone opened. Removed 2026-08-16 by the issue
   triage that also assigned #239/#246/#247 to the GitHub milestone.)*
 - **#252** `SitemapDataProvider` cannot skip URLs — reported 2026-08-15 against a shipped package.
-  6.2.2.
+  6.2.2. **Closed 2026-08-16**: `SitemapOptions` with prefix and regex exclusions, applied to
+  nested index links as well as page URLs.
 - **TREC-COVID's weakest-of-the-datasets agreement** (−0.018 in ±0.02) — nothing yet looks into
   it; 6.2's parity-through-stores runs the same leg many more times and is where it would show.
 - **Generation lives in the answer test class rather than the tool** (5.2.2's stated deviation).
