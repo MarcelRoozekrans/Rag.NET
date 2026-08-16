@@ -526,7 +526,27 @@ which pins the job's condition, the endpoint, the push command text and this pag
 procedure — the same properties `TestGateTests` demands: named, condition stated, satisfiable by
 a documented procedure, and guarded so it cannot be deleted or drift silently.
 
-### What the rehearsal cannot prove — the 6.3 residual
+### What the rehearsal could not prove — the 6.3 residual, now mostly answered
+
+> **Superseded by reality on 2026-08-11.** The paragraph below was written before the first real
+> push and is kept because the residual it describes was correct: none of this *was* provable from
+> a directory feed. It is no longer *unproven*. Verified against nuget.org's own API on
+> 2026-08-16:
+>
+> - **71 packages are live at `0.1.0`**, published 2026-08-11T15:10:03Z, `listed: true`, licence
+>   `MIT`, `projectUrl` pointing at this repository.
+> - **Authentication and API-key scoping work.** 71 successful pushes is the proof.
+> - **Every package ID was available and is now owned.** The exposure this section records — that
+>   no ID was reserved — is closed, and closed favourably.
+> - **nuget.org's own validation passed** on all 71.
+> - **`.snupkg` symbol delivery works**: `rag.net.0.1.0.snupkg` is served by the symbol CDN
+>   (HTTP 200). This is the item the section singles out as unrehearsable at all.
+> - **`Rag.NET.Benchmarks.Quality` is correctly absent** (404) — `IsPackable=false` held through a
+>   real publish, not just through `pack-validate`.
+>
+> **Still unproven, and the whole of what is left:** the real `409`-and-skip behaviour of
+> `--skip-duplicate`, which only fires on a *second* push of the same version and so has not
+> happened yet. It will be exercised by the first republish, not by the v1.0 push.
 
 Pushing to a local feed is not pushing to nuget.org. **Exercised for real exactly once, on
 release day:** authentication, API-key scoping, package-ID availability (none of the 70 IDs is
@@ -546,9 +566,13 @@ a derive step runs `dotnet dotnet-gitversion /output json | jq -r '.SemVer'`, fa
 the result is not a version (because `-p:Version=` with an empty value packs 1.0.0 again,
 silently), and hands it to the pack command.
 
-The repository has **no tags yet, deliberately** — Phase 6.3 decides the release version — so
-every derived version is a **prerelease**: `0.1.0-preview.N` on `main`, with N incrementing per
-commit, and `0.1.0-<branch>.N` on a branch. Measured on 2026-08-03: `main` derived
+The repository has **one tag, `v0.1.0`**, cut 2026-08-11 (GitHub release `v0.1.0`, commit
+`9f4ea181 chore(main): release 0.1.0 (#158)`), and the 71 packages published from it are live on
+nuget.org. *(This paragraph said "no tags yet, deliberately — Phase 6.3 decides the release
+version" until 2026-08-16. That was true when written and stopped being true five days later,
+without anything noticing: the drift a Milestone 6 audit is supposed to catch, caught. **Phase 6.3
+still decides the release version** — v1.0 is not tagged — but it no longer decides whether this
+project can publish at all.)* Measured on 2026-08-03: `main` derived
 `0.1.0-preview.1495`, and in a throwaway clone a `v1.0.0` tag on HEAD derived a stable `1.0.0`
 with **no configuration change** — the mechanism release day depends on, verified before release
 day. Two guards keep the wiring from rotting into decoration: `WorkflowWiringTests` pins the

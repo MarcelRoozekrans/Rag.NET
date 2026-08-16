@@ -4267,13 +4267,32 @@ collide.
 **Exit condition:** every issue listed above is closed by a merged PR, each with an *Exercised by*
 pointer in `features.md`, and no new bare-`unit` entry is created.
 
-### Phase 6.3: Release v1.0 [status: pending]
+### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
 The tag is the last and smallest phase in the milestone, which is the point of the 2026-08-03
 restructure: by the time this phase runs, every criterion above it is already true and checked
 by something.
 
+> **CORRECTED 2026-08-16, and the correction is larger than the note.** Everything in the note
+> below was true on 2026-08-03 and stopped being true on **2026-08-11**, when 71 packages were
+> published to nuget.org at `0.1.0` — five days before this milestone opened, and nothing in the
+> planning record noticed. Verified against nuget.org's API on 2026-08-16: 71 IDs live and
+> `listed: true`, published 15:10:03Z, licence MIT; `.snupkg` symbols served by the symbol CDN;
+> `Rag.NET.Benchmarks.Quality` correctly absent (404), so `IsPackable=false` held through a real
+> publish. **So `NUGET_API_KEY` exists and is correctly scoped, every package ID was available and
+> is now owned, and nuget.org's validation passed on all 71** — the whole of "this phase's first
+> work" in the note below, already done.
+>
+> **What is left of 6.3 is the v1.0 tag**, plus the one residual the publish did not touch: the
+> real `409`-and-skip of `--skip-duplicate`, which only fires on a *second* push of the same
+> version. `docs/reference/ci.md` § "What the rehearsal could not prove" carries the itemised
+> before/after.
+>
+> The original note follows, unedited, because being wrong about this in a specific direction —
+> assuming an exposure that had already been closed — is the kind of thing this milestone exists
+> to find, and deleting it would hide that it happened.
+>
 > **Recorded at Phase 4.1's close (2026-08-03), so this phase starts from it rather than
 > discovering it on release day: the owner stated they do not yet have credentials for all the
 > packages created.** Concretely: no nuget.org API key exists (`NUGET_API_KEY` is unset — the
