@@ -390,6 +390,10 @@ internal static class Program
 
         Console.WriteLine(FormattableString.Invariant(
             $"Longest report prompt this run built: {client.LongestPrompt} characters, against the {options.MaxCommunityReportPromptLength}-character bound."));
+
+        // Issue #200: what this run actually cost, in the run's own output rather than reasoned
+        // backwards from cache-file sizes afterwards.
+        Console.WriteLine(client.DescribeUsage());
         return 0;
     }
 
@@ -576,6 +580,8 @@ internal static class Program
     {
         Console.WriteLine(FormattableString.Invariant(
             $"Done: {client.Calls} requests over {chunked.Count} articles — {client.Cache.Hits} served from cache, {client.Cache.Misses} generated — in {elapsed.TotalSeconds:F1} s."));
+        // Issue #200: the extraction stage's own cost, printed by the run that incurred it.
+        Console.WriteLine(client.DescribeUsage());
     }
 
     private static IChatClient CreateChatClient(string apiKey) =>
