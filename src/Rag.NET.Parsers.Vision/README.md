@@ -37,6 +37,8 @@ rag.UseImageDescription(options =>
 {
     options.TryOcrBeforeVision = true;  // screenshots: try OCR first, LLM second
     options.OcrMinCharacters   = 50;    // OCR result shorter than this falls through
+    options.OcrLanguage        = "deu";  // Tesseract language code; "deu+eng" for several
+    options.TessDataPath       = "./tessdata";  // where the .traineddata files live
 });
 
 rag.UseVideoDescription(options =>

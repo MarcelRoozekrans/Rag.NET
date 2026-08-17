@@ -149,6 +149,36 @@ var results = await pipeline.RetrieveAsync("ISO 27001 compliance checklist", new
 });
 ```
 
+### How text is split into terms
+
+The in-memory BM25 index splits on runs of letters and digits, which is Unicode-aware — Latin,
+Cyrillic, Greek, Arabic and Hebrew all tokenise correctly, and there is deliberately **no stemming
+and no stopword list**, so nothing here is English-specific.
+
+**Chinese, Japanese and Korean are handled separately, because they do not put spaces between
+words.** Splitting on letter runs turned an entire CJK sentence into one term:
+
+```
+"the quick brown fox"   ->  4 terms
+"人工智能是未来"           ->  1 term   (before)
+"人工智能是未来"           ->  6 terms  (now: overlapping bigrams)
+```
+
+One term per sentence makes term frequency meaningless — BM25 could match nothing short of an exact
+sentence repeat, so **hybrid search silently degraded to dense-only** for those languages without
+raising anything. Those ranges now produce overlapping character bigrams (`人工智能` → `人工 工智
+智能`), which is the treatment Lucene's CJK analyzer uses: no dictionary, no segmentation model.
+
+Text containing no CJK tokenises exactly as it did before, so existing corpora are unaffected.
+
+Two limits worth knowing:
+
+- **Thai, Khmer and Lao are not covered.** They are also undelimited, but bigramming is not the
+  accepted treatment for them, and claiming support that has not been tested would be worse than
+  leaving them as they are.
+- **Compound-heavy languages still tokenise as written.** German `Donaudampfschifffahrt` is one
+  term, so a query for `Dampfschiff` will not match it lexically — the dense arm carries that case.
+
 ### How the hybrid path is selected
 
 The pipeline inspects the registered `IVectorStore` at retrieval time and dispatches to the store's native server-side hybrid query **only when the call configures nothing native fusion cannot express** — a native backend call cannot apply `EnsembleOptions` weights, cannot run a sparse (SPLADE) arm, and would apply `MinScore` to its own fusion-score scale instead of the dense arm's similarity scale:

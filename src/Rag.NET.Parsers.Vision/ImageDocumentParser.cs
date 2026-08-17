@@ -75,7 +75,8 @@ public partial class ImageDocumentParser(
 #if ENABLE_OCR
         try
         {
-            using var engine = new Tesseract.TesseractEngine(@"./tessdata", "eng", Tesseract.EngineMode.Default);
+            using var engine = new Tesseract.TesseractEngine(
+                options.TessDataPath, options.OcrLanguage, Tesseract.EngineMode.Default);
             using var pix = Tesseract.Pix.LoadFromMemory(imageBytes);
             using var page = engine.Process(pix);
             var text = page.GetText()?.Trim() ?? string.Empty;

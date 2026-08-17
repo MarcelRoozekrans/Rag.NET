@@ -644,6 +644,16 @@ var provider = new WebCrawlerDataProvider("https://docs.example.com", httpClient
 services.AddSingleton<IFileContentProvider>(provider);
 ```
 
+**Page ids are normalised.** Each crawled page's id is its URL with the fragment and any trailing
+slash removed, so `https://site/`, `https://site` and `https://site#top` are one page rather than
+three. The **seed** goes through the same rule as the links found in pages — before v1.0 it did not,
+so a seed written the way a person types it (with the trailing slash) made the crawler fetch and
+return the root page **twice**, under two different ids, whenever anything on the site linked back
+to it.
+
+If you crawled with a trailing-slash seed before that fix, the root page's id changes on the next
+crawl: it arrives as one added page and one removed.
+
 ---
 
 ## Delta (incremental) ingestion
