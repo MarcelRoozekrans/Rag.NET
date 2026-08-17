@@ -6,7 +6,33 @@ namespace Rag.NET.DataProviders.Web.Tests;
 
 public sealed class WebCrawlerDataProviderTests
 {
+    /// <summary>The seed as a person would type it — with the trailing slash.</summary>
     private const string SeedUrl = "https://example.com/";
+
+    /// <summary>
+    /// The id that seed produces, which is <b>not</b> the string it was given.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Since #288 the seed goes through the same normalisation as every discovered link, so its
+    /// trailing slash is stripped and the seed page carries this id. Before that fix the seed kept
+    /// its slash while links did not, and a page linking back to the root was therefore crawled
+    /// twice under two ids.
+    /// </para>
+    /// <para>
+    /// <b>Only the id changes, not the request.</b> <see cref="Uri"/> renders an authority with no
+    /// path as <c>https://example.com/</c> either way, so the HTTP call is byte-identical and the
+    /// response map below is still keyed on <see cref="SeedUrl"/>. Kept as two constants rather than
+    /// one so that distinction is visible: what a caller passes in, and what comes back as identity,
+    /// are now different strings.
+    /// </para>
+    /// <para>
+    /// This <b>is</b> a visible change for a consumer whose stored ids came from a trailing-slash
+    /// seed: on the next crawl the root arrives under a new id, so it reads as one added page and one
+    /// removed. One page per crawl, and the alternative is keeping the duplicate.
+    /// </para>
+    /// </remarks>
+    private const string SeedId = "https://example.com";
 
     // Minimal 3-page site: index links to page1 and page2; page1 links back to index; page2 is a leaf
     private static readonly Dictionary<string, string> s_site = new(StringComparer.Ordinal)
@@ -37,7 +63,7 @@ public sealed class WebCrawlerDataProviderTests
 
         var entries = await sut.GetFilesAsync(TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Contains(entries, e => string.Equals(e.Value.Id, SeedUrl, StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, SeedId, StringComparison.Ordinal));
         Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page1", StringComparison.Ordinal));
         Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page2", StringComparison.Ordinal));
     }
@@ -83,7 +109,7 @@ public sealed class WebCrawlerDataProviderTests
 
         // Depth 0 → only the seed page; links are not followed
         _ = Assert.Single(entries);
-        Assert.Equal(SeedUrl, entries[0].Value.Id);
+        Assert.Equal(SeedId, entries[0].Value.Id);
     }
 
     [Fact]
@@ -161,7 +187,7 @@ public sealed class WebCrawlerDataProviderTests
 
         // seed + /page (both fragment variants deduplicated → only one /page entry)
         Assert.Equal(2, entries.Count);
-        Assert.Contains(entries, e => string.Equals(e.Value.Id, SeedUrl, StringComparison.Ordinal));
+        Assert.Contains(entries, e => string.Equals(e.Value.Id, SeedId, StringComparison.Ordinal));
         Assert.Contains(entries, e => string.Equals(e.Value.Id, "https://example.com/page", StringComparison.Ordinal));
     }
 
@@ -205,8 +231,8 @@ public sealed class WebCrawlerDataProviderTests
         var byUrl = entries.ToDictionary(
             e => e.Value.Id.Value, e => e.Value.Metadata!, StringComparer.Ordinal);
 
-        var seed = byUrl[SeedUrl];
-        Assert.Equal(SeedUrl,       seed["url"]);
+        var seed = byUrl[SeedId];
+        Assert.Equal(SeedId,        seed["url"]);
         Assert.Equal("0",           seed["depth"]);
         Assert.Equal("example.com", seed["host"]);
         Assert.Equal(3, seed.Count);

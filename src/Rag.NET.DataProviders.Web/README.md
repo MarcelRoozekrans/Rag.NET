@@ -48,6 +48,17 @@ var result = await pipeline.IngestFromProviderAsync(crawler, new ProviderId("doc
 Console.WriteLine($"Ingested {result.Ingested} pages");
 ```
 
+### Page ids are normalised
+
+Each crawled page's id is its URL with the fragment and any trailing slash removed, so
+`https://site/`, `https://site` and `https://site#top` are one page rather than three. The
+**seed** is normalised on the same rule as the links found in pages.
+
+If you have crawled with a seed ending in `/` before v1.0, the root page's id changes on the
+next crawl — it arrives as one added page and one removed. That is one page per crawl, and the
+alternative was crawling and indexing the root twice whenever anything on the site linked back
+to it.
+
 `RssDataProvider` follows the same pattern for feeds.
 
 ## Full guide
