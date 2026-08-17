@@ -15,6 +15,23 @@
          So: the arithmetic gates on every push, and the one test that needs an 86 MB model, a
          downloaded corpus and several minutes of CPU runs nightly. -->
     <RequiresSecrets>true</RequiresSecrets>
+
+    <!-- Routes `dotnet test` through xunit v3's own in-process runner (Microsoft.Testing
+         Platform) instead of the VSTest adapter, for #275.
+
+         The adapter deadlocked 2 of 4 runs of BeirGraphRagAnswerTests on one machine, before any
+         test code was entered. A minidump showed VsTestRunner.RunTests blocked on
+         WaitHandle.WaitOne, the host's main thread blocked on the task representing it, and no
+         Rag.NET frame on any thread. The native runner ran the same workload for over an hour,
+         sustaining ~56% CPU with RSS climbing 273 MB to 1.4 GB, where `dotnet test` never got past
+         68 MB and 1 s of CPU.
+
+         Per project rather than repo wide on purpose: ci.yml invokes `dotnet test` once per
+         project, so this changes how one project runs and leaves the other sixty-odd on the adapter
+         they work fine under. Microsoft.NET.Test.Sdk stays referenced because both workflows SELECT
+         projects by grepping for it, and removing it would quietly drop this project from CI
+         entirely. -->
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
   <ItemGroup>

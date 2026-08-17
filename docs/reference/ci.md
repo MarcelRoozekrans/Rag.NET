@@ -342,6 +342,37 @@ The missing row was the Semantic Kernel one, which is the row that calibrates wh
 was quiet, so the sweep dropped its own control and reported success. The dump is what catches
 this; nothing upstream of it will.
 
+**This project runs on xUnit v3's own runner, not the VSTest adapter, and that is load-bearing
+rather than a preference.** `Rag.NET.Benchmarks.Quality.IntegrationTests` sets
+`<TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>`, so `dotnet test` routes
+through Microsoft.Testing.Platform in-process.
+
+The adapter **deadlocked 2 of 4 runs** of `BeirGraphRagAnswerTests` on one machine, and it did so
+*before entering any test code* — so no environment variable, filter or cap could affect it. A
+minidump of the stalled `testhost` showed `VsTestRunner.RunTests` blocked on `WaitHandle.WaitOne`,
+the host's main thread blocked on the task representing it, and **no `Rag.NET` frame on any thread**.
+The failure is silent: no output, no timeout, no error, and it looks exactly like a long measurement,
+which is what the process normally is. The first instance burned 32 minutes before anyone looked at a
+counter (#275).
+
+The in-process runner ran the same workload for over an hour at ~56% CPU with RSS climbing 273 MB to
+1.4 GB, where `dotnet test` never got past 68 MB and 1 s of CPU.
+
+Two things checked before this was turned on, because a runner change that breaks reporting is worse
+than the deadlock:
+
+- **A failing test still exits non-zero.** Verified with a deliberately failing probe:
+  `Failed! - Failed: 1` and exit code 1; clean run, exit 0. Both workflows depend on that
+  (`dotnet test "$project" ... || failed="$failed $project"`), and a runner that reported failures as
+  success would green the whole tier silently.
+- **`Microsoft.NET.Test.Sdk` stays referenced.** Both workflows *select* test projects by grepping
+  for it, so removing it would drop this project out of CI entirely rather than change how it runs.
+
+Per project rather than repo-wide, deliberately: `ci.yml` invokes `dotnet test` once per project, so
+this changes one project and leaves the rest on the adapter they work fine under. What is **not**
+established is whether the deadlock reproduces elsewhere — it was seen on one machine, and the
+argument here is structural (the code path that hung is no longer in use) rather than statistical.
+
 Two more things that sweep established, worth knowing before running one:
 
 - **Stopping a sweep does not stop what it spawned.** An orphaned `dotnet test` kept writing to the
