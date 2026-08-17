@@ -1,0 +1,97 @@
+{
+  "Guid": "f6af5be8-9d15-4743-bacc-d31b88f9a137",
+  "UpdatedAt": "2026-08-17T11:39:28.0460345Z",
+  "Title": "Proxy Mapping for GET /repos/MarcelRoozekrans/RalphPilot/compare/8c7329f6cf89715e8d0513c78a3ec670a7d33f5c...main",
+  "Description": "Proxy Mapping for GET /repos/MarcelRoozekrans/RalphPilot/compare/8c7329f6cf89715e8d0513c78a3ec670a7d33f5c...main",
+  "Priority": -2000000,
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/repos/MarcelRoozekrans/RalphPilot/compare/8c7329f6cf89715e8d0513c78a3ec670a7d33f5c...main",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [
+      "GET"
+    ],
+    "HttpVersion": "1.1",
+    "Headers": [
+      {
+        "Name": "Accept",
+        "Matchers": [
+          {
+            "Name": "WildcardMatcher",
+            "Pattern": "application/vnd.github.v3+json",
+            "IgnoreCase": true
+          }
+        ],
+        "IgnoreCase": true
+      }
+    ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "BodyAsJson": {
+      "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/compare/8c7329f6cf89715e8d0513c78a3ec670a7d33f5c...main",
+      "html_url": "https://github.com/MarcelRoozekrans/RalphPilot/compare/8c7329f6cf89715e8d0513c78a3ec670a7d33f5c...main",
+      "permalink_url": "https://github.com/MarcelRoozekrans/RalphPilot/compare/MarcelRoozekrans:8c7329f...MarcelRoozekrans:67b1298",
+      "diff_url": "https://github.com/MarcelRoozekrans/RalphPilot/compare/8c7329f6cf89715e8d0513c78a3ec670a7d33f5c...main.diff",
+      "patch_url": "https://github.com/MarcelRoozekrans/RalphPilot/compare/8c7329f6cf89715e8d0513c78a3ec670a7d33f5c...main.patch",
+      "base_commit": null,
+      "merge_base_commit": null,
+      "status": "ahead",
+      "ahead_by": 1,
+      "behind_by": 0,
+      "total_commits": 1,
+      "commits": [],
+      "files": [
+        {
+          "sha": "8964471c00c0ac5dbf5333d05816d8391e31df4f",
+          "filename": "readme.md",
+          "status": "modified",
+          "additions": 3,
+          "deletions": 0,
+          "changes": 3,
+          "blob_url": "https://github.com/MarcelRoozekrans/RalphPilot/blob/67b12987a7f3838ab8ef253dfcb0f01354faca14/readme.md",
+          "raw_url": "https://github.com/MarcelRoozekrans/RalphPilot/raw/67b12987a7f3838ab8ef253dfcb0f01354faca14/readme.md",
+          "contents_url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/contents/readme.md?ref=67b12987a7f3838ab8ef253dfcb0f01354faca14"
+        }
+      ]
+    },
+    "Headers": {
+      "Last-Modified": "Tue, 28 Apr 2026 08:28:09 GMT",
+      "Content-Type": "application/json; charset=utf-8",
+      "Date": "Mon, 17 Aug 2026 11:39:27 GMT",
+      "Cache-Control": "public, max-age=60, s-maxage=60",
+      "Vary": [
+        "Accept",
+        "Accept-Encoding",
+        "Accept",
+        "X-Requested-With"
+      ],
+      "ETag": "\"e30b6682b64ce0a99e8d136eb3be44cd1dbc71ba9940361243aff76b1af4a926\"",
+      "x-github-api-version-selected": "2022-11-28",
+      "Access-Control-Expose-Headers": "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning",
+      "Access-Control-Allow-Origin": "*",
+      "Strict-Transport-Security": "max-age=31536000; includeSubdomains; preload",
+      "X-Frame-Options": "deny",
+      "X-Content-Type-Options": "nosniff",
+      "X-XSS-Protection": "0",
+      "Referrer-Policy": "origin-when-cross-origin, strict-origin-when-cross-origin",
+      "Content-Security-Policy": "default-src 'none'",
+      "Server": "github.com",
+      "X-GitHub-Media-Type": "github.v3; format=json",
+      "Accept-Ranges": "bytes",
+      "X-RateLimit-Limit": "60",
+      "X-RateLimit-Remaining": "18",
+      "X-RateLimit-Used": "42",
+      "X-RateLimit-Resource": "core",
+      "X-RateLimit-Reset": "1786968125",
+      "X-GitHub-Request-Id": "EED8:30FADA:AD074A:A5DB2F:6A82F2EE",
+      "x-github-edge-region": "fra"
+    }
+  }
+}

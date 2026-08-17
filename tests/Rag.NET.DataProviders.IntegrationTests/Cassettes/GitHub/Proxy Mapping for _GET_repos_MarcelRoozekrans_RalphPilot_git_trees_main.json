@@ -1,6 +1,6 @@
 {
-  "Guid": "b5e70c93-e9a5-4b6c-8e82-fefebb8ff3a8",
-  "UpdatedAt": "2026-08-17T11:10:46.5077005Z",
+  "Guid": "255410ca-7a62-4e2b-94f6-f9e612c70f6f",
+  "UpdatedAt": "2026-08-17T11:39:28.1801015Z",
   "Title": "Proxy Mapping for GET /repos/MarcelRoozekrans/RalphPilot/git/trees/main",
   "Description": "Proxy Mapping for GET /repos/MarcelRoozekrans/RalphPilot/git/trees/main",
   "Priority": -2000000,
@@ -124,9 +124,9 @@
       "truncated": false
     },
     "Headers": {
-      "Content-Type": "application/json; charset=utf-8",
       "Last-Modified": "Thu, 21 May 2026 23:38:59 GMT",
-      "Date": "Mon, 17 Aug 2026 11:10:45 GMT",
+      "Content-Type": "application/json; charset=utf-8",
+      "Date": "Mon, 17 Aug 2026 11:39:25 GMT",
       "Cache-Control": "public, max-age=60, s-maxage=60",
       "Vary": [
         "Accept",
@@ -134,8 +134,7 @@
         "Accept",
         "X-Requested-With"
       ],
-      "ETag": "W/\"4ba3008867227ec8beecf05d59b09a3b7525f4c90c308670b6bd780c658f6f19\"",
-      "X-GitHub-Media-Type": "github.v3; format=json",
+      "ETag": "\"4ba3008867227ec8beecf05d59b09a3b7525f4c90c308670b6bd780c658f6f19\"",
       "x-github-api-version-selected": "2022-11-28",
       "Access-Control-Expose-Headers": "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning",
       "Access-Control-Allow-Origin": "*",
@@ -146,13 +145,14 @@
       "Referrer-Policy": "origin-when-cross-origin, strict-origin-when-cross-origin",
       "Content-Security-Policy": "default-src 'none'",
       "Server": "github.com",
+      "X-GitHub-Media-Type": "github.v3; format=json",
       "Accept-Ranges": "bytes",
       "X-RateLimit-Limit": "60",
-      "X-RateLimit-Remaining": "42",
-      "X-RateLimit-Used": "18",
+      "X-RateLimit-Remaining": "17",
+      "X-RateLimit-Used": "43",
       "X-RateLimit-Resource": "core",
       "X-RateLimit-Reset": "1786968125",
-      "X-GitHub-Request-Id": "D9D1:2EC0CC:5E617F:5A8187:6A82EC35",
+      "X-GitHub-Request-Id": "EEDA:197855:BA9DA6:B32CA9:6A82F2EF",
       "x-github-edge-region": "fra"
     }
   }

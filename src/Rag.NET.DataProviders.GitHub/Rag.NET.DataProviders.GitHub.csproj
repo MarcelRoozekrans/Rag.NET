@@ -8,9 +8,10 @@
     <VerifiedByReason>Cassettes recorded from the real GitHub API on 2026-08-17 against
       MarcelRoozekrans/RalphPilot at commit 67b12987 (7 blobs, real tree nodes .ralph and
       .ralph/specs, mixed .md and .ps1 so the extension filter means something). Recorded
-      unauthenticated, so no credential appears in the fixtures at all. The delta path
-      (compare API) is still hand-written — see the note in GitHubDataProviderTests — so this
-      covers the full-tree and content paths only.</VerifiedByReason>
+      unauthenticated, so no credential appears in the fixtures at all. Covers the full-tree,
+      content and delta (compare API) paths; the compare cassette is trimmed of the envelope
+      objects the provider never reads, which is where commit author emails live. 17 KB total —
+      this repository's own tree was tried and rejected at 904 KB.</VerifiedByReason>
   </PropertyGroup>
 
   <ItemGroup>

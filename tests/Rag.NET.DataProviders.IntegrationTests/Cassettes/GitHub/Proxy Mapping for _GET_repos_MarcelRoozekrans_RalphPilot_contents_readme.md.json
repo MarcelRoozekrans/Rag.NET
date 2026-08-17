@@ -1,0 +1,72 @@
+{
+  "Guid": "58364ff7-c968-459b-bda4-686f7c851a6b",
+  "UpdatedAt": "2026-08-17T11:39:26.9762769Z",
+  "Title": "Proxy Mapping for GET /repos/MarcelRoozekrans/RalphPilot/contents/readme.md",
+  "Description": "Proxy Mapping for GET /repos/MarcelRoozekrans/RalphPilot/contents/readme.md",
+  "Priority": -2000000,
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/repos/MarcelRoozekrans/RalphPilot/contents/readme.md",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [
+      "GET"
+    ],
+    "HttpVersion": "1.1",
+    "Headers": [
+      {
+        "Name": "Accept",
+        "Matchers": [
+          {
+            "Name": "WildcardMatcher",
+            "Pattern": "application/vnd.github.v3.raw",
+            "IgnoreCase": true
+          }
+        ],
+        "IgnoreCase": true
+      }
+    ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "Body": "# Ralph Loop Sample with GitHub Copilot CLI\n\n[![GitHub Sponsors](https://img.shields.io/github/sponsors/MarcelRoozekrans?style=flat&logo=githubsponsors&color=ea4aaa&label=Sponsor)](https://github.com/sponsors/MarcelRoozekrans)\n\n\n> Autonomous coding loop using the **Ralph Wiggum Method** with GitHub Copilot CLI\n\n## What is Ralph Wiggum?\n\nThe **Ralph Wiggum Method** is an autonomous AI coding technique. In its purest form, it's a loop:\n\n```bash\nwhile :; do cat PROMPT.md | coding-agent ; done\n```\n\nRalph reads a prompt, looks at the codebase, decides what's most important, implements it, and loops. Failures don't stop the loop — eventual consistency wins. You tune Ralph by adding \"signs\" (guardrails in the prompt) when he goes off track.\n\nLearn more at [ghuntley.com/ralph](https://ghuntley.com/ralph/)\n\n### Core Principles\n\n- **One thing per loop** — Ralph picks the most important task each iteration\n- **Specs, not stories** — specifications are the source of truth, Ralph decides priority\n- **Eventual consistency** — failures are expected, the next loop picks up where it left off\n- **Signs on the playground** — when Ralph does something bad, add a guardrail to the prompt\n- **Minimize context window** — keep the prompt lean, let the agent discover the codebase\n\n## What This Demo Does\n\nDrives Copilot CLI to build a .NET 10 Hello World console app with multilingual greetings and unit tests — entirely from specs, no human intervention.\n\nUses `gpt-5-mini` by default (no premium requests needed).\n\n## Quick Start\n\n### Local mode (original behaviour)\n\n```powershell\n./ralph.ps1\n```\n\nOr with options:\n\n```powershell\n./ralph.ps1 -MaxIterations 20 -Model \"gpt-5.1-codex-mini\"\n```\n\n### Remote repository mode\n\nRun Ralph against any remote Git repo that contains a `.ralph/` folder:\n\n```powershell\n# Clone, run the loop, then push results back\n./ralph.ps1 -Repo \"https://github.com/user/repo.git\" -Branch main -Push\n\n# Clone and run without pushing (inspect results locally)\n./ralph.ps1 -Repo \"git@github.com:user/repo.git\"\n```\n\nBy default clones are placed **one level above** the script root (e.g. if Ralph lives in `C:\\Projects\\RalphPilot`, clones land in `C:\\Projects\\ralph_<repo>_<timestamp>`). Override with `-CloneDir`:\n\n```powershell\n./ralph.ps1 -Repo \"https://github.com/user/repo.git\" -CloneDir \"D:\\ralph-clones\" -Push\n```\n\n### Local directory mode\n\nPoint Ralph at an existing local checkout:\n\n```powershell\n./ralph.ps1 -WorkDir \"C:\\Projects\\my-app\"\n```\n\n### Initialise `.ralph/` in a target repo\n\nBefore running Ralph against a remote or local repo, scaffold the `.ralph/` folder:\n\n```powershell\n./ralph-init.ps1 -Path \"C:\\Projects\\my-app\"\n```\n\nThis creates:\n\n```\n.ralph/\n  prompt.md        # goal & signs (edit this)\n  AGENTS.md        # build/run conventions (Ralph self-updates)\n  fix_plan.md      # TODO list (Ralph maintains)\n  specs/\n    README.md      # put your specification files here\n```\n\nThen commit, push, and run `ralph.ps1 -Repo <url> -Push`.\n\n## Repo Structure\n\n```\nralph.ps1              # the loop (local, remote, or workdir mode)\nralph-init.ps1         # scaffold .ralph/ in any target repo\n.ralph/                # instructions for Ralph\n  prompt.md            # goal, workflow, and signs\n  AGENTS.md            # build/run conventions (Ralph self-updates this)\n  fix_plan.md          # TODO list (Ralph maintains this)\n  specs/\n    helloworld.md      # application specification (don't modify)\n```\n\nEvery Ralph-powered repository uses the same `.ralph/` folder convention.\nUse `ralph-init.ps1` to scaffold it in a new repo.\n\n## How It Works\n\n1. `ralph.ps1` resolves the target directory (clone from `-Repo`, use `-WorkDir`, or default to script root)\n2. It looks for a `.ralph/` folder containing `prompt.md`\n3. Each iteration, Ralph reads specs + fix_plan, picks the most important task, implements it\n4. Ralph updates `fix_plan.md` with progress, updates `AGENTS.md` with build learnings\n5. On success the loop auto-commits; on failure it continues — next loop fixes it\n6. When using `-Repo -Push`, commits are pushed back to the remote after the loop\n\n## Requirements\n\n- PowerShell 5+ or PowerShell 7+\n- .NET 10 SDK\n- GitHub Copilot CLI (`copilot`) authenticated\n\n## Credits\n\n- Ralph Wiggum Method by [Geoffrey Huntley](https://ghuntley.com/ralph/)\n- Built by [Marcel Roozekrans](https://github.com/marcelroozekrans)\n- Powered by GitHub Copilot CLI",
+    "Headers": {
+      "Last-Modified": "Tue, 28 Apr 2026 08:28:09 GMT",
+      "Content-Length": "4407",
+      "Content-Type": "application/vnd.github.v3.raw; charset=utf-8",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Expose-Headers": "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning",
+      "Cache-Control": "public, max-age=60, s-maxage=60",
+      "Content-Security-Policy": "default-src 'none'",
+      "Date": "Mon, 17 Aug 2026 11:39:26 GMT",
+      "ETag": "\"8964471c00c0ac5dbf5333d05816d8391e31df4f\"",
+      "Referrer-Policy": "origin-when-cross-origin, strict-origin-when-cross-origin",
+      "Strict-Transport-Security": "max-age=31536000; includeSubdomains; preload",
+      "Vary": [
+        "Accept",
+        "Accept-Encoding",
+        "Accept",
+        "X-Requested-With"
+      ],
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "deny",
+      "x-github-api-version-selected": "2022-11-28",
+      "X-XSS-Protection": "0",
+      "Server": "github.com",
+      "X-GitHub-Media-Type": "github.v3; param=raw",
+      "Accept-Ranges": "bytes",
+      "X-RateLimit-Limit": "60",
+      "X-RateLimit-Remaining": "21",
+      "X-RateLimit-Used": "39",
+      "X-RateLimit-Resource": "core",
+      "X-RateLimit-Reset": "1786968125",
+      "X-GitHub-Request-Id": "EED2:28987F:B50EA8:ADBB96:6A82F2EE",
+      "x-github-edge-region": "fra"
+    }
+  }
+}
