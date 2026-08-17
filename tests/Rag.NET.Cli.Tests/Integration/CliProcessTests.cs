@@ -79,30 +79,37 @@ public sealed class CliProcessTests
 
     /// <remarks>
     /// <para>
-    /// <b>A finding, pinned as a test so it cannot be lost.</b> <c>Program.cs</c> carries a branch
-    /// that writes <c>"No command given."</c> to stderr and returns 1 when <c>parsed.Command</c> is
-    /// null. <b>That branch is unreachable.</b> <c>CliArguments.Parse</c> returns a null
-    /// <c>Command</c> in exactly one case — <c>args.Length == 0 || IsHelpFlag(args[0])</c> — and
-    /// that same case sets <c>ShowHelp: true</c>, which <c>Program.cs</c> handles first by printing
-    /// usage and returning 0. Every other return supplies <c>command = args[0]</c>, which is
-    /// non-null; even <c>ragnet ""</c> yields <c>Unknown command ''</c>, not the null path.
+    /// <b>Was #260's finding; now the test that keeps its resolution honest.</b> <c>Program.cs</c>
+    /// carried a branch writing <c>"No command given."</c> when <c>parsed.Command</c> was null.
+    /// <c>CliArguments.Parse</c> returns a null <c>Command</c> in exactly one case —
+    /// <c>args.Length == 0 || IsHelpFlag(args[0])</c> — and that same case sets <c>ShowHelp: true</c>,
+    /// which <c>Program.cs</c> handles first by printing usage and returning 0. Nothing could reach
+    /// the message, so nobody could ever read it. The branch is gone.
     /// </para>
     /// <para>
-    /// Neither <c>CliArgumentsTests</c> nor <c>CliOutputTests</c> could have found this: both are
-    /// correct about the unit they test. The dead branch is a property of the <i>composition</i> —
-    /// the order in which <c>Program.cs</c> tests two flags against the contract <c>Parse</c>
+    /// Neither <c>CliArgumentsTests</c> nor <c>CliOutputTests</c> could have found it: both are
+    /// correct about the unit they test. The dead branch was a property of the <i>composition</i> —
+    /// the order in which <c>Program.cs</c> tested two flags against the contract <c>Parse</c>
     /// actually offers — which only running the real binary exposes. That is the argument for
     /// §2(d)'s "real transport, not a direct call", arriving in the first package it was applied to.
     /// </para>
     /// <para>
-    /// Recorded, not fixed: Phase 6.2 measures, it does not make packages good. The message is
-    /// unreachable, so no user can see it and nothing is broken today.
+    /// <b>What this test now guards is the behaviour, which did not change.</b> Bare <c>ragnet</c>
+    /// prints usage and exits 0; <c>ragnet ""</c> is an unknown command and exits 1. Those two facts
+    /// are the reason removing the branch was correct rather than a behaviour change dressed as a
+    /// cleanup — had bare invocation been meant to be a usage error, the fix would have been to make
+    /// the message reachable instead.
+    /// </para>
+    /// <para>
+    /// The <c>"No command given."</c> assertions are kept. The string no longer exists in the source,
+    /// so they cannot fail today — which is the point: if someone reintroduces that branch, these are
+    /// what say so.
     /// </para>
     /// </remarks>
     [Fact]
-    public async Task TheNoCommandGivenMessage_IsUnreachable_AndThisRecordsThat()
+    public async Task BareInvocationPrintsUsageAndExitsZero_AndEmptyStringIsAnUnknownCommand()
     {
-        // Every way of reaching Program.cs with no usable command; none produces the message.
+        // Every way of reaching Program.cs with no usable command. All print usage and succeed.
         foreach (var argv in new[] { Array.Empty<string>(), new[] { "--help" }, new[] { "-h" } })
         {
             var run = await RunAsync(argv);
@@ -110,7 +117,7 @@ public sealed class CliProcessTests
             Assert.Equal(0, run.ExitCode);
         }
 
-        // The nearest reachable neighbour is the unknown-command path, which does fire.
+        // The nearest neighbour, and the case that proves the surviving branch still fires.
         var empty = await RunAsync("");
         Assert.Equal(1, empty.ExitCode);
         Assert.Contains("Unknown command", empty.Stderr, StringComparison.Ordinal);
