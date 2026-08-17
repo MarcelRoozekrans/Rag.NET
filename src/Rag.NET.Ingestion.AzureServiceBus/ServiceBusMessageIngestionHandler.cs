@@ -206,7 +206,7 @@ internal sealed class ServiceBusMessageIngestionHandler(
     {
         var detail = Truncate(error.ToString() ?? error.GetType().Name);
 
-        if (SettlePolicy.For(SettlePolicy.Classify(error)) == SettleAction.DeadLetter)
+        if (error.Classify().ToSettleAction() == SettleAction.DeadLetter)
         {
             ServiceBusIngestionLog.MessageDeadLettered(
                 logger, entityPath, message.MessageId, DeadLetterReasons.IngestionRejected, detail);
