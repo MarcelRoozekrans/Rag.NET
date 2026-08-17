@@ -4,7 +4,13 @@
     <RootNamespace>Rag.NET.DataProviders.Web</RootNamespace>
     <PackageId>Rag.NET.DataProviders.Web</PackageId>
     <Description>Web data providers (crawler, sitemap, RSS) for Rag.NET</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <VerifiedBy>integration</VerifiedBy>
+    <VerifiedByReason>All three surfaces run against a local HTTP server over real sockets:
+      SitemapDataProviderTests, RssDataProviderTests (Atom and RSS 2.0) and
+      WebCrawlerDataProviderTests, which crawls a five-page site with a cycle, a robots-excluded
+      path and a second host. That crawl found a real defect — a trailing slash on the seed URL
+      yields the seed page twice under two ids — pinned by
+      ATrailingSlashOnTheSeedCrawlsTheSeedPageTwice. No live site and no credential.</VerifiedByReason>
   </PropertyGroup>
 
   <ItemGroup>
