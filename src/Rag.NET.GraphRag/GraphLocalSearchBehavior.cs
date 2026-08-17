@@ -57,8 +57,17 @@ public sealed class GraphLocalSearchBehavior(
             for (var i = 0; i < neighbors.Count; i++)
                 pageRankByName[neighbors[i].Name] = neighbors[i].PageRankScore;
 
-            await graphStore.GetRelationshipsAsync(name, ct).ConfigureAwait(false);
-            await graphStore.GetCommunitiesForEntityAsync(name, ct).ConfigureAwait(false);
+            // GetRelationshipsAsync and GetCommunitiesForEntityAsync were awaited here and their
+            // results discarded (#239, point 3). Removed rather than wired in: what to do with
+            // relationships and community reports is a behaviour question — Microsoft's local search
+            // feeds them to the model as context, and this behaviour does not — and #239 points 1
+            // and 2 own that decision. Issuing the queries and dropping the answers is not a
+            // half-step toward it; it is the cost with none of the benefit.
+            //
+            // Priced before deleting, so this is not a tidy-up justified by taste: on the
+            // MultiHop-RAG corpus the pair ran once per seed entity, each a full scan of a
+            // 147,021-row relationships table, which the budget cell measured at roughly 45,000
+            // scans per query pass. Nothing read the results, so nothing observable changes.
         }
 
         return pageRankByName;
