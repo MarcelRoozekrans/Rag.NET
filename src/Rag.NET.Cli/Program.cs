@@ -22,11 +22,22 @@ if (parsed.ShowHelp)
     return 0;
 }
 
-if (parsed.Command is null || !CliOutput.IsKnownCommand(parsed.Command))
+// This used to branch on `parsed.Command is null` and print "No command given.", which #260
+// proved unreachable: CliArguments.Parse returns a null Command in exactly one case — no args, or
+// a help flag — and that same case sets ShowHelp, which the block above has already handled and
+// returned from. Nothing could reach the message, so nobody could ever read it.
+//
+// Removed rather than made reachable. Bare `ragnet` printing usage and exiting 0 is the right
+// behaviour; turning it into a usage error to justify a message would be changing behaviour to
+// suit dead code.
+//
+// `?? string.Empty` instead of a null-forgiving `!`: IsKnownCommand takes a non-nullable string,
+// and this way a null that should not exist degrades to `Unknown command ''` — exactly what
+// `ragnet ""` already prints — rather than to a NullReferenceException or an assertion about a
+// guarantee the type system does not carry.
+if (!CliOutput.IsKnownCommand(parsed.Command ?? string.Empty))
 {
-    await Console.Error.WriteLineAsync(
-            parsed.Command is null ? "No command given." : $"Unknown command '{parsed.Command}'.")
-        .ConfigureAwait(false);
+    await Console.Error.WriteLineAsync($"Unknown command '{parsed.Command}'.").ConfigureAwait(false);
     CliOutput.WriteUsage(Console.Error);
     return 1;
 }
