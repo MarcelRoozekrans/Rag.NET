@@ -28,17 +28,23 @@ public class GraphLocalSearchBehaviorTests
 
         _graphStore.GetNeighborsAsync("Alice", 2, Arg.Any<CancellationToken>())
             .Returns([new GraphEntity("Bob", "Person", "Bob desc") { PageRankScore = 0.5 }]);
-        _graphStore.GetRelationshipsAsync("Alice", Arg.Any<CancellationToken>())
-            .Returns([new GraphRelationship("Alice", "Bob", "knows")]);
-        _graphStore.GetCommunitiesForEntityAsync("Alice", Arg.Any<CancellationToken>())
-            .Returns([new Community(1, 0, ["Alice", "Bob"], "Community about Alice and Bob")]);
-
         var actual = await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
 
         Assert.NotEmpty(actual);
-        await _graphStore.Received(1).GetNeighborsAsync("Alice", 2, Arg.Any<CancellationToken>());
-        await _graphStore.Received(1).GetRelationshipsAsync("Alice", Arg.Any<CancellationToken>());
-        await _graphStore.Received(1).GetCommunitiesForEntityAsync("Alice", Arg.Any<CancellationToken>());
+        _ = await _graphStore.Received(1).GetNeighborsAsync("Alice", 2, Arg.Any<CancellationToken>());
+
+        // These two used to be Received(1), which pinned work whose result was discarded: the
+        // behaviour awaited both and threw the answers away (#239, point 3). A call-count assertion
+        // cannot tell "the code needs this" from "the code issues this and ignores it", so the test
+        // held the cost in place and read as coverage.
+        //
+        // Asserted as DidNotReceive rather than simply dropped. Deleting the assertions would let
+        // the calls come back silently, and they are expensive: on the MultiHop-RAG corpus each was
+        // a full scan of a 147,021-row table, once per seed entity, roughly 45,000 scans per query
+        // pass. If relationships or community reports are ever fed into the result — which is what
+        // #239 points 1 and 2 decide — this assertion is the right thing to fail.
+        _ = await _graphStore.DidNotReceive().GetRelationshipsAsync("Alice", Arg.Any<CancellationToken>());
+        _ = await _graphStore.DidNotReceive().GetCommunitiesForEntityAsync("Alice", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -57,10 +63,6 @@ public class GraphLocalSearchBehaviorTests
 
         _graphStore.GetNeighborsAsync("Alice", 1, Arg.Any<CancellationToken>())
             .Returns([new GraphEntity("Alice", "Person", "Alice desc") { PageRankScore = 0.8 }]);
-        _graphStore.GetRelationshipsAsync("Alice", Arg.Any<CancellationToken>())
-            .Returns([]);
-        _graphStore.GetCommunitiesForEntityAsync("Alice", Arg.Any<CancellationToken>())
-            .Returns([]);
 
         var actual = await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
 
@@ -112,10 +114,6 @@ public class GraphLocalSearchBehaviorTests
 
         _graphStore.GetNeighborsAsync("Alice", 3, Arg.Any<CancellationToken>())
             .Returns([]);
-        _graphStore.GetRelationshipsAsync("Alice", Arg.Any<CancellationToken>())
-            .Returns([]);
-        _graphStore.GetCommunitiesForEntityAsync("Alice", Arg.Any<CancellationToken>())
-            .Returns([]);
 
         await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
 
@@ -139,10 +137,6 @@ public class GraphLocalSearchBehaviorTests
         // Entity with PageRankScore = 0.0
         _graphStore.GetNeighborsAsync("Alice", 1, Arg.Any<CancellationToken>())
             .Returns([new GraphEntity("Alice", "Person", "Alice desc") { PageRankScore = 0.0 }]);
-        _graphStore.GetRelationshipsAsync("Alice", Arg.Any<CancellationToken>())
-            .Returns([]);
-        _graphStore.GetCommunitiesForEntityAsync("Alice", Arg.Any<CancellationToken>())
-            .Returns([]);
 
         var actual = await sut.HandleAsync(ctx, CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
 
@@ -202,10 +196,6 @@ public class GraphLocalSearchBehaviorTests
     private void StubEmptyGraph()
     {
         _graphStore.GetNeighborsAsync("Alice", Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns([]);
-        _graphStore.GetRelationshipsAsync("Alice", Arg.Any<CancellationToken>())
-            .Returns([]);
-        _graphStore.GetCommunitiesForEntityAsync("Alice", Arg.Any<CancellationToken>())
             .Returns([]);
     }
 

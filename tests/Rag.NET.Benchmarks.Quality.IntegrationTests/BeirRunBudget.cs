@@ -560,6 +560,12 @@ public static class BeirRunBudget
             "total, so those terms are real but were priced above what they cost. The lesson is " +
             "the ordinary one: a derivation that names which of its terms it distrusts is " +
             "correctable, and this one was, in both directions at once. " +
+            "**Two of the three calls in that traversal term no longer happen.** " +
+            "GetRelationshipsAsync and GetCommunitiesForEntityAsync were awaited with their " +
+            "results discarded, and #239 removed them; the ~45,000 scans above are a HISTORICAL " +
+            "term and a re-measurement should come in under it. The sentence is left as written " +
+            "because it records what was derived at the time. GetNeighborsAsync stays -- local " +
+            "search reads its PageRank scores, which is the one result the traversal used. " +
             "**It needs a report cache covering the FULL corpus graph, which is not the slice's.** " +
             "Report cache keys are the rendered report prompts, and those are a function of the " +
             "graph: the corpus graph's ~3,587 communities are ~3,587 entries the slice's 607 do " +
