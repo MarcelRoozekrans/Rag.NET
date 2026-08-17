@@ -39,7 +39,10 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
       ✅ row with an empty column. Today: 56 rows, 0 pointers.
 - [ ] **No package remains at bare `VerifiedBy=unit`** — each is `integration`, `container`,
       `recorded`, `benchmark`, or carries `<VerifiedByReason>` naming the service and the gap; the
-      ledger test fails a bare `unit`. Today: **32 of 71**, down from 62 when this milestone opened.
+      ledger test fails a bare `unit`. Today: **22 of 73**, down from 57 when 6.0 wrote the list.
+      Of the 73: 29 `integration`, 24 `unit` (22 bare, 2 with a reason), 11 `container`, 5
+      `benchmark`, 1 `recorded`, 1 `live`. `recorded` and `live` were both used for the first time
+      on 2026-08-17 — `Rag.NET.DataProviders.GitHub` and `Rag.NET.Parsers.Vision`.
       *(`integration` was added 2026-08-16 in Phase 6.2. The level set enumerated here could not
       express "exercised against something real that is not an external service" — a real file, a
       real process, a real host over its real transport, a real store reopened — which is exactly
@@ -61,9 +64,9 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 | Phase | Name | Issues | Status |
 |---|---|---|---|
 | 6.0 | The Inventory | — | **complete** 2026-08-15 — both guards on every push, failing behind a work list: 5 packages at `benchmark`, 57 at bare `unit` owned by 6.1/6.2/6.2.1; 51 Done sections, 2 exercised, 49 owned |
-| 6.1 | Recorded Responses | — | pending — as planned since 2026-08-03 |
-| 6.2 | Raise the Floor on Unit-Only Packages | — | pending — now defined per kind: parsers/chunkers via a real file, stores via the parity leg, utilities via one real run |
-| 6.2.1 | Retrieval & Answer Sweep | #247, #239, #176, #200 | pending — the GraphRAG method applied to the rest; #247 fixed and re-measured first; the pipeline-parity test |
+| 6.1 | Recorded Responses | #283, #290 | **in progress** — the harness did not work and now does. Record mode had two defects, both silent because recording proxies to the real service and therefore passes: recordings were written to a directory replay never read, and every mapping matched on `Host: localhost:{ephemeral port}`, which cannot match twice. Fixed in #290, which also recorded the first working cassette (GitHub, unauthenticated, 17 KB). #283 carries the corrected instructions for the remaining 18 services; the blocker is accounts, not work |
+| 6.2 | Raise the Floor on Unit-Only Packages | #286–#292 | **substantially complete** — 57 bare `unit` down to 22. Defined per kind: parsers/chunkers via a real file, stores via the parity leg, utilities via one real run. Every package picked up produced a defect in something adjacent: `Parsers.Audio` was filed as needing a hosted model and needs none (and is broken on Linux without `libgomp1`), `Parsers.Vision` had no CI tier that could run it, `DataProviders.Web`'s crawler yielded the seed page twice (#288). Remaining 22 are 6.1's credential-blocked connectors plus `Chunking.Templates` and 6.2.1's three |
+| 6.2.1 | Retrieval & Answer Sweep | #247, #176 | pending — the GraphRAG method applied to the rest; #247 fixed and re-measured first; the pipeline-parity test. #239 and #200 closed 2026-08-17 |
 | 6.2.2 | Requested Features | #252 | **complete** 2026-08-16 — #252 built, both open design questions settled, exercised in the fast tier and over a real HTTP server |
 | 6.3 | Release v1.0 | — | pending — **but its first work is already done**: 71 packages live on nuget.org at 0.1.0 since 2026-08-11 (verified 2026-08-16), so the account, key and every package ID are settled. Only the v1.0 tag remains |
 
@@ -71,15 +74,47 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 
 - **#247** one shared store for article and graph-derived chunks — measured −0.043 nDCG, −0.21
   answer accuracy; the largest lever any Milestone 5 measurement found. 6.2.1, first.
-- **#239** the PageRank blend on the wrong scale and the discarded traversal — measured, decision
-  pending. 6.2.1.
-- **#176** 65% singleton communities; **#200** no usage recording; **#246** Service Bus emulator
-  lock race on a loaded runner. *(**#104** — routing declared not built — was listed here in
-  error: it was closed 2026-08-10, before this milestone opened. Removed 2026-08-16 by the issue
-  triage that also assigned #239/#246/#247 to the GitHub milestone.)*
+- **#239 closed 2026-08-17.** Its three findings resolved differently, which is worth recording
+  because only two were code. **Point 1, the blend:** `PageRankWeight` defaulted to 0.3 while
+  PageRank normalises to a mean of 1.6e-5 against cosine's 0.3–0.6, so the behaviour demoted
+  precisely the chunks it had traversed to — at `w = 0` local search reproduced the candidate-set
+  control on **2,255 of 2,255 queries**, so the entire −0.02761 was that default. Now 0 (#296).
+  **Point 3, the discarded calls:** two graph queries awaited and thrown away, ~45,000 table scans
+  per query pass, removed (#291) — and a test had asserted `Received(1)` on them, pinning the waste
+  as coverage. **Point 2, that local search can only reorder and never expands the candidate set:**
+  *not* changed. Measured at +0.00148 Recall@100 if the walk's findings were used; closed as a
+  documented limitation, and `docs/guide/graphrag.md` now states plainly that the behaviour adds no
+  candidates.
+- **#176** 65% singleton communities — open, 6.2.1. *(**#200** usage recording, **#246** the
+  Service Bus emulator lock race, and **#104** routing all closed. #104 was listed here in error;
+  it closed 2026-08-10, before this milestone opened.)*
+- **#297 and #300, both found by questions rather than planned, both closed 2026-08-17.** The graph
+  store had **no indexes at all**, and the obvious fix did not work: an index on
+  `relationships(source_entity)` was unusable while the predicate said `COLLATE NOCASE`, because an
+  index's collation must match the predicate's. Fixing that meant fixing #299's collation bug first
+  (#304). And community detection — a whole-graph operation — ran **once per ingested document**,
+  17,648 times on the MultiHop-RAG corpus, every run but the last discarded; now debounced on graph
+  growth with `GraphProjectionRebuilder` for on-demand rebuilds (#302).
+- **#298 open — should the graph store support backends beyond SQLite?** Recorded answer: *not
+  yet*, and weaker now than when asked. The two costs attributed to storage were a missing index
+  and a per-document recompute, both since fixed without changing engines. Concurrency (one shared
+  `SqliteConnection` on a singleton) is the only remaining argument, and nobody has stated that
+  requirement.
+- **#299 open — multilingual.** Two of its three defects fixed 2026-08-17: SQLite's `COLLATE
+  NOCASE` folds ASCII only while the callers fold Unicode, so non-English entity names were one
+  entity in memory and two rows in the graph (#304); and BM25 tokenised a whole CJK sentence as one
+  term, so hybrid search silently degraded to dense-only for Chinese, Japanese and Korean (#305,
+  which also made Vision's OCR language configurable). **What remains is not code**: there is no
+  multilingual measurement, so none of this is a multilingual *claim*. MIRACL or mMARCO would fit
+  `BeirDatasetDescriptor`'s existing shape.
 - **#252** `SitemapDataProvider` cannot skip URLs — reported 2026-08-15 against a shipped package.
   6.2.2. **Closed 2026-08-16**: `SitemapOptions` with prefix and regex exclusions, applied to
   nested index links as well as page URLs.
+- **The #300 follow-up measurement is outstanding**: the split of `BeirRunBudget`'s 22 m 18 s graph
+  construction between LLM extraction, the `O(occurrences²)` description rewriting and the
+  recompute. #302 should have moved that number and nobody has re-measured. It needs the
+  provisioned corpus **and an idle machine** — three timing runs attempted on 2026-08-17 disagreed
+  by 6× on identical inputs, so no coefficient was claimed anywhere.
 - **TREC-COVID's weakest-of-the-datasets agreement** (−0.018 in ±0.02) — nothing yet looks into
   it; 6.2's parity-through-stores runs the same leg many more times and is where it would show.
 - **Generation lives in the answer test class rather than the tool** (5.2.2's stated deviation).
