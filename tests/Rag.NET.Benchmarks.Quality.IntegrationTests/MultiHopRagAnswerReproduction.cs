@@ -63,7 +63,9 @@ internal static class MultiHopRagAnswerReproduction
             "multihop-rag",
             AnswerArm.Local,
             [0.2102],
-            "MEASURED 2026-08-15, same run. GraphRAG local search as shipped (PageRankWeight 0.3): " +
+            "MEASURED 2026-08-15, same run. GraphRAG local search at PageRankWeight 0.3 -- the shipped " +
+            "default on that date, and NOT the default since #239 set it to 0; GraphRagRun pins 0.3 " +
+            "explicitly so this figure keeps meaning what it says: " +
             "dense top-500 over the graph store, the behaviour's top-6 as context. **0.2102** (raw " +
             "0.1552, strict 0.1898); inference 0.4620, comparison 0.1005, temporal 0.0189; nulls " +
             "40.5%. **Below dense by 0.1397 and above the control by 0.0718.** The second number " +

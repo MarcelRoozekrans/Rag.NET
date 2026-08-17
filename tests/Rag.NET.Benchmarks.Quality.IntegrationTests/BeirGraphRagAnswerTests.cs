@@ -22,8 +22,10 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// which the retrieval measurements of 5.2 could not see.
 /// <para>
 /// <b>Arms.</b> <c>dense</c>: the Real leg's article chunks alone, dense top-6. <c>local</c>:
-/// the graph run's store, dense top-500 through <c>GraphLocalSearchBehavior</c> as shipped
-/// (<c>PageRankWeight = 0.3</c>), top-6 of what it returns — article, entity, relationship and
+/// the graph run's store, dense top-500 through <c>GraphLocalSearchBehavior</c> at
+/// <c>PageRankWeight = 0.3</c> — the shipped default when these figures were measured, and no longer
+/// the default since #239 set it to 0, so <c>GraphRagRun</c> pins it explicitly rather than
+/// inheriting it — top-6 of what it returns: article, entity, relationship and
 /// report chunks as they come. <c>global</c>: <c>GraphGlobalSearchBehavior</c>'s map/reduce over
 /// the community reports, its synthesised answer first and the next five candidates behind it.
 /// Same corpus, same queries, same embedder, same answering model at temperature 0.

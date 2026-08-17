@@ -135,7 +135,7 @@ rag.UseGraphRag(retrieval: options =>
 {
     options.LocalSearchDepth = 1;                 // Hop depth — must be greater than 0
     options.LocalTopEntities = 10;                // Starting entities — must be greater than 0
-    options.PageRankWeight = 0.3;                 // PageRank vs similarity blend — range 0.0–1.0, finite
+    options.PageRankWeight = 0.0;                 // PageRank vs similarity blend — DEFAULT 0, see below
     options.GlobalBatchSize = 5;                  // Reports per map batch — when set, must be greater than 0
     options.GlobalReportCandidates = 50;          // Reports fetched when none were handed down — when set, > 0
     options.GlobalChatClient = cheapModel;         // Optional for map-reduce
@@ -168,15 +168,21 @@ The behavior:
 2. Traverses the graph to find neighbors within `LocalSearchDepth` hops, collecting their PageRank scores
 3. Blends entity scores: `(1 - PageRankWeight) * similarity + PageRankWeight * pageRank`
 
-**Read step 3 with its scale in mind, because it was measured** (issue #239, 2026-08-15). PageRank
-is normalised to sum to one over all entities, so on a 62,000-entity graph its values are around
-1e-5, against similarities of 0.3–0.6; at the default `PageRankWeight = 0.3` the blend therefore
-*lowers* every graph-connected entity chunk's score by roughly 30% relative to chunks the walk did
-not reach. On MultiHop-RAG that was the entire measured difference between local search and plain
-dense retrieval of the same candidates: at `PageRankWeight = 0` the two rankings were identical on
-2,255 of 2,255 queries. Note also what the behavior does **not** do: it adds no candidates — the
+**Step 3 does nothing by default, and that is the fix rather than an oversight** (issue #239).
+PageRank is normalised to sum to one over all entities, so on a 62,000-entity graph its values are
+around 1e-5, against similarities of 0.3–0.6. At the **old** default of `0.3` the blend *lowered*
+every graph-connected entity chunk's score by roughly 30% relative to chunks the walk did not
+reach — it demoted precisely the chunks it had traversed to. On MultiHop-RAG that was the entire
+measured difference between local search and plain dense retrieval of the same candidates: at
+`PageRankWeight = 0` the two rankings were **identical on 2,255 of 2,255 queries**, so the whole
+−0.02761 nDCG@10 was this one default.
+
+`PageRankWeight` now defaults to **0**, and at 0 the behaviour **skips the graph walk entirely** —
+there is no point collecting scores nothing will read. Setting a non-zero weight is an opt-in, and
+worth doing only once the two scales are reconciled; that is still open on #239. Deduplication is
+unaffected either way, because it does not depend on the blend. Note also what the behavior does **not** do: it adds no candidates — the
 traversal only collects PageRank scores — so it can reorder what retrieval found and cannot raise
-recall above it. What it is for, then, is the *shape* of the context it hands the model (entity,
+recall above it. (At the default weight it does not even reorder; it deduplicates.) What it is for, then, is the *shape* of the context it hands the model (entity,
 relationship and report chunks beside article chunks), which is what the answer-level evaluation in
 Phase 5.2.2 measures.
 

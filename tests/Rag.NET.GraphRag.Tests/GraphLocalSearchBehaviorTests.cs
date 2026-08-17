@@ -20,7 +20,15 @@ public class GraphLocalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_FindsEntitiesAndTraversesNeighbors()
     {
-        var options = new GraphRagRetrievalOptions { LocalTopEntities = 10, LocalSearchDepth = 2 };
+        // PageRankWeight explicit because the walk is opt-in since #239: at the default 0 there is
+        // nothing to harvest scores for, so the behaviour skips the graph entirely. A test OF the
+        // traversal has to ask for the traversal.
+        var options = new GraphRagRetrievalOptions
+        {
+            LocalTopEntities = 10,
+            LocalSearchDepth = 2,
+            PageRankWeight = 0.3,
+        };
         var sut = new GraphLocalSearchBehavior(_graphStore, options);
 
         var results = CreateEntityResults();
@@ -106,7 +114,13 @@ public class GraphLocalSearchBehaviorTests
     [Fact]
     public async Task HandleAsync_RespectsLocalSearchDepth()
     {
-        var options = new GraphRagRetrievalOptions { LocalSearchDepth = 3, LocalTopEntities = 10 };
+        // As above: non-zero weight, or there is no walk whose depth could be respected.
+        var options = new GraphRagRetrievalOptions
+        {
+            LocalSearchDepth = 3,
+            LocalTopEntities = 10,
+            PageRankWeight = 0.3,
+        };
         var sut = new GraphLocalSearchBehavior(_graphStore, options);
 
         var results = CreateEntityResults();
@@ -255,4 +269,73 @@ public class GraphLocalSearchBehaviorTests
                 Score = 0.5,
             },
         }.AsReadOnly();
+
+    /// <remarks>
+    /// <para>
+    /// The default is <c>PageRankWeight = 0</c> (#239), at which the blend is the identity — so every
+    /// PageRank score the walk would collect is read by nothing. The walk must therefore not happen.
+    /// </para>
+    /// <para>
+    /// This is the same class of defect as #239 point 3, which removed two graph calls whose results
+    /// were discarded: defaulting the weight to 0 without this check would have reintroduced exactly
+    /// that waste one level up, and on the default path rather than an opt-in one.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AtTheDefaultWeight_NoGraphWalkHappensAtAll()
+    {
+        var sut = new GraphLocalSearchBehavior(_graphStore, new GraphRagRetrievalOptions());
+        var results = CreateEntityResults();
+
+        var actual = await sut.HandleAsync(
+            CreateContext(), CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
+
+        Assert.NotEmpty(actual);
+        _ = await _graphStore.DidNotReceive()
+            .GetNeighborsAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <remarks>
+    /// The other direction: a caller who opts in must still get the walk, or the skip above would be
+    /// a silent disabling of the feature rather than a default change.
+    /// </remarks>
+    [Fact]
+    public async Task AtANonZeroWeight_TheWalkStillHappens()
+    {
+        var options = new GraphRagRetrievalOptions { PageRankWeight = 0.4, LocalSearchDepth = 1 };
+        var sut = new GraphLocalSearchBehavior(_graphStore, options);
+        _graphStore.GetNeighborsAsync("Alice", 1, Arg.Any<CancellationToken>())
+            .Returns([new GraphEntity("Alice", "Person", "Alice desc") { PageRankScore = 0.8 }]);
+
+        _ = await sut.HandleAsync(
+            CreateContext(), CancellationToken.None, (c, ct) => ValueTask.FromResult(CreateEntityResults()));
+
+        _ = await _graphStore.Received(1)
+            .GetNeighborsAsync("Alice", 1, Arg.Any<CancellationToken>());
+    }
+
+    /// <remarks>
+    /// Deduplication must survive the skip. <c>BlendAndDeduplicate</c> does two jobs, and returning
+    /// the input list at <c>w = 0</c> would have been the obvious shortcut and would have restored
+    /// #231's duplicate-candidate defect on the default path.
+    /// </remarks>
+    [Fact]
+    public async Task AtTheDefaultWeight_DuplicatesAreStillCollapsed()
+    {
+        var sut = new GraphLocalSearchBehavior(_graphStore, new GraphRagRetrievalOptions());
+
+        var results = (IReadOnlyList<SearchResult>)new List<SearchResult>
+        {
+            CreateAliceEntityResult(),
+            CreateChunkResult("docA", 3, 0.4),
+            CreateChunkResult("docA", 3, 0.8),
+        }.AsReadOnly();
+
+        var actual = await sut.HandleAsync(
+            CreateContext(), CancellationToken.None, (c, ct) => ValueTask.FromResult(results));
+
+        var docA = actual.Where(r => string.Equals(r.Chunk.DocumentId.Value, "docA", StringComparison.Ordinal)).ToList();
+        _ = Assert.Single(docA);
+        Assert.Equal(0.8, docA[0].Score, precision: 5);
+    }
 }
