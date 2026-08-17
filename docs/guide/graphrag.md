@@ -148,6 +148,41 @@ These are validated at registration too. `LocalSearchDepth` or `LocalTopEntities
 
 > **Which search runs is a registration decision, not a setting.** Add `GraphLocalSearchBehavior`, `GraphGlobalSearchBehavior`, or both to the retrieval pipeline; each runs on the chunks it recognises. There is deliberately no `Mode` property — one existed until 0.1.0, was never read by any behavior, and is described in issue #104.
 
+### Keeping communities current
+
+Community detection is a **whole-graph** operation: it loads the entire graph, runs Leiden and
+PageRank over it, and writes every score back. It runs during ingestion, which is per document — so
+until #300 it did all of that once per ingested document, against a graph growing throughout. On a
+17,648-document corpus that is 17,648 whole-graph recomputes, and every one but the last was
+discarded rather than merged, because detection is a pure function of the graph and each run
+overwrites the previous one.
+
+Ingestion now **debounces on graph growth**:
+
+```csharp
+rag.UseGraphRag(graph: null, options =>
+{
+    options.CommunityDetectionGrowthThreshold = 0.10;  // default: detect when entities grow 10%
+});
+```
+
+Requiring 10% growth spaces detections geometrically, so their number is logarithmic in the corpus
+rather than linear. Set it to `0` for the previous behaviour — detect on every document.
+
+**The trade:** communities can be up to that fraction stale at the end of an ingest, because the
+final document may not have triggered a detection. When they must be current — after a bulk load,
+before measuring, or on a schedule — rebuild them explicitly:
+
+```csharp
+var rebuilder = serviceProvider.GetRequiredService<GraphProjectionRebuilder>();
+var communities = await rebuilder.RebuildAsync(cancellationToken);
+```
+
+`RebuildAsync` ignores the threshold, resets its baseline, and replaces the stored report chunks.
+Reports are written under the synthetic document id `graphrag://communities` rather than whichever
+article happened to trigger detection, so they are addressable: deleting that id removes exactly the
+reports and nothing else.
+
 ### Graph Store
 
 ```csharp

@@ -262,6 +262,49 @@ public sealed class GraphRagOptions
         "greater than 0, and Leiden.MaxLevels, when set, must be greater than 0.")]
     public LeidenOptions Leiden { get; set; } = new();
 
+    /// <summary>
+    /// How much the graph must grow before community detection runs again during ingestion.
+    /// Default: <c>0.10</c> — a 10% increase in entity count. Set to <c>0</c> to detect on every
+    /// document, which is the pre-#300 behaviour.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why a threshold exists at all.</b> <see cref="CommunityDetectionBehavior"/> is a
+    /// per-document ingestion behaviour, and detection is a whole-graph operation: it loads the
+    /// entire graph, runs Leiden and PageRank over it, and writes every score back. Ingesting N
+    /// documents therefore did that N times against a graph growing throughout — on a 17,648-document
+    /// corpus, 17,648 whole-graph recomputes.
+    /// </para>
+    /// <para>
+    /// <b>Nothing was gained by the repetition.</b> Detection is a pure function of the graph and
+    /// each run overwrites the last, so the state after the final document is exactly the state one
+    /// run at the end would produce. Every earlier run was discarded, not merged — pinned by
+    /// <c>CommunityDetectionCostTests.FiveRunsLeaveTheSameCommunitiesAsOne</c>.
+    /// </para>
+    /// <para>
+    /// <b>What the default buys.</b> Requiring 10% growth means detections happen at geometrically
+    /// spaced sizes, so their number is logarithmic in the corpus rather than linear, and the total
+    /// work is a geometric series bounded at roughly eleven times the final graph rather than
+    /// proportional to documents times graph.
+    /// </para>
+    /// <para>
+    /// <b>The trade, stated plainly:</b> communities can be up to this fraction stale at the end of
+    /// an ingest, because the last document may not have triggered a detection. When you need them
+    /// current — after a bulk load, before measuring — call
+    /// <see cref="GraphProjectionRebuilder.RebuildAsync"/>, which is the operation this threshold
+    /// assumes exists.
+    /// </para>
+    /// </remarks>
+    [InclusiveBetween(0.0, 100.0)]
+    [Must(nameof(GrowthThresholdIsFinite), Message =
+        "CommunityDetectionGrowthThreshold must be a finite number (not NaN or infinity).")]
+    public double CommunityDetectionGrowthThreshold { get; set; } = 0.10;
+
+    /// <summary>Reports whether the growth threshold is a finite number.</summary>
+    /// <param name="value">The <see cref="CommunityDetectionGrowthThreshold"/> under validation.</param>
+    /// <returns>Whether the value is neither NaN nor infinite.</returns>
+    internal bool GrowthThresholdIsFinite(double value) => double.IsFinite(value);
+
     /// <summary>Reports whether the Leiden settings are ones the algorithm can actually run.</summary>
     /// <param name="value">The <see cref="Leiden"/> value under validation.</param>
     /// <returns>Whether every setting is inside its documented range.</returns>

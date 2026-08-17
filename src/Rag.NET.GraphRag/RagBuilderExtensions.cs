@@ -88,6 +88,15 @@ public static class RagBuilderExtensions
                 sp.GetRequiredService<IGraphStore>(),
                 options));
 
+        // The on-demand counterpart to the ingest-time growth threshold (#300). Registered rather
+        // than left for callers to construct, because it must share the ONE CommunityDetectionBehavior
+        // singleton: that instance holds the debounce baseline, and a rebuild resets it so ingestion
+        // continuing afterwards debounces from the rebuilt state rather than a stale count.
+        builder.Services.AddSingleton<GraphProjectionRebuilder>(sp =>
+            new GraphProjectionRebuilder(
+                sp.GetRequiredService<CommunityDetectionBehavior>(),
+                sp.GetRequiredService<IVectorStore>()));
+
         // Retrieval behaviors
         builder.Services.AddSingleton<GraphLocalSearchBehavior>(sp =>
             new GraphLocalSearchBehavior(
