@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
 
 namespace Rag.NET.Graph;
@@ -16,6 +18,7 @@ public sealed class SqliteGraphStore : IGraphStore
         _connection = new SqliteConnection(connectionString);
         _connection.Open();
         CreateTables();
+        Migrate();
     }
 
     private void CreateTables()
@@ -23,7 +26,8 @@ public sealed class SqliteGraphStore : IGraphStore
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
             CREATE TABLE IF NOT EXISTS entities (
-                name TEXT PRIMARY KEY COLLATE NOCASE,
+                name TEXT PRIMARY KEY,
+                display_name TEXT,
                 type TEXT NOT NULL,
                 description TEXT NOT NULL,
                 page_rank REAL DEFAULT 0,
@@ -35,6 +39,8 @@ public sealed class SqliteGraphStore : IGraphStore
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_entity TEXT NOT NULL,
                 target_entity TEXT NOT NULL,
+                source_display TEXT,
+                target_display TEXT,
                 description TEXT NOT NULL,
                 weight REAL DEFAULT 1.0,
                 source_document_id TEXT
@@ -50,42 +56,261 @@ public sealed class SqliteGraphStore : IGraphStore
                 community_id INTEGER NOT NULL,
                 entity_name TEXT NOT NULL
             );
+
+            -- #297. Without these, every neighbour lookup is a full scan of `relationships` --
+            -- ~45,000 scans of 147,021 rows over one MultiHop-RAG query pass.
+            --
+            -- Plain (BINARY) indexes, which only became usable once the queries stopped saying
+            -- COLLATE NOCASE. While they did, an index like this was IGNORED: EXPLAIN QUERY PLAN
+            -- reported SCAN with it present, because an index's collation must match the
+            -- predicate's. Adding COLLATE NOCASE to the index instead would have worked and would
+            -- have cemented ASCII-only folding into the schema, which is #299's correctness bug.
+            CREATE INDEX IF NOT EXISTS ix_relationships_source ON relationships(source_entity);
+            CREATE INDEX IF NOT EXISTS ix_relationships_target ON relationships(target_entity);
+            CREATE INDEX IF NOT EXISTS ix_community_members_entity ON community_members(entity_name);
+            CREATE INDEX IF NOT EXISTS ix_community_members_community ON community_members(community_id);
             """;
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// Reduces an entity name to the key the store compares and joins on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Case folding happens here, in .NET, and no longer in SQL (#299).</b> The schema used
+    /// <c>COLLATE NOCASE</c>, which folds <c>A</c>-<c>Z</c> and nothing else, while the callers key
+    /// their dictionaries and visited-sets on <see cref="StringComparer.OrdinalIgnoreCase"/>, which
+    /// folds Unicode. The two disagreed on every non-ASCII name: <c>Ångström</c> and <c>ångström</c>
+    /// were one entity in memory and two rows in the graph, so merging half-worked on any corpus
+    /// that was not English.
+    /// </para>
+    /// <para>
+    /// <b><see cref="string.ToUpperInvariant"/> rather than <c>ToLowerInvariant</c>.</b> Upper-casing
+    /// is the documented choice for canonical comparison keys — lower-casing loses distinctions in
+    /// some scripts and does not round-trip — and it is the direction
+    /// <see cref="StringComparer.OrdinalIgnoreCase"/> itself uses, which is the comparer this has to
+    /// agree with. Invariant, so the Turkish dotless-i does not make the key culture-dependent.
+    /// </para>
+    /// <para>
+    /// The original casing is not lost: it is kept in <c>display_name</c> and returned to callers, so
+    /// reports and prompts still read <c>Angela Merkel</c> rather than a folded key.
+    /// </para>
+    /// </remarks>
+    /// <param name="name">The entity name as the caller wrote it.</param>
+    /// <returns>The comparison key.</returns>
+    private static string Fold(string name) => name.ToUpperInvariant();
+
+    /// <summary>
+    /// Brings a database written before #299 up to the current schema and key convention.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two things changed and both are invisible to <c>CREATE TABLE IF NOT EXISTS</c>, which does
+    /// nothing to a table that already exists: the display columns are new, and entity keys are now
+    /// folded by <see cref="Fold"/> rather than compared with <c>COLLATE NOCASE</c>. An untouched old
+    /// file would fail on the first query mentioning <c>display_name</c>, and — worse — its unfolded
+    /// keys would silently never match a folded lookup.
+    /// </para>
+    /// <para>
+    /// <b>Folding can collide, and the collision is the bug being fixed.</b> A file written before
+    /// this may hold <c>Ångström</c> and <c>ångström</c> as two rows, because <c>NOCASE</c> did not
+    /// fold them. Folding makes them one key, so the rows are merged the same way
+    /// <see cref="AddEntitiesAsync"/>'s <c>ON CONFLICT</c> merges them — descriptions joined, first
+    /// spelling kept for display — rather than one silently overwriting the other.
+    /// </para>
+    /// <para>
+    /// Cheap on the common path: an in-memory store and any file already written by this version
+    /// need no row rewriting, and the check is one pass over the names.
+    /// </para>
+    /// </remarks>
+    private void Migrate()
+    {
+        EnsureColumn("entities", "display_name");
+        EnsureColumn("relationships", "source_display");
+        EnsureColumn("relationships", "target_display");
+        FoldExistingKeys();
+    }
+
+    /// <summary>Adds a nullable TEXT column when the table does not already have it.</summary>
+    /// <param name="table">Table to inspect.</param>
+    /// <param name="column">Column that must exist.</param>
+    private void EnsureColumn(string table, string column)
+    {
+        using var check = _connection.CreateCommand();
+        // Table and column names are literals from this file, never caller input.
+        check.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'";
+        if (Convert.ToInt64(check.ExecuteScalar(), CultureInfo.InvariantCulture) > 0)
+        {
+            return;
+        }
+
+        using var alter = _connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} TEXT";
+        alter.ExecuteNonQuery();
+    }
+
+    /// <summary>Rewrites any keys that predate <see cref="Fold"/>, merging rows that now collide.</summary>
+    private void FoldExistingKeys()
+    {
+        var entities = ReadEntitiesForMigration(out var needsFolding);
+        if (!needsFolding)
+        {
+            return;
+        }
+
+        using var transaction = _connection.BeginTransaction();
+
+        using (var clear = _connection.CreateCommand())
+        {
+            clear.CommandText = "DELETE FROM entities";
+            clear.ExecuteNonQuery();
+        }
+
+        // Re-inserted through the normal upsert, so colliding rows merge by the same rule new writes
+        // use rather than by a second, migration-only definition of "merge".
+        foreach (ref readonly var entity in CollectionsMarshal.AsSpan(entities))
+        {
+            UpsertEntity(entity);
+        }
+
+        using (var rels = _connection.CreateCommand())
+        {
+            rels.CommandText = """
+                UPDATE relationships
+                SET source_display = COALESCE(source_display, source_entity),
+                    target_display = COALESCE(target_display, target_entity)
+                """;
+            rels.ExecuteNonQuery();
+        }
+
+        FoldColumn("relationships", "source_entity");
+        FoldColumn("relationships", "target_entity");
+        FoldColumn("community_members", "entity_name");
+
+        transaction.Commit();
+    }
+
+    /// <summary>Reads every entity, reporting whether any key predates <see cref="Fold"/>.</summary>
+    /// <param name="needsFolding">Set when at least one stored key is not already folded.</param>
+    /// <returns>The entities, carrying their display spelling as their name.</returns>
+    private List<GraphEntity> ReadEntitiesForMigration(out bool needsFolding)
+    {
+        var entities = new List<GraphEntity>();
+        needsFolding = false;
+
+        using var read = _connection.CreateCommand();
+        read.CommandText =
+            "SELECT name, COALESCE(display_name, name), type, description, page_rank, source_document_id, source_chunk_ids FROM entities";
+        using var reader = read.ExecuteReader();
+        while (reader.Read())
+        {
+            var stored = reader.GetString(0);
+            if (!string.Equals(stored, Fold(stored), StringComparison.Ordinal))
+            {
+                needsFolding = true;
+            }
+
+            entities.Add(new GraphEntity(reader.GetString(1), reader.GetString(2), reader.GetString(3))
+            {
+                PageRankScore = reader.GetDouble(4),
+                SourceDocumentId = reader.IsDBNull(5) ? null : reader.GetString(5),
+                SourceChunkIds = reader.IsDBNull(6) || string.IsNullOrEmpty(reader.GetString(6))
+                    ? []
+                    : reader.GetString(6).Split(',', StringSplitOptions.RemoveEmptyEntries),
+            });
+        }
+
+        return entities;
+    }
+
+    /// <summary>Rewrites one text column through <see cref="Fold"/>, row by row.</summary>
+    /// <remarks>
+    /// In .NET rather than SQL because SQLite's <c>upper()</c> folds ASCII only — the very limitation
+    /// this migration exists to escape, and an easy way to write a migration that does nothing.
+    /// </remarks>
+    /// <param name="table">Table to rewrite.</param>
+    /// <param name="column">Column holding entity names.</param>
+    private void FoldColumn(string table, string column)
+    {
+        var values = new HashSet<string>(StringComparer.Ordinal);
+        using (var read = _connection.CreateCommand())
+        {
+            read.CommandText = $"SELECT DISTINCT {column} FROM {table}";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                _ = values.Add(reader.GetString(0));
+            }
+        }
+
+        foreach (var value in values)
+        {
+            var folded = Fold(value);
+            if (string.Equals(value, folded, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            using var update = _connection.CreateCommand();
+            update.CommandText = $"UPDATE {table} SET {column} = $folded WHERE {column} = $original";
+            update.Parameters.Add(new SqliteParameter("$folded", folded));
+            update.Parameters.Add(new SqliteParameter("$original", value));
+            update.ExecuteNonQuery();
+        }
+    }
+
     public Task AddEntitiesAsync(IReadOnlyList<GraphEntity> entities, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(entities);
+
         using var transaction = _connection.BeginTransaction();
 
         foreach (var entity in entities)
         {
             ct.ThrowIfCancellationRequested();
-
-            using var cmd = _connection.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO entities (name, type, description, page_rank, source_document_id, source_chunk_ids)
-                VALUES ($name, $type, $description, $pageRank, $sourceDocumentId, $sourceChunkIds)
-                ON CONFLICT(name) DO UPDATE SET
-                    type = $type,
-                    description = entities.description || char(10) || $description,
-                    page_rank = $pageRank,
-                    source_document_id = COALESCE($sourceDocumentId, entities.source_document_id),
-                    source_chunk_ids = COALESCE($sourceChunkIds, entities.source_chunk_ids)
-                """;
-            cmd.Parameters.Add(new SqliteParameter("$name", entity.Name));
-            cmd.Parameters.Add(new SqliteParameter("$type", entity.Type));
-            cmd.Parameters.Add(new SqliteParameter("$description", entity.Description));
-            cmd.Parameters.Add(new SqliteParameter("$pageRank", SqliteType.Real) { Value = entity.PageRankScore });
-            cmd.Parameters.Add(new SqliteParameter("$sourceDocumentId", entity.SourceDocumentId ?? (object)DBNull.Value));
-            cmd.Parameters.Add(new SqliteParameter("$sourceChunkIds", entity.SourceChunkIds.Count > 0
-                ? string.Join(",", entity.SourceChunkIds)
-                : (object)DBNull.Value));
-            cmd.ExecuteNonQuery();
+            UpsertEntity(entity);
         }
 
         transaction.Commit();
         return Task.CompletedTask;
+    }
+
+    /// <summary>Inserts or merges one entity, inside whatever transaction the caller holds.</summary>
+    /// <remarks>
+    /// Extracted so the migration in <see cref="FoldExistingKeys"/> re-inserts through exactly this
+    /// rule rather than a second, migration-only definition of "merge" that could drift from it.
+    /// Opens no transaction of its own for the same reason: both callers already have one.
+    /// </remarks>
+    /// <param name="entity">The entity to write.</param>
+    private void UpsertEntity(GraphEntity entity)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO entities (name, display_name, type, description, page_rank, source_document_id, source_chunk_ids)
+            VALUES ($name, $displayName, $type, $description, $pageRank, $sourceDocumentId, $sourceChunkIds)
+            ON CONFLICT(name) DO UPDATE SET
+                display_name = COALESCE(entities.display_name, $displayName),
+                type = $type,
+                description = entities.description || char(10) || $description,
+                page_rank = $pageRank,
+                source_document_id = COALESCE($sourceDocumentId, entities.source_document_id),
+                source_chunk_ids = COALESCE($sourceChunkIds, entities.source_chunk_ids)
+            """;
+
+        // The key is folded; the caller's spelling is kept for display. First spelling wins on merge
+        // (COALESCE above), so an entity does not change how it reads because a later document
+        // happened to shout its name.
+        cmd.Parameters.Add(new SqliteParameter("$name", Fold(entity.Name)));
+        cmd.Parameters.Add(new SqliteParameter("$displayName", entity.Name));
+        cmd.Parameters.Add(new SqliteParameter("$type", entity.Type));
+        cmd.Parameters.Add(new SqliteParameter("$description", entity.Description));
+        cmd.Parameters.Add(new SqliteParameter("$pageRank", SqliteType.Real) { Value = entity.PageRankScore });
+        cmd.Parameters.Add(new SqliteParameter("$sourceDocumentId", entity.SourceDocumentId ?? (object)DBNull.Value));
+        cmd.Parameters.Add(new SqliteParameter("$sourceChunkIds", entity.SourceChunkIds.Count > 0
+            ? string.Join(",", entity.SourceChunkIds)
+            : (object)DBNull.Value));
+        cmd.ExecuteNonQuery();
     }
 
     /// <inheritdoc/>
@@ -106,9 +331,9 @@ public sealed class SqliteGraphStore : IGraphStore
             ct.ThrowIfCancellationRequested();
 
             using var cmd = _connection.CreateCommand();
-            cmd.CommandText = "UPDATE entities SET page_rank = $pageRank WHERE name = $name COLLATE NOCASE";
+            cmd.CommandText = "UPDATE entities SET page_rank = $pageRank WHERE name = $name";
             cmd.Parameters.Add(new SqliteParameter("$pageRank", SqliteType.Real) { Value = score });
-            cmd.Parameters.Add(new SqliteParameter("$name", name));
+            cmd.Parameters.Add(new SqliteParameter("$name", Fold(name)));
             cmd.ExecuteNonQuery();
         }
 
@@ -126,11 +351,24 @@ public sealed class SqliteGraphStore : IGraphStore
 
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO relationships (source_entity, target_entity, description, weight, source_document_id)
-                VALUES ($source, $target, $description, $weight, $sourceDocumentId)
+                INSERT INTO relationships (source_entity, target_entity, source_display, target_display, description, weight, source_document_id)
+                VALUES ($source, $target, $sourceDisplay, $targetDisplay, $description, $weight, $sourceDocumentId)
                 """;
-            cmd.Parameters.Add(new SqliteParameter("$source", rel.SourceEntity));
-            cmd.Parameters.Add(new SqliteParameter("$target", rel.TargetEntity));
+            // Folded, because these are joined against entities.name and walked by
+            // GetNeighborsAsync. An unfolded endpoint is an edge to an entity that cannot be found.
+            //
+            // The caller's spelling is kept alongside, per endpoint, because reads must not hand
+            // back the folded key — an existing test caught exactly that, expecting "Microsoft" and
+            // receiving "MICROSOFT".
+            //
+            // Resolving the spelling by joining to entities.display_name was tried first and does
+            // not work: an endpoint need not be an entity. In that same test "GraphRAG" appears only
+            // as a relationship target and has no entities row, so the join found nothing and fell
+            // back to the folded key. The relationship has to carry its own.
+            cmd.Parameters.Add(new SqliteParameter("$source", Fold(rel.SourceEntity)));
+            cmd.Parameters.Add(new SqliteParameter("$target", Fold(rel.TargetEntity)));
+            cmd.Parameters.Add(new SqliteParameter("$sourceDisplay", rel.SourceEntity));
+            cmd.Parameters.Add(new SqliteParameter("$targetDisplay", rel.TargetEntity));
             cmd.Parameters.Add(new SqliteParameter("$description", rel.Description));
             cmd.Parameters.Add(new SqliteParameter("$weight", SqliteType.Real) { Value = rel.Weight });
             cmd.Parameters.Add(new SqliteParameter("$sourceDocumentId", rel.SourceDocumentId ?? (object)DBNull.Value));
@@ -156,11 +394,11 @@ public sealed class SqliteGraphStore : IGraphStore
             {
                 using var cmd = _connection.CreateCommand();
                 cmd.CommandText = """
-                    SELECT CASE WHEN source_entity = $name COLLATE NOCASE THEN target_entity ELSE source_entity END AS neighbor
+                    SELECT CASE WHEN source_entity = $name THEN target_entity ELSE source_entity END AS neighbor
                     FROM relationships
-                    WHERE source_entity = $name COLLATE NOCASE OR target_entity = $name COLLATE NOCASE
+                    WHERE source_entity = $name OR target_entity = $name
                     """;
-                cmd.Parameters.Add(new SqliteParameter("$name", node));
+                cmd.Parameters.Add(new SqliteParameter("$name", Fold(node)));
 
                 using var reader = cmd.ExecuteReader();
                 while (reader.Read())
@@ -193,11 +431,13 @@ public sealed class SqliteGraphStore : IGraphStore
         var result = new List<GraphRelationship>();
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
-            SELECT source_entity, target_entity, description, weight, source_document_id
+            SELECT COALESCE(source_display, source_entity),
+                   COALESCE(target_display, target_entity),
+                   description, weight, source_document_id
             FROM relationships
-            WHERE source_entity = $name COLLATE NOCASE OR target_entity = $name COLLATE NOCASE
+            WHERE source_entity = $name OR target_entity = $name
             """;
-        cmd.Parameters.Add(new SqliteParameter("$name", entityName));
+        cmd.Parameters.Add(new SqliteParameter("$name", Fold(entityName)));
 
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -253,7 +493,7 @@ public sealed class SqliteGraphStore : IGraphStore
                     VALUES ($communityId, $entityName)
                     """;
                 memberCmd.Parameters.Add(new SqliteParameter("$communityId", SqliteType.Integer) { Value = community.Id });
-                memberCmd.Parameters.Add(new SqliteParameter("$entityName", member));
+                memberCmd.Parameters.Add(new SqliteParameter("$entityName", Fold(member)));
                 memberCmd.ExecuteNonQuery();
             }
         }
@@ -270,9 +510,9 @@ public sealed class SqliteGraphStore : IGraphStore
             SELECT c.id, c.level, c.report_summary
             FROM communities c
             INNER JOIN community_members cm ON cm.community_id = c.id
-            WHERE cm.entity_name = $name COLLATE NOCASE
+            WHERE cm.entity_name = $name
             """;
-        cmd.Parameters.Add(new SqliteParameter("$name", entityName));
+        cmd.Parameters.Add(new SqliteParameter("$name", Fold(entityName)));
 
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -292,7 +532,7 @@ public sealed class SqliteGraphStore : IGraphStore
         var entities = new List<GraphEntity>();
         using (var cmd = _connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT name, type, description, page_rank, source_document_id, source_chunk_ids FROM entities";
+            cmd.CommandText = "SELECT COALESCE(display_name, name), type, description, page_rank, source_document_id, source_chunk_ids FROM entities";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
@@ -303,7 +543,12 @@ public sealed class SqliteGraphStore : IGraphStore
         var relationships = new List<GraphRelationship>();
         using (var cmd = _connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT source_entity, target_entity, description, weight, source_document_id FROM relationships";
+            cmd.CommandText = """
+                SELECT COALESCE(source_display, source_entity),
+                       COALESCE(target_display, target_entity),
+                       description, weight, source_document_id
+                FROM relationships
+                """;
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
@@ -370,8 +615,8 @@ public sealed class SqliteGraphStore : IGraphStore
     private GraphEntity? LoadEntity(string name)
     {
         using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT name, type, description, page_rank, source_document_id, source_chunk_ids FROM entities WHERE name = $name COLLATE NOCASE";
-        cmd.Parameters.Add(new SqliteParameter("$name", name));
+        cmd.CommandText = "SELECT COALESCE(display_name, name), type, description, page_rank, source_document_id, source_chunk_ids FROM entities WHERE name = $name";
+        cmd.Parameters.Add(new SqliteParameter("$name", Fold(name)));
 
         using var reader = cmd.ExecuteReader();
         return reader.Read() ? ReadEntity(reader) : null;
