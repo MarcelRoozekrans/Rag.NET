@@ -7,11 +7,43 @@ using Xunit;
 
 namespace Rag.NET.DataProviders.IntegrationTests;
 
+/// <summary>
+/// Replays cassettes recorded from the real GitHub API.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Recorded 2026-08-17</b> from <c>MarcelRoozekrans/RalphPilot</c> at commit <c>67b12987</c> —
+/// 7 blobs, the real tree nodes <c>.ralph</c> and <c>.ralph/specs</c>, and a mix of <c>.md</c> and
+/// <c>.ps1</c>. That mix is why the repo was chosen: the extension filter test asserts something
+/// only when the tree contains files it must exclude, and <c>SkipsTreeNodes</c> previously relied on
+/// a hand-written <c>src/</c> node that no real response had produced.
+/// </para>
+/// <para>
+/// <b>Recorded unauthenticated</b>, deliberately. The repository is public, the API allows it inside
+/// the 60-requests-per-hour anonymous limit, and the result is that no credential appears in the
+/// fixtures at all — nothing to scrub, and nothing to leak.
+/// </para>
+/// <para>
+/// <b>The recording harness did not work before this.</b> Two independent defects, both invisible at
+/// the moment they struck because record mode proxies to the real service and therefore passes. See
+/// <see cref="Rag.NET.Testing.WireMockServerFixture"/>: recordings were written to a directory replay
+/// never read, and every recorded mapping matched on <c>Host: localhost:{ephemeral port}</c>, which
+/// cannot match twice. This suite is the first cassette in the repository actually recorded and
+/// replayed.
+/// </para>
+/// <para>
+/// <b>Still hand-written:</b> the delta path. <c>ListDocuments_DeltaRun_ReturnsOnlyChangedFiles</c>
+/// registers its own stubs for the compare endpoint, so the shape of GitHub's compare response is
+/// still our belief about it rather than an observation. Recording it needs a real prior commit sha
+/// to compare against, which is a further piece of work rather than a difficulty — noted here so the
+/// gap is not mistaken for coverage.
+/// </para>
+/// </remarks>
 [Collection("WireMock")]
 public sealed class GitHubDataProviderTests
 {
-    private const string Owner = "test-owner";
-    private const string Repo = "test-repo";
+    private const string Owner = "MarcelRoozekrans";
+    private const string Repo = "RalphPilot";
 
     private readonly WireMockServerFixture _fixture;
 

@@ -4,7 +4,13 @@
     <RootNamespace>Rag.NET.DataProviders.GitHub</RootNamespace>
     <PackageId>Rag.NET.DataProviders.GitHub</PackageId>
     <Description>GitHub data provider for Rag.NET using Octokit</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <VerifiedBy>recorded</VerifiedBy>
+    <VerifiedByReason>Cassettes recorded from the real GitHub API on 2026-08-17 against
+      MarcelRoozekrans/RalphPilot at commit 67b12987 (7 blobs, real tree nodes .ralph and
+      .ralph/specs, mixed .md and .ps1 so the extension filter means something). Recorded
+      unauthenticated, so no credential appears in the fixtures at all. The delta path
+      (compare API) is still hand-written — see the note in GitHubDataProviderTests — so this
+      covers the full-tree and content paths only.</VerifiedByReason>
   </PropertyGroup>
 
   <ItemGroup>
