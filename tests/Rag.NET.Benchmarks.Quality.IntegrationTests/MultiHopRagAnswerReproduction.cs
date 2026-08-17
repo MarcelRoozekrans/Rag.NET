@@ -89,6 +89,38 @@ internal static class MultiHopRagAnswerReproduction
             "of the null queries against dense's 48.5% -- it guesses on unanswerable questions. " +
             "**So: GraphRAG global helps on entity questions here and does not on yes/no ones, " +
             "and its overall lead over dense is about one third real.**"),
+        new(
+            "multihop-rag",
+            AnswerArm.Filtered,
+            [0.3494],
+            "MEASURED 2026-08-17 on a SECOND machine (Windows 11, .NET 10.0.11, CPU ONNX Runtime) " +
+            "from the restored cache -- the full run: 2,556 queries x 5 arms, 22,230 answer " +
+            "requests, 22,121 cached / 109 generated, 0 retries, 1 h 33 m (store build 23 m 45 s). " +
+            "Issue #247's option (c): the same dense top-500 the control arm sees, with every " +
+            "graph-derived unit dropped before the top-6 is taken. **0.3494** (raw 0.2599, strict " +
+            "0.3233). " +
+            "**Against the control's 0.1384 this recovers +0.2110 of the -0.2115 that store " +
+            "pollution costs -- 99.8% of it -- and lands 0.0005 below the article-only dense arm's " +
+            "0.3499.** " +
+            "**The residual is noise, and its direction says so.** Per type: comparison 0.1636 and " +
+            "temporal 0.0326 are IDENTICAL to dense to four decimals; inference is 0.7708 against " +
+            "dense's 0.7721, which is -0.0013 -- ONE answer in 816 (630.0 correct against " +
+            "629.0), while four answers moved abstain->other, so the mix shifted more than the " +
+            "score did; nulls are 0.4884 against 0.4850, +0.0034, which is one answer in 301 in " +
+            "filtered's FAVOUR. A systematic loss would move one way on every type. " +
+            "**The cache is the second, independent statement.** 109 generations out of 22,230 " +
+            "requests: for 99.5% of queries the filtered top-6 was byte-identical to a context " +
+            "some other arm had already answered, so the answer cache -- keyed on the prompt, which " +
+            "embeds the context -- simply hit. Filtering the graph store's candidates does not " +
+            "merely score like the article-only store; for almost every query it RECONSTRUCTS it. " +
+            "The synthetic units are pure displacement: they evict article chunks from a six-slot " +
+            "window without changing which article chunks would otherwise win it. " +
+            "**Cost: 109 gpt-4o-mini completions, and no extra retrieval at all** -- the " +
+            "over-fetch option (c) needs already exists, because local search returns its top-500 " +
+            "and six are taken from it either way. " +
+            "Measured in the harness; whether the filter becomes shipped library behaviour, and " +
+            "whether on by default, is open on #247. What is no longer open is which of the " +
+            "issue's three options works."),
     ];
 
     /// <summary>Asserts one arm's paper-rule accuracy reproduced what was last recorded, or records what it measured.</summary>
