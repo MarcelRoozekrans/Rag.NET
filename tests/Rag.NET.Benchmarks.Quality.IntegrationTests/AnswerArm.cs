@@ -13,7 +13,15 @@ internal static class AnswerArm
     /// </summary>
     public const string Control = "control";
 
-    /// <summary>GraphRAG local search as shipped (PageRankWeight 0.3), top-6 of what it returns.</summary>
+    /// <summary>
+    /// GraphRAG local search at <c>PageRankWeight = 0.3</c>, top-6 of what it returns.
+    /// </summary>
+    /// <remarks>
+    /// Said "as shipped" until #239 changed the library default to 0. The figures this arm pins were
+    /// measured at 0.3, so <c>GraphRagRun</c> now sets that value explicitly and this arm deliberately
+    /// measures a <b>non-default</b> configuration. The shipped configuration corresponds to the
+    /// <c>PageRankWeight = 0</c> ablation, which reproduced the candidate-set control exactly.
+    /// </remarks>
     public const string Local = "local";
 
     /// <summary>GraphRAG global search: the synthesised answer first, then the next candidates.</summary>

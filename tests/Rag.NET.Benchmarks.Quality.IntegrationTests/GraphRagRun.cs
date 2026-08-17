@@ -87,7 +87,32 @@ internal sealed class GraphRagRun : IAsyncDisposable
     private readonly SqliteGraphStore _graphStore = new(":memory:");
     private readonly InMemoryVectorStore _vectorStore = new();
     private readonly GraphRagOptions _options = GraphRagSliceIngestion.CreateOptions();
-    private readonly GraphRagRetrievalOptions _retrievalOptions = new();
+    /// <summary>
+    /// Local-search options for the measured arms, pinning <c>PageRankWeight = 0.3</c> explicitly.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Explicit because the library default changed under it.</b> This was <c>new()</c>, inheriting
+    /// whatever <see cref="GraphRagRetrievalOptions"/> shipped — which was 0.3 when every figure the
+    /// <c>local</c> arm pins was measured. #239 changed that default to 0, so leaving this inheriting
+    /// would have silently re-pointed those pins at a different configuration while their recorded
+    /// text still said 0.3.
+    /// </para>
+    /// <para>
+    /// A pinned measurement must not follow a library default. The figure describes one configuration
+    /// on one day; the default is a product decision that moves independently. Setting it here keeps
+    /// the recorded numbers meaning what they say, and the <c>local</c> arm now deliberately measures
+    /// a <b>non-default</b> configuration — which is worth knowing when reading it, and is why
+    /// <c>AnswerArm.Local</c> says so.
+    /// </para>
+    /// <para>
+    /// The <c>PageRankWeight = 0</c> case is not lost: it is the ablation in
+    /// <c>BeirGraphRagCorpusTests.Ablations_UnderTheGraphPath_PageRankWeightZero_AndGraphReach</c>,
+    /// measured at nDCG@10 0.59658 — the candidate-set control to five decimals — and that is now the
+    /// configuration the library ships.
+    /// </para>
+    /// </remarks>
+    private readonly GraphRagRetrievalOptions _retrievalOptions = new() { PageRankWeight = 0.3 };
     private readonly Dictionary<string, HashSet<string>> _entityDocuments =
         new(StringComparer.OrdinalIgnoreCase);
 

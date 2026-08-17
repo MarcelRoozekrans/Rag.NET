@@ -28,9 +28,30 @@ public sealed class GraphLocalSearchBehavior(
         activity?.SetTag("graphrag.search.mode", "local");
         activity?.SetTag("graphrag.entity.count", entityResults.Count);
 
-        var pageRankByName = await TraverseGraph(entityResults, ct).ConfigureAwait(false);
+        // At w = 0 the blend is the identity, so every PageRank score the walk collects is read by
+        // nothing. Skipped rather than harvested — issuing graph queries and discarding the answers
+        // is the exact waste #239 point 3 removed from this method, and defaulting the weight to 0
+        // would have reintroduced it one level up.
+        //
+        // BlendAndDeduplicate still runs, and that is deliberate: it also DEDUPLICATES, keyed on
+        // (DocumentId, ChunkIndex), which is load-bearing on its own — see its remarks and #231.
+        // Returning `results` here instead would silently restore the duplicate-candidate defect.
+        var pageRankByName = options.PageRankWeight == 0
+            ? EmptyPageRank
+            : await TraverseGraph(entityResults, ct).ConfigureAwait(false);
+
+        activity?.SetTag("graphrag.pagerank.blended", options.PageRankWeight != 0);
+
         return BlendAndDeduplicate(results, pageRankByName);
     }
+
+    /// <summary>No PageRank scores, for the default <c>PageRankWeight = 0</c> path.</summary>
+    /// <remarks>
+    /// Shared and empty rather than a fresh dictionary per query: nothing writes to it, and at the
+    /// default this is every query.
+    /// </remarks>
+    private static readonly Dictionary<string, double> EmptyPageRank =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private List<SearchResult> CollectTopEntities(IReadOnlyList<SearchResult> results)
     {

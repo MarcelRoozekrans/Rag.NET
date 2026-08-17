@@ -566,7 +566,7 @@ public sealed class BeirGraphRagCorpusTests
 
             === {descriptor.Name} GRAPHRAG ABLATIONS (#239) — {a.Elapsed.TotalSeconds:F1} s over {a.Control.EvaluatedQueryCount} judged queries ===
 
-            ABLATION 1 — local search at PageRankWeight = 0 (default is 0.3), max-pooled to documents:
+            ABLATION 1 — local search at PageRankWeight = 0 (0.3 when measured; the default since #239), max-pooled to documents:
               candidate-set control:  nDCG@{Cutoff} = {a.Control.NormalizedDiscountedCumulativeGain:F5}, Recall@{Cutoff} = {a.Control.Recall:F5}, MRR@{Cutoff} = {a.Control.MeanReciprocalRank:F5}
               local search, w = 0:    nDCG@{Cutoff} = {a.Unweighted.NormalizedDiscountedCumulativeGain:F5}, Recall@{Cutoff} = {a.Unweighted.Recall:F5}, MRR@{Cutoff} = {a.Unweighted.MeanReciprocalRank:F5}
               top-{Cutoff} document rankings identical to the control on {a.IdenticalTop10} of {a.Control.EvaluatedQueryCount} queries

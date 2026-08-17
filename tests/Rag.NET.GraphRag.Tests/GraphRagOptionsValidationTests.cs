@@ -152,7 +152,13 @@ public class GraphRagOptionsValidationTests
         var options = provider.GetRequiredService<GraphRagOptions>();
         var retrievalOptions = provider.GetRequiredService<GraphRagRetrievalOptions>();
         Assert.Equal(500, options.MaxEntityDescriptionLength);
-        Assert.Equal(0.3, retrievalOptions.PageRankWeight);
+
+        // 0, not 0.3, since #239. The blend put PageRank (mean 1.6e-5 over 62,392 entities) against
+        // cosine (0.3-0.6), so at 0.3 it demoted every entity chunk it had traversed to. Measured:
+        // at 0 local search reproduced the candidate-set control on 2,255 of 2,255 queries, so the
+        // whole -0.02761 nDCG@10 was this default. Pinned here because a default that costs quality
+        // by construction should not be able to come back by inattention.
+        Assert.Equal(0.0, retrievalOptions.PageRankWeight);
         Assert.Equal(1, retrievalOptions.LocalSearchDepth);
     }
 }

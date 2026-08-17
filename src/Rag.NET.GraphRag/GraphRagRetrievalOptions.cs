@@ -46,9 +46,32 @@ public sealed class GraphRagRetrievalOptions
     /// blended score.
     /// </para>
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Default 0 since #239, and it was 0.3.</b> The two terms are not on the same scale.
+    /// <c>PageRank.Compute</c> normalises to sum 1 over every entity — 62,392 on the MultiHop-RAG
+    /// corpus, so the mean is 1.6e-5 and even hubs reach only ~1e-2 — while cosine similarity sits at
+    /// 0.3–0.6. At <c>w = 0.3</c> a blended entity chunk therefore loses roughly 30% of its score
+    /// against the unblended chunks it competes with, and the behaviour <i>demoted precisely the
+    /// entity chunks it had traversed to</i>.
+    /// </para>
+    /// <para>
+    /// <b>Measured, not reasoned.</b> At <c>w = 0</c> local search reproduced the candidate-set
+    /// control's nDCG@10, Recall@10 and MRR@10 to five decimals, with a top-10 ranking identical to
+    /// the control on <b>2,255 of 2,255 queries</b> — so the entire −0.02761 nDCG@10 gap between local
+    /// search and that control was this blend, and nothing else in the behaviour moved anything.
+    /// </para>
+    /// <para>
+    /// <b>The option is kept, not removed.</b> A weight has a defensible use once the scales are
+    /// reconciled, which #239 point 2 owns; what is not defensible is a default that costs quality by
+    /// construction. Setting a non-zero weight is now an opt-in, and
+    /// <see cref="GraphLocalSearchBehavior"/> skips the graph walk entirely at 0 rather than
+    /// harvesting PageRank scores nothing will read.
+    /// </para>
+    /// </remarks>
     [InclusiveBetween(0.0, 1.0)]
     [Must(nameof(PageRankWeightIsFinite), Message = "PageRankWeight must be a finite number (not NaN or infinity).")]
-    public double PageRankWeight { get; set; } = 0.3;
+    public double PageRankWeight { get; set; }
 
     /// <summary>Reports whether <see cref="PageRankWeight"/> is a finite number.</summary>
     /// <param name="value">The <see cref="PageRankWeight"/> value under validation.</param>
