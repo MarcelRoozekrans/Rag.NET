@@ -188,9 +188,31 @@ reports and nothing else.
 ```csharp
 rag.UseGraphRag(graph: store =>
 {
-    store.UseSqlite("graphrag.db");  // SQLite-backed (default)
+    store.UseSqlite("graphrag.db");  // SQLite-backed
 });
 ```
+
+**If you do not call `UseSqlite`, the graph is held in memory and discarded when the process
+exits** — it is rebuilt from scratch on the next ingest, and graph construction is the expensive
+half of GraphRAG. Give it a path unless you mean that.
+
+#### Entity names are matched case-insensitively, in every script
+
+`Ångström` and `ångström` are one entity, and so are `Москва`/`москва` and `Γεωργία`/`γεωργία`.
+Folding happens in .NET rather than in SQL, because SQLite's `COLLATE NOCASE` folds `A`–`Z` and
+nothing else — under it, non-ASCII names produced *two* rows for one subject and their descriptions
+never merged.
+
+The spelling you supply is preserved for display, and the first spelling seen wins: an entity does
+not change how it reads in a report because a later document happened to shout its name.
+
+Two consequences if you read the SQLite file directly rather than through `IGraphStore`:
+
+- `entities.name` and the `relationships` endpoints hold the **folded** (upper-cased) key. Read
+  `display_name`, `source_display` and `target_display` for the original spelling.
+- **A graph file written before this change is migrated in place when opened**, which adds the
+  display columns, folds the keys, and merges any duplicate rows the old collation allowed. Back it
+  up first if that matters to you.
 
 ## Search Modes in Detail
 
@@ -269,10 +291,17 @@ GraphRAG is the most expensive ingestion strategy — LLM calls per chunk:
 - Use a cheaper model via `ExtractionChatClient` (e.g. GPT-4o-mini, Haiku)
 - Set `GleaningPasses = 0` to skip follow-up passes
 - Constrain `EntityTypes` to reduce noise
+- Leave `CommunityDetectionGrowthThreshold` at its default. Community detection is a *whole-graph*
+  operation, and it used to run once per ingested document — on a 17,648-document corpus that was
+  17,648 recomputes of a graph that reached 62,392 entities, and every one but the last was
+  discarded. Setting the threshold to `0` restores that.
 
 ### Retrieval Cost
 
-- **Local Search**: Zero additional LLM calls. Graph traversal + vector search only.
+- **Local Search**: Zero additional LLM calls. At the default `PageRankWeight = 0` it performs *no
+  graph traversal either* — the blend is the identity, so there would be nothing to read the
+  traversal's PageRank scores. It deduplicates and returns what retrieval found. Set a non-zero
+  weight and the walk runs, one neighbour query per seed entity.
 - **Global Search**: one map call per batch of `GlobalBatchSize` community reports in the candidate set (5 by default), plus 1 reduce — not one per community. It is the reports that reach retrieval that cost, not the communities that exist.
 
 ### Storage
@@ -319,6 +348,11 @@ Retrieval:  VectorStore → Ensemble → Filter → [GraphRAG Local/Global] → 
 **Global search returns empty**
 - Ensure CommunityDetectionBehavior runs during ingestion
 - Verify community reports were embedded (check for `graph_type=community_report` in vector store)
+- **Or the reports are simply stale.** Detection is debounced on graph growth, so the last documents
+  of an ingest may not have triggered one. Call `GraphProjectionRebuilder.RebuildAsync` and try
+  again — that is what it is for, and it is the expected step after a bulk load
+- The `graphrag.community.skipped` tag on the `ragnet.graphrag.communities` activity tells you a
+  document was debounced rather than detected
 
 **Global search returns results but never calls the LLM**
 - It found no community reports in the candidate set and its own refetch also came back empty
@@ -329,3 +363,5 @@ Retrieval:  VectorStore → Ensemble → Filter → [GraphRAG Local/Global] → 
 - Use `ExtractionChatClient` with a cheaper model
 - Set `GleaningPasses = 0`
 - Constrain `EntityTypes` to reduce extraction scope
+- Check you have not set `CommunityDetectionGrowthThreshold = 0`, which recomputes the whole graph
+  on every document
