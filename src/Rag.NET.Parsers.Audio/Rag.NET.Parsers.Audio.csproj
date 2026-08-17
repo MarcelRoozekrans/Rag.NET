@@ -5,7 +5,11 @@
     <PackageId>Rag.NET.Parsers.Audio</PackageId>
     <Description>Audio transcription parser for Rag.NET using Whisper.net</Description>
     <PackageTags>$(PackageTags);whisper;transcription;speech-to-text</PackageTags>
-    <VerifiedBy>unit</VerifiedBy>
+    <VerifiedBy>integration</VerifiedBy>
+    <VerifiedByReason>Transcribes a real 16 kHz WAV with the real Whisper GGML model
+      (RealTranscriptionTests). No credential: Whisper.net runs locally. The fixture is synthesised
+      by Windows' speech engine, an unrelated producer, so a pass means two implementations agree.
+      Gated on RAGNET_WHISPER_MODEL_DIR to avoid a 141 MB download per cold runner.</VerifiedByReason>
   </PropertyGroup>
 
   <ItemGroup>

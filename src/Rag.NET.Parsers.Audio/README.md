@@ -22,6 +22,23 @@ using Rag.NET.Parsers.Audio;
 rag.AddAudioParser();
 ```
 
+## Linux needs `libgomp1`
+
+Whisper's native library links OpenMP, and slim Linux images do not carry it. Debian-based
+.NET images (`mcr.microsoft.com/dotnet/*`) are among them, so this is the common case rather
+than an exotic one:
+
+```dockerfile
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1
+```
+
+Without it the first transcription throws `Failed to load native whisper library. Error:
+Cannot load the library on this platform using NativeLibrary. PInvokeError: No such file or
+directory` — which names neither OpenMP nor the missing file, so it is worth recognising.
+Measured on `mcr.microsoft.com/dotnet/sdk:10.0` (linux-x64): the real-transcription tests fail
+before installing `libgomp1` and pass after, with no other change. Windows and macOS need
+nothing extra.
+
 ## Example
 
 The Whisper model is selected (and downloaded to a local cache on first use) through the

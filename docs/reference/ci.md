@@ -84,7 +84,7 @@ easy to misread a stale green tick as covering the latest commit.
 
 ## The secrets overlay
 
-Five projects contain tests that need credentials or large local assets:
+Six projects contain tests that need credentials or large local assets:
 
 | Project | Reads | Where the value comes from |
 |---|---|---|
@@ -92,6 +92,7 @@ Five projects contain tests that need credentials or large local assets:
 | `Rag.NET.Embeddings.Onnx.Tests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Chunking.IntegrationTests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Benchmarks.Quality.IntegrationTests` | those two, plus `RAGNET_BEIR_CACHE`, `RAGNET_BEIR_LONG_RUNS` and `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` | downloaded, plus a runner temp path; the last three are deliberately **never supplied by the job** — see below |
+| `Rag.NET.Parsers.Audio.Tests` | `RAGNET_WHISPER_MODEL_DIR` | a local cache directory, **not a secret**; supplied by the fenced Whisper procedure below |
 | `Rag.NET.Parsers.Pdf.Tests` | `RAGNET_TESSDATA` | repository secret in the nightly (where it reaches nothing — see below); supplied locally by the fenced OCR procedure below |
 
 Each of those tests calls `Assert.Skip` when its variable is absent, so the projects are safe
@@ -159,7 +160,57 @@ gh secret set RAGNET_DOCINTEL_ENDPOINT --body "$endpoint"
 gh secret set RAGNET_DOCINTEL_KEY --body "$key"
 ```
 
-**This is an overlay, not a fourth tier.** All five are fast-tier projects: they run in `ci.yml` on
+**`RAGNET_WHISPER_MODEL_DIR` is a cache directory, and the transcription it gates needs no
+credential at all.** This is worth stating plainly because the Milestone 6 ledger had the package
+filed under Phase 6.1 as owing "a hosted transcription model", which parked it behind an account
+nobody has. `Whisper.net` runs **locally**: `AudioDocumentParser` calls `WhisperGgmlDownloader` to
+fetch a GGML model and loads it in-process. There is no service and no key. What the gate actually
+protects is bandwidth — the model is 141 MiB, and letting the parser fetch it on demand would cost
+that on every cold runner for one test.
+
+Before this, nothing in the repository had ever run Whisper. Every test in
+`Rag.NET.Parsers.Audio.Tests` subclassed the parser and overrode `TranscribeAsync`, so the model was
+never loaded and no audio was ever decoded. `RealTranscriptionTests` transcribes a real 16 kHz WAV —
+synthesised by Windows' own speech engine, deliberately an unrelated producer, so a pass means two
+implementations agree on the content rather than that the library round-trips itself. Executed green
+2026-08-17:
+
+```bash
+# The model is public and unauthenticated. Revision and SHA-256 are the upstream LFS values from
+# https://huggingface.co/api/models/ggerganov/whisper.cpp (repo revision 5359861c739e...), checked
+# against the file this procedure was verified with rather than copied from a mirror.
+export RAGNET_WHISPER_MODEL_DIR="$PWD/.whisper-models"
+mkdir -p "$RAGNET_WHISPER_MODEL_DIR"
+curl -fsSL -o "$RAGNET_WHISPER_MODEL_DIR/ggml-base.bin"   https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin
+echo "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe  $RAGNET_WHISPER_MODEL_DIR/ggml-base.bin"   | sha256sum -c -
+
+dotnet test tests/Rag.NET.Parsers.Audio.Tests --filter RealTranscriptionTests
+```
+
+The download is optional: with the directory set but empty, the parser fetches the model itself on
+first use and the fenced `curl` only buys the SHA-256 check and a warm cache.
+
+**The nightly provisions it, on the same terms as MiniLM.** This document argues elsewhere that
+"there is no fork-safety argument for skipping a test whose input the job could have fetched", and
+that reasoning applies here exactly: the asset is a free, unauthenticated, pinned download. The
+`env-gated` job caches it on the pinned revision, verifies the SHA-256, and exports
+`RAGNET_WHISPER_MODEL_DIR` — failing rather than exporting an empty directory, because the parser
+would otherwise fetch the model itself and the job would pass having quietly paid for the download
+the cache exists to avoid.
+
+**Linux needs `libgomp1`, and that was measured rather than assumed.** `Whisper.net.Runtime` ships
+native binaries per platform and the verification above is Windows, so the Linux leg was checked
+before the CI step was written — in a `mcr.microsoft.com/dotnet/sdk:10.0` container, the image the
+job actually uses. It **failed**: `Failed to load native whisper library. Error: Cannot load the
+library on this platform using NativeLibrary. PInvokeError: No such file or directory`. The
+linux-x64 natives do ship in the package; `ldd` showed `libggml-base-whisper.so` needing
+`libgomp.so.1`, the OpenMP runtime, which Debian-slim .NET images do not carry. Installing
+`libgomp1` turned 2 failures into 3 passes with no other change, so the job installs it and
+[the package README](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/src/Rag.NET.Parsers.Audio/README.md) tells consumers to as well — the
+error names neither OpenMP nor the missing file, so it reads as a broken library rather than a
+missing apt package.
+
+**This is an overlay, not a fourth tier.** All six are fast-tier projects: they run in `ci.yml` on
 every push (skipping the gated tests) *and* in `nightly.yml` with the values supplied. A project is
 in one tier and may appear in more than one workflow.
 

@@ -214,6 +214,20 @@ jobs:
       MINILM_MODEL_SHA256: 6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452
       MINILM_VOCAB_SHA256: 07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3
 
+      # Whisper's ggml-base, on the same terms as MiniLM above: a public unauthenticated asset,
+      # pinned to a revision and checked against a SHA-256 rather than fetched from `main`. Both
+      # values are the upstream LFS metadata from huggingface.co/api/models/ggerganov/whisper.cpp,
+      # read from that API rather than copied from a mirror or a README, and they match the file the
+      # local procedure in docs/reference/ci.md was verified with byte-for-byte (147,951,465 bytes).
+      #
+      # RAGNET_WHISPER_MODEL_DIR is NOT a secret and never was: AudioDocumentParser loads the model
+      # in-process through Whisper.net, so there is no service and no credential. The Milestone 6
+      # ledger had the package filed as owing "a hosted transcription model", which parked it behind
+      # an account nobody has while the package's own README said "no cloud transcription service
+      # involved". It is a cache directory, and this job can fetch what goes in it.
+      WHISPER_REVISION: 5359861c739e955e79d9a303bcbc70fb988958b1
+      WHISPER_BASE_SHA256: 60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe
+
       # NO reranker pins any more, deliberately (Phase 4.1). This job used to fetch, SHA-256-check
       # and cache the ~87 MB cross-encoder/ms-marco-MiniLM-L6-v2 export and export
       # RAGNET_ONNX_RERANK_MODEL/_VOCAB — and both nightly runs on the record show the download fed
@@ -277,6 +291,38 @@ jobs:
           echo "$MINILM_MODEL_SHA256  $dir/model.onnx" | sha256sum -c -
           echo "$MINILM_VOCAB_SHA256  $dir/vocab.txt"  | sha256sum -c -
 
+      # ~141 MiB, unchanged upstream since 2022, and keyed on the pinned revision so bumping the
+      # revision is the only thing that invalidates it — same reasoning as the MiniLM cache above.
+      - name: Cache the Whisper ggml-base model
+        id: whisper-model-cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/models/whisper
+          key: whisper-ggml-base-${{ env.WHISPER_REVISION }}
+
+      # If a checksum fails, do NOT edit the checksum to match. Check whether upstream republished
+      # the revision (it should not be able to) before changing anything here.
+      - name: Fetch the Whisper ggml-base model
+        if: steps.whisper-model-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/models/whisper"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 --retry-all-errors -o "$dir/ggml-base.bin" \
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/$WHISPER_REVISION/ggml-base.bin"
+          echo "$WHISPER_BASE_SHA256  $dir/ggml-base.bin" | sha256sum -c -
+
+      # Measured, not assumed — and the reason this step exists rather than being left out as
+      # probably-unnecessary: on mcr.microsoft.com/dotnet/sdk:10.0 the real-transcription tests fail
+      # with "Failed to load native whisper library ... PInvokeError: No such file or directory" and
+      # pass after installing libgomp1, with no other change. The linux-x64 natives DO ship in the
+      # package — ldd shows libggml-base-whisper.so needing libgomp.so.1, which Debian-slim .NET
+      # images do not carry. The error names neither OpenMP nor the missing file, so without this
+      # step the failure would read as a broken test rather than a missing apt package. Documented
+      # for consumers too, in src/Rag.NET.Parsers.Audio/README.md.
+      - name: Install libgomp1 for Whisper's native library
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libgomp1
+
       # The two ONNX variables and the BEIR cache are set HERE rather than in the job's `env:`
       # block, and that is not a style choice: `runner` is not one of the contexts available to
       # `jobs.<id>.env`, and a literal "$RUNNER_TEMP/beir" would reach the test process unexpanded.
@@ -300,10 +346,16 @@ jobs:
               exit 1
             fi
           done
+          whisper="$RUNNER_TEMP/models/whisper"
+          if [ ! -s "$whisper/ggml-base.bin" ]; then
+            echo "::error::$whisper/ggml-base.bin is missing or empty after the fetch/cache steps. Failing rather than exporting a directory with no model in it: AudioDocumentParser would then download the model itself and the run would pass having quietly paid for a 141 MiB fetch the cache exists to avoid."
+            exit 1
+          fi
           {
             echo "RAGNET_ONNX_EMBED_MODEL=$dir/model.onnx"
             echo "RAGNET_ONNX_EMBED_VOCAB=$dir/vocab.txt"
             echo "RAGNET_BEIR_CACHE=$RUNNER_TEMP/beir"
+            echo "RAGNET_WHISPER_MODEL_DIR=$whisper"
           } >> "$GITHUB_ENV"
 
       # Presence only, never a value. Without this the log cannot tell a real pass from a run in
@@ -328,7 +380,7 @@ jobs:
           for name in RAGNET_TESSDATA RAGNET_DOCINTEL_ENDPOINT RAGNET_DOCINTEL_KEY \
                       RAGNET_ONNX_EMBED_MODEL RAGNET_ONNX_EMBED_VOCAB \
                       RAGNET_ONNX_RERANK_MODEL RAGNET_ONNX_RERANK_VOCAB RAGNET_BEIR_CACHE \
-                      RAGNET_BEIR_LONG_RUNS; do
+                      RAGNET_WHISPER_MODEL_DIR RAGNET_BEIR_LONG_RUNS; do
             if [ -n "${!name}" ]; then echo "$name: set"; else echo "$name: unset — its tests will skip"; fi
           done
 

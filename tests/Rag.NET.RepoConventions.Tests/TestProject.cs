@@ -398,7 +398,16 @@ public sealed partial class TestProject
                 continue;
             }
 
-            if (SecretEnvironmentVariableRead().IsMatch(File.ReadAllText(file)))
+            var text = File.ReadAllText(file);
+
+            // Two shapes, because one of them was invisible to this guard until 2026-08-17.
+            // RealTranscriptionTests reads RAGNET_WHISPER_MODEL_DIR through a named const —
+            // GetEnvironmentVariable(ModelDirectoryVariable) — so the call-site pattern below saw
+            // an identifier, not the literal, and the project sailed past the tier check while
+            // genuinely being env-gated. Naming the variable in a const is better style than
+            // inlining the string twice, so the fix belongs here rather than in the test.
+            if (SecretEnvironmentVariableRead().IsMatch(text) ||
+                SecretEnvironmentVariableNamed().IsMatch(text))
             {
                 return true;
             }
@@ -429,6 +438,27 @@ public sealed partial class TestProject
     /// <returns>The compiled matcher.</returns>
     [GeneratedRegex(@"Environment\.GetEnvironmentVariable\(\s*""RAGNET_", RegexOptions.NonBacktracking)]
     private static partial Regex SecretEnvironmentVariableRead();
+
+    /// <summary>
+    /// Matches a <c>RAGNET_</c> variable name bound to a constant, the shape
+    /// <see cref="SecretEnvironmentVariableRead"/> cannot see.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Requires an <c>=</c> before the literal, and that is the whole reason this is safe to add.
+    /// A bare search for <c>RAGNET_</c> would flag every doc comment that cross-references another
+    /// suite's variable, which is the specific false positive
+    /// <see cref="SecretEnvironmentVariableRead"/> was narrowed to avoid; an assignment is a
+    /// project binding the name for its own use, not mentioning someone else's.
+    /// </para>
+    /// <para>
+    /// Same self-match trap, avoided the same way: the pattern text here is escaped, so it does not
+    /// match its own source and does not conclude that this project is env-gated.
+    /// </para>
+    /// </remarks>
+    /// <returns>The compiled matcher.</returns>
+    [GeneratedRegex(@"=\s*""RAGNET_[A-Z0-9_]+""", RegexOptions.NonBacktracking)]
+    private static partial Regex SecretEnvironmentVariableNamed();
 
     private static bool IsBuildOutput(string file, string projectDirectory)
     {
