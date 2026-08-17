@@ -37,7 +37,11 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
 
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<(string url, int depth)>();
-        queue.Enqueue((_seedUrl, 0));
+
+        // Through the same rule as every discovered link (#288). Enqueued verbatim, a seed written
+        // the way a person types it — with the trailing slash — never matched the normalised form a
+        // back-link produces, so the seed page was crawled and yielded twice.
+        queue.Enqueue((Normalise(seedUri), 0));
         var pageCount = 0;
 
         while (queue.Count > 0 && pageCount < _options.MaxPages)
@@ -173,12 +177,32 @@ public sealed class WebCrawlerDataProvider : IFileContentProvider
             if (!string.Equals(uri.Scheme, "http", StringComparison.Ordinal) &&
                 !string.Equals(uri.Scheme, "https", StringComparison.Ordinal)) continue;
 
-            // Normalise: strip fragment, trailing slash
-            var normalised = new UriBuilder(uri) { Fragment = string.Empty }.Uri
-                .ToString().TrimEnd('/');
-            yield return normalised;
+            yield return Normalise(uri);
         }
     }
+
+    /// <summary>
+    /// Reduces a URL to the single form the visited set compares: no fragment, no trailing slash.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Extracted so there is <b>one</b> rule rather than two. Discovered links were normalised here
+    /// and the seed was enqueued verbatim, so a seed of <c>http://host/</c> and the same page reached
+    /// through a back-link as <c>http://host</c> were two entries in an ordinal
+    /// <see cref="HashSet{T}"/> — the root was fetched and yielded twice under two
+    /// <see cref="EntryId"/>s (#288). Downstream that is one page indexed twice, embedded twice, and
+    /// returnable twice by a retrieval that assumes one id per page.
+    /// </para>
+    /// <para>
+    /// A named method rather than a second inline copy: the defect was not the rule, it was the rule
+    /// existing in one of the two places that needed it, and a copy would leave that possible again.
+    /// </para>
+    /// </remarks>
+    /// <param name="uri">The absolute URL to reduce.</param>
+    /// <returns>The normalised URL.</returns>
+    private static string Normalise(Uri uri) =>
+        new UriBuilder(uri) { Fragment = string.Empty }.Uri
+            .ToString().TrimEnd('/');
 
     private static string InferFileName(string url)
     {

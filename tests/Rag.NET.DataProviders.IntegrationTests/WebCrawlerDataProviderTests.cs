@@ -240,47 +240,54 @@ public sealed class WebCrawlerDataProviderTests
 
     /// <remarks>
     /// <para>
-    /// <b>A defect, recorded as a passing test rather than asserted away.</b> The crawler normalises
-    /// links it extracts — <c>ExtractLinks</c> strips the fragment and the trailing slash — but it
-    /// enqueues the <i>seed</i> exactly as given. So a seed of <c>http://host/</c> and the normalised
-    /// back-link <c>http://host</c> are two different strings, the visited set treats them as two
-    /// pages, and the seed page is fetched and yielded twice with two different
-    /// <see cref="EntryId"/>s.
+    /// <b>Was #288, now the regression test for it.</b> <c>ExtractLinks</c> normalised every
+    /// discovered link — no fragment, no trailing slash — while the seed was enqueued verbatim. So a
+    /// seed of <c>http://host/</c> and the same page reached through a back-link as
+    /// <c>http://host</c> were two entries in an ordinal <see cref="HashSet{T}"/>, and the root was
+    /// fetched and yielded twice under two <see cref="EntryId"/>s.
     /// </para>
     /// <para>
-    /// It needs a site that links back to its own root to show up at all, which is why no unit test
-    /// found it and why the earlier tests here do not: they pass <c>_fixture.BaseUrl</c>, which has no
-    /// trailing slash and therefore already matches the normalised form. Nothing about a trailing
-    /// slash tells a caller it matters.
+    /// It needed a site that links back to its own root, which is why no unit test found it — and the
+    /// other tests here pass <c>_fixture.BaseUrl</c>, which carries no trailing slash and therefore
+    /// already matched the normalised form. Nothing about a trailing slash suggests it matters, which
+    /// is exactly why this asserts on both spellings rather than on the tidy one.
     /// </para>
     /// <para>
-    /// Downstream this is a duplicate document under two ids — an ingestion pipeline would index the
-    /// same page twice and a retrieval would be able to return both. This test pins the behaviour so
-    /// the fix has something to flip. Reported as #288.
+    /// The fix routes the seed through the same <c>Normalise</c> the links use, so the two spellings
+    /// now produce identical crawls. That equality is the assertion: a count check alone would pass
+    /// if both spellings became wrong together.
     /// </para>
     /// </remarks>
     [Fact]
-    public async Task ATrailingSlashOnTheSeedCrawlsTheSeedPageTwice()
+    public async Task ATrailingSlashOnTheSeedDoesNotChangeTheCrawl()
     {
         var withSlash = await CrawlAsync(seed: $"{_fixture.BaseUrl}/");
         var withoutSlash = await CrawlAsync(seed: _fixture.BaseUrl);
 
-        var duplicated = withSlash
-            .GroupBy(e => PathOf(e), StringComparer.Ordinal)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToList();
+        Assert.Equal(
+            withoutSlash.Select(e => e.Id.Value).Order(StringComparer.Ordinal),
+            withSlash.Select(e => e.Id.Value).Order(StringComparer.Ordinal),
+            StringComparer.Ordinal);
 
-        Assert.Equal([""], duplicated, StringComparer.Ordinal);
-        Assert.Equal(withoutSlash.Count + 1, withSlash.Count);
+        // No page twice, under either spelling. Stated per-crawl so a failure names which one.
+        foreach (var (label, crawl) in new[] { ("with slash", withSlash), ("without", withoutSlash) })
+        {
+            var duplicated = crawl
+                .GroupBy(PathOf, StringComparer.Ordinal)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList();
 
-        // The two ids that should have been one.
-        var rootIds = withSlash
-            .Where(e => string.Equals(PathOf(e), string.Empty, StringComparison.Ordinal))
-            .Select(e => e.Id.Value)
-            .Order(StringComparer.Ordinal)
-            .ToList();
+            Assert.True(
+                duplicated.Count == 0,
+                $"Seed {label}: these paths were crawled more than once — {string.Join(", ", duplicated)}");
+        }
 
-        Assert.Equal([_fixture.BaseUrl, $"{_fixture.BaseUrl}/"], rootIds, StringComparer.Ordinal);
+        // And the root is present exactly once, under the normalised id rather than the seed as given.
+        Assert.Equal(
+            [_fixture.BaseUrl],
+            withSlash.Where(e => string.Equals(PathOf(e), string.Empty, StringComparison.Ordinal))
+                     .Select(e => e.Id.Value),
+            StringComparer.Ordinal);
     }
 }
