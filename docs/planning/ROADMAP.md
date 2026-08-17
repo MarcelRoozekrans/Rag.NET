@@ -4135,7 +4135,7 @@ being a feeling.
 package is in exactly one of the three states, and the allowlist is the work list for the rest of
 the milestone. Nothing is exercised in this phase; it is where the ledger stops being a feeling.
 
-### Phase 6.1: Recorded Responses [status: pending]
+### Phase 6.1: Recorded Responses [status: in progress 2026-08-17 — the harness did not work and now does (#290): recordings were written to a directory replay never read, and every mapping matched on the ephemeral WireMock port, so nothing anyone recorded could ever replay. Both defects were silent because record mode proxies to the real service and therefore passes. First working cassette recorded the same day (GitHub, unauthenticated, 17 KB); #283 carries the corrected instructions for the remaining 18 services, where the blocker is accounts rather than work]
 **Goal:** For each of the ~20 packages that talk to live services, either commit a scrubbed,
 dated recording of one real exchange that the tests replay, or record per package why no
 recording exists. (Moved out of Milestone 4 on 2026-08-03 with the v1.0 postponement; the phase
@@ -4174,7 +4174,7 @@ satisfiability half stays Milestone 4's, per that debt's entry), the AzureAISear
 path (no integration coverage — a simulator limit), and the Pinecone live sparse-write
 verification (Milestone 2's documented coverage gap).
 
-### Phase 6.2: Raise the Floor on Unit-Only Packages [status: pending]
+### Phase 6.2: Raise the Floor on Unit-Only Packages [status: substantially complete 2026-08-17 — 57 bare `unit` down to 22, the remainder being 6.1's credential-blocked connectors, `Chunking.Templates` and 6.2.1's three. Every package picked up produced a defect in something adjacent: `Parsers.Audio` was filed as needing a hosted transcription model and needs none — Whisper runs locally — while being broken on Linux without `libgomp1`; `Parsers.Vision` had no CI tier that could select it; `DataProviders.Web`'s crawler returned the seed page twice (#288). `recorded` and `live` were both used for the first time]
 **Goal:** Decide what "exercised beyond fakes" means for a package with no external dependency,
 and do it. Phase 4.0's ledger measured **61 of 71 packages at `VerifiedBy=unit`** — only ever
 exercised against fakes. About 20 of those are 6.1's live-service packages; the other **~41 —
@@ -4205,7 +4205,7 @@ phase's own first task; this entry states the question and the evidence, not the
 whatever definition this phase settles, or carries a `<VerifiedByReason>` stating why it stays.
 That is Milestone 6's second DoD criterion, and this phase owns it.
 
-### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: pending — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at]
+### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: pending — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. #239 and #200 closed 2026-08-17; #247 and #176 remain, and #247 is still the largest measured lever]
 **Goal:** every retrieval technique and every answer engine gets what GraphRAG got in Milestone 5:
 one real run on a real corpus with a real model, differenced against a control, pinned, and read
 honestly. **#247 first** — the shared-store policy for graph-derived chunks is the largest measured
