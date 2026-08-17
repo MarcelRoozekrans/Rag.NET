@@ -26,6 +26,56 @@ public sealed class CommunityDetectionBehavior(
     /// </summary>
     private const int NoteReserve = 320;
 
+    /// <summary>Entity count at the last detection, or -1 when none has run.</summary>
+    /// <remarks>
+    /// Instance state on a type registered as a singleton, so it survives across the documents of an
+    /// ingest — which is the whole point. Guarded by <see cref="_detectionGate"/> because concurrent
+    /// <c>IngestAsync</c> calls share the instance, and two ingests racing here would otherwise both
+    /// read the stale count and both detect.
+    /// </remarks>
+    private long _entitiesAtLastDetection = -1;
+
+    private readonly Lock _detectionGate = new();
+
+    /// <summary>
+    /// Decides whether the graph has grown enough since the last detection to justify another.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Always true for the first detection and whenever the threshold is zero, so the pre-#300
+    /// behaviour is available by configuration rather than only by forking.
+    /// </para>
+    /// <para>
+    /// <b>Claims the slot before returning true.</b> The count is recorded here rather than after the
+    /// work completes, so a second document arriving while the first is still detecting does not also
+    /// detect. The cost of that choice is that a failed detection does not retry until the graph grows
+    /// again — acceptable, because detection is idempotent and the next growth increment repeats it,
+    /// and because <see cref="GraphProjectionRebuilder"/> exists for when it must be current now.
+    /// </para>
+    /// </remarks>
+    /// <param name="entityCount">Entities currently in the graph.</param>
+    /// <returns>Whether to run detection for this document.</returns>
+    private bool ShouldDetect(int entityCount)
+    {
+        lock (_detectionGate)
+        {
+            if (_entitiesAtLastDetection < 0 || options.CommunityDetectionGrowthThreshold <= 0)
+            {
+                _entitiesAtLastDetection = entityCount;
+                return true;
+            }
+
+            var required = _entitiesAtLastDetection * (1 + options.CommunityDetectionGrowthThreshold);
+            if (entityCount < required)
+            {
+                return false;
+            }
+
+            _entitiesAtLastDetection = entityCount;
+            return true;
+        }
+    }
+
     public async ValueTask<IngestionResult> HandleAsync(
         IngestionContext ctx,
         CancellationToken ct,
@@ -41,12 +91,83 @@ public sealed class CommunityDetectionBehavior(
 
         var snapshot = await graphStore.GetFullGraphAsync(ct).ConfigureAwait(false);
 
+        // #300: detection is a whole-graph operation on a per-document behaviour, so this ran once
+        // per ingested document against a graph growing throughout. Nothing was gained by the
+        // repetition — detection is a pure function of the graph and each run overwrites the last,
+        // so only the final run's output survives.
+        //
+        // The load above still happens, because the entity count IS the growth signal and there is
+        // no cheaper count on IGraphStore. What the threshold saves is Leiden, PageRank, the score
+        // write-back and the report generation — the expensive part. A count method on the store
+        // would let the load be skipped too; that is a wider interface change than this needs.
         if (snapshot.Entities.Count == 0)
         {
             activity?.SetTag("graphrag.community.count", 0);
             return await next(ctx, ct).ConfigureAwait(false);
         }
 
+        if (!ShouldDetect(snapshot.Entities.Count))
+        {
+            activity?.SetTag("graphrag.community.skipped", true);
+            activity?.SetTag("graphrag.community.entity.count", snapshot.Entities.Count);
+            return await next(ctx, ct).ConfigureAwait(false);
+        }
+
+        await DetectAsync(ctx, snapshot, activity, ct).ConfigureAwait(false);
+
+        return await next(ctx, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs detection unconditionally and appends the report chunks to <paramref name="ctx"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The entry point <see cref="GraphProjectionRebuilder"/> uses. It bypasses the growth threshold
+    /// — a rebuild is the caller saying "make this current now", which is the whole reason the
+    /// threshold is safe to have — and it resets the threshold's baseline, so an ingest continuing
+    /// afterwards debounces from the state the rebuild left rather than from a stale count.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately the same code path as ingestion.</b> A rebuild that recomputed communities its
+    /// own way would be a second implementation of the thing under measurement, free to drift from
+    /// the one that runs during ingest.
+    /// </para>
+    /// </remarks>
+    /// <param name="ctx">Receives the community-report chunks.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The number of communities detected; zero when the graph is empty.</returns>
+    internal async Task<int> DetectNowAsync(IngestionContext ctx, CancellationToken ct)
+    {
+        using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.graphrag.communities.rebuild");
+
+        var snapshot = await graphStore.GetFullGraphAsync(ct).ConfigureAwait(false);
+        if (snapshot.Entities.Count == 0)
+        {
+            activity?.SetTag("graphrag.community.count", 0);
+            return 0;
+        }
+
+        lock (_detectionGate)
+        {
+            _entitiesAtLastDetection = snapshot.Entities.Count;
+        }
+
+        return await DetectAsync(ctx, snapshot, activity, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Leiden, PageRank, reports, and the chunks that carry them — the work itself.</summary>
+    /// <param name="ctx">Receives the community-report chunks.</param>
+    /// <param name="snapshot">The graph to detect over.</param>
+    /// <param name="activity">The span to tag, when one is recording.</param>
+    /// <param name="ct">Cancellation.</param>
+    /// <returns>The number of communities detected.</returns>
+    private async Task<int> DetectAsync(
+        IngestionContext ctx,
+        GraphSnapshot snapshot,
+        System.Diagnostics.Activity? activity,
+        CancellationToken ct)
+    {
         // Run Leiden community detection, with the caller's settings rather than the defaults.
         var communities = Leiden.Detect(snapshot, options.Leiden);
 
@@ -70,7 +191,7 @@ public sealed class CommunityDetectionBehavior(
         // Embed community reports
         await EmbedCommunityReports(ctx, updatedCommunities, ct).ConfigureAwait(false);
 
-        return await next(ctx, ct).ConfigureAwait(false);
+        return updatedCommunities.Count;
     }
 
     /// <summary>What one pass of report generation produced, and how much of it did not fit.</summary>
