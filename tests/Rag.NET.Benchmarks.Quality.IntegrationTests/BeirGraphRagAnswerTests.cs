@@ -325,19 +325,13 @@ public sealed class BeirGraphRagAnswerTests
         // Local search retrieval, sequentially, for every query that needs it.
         var localContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
         var controlContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
-        if (arms.Contains(AnswerArm.Local, StringComparer.Ordinal) || arms.Contains(AnswerArm.Control, StringComparer.Ordinal))
+        var filteredContexts = new Dictionary<string, IReadOnlyList<SearchResult>>(StringComparer.Ordinal);
+        if (arms.Contains(AnswerArm.Local, StringComparer.Ordinal)
+            || arms.Contains(AnswerArm.Control, StringComparer.Ordinal)
+            || arms.Contains(AnswerArm.Filtered, StringComparer.Ordinal))
         {
-            for (var i = 0; i < selection.Queries.Count; i++)
-            {
-                var local = await run.LocalSearchWithCandidatesAsync(selection.Queries[i].Text, ct);
-                localContexts[selection.Queries[i].Id] = Head(local.Results, ContextChunks);
-                controlContexts[selection.Queries[i].Id] = Head(local.Candidates, ContextChunks);
-                if ((i + 1) % ProgressEvery == 0)
-                {
-                    _output.WriteLine(FormattableString.Invariant(
-                        $"  local search retrieval: {i + 1} of {selection.Queries.Count}, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far"));
-                }
-            }
+            await CollectGraphStoreContextsAsync(
+                run, selection, localContexts, controlContexts, filteredContexts, startedAt, ct);
         }
 
         // Dense and global retrieval, and every answer, in parallel under the same bound.
@@ -354,6 +348,7 @@ public sealed class BeirGraphRagAnswerTests
                     {
                         AnswerArm.Local => localContexts[query.Id],
                         AnswerArm.Control => controlContexts[query.Id],
+                        AnswerArm.Filtered => filteredContexts[query.Id],
                         _ => await RetrieveContextAsync(arm, query.Text, run, articles, generator, embeddings, answering, token),
                     };
                     var prompt = PromptTemplate
@@ -419,6 +414,74 @@ public sealed class BeirGraphRagAnswerTests
 
 
     /// <summary>The first <paramref name="count"/> results, or all of them when there are fewer.</summary>
+    /// <summary>
+    /// One local-search pass per query, producing the three contexts that share it: local search's
+    /// own results, the unfiltered candidates (<c>control</c>), and the candidates with
+    /// graph-derived units removed (<c>filtered</c>, #247 option (c)).
+    /// </summary>
+    /// <remarks>
+    /// All three come from the SAME retrieval call, deliberately. Retrieving separately per arm
+    /// would let a difference between them be a difference in what was retrieved rather than in
+    /// what was kept, and the whole value of the control is that only one thing varies.
+    /// </remarks>
+    private async Task CollectGraphStoreContextsAsync(
+        GraphRagRun run,
+        QuerySelection selection,
+        Dictionary<string, IReadOnlyList<SearchResult>> localContexts,
+        Dictionary<string, IReadOnlyList<SearchResult>> controlContexts,
+        Dictionary<string, IReadOnlyList<SearchResult>> filteredContexts,
+        long startedAt,
+        CancellationToken ct)
+    {
+        for (var i = 0; i < selection.Queries.Count; i++)
+        {
+            var local = await run.LocalSearchWithCandidatesAsync(selection.Queries[i].Text, ct);
+            localContexts[selection.Queries[i].Id] = Head(local.Results, ContextChunks);
+            controlContexts[selection.Queries[i].Id] = Head(local.Candidates, ContextChunks);
+            filteredContexts[selection.Queries[i].Id] =
+                Head(WithoutGraphDerivedChunks(local.Candidates), ContextChunks);
+
+            if ((i + 1) % ProgressEvery == 0)
+            {
+                _output.WriteLine(FormattableString.Invariant(
+                    $"  local search retrieval: {i + 1} of {selection.Queries.Count}, {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s so far"));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Drops every graph-derived chunk — entity, relationship and community report — leaving the
+    /// article chunks in their existing order.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Keyed on the <c>graph_type</c> tag the graph behaviours already write
+    /// (<c>GraphEntityExtractionBehavior</c>, <c>CommunityDetectionBehavior</c>), so nothing is
+    /// re-indexed and nothing about the store changes. That the discriminator already exists is
+    /// what makes #247's option (c) cheap; the issue reads as though it needed a migration.
+    /// </para>
+    /// <para>
+    /// The tag is tested for <b>presence</b>, not for a particular value: a future graph kind that
+    /// nobody updated this list for would still be excluded, which is the failure direction that
+    /// keeps the control honest. Order is preserved, so the survivors are the same ranking the
+    /// store produced with the synthetic units simply removed.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<SearchResult> WithoutGraphDerivedChunks(IReadOnlyList<SearchResult> results)
+    {
+        var kept = new List<SearchResult>(results.Count);
+        foreach (var result in results)
+        {
+            var metadata = result.Chunk.Metadata;
+            if (metadata is null || !metadata.ContainsKey("graph_type"))
+            {
+                kept.Add(result);
+            }
+        }
+
+        return kept;
+    }
+
     private static IReadOnlyList<SearchResult> Head(IReadOnlyList<SearchResult> results, int count)
     {
         var take = Math.Min(count, results.Count);

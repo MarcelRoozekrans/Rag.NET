@@ -104,17 +104,40 @@ gap is visible instead of hidden behind a green suite.
 
 ## 4. Method, and why it is stated
 
-This phase produced **three** wrong answers from searching instead of reading:
+This phase produced **six** wrong answers the same way, and the count is the point. Each one was a
+confident conclusion drawn from an instrument that could not see the thing it was being asked about.
 
-1. **`tests/<project>/*.cs` does not recurse** — every integration test in this repository lives one
-   directory down, so a confident "no coverage" came back for six packages that had it (#259).
-2. **`Caching` looked registration-only** because its cache round trip is observed through a
-   substitute's *call count*, not a direct cache API call, so a keyword search could not see it.
-3. **`Rag.NET.Caching.Tests` looked empty** because its only file is under `DependencyInjection/`.
+| # | The instrument | What it could not see | The wrong conclusion |
+|---|---|---|---|
+| 1 | `tests/<project>/*.cs` — a non-recursive glob | every integration test, which lives one directory down | "nine of ten packages have no real host coverage" (#259) — six had it |
+| 2 | keyword search for cache API calls | a round trip observed through a substitute's **call count** | "`Caching` is registration-only" — it has a control, and a better test than I would have written |
+| 3 | `ls tests/Rag.NET.Caching.Tests/*.cs` | a file under `DependencyInjection/` | "the project has no tests" |
+| 4 | `grep '"[0-9]"'` over an HTTP response body | that a **404's XML** carries a `RequestId` and a timestamp — digits | "73 of 73 packages are published" — it is 71, and the two absences were correct |
+| 5 | `ReadOperationCount` / `ReadTransferCount` | **memory-mapped reads**, which do not increment either counter | "the benchmark harness is hung" — it was loading an mmap-backed ONNX model and SQLite store, and I killed it |
+| 6 | a 300-second `LockDuration` reasoned about, never measured | that the premise was untested in both directions | "#246 is lock expiry, and PT5M fixes it" — the emulator honours the setting, so expiry was never the mechanism |
 
-All three were the same error, and it is the one this milestone is about: a claim about verification,
-asserted from an incomplete look. The rule §0 of the design now carries — *any "package X has no
-coverage of kind Y" claim must come from a recursive search, quoted so it can be re-run* — was
-written after the first and needed twice more.
+**All six are one error.** Not "I searched badly" — *I chose an instrument, got silence, and read the
+silence as evidence.* Silence from an instrument that cannot perceive the phenomenon is not a
+measurement; it is the absence of one, and the two are indistinguishable from inside the tool.
 
-**A keyword search can prove presence. It cannot prove absence.** Absence needs the file read.
+Note what the errors have in common beyond that. Every one of them was **cheap to falsify** and
+would have cost less to check than the wrong conclusion cost to unwind: one recursive `grep`, one
+file read, one HTTP status code instead of a body scrape, one CPU-delta sample instead of an I/O
+one, one 75-second probe against the emulator. #5 cost 32 minutes of a running job and #6 cost a
+merged commit with a false claim in its message.
+
+**The rules this leaves, in the order they were learned:**
+
+1. A keyword search can prove **presence**. It cannot prove **absence**. Absence needs the file read.
+2. Any claim of the form *"X has no Y"* must come from a search that recurses, quoted so it can be
+   re-run.
+3. A check that cannot distinguish *"nothing there"* from *"cannot see"* proves nothing either way.
+   Before believing a negative, ask what the instrument would show if the answer were the opposite.
+4. Before shipping a fix, verify the **mechanism**, not only the symptom. #246 was "fixed" twice
+   against mechanisms nobody had demonstrated were operating.
+
+That this is the most repeated finding of the milestone — six instances in one phase, by the same
+hand, after writing the rule down — is itself the argument for the guards this phase built. The
+allowlist, the staleness twin, and `EveryPublishedDocumentationFileIsCheckedBySomething` all exist
+because a person checking carefully is not a control. **They are all instruments that fail loudly
+rather than quietly**, which is the only property that distinguishes them from the six above.
