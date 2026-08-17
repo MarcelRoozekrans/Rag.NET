@@ -4,7 +4,11 @@
     <RootNamespace>Rag.NET.Parsers.Vision</RootNamespace>
     <PackageId>Rag.NET.Parsers.Vision</PackageId>
     <Description>Image and video description parsers for Rag.NET using a vision LLM and FFMpeg</Description>
-    <VerifiedBy>unit</VerifiedBy>
+    <VerifiedBy>live</VerifiedBy>
+    <VerifiedByReason>ImageDocumentParser sends a real PNG to a real hosted vision model over
+      OpenRouter (RealVisionModelTests). The model reads the words drawn in the image back verbatim
+      and names the red circle, and a negative control on a blank image confirms both assertions
+      fail when the content is absent. Gated on OPENROUTER_API_KEY; ~$0.0004 per run.</VerifiedByReason>
   </PropertyGroup>
 
   <ItemGroup>

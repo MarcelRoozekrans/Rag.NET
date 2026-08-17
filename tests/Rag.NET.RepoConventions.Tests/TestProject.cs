@@ -23,6 +23,27 @@ public sealed partial class TestProject
     private const string OllamaFixtureName = "OllamaFixture";
 
     /// <summary>
+    /// The factory method that hands back a hosted client with <b>no local fallback</b>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A project calling this needs a credential the CI job must supply, and there is no tier that
+    /// would otherwise select it. <c>RequiresLlm</c> cannot: that property is bidirectionally tied
+    /// to <c>OllamaFixture</c>, correctly, because the LLM tier's fixtures are containers. So a
+    /// suite that needs a hosted API and no container had no home at all, and a test in one would
+    /// skip on every automated run while passing locally for whoever wrote it.
+    /// </para>
+    /// <para>
+    /// Matched by name for the same reason <c>OllamaFixtureName</c> is: the alternative is grepping
+    /// for <c>OPENROUTER_API_KEY</c>, which also matches the projects that read it and fall back to
+    /// Ollama — they belong in the LLM tier, and pulling them into the secrets overlay would move
+    /// two suites out of the tier that suits them. The distinguishing fact is the absence of a
+    /// fallback, and that is what this method name means.
+    /// </para>
+    /// </remarks>
+    private const string KeyOnlyClientFactoryMethod = "CreateVisionClient";
+
+    /// <summary>
     /// Container fixtures published by <c>tests/Rag.NET.Testing</c>. Adding a fixture that starts a
     /// container is one edit here.
     /// </summary>
@@ -42,7 +63,9 @@ public sealed partial class TestProject
         ReferencesTestcontainers = HasTestcontainersPackage(project);
         UsesAContainerFixture = fixtures.Count > 0;
         UsesTheOllamaFixture = fixtures.Contains(OllamaFixtureName);
-        ReadsASecretEnvironmentVariable = ReadsARagnetEnvironmentVariable(directory);
+        ReadsASecretEnvironmentVariable =
+            ReadsARagnetEnvironmentVariable(directory) ||
+            CallsAKeyOnlyClientFactory(directory, project);
     }
 
     /// <summary>Gets the project's directory name, which is also its assembly name.</summary>
@@ -387,6 +410,46 @@ public sealed partial class TestProject
         }
 
         return mentioned;
+    }
+
+    /// <summary>
+    /// Reports whether the project builds a hosted client that has no local fallback.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Gated on the reference to <c>tests/Rag.NET.Testing</c> for the same load-bearing reason
+    /// <see cref="MentionedContainerFixtures"/> is, and this file walked straight into that trap
+    /// before the gate was added: <c>KeyOnlyClientFactoryMethod</c> above spells the method name out,
+    /// so a bare source scan concluded that the conventions project itself needs a credential and
+    /// demanded it declare <c>RequiresSecrets</c>. The factory is defined in that library, so a
+    /// project not referencing it cannot be calling the method however its source text reads. Do not
+    /// remove this as redundant — it is the third instance of the same trap in this one file.
+    /// </para>
+    /// </remarks>
+    /// <param name="directory">The project directory.</param>
+    /// <param name="project">The parsed csproj, for the reference gate.</param>
+    /// <returns><see langword="true"/> when a call site exists.</returns>
+    private static bool CallsAKeyOnlyClientFactory(string directory, XDocument project)
+    {
+        if (!ReferencesTheTestingLibrary(project))
+        {
+            return false;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories))
+        {
+            if (IsBuildOutput(file, directory))
+            {
+                continue;
+            }
+
+            if (File.ReadAllText(file).Contains(KeyOnlyClientFactoryMethod, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool ReadsARagnetEnvironmentVariable(string directory)
