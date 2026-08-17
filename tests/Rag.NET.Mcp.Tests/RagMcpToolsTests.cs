@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using NSubstitute;
 using Rag.NET.Abstractions;
@@ -184,5 +185,87 @@ public sealed class RagMcpToolsTests
         Assert.Equal("val1", capturedMetadata.Tags["key1"]);
         Assert.Equal("val2", capturedMetadata.Tags["key2"]);
         Assert.False(capturedMetadata.Tags.ContainsKey("malformed"));
+    }
+
+    // ── MinScore (issue #161) ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RetrieveAsync_PassesMinScoreThrough()
+    {
+        IReadOnlyList<SearchResult> results = [];
+        _pipeline.RetrieveAsync(
+                Arg.Any<string>(),
+                Arg.Is<RetrievalOptions>(o => o!.MinScore == 0.42),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(results)));
+
+        var ignored = await _sut.RetrieveAsync("q", minScore: 0.42);
+        Assert.NotNull(ignored);
+
+        _ = await _pipeline.Received(1).RetrieveAsync(
+            Arg.Any<string>(),
+            Arg.Is<RetrievalOptions>(o => o!.MinScore == 0.42),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AskAsync_PassesMinScoreThrough()
+    {
+        _pipeline.AskAsync(Arg.Any<string>(), Arg.Any<RagOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new RagResponse { Answer = "a", Sources = [] }));
+
+        _ = await _sut.AskAsync("q", minScore: 0.37);
+
+        await _pipeline.Received(1).AskAsync(
+            Arg.Any<string>(),
+            Arg.Is<RagOptions>(o => o!.MinScore == 0.37),
+            Arg.Any<CancellationToken>());
+    }
+
+    /// <remarks>
+    /// The default must stay 0.0 — "keep everything". A non-zero default would silently drop
+    /// results for every caller that never passes the argument, which is the shape of change that
+    /// looks like a tuning improvement and reads as missing data.
+    /// </remarks>
+    [Fact]
+    public async Task MinScore_DefaultsToZero_SoNothingIsDroppedUnlessAsked()
+    {
+        IReadOnlyList<SearchResult> results = [];
+        _pipeline.RetrieveAsync(Arg.Any<string>(), Arg.Any<RetrievalOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Result<IReadOnlyList<SearchResult>, RagError>.Success(results)));
+        _pipeline.AskAsync(Arg.Any<string>(), Arg.Any<RagOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new RagResponse { Answer = "a", Sources = [] }));
+
+        Assert.NotNull(await _sut.RetrieveAsync("q"));
+        Assert.NotNull(await _sut.AskAsync("q"));
+
+        _ = await _pipeline.Received(1).RetrieveAsync(
+            Arg.Any<string>(), Arg.Is<RetrievalOptions>(o => o!.MinScore == 0.0), Arg.Any<CancellationToken>());
+        await _pipeline.Received(1).AskAsync(
+            Arg.Any<string>(), Arg.Is<RagOptions>(o => o!.MinScore == 0.0), Arg.Any<CancellationToken>());
+    }
+
+    /// <remarks>
+    /// <b>Pins a deliberate omission, which is the half of #161 that is a decision rather than a
+    /// bug.</b> <c>SystemPrompt</c> and <c>ConversationHistory</c> are settable on
+    /// <c>RagOptions</c> and are withheld from the MCP surface on purpose: exposing either would
+    /// let a caller replace the grounding instructions or inject fabricated prior turns, over a
+    /// remote write surface whose auth story is already thin (#198).
+    /// <para>
+    /// Without this test, "expose the remaining RagOptions properties" reads as an obvious
+    /// completion of the issue, and the reasoning lives only in a comment nobody has to read.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheToolSurfaceWithholdsSystemPromptAndConversationHistory()
+    {
+        var exposed = typeof(RagMcpTools)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .SelectMany(m => m.GetParameters())
+            .Select(p => p.Name!)
+            .ToList();
+
+        Assert.DoesNotContain("systemPrompt", exposed, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("conversationHistory", exposed, StringComparer.OrdinalIgnoreCase);
     }
 }
