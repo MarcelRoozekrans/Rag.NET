@@ -7,6 +7,30 @@ using Rag.NET.Models.Options;
 
 namespace Rag.NET.Mcp.Tools;
 
+/// <summary>The RAG tools an MCP client can call.</summary>
+/// <remarks>
+/// <para>
+/// <b>Which options are exposed, and why not all of them (issue #161).</b> <c>RagOptions</c> has
+/// fifteen properties and <c>RetrievalOptions</c> has twenty. Every parameter here becomes part of
+/// the JSON schema an agent reads before choosing a call, so the surface is chosen rather than
+/// mirrored: an exhaustive schema is worse for the caller, not better, because it buries the two or
+/// three knobs that matter per query under a wall of host configuration.
+/// </para>
+/// <para>
+/// The rule: <b>a parameter belongs here when an agent would plausibly vary it per question.</b>
+/// <c>topK</c>, <c>useHybrid</c> and now <c>minScore</c> qualify — they trade recall against
+/// precision for this query. The rest are host decisions and belong in DI, where the operator sets
+/// them once: reranking, MMR, HyDE, CRAG, redundancy filtering, context-token budgets, synthesis
+/// strategy.
+/// </para>
+/// <para>
+/// <b>Two are deliberately withheld rather than merely unlisted.</b> <c>SystemPrompt</c> and
+/// <c>ConversationHistory</c> are settable on <c>RagOptions</c>, and exposing either over MCP would
+/// let a caller replace the grounding instructions or inject fabricated prior turns — on a surface
+/// that is already a remote write surface with a thin auth story (#198). They are host
+/// configuration on purpose.
+/// </para>
+/// </remarks>
 [McpServerToolType]
 public sealed class RagMcpTools(IRagPipeline pipeline)
 {
@@ -15,12 +39,14 @@ public sealed class RagMcpTools(IRagPipeline pipeline)
     public async Task<string> RetrieveAsync(
         [Description("The natural-language query to search for.")] string query,
         [Description("Maximum number of results to return (default: 5).")] int topK = 5,
-        [Description("Whether to use hybrid (keyword + semantic) search (default: true).")] bool useHybrid = true)
+        [Description("Whether to use hybrid (keyword + semantic) search (default: true).")] bool useHybrid = true,
+        [Description("Discard results scoring below this similarity, 0.0 to 1.0 (default: 0.0, keep everything).")] double minScore = 0.0)
     {
         var options = new RetrievalOptions
         {
             TopK = topK,
             UseHybridSearch = useHybrid,
+            MinScore = minScore,
         };
 
         var result = await pipeline.RetrieveAsync(query, options).ConfigureAwait(false);
@@ -34,12 +60,14 @@ public sealed class RagMcpTools(IRagPipeline pipeline)
     public async Task<string> AskAsync(
         [Description("The natural-language question to answer.")] string query,
         [Description("Maximum number of source chunks to retrieve (default: 5).")] int topK = 5,
-        [Description("Whether to use hybrid (keyword + semantic) search (default: true).")] bool useHybrid = true)
+        [Description("Whether to use hybrid (keyword + semantic) search (default: true).")] bool useHybrid = true,
+        [Description("Discard sources scoring below this similarity, 0.0 to 1.0 (default: 0.0, keep everything).")] double minScore = 0.0)
     {
         var options = new RagOptions
         {
             TopK = topK,
             UseHybridSearch = useHybrid,
+            MinScore = minScore,
         };
 
         var response = await pipeline.AskAsync(query, options).ConfigureAwait(false);
