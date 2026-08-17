@@ -18,4 +18,10 @@
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Milestone 6, Phase 6.2: a real WAV, synthesised by Windows' speech engine rather than by
+         anything related to Whisper, so a pass means two independent implementations agree. -->
+    <None Include="Resources\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
