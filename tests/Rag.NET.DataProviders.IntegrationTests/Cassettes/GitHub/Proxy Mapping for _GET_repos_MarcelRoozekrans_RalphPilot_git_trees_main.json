@@ -1,0 +1,159 @@
+{
+  "Guid": "255410ca-7a62-4e2b-94f6-f9e612c70f6f",
+  "UpdatedAt": "2026-08-17T11:39:28.1801015Z",
+  "Title": "Proxy Mapping for GET /repos/MarcelRoozekrans/RalphPilot/git/trees/main",
+  "Description": "Proxy Mapping for GET /repos/MarcelRoozekrans/RalphPilot/git/trees/main",
+  "Priority": -2000000,
+  "Request": {
+    "Path": {
+      "Matchers": [
+        {
+          "Name": "WildcardMatcher",
+          "Pattern": "/repos/MarcelRoozekrans/RalphPilot/git/trees/main",
+          "IgnoreCase": false
+        }
+      ]
+    },
+    "Methods": [
+      "GET"
+    ],
+    "HttpVersion": "1.1",
+    "Headers": [
+      {
+        "Name": "Accept",
+        "Matchers": [
+          {
+            "Name": "WildcardMatcher",
+            "Pattern": "application/vnd.github.v3+json",
+            "IgnoreCase": true
+          }
+        ],
+        "IgnoreCase": true
+      }
+    ],
+    "Params": [
+      {
+        "Name": "recursive",
+        "Matchers": [
+          {
+            "Name": "ExactMatcher",
+            "Pattern": "1",
+            "IgnoreCase": false
+          }
+        ]
+      }
+    ]
+  },
+  "Response": {
+    "StatusCode": 200,
+    "BodyAsJson": {
+      "sha": "67b12987a7f3838ab8ef253dfcb0f01354faca14",
+      "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/git/trees/67b12987a7f3838ab8ef253dfcb0f01354faca14",
+      "tree": [
+        {
+          "path": ".ralph",
+          "mode": "040000",
+          "type": "tree",
+          "sha": "f51cabc9ff0b774d21a57e7189d4c7f820543f72",
+          "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/git/trees/f51cabc9ff0b774d21a57e7189d4c7f820543f72"
+        },
+        {
+          "path": ".ralph/AGENTS.md",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "a75760a7b07f227e2341b9e510e12b9cd557fe52",
+          "size": 1190,
+          "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/git/blobs/a75760a7b07f227e2341b9e510e12b9cd557fe52"
+        },
+        {
+          "path": ".ralph/fix_plan.md",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "7b09159376f423887685384f8da14d5dded0a28b",
+          "size": 414,
+          "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/git/blobs/7b09159376f423887685384f8da14d5dded0a28b"
+        },
+        {
+          "path": ".ralph/prompt.md",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "3f3f3261df7ba622297b6002f317d7fb878284ce",
+          "size": 3684,
+          "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/git/blobs/3f3f3261df7ba622297b6002f317d7fb878284ce"
+        },
+        {
+          "path": ".ralph/specs",
+          "mode": "040000",
+          "type": "tree",
+          "sha": "2eb60cb987810bdd5ed0917089f0c380f435d8b2",
+          "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/git/trees/2eb60cb987810bdd5ed0917089f0c380f435d8b2"
+        },
+        {
+          "path": ".ralph/specs/helloworld.md",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "95dcff352e4dd4cd670de99f7818e7b7df376a2f",
+          "size": 1895,
+          "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/git/blobs/95dcff352e4dd4cd670de99f7818e7b7df376a2f"
+        },
+        {
+          "path": "ralph-init.ps1",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "c6f584ad93b56763bc8191b70c975353117976f1",
+          "size": 2084,
+          "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/git/blobs/c6f584ad93b56763bc8191b70c975353117976f1"
+        },
+        {
+          "path": "ralph.ps1",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "9019592d9b7d2e8696d876d9f061666a169deab9",
+          "size": 6389,
+          "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/git/blobs/9019592d9b7d2e8696d876d9f061666a169deab9"
+        },
+        {
+          "path": "readme.md",
+          "mode": "100644",
+          "type": "blob",
+          "sha": "8964471c00c0ac5dbf5333d05816d8391e31df4f",
+          "size": 4407,
+          "url": "https://api.github.com/repos/MarcelRoozekrans/RalphPilot/git/blobs/8964471c00c0ac5dbf5333d05816d8391e31df4f"
+        }
+      ],
+      "truncated": false
+    },
+    "Headers": {
+      "Last-Modified": "Thu, 21 May 2026 23:38:59 GMT",
+      "Content-Type": "application/json; charset=utf-8",
+      "Date": "Mon, 17 Aug 2026 11:39:25 GMT",
+      "Cache-Control": "public, max-age=60, s-maxage=60",
+      "Vary": [
+        "Accept",
+        "Accept-Encoding",
+        "Accept",
+        "X-Requested-With"
+      ],
+      "ETag": "\"4ba3008867227ec8beecf05d59b09a3b7525f4c90c308670b6bd780c658f6f19\"",
+      "x-github-api-version-selected": "2022-11-28",
+      "Access-Control-Expose-Headers": "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning",
+      "Access-Control-Allow-Origin": "*",
+      "Strict-Transport-Security": "max-age=31536000; includeSubdomains; preload",
+      "X-Frame-Options": "deny",
+      "X-Content-Type-Options": "nosniff",
+      "X-XSS-Protection": "0",
+      "Referrer-Policy": "origin-when-cross-origin, strict-origin-when-cross-origin",
+      "Content-Security-Policy": "default-src 'none'",
+      "Server": "github.com",
+      "X-GitHub-Media-Type": "github.v3; format=json",
+      "Accept-Ranges": "bytes",
+      "X-RateLimit-Limit": "60",
+      "X-RateLimit-Remaining": "17",
+      "X-RateLimit-Used": "43",
+      "X-RateLimit-Resource": "core",
+      "X-RateLimit-Reset": "1786968125",
+      "X-GitHub-Request-Id": "EEDA:197855:BA9DA6:B32CA9:6A82F2EF",
+      "x-github-edge-region": "fra"
+    }
+  }
+}

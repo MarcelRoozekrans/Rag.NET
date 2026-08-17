@@ -147,7 +147,6 @@ public sealed class PackageVerificationTests
         ["Rag.NET.DataProviders.Box"] = "6.1 — Box API",
         ["Rag.NET.DataProviders.Confluence"] = "6.1 — Confluence API",
         ["Rag.NET.DataProviders.Dropbox"] = "6.1 — Dropbox API",
-        ["Rag.NET.DataProviders.GitHub"] = "6.1 — GitHub API",
         ["Rag.NET.DataProviders.GitLab"] = "6.1 — GitLab API",
         ["Rag.NET.DataProviders.Gmail"] = "6.1 — Gmail API",
         ["Rag.NET.DataProviders.GoogleDrive"] = "6.1 — Google Drive API",
