@@ -39,3 +39,14 @@ hypotheticals/
 artifacts/
 *.nupkg
 *.snupkg
+
+# Claude Code runtime artefacts. Named individually rather than ignoring all of .claude/, because
+# that directory is also where shared agent and skill definitions would live if this repo ever
+# commits any, and a blanket rule would silently refuse to add them.
+#
+# scheduled_tasks.lock was tracked until 2026-08-17 (removed in #290). It holds a session id, a pid
+# and an acquisition timestamp — a local artefact of whoever last ran a scheduled task, committed by
+# accident. Found because it sorts first in the repository tree and a GitHub cassette recording
+# fetched its content as "the first file".
+.claude/scheduled_tasks.lock
+.claude/worktrees/
