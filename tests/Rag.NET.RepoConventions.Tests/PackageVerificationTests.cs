@@ -156,7 +156,6 @@ public sealed class PackageVerificationTests
         ["Rag.NET.DataProviders.Microsoft365"] = "6.1 — Microsoft Graph",
         ["Rag.NET.DataProviders.Notion"] = "6.1 — Notion API",
         ["Rag.NET.DataProviders.Slack"] = "6.1 — Slack API",
-        ["Rag.NET.DataProviders.Web"] = "6.1 — live HTTP crawl, sitemap and RSS (a local server is a 6.2 option; decide in 6.1)",
         ["Rag.NET.DataProviders.Zendesk"] = "6.1 — Zendesk API",
         ["Rag.NET.Parsers.Pdf.AzureDocumentIntelligence"] = "6.1 — Azure Document Intelligence; the live half Milestone 4 recorded as never run",
         ["Rag.NET.Parsers.Vision"] = "6.1 — a hosted vision model",
