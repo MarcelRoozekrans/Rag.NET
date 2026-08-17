@@ -1,6 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <!-- The selector nightly.yml's env-gated job greps for. The property name says "secrets" and
+         RAGNET_WHISPER_MODEL_DIR is not one — it is a model cache directory, and Whisper runs
+         locally with no credential anywhere. The property is the repository's existing name for
+         "this project needs something the job must provision", and renaming it across six projects,
+         three workflows and two guards is a larger change than this test justifies. -->
+    <RequiresSecrets>true</RequiresSecrets>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
