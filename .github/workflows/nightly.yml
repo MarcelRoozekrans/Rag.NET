@@ -205,6 +205,19 @@ jobs:
       RAGNET_DOCINTEL_ENDPOINT: ${{ secrets.RAGNET_DOCINTEL_ENDPOINT }}
       RAGNET_DOCINTEL_KEY: ${{ secrets.RAGNET_DOCINTEL_KEY }}
 
+      # Also on the LLM job, and needed in BOTH — not a duplicate to tidy away. That job selects on
+      # RequiresLlm, which is bidirectionally tied to OllamaFixture because its fixtures are
+      # containers; Rag.NET.Parsers.Vision.IntegrationTests needs a hosted vision model and starts no
+      # container, so it is selected here instead. Until this line existed there was no tier that
+      # could run a credential-needing, container-free suite at all: it would have skipped on every
+      # automated run while passing locally for whoever wrote it.
+      #
+      # No fallback by design. TestChatClientFactory.Create falls back to a 1B Ollama text model,
+      # which cannot see; the smallest usable local vision model is a multi-gigabyte pull, which the
+      # banner at the top of this file forbids putting on a gating path. Unset — in a fork, or before
+      # the secret is configured — the suite skips and the report below says so.
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
       # Not secrets, and here rather than on the steps that use them for one reason: the cache key
       # below is a `with:` expression, and job-level env is unambiguously in the `env` context there
       # while a step's own env feeding that same step's `with:` is the sort of thing that resolves to
@@ -377,7 +390,7 @@ jobs:
       # than leaving that to be inferred.
       - name: Report which env-gated variables are present
         run: |
-          for name in RAGNET_TESSDATA RAGNET_DOCINTEL_ENDPOINT RAGNET_DOCINTEL_KEY \
+          for name in RAGNET_TESSDATA RAGNET_DOCINTEL_ENDPOINT RAGNET_DOCINTEL_KEY OPENROUTER_API_KEY \
                       RAGNET_ONNX_EMBED_MODEL RAGNET_ONNX_EMBED_VOCAB \
                       RAGNET_ONNX_RERANK_MODEL RAGNET_ONNX_RERANK_VOCAB RAGNET_BEIR_CACHE \
                       RAGNET_WHISPER_MODEL_DIR RAGNET_BEIR_LONG_RUNS; do

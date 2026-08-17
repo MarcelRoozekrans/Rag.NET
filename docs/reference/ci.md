@@ -84,7 +84,7 @@ easy to misread a stale green tick as covering the latest commit.
 
 ## The secrets overlay
 
-Six projects contain tests that need credentials or large local assets:
+Seven projects contain tests that need credentials or large local assets:
 
 | Project | Reads | Where the value comes from |
 |---|---|---|
@@ -93,6 +93,7 @@ Six projects contain tests that need credentials or large local assets:
 | `Rag.NET.Chunking.IntegrationTests` | `RAGNET_ONNX_EMBED_MODEL`, `RAGNET_ONNX_EMBED_VOCAB` | **downloaded by the job** |
 | `Rag.NET.Benchmarks.Quality.IntegrationTests` | those two, plus `RAGNET_BEIR_CACHE`, `RAGNET_BEIR_LONG_RUNS` and `RAGNET_ONNX_RERANK_MODEL`/`_VOCAB` | downloaded, plus a runner temp path; the last three are deliberately **never supplied by the job** — see below |
 | `Rag.NET.Parsers.Audio.Tests` | `RAGNET_WHISPER_MODEL_DIR` | a local cache directory, **not a secret**; supplied by the fenced Whisper procedure below |
+| `Rag.NET.Parsers.Vision.IntegrationTests` | `OPENROUTER_API_KEY` | repository secret, already configured for the LLM tier and now supplied here too — see below |
 | `Rag.NET.Parsers.Pdf.Tests` | `RAGNET_TESSDATA` | repository secret in the nightly (where it reaches nothing — see below); supplied locally by the fenced OCR procedure below |
 
 Each of those tests calls `Assert.Skip` when its variable is absent, so the projects are safe
@@ -210,7 +211,29 @@ linux-x64 natives do ship in the package; `ldd` showed `libggml-base-whisper.so`
 error names neither OpenMP nor the missing file, so it reads as a broken library rather than a
 missing apt package.
 
-**This is an overlay, not a fourth tier.** All six are fast-tier projects: they run in `ci.yml` on
+**A credential-needing, container-free suite had no tier, and that is why `OPENROUTER_API_KEY` is
+now on this job as well as the LLM one.** The duplication is deliberate and should not be tidied
+away. The LLM job selects on `RequiresLlm`, which `Rag.NET.RepoConventions.Tests` ties
+**bidirectionally** to `OllamaFixture` — correctly, because that tier's fixtures are containers and
+an LLM project that does not need Docker is a contradiction. `Rag.NET.Parsers.Vision.IntegrationTests`
+needs a hosted vision model and starts no container, so it fitted neither the LLM tier nor, until
+now, anything else: it would have skipped on every automated run while passing locally for whoever
+wrote it. That is the same shape as the `RAGNET_*`-secrets-on-the-LLM-job gap this overlay was
+created to fix, arriving from the opposite direction, so it is fixed the same way — the secrets
+overlay is where a suite goes when it needs a credential and not a container.
+
+The tier guard was extended to catch it rather than left to a reviewer: a project calling
+`TestChatClientFactory.CreateVisionClient` — the factory method with **no local fallback** — must
+declare `RequiresSecrets`. Matching on the method name rather than on `OPENROUTER_API_KEY` is
+deliberate: two suites read that variable and fall back to Ollama, and they belong in the LLM tier.
+The distinguishing fact is the absence of a fallback.
+
+There is no fallback for vision on purpose. `TestChatClientFactory.Create` falls back to a 1B Ollama
+text model, which cannot see; the smallest usable local vision model is a multi-gigabyte pull, which
+the banner at the top of `nightly.yml` forbids on a gating path. Unset — in a fork, or before the
+secret is configured — the suite skips and the presence report says so.
+
+**This is an overlay, not a fourth tier.** All seven are fast-tier projects: they run in `ci.yml` on
 every push (skipping the gated tests) *and* in `nightly.yml` with the values supplied. A project is
 in one tier and may appear in more than one workflow.
 

@@ -158,7 +158,6 @@ public sealed class PackageVerificationTests
         ["Rag.NET.DataProviders.Slack"] = "6.1 — Slack API",
         ["Rag.NET.DataProviders.Zendesk"] = "6.1 — Zendesk API",
         ["Rag.NET.Parsers.Pdf.AzureDocumentIntelligence"] = "6.1 — Azure Document Intelligence; the live half Milestone 4 recorded as never run",
-        ["Rag.NET.Parsers.Vision"] = "6.1 — a hosted vision model",
         ["Rag.NET.Reranking.Cohere"] = "6.1 — Cohere Rerank API",
         ["Rag.NET.WebSearch.Tavily"] = "6.1 — Tavily API",
 

@@ -221,7 +221,8 @@ public sealed class TestProjectTierTests
             "is deterministic enough to gate.";
 
     private static string SecretMismatchMessage(TestProject project) => project.ReadsASecretEnvironmentVariable
-        ? $"{project.Name} reads a RAGNET_ environment variable but does not declare " +
+        ? $"{project.Name} needs a credential the job must supply — a RAGNET_ variable, or a " +
+            "hosted client with no local fallback — but does not declare " +
             "<RequiresSecrets>true</RequiresSecrets>. Without it nightly.yml never selects the " +
             "project, the variable is never set, and the test skips on every automated run there is."
         : $"{project.Name} declares <RequiresSecrets>true</RequiresSecrets> but {project.SecretEvidence}. " +

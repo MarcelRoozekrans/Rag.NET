@@ -118,6 +118,7 @@
     <Project Path="tests/Rag.NET.DataProviders.Box.Tests/Rag.NET.DataProviders.Box.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Confluence.Tests/Rag.NET.DataProviders.Confluence.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.IntegrationTests/Rag.NET.DataProviders.IntegrationTests.csproj" />
+    <Project Path="tests/Rag.NET.Parsers.Vision.IntegrationTests/Rag.NET.Parsers.Vision.IntegrationTests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.AzureBlob.IntegrationTests/Rag.NET.DataProviders.AzureBlob.IntegrationTests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Microsoft365.Tests/Rag.NET.DataProviders.Microsoft365.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Jira.Tests/Rag.NET.DataProviders.Jira.Tests.csproj" />

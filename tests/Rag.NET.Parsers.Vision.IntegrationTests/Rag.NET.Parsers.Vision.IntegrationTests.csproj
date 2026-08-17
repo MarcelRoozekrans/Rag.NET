@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Selects this project into nightly.yml's env-gated job, which is the only tier that can run
+         it. RequiresLlm is not an option and that is correct rather than a limitation: it is
+         bidirectionally tied to OllamaFixture because the LLM tier's fixtures are containers, and
+         this suite needs a hosted API and no container. Without this line the tests skip on every
+         automated run while passing locally for whoever wrote them. -->
+    <RequiresSecrets>true</RequiresSecrets>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Rag.NET.Parsers.Vision\Rag.NET.Parsers.Vision.csproj" />
+    <ProjectReference Include="..\Rag.NET.Testing\Rag.NET.Testing.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="System.Linq.Async" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Drawn by GDI+ (System.Drawing), a producer with no relationship to the vision model that
+         reads it back, so a pass means two unrelated implementations agree on the content. -->
+    <Content Include="Resources\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
