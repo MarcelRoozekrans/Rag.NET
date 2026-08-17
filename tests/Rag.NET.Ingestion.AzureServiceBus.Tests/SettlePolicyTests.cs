@@ -17,35 +17,35 @@ public sealed class SettlePolicyTests
     [InlineData(IngestionOutcome.PermanentFailure, SettleAction.DeadLetter)]
     [InlineData(IngestionOutcome.ShutdownAborted, SettleAction.Leave)]
     public void For_MapsOutcomeToSettlement(IngestionOutcome outcome, SettleAction expected) =>
-        Assert.Equal(expected, SettlePolicy.For(outcome));
+        Assert.Equal(expected, outcome.ToSettleAction());
 
     [Fact]
     public void For_UndefinedOutcome_Throws() =>
-        Assert.Throws<ArgumentOutOfRangeException>(() => SettlePolicy.For((IngestionOutcome)42));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ((IngestionOutcome)42).ToSettleAction());
 
     [Fact]
     public void Classify_NoParserFound_IsPermanent() =>
         Assert.Equal(IngestionOutcome.PermanentFailure,
-            SettlePolicy.Classify(new RagError.NoParserFound("application/x-nonsense")));
+            new RagError.NoParserFound("application/x-nonsense").Classify());
 
     [Fact]
     public void Classify_ValidationFailed_IsPermanent() =>
         Assert.Equal(IngestionOutcome.PermanentFailure,
-            SettlePolicy.Classify(new RagError.ValidationFailed([])));
+            new RagError.ValidationFailed([]).Classify());
 
     [Fact]
     public void Classify_NonSeekableStream_IsPermanent() =>
-        Assert.Equal(IngestionOutcome.PermanentFailure, SettlePolicy.Classify(new RagError.NonSeekableStream()));
+        Assert.Equal(IngestionOutcome.PermanentFailure, new RagError.NonSeekableStream().Classify());
 
     [Fact]
     public void Classify_StorageFailed_IsTransient() =>
         Assert.Equal(IngestionOutcome.TransientFailure,
-            SettlePolicy.Classify(new RagError.StorageFailed(new IOException("disk"))));
+            new RagError.StorageFailed(new IOException("disk")).Classify());
 
     [Fact]
     public void Classify_TransportFailed_IsTransient() =>
         Assert.Equal(IngestionOutcome.TransientFailure,
-            SettlePolicy.Classify(new RagError.TransportFailed(new HttpRequestException("dns"))));
+            new RagError.TransportFailed(new HttpRequestException("dns")).Classify());
 
     [Theory]
     [InlineData(HttpStatusCode.RequestTimeout, IngestionOutcome.TransientFailure)]
@@ -55,11 +55,23 @@ public sealed class SettlePolicyTests
     [InlineData(HttpStatusCode.BadRequest, IngestionOutcome.PermanentFailure)]
     [InlineData(HttpStatusCode.Unauthorized, IngestionOutcome.PermanentFailure)]
     public void Classify_HttpFailed_SplitsOnRetryability(HttpStatusCode status, IngestionOutcome expected) =>
-        Assert.Equal(expected, SettlePolicy.Classify(new RagError.HttpFailed(status, null)));
+        Assert.Equal(expected, new RagError.HttpFailed(status, null).Classify());
 
+    /// <remarks>
+    /// The receiver is assigned to a typed local first, deliberately. An extension method CAN be
+    /// invoked on a null reference, so the guard's behaviour is unchanged by #185's conversion —
+    /// but <c>null!.Classify()</c> does not compile: extension lookup cannot bind against an
+    /// untyped <c>null</c> literal. Same assertion, different source, and worth writing down
+    /// because "the guard still passes" would otherwise be claimed without anyone checking the
+    /// call still binds.
+    /// </remarks>
     [Fact]
-    public void Classify_NullError_Throws() =>
-        Assert.Throws<ArgumentNullException>(() => SettlePolicy.Classify(null!));
+    public void Classify_NullError_Throws()
+    {
+        RagError error = null!;
+
+        Assert.Throws<ArgumentNullException>(() => error.Classify());
+    }
 
     [Fact]
     public void DeadLetter_CarriesReasonAndDescription()
