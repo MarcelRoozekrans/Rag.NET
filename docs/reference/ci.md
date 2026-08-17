@@ -206,7 +206,7 @@ library on this platform using NativeLibrary. PInvokeError: No such file or dire
 linux-x64 natives do ship in the package; `ldd` showed `libggml-base-whisper.so` needing
 `libgomp.so.1`, the OpenMP runtime, which Debian-slim .NET images do not carry. Installing
 `libgomp1` turned 2 failures into 3 passes with no other change, so the job installs it and
-[the package README](../../src/Rag.NET.Parsers.Audio/README.md) tells consumers to as well — the
+[the package README](https://github.com/MarcelRoozekrans/Rag.NET/blob/main/src/Rag.NET.Parsers.Audio/README.md) tells consumers to as well — the
 error names neither OpenMP nor the missing file, so it reads as a broken library rather than a
 missing apt package.
 
