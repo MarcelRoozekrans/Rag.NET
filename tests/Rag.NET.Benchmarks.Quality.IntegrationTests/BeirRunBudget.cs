@@ -560,6 +560,23 @@ public static class BeirRunBudget
             "total, so those terms are real but were priced above what they cost. The lesson is " +
             "the ordinary one: a derivation that names which of its terms it distrusts is " +
             "correctable, and this one was, in both directions at once. " +
+            "**The graph-construction term was split on 2026-08-18, and the recompute was not where " +
+            "the time went.** Measured over the real corpus with the extraction and report caches " +
+            "replayed and a stub embedder, at 50/100/200/400/609 documents, twice. The 609-document " +
+            "graph reproduced exactly -- 62,392 entities, 147,021 relationships -- so it is this " +
+            "corpus and not an approximation of it. Chunking 44-51 ms. Leiden + PageRank + the score " +
+            "write-back **2.7 s**, at 0.044 ms per entity, and that coefficient held within 6% across " +
+            "both runs and all five sizes. Extraction measured 152.9 s cold and 18.7 s warm -- an 8x " +
+            "to 12x page-cache artefact from reading 35,176 cache files, NOT a property of extraction, " +
+            "and the reason no extraction figure is quoted here. Report generation 47.6-59.2 s, " +
+            "cache-replayed and likewise I/O-bound. " +
+            "**What #300 removed, projected from the measured per-entity coefficient:** detection ran " +
+            "once per document over a graph growing to 62,392 entities, so the sum over 609 documents " +
+            "is **13.6 minutes** -- both runs give 13.6 to one decimal, because the coefficient is " +
+            "stable even where the totals are not. That is against the 2.7 s one detection now costs. " +
+            "The old cost was in fact worse than that: per-document detection also regenerated " +
+            "reports, and report cache keys are the rendered prompt, so a graph that changed every " +
+            "document MISSED every time and would have called the model. " +
             "**Two of the three calls in that traversal term no longer happen.** " +
             "GetRelationshipsAsync and GetCommunitiesForEntityAsync were awaited with their " +
             "results discarded, and #239 removed them; the ~45,000 scans above are a HISTORICAL " +
