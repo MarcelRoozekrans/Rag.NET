@@ -116,7 +116,7 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         await PerformGleaningAsync(client, chunk.Text, entities, relationships, ct).ConfigureAwait(false);
 
         var graphEntities = ConvertEntities(entities, documentId, chunkId);
-        var graphRelationships = ConvertRelationships(relationships, _options, documentId, weights);
+        var graphRelationships = ConvertRelationships(relationships, _options, documentId, weights, chunkId);
 
         if (graphEntities.Count > 0)
         {
@@ -234,11 +234,15 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
     /// measurement and <see cref="GraphRagOptions.MaxRelationshipWeight"/> for why the bound is a
     /// clamp rather than a rejection.
     /// </remarks>
+    /// <param name="chunkId">
+    /// The chunk these relationships were extracted from, recorded as provenance.
+    /// </param>
     internal static List<GraphRelationship> ConvertRelationships(
         List<ExtractedRelationship> relationships,
         GraphRagOptions options,
         string documentId,
-        RelationshipWeightAudit weights)
+        RelationshipWeightAudit weights,
+        string? chunkId = null)
     {
         var result = new List<GraphRelationship>(relationships.Count);
         for (var i = 0; i < relationships.Count; i++)
@@ -251,6 +255,12 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
             result.Add(new GraphRelationship(r.Source, r.Target, r.Description, weight)
             {
                 SourceDocumentId = documentId,
+
+                // Local search orders the source chunks it shows the model by how many of the seed
+                // entity's relationships came from each one, so an edge that does not know where it
+                // came from cannot contribute to that ordering (#316). Optional on the parameter
+                // because the weight-bounding tests call this directly and care about nothing else.
+                SourceChunkIds = chunkId is null ? [] : [chunkId],
             });
         }
 
