@@ -43,7 +43,8 @@ public sealed class SqliteGraphStore : IGraphStore
                 target_display TEXT,
                 description TEXT NOT NULL,
                 weight REAL DEFAULT 1.0,
-                source_document_id TEXT
+                source_document_id TEXT,
+                source_chunk_ids TEXT
             );
 
             CREATE TABLE IF NOT EXISTS communities (
@@ -129,6 +130,7 @@ public sealed class SqliteGraphStore : IGraphStore
         EnsureColumn("entities", "display_name");
         EnsureColumn("relationships", "source_display");
         EnsureColumn("relationships", "target_display");
+        EnsureColumn("relationships", "source_chunk_ids");
         FoldExistingKeys();
     }
 
@@ -351,8 +353,8 @@ public sealed class SqliteGraphStore : IGraphStore
 
             using var cmd = _connection.CreateCommand();
             cmd.CommandText = """
-                INSERT INTO relationships (source_entity, target_entity, source_display, target_display, description, weight, source_document_id)
-                VALUES ($source, $target, $sourceDisplay, $targetDisplay, $description, $weight, $sourceDocumentId)
+                INSERT INTO relationships (source_entity, target_entity, source_display, target_display, description, weight, source_document_id, source_chunk_ids)
+                VALUES ($source, $target, $sourceDisplay, $targetDisplay, $description, $weight, $sourceDocumentId, $sourceChunkIds)
                 """;
             // Folded, because these are joined against entities.name and walked by
             // GetNeighborsAsync. An unfolded endpoint is an edge to an entity that cannot be found.
@@ -372,6 +374,9 @@ public sealed class SqliteGraphStore : IGraphStore
             cmd.Parameters.Add(new SqliteParameter("$description", rel.Description));
             cmd.Parameters.Add(new SqliteParameter("$weight", SqliteType.Real) { Value = rel.Weight });
             cmd.Parameters.Add(new SqliteParameter("$sourceDocumentId", rel.SourceDocumentId ?? (object)DBNull.Value));
+            cmd.Parameters.Add(new SqliteParameter("$sourceChunkIds", rel.SourceChunkIds.Count > 0
+                ? string.Join(",", rel.SourceChunkIds)
+                : (object)DBNull.Value));
             cmd.ExecuteNonQuery();
         }
 
@@ -433,7 +438,7 @@ public sealed class SqliteGraphStore : IGraphStore
         cmd.CommandText = """
             SELECT COALESCE(source_display, source_entity),
                    COALESCE(target_display, target_entity),
-                   description, weight, source_document_id
+                   description, weight, source_document_id, source_chunk_ids
             FROM relationships
             WHERE source_entity = $name OR target_entity = $name
             """;
@@ -442,14 +447,7 @@ public sealed class SqliteGraphStore : IGraphStore
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
-            result.Add(new GraphRelationship(
-                reader.GetString(0),
-                reader.GetString(1),
-                reader.GetString(2),
-                reader.GetDouble(3))
-            {
-                SourceDocumentId = reader.IsDBNull(4) ? null : reader.GetString(4),
-            });
+            result.Add(ReadRelationship(reader));
         }
 
         return Task.FromResult<IReadOnlyList<GraphRelationship>>(result);
@@ -546,20 +544,13 @@ public sealed class SqliteGraphStore : IGraphStore
             cmd.CommandText = """
                 SELECT COALESCE(source_display, source_entity),
                        COALESCE(target_display, target_entity),
-                       description, weight, source_document_id
+                       description, weight, source_document_id, source_chunk_ids
                 FROM relationships
                 """;
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
-                relationships.Add(new GraphRelationship(
-                    reader.GetString(0),
-                    reader.GetString(1),
-                    reader.GetString(2),
-                    reader.GetDouble(3))
-                {
-                    SourceDocumentId = reader.IsDBNull(4) ? null : reader.GetString(4),
-                });
+                relationships.Add(ReadRelationship(reader));
             }
         }
 
@@ -612,6 +603,196 @@ public sealed class SqliteGraphStore : IGraphStore
         return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// One query with an <c>IN</c> list over the folded names, rather than the interface default's
+    /// whole-graph read. The names are folded here because that is what the primary key holds; the
+    /// rows come back with their display spelling, as every other read does.
+    /// </remarks>
+    public Task<IReadOnlyList<GraphEntity>> GetEntitiesAsync(
+        IReadOnlyList<string> names, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+
+        var found = new List<GraphEntity>(names.Count);
+        if (names.Count == 0)
+        {
+            return Task.FromResult<IReadOnlyList<GraphEntity>>(found);
+        }
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT COALESCE(display_name, name), type, description, page_rank, source_document_id, source_chunk_ids " +
+            "FROM entities WHERE name IN (" + BindNames(cmd, names) + ")";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            ct.ThrowIfCancellationRequested();
+            found.Add(ReadEntity(reader));
+        }
+
+        return Task.FromResult<IReadOnlyList<GraphEntity>>(found);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// Two grouped counts summed, rather than one query per name. An entity's degree is the number
+    /// of relationships naming it at <i>either</i> end, and the two indexes added in #297 cover the
+    /// two halves separately — a single predicate over both columns cannot use both indexes.
+    /// </para>
+    /// <para>
+    /// Names absent from the relationships table are reported as 0 rather than omitted, so a caller
+    /// ranking by degree does not have to distinguish "no edges" from "not asked about".
+    /// </para>
+    /// </remarks>
+    public Task<IReadOnlyDictionary<string, int>> GetDegreesAsync(
+        IReadOnlyList<string> names, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+
+        var degrees = new Dictionary<string, int>(names.Count, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < names.Count; i++)
+        {
+            degrees[names[i]] = 0;
+        }
+
+        if (names.Count > 0)
+        {
+            AddDegrees(degrees, "source_entity", names, ct);
+            AddDegrees(degrees, "target_entity", names, ct);
+        }
+
+        return Task.FromResult<IReadOnlyDictionary<string, int>>(degrees);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// One query, so an edge between two selected entities is returned once — the default's
+    /// per-name loop finds it twice and relies on de-duplication to notice.
+    /// </remarks>
+    public Task<IReadOnlyList<GraphRelationship>> GetRelationshipsAsync(
+        IReadOnlyList<string> names, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+
+        var result = new List<GraphRelationship>();
+        if (names.Count == 0)
+        {
+            return Task.FromResult<IReadOnlyList<GraphRelationship>>(result);
+        }
+
+        using var cmd = _connection.CreateCommand();
+        var bound = BindNames(cmd, names);
+        cmd.CommandText =
+            "SELECT COALESCE(source_display, source_entity), " +
+            "COALESCE(target_display, target_entity), " +
+            "description, weight, source_document_id, source_chunk_ids " +
+            "FROM relationships " +
+            "WHERE source_entity IN (" + bound + ") OR target_entity IN (" + bound + ")";
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            ct.ThrowIfCancellationRequested();
+            result.Add(ReadRelationship(reader));
+        }
+
+        return Task.FromResult<IReadOnlyList<GraphRelationship>>(result);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// One query for the communities, then one member read each — rather than the default's query
+    /// per name followed by a member read per community per name.
+    /// </remarks>
+    public Task<IReadOnlyList<Community>> GetCommunitiesForEntitiesAsync(
+        IReadOnlyList<string> names, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+
+        var result = new List<Community>();
+        if (names.Count == 0)
+        {
+            return Task.FromResult<IReadOnlyList<Community>>(result);
+        }
+
+        var found = new List<(int Id, int Level, string? Report)>();
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText =
+                "SELECT DISTINCT c.id, c.level, c.report_summary FROM communities c " +
+                "INNER JOIN community_members cm ON cm.community_id = c.id " +
+                "WHERE cm.entity_name IN (" + BindNames(cmd, names) + ")";
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                ct.ThrowIfCancellationRequested();
+                found.Add((reader.GetInt32(0), reader.GetInt32(1), reader.IsDBNull(2) ? null : reader.GetString(2)));
+            }
+        }
+
+        for (var i = 0; i < found.Count; i++)
+        {
+            result.Add(new Community(
+                found[i].Id, found[i].Level, LoadCommunityMembers(found[i].Id), found[i].Report));
+        }
+
+        return Task.FromResult<IReadOnlyList<Community>>(result);
+    }
+
+    /// <summary>Adds degrees counted over one endpoint column into the running totals.</summary>
+    /// <param name="degrees">Totals by entity name, pre-seeded with every requested name.</param>
+    /// <param name="column">The endpoint column to group by.</param>
+    /// <param name="names">Entity names, in any casing.</param>
+    /// <param name="ct">Cancels the read.</param>
+    private void AddDegrees(
+        Dictionary<string, int> degrees, string column, IReadOnlyList<string> names, CancellationToken ct)
+    {
+        using var cmd = _connection.CreateCommand();
+
+        // `column` is one of two literals from this file, never caller input.
+        cmd.CommandText =
+            "SELECT " + column + ", COUNT(*) FROM relationships WHERE " + column + " IN (" +
+            BindNames(cmd, names) + ") GROUP BY " + column;
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // Keyed on the folded name the row holds; the dictionary compares case-insensitively,
+            // so a caller asking about "Ångström" finds the count stored under the folded key.
+            var name = reader.GetString(0);
+            degrees[name] = (degrees.TryGetValue(name, out var running) ? running : 0) + reader.GetInt32(1);
+        }
+    }
+
+    /// <summary>Binds folded entity names as numbered parameters and returns the IN list.</summary>
+    /// <remarks>
+    /// Parameterised rather than interpolated: entity names come from a language model by way of
+    /// extraction, so they are the least trustworthy strings in the system. Names are folded to
+    /// match the primary key, and duplicates are left in — SQLite ignores them and de-duplicating
+    /// here would cost more than it saves.
+    /// </remarks>
+    /// <param name="cmd">Command to bind on.</param>
+    /// <param name="names">Entity names, in any casing.</param>
+    /// <returns>A comma-separated parameter list for an <c>IN</c> clause.</returns>
+    private static string BindNames(SqliteCommand cmd, IReadOnlyList<string> names)
+    {
+        var placeholders = new string[names.Count];
+        for (var i = 0; i < names.Count; i++)
+        {
+            var parameter = "$n" + i.ToString(CultureInfo.InvariantCulture);
+            placeholders[i] = parameter;
+            cmd.Parameters.Add(new SqliteParameter(parameter, Fold(names[i])));
+        }
+
+        return string.Join(",", placeholders);
+    }
+
     private GraphEntity? LoadEntity(string name)
     {
         using var cmd = _connection.CreateCommand();
@@ -635,6 +816,25 @@ public sealed class SqliteGraphStore : IGraphStore
             SourceChunkIds = sourceChunkIds,
         };
     }
+
+    /// <summary>Materialises one relationship from the shared six-column projection.</summary>
+    /// <remarks>
+    /// Shared so the two call sites cannot drift in what they select or what they read back — the
+    /// kind of drift that adds a column to one query and leaves the other silently returning
+    /// relationships with no provenance, which local search would read as relationships that came
+    /// from nowhere.
+    /// </remarks>
+    /// <param name="reader">Positioned on a row of
+    /// <c>source_display, target_display, description, weight, source_document_id, source_chunk_ids</c>.</param>
+    /// <returns>The relationship.</returns>
+    private static GraphRelationship ReadRelationship(SqliteDataReader reader) =>
+        new(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetDouble(3))
+        {
+            SourceDocumentId = reader.IsDBNull(4) ? null : reader.GetString(4),
+            SourceChunkIds = reader.IsDBNull(5) || string.IsNullOrEmpty(reader.GetString(5))
+                ? []
+                : reader.GetString(5).Split(',', StringSplitOptions.RemoveEmptyEntries),
+        };
 
     private List<string> LoadCommunityMembers(int communityId)
     {
