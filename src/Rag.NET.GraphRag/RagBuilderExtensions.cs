@@ -108,6 +108,9 @@ public static class RagBuilderExtensions
                 retrievalOptions.GlobalChatClient ?? sp.GetRequiredService<IChatClient>(),
                 retrievalOptions));
 
+        builder.Services.AddSingleton<GraphChunkFilterBehavior>(sp =>
+            new GraphChunkFilterBehavior(retrievalOptions));
+
         PlaceGraphRagBehaviors(builder.Services);
 
         return builder;
@@ -127,8 +130,22 @@ public static class RagBuilderExtensions
             .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior));
 
         // Local search only; GraphGlobalSearchBehavior is opt-in — see this method's caller.
+        //
+        // The filter is placed BEFORE local search, and the order is the whole point (#247). Running
+        // earlier means it WRAPS the graph behaviours: they still receive every entity, relationship
+        // and report chunk and can traverse, blend and summarise with them, while only what reaches
+        // the caller is filtered. Placed inside, it would starve the behaviours it exists to make
+        // usable.
+        //
+        // Local search is added FIRST so the filter's `before:` anchor exists to resolve against.
+        // Added the other way round, the anchor is not yet in the pipeline, `before:` silently
+        // degrades to an append, and the filter lands at the END of the chain — inside local search
+        // rather than outside it. That is precisely the misplacement
+        // UseGraphRag_PlacesTheChunkFilterOutsideTheGraphSearchBehaviours exists to catch, and it
+        // caught it here.
         services.RagRetrievalPipeline(nameof(UseGraphRag))
-            .Add<GraphLocalSearchBehavior>(before: typeof(RerankingBehavior));
+            .Add<GraphLocalSearchBehavior>(before: typeof(RerankingBehavior))
+            .Add<GraphChunkFilterBehavior>(before: typeof(GraphLocalSearchBehavior));
     }
 
     /// <summary>

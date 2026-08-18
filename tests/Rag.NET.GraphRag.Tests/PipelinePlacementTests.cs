@@ -40,6 +40,38 @@ public sealed class PipelinePlacementTests
             types.IndexOf(typeof(CommunityDetectionBehavior)));
     }
 
+    /// <remarks>
+    /// <para>
+    /// <b>The ordering #247's fix depends on, and it cannot be checked from the behaviour itself.</b>
+    /// The filter must run OUTSIDE the graph search behaviours: earlier in the chain means it wraps
+    /// them, so they still receive every entity, relationship and report chunk to traverse, blend and
+    /// summarise with, and only what reaches the caller is filtered.
+    /// </para>
+    /// <para>
+    /// Placed the other way round it would starve the behaviours it exists to make usable — local
+    /// search would find no entity chunks to seed from, and would silently degrade to a no-op rather
+    /// than fail. That is why this is asserted on the built chain rather than left to the
+    /// registration reading correctly.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void UseGraphRag_PlacesTheChunkFilterOutsideTheGraphSearchBehaviours()
+    {
+        var services = new ServiceCollection();
+        services.AddRagNet(rag => rag.UseGraphRag());
+
+        var types = RetrievalChain(services);
+        var filter = types.IndexOf(typeof(GraphChunkFilterBehavior));
+        var localSearch = types.IndexOf(typeof(GraphLocalSearchBehavior));
+
+        Assert.True(filter >= 0, "GraphChunkFilterBehavior is not in the retrieval chain at all.");
+        Assert.True(
+            filter < localSearch,
+            $"The filter is at {filter} and local search at {localSearch}. The filter must come " +
+            "first so it wraps local search; inside it, local search would see no entity chunks to " +
+            "seed its traversal from and would degrade to a no-op without failing.");
+    }
+
     [Fact]
     public void UseGraphRag_WithNoPipelineDelegates_PlacesLocalSearchBeforeReranking()
     {

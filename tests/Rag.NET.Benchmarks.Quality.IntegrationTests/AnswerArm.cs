@@ -33,6 +33,12 @@ internal static class AnswerArm
     /// </summary>
     /// <remarks>
     /// <para>
+    /// <b>This arm is now what the library does by default.</b> #247's filter shipped as
+    /// <c>GraphRagRetrievalOptions.FilterGraphChunksFromResults</c>, defaulting to on, so this arm
+    /// stopped being a hypothetical and became the shipped path — measured here against the
+    /// <see cref="Control"/> that shows what it costs to turn off.
+    /// </para>
+    /// <para>
     /// <b>What it isolates.</b> <see cref="Control"/> and this arm see the identical top-500 from
     /// the identical store; the only difference is that this one removes the entity, relationship
     /// and community-report chunks before choosing six. So <c>filtered − control</c> is the cost of

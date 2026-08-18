@@ -148,6 +148,47 @@ These are validated at registration too. `LocalSearchDepth` or `LocalTopEntities
 
 > **Which search runs is a registration decision, not a setting.** Add `GraphLocalSearchBehavior`, `GraphGlobalSearchBehavior`, or both to the retrieval pipeline; each runs on the chunks it recognises. There is deliberately no `Mode` property — one existed until 0.1.0, was never read by any behavior, and is described in issue #104.
 
+### The graph's own chunks are hidden from results by default
+
+GraphRAG embeds entities, relationships and community reports into **the same vector store** as your
+article chunks. On MultiHop-RAG that is 303,503 synthetic units beside 17,648 article chunks, and
+dense retrieval treats them as peers of the text — so a top-6 window fills with entity descriptions
+instead of article content.
+
+Measured, with depth and chunking held constant:
+
+| | nDCG@10 | answer accuracy |
+|---|---|---|
+| article-only store | 0.63967 | 0.350 |
+| graph store, unfiltered | 0.59658 | **0.138** |
+| graph store, filtered | — | **0.350** |
+
+Filtering recovers all of it. On 46 of 50 queries the filtered context was *byte-identical* to the
+article-only context: the synthetic chunks were displacing article chunks without changing which
+ones would otherwise win.
+
+So `FilterGraphChunksFromResults` defaults to `true`:
+
+```csharp
+rag.UseGraphRag(retrieval: options =>
+{
+    options.FilterGraphChunksFromResults = true;  // default
+    options.GraphChunkOverFetchFactor    = 20;    // fetch TopK x this, then filter, then cut
+});
+```
+
+**The graph behaviours are unaffected.** The filter runs *outside* them, so local search still
+traverses from entity chunks and global search still maps over reports — only what reaches you is
+filtered. Global search's synthesised answer is never filtered.
+
+**Turn it off if you want the graph's own units in the model's context.** That is what local search
+was described as being for; when it was measured, it cost 0.21 answer accuracy. The option exists so
+the choice is yours, not because the evidence is balanced.
+
+`GraphChunkOverFetchFactor` is a heuristic — 20 suits a store where synthetic units outnumber article
+chunks about 17:1. A denser graph can still under-fill your `TopK`, and the behaviour tags
+`graphrag.filter.underfilled` on its activity when that happens rather than leaving you to infer it.
+
 ### Keeping communities current
 
 Community detection is a **whole-graph** operation: it loads the entire graph, runs Leiden and

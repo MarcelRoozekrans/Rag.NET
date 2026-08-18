@@ -125,4 +125,57 @@ public sealed class GraphRagRetrievalOptions
 
     /// <summary>Optional model for global map-reduce. Null = use DI-registered IChatClient.</summary>
     public IChatClient? GlobalChatClient { get; set; }
+
+    /// <summary>
+    /// Whether retrieval hides the synthetic chunks GraphRAG indexes — entities, relationships and
+    /// community reports — from what it returns. Default: <see langword="true"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>On by default because the cost of the alternative is measured, not estimated (#247).</b>
+    /// The extraction and detection behaviours embed their output into the same vector store as the
+    /// article chunks — 303,503 synthetic units beside 17,648 article chunks on MultiHop-RAG — and
+    /// dense retrieval treats them as peers of the text. That cost <b>−0.043 nDCG@10</b> with depth
+    /// and chunking held constant, and <b>−0.21 answer accuracy</b> at a six-chunk window, because
+    /// the window fills with entity and report text instead of article text.
+    /// </para>
+    /// <para>
+    /// Filtering recovered <i>all</i> of it: the measured arm reproduced the article-only baseline to
+    /// four decimals on both scoring rules, and on 46 of 50 queries the filtered context was
+    /// byte-identical to the article-only context. The synthetic chunks were displacing article
+    /// chunks without changing which ones would otherwise win.
+    /// </para>
+    /// <para>
+    /// <b>Set it to <see langword="false"/> if you want the graph's own units in the model's
+    /// context</b> — entity and relationship text beside article text is what local search was
+    /// described as being for. That description was never measured; when it was, it cost 0.21. The
+    /// option exists so the choice is yours and reversible, not because the evidence is balanced.
+    /// </para>
+    /// <para>
+    /// Filtering is applied <i>after</i> the graph behaviours run, so traversal, blending and global
+    /// summarisation still see everything. <c>global_answer</c> is never filtered.
+    /// </para>
+    /// </remarks>
+    public bool FilterGraphChunksFromResults { get; set; } = true;
+
+    /// <summary>
+    /// How many times <c>TopK</c> to fetch before filtering, so the caller still gets <c>TopK</c>
+    /// results after synthetic chunks are removed. Default: <c>20</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same over-fetch shape <c>MmrBehavior</c> uses. The default comes from the measured
+    /// composition of a graph store rather than from taste: on MultiHop-RAG synthetic units
+    /// outnumber article chunks about <b>17:1</b>, so a factor near 20 leaves the caller's
+    /// <c>TopK</c> filled in the common case.
+    /// </para>
+    /// <para>
+    /// <b>It is a heuristic, and a corpus with a denser graph can still under-fill.</b> That is why
+    /// the behaviour tags <c>graphrag.filter.underfilled</c> on its activity when it returns fewer
+    /// results than were asked for and the fetch came back full — so the case is visible in a trace
+    /// rather than inferred later from a short answer. Raise this if you see it.
+    /// </para>
+    /// </remarks>
+    [InclusiveBetween(1, 1000)]
+    public int GraphChunkOverFetchFactor { get; set; } = 20;
 }
