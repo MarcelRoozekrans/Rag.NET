@@ -8,6 +8,7 @@ using Rag.NET.DependencyInjection;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Resilience;
+using Rag.NET.Storage;
 using Xunit;
 
 namespace Rag.NET.Tests.DependencyInjection;
@@ -648,6 +649,63 @@ public class ConfigureResilienceTests
 
         Assert.IsType<ResilientSparseVectorStore>(store);
         Assert.Equal(ScoreScale.Similarity, EffectiveScale(store));
+    }
+
+    /// <summary>
+    /// Decoration must not manufacture a chunk-lookup capability the inner store does not have.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="ResilientVectorStore"/> implements <see cref="IChunkLookup"/> unconditionally, so
+    /// that it can forward one — the alternative being a decorator variant per capability
+    /// combination. That makes an <c>is IChunkLookup</c> test answer <see langword="true"/> for
+    /// every decorated store, which is why the interface carries
+    /// <see cref="IChunkLookup.SupportsChunkLookup"/> and why this asserts on that rather than on
+    /// the type.
+    /// </para>
+    /// <para>
+    /// Getting this wrong is quiet: GraphRAG's local search would read the empty result as a graph
+    /// whose entities have no source chunks, spend none of the half of its token budget reserved
+    /// for them, and report nothing unusual.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Decoration_DoesNotClaimAChunkLookupTheInnerStoreLacks()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var withoutLookup = ResilientVectorStore.Create(
+            new CountingVectorStore(0, Transient), ResiliencePipeline.Empty);
+
+        Assert.IsAssignableFrom<IChunkLookup>(withoutLookup);
+        Assert.False(((IChunkLookup)withoutLookup).SupportsChunkLookup);
+        Assert.Empty(await ((IChunkLookup)withoutLookup).GetChunksAsync([new ChunkKey("d", 0)], ct));
+    }
+
+    /// <summary>And a capability the inner store does have survives decoration.</summary>
+    [Fact]
+    public async Task Decoration_PreservesAChunkLookupTheInnerStoreHas()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var inner = new InMemoryVectorStore();
+        await inner.StoreAsync(
+        [
+            new EmbeddedChunk
+            {
+                Chunk = new TextChunk
+                {
+                    Text = "kept",
+                    DocumentId = new DocumentId("doc"),
+                    ChunkIndex = 0,
+                },
+                Embedding = new float[] { 1f, 0f },
+            },
+        ], ct);
+
+        var decorated = (IChunkLookup)ResilientVectorStore.Create(inner, ResiliencePipeline.Empty);
+
+        Assert.True(decorated.SupportsChunkLookup);
+        var found = await decorated.GetChunksAsync([new ChunkKey("doc", 0)], ct);
+        Assert.Equal("kept", Assert.Single(found).Text, StringComparer.Ordinal);
     }
 
     [Fact]

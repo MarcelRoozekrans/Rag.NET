@@ -103,7 +103,8 @@ public sealed partial class GraphEntityExtractionBehavior : IIngestionBehavior
         RelationshipWeightAudit weights,
         CancellationToken ct)
     {
-        var chunkId = $"{chunk.DocumentId}_{chunk.ChunkIndex}";
+        // Formatted through GraphChunkId so the format and local search's parser cannot drift.
+        var chunkId = GraphChunkId.Format(chunk);
 
         var prompt = BuildExtractionPrompt(chunk.Text);
         var extraction = await ExtractAsync(client, prompt, ct).ConfigureAwait(false);

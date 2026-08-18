@@ -18,12 +18,19 @@ namespace Rag.NET.Storage;
 /// <remarks>
 /// Each merged result's <see cref="TextChunk.Metadata"/> gains a <c>source.store</c>
 /// entry naming the store it came from (<see cref="FederatedStoreOptions.StoreNames"/>
-/// or the store index). Federation is dense-only: <c>IHybridSearchable</c> and other
-/// capability interfaces of the underlying stores are not federated. The one capability it
+/// or the store index). <b>Search</b> federation is dense-only: <c>IHybridSearchable</c> and the
+/// other search capabilities of the underlying stores are not federated, because merging two
+/// backends' fusion scores means merging two incomparable scales. The one search capability it
 /// declares for itself is <see cref="IScoreScaleAware"/>: merged scores are RRF, so they are
 /// <see cref="ScoreScale.OpaqueRanking"/>.
+/// <para>
+/// <see cref="IChunkLookup"/> is federated, and is the exception that shows what the rule is
+/// about. It returns chunks by identity, so there is nothing to merge and no scale to reconcile —
+/// the union of what the stores hold under those keys is simply the answer. A store that does not
+/// support it contributes nothing rather than failing the lookup.
+/// </para>
 /// </remarks>
-public sealed class FederatedVectorStore : IVectorStore, IScoreScaleAware
+public sealed class FederatedVectorStore : IVectorStore, IScoreScaleAware, IChunkLookup
 {
     private const string SourceStoreMetadataKey = "source.store";
 
@@ -84,6 +91,60 @@ public sealed class FederatedVectorStore : IVectorStore, IScoreScaleAware
     /// <summary>Deletes from the primary store only — secondary stores are not touched.</summary>
     public Task DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default) =>
         _stores[_options.PrimaryIndex].DeleteByDocumentIdAsync(documentId, cancellationToken);
+
+    /// <summary>Whether any federated store can serve chunk lookups.</summary>
+    /// <remarks>
+    /// Any, not all: a federation whose second store cannot do keyed reads still answers from its
+    /// first, and the alternative — reporting no capability because one member lacks it — would
+    /// lose chunks that are demonstrably reachable.
+    /// </remarks>
+    public bool SupportsChunkLookup
+    {
+        get
+        {
+            for (var i = 0; i < _stores.Count; i++)
+            {
+                if (_stores[i] is IChunkLookup { SupportsChunkLookup: true })
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// First store to hold a key wins, in registration order, so a chunk present in two stores is
+    /// returned once. Unlike <see cref="SearchAsync"/> this does not throw when every store fails,
+    /// because a key that is nowhere and a store that cannot answer are the same outcome to the
+    /// caller: no chunk. Local search treats a missing chunk as a deleted document, not an error.
+    /// </remarks>
+    public async Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+
+        var found = new Dictionary<ChunkKey, TextChunk>(keys.Count);
+
+        for (var i = 0; i < _stores.Count; i++)
+        {
+            if (_stores[i] is not IChunkLookup { SupportsChunkLookup: true } lookup)
+            {
+                continue;
+            }
+
+            var chunks = await lookup.GetChunksAsync(keys, cancellationToken).ConfigureAwait(false);
+            for (var j = 0; j < chunks.Count; j++)
+            {
+                var chunk = chunks[j];
+                _ = found.TryAdd(new ChunkKey(chunk.DocumentId.Value, chunk.ChunkIndex), chunk);
+            }
+        }
+
+        return found.Values.ToList();
+    }
 
     public async Task<IReadOnlyList<SearchResult>> SearchAsync(
         ReadOnlyMemory<float> queryEmbedding,

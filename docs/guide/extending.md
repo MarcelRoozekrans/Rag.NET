@@ -184,6 +184,40 @@ public interface IHybridSearchable
 
 The pipeline prefers `HybridSearchAsync` over the in-memory BM25 fallback when both interfaces are implemented **and** the call configures nothing native fusion cannot express: no sparse (SPLADE) arm would run, no `EnsembleOptions` is supplied, and `MinScore` is `0.0`. Otherwise client-side RRF fusion runs so the configured weights and threshold semantics apply — see [Retrieval — How the hybrid path is selected](retrieval.md#how-the-hybrid-path-is-selected).
 
+### Optional: `IChunkLookup`
+
+Implement if your backend can return chunks by identity rather than by similarity:
+
+```csharp
+public interface IChunkLookup
+{
+    bool SupportsChunkLookup => true;
+
+    Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys,
+        CancellationToken cancellationToken = default);
+}
+```
+
+GraphRAG's local search needs this. It puts the source chunks that produced its selected entities
+in front of the model, chosen by graph provenance and never by score — there is no query vector
+that returns exactly those chunks, and a metadata filter cannot express "any of these twenty
+`(document, index)` pairs" on most backends. A store without this capability leaves local search's
+Sources section empty, which is half of its token budget.
+
+Keys with no stored chunk are absent from the result rather than an error: a document deleted since
+extraction leaves the graph naming chunks that no longer exist, and that is not a reason to fail a
+query. The result order is unspecified — callers that need an order re-associate by `ChunkKey`.
+
+`SupportsChunkLookup` exists because decorators implement the interface unconditionally in order to
+forward it, so an `is IChunkLookup` test alone would report the capability for every decorated
+store. Leave the default `true` in your own store; `ResilientVectorStore` overrides it to report
+what its inner store can do, and `FederatedVectorStore` reports whether *any* member can.
+
+**Currently implemented by:** `InMemoryVectorStore`, and forwarded by `ResilientVectorStore` and
+`FederatedVectorStore`. The remote backends (Qdrant, Pinecone, Weaviate, Redis, Chroma, PgVector,
+Azure AI Search) do not implement it yet — see #318.
+
 ### Optional: `ICollectionManageable`
 
 Implement if your store supports programmatic index lifecycle:
