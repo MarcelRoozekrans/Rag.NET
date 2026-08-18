@@ -15,7 +15,7 @@ namespace Rag.NET.Storage;
 /// vectors instead of duplicating them.
 /// Intended for tests, samples, and small corpora — nothing is persisted.
 /// </summary>
-public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisposable
+public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IChunkLookup, IDisposable
 {
     private readonly ReaderWriterLockSlim _lock = new();
 
@@ -131,6 +131,38 @@ public sealed class InMemoryVectorStore : IVectorStore, ISparseSearchable, IDisp
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// A dictionary lookup per key against the same <c>(DocumentId, ChunkIndex)</c> map dense
+    /// search reads, under the read lock — so a concurrent store cannot be observed half-applied.
+    /// </remarks>
+    public Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var found = new List<TextChunk>(keys.Count);
+
+        _lock.EnterReadLock();
+        try
+        {
+            for (var i = 0; i < keys.Count; i++)
+            {
+                if (_dense.TryGetValue((keys[i].DocumentId, keys[i].ChunkIndex), out var entry))
+                {
+                    found.Add(entry.Embedded.Chunk);
+                }
+            }
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+
+        return Task.FromResult<IReadOnlyList<TextChunk>>(found);
     }
 
     /// <inheritdoc />

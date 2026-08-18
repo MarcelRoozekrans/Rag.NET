@@ -30,7 +30,7 @@ namespace Rag.NET.Resilience;
 /// management and native hybrid search are not retried.
 /// </para>
 /// </remarks>
-public class ResilientVectorStore : IVectorStore, IScoreScaleAware, IVectorStoreDecorator
+public class ResilientVectorStore : IVectorStore, IScoreScaleAware, IChunkLookup, IVectorStoreDecorator
 {
     /// <summary>Creates a decorator over <paramref name="inner"/>.</summary>
     /// <param name="inner">The store to decorate.</param>
@@ -84,6 +84,33 @@ public class ResilientVectorStore : IVectorStore, IScoreScaleAware, IVectorStore
     /// </remarks>
     public ScoreScale ScoreScale =>
         Inner is IScoreScaleAware aware ? aware.ScoreScale : ScoreScale.Similarity;
+
+    /// <summary>
+    /// Whether the decorated store can serve chunk lookups.
+    /// </summary>
+    /// <remarks>
+    /// Implemented unconditionally, and delegated, for the same reason
+    /// <see cref="ScoreScale"/> is rather than being split into a variant: a decorator has to
+    /// implement the interface in order to forward it, and adding a variant per capability would
+    /// need one class per combination — a sparse-and-lookup store, a lookup-only store, and so on.
+    /// The probe keeps the claim honest instead. A caller that tested <c>is IChunkLookup</c> alone
+    /// against this type would get <see langword="true"/> for every inner store, and GraphRAG's
+    /// Sources section would come back empty with nothing saying why.
+    /// </remarks>
+    public bool SupportsChunkLookup => Inner is IChunkLookup { SupportsChunkLookup: true };
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Not retried, and not pipelined: this is a keyed read whose failure mode is a store that
+    /// cannot do it at all, which no retry fixes. An unsupported inner store returns nothing, which
+    /// <see cref="SupportsChunkLookup"/> is there to let callers detect <i>before</i> reading an
+    /// empty result as an empty graph.
+    /// </remarks>
+    public Task<IReadOnlyList<TextChunk>> GetChunksAsync(
+        IReadOnlyList<ChunkKey> keys, CancellationToken cancellationToken = default) =>
+        Inner is IChunkLookup { SupportsChunkLookup: true } lookup
+            ? lookup.GetChunksAsync(keys, cancellationToken)
+            : Task.FromResult<IReadOnlyList<TextChunk>>([]);
 
     /// <summary>
     /// Creates the decorator variant that preserves <paramref name="inner"/>'s capability
