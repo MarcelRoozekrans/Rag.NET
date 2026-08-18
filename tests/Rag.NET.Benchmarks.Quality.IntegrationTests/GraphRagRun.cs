@@ -86,6 +86,25 @@ internal sealed class GraphRagRun : IAsyncDisposable
     private readonly PromptEchoChatClient _globalChat = new();
     private readonly SqliteGraphStore _graphStore = new(":memory:");
     private readonly InMemoryVectorStore _vectorStore = new();
+
+    /// <summary>
+    /// Points the graph behaviours at <see cref="_vectorStore"/> — the run's ONE store.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// #247 separated the graph's chunks from the document chunks in the shipped library. This
+    /// harness deliberately does not follow, and the reason is that its job is the opposite one:
+    /// the <c>control</c> arm exists to measure what a SHARED store costs, and it cannot measure
+    /// that from a split one. Pointing the chunk store at the same instance keeps every arm
+    /// constructible and every pinned figure reproducible.
+    /// </para>
+    /// <para>
+    /// The behaviours are unaffected by which store they are handed: local search asks for entity
+    /// chunks and global search for community reports, and both get the same answers from this store
+    /// that they got by sifting results before. What changed is where they ask, not what they find.
+    /// </para>
+    /// </remarks>
+    private GraphChunkStore ChunkStore => field ??= new GraphChunkStore(_vectorStore);
     private readonly GraphRagOptions _options = GraphRagSliceIngestion.CreateOptions();
     /// <summary>
     /// Local-search options for the measured arms, pinning <c>PageRankWeight = 0.3</c> explicitly.
@@ -286,7 +305,7 @@ internal sealed class GraphRagRun : IAsyncDisposable
     public async Task<GraphLocalSearchOutcome> LocalSearchWithCandidatesAsync(
         string query, GraphRagRetrievalOptions retrievalOptions, CancellationToken cancellationToken)
     {
-        var behavior = new GraphLocalSearchBehavior(_graphStore, retrievalOptions);
+        var behavior = new GraphLocalSearchBehavior(_graphStore, retrievalOptions, ChunkStore, _embedder);
         IReadOnlyList<SearchResult> candidates = [];
 
         var results = await behavior.HandleAsync(
@@ -415,7 +434,7 @@ internal sealed class GraphRagRun : IAsyncDisposable
     public async Task<IReadOnlyList<SearchResult>> GlobalSearchAsync(
         string query, IChatClient chatClient, CancellationToken cancellationToken)
     {
-        var behavior = new GraphGlobalSearchBehavior(chatClient, _retrievalOptions);
+        var behavior = new GraphGlobalSearchBehavior(chatClient, _retrievalOptions, ChunkStore, _embedder);
 
         return await behavior.HandleAsync(CreateContext(query), cancellationToken, RetrieveAsync);
     }

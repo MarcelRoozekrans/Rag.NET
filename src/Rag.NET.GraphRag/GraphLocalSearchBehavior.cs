@@ -1,3 +1,4 @@
+using Microsoft.Extensions.AI;
 using Rag.NET.Graph;
 using Rag.NET.Models;
 using Rag.NET.Retrieval;
@@ -12,7 +13,9 @@ namespace Rag.NET.GraphRag;
 /// </summary>
 public sealed class GraphLocalSearchBehavior(
     IGraphStore graphStore,
-    GraphRagRetrievalOptions options) : IRetrievalBehavior
+    GraphRagRetrievalOptions options,
+    GraphChunkStore chunkStore,
+    IEmbeddingGenerator<string, Embedding<float>> embedder) : IRetrievalBehavior
 {
     public async ValueTask<IReadOnlyList<SearchResult>> HandleAsync(
         RetrievalContext ctx, CancellationToken ct,
@@ -20,7 +23,14 @@ public sealed class GraphLocalSearchBehavior(
     {
         var results = await next(ctx, ct).ConfigureAwait(false);
 
-        var entityResults = CollectTopEntities(results);
+        // Seeds from the store that holds entity chunks, not from the caller's results (#247).
+        //
+        // It used to sift entity chunks out of what retrieval returned, which only worked because
+        // those chunks were mixed into the document store — the very thing that cost -0.21 answer
+        // accuracy. With the stores separated there are none to sift, so the seeds are fetched.
+        var entityResults = await GraphChunkSearch.SearchAsync(
+            chunkStore, embedder, ctx, "entity", options.LocalTopEntities, ct).ConfigureAwait(false);
+
         if (entityResults.Count == 0)
             return results;
 
@@ -64,7 +74,7 @@ public sealed class GraphLocalSearchBehavior(
     }
 
     private async Task<Dictionary<string, double>> TraverseGraph(
-        List<SearchResult> entityResults, CancellationToken ct)
+        IReadOnlyList<SearchResult> entityResults, CancellationToken ct)
     {
         var pageRankByName = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 

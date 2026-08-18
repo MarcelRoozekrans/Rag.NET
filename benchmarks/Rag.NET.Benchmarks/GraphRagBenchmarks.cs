@@ -5,6 +5,7 @@ using NSubstitute;
 using Rag.NET.Graph;
 using Rag.NET.Graph.Algorithms;
 using Rag.NET.GraphRag;
+using Rag.NET.Storage;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
@@ -48,7 +49,9 @@ public class GraphRagBenchmarks
         _globalSearchResults = BuildCommunitySearchResults(Math.Max(NodeCount / 10, 3));
         _globalSearchBehavior = new GraphGlobalSearchBehavior(
             new FakeChatClient(),
-            new GraphRagRetrievalOptions());
+            new GraphRagRetrievalOptions(),
+            BuildChunkStore(),
+            new FakeEmbeddingGenerator(EmbeddingDimensions));
         // Behaviors that use the NSubstitute IGraphStore mock are rebuilt each
         // iteration to prevent call-record accumulation from inflating timings.
         RebuildMockDependentBehaviors();
@@ -56,6 +59,16 @@ public class GraphRagBenchmarks
 
     [IterationSetup]
     public void IterationSetup() => RebuildMockDependentBehaviors();
+
+    /// <summary>An empty graph chunk store — the searches this benchmark times do not read it.</summary>
+    /// <remarks>
+    /// Since #247 the graph behaviours take the store their own chunks live in. These benchmarks
+    /// hand them pre-built result lists rather than exercising retrieval, so the store is a
+    /// dependency to satisfy and not a thing under measurement. Empty and in-memory keeps it out of
+    /// the timings, which is what a benchmark of the blend and the map-reduce wants.
+    /// </remarks>
+    /// <returns>A store with nothing in it.</returns>
+    private static GraphChunkStore BuildChunkStore() => new(new InMemoryVectorStore());
 
     private void RebuildMockDependentBehaviors()
     {
@@ -67,7 +80,9 @@ public class GraphRagBenchmarks
             new GraphRagOptions { Enabled = true, GleaningPasses = 0 });
         _localSearchBehavior = new GraphLocalSearchBehavior(
             graphStore,
-            new GraphRagRetrievalOptions { LocalTopEntities = 5, LocalSearchDepth = 1, PageRankWeight = 0.3 });
+            new GraphRagRetrievalOptions { LocalTopEntities = 5, LocalSearchDepth = 1, PageRankWeight = 0.3 },
+            BuildChunkStore(),
+            new FakeEmbeddingGenerator(EmbeddingDimensions));
     }
 
     // ════════════════════════════════════════════════════════════════════

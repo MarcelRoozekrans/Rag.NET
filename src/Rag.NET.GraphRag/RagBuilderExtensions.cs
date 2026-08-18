@@ -53,7 +53,8 @@ public static class RagBuilderExtensions
         this TBuilder builder,
         Action<GraphRagOptions>? configure = null,
         Action<GraphRagRetrievalOptions>? retrieval = null,
-        Action<GraphStoreBuilder>? graph = null)
+        Action<GraphStoreBuilder>? graph = null,
+        Action<GraphChunkStoreBuilder>? chunks = null)
         where TBuilder : IRagBuilder
     {
         var options = new GraphRagOptions();
@@ -65,6 +66,12 @@ public static class RagBuilderExtensions
         retrieval?.Invoke(retrievalOptions);
         ThrowIfInvalid(new GraphRagRetrievalOptionsValidator().Validate(retrievalOptions), nameof(retrieval), "GraphRAG retrieval");
         builder.Services.AddSingleton(retrievalOptions);
+
+        // Where the graph's own chunks live (#247). Separate from the document store by design:
+        // mixing them cost -0.043 nDCG@10 and -0.21 answer accuracy, measured.
+        var chunkStoreBuilder = new GraphChunkStoreBuilder(builder.Services);
+        chunks?.Invoke(chunkStoreBuilder);
+        chunkStoreBuilder.UseInMemoryIfUnset();
 
         // Graph store — default to in-memory SQLite if not configured
         var graphStoreBuilder = new GraphStoreBuilder(builder.Services);
@@ -98,19 +105,40 @@ public static class RagBuilderExtensions
                 sp.GetRequiredService<IVectorStore>()));
 
         // Retrieval behaviors
-        builder.Services.AddSingleton<GraphLocalSearchBehavior>(sp =>
-            new GraphLocalSearchBehavior(
-                sp.GetRequiredService<IGraphStore>(),
-                retrievalOptions));
-
-        builder.Services.AddSingleton<GraphGlobalSearchBehavior>(sp =>
-            new GraphGlobalSearchBehavior(
-                retrievalOptions.GlobalChatClient ?? sp.GetRequiredService<IChatClient>(),
-                retrievalOptions));
+        RegisterRetrievalBehaviors(builder.Services, retrievalOptions);
 
         PlaceGraphRagBehaviors(builder.Services);
 
         return builder;
+    }
+
+    /// <summary>Registers the retrieval-side behaviours and the ingest-side chunk router.</summary>
+    /// <remarks>
+    /// All three need <see cref="GraphChunkStore"/> since #247 moved the graph's chunks out of the
+    /// document store: the two searches read their own kinds from it, and the router is what puts
+    /// them there.
+    /// </remarks>
+    /// <param name="services">The collection to register into.</param>
+    /// <param name="retrievalOptions">The validated retrieval options.</param>
+    private static void RegisterRetrievalBehaviors(
+        IServiceCollection services, GraphRagRetrievalOptions retrievalOptions)
+    {
+        services.AddSingleton<GraphLocalSearchBehavior>(sp =>
+            new GraphLocalSearchBehavior(
+                sp.GetRequiredService<IGraphStore>(),
+                retrievalOptions,
+                sp.GetRequiredService<GraphChunkStore>(),
+                sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>()));
+
+        services.AddSingleton<GraphGlobalSearchBehavior>(sp =>
+            new GraphGlobalSearchBehavior(
+                retrievalOptions.GlobalChatClient ?? sp.GetRequiredService<IChatClient>(),
+                retrievalOptions,
+                sp.GetRequiredService<GraphChunkStore>(),
+                sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>()));
+
+        services.AddSingleton<GraphChunkRoutingBehavior>(sp =>
+            new GraphChunkRoutingBehavior(sp.GetRequiredService<GraphChunkStore>()));
     }
 
     /// <summary>
@@ -122,9 +150,16 @@ public static class RagBuilderExtensions
     private static void PlaceGraphRagBehaviors(IServiceCollection services)
     {
         // Extraction needs the chunk embeddings, and detection needs the graph extraction wrote.
+        //
+        // The router goes after BOTH, and the order of these calls matters: `after:` can only
+        // resolve an anchor already in the pipeline, and silently degrades to an append when it
+        // cannot — which is how the retrieval-side filter in the first attempt at #247 ended up at
+        // the wrong end of its chain. Placed after detection, it sees every graph chunk both
+        // behaviours produced and takes them out before StorageBehavior writes the rest.
         services.RagIngestionPipeline(nameof(UseGraphRag))
             .Add<GraphEntityExtractionBehavior>(after: typeof(EmbeddingBehavior))
-            .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior));
+            .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior))
+            .Add<GraphChunkRoutingBehavior>(after: typeof(CommunityDetectionBehavior));
 
         // Local search only; GraphGlobalSearchBehavior is opt-in — see this method's caller.
         services.RagRetrievalPipeline(nameof(UseGraphRag))

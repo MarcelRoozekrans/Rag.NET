@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using NSubstitute;
+using Rag.NET.Storage;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Retrieval;
@@ -10,6 +11,46 @@ namespace Rag.NET.GraphRag.Tests;
 public class GraphGlobalSearchBehaviorTests
 {
     private readonly IChatClient _chatClient = Substitute.For<IChatClient>();
+
+    /// <summary>
+    /// The store global search now reads community reports from (#247).
+    /// </summary>
+    /// <remarks>
+    /// It used to re-enter the caller's pipeline with a <c>graph_type</c> filter when the candidate
+    /// set held no reports. With the graph's chunks moved to their own store that second pass could
+    /// only ever come back empty, so global search asks this store directly — cheaper, and it cannot
+    /// silently return nothing the way the old path would have.
+    /// </remarks>
+    private readonly GraphChunkStore _chunkStore = new(new InMemoryVectorStore());
+
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder =
+        Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+
+    public GraphGlobalSearchBehaviorTests() =>
+        _embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<GeneratedEmbeddings<Embedding<float>>>(
+                new([new Embedding<float>(new float[] { 0.1f, 0.2f, 0.3f })])));
+
+    /// <summary>Puts a community report in the graph chunk store, where the behaviour looks.</summary>
+    private async Task SeedReportAsync(string text) =>
+        await _chunkStore.Store.StoreAsync(
+        [
+            new EmbeddedChunk
+            {
+                Chunk = new TextChunk
+                {
+                    Text = text,
+                    DocumentId = new DocumentId("graphrag://communities"),
+                    ChunkIndex = -1,
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                    {
+                        ["graph_type"] = "community_report",
+                    },
+                },
+                Embedding = new float[] { 0.1f, 0.2f, 0.3f },
+            },
+        ]);
 
     private static RetrievalContext CreateContext() => new()
     {
@@ -37,7 +78,7 @@ public class GraphGlobalSearchBehaviorTests
     public async Task HandleAsync_CollectsCommunityReportsAndMapReduces()
     {
         var options = new GraphRagRetrievalOptions { GlobalBatchSize = 5 };
-        var sut = new GraphGlobalSearchBehavior(_chatClient, options);
+        var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
         var results = CreateCommunityResults(3);
 
@@ -60,7 +101,7 @@ public class GraphGlobalSearchBehaviorTests
     public async Task HandleAsync_RespectsGlobalBatchSize()
     {
         var options = new GraphRagRetrievalOptions { GlobalBatchSize = 2 };
-        var sut = new GraphGlobalSearchBehavior(_chatClient, options);
+        var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
         var results = CreateCommunityResults(4);
 
@@ -83,7 +124,7 @@ public class GraphGlobalSearchBehaviorTests
     public async Task HandleAsync_NoCommunityReports_ReturnsStandardResults()
     {
         var options = new GraphRagRetrievalOptions();
-        var sut = new GraphGlobalSearchBehavior(_chatClient, options);
+        var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
 
         var results = (IReadOnlyList<SearchResult>)new List<SearchResult>
@@ -119,7 +160,7 @@ public class GraphGlobalSearchBehaviorTests
             GlobalBatchSize = 5,
             GlobalChatClient = globalClient,
         };
-        var sut = new GraphGlobalSearchBehavior(_chatClient, options);
+        var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
         var results = CreateCommunityResults(2);
 
@@ -147,7 +188,7 @@ public class GraphGlobalSearchBehaviorTests
     public async Task HandleAsync_ReducesToSingleResult()
     {
         var options = new GraphRagRetrievalOptions { GlobalBatchSize = 5 };
-        var sut = new GraphGlobalSearchBehavior(_chatClient, options);
+        var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
 
         // Mix community reports with a regular result
@@ -186,7 +227,7 @@ public class GraphGlobalSearchBehaviorTests
     public async Task HandleAsync_SingleCommunityReport_StillProcesses()
     {
         var options = new GraphRagRetrievalOptions { GlobalBatchSize = 5 };
-        var sut = new GraphGlobalSearchBehavior(_chatClient, options);
+        var sut = new GraphGlobalSearchBehavior(_chatClient, options, _chunkStore, _embedder);
         var ctx = CreateContext();
         var results = CreateCommunityResults(1);
 
@@ -221,56 +262,66 @@ public class GraphGlobalSearchBehaviorTests
     /// store does, with no reports at all, and only yields them to a filtered one.
     /// </remarks>
     [Fact]
-    public async Task HandleAsync_CandidateSetHasNoReports_RefetchesThemWithAMetadataFilter()
+    public async Task HandleAsync_CandidateSetHasNoReports_FetchesThemFromTheGraphChunkStore()
     {
-        var sut = new GraphGlobalSearchBehavior(_chatClient, new GraphRagRetrievalOptions());
-        SetupChatClient("global answer");
-
-        var calls = new List<RetrievalContext>();
-        var actual = await sut.HandleAsync(CreateContext(), CancellationToken.None, (c, _) =>
-        {
-            calls.Add(c);
-            return ValueTask.FromResult(IsFilteredToReports(c) ? CreateCommunityResults(3) : PlainResults());
-        });
-
-        Assert.Equal(2, calls.Count);
-        Assert.Equal("global answer", actual[0].Chunk.Text);
-        await _chatClient.Received(2).GetResponseAsync(
-            Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
-    }
-
-    /// <summary>A candidate set that already holds reports costs no second retrieval.</summary>
-    /// <remarks>
-    /// The refetch runs the whole downstream pipeline again, so it must stay conditional. A
-    /// behavior that always fetched twice would make every global search pay for a shortfall that
-    /// only some candidate sets have.
-    /// </remarks>
-    [Fact]
-    public async Task HandleAsync_CandidateSetAlreadyHasReports_DoesNotRefetch()
-    {
-        var sut = new GraphGlobalSearchBehavior(_chatClient, new GraphRagRetrievalOptions());
+        await SeedReportAsync("a community report");
+        var sut = new GraphGlobalSearchBehavior(
+            _chatClient, new GraphRagRetrievalOptions(), _chunkStore, _embedder);
         SetupChatClient("global answer");
 
         var calls = 0;
-        await sut.HandleAsync(CreateContext(), CancellationToken.None, (c, _) =>
+        var actual = await sut.HandleAsync(CreateContext(), CancellationToken.None, (c, _) =>
+        {
+            calls++;
+            return ValueTask.FromResult(PlainResults());
+        });
+
+        // ONE pass through the caller's pipeline, not two. Since #247 the reports come from the
+        // graph's own store, so the second trip through every downstream behaviour is gone — and
+        // with it the failure mode where that trip returned nothing because the document store no
+        // longer holds a report to filter for.
+        Assert.Equal(1, calls);
+        Assert.Equal("global answer", actual[0].Chunk.Text);
+    }
+
+    /// <summary>A candidate set that already holds reports is used as-is.</summary>
+    /// <remarks>
+    /// Reports can still arrive in the candidate set — a caller may retrieve from the graph chunk
+    /// store deliberately — and when they do there is nothing to fetch.
+    /// </remarks>
+    [Fact]
+    public async Task HandleAsync_CandidateSetAlreadyHasReports_UsesThemWithoutFetching()
+    {
+        var sut = new GraphGlobalSearchBehavior(
+            _chatClient, new GraphRagRetrievalOptions(), _chunkStore, _embedder);
+        SetupChatClient("global answer");
+
+        // Nothing seeded into the chunk store: if the behaviour went there anyway it would find no
+        // reports and produce no answer, which is what this asserts against.
+        var calls = 0;
+        var actual = await sut.HandleAsync(CreateContext(), CancellationToken.None, (c, _) =>
         {
             calls++;
             return ValueTask.FromResult(CreateCommunityResults(2));
         });
 
         Assert.Equal(1, calls);
+        Assert.Equal("global answer", actual[0].Chunk.Text);
     }
 
-    /// <summary>The refetch honours the caller's own filter instead of replacing it.</summary>
+    /// <summary>The fetch honours the caller's own filter instead of replacing it.</summary>
     /// <remarks>
     /// A caller scoping retrieval to one tenant, source or language must not have global search
-    /// quietly widen it back to the whole corpus. Only the graph-type key is imposed, because a
-    /// global search declining to look at community reports would have nothing to reduce.
+    /// quietly widen it back to the whole corpus. The store it now reads is a different store, and
+    /// that changes nothing about this: only the graph-type key is added to whatever filter the
+    /// caller set.
     /// </remarks>
     [Fact]
-    public async Task HandleAsync_Refetch_KeepsTheCallersOwnMetadataFilter()
+    public async Task HandleAsync_TheReportFetchKeepsTheCallersOwnMetadataFilter()
     {
-        var sut = new GraphGlobalSearchBehavior(_chatClient, new GraphRagRetrievalOptions());
+        await SeedReportAsync("acme report");
+        var sut = new GraphGlobalSearchBehavior(
+            _chatClient, new GraphRagRetrievalOptions(), _chunkStore, _embedder);
         SetupChatClient("global answer");
 
         var ctx = new RetrievalContext
@@ -285,47 +336,16 @@ public class GraphGlobalSearchBehaviorTests
             },
         };
 
-        RetrievalContext? refetch = null;
-        await sut.HandleAsync(ctx, CancellationToken.None, (c, _) =>
-        {
-            if (IsFilteredToReports(c))
-            {
-                refetch = c;
-                return ValueTask.FromResult(CreateCommunityResults(2));
-            }
+        var actual = await sut.HandleAsync(ctx, CancellationToken.None,
+            (c, _) => ValueTask.FromResult(PlainResults()));
 
-            return ValueTask.FromResult(PlainResults());
-        });
-
-        Assert.NotNull(refetch);
-        Assert.Equal<MetadataValue>("acme", refetch.Options.MetadataFilter!["tenant"]);
+        // The seeded report carries no tenant tag, so the caller's filter excludes it and there is
+        // nothing to reduce — which is the assertion: had the filter been dropped, the report would
+        // have been found and an answer produced.
+        Assert.DoesNotContain(actual, r =>
+            string.Equals(r.Chunk.Text, "global answer", StringComparison.Ordinal));
     }
 
-    /// <summary>The refetch asks for as many reports as the caller configured.</summary>
-    [Fact]
-    public async Task HandleAsync_Refetch_UsesConfiguredReportCandidateCount()
-    {
-        var options = new GraphRagRetrievalOptions { GlobalReportCandidates = 17 };
-        var sut = new GraphGlobalSearchBehavior(_chatClient, options);
-        SetupChatClient("global answer");
-
-        RetrievalContext? refetch = null;
-        await sut.HandleAsync(CreateContext(), CancellationToken.None, (c, _) =>
-        {
-            if (IsFilteredToReports(c))
-            {
-                refetch = c;
-                return ValueTask.FromResult(CreateCommunityResults(2));
-            }
-
-            return ValueTask.FromResult(PlainResults());
-        });
-
-        Assert.NotNull(refetch);
-        Assert.Equal(17, refetch.Options.TopK);
-    }
-
-    /// <summary>Reports whether a context asks the store for community reports only.</summary>
     private static bool IsFilteredToReports(RetrievalContext ctx) =>
         ctx.Options.MetadataFilter is { } filter
         && filter.TryGetValue("graph_type", out var kind)
