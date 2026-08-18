@@ -59,6 +59,39 @@ public sealed class LocalSearchContextOptions
     public int TopKEntities { get; set; } = 10;
 
     /// <summary>
+    /// Multiplier on the entity search before selection. Default: 2.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Upstream oversamples and does not truncate back.</b> <c>map_query_to_entities</c> asks the
+    /// entity index for <c>k × oversample_scaler</c> hits so that excluded entities can be filtered
+    /// out without shrinking the selection — and then returns everything that survived. With no
+    /// exclusions configured, which is the default, that means the default run selects <b>20</b>
+    /// entities for a <see cref="TopKEntities"/> of 10.
+    /// </para>
+    /// <para>
+    /// Reproduced rather than corrected, because the selection size is not cosmetic: it is the
+    /// entity table's length, the multiplier on the out-of-network relationship cap, and the number
+    /// of blocks the source-chunk ordering is divided into. "Fixing" it silently would make this a
+    /// different retrieval system that resembled the specification. Set it to 1 to get exactly
+    /// <see cref="TopKEntities"/> entities, which is what most readers expect the parameter to
+    /// mean.
+    /// </para>
+    /// </remarks>
+    [GreaterThan(0)]
+    public int EntityOversampleScaler { get; set; } = 2;
+
+    /// <summary>
+    /// The length and format asked of the answer. Default: <c>multiple paragraphs</c>.
+    /// </summary>
+    /// <remarks>
+    /// Interpolated into the prompt verbatim, as upstream's <c>response_type</c> is — so
+    /// "a single sentence", "a bulleted list", or "a report of at least 1000 words" all work, and
+    /// so does anything else the model will read as an instruction.
+    /// </remarks>
+    public string ResponseType { get; set; } = "multiple paragraphs";
+
+    /// <summary>
     /// Multiplier on the out-of-network relationship cap. Default: 10.
     /// </summary>
     /// <remarks>

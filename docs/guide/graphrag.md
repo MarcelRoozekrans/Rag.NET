@@ -259,28 +259,73 @@ Two consequences if you read the SQLite file directly rather than through `IGrap
 
 Best for: "What companies did John Smith work for?" or "How is React related to Next.js?"
 
-The behavior:
-1. Takes the top-K entity chunks the vector store already matched (configurable via `LocalTopEntities`)
-2. Traverses the graph to find neighbors within `LocalSearchDepth` hops, collecting their PageRank scores
-3. Blends entity scores: `(1 - PageRankWeight) * similarity + PageRankWeight * pageRank`
+**Local search is not part of the retrieval pipeline.** It is its own entry point:
 
-**Step 3 does nothing by default, and that is the fix rather than an oversight** (issue #239).
-PageRank is normalised to sum to one over all entities, so on a 62,000-entity graph its values are
-around 1e-5, against similarities of 0.3–0.6. At the **old** default of `0.3` the blend *lowered*
-every graph-connected entity chunk's score by roughly 30% relative to chunks the walk did not
-reach — it demoted precisely the chunks it had traversed to. On MultiHop-RAG that was the entire
-measured difference between local search and plain dense retrieval of the same candidates: at
-`PageRankWeight = 0` the two rankings were **identical on 2,255 of 2,255 queries**, so the whole
-−0.02761 nDCG@10 was this one default.
+```csharp
+var search = provider.GetRequiredService<IGraphRagSearch>();
 
-`PageRankWeight` now defaults to **0**, and at 0 the behaviour **skips the graph walk entirely** —
-there is no point collecting scores nothing will read. Setting a non-zero weight is an opt-in, and
-worth doing only once the two scales are reconciled; that is still open on #239. Deduplication is
-unaffected either way, because it does not depend on the blend. Note also what the behavior does **not** do: it adds no candidates — the
-traversal only collects PageRank scores — so it can reorder what retrieval found and cannot raise
-recall above it. (At the default weight it does not even reorder; it deduplicates.) What it is for, then, is the *shape* of the context it hands the model (entity,
-relationship and report chunks beside article chunks), which is what the answer-level evaluation in
-Phase 5.2.2 measures.
+var answer = await search.LocalSearchAsync("How is Ångström related to Kelvin?");
+Console.WriteLine(answer.Answer);
+
+// Or just the context, without paying for a completion:
+var context = await search.BuildLocalContextAsync("How is Ångström related to Kelvin?");
+Console.WriteLine(context.Text);
+```
+
+Configure it through `UseGraphRag`'s `localSearch:` delegate:
+
+```csharp
+rag.UseGraphRag(localSearch: o =>
+{
+    o.MaxContextTokens = 12_000;   // the whole budget
+    o.CommunityProportion = 0.15;  // reports
+    o.TextUnitProportion = 0.5;    // source chunks; the rest goes to entities and relationships
+    o.TopKEntities = 10;
+    o.ResponseType = "multiple paragraphs";
+});
+```
+
+#### What it does
+
+It builds a **context window**, in this order, each section under its own slice of the token
+budget:
+
+| Section | Budget | Contents |
+|---|---|---|
+| `Reports` | 15% | Community reports, ordered by how many selected entities each community holds |
+| `Entities` | 35%, shared | The selected entities, in similarity order |
+| `Relationships` | with entities | In-network first, uncapped; then out-of-network by `(links, rank)` |
+| `Sources` | 50% | The article chunks the selected entities were extracted from |
+
+Entities are selected by searching entity-description embeddings, oversampling by
+`EntityOversampleScaler` — and, faithfully to Microsoft, **not truncating back**, so the default
+selects up to 20 entities for a `TopKEntities` of 10. Set the scaler to 1 for exactly `TopKEntities`.
+
+It ranks no documents and re-scores nothing. Everything the model sees, it sees because the graph
+put it there.
+
+#### Why it is not a retrieval behaviour
+
+It used to be, and that is how the library lost it. An `IRetrievalBehavior` takes a ranked
+candidate list and returns a ranked candidate list, which leaves nowhere to put entities,
+relationships or reports — so the old implementation blended PageRank into the scores instead. On
+MultiHop-RAG that blend was the **entire** measured difference between local search and plain dense
+retrieval of the same candidates: at `PageRankWeight = 0` the two rankings were **identical on
+2,255 of 2,255 queries**, so the whole −0.02761 nDCG@10 was that one default.
+
+The trade is explicit: **local search no longer composes with hybrid search or reranking.** You
+pick this or you pick the pipeline. The composition that existed before was not real — the blend
+re-scored candidates the graph had no say in choosing.
+
+See `docs/plans/2026-08-18-graphrag-local-search-microsoft-spec.md` for the reading of Microsoft's
+implementation this follows, and for the deviations it cannot avoid.
+
+#### Requirements
+
+The Sources section needs a vector store implementing `IChunkLookup` — the source chunks are chosen
+by graph provenance, not by score, so there is no query that returns them. `InMemoryVectorStore`
+implements it; the remote backends do not yet (#318). Without it, local search logs a warning and
+Sources comes back empty, spending half the budget on nothing.
 
 ### Global Search
 

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Graph;
+using Rag.NET.GraphRag.LocalSearch;
 using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Retrieval.Behaviors;
 
@@ -54,7 +55,8 @@ public static class RagBuilderExtensions
         Action<GraphRagOptions>? configure = null,
         Action<GraphRagRetrievalOptions>? retrieval = null,
         Action<GraphStoreBuilder>? graph = null,
-        Action<GraphChunkStoreBuilder>? chunks = null)
+        Action<GraphChunkStoreBuilder>? chunks = null,
+        Action<LocalSearchContextOptions>? localSearch = null)
         where TBuilder : IRagBuilder
     {
         var options = new GraphRagOptions();
@@ -104,12 +106,54 @@ public static class RagBuilderExtensions
                 sp.GetRequiredService<CommunityDetectionBehavior>(),
                 sp.GetRequiredService<IVectorStore>()));
 
+        RegisterLocalSearch(builder.Services, options, localSearch);
+
         // Retrieval behaviors
         RegisterRetrievalBehaviors(builder.Services, retrievalOptions);
 
         PlaceGraphRagBehaviors(builder.Services);
 
         return builder;
+    }
+
+    /// <summary>Registers GraphRAG's own query surface — local search, outside the pipeline.</summary>
+    /// <remarks>
+    /// <para>
+    /// Not a retrieval behaviour, and that is the decision the whole reimplementation rests on
+    /// (#316). Microsoft's local search builds a context window out of entities, relationships,
+    /// community reports and source chunks, and answers from it; every attempt to express that as a
+    /// step that takes a ranked list and returns a ranked list has lost the context window.
+    /// </para>
+    /// <para>
+    /// The builder is constructed here and thrown away so that invalid proportions throw at the
+    /// configuring line rather than at the first query — the same registration-time shape the two
+    /// options validators above use. The validation itself lives in the builder's constructor,
+    /// where the arithmetic that breaks is.
+    /// </para>
+    /// </remarks>
+    /// <param name="services">The collection to register into.</param>
+    /// <param name="options">GraphRAG options, for the chat client override.</param>
+    /// <param name="localSearch">The caller's configuring delegate, if any.</param>
+    /// <exception cref="ArgumentException">The configured proportions cannot produce a context.</exception>
+    private static void RegisterLocalSearch(
+        IServiceCollection services,
+        GraphRagOptions options,
+        Action<LocalSearchContextOptions>? localSearch)
+    {
+        var localSearchOptions = new LocalSearchContextOptions();
+        localSearch?.Invoke(localSearchOptions);
+        _ = new LocalSearchContextBuilder(localSearchOptions);
+        services.AddSingleton(localSearchOptions);
+
+        services.AddSingleton<IGraphRagSearch>(sp =>
+            new GraphRagSearch(
+                sp.GetRequiredService<IGraphStore>(),
+                sp.GetRequiredService<GraphChunkStore>(),
+                sp.GetRequiredService<IVectorStore>(),
+                sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
+                options.SummarizationChatClient ?? sp.GetRequiredService<IChatClient>(),
+                localSearchOptions,
+                sp.GetService<ILogger<GraphRagSearch>>()));
     }
 
     /// <summary>Registers the retrieval-side behaviours and the ingest-side chunk router.</summary>
