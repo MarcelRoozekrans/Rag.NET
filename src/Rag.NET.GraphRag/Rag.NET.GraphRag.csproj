@@ -38,6 +38,12 @@
     <!-- The runtime library flows transitively through Rag.NET, but the generator is
          PrivateAssets="all" there and analyzers do not flow — [Validate] on this package's
          options types emits nothing without a direct generator reference. -->
+    <!-- Local search's context budget is stated in tokens by the specification it implements, so
+         it is counted in tokens. Cl100kBase is the data file for the encoding ContextBudgetBehavior
+         and ConversationMemoryPipeline already count with — two budgets over two halves of one
+         prompt disagreeing about what a token is would make the combined total meaningless. -->
+    <PackageReference Include="Microsoft.ML.Tokenizers" />
+    <PackageReference Include="Microsoft.ML.Tokenizers.Data.Cl100kBase" />
     <PackageReference Include="ZeroAlloc.Validation" />
     <PackageReference Include="ZeroAlloc.Validation.Generator" PrivateAssets="all" ExcludeAssets="runtime" />
   </ItemGroup>
