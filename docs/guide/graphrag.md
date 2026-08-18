@@ -148,6 +148,45 @@ These are validated at registration too. `LocalSearchDepth` or `LocalTopEntities
 
 > **Which search runs is a registration decision, not a setting.** Add `GraphLocalSearchBehavior`, `GraphGlobalSearchBehavior`, or both to the retrieval pipeline; each runs on the chunks it recognises. There is deliberately no `Mode` property — one existed until 0.1.0, was never read by any behavior, and is described in issue #104.
 
+### The graph's chunks live in their own store
+
+GraphRAG creates entity, relationship and community-report chunks. **They are stored separately from
+your documents**, and that separation is the single most valuable change measured in this project.
+
+They used to share one store — 303,503 synthetic units beside 17,648 article chunks on MultiHop-RAG
+— and dense retrieval treated them as peers of the text, so a six-chunk window filled with entity
+descriptions instead of article content. With depth and chunking held constant:
+
+| | nDCG@10 | answer accuracy |
+|---|---|---|
+| documents only | 0.63967 | 0.350 |
+| shared store | 0.59658 | **0.138** |
+
+On 46 of 50 queries, removing the synthetic chunks reconstructed the documents-only context
+*byte-identically*: they were displacing article chunks without changing which ones would otherwise
+win.
+
+By default the graph's chunks go to a separate **in-memory** store. Point it somewhere real for
+anything beyond a trial:
+
+```csharp
+rag.UseGraphRag(
+    graph:  g => g.UseSqlite("graphrag.db"),        // the graph structure
+    chunks: c => c.Use(myGraphChunkVectorStore));   // the graph's chunks
+```
+
+> **The default is in-memory even when your document store is not.** Graph chunks are then discarded
+> at process exit while a configured graph store persists, so the two halves disagree after a restart
+> until the next ingest. Configure `chunks:` unless you mean that.
+
+**Nothing is lost from retrieval.** Local search seeds from the graph chunk store and global search
+reads community reports from it — each asks the store that holds what it needs, which is cheaper than
+the old arrangement: global search no longer makes a second pass through your whole retrieval
+pipeline to find reports.
+
+**Upgrading an existing index:** re-ingest. Nothing removes synthetic chunks already written into a
+document store; the routing applies to what is ingested from now on.
+
 ### Keeping communities current
 
 Community detection is a **whole-graph** operation: it loads the entire graph, runs Leiden and

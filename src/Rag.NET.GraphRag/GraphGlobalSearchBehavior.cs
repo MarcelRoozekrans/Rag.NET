@@ -11,7 +11,9 @@ namespace Rag.NET.GraphRag;
 /// </summary>
 public sealed class GraphGlobalSearchBehavior(
     IChatClient chatClient,
-    GraphRagRetrievalOptions options) : IRetrievalBehavior
+    GraphRagRetrievalOptions options,
+    GraphChunkStore chunkStore,
+    IEmbeddingGenerator<string, Embedding<float>> embedder) : IRetrievalBehavior
 {
     private const int DefaultBatchSize = 5;
 
@@ -80,25 +82,24 @@ public sealed class GraphGlobalSearchBehavior(
         Func<RetrievalContext, CancellationToken, ValueTask<IReadOnlyList<SearchResult>>> next,
         CancellationToken ct)
     {
-        var filter = ctx.Options.MetadataFilter is not null
-            ? new Dictionary<string, MetadataValue>(ctx.Options.MetadataFilter, StringComparer.Ordinal)
-            : new Dictionary<string, MetadataValue>(StringComparer.Ordinal);
+        // Asks the store that holds community reports, rather than re-entering the caller's pipeline
+        // with a filter (#247). Since the graph's chunks moved to their own store, that second pass
+        // could only ever come back empty — global search would have stopped working, silently,
+        // exactly as it did before GlobalReportCandidates existed.
+        //
+        // It is also strictly cheaper: no second trip through the downstream behaviours, and no
+        // reliance on the document store applying a MetadataFilter it no longer has anything to
+        // apply it to.
+        var reports = await GraphChunkSearch.SearchAsync(
+            chunkStore,
+            embedder,
+            ctx,
+            CommunityReportKind,
+            options.GlobalReportCandidates ?? DefaultReportCandidates,
+            ct).ConfigureAwait(false);
 
-        filter[GraphTypeKey] = CommunityReportKind;
-
-        var reportContext = ctx with
-        {
-            Options = ctx.Options with
-            {
-                MetadataFilter = filter,
-                TopK = options.GlobalReportCandidates ?? DefaultReportCandidates,
-            },
-        };
-
-        var results = await next(reportContext, ct).ConfigureAwait(false);
-        var (reports, _) = PartitionResults(results);
-
-        return reports;
+        _ = next;
+        return [.. reports];
     }
 
     private static (List<SearchResult> Communities, List<SearchResult> Others) PartitionResults(

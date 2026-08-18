@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.AI;
+using Rag.NET.Storage;
 using NSubstitute;
 using Rag.NET.Graph;
 using Rag.NET.Ingestion;
@@ -81,7 +82,13 @@ public sealed class GraphRagTelemetryTests : IAsyncDisposable
         graphStore.GetRelationshipsAsync("Alice", Arg.Any<CancellationToken>()).Returns([]);
         graphStore.GetCommunitiesForEntityAsync("Alice", Arg.Any<CancellationToken>()).Returns([]);
 
-        var sut = new GraphLocalSearchBehavior(graphStore, new GraphRagRetrievalOptions { LocalTopEntities = 10, LocalSearchDepth = 1 });
+        var (chunkStore, embedder) = await SeedAliceAsync();
+
+        var sut = new GraphLocalSearchBehavior(
+            graphStore,
+            new GraphRagRetrievalOptions { LocalTopEntities = 10, LocalSearchDepth = 1, PageRankWeight = 0.3 },
+            chunkStore,
+            embedder);
         var ctx = new RetrievalContext { Query = "who is Alice?", Options = new RetrievalOptions() };
         var entityResult = new SearchResult
         {
@@ -123,5 +130,42 @@ public sealed class GraphRagTelemetryTests : IAsyncDisposable
             ChunkIndex = 0,
         });
         return ctx;
+    }
+
+    /// <summary>Seeds the graph chunk store with Alice, and an embedder that finds her.</summary>
+    /// <remarks>
+    /// Since #247 local search seeds from the graph's own store rather than from entity chunks that
+    /// happened to be in the caller's results, so a telemetry test of the traversal has to put one
+    /// there.
+    /// </remarks>
+    private static async Task<(GraphChunkStore Store, IEmbeddingGenerator<string, Embedding<float>> Embedder)> SeedAliceAsync()
+    {
+        var chunkStore = new GraphChunkStore(new InMemoryVectorStore());
+        await chunkStore.Store.StoreAsync(
+        [
+            new EmbeddedChunk
+            {
+                Chunk = new TextChunk
+                {
+                    Text = "Alice",
+                    DocumentId = new DocumentId("doc1"),
+                    ChunkIndex = -1,
+                    Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
+                    {
+                        ["graph_type"] = "entity",
+                        ["graph_entity_name"] = "Alice",
+                    },
+                },
+                Embedding = new float[] { 0.1f, 0.2f, 0.3f },
+            },
+        ], TestContext.Current.CancellationToken);
+
+        var embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+        embedder.GenerateAsync(
+                Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<GeneratedEmbeddings<Embedding<float>>>(
+                new([new Embedding<float>(new float[] { 0.1f, 0.2f, 0.3f })])));
+
+        return (chunkStore, embedder);
     }
 }

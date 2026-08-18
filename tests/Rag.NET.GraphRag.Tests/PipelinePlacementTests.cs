@@ -40,6 +40,37 @@ public sealed class PipelinePlacementTests
             types.IndexOf(typeof(CommunityDetectionBehavior)));
     }
 
+    /// <remarks>
+    /// <para>
+    /// The router has to sit after BOTH graph behaviours and before storage (#247). After entity
+    /// extraction alone it would miss the community reports detection adds; before extraction it
+    /// would find nothing at all. Either mistake separates some of the graph's chunks and leaves the
+    /// rest in the document store — a partial separation, which reads as a working one until a
+    /// measurement says otherwise.
+    /// </para>
+    /// <para>
+    /// Asserted on the built chain because <c>after:</c> silently degrades to an append when its
+    /// anchor is not yet in the pipeline, so the registration reading correctly proves nothing.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void UseGraphRag_PlacesTheChunkRouterAfterBothGraphBehaviours()
+    {
+        var services = new ServiceCollection();
+        services.AddRagNet(rag => rag.UseGraphRag());
+
+        var types = IngestionChain(services);
+        var router = types.IndexOf(typeof(GraphChunkRoutingBehavior));
+        var extraction = types.IndexOf(typeof(GraphEntityExtractionBehavior));
+        var detection = types.IndexOf(typeof(CommunityDetectionBehavior));
+
+        Assert.True(router >= 0, "GraphChunkRoutingBehavior is not in the ingestion chain at all.");
+        Assert.True(
+            router > extraction && router > detection,
+            $"The router is at {router}, extraction at {extraction}, detection at {detection}. " +
+            "It must run after both or it separates only some of the graph's chunks.");
+    }
+
     [Fact]
     public void UseGraphRag_WithNoPipelineDelegates_PlacesLocalSearchBeforeReranking()
     {
