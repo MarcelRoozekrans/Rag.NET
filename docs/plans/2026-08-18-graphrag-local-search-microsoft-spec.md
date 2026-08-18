@@ -69,8 +69,19 @@ Entities first, rendered as a table and **always included** — the entity table
 but the loop below cannot evict it. Then, *entity by entity in selection order*, relationships and
 covariates are added for the entities accumulated so far, and the moment
 `entity_tokens + relationship_tokens + covariate_tokens > max_context_tokens` the loop **reverts to
-the previous state and breaks**. Relationships are ranked by `relationship_ranking_attribute`
-(default `"rank"`, the combined degree of the two endpoints), capped at `top_k_relationships`.
+the previous state and breaks**. The relationship table is rebuilt from scratch on each iteration
+from the growing prefix, which is quadratic and is what the code does.
+
+Relationship selection (`_filter_relationships`) is the part a paraphrase would flatten to "top 10":
+
+1. **In-network** — both endpoints among the selected entities. Sorted by
+   `relationship_ranking_attribute` (default `"rank"`, which the indexer sets to `combined_degree`,
+   the sum of the two endpoints' degrees). **Never truncated.**
+2. **Out-of-network** — exactly one endpoint selected. Each non-selected endpoint gets a `links`
+   count: how many distinct out-network partners it has. Sorted by `(links, rank)` descending, so
+   an outside entity shared by several selected entities outranks one reached from a single seed.
+3. The cap applies **only to the out-network list**, and it is
+   `top_k_relationships × len(selected_entities)` — 200 for the defaults, not 10.
 
 ### 5. Text-unit context — `_build_text_unit_context`
 
@@ -78,6 +89,25 @@ The source chunks that produced the selected entities, via `entity.text_unit_ids
 and sorted by `(entity_order, -num_relationships)` — that is: **the first selected entity's chunks
 come first**, and within one entity, chunks covered by more of that entity's relationships come
 first. Truncated to `text_unit_tokens`, `shuffle_data=False`.
+
+`count_relationships` is the secondary key: how many of *that entity's* relationships list this
+chunk among their own source chunks. It needs relationship→chunk provenance, which
+`GraphRelationship` does not carry today — see 6.x.4.
+
+### 5a. Rendered form
+
+Every section is a `|`-delimited table under a `-----Name-----` banner:
+
+```
+-----Entities-----
+id|entity|description
+0|ÅNGSTRÖM|Swedish physicist...
+```
+
+Headers by section: entities `id|entity|description` (plus the rank column only when
+`include_entity_rank`, default off); relationships `id|source|target|description`; sources
+`id|text`. The header row's tokens count against the section budget, and a row that would exceed
+the budget **breaks** the loop rather than being skipped — so one overlong row ends the section.
 
 ### 6. Assembly order
 
@@ -119,7 +149,7 @@ list.
 | Select entities by description-embedding similarity, `k×2` oversample | Selects by similarity, no oversample, truncates at `k` | partial |
 | Community reports as a budgeted context section | Reports reach the model only if they win a dense-retrieval slot | **missing** |
 | Entity table always in context | Entities compete for rank against article chunks | **missing** |
-| Relationships, ranked by endpoint degree, capped at 10 | **Never reach the model at all** | **missing** |
+| Relationships: in-network uncapped, out-network by (links, rank) capped at `top_k × |selected|` | **Never reach the model at all** | **missing** |
 | Covariates (claims) | Not extracted; no prompt, no table, no store column | **missing** |
 | Source chunks via `entity.text_unit_ids`, ordered by entity then relationship coverage | Chunks come from dense retrieval, unrelated to the selected entities | **missing** |
 | Token budget, split 0.15 / 0.35 / 0.5 | No budget concept | **missing** |
