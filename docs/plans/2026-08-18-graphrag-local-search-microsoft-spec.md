@@ -158,9 +158,26 @@ second public surface, and GraphRAG stops composing with hybrid search and reran
 now produced a behaviour that cost −0.02761 and a behaviour that costs nothing because it has
 nothing to do. (b) is the honest fallback if keeping one pipeline matters more than fidelity.
 
-**This is the operator's call and nothing below is written until it is made.**
+### Decided, 2026-08-18
 
-## Proposed phases, after that decision
+**(c) — a separate `IGraphRagSearch` entry point.** Local search becomes a search *strategy*, as
+it is in Microsoft's own code, and stops being a filter over dense results. The accepted cost is
+that GraphRAG no longer composes with hybrid search and reranking: a caller picks local search or
+picks the retrieval pipeline. That is the honest shape of the thing — the composition on offer
+before was never real, since the blend only ever re-scored candidates the graph had no say in.
+
+Two further calls made with it:
+
+- **Tokenizer: `Microsoft.ML.Tokenizers`.** The budget is stated in tokens, so it is measured in
+  tokens. A character estimate would put the eviction points somewhere near Microsoft's rather than
+  on them, and "near" is not a thing this exercise can verify against anything. The cost is one
+  package reference on `Rag.NET.GraphRag`.
+- **Covariates: implemented, not skipped.** Microsoft defaults them off and the extraction pass is
+  not free (#300 measured 152.9 s cold over 609 documents). Building them anyway, because the point
+  of this work is the full specification rather than the parts that were cheap. They stay off by
+  default, as upstream.
+
+## Phases
 
 | Phase | Content | Verifiable by |
 |---|---|---|
@@ -168,7 +185,7 @@ nothing to do. (b) is the honest fallback if keeping one pipeline matters more t
 | 6.x.2 | Context builder: entity + community + text-unit sections under a token budget, ordered per §6 | unit, with a fixture graph asserting section order and eviction |
 | 6.x.3 | Relationships: store-side ranked query by endpoint degree, capped, budgeted | unit + integration against `SqliteGraphStore` |
 | 6.x.4 | `entity.text_unit_ids` — requires entity→chunk provenance to survive ingestion, which `source_chunk_ids` already carries | unit |
-| 6.x.5 | Covariates: extraction prompt, store table, context section. **Optional** — Microsoft ships it off by default | integration |
+| 6.x.5 | Covariates: extraction prompt, store table, context section. Off by default, as upstream | integration |
 | 6.x.6 | Conversation history | unit |
 | 6.x.7 | Re-measure on MultiHop-RAG against the same control as 5.2 | benchmark |
 
@@ -180,9 +197,6 @@ answer about GraphRAG.
 
 1. **Does the answer prompt change?** Microsoft's local-search prompt is written against the
    section headers and `|` delimiters. Faithfulness to the context format is worth little if the
-   prompt reading it is a different one.
-2. **Tokenizer.** The budget is in tokens, and Rag.NET has no tokenizer in this path. A character
-   estimate makes the proportions approximate; `Microsoft.ML.Tokenizers` makes them exact and adds
-   a dependency to `Rag.NET.GraphRag`.
-3. **Covariates cost an extra extraction pass over the whole corpus.** Given #300's measured
-   152.9 s cold extraction on 609 documents, this is not free, and Microsoft defaults it off.
+   prompt reading it is a different one. Open — decide when 6.x.2 renders its first context.
+2. ~~Tokenizer~~ — decided above.
+3. ~~Covariates~~ — decided above.
