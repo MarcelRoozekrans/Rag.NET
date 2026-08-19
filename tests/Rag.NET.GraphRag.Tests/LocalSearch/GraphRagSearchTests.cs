@@ -216,12 +216,21 @@ public sealed class GraphRagSearchTests
         await using var fixture = await Fixture.CreateAsync(
             configure: o => o.ConversationHistoryMaxTurns = 2);
 
+        // The assistant turn sits INSIDE the backward walk's window (between the two surviving
+        // user turns), not after it — deliberately. With cap = 2 the walk visits "question three"
+        // (count 1), then this assistant turn, then "question two" (count 2, stop). Only the
+        // role filter keeps the assistant turn out of the fold: delete
+        // `if (history[i].Role != ConversationRole.User) continue;` and the loop would collect
+        // "answer one" as its second entry instead of "question two", changing the embedded
+        // string. Put the assistant turn after the window (e.g. trailing at the end) and the walk
+        // never reaches it regardless of the filter, so the "no assistant turns" assertion below
+        // would pass whether or not the filter exists — pinning nothing. Do not move it back.
         await fixture.Search.BuildLocalContextAsync(
             "and who measured it?",
             [
                 new ConversationTurn(ConversationRole.User, "question one"),
-                new ConversationTurn(ConversationRole.Assistant, "answer one"),
                 new ConversationTurn(ConversationRole.User, "question two"),
+                new ConversationTurn(ConversationRole.Assistant, "answer one"),
                 new ConversationTurn(ConversationRole.User, "question three"),
             ],
             TestContext.Current.CancellationToken);
@@ -242,7 +251,9 @@ public sealed class GraphRagSearchTests
         var two = embedded.IndexOf("question two", StringComparison.Ordinal);
         Assert.True(three < two, "the newest question should appear before the older one");
 
-        // User turns only: the assistant's reply never reaches the embedder.
+        // User turns only: the assistant's reply — sitting inside the walked window, between the
+        // two surviving user turns — never reaches the embedder. Only the role filter keeps it
+        // out; removing the filter would pull it in as the second entry instead of "question two".
         Assert.DoesNotContain("answer one", embedded, StringComparison.Ordinal);
     }
 
