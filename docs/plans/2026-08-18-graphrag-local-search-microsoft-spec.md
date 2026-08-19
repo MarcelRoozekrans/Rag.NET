@@ -223,10 +223,328 @@ Phase 6.x.7 is the point of all of it. The 5.2 finding — "GraphRAG does not he
 was measured against a local search that had never implemented local search. It is not yet an
 answer about GraphRAG.
 
+## 9. Conversation history
+
+Read from `packages/graphrag/graphrag/query/context_builder/conversation_history.py` on
+2026-08-19, at blob `570751fe342fcc5bdf53d040db3e4db44dc1452f`, plus the `conversation_history`
+handling inside `LocalSearchMixedContext.build_context` in
+`packages/graphrag/graphrag/query/structured_search/local_search/mixed_context.py`, at blob
+`ad5d2888b9687b754d78f4e3559c01d912231467`. Quoted, not paraphrased, for the reason in the opening
+section.
+
+**The two headline findings, stated first because they overturn assumptions the next task is
+written against:**
+
+- **Entity selection sees the history.** `mixed_context.py` concatenates the last
+  `conversation_history_max_turns` user turns onto the query *before* calling
+  `map_query_to_entities`. History is folded into the query before entity selection — the opposite
+  of the assumption this document previously carried.
+- **The rendered table is two columns, not three.** The banner text is right
+  (`-----Conversation History-----`), but there is no `role` column. The DataFrame has columns
+  `turn` and `content`; `turn` *holds* the role string (`user`/`assistant`), it does not sit
+  alongside one.
+
+### 9.1 The turn model
+
+```python
+class ConversationRole(str, Enum):
+    """Enum for conversation roles."""
+
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+```
+
+Three values, `str`-backed (`ConversationRole.USER == "user"` is `True`). `from_string` raises
+`ValueError` on anything else — there is no fourth role, and in particular no `tool` role, unlike
+`Microsoft.Extensions.AI.ChatRole`.
+
+```python
+@dataclass
+class ConversationTurn:
+    role: ConversationRole
+    content: str
+```
+
+One role, one content string. `__str__` is `f"{self.role}: {self.content}"` — not used by
+`build_context`, which renders through a DataFrame instead (§9.3).
+
+```python
+@dataclass
+class QATurn:
+    user_query: ConversationTurn
+    assistant_answers: list[ConversationTurn] | None = None
+
+    def get_answer_text(self) -> str | None:
+        return (
+            "\n".join([answer.content for answer in self.assistant_answers])
+            if self.assistant_answers
+            else None
+        )
+```
+
+A `QATurn` pairs one user turn with zero or more "assistant" turns, newline-joined when rendered.
+
+`ConversationHistory` is built by repeated `add_turn(role, content)` (or `from_list` over
+`[{"role": ..., "content": ...}, ...]`) onto a flat `turns: list[ConversationTurn]`, oldest first —
+there is no separate storage for pairs; pairing happens on demand:
+
+```python
+def to_qa_turns(self) -> list[QATurn]:
+    qa_turns = list[QATurn]()
+    current_qa_turn = None
+    for turn in self.turns:
+        if turn.role == ConversationRole.USER:
+            if current_qa_turn:
+                qa_turns.append(current_qa_turn)
+            current_qa_turn = QATurn(user_query=turn, assistant_answers=[])
+        else:
+            if current_qa_turn:
+                current_qa_turn.assistant_answers.append(turn)  # type: ignore
+    if current_qa_turn:
+        qa_turns.append(current_qa_turn)
+    return qa_turns
+```
+
+Only `USER` starts a new pair; **every other role (`ASSISTANT` or `SYSTEM`) between two user turns
+is appended to that pair's `assistant_answers`**, whatever it actually is. A `SYSTEM` turn placed
+mid-history renders under the literal string `assistant` in the output table. This is a real
+behaviour of the source, not a hypothetical — worth carrying into Task 3's grouping logic rather
+than "fixing" it.
+
+### 9.2 What reaches the context
+
+`ConversationHistory.build_context` signature:
+
+```python
+def build_context(
+    self,
+    tokenizer: Tokenizer | None = None,
+    include_user_turns_only: bool = True,
+    max_qa_turns: int | None = 5,
+    max_context_tokens: int = 8000,
+    recency_bias: bool = True,
+    column_delimiter: str = "|",
+    context_name: str = "Conversation History",
+) -> tuple[str, dict[str, pd.DataFrame]]:
+```
+
+`include_user_turns_only=True` (default, and how `mixed_context.py` calls it via
+`conversation_history_user_turns_only`, itself default `True`) strips `assistant_answers` before
+rendering, so **by default only user questions reach the rendered table** — QA pairing exists in
+the data model but is normally invisible in the output.
+
+`max_qa_turns` caps how many *QA turns* (not raw messages) are kept, default 5, matching
+`conversation_history_max_turns` in `LocalSearchDefaults` and in `build_context`'s own signature —
+this row in §7's table was already correct.
+
+**The recency direction is not what the docstring implies, and this is the second real finding of
+this section.** The docstring for `recency_bias` reads *"If True, reverse the order of the
+conversation history to ensure last QA got prioritized"* — default `True`. But the only caller,
+`mixed_context.py`, calls it with `recency_bias=False` explicitly:
+
+```python
+(
+    conversation_history_context,
+    conversation_history_context_data,
+) = conversation_history.build_context(
+    include_user_turns_only=conversation_history_user_turns_only,
+    max_qa_turns=conversation_history_max_turns,
+    column_delimiter=column_delimiter,
+    max_context_tokens=max_context_tokens,
+    recency_bias=False,
+)
+```
+
+Inside `build_context`, the order of operations is:
+
+```python
+qa_turns = self.to_qa_turns()          # oldest first
+if include_user_turns_only: ...        # order unchanged
+if recency_bias:
+    qa_turns = qa_turns[::-1]          # reverse — SKIPPED, since recency_bias=False here
+if max_qa_turns and len(qa_turns) > max_qa_turns:
+    qa_turns = qa_turns[:max_qa_turns] # takes the FIRST max_qa_turns of whatever order survives
+```
+
+With `recency_bias=False` (the real call path), `qa_turns` stays oldest-first, and the
+`[:max_qa_turns]` slice therefore keeps the **oldest** `max_qa_turns` QA pairs, not the most
+recent ones, whenever the history has more turns than the cap. This only matters once history
+exceeds 5 QA pairs; below that, every turn survives regardless of direction. Recorded verbatim
+because it reads as a bug (the parameter is named for the opposite behaviour) but it is upstream's
+actual, exercised behaviour — Task 3 should match it, not the docstring.
+
+### 9.3 Rendering
+
+```python
+header = f"-----{context_name}-----" + "\n"
+
+turn_list = []
+current_context_df = pd.DataFrame()
+for turn in qa_turns:
+    turn_list.append({
+        "turn": ConversationRole.USER.__str__(),
+        "content": turn.user_query.content,
+    })
+    if turn.assistant_answers:
+        turn_list.append({
+            "turn": ConversationRole.ASSISTANT.__str__(),
+            "content": turn.get_answer_text(),
+        })
+
+    context_df = pd.DataFrame(turn_list)
+    context_text = header + context_df.to_csv(sep=column_delimiter, index=False)
+    if tokenizer.num_tokens(context_text) > max_context_tokens:
+        break
+
+    current_context_df = context_df
+context_text = header + current_context_df.to_csv(
+    sep=column_delimiter, index=False
+)
+return (context_text, {context_name.lower(): current_context_df})
+```
+
+With defaults, this renders as:
+
+```
+-----Conversation History-----
+turn|content
+user|<first question>
+assistant|<its answer, if include_user_turns_only=False>
+user|<next question>
+```
+
+It **is** a table, but it is a `pandas.DataFrame.to_csv` table with **two columns**, `turn` and
+`content` — `turn` is not a turn index, it is the role string. There is no third `role` column and
+no separate turn-number column. The header row is emitted by `to_csv` from the DataFrame's own
+column names, not hand-written. This contradicts the assumed `turn|role|content` three-column
+format: the assumption should be dropped in favour of `turn|content`.
+
+The loop is break-not-skip, same pattern as Rag.NET's `ContextTable`: it keeps the last
+`context_df` that fit (`current_context_df`) and stops accumulating on the first one that doesn't,
+so a mid-history overlong QA pair truncates everything after it rather than being skipped over.
+
+One rendering detail this document cannot confirm in this environment: `pandas.to_csv`'s default
+quoting is `QUOTE_MINIMAL` — a documented pandas default, meaning a cell containing the delimiter
+(`|`), a quote character, or a newline gets wrapped in double quotes in the real output. No Python
+was available in this sandbox to execute `to_csv` and verify the exact bytes, so this is recorded
+as a plausible, unverified detail rather than a confirmed one — flagged for Task 3 in §9.6.
+
+### 9.4 The budget interaction
+
+From `LocalSearchMixedContext.build_context`, conversation history is handled **first**, before
+any of the three proportions are computed, using the full (not yet divided) `max_context_tokens`
+as its own ceiling:
+
+```python
+if conversation_history:
+    (
+        conversation_history_context,
+        conversation_history_context_data,
+    ) = conversation_history.build_context(
+        ...,
+        max_context_tokens=max_context_tokens,   # the whole budget, unreduced
+        recency_bias=False,
+    )
+    if conversation_history_context.strip() != "":
+        final_context.append(conversation_history_context)
+        final_context_data = conversation_history_context_data
+        max_context_tokens = max_context_tokens - len(
+            self.tokenizer.encode(conversation_history_context)
+        )
+
+# only now:
+community_tokens = max(int(max_context_tokens * community_prop), 0)
+...
+local_tokens = max(int(max_context_tokens * local_prop), 0)
+...
+text_unit_tokens = max(int(max_context_tokens * text_unit_prop), 0)
+```
+
+So the subtraction happens **before** `community_prop`/`local_prop`/`text_unit_prop` are applied —
+each of the three proportions is a fraction of what's left *after* history, not of the original
+`max_context_tokens`. This confirms the existing clause in the opening section
+("built first, tokens subtracted before the proportions").
+
+**When history alone exceeds `max_context_tokens`:** inside `ConversationHistory.build_context`,
+`current_context_df` starts as an empty `pd.DataFrame()` before the loop. If even the *first* QA
+pair already pushes `header + context_df.to_csv(...)` over the token limit, the loop breaks before
+ever assigning `current_context_df = context_df` — so the function returns `header +
+<csv of an empty DataFrame>`, i.e. just the banner line, no rows. That string's `.strip()` is
+still non-empty (the banner text itself is non-blank), so `mixed_context.py`'s
+`if conversation_history_context.strip() != "":` guard is still `True`: **the banner-only text is
+still appended to `final_context`**, and its (small) token cost is still subtracted from the
+remaining budget. History does not get dropped or error out when it doesn't fit — it degrades to a
+header line that still costs a few tokens against the community/local/text-unit split.
+
+The only case where history contributes nothing at all is when there are zero QA turns to begin
+with (`len(qa_turns) == 0`), where `build_context` returns `("", {...})` before the header is even
+built, and the `.strip() != ""` guard in `mixed_context.py` then skips it and leaves
+`max_context_tokens` untouched.
+
+### 9.5 Entity selection
+
+```python
+# map user query to entities
+# if there is conversation history, attached the previous user questions to the current query
+if conversation_history:
+    pre_user_questions = "\n".join(
+        conversation_history.get_user_turns(conversation_history_max_turns)
+    )
+    query = f"{query}\n{pre_user_questions}"
+
+selected_entities = map_query_to_entities(
+    query=query,
+    ...
+)
+```
+
+**History text is concatenated into the query before `map_query_to_entities` runs.** This is the
+opposite of the assumption this document previously carried, and it happens through a *different*
+code path from §9.3's rendered table:
+
+- It uses `get_user_turns(conversation_history_max_turns)`, not `build_context`. `get_user_turns`
+  walks `self.turns` in reverse and collects **only `USER`-role turns** (never assistant answers,
+  regardless of `include_user_turns_only`), stopping once it has `conversation_history_max_turns`
+  of them — so it is always the most-recent-first, unlike §9.2's oldest-first slicing quirk.
+- Those questions are newline-joined and appended, unlabelled, directly after the current query:
+  `f"{query}\n{pre_user_questions}"` — no banner, no delimiter, no role marker, just raw text
+  concatenation.
+- This happens **before** `conversation_history.build_context()` is called to build the rendered
+  table (§9.3/§9.4), and the two draw from the same `conversation_history_max_turns` count but
+  through unrelated methods with unrelated ordering rules.
+
+### 9.6 What this library cannot reproduce
+
+No field-level gap was found between upstream's turn model and Rag.NET's:
+`Microsoft.Extensions.AI.ChatMessage`'s `Role` (`ChatRole.System`/`User`/`Assistant`, plus a
+`Tool` value upstream has no equivalent of) and text content map directly onto
+`ConversationRole`/`ConversationTurn`'s role and content. `QATurn`'s pairing (§9.1) is an algorithm
+over a flat list, not a field upstream's model carries and Rag.NET's cannot — it is reproducible in
+C# by grouping the same flat list on "is this a `User` turn".
+
+Two things flagged as **Deviation** candidates for Task 3, not as impossibilities:
+
+- **CSV quoting.** `pandas.to_csv`'s default (`QUOTE_MINIMAL`) quotes a cell containing the
+  delimiter, a quote character, or a newline. Rag.NET's `ContextTable`/`Clean()` only strips
+  `\r`/`\n` from cells and does not quote an embedded `|` — its own doc comment already names this
+  exact gap for the other sections ("Upstream does not do this; upstream also writes CSV through
+  pandas rather than joining strings"). It applies identically here: a user question containing
+  `|` would upstream-render as a quoted cell and Rag.NET-render as a row with an extra column. Not
+  executed against a real pandas install in this environment (§9.3) — a real finding, but an
+  unverified one.
+- **No conversation-history field exists yet.** `LocalSearchInputs` has no conversation-history
+  property and `LocalSearchContext` has no corresponding `SectionFill`/records output. This is not
+  a reproducibility gap, just unbuilt — it is exactly the shape of work 6.x.6 and Task 3 add.
+
 ## Open questions
 
-1. **Does the answer prompt change?** Microsoft's local-search prompt is written against the
-   section headers and `|` delimiters. Faithfulness to the context format is worth little if the
-   prompt reading it is a different one. Open — decide when 6.x.2 renders its first context.
+1. ~~Does the answer prompt change?~~ — decided: the 6.x.7 measurement uses
+   `BeirGraphRagAnswerTests`' shared `PromptTemplate`, not `LocalSearchPrompt`. Every other
+   measurement arm uses that shared template; changing the context format and the prompt in the
+   same measurement would confound the two, the same isolation argument that made the `filtered`
+   arm interpretable on its own. `LocalSearchPrompt` remains the library default for
+   `LocalSearchAsync` — measuring it against the other arms is a separate question with its own
+   arm, not part of 6.x.7.
 2. ~~Tokenizer~~ — decided above.
 3. ~~Covariates~~ — decided above.
