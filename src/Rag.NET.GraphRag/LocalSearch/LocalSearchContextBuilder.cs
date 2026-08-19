@@ -155,7 +155,7 @@ public sealed class LocalSearchContextBuilder
     /// tokens in a case where the history was already too large to use.
     /// </para>
     /// <para>
-    /// <b>Unverified detail.</b> Upstream renders through <c>pandas.to_csv</c>, whose default
+    /// <b>Deviation.</b> Upstream renders through <c>pandas.to_csv</c>, whose default
     /// <c>QUOTE_MINIMAL</c> wraps a cell containing the delimiter, a quote or a newline in double
     /// quotes. Spec §9.6 could not execute pandas to confirm the exact bytes, and no other section
     /// here quotes, so this does not either — a user turn containing <c>|</c> renders as an extra

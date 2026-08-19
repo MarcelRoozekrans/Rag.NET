@@ -401,6 +401,33 @@ public sealed class LocalSearchContextBuilderTests
         Assert.Contains("assistant|answer 1", context.Text, StringComparison.Ordinal);
     }
 
+    /// <remarks>
+    /// Deviation, deliberate — see <see cref="LocalSearchContextOptions.ConversationHistoryMaxTurns"/>.
+    /// Upstream's truncation is a Python truthiness check, so <c>max_qa_turns = 0</c> is falsy there
+    /// and every QA pair survives — <c>0</c> means "unlimited" upstream, an artifact of the sentinel
+    /// being <c>None</c> rather than a value any real caller passes. To a C# caller of a plain
+    /// <see cref="int"/> property, <c>0</c> reads as "no history", so that is what it does here:
+    /// pinned so the choice is recorded rather than left to be re-discovered as a bug.
+    /// </remarks>
+    [Fact]
+    public void ZeroMaxTurnsMeansNoHistory_NotUnlimited()
+    {
+        var turns = new List<ConversationTurn>
+        {
+            new(ConversationRole.User, "question 1"),
+            new(ConversationRole.User, "question 2"),
+        };
+
+        var context = new LocalSearchContextBuilder(
+                new LocalSearchContextOptions { ConversationHistoryMaxTurns = 0 })
+            .Build(FullInputs() with { ConversationHistory = turns });
+
+        Assert.Equal(0, context.History.Rendered);
+        Assert.DoesNotContain("-----Conversation History-----", context.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("question 1", context.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("question 2", context.Text, StringComparison.Ordinal);
+    }
+
     /// <summary>A graph with every section populated.</summary>
     /// <returns>Inputs producing all four sections.</returns>
     private static LocalSearchInputs FullInputs()

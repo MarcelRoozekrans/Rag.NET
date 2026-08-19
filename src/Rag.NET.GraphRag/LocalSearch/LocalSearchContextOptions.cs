@@ -128,11 +128,25 @@ public sealed class LocalSearchContextOptions
 
     /// <summary>Question-and-answer pairs from the conversation folded into the context. Default: 5.</summary>
     /// <remarks>
+    /// <para>
     /// <c>max_qa_turns</c> upstream, and it counts <b>pairs, not messages</b>: only a
     /// <see cref="ConversationRole.User"/> turn opens a pair, and every turn after it up to the next
     /// user turn belongs to that pair. History is assembled before the three proportions divide the
     /// budget and its tokens come off the total first, so a long history shrinks every other section
     /// rather than overrunning the budget.
+    /// </para>
+    /// <para>
+    /// <b>Deviation.</b> Upstream's truncation is <c>if max_qa_turns and len(qa_turns) &gt;
+    /// max_qa_turns:</c> — a Python truthiness check, so <c>max_qa_turns = 0</c> is falsy, the slice
+    /// is skipped, and <b>every</b> QA pair survives. Upstream's designed "unlimited" sentinel is
+    /// <c>None</c> (the parameter is typed <c>int | None</c>); <c>0</c> behaving the same way is an
+    /// artifact of that truthiness check, not a value any real caller passes meaning unlimited. This
+    /// property is a plain <see cref="int"/>, so <c>None</c> has no representation here, and to a C#
+    /// caller <c>ConversationHistoryMaxTurns = 0</c> reads as "no history" — supplying the entire
+    /// conversation instead would be a booby trap in exactly the case where someone is trying to turn
+    /// the feature off. So here, unlike <see cref="ConversationHistoryRecencyBias"/>, the surprising
+    /// upstream behaviour is not reproduced: <c>0</c> means no history, full stop.
+    /// </para>
     /// </remarks>
     [GreaterThanOrEqualTo(0)]
     public int ConversationHistoryMaxTurns { get; set; } = 5;
