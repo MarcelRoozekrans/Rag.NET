@@ -202,6 +202,50 @@ public sealed class GraphRagSearchTests
         Assert.Contains("What did ÅNGSTRÖM work on?", embedded, StringComparison.Ordinal);
     }
 
+    /// <remarks>
+    /// A single-turn history cannot distinguish newest-first from oldest-first, or last-N from
+    /// first-N — this pins the ordering with three user turns and a cap below that count. Spec
+    /// §9.5's <c>get_user_turns</c> walks the history reversed, collecting the most recent user
+    /// turns and stopping at the cap; this deliberately disagrees with the rendered history
+    /// section's oldest-first selection (Task 3) — both are upstream's behaviour in the same
+    /// <c>build_context</c> call, not reconciled here.
+    /// </remarks>
+    [Fact]
+    public async Task TheFoldTakesTheMostRecentUserTurnsNewestFirst()
+    {
+        await using var fixture = await Fixture.CreateAsync(
+            configure: o => o.ConversationHistoryMaxTurns = 2);
+
+        await fixture.Search.BuildLocalContextAsync(
+            "and who measured it?",
+            [
+                new ConversationTurn(ConversationRole.User, "question one"),
+                new ConversationTurn(ConversationRole.Assistant, "answer one"),
+                new ConversationTurn(ConversationRole.User, "question two"),
+                new ConversationTurn(ConversationRole.User, "question three"),
+            ],
+            TestContext.Current.CancellationToken);
+
+        var embedded = Assert.Single(fixture.Embedder.LastInput);
+
+        // The current query comes first, ahead of all folded history.
+        Assert.Equal(0, embedded.IndexOf("and who measured it?", StringComparison.Ordinal));
+
+        // Last-N (cap = 2): the two most recent user turns survive, the oldest does not.
+        Assert.DoesNotContain("question one", embedded, StringComparison.Ordinal);
+        Assert.Contains("question two", embedded, StringComparison.Ordinal);
+        Assert.Contains("question three", embedded, StringComparison.Ordinal);
+
+        // Newest first: "question three" (most recent) precedes "question two" (older) —
+        // the opposite order from the rendered history section.
+        var three = embedded.IndexOf("question three", StringComparison.Ordinal);
+        var two = embedded.IndexOf("question two", StringComparison.Ordinal);
+        Assert.True(three < two, "the newest question should appear before the older one");
+
+        // User turns only: the assistant's reply never reaches the embedder.
+        Assert.DoesNotContain("answer one", embedded, StringComparison.Ordinal);
+    }
+
     /// <summary>Reads the entity column out of a rendered context.</summary>
     /// <param name="text">The rendered context.</param>
     /// <returns>Entity names in render order.</returns>

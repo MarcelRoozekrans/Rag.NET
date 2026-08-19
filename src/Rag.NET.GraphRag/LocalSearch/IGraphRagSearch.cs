@@ -31,12 +31,11 @@ public interface IGraphRagSearch
     /// Separate from <see cref="LocalSearchAsync"/> because the context is the interesting half and
     /// the expensive half is the model call. Evaluating retrieval, debugging an answer that cited
     /// nothing, or measuring what the graph actually contributes all want the context and not the
-    /// completion.
+    /// completion. Equivalent to calling the three-argument overload with an empty history.
     /// </remarks>
     /// <param name="query">The user's question.</param>
     /// <param name="cancellationToken">Cancels the searches and store reads.</param>
     /// <returns>The assembled context and what each section cost.</returns>
-    /// <remarks>Equivalent to calling the three-argument overload with an empty history.</remarks>
     Task<LocalSearchContext> BuildLocalContextAsync(
         string query, CancellationToken cancellationToken = default);
 
@@ -75,10 +74,10 @@ public interface IGraphRagSearch
         string query, IReadOnlyList<ConversationTurn> history, CancellationToken cancellationToken = default);
 
     /// <summary>Answers a question from a locally-assembled graph context.</summary>
+    /// <remarks>Equivalent to calling the three-argument overload with an empty history.</remarks>
     /// <param name="query">The user's question.</param>
     /// <param name="cancellationToken">Cancels the searches, store reads and the model call.</param>
     /// <returns>The answer and the context it was generated from.</returns>
-    /// <remarks>Equivalent to calling the three-argument overload with an empty history.</remarks>
     Task<LocalSearchAnswer> LocalSearchAsync(
         string query, CancellationToken cancellationToken = default);
 
