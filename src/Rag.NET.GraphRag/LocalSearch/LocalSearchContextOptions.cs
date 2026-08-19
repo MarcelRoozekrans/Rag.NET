@@ -145,7 +145,11 @@ public sealed class LocalSearchContextOptions
     /// caller <c>ConversationHistoryMaxTurns = 0</c> reads as "no history" — supplying the entire
     /// conversation instead would be a booby trap in exactly the case where someone is trying to turn
     /// the feature off. So here, unlike <see cref="ConversationHistoryRecencyBias"/>, the surprising
-    /// upstream behaviour is not reproduced: <c>0</c> means no history, full stop.
+    /// upstream behaviour is not reproduced: <c>0</c> means no history, full stop — on both paths
+    /// that read this property, including the query-folding path in
+    /// <c>GraphRagSearch.FoldHistoryIntoQuery</c>, where upstream's own <c>get_user_turns</c> has
+    /// its own separate <c>if max_qa_turns</c> truthiness check with the identical 0-means-unlimited
+    /// quirk.
     /// </para>
     /// </remarks>
     [GreaterThanOrEqualTo(0)]

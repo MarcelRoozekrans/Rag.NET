@@ -148,11 +148,20 @@ public sealed class LocalSearchContextBuilder
     /// </para>
     /// <para>
     /// <b>Deviation.</b> When not even the first pair fits, upstream still emits the banner with no
-    /// rows under it and still charges its tokens to the budget. This returns an empty section
-    /// instead, because <see cref="ContextTable"/> makes that choice repository-wide and states why:
-    /// a banner with nothing under it tells the model the section exists and is empty, which is a
-    /// claim about the conversation rather than about the budget. The difference is a handful of
-    /// tokens in a case where the history was already too large to use.
+    /// rows under it. This returns an empty section instead, because <see cref="ContextTable"/>
+    /// makes that choice repository-wide and states why: a banner with nothing under it tells the
+    /// model the section exists and is empty, which is a claim about the conversation rather than
+    /// about the budget. Only the rendered text diverges — the banner and header tokens are still
+    /// charged to the budget here too, the same arithmetic upstream uses, so what changes is a
+    /// handful of tokens of prompt text, not the section's accounting.
+    /// </para>
+    /// <para>
+    /// <b>Deviation.</b> Upstream re-renders the table and re-checks the budget once per
+    /// question-and-answer <i>pair</i>, breaking on the pair as a whole — so a pair whose user row
+    /// fits but whose assistant row does not is dropped entirely there. This checks the budget per
+    /// <i>row</i>, so the same pair keeps its user row and drops only the assistant row. Only
+    /// observable when <see cref="LocalSearchContextOptions.IncludeUserTurnsOnly"/> is
+    /// <see langword="false"/>, since otherwise the assistant row is never rendered at all.
     /// </para>
     /// <para>
     /// <b>Deviation.</b> Upstream renders through <c>pandas.to_csv</c>, whose default

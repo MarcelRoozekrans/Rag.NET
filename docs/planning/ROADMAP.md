@@ -4229,8 +4229,13 @@ test for parity. What it does not promise: that any of them are good. Measured i
 **Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; #247 is fixed
 and re-measured; the pipeline-parity test is in the fast tier; the guards' allowlist is empty.
 
-- **`GraphLocalSearchBehavior` and `PageRankWeight` are `[Obsolete]`, not deleted** (2026-08-19,
-  Task 1 of the local-search completion plan). Deleting them would make three pinned figures
+- **`GraphLocalSearchBehavior` and `PageRankWeight` are deprecated in `<remarks>`, not
+  `[Obsolete]`, and not deleted** (2026-08-19, Task 1 of the local-search completion plan).
+  `[Obsolete]` was rejected, not merely skipped: `Directory.Build.props` sets
+  `TreatWarningsAsErrors=true`, so CS0618 would be a build error across the 17 files in four
+  projects that deliberately still reference these members, and `PageRankWeight`'s
+  `[Must(nameof(PageRankWeightIsFinite))]` validator has source-generated code that references the
+  property and cannot be `#pragma`'d around by hand. Deleting them would make three pinned figures
   unreproducible — the `local` answer arm at 0.2102, `BeirReproduction`'s GraphRag 0.56897, and
   the blend ablation. They are unregistered from the default pipeline, where at the default
   `PageRankWeight = 0` they were a no-op. → **delete once 6.x.7 publishes the replacement

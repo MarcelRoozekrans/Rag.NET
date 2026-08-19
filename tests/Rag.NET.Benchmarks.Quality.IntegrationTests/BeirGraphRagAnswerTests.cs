@@ -335,7 +335,8 @@ public sealed class BeirGraphRagAnswerTests
             || arms.Contains(AnswerArm.LocalSpec, StringComparer.Ordinal))
         {
             await CollectGraphStoreContextsAsync(
-                run, selection, localContexts, controlContexts, filteredContexts, localSpecContexts, startedAt, ct);
+                run, selection, arms, localContexts, controlContexts, filteredContexts, localSpecContexts,
+                startedAt, ct);
         }
 
         // Dense and global retrieval, and every answer, in parallel under the same bound.
@@ -428,15 +429,20 @@ public sealed class BeirGraphRagAnswerTests
     /// (<c>localspec</c>, via <see cref="GraphRagRun.LocalSpecContextAsync"/>).
     /// </summary>
     /// <remarks>
-    /// All four come from the SAME sequential pass, deliberately. Retrieving separately per arm
-    /// would let a difference between them be a difference in what was retrieved rather than in
-    /// what was kept, and the whole value of the control is that only one thing varies — the same
-    /// reason <c>localspec</c> is collected here rather than in the parallel phase below, even
-    /// though its retrieval does not share the candidate set the other three do.
+    /// <c>local</c>, <c>control</c> and <c>filtered</c> come from the SAME sequential
+    /// <see cref="GraphRagRun.LocalSearchWithCandidatesAsync"/> pass, deliberately. Retrieving
+    /// separately per arm would let a difference between them be a difference in what was
+    /// retrieved rather than in what was kept, and the whole value of the control is that only one
+    /// thing varies. <c>localspec</c> is collected here too, for the same reason, even though its
+    /// retrieval does not share the candidate set the other three do — but that retrieval is a
+    /// second, wholly separate store round trip per query, so it is skipped when
+    /// <paramref name="arms"/> does not select it, the same way an arm not in the selection costs
+    /// nothing elsewhere in this file.
     /// </remarks>
     private async Task CollectGraphStoreContextsAsync(
         GraphRagRun run,
         QuerySelection selection,
+        IReadOnlyList<string> arms,
         Dictionary<string, IReadOnlyList<SearchResult>> localContexts,
         Dictionary<string, IReadOnlyList<SearchResult>> controlContexts,
         Dictionary<string, IReadOnlyList<SearchResult>> filteredContexts,
@@ -444,6 +450,8 @@ public sealed class BeirGraphRagAnswerTests
         long startedAt,
         CancellationToken ct)
     {
+        var collectLocalSpec = arms.Contains(AnswerArm.LocalSpec, StringComparer.Ordinal);
+
         for (var i = 0; i < selection.Queries.Count; i++)
         {
             var local = await run.LocalSearchWithCandidatesAsync(selection.Queries[i].Text, ct);
@@ -451,8 +459,12 @@ public sealed class BeirGraphRagAnswerTests
             controlContexts[selection.Queries[i].Id] = Head(local.Candidates, ContextChunks);
             filteredContexts[selection.Queries[i].Id] =
                 Head(WithoutGraphDerivedChunks(local.Candidates), ContextChunks);
-            localSpecContexts[selection.Queries[i].Id] =
-                await run.LocalSpecContextAsync(selection.Queries[i].Text, ct);
+
+            if (collectLocalSpec)
+            {
+                localSpecContexts[selection.Queries[i].Id] =
+                    await run.LocalSpecContextAsync(selection.Queries[i].Text, ct);
+            }
 
             if ((i + 1) % ProgressEvery == 0)
             {
