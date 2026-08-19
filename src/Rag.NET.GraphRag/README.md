@@ -13,7 +13,8 @@ dotnet add package Rag.NET.GraphRag
 
 ## Setup
 
-GraphRAG adds behaviors to both pipelines, and `UseGraphRag` places them:
+GraphRAG adds behaviors to the ingestion pipeline, and `UseGraphRag` places them there by
+default:
 
 ```csharp
 using Rag.NET.DependencyInjection;
@@ -21,7 +22,6 @@ using Rag.NET.GraphRag;
 
 services.AddRagNet(rag => rag.UseGraphRag(
     options => options.GleaningPasses = 1,
-    retrieval: options => options.PageRankWeight = 0.3,
     graph: store => store.UseSqlite("graphrag.db")));
 ```
 
