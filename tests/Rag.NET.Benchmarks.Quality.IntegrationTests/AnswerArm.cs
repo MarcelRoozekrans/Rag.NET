@@ -53,5 +53,19 @@ internal static class AnswerArm
     /// </remarks>
     public const string Filtered = "filtered";
 
-    public static readonly IReadOnlyList<string> All = [Dense, Control, Local, Global, Filtered];
+    /// <summary>
+    /// Microsoft's local search as specified: entity selection by description embedding, community
+    /// reports, an uncapped in-network relationship table, source chunks via entity provenance, all
+    /// under a 12,000-token budget — <c>IGraphRagSearch</c>, not the retrieval pipeline.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not a variant of <see cref="Local"/>; a different thing with the same name upstream.</b>
+    /// That arm is the PageRank blend at weight 0.3 over dense candidates, which is not in
+    /// Microsoft's local search at all. This arm is what Milestone 5.2 believed it was measuring
+    /// when it concluded GraphRAG does not help on this corpus. Both are kept: the comparison
+    /// between them is the measurement.
+    /// </remarks>
+    public const string LocalSpec = "localspec";
+
+    public static readonly IReadOnlyList<string> All = [Dense, Control, Local, Global, Filtered, LocalSpec];
 }

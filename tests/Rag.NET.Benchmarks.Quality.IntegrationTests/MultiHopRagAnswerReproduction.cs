@@ -123,6 +123,18 @@ internal static class MultiHopRagAnswerReproduction
             "Measured in the harness; whether the filter becomes shipped library behaviour, and " +
             "whether on by default, is open on #247. What is no longer open is which of the " +
             "issue's three options works."),
+        new(
+            "multihop-rag",
+            AnswerArm.LocalSpec,
+            [],
+            "NOT YET MEASURED. Microsoft's local search as specified -- IGraphRagSearch, the context " +
+            "builder from #317/#320/#321 plus conversation history, at the upstream defaults " +
+            "(12,000 tokens, 0.15 community / 0.5 text-unit, top-10 entities oversampled to 20, " +
+            "covariates off). Its context replaces the top-6 rendering in the SAME PromptTemplate the " +
+            "other arms use, so the only variable against dense/control/filtered is the context. " +
+            "The figure this arm produces is what Milestone 5.2's -0.02761 conclusion should have been " +
+            "measured against: 5.2 measured a PageRank blend over dense candidates, which is not local " +
+            "search. Phase 6.x.7."),
     ];
 
     /// <summary>Asserts one arm's paper-rule accuracy reproduced what was last recorded, or records what it measured.</summary>
