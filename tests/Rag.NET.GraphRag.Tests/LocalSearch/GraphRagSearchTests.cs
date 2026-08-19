@@ -160,6 +160,48 @@ public sealed class GraphRagSearchTests
         Assert.Equal(1, context.Entities.Rendered);
     }
 
+    /// <remarks>
+    /// The three-argument entry point threads history into the assembled context the same way
+    /// <see cref="LocalSearchContextBuilder"/> is already proven to (Task 3) — this pins that the
+    /// entry point actually passes it through rather than dropping it on the floor.
+    /// </remarks>
+    [Fact]
+    public async Task HistoryReachesTheAssembledContext()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+
+        var context = await fixture.Search.BuildLocalContextAsync(
+            "And who measured it?",
+            [new ConversationTurn(ConversationRole.User, "What did ÅNGSTRÖM work on?")],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, context.History.Rendered);
+        Assert.Contains("What did ÅNGSTRÖM work on?", context.Text, StringComparison.Ordinal);
+    }
+
+    /// <remarks>
+    /// Spec §9.5. Selection sees the history even though the rendered section is built separately —
+    /// a follow-up question embeds to almost nothing on its own. <see cref="StubEmbedder"/> is a
+    /// substitute whose arguments this test can capture, so it asserts directly on the embedded
+    /// string rather than only on downstream entity selection.
+    /// </remarks>
+    [Fact]
+    public async Task HistoryIsFoldedIntoTheQueryBeforeEntitySelection()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+
+        var context = await fixture.Search.BuildLocalContextAsync(
+            "and who measured it?",
+            [new ConversationTurn(ConversationRole.User, "What did ÅNGSTRÖM work on?")],
+            TestContext.Current.CancellationToken);
+
+        Assert.True(context.Entities.Rendered > 0, "the folded query selected no entities");
+
+        var embedded = Assert.Single(fixture.Embedder.LastInput);
+        Assert.Contains("and who measured it?", embedded, StringComparison.Ordinal);
+        Assert.Contains("What did ÅNGSTRÖM work on?", embedded, StringComparison.Ordinal);
+    }
+
     /// <summary>Reads the entity column out of a rendered context.</summary>
     /// <param name="text">The rendered context.</param>
     /// <returns>Entity names in render order.</returns>
@@ -197,6 +239,8 @@ public sealed class GraphRagSearchTests
 
         public StubChatClient Model { get; } = new();
 
+        public StubEmbedder Embedder { get; private set; } = null!;
+
         /// <summary>Builds the fixture.</summary>
         /// <param name="documentStore">Override for the document store, to test capability absence.</param>
         /// <param name="emptyGraph">Whether to seed nothing, so nothing can be selected.</param>
@@ -218,6 +262,7 @@ public sealed class GraphRagSearchTests
             fixture._documents = documentStore ?? documents;
 
             var embedder = new StubEmbedder();
+            fixture.Embedder = embedder;
 
             if (!emptyGraph)
             {
@@ -376,13 +421,19 @@ public sealed class GraphRagSearchTests
     /// </remarks>
     private sealed class StubEmbedder : IEmbeddingGenerator<string, Embedding<float>>
     {
+        /// <summary>The strings the most recent <see cref="GenerateAsync"/> call was given.</summary>
+        public IReadOnlyList<string> LastInput { get; private set; } = [];
+
         public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
             IEnumerable<string> values,
             EmbeddingGenerationOptions? options = null,
             CancellationToken cancellationToken = default)
         {
+            var input = values as IReadOnlyList<string> ?? [.. values];
+            LastInput = input;
+
             var result = new GeneratedEmbeddings<Embedding<float>>();
-            foreach (var value in values)
+            foreach (var value in input)
             {
                 var vector = new float[26];
                 foreach (var c in value.ToLowerInvariant())

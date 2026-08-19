@@ -321,7 +321,7 @@ public sealed class LocalSearchContextBuilderTests
     /// specification. Set ConversationHistoryRecencyBias = true for the intuitive behaviour.
     /// </remarks>
     [Fact]
-    public void TheOldestQaTurnsAreKept_BecauseUpstreamDisablesRecencyBias()
+    public void TheOldestQaTurnsAreKeptBecauseUpstreamDisablesRecencyBias()
     {
         var turns = Enumerable.Range(1, 9)
             .Select(i => new ConversationTurn(ConversationRole.User, $"question {i}"))
@@ -410,7 +410,7 @@ public sealed class LocalSearchContextBuilderTests
     /// pinned so the choice is recorded rather than left to be re-discovered as a bug.
     /// </remarks>
     [Fact]
-    public void ZeroMaxTurnsMeansNoHistory_NotUnlimited()
+    public void ZeroMaxTurnsMeansNoHistoryNotUnlimited()
     {
         var turns = new List<ConversationTurn>
         {
