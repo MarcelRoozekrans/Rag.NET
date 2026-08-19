@@ -9,8 +9,22 @@ namespace Rag.NET.GraphRag;
 /// <summary>
 /// Local search behavior that traverses entity neighbors, relationships, and community reports
 /// from the graph store, then blends PageRank with vector similarity scores.
-/// Position: before RerankingBehavior in the retrieval pipeline.
+/// If placed by hand, its documented position is before RerankingBehavior in the retrieval
+/// pipeline — see the deprecation notice below.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Deprecated, and no longer placed by <c>UseGraphRag</c>.</b> Local search is
+/// <see cref="LocalSearch.IGraphRagSearch"/>. This behaviour blends PageRank into dense retrieval
+/// scores, which is not in Microsoft's local search at all: that blend was the entire −0.02761
+/// nDCG@10 charged to GraphRAG in Milestone 5.2, and at <c>PageRankWeight = 0</c> — the default
+/// since #296 — the ranking matched the candidate-set control on 2,255 of 2,255 queries. It is
+/// retained rather than deleted so the figures measured through it stay reproducible:
+/// <c>MultiHopRagAnswerReproduction</c>'s local arm (0.2102 at weight 0.3) and
+/// <c>BeirReproduction</c>'s GraphRag nDCG (0.56897). Scheduled for deletion once Phase 6.x.7
+/// publishes the replacement figure.
+/// </para>
+/// </remarks>
 public sealed class GraphLocalSearchBehavior(
     IGraphStore graphStore,
     GraphRagRetrievalOptions options,
@@ -62,16 +76,6 @@ public sealed class GraphLocalSearchBehavior(
     /// </remarks>
     private static readonly Dictionary<string, double> EmptyPageRank =
         new(StringComparer.OrdinalIgnoreCase);
-
-    private List<SearchResult> CollectTopEntities(IReadOnlyList<SearchResult> results)
-    {
-        return results
-            .Where(r => r.Chunk.Metadata.TryGetValue("graph_type", out var gt)
-                        && gt == "entity")
-            .OrderByDescending(r => r.Score)
-            .Take(options.LocalTopEntities)
-            .ToList();
-    }
 
     private async Task<Dictionary<string, double>> TraverseGraph(
         IReadOnlyList<SearchResult> entityResults, CancellationToken ct)

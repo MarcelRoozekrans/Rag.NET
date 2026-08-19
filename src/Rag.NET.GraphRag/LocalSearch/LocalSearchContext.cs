@@ -28,4 +28,7 @@ public sealed record LocalSearchContext
 
     /// <summary>Source chunks rendered, of those the selected entities named.</summary>
     public required SectionFill Sources { get; init; }
+
+    /// <summary>Conversation turns rendered, of those offered.</summary>
+    public required SectionFill History { get; init; }
 }

@@ -1,9 +1,11 @@
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
 using Rag.NET.Benchmarks.Quality;
 using Rag.NET.Benchmarks.Quality.GraphExtractions;
 using Rag.NET.Embeddings.Onnx;
 using Rag.NET.Graph;
 using Rag.NET.GraphRag;
+using Rag.NET.GraphRag.LocalSearch;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
 using Rag.NET.Retrieval;
@@ -132,6 +134,21 @@ internal sealed class GraphRagRun : IAsyncDisposable
     /// </para>
     /// </remarks>
     private readonly GraphRagRetrievalOptions _retrievalOptions = new() { PageRankWeight = 0.3 };
+
+    /// <summary>
+    /// Microsoft's local search as specified — <see cref="IGraphRagSearch"/>, not
+    /// <see cref="GraphLocalSearchBehavior"/> — over the run's own stores, at the upstream defaults.
+    /// </summary>
+    /// <remarks>
+    /// Lazy because the builder is pure and the search holds only store references: constructing it
+    /// eagerly in the constructor would validate <see cref="LocalSearchContextOptions"/> before the
+    /// graph and chunk store exist, and re-constructing it per query would re-validate the same
+    /// options 2,556 times for nothing. The chat client is <see cref="_chat"/> — unused by
+    /// <see cref="GraphRagSearch.BuildLocalContextAsync(string, System.Threading.CancellationToken)"/>,
+    /// so reusing it satisfies the constructor's type without opening a second dependency.
+    /// </remarks>
+    private readonly Lazy<GraphRagSearch> _localSpecSearch;
+
     private readonly Dictionary<string, HashSet<string>> _entityDocuments =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -151,6 +168,14 @@ internal sealed class GraphRagRun : IAsyncDisposable
             extractions, inner: null, GraphExtractionModelIdentity.ExtractionTemperature);
         _reportChat = new CachedGraphRagClient(
             reports, inner: null, GraphExtractionModelIdentity.ExtractionTemperature);
+        _localSpecSearch = new Lazy<GraphRagSearch>(() => new GraphRagSearch(
+            _graphStore,
+            ChunkStore,
+            _vectorStore,
+            _embedder,
+            _chat,
+            new LocalSearchContextOptions(),
+            NullLogger<GraphRagSearch>.Instance));
     }
 
     /// <summary>Gets the finished graph: entities, relationships and communities.</summary>
@@ -314,6 +339,21 @@ internal sealed class GraphRagRun : IAsyncDisposable
             async (context, token) => candidates = await RetrieveAsync(context, token));
 
         return new GraphLocalSearchOutcome(candidates, results);
+    }
+
+    /// <summary>The specification-faithful local search context for one query, rendered.</summary>
+    /// <remarks>
+    /// Constructed once and reused across queries: the builder is pure and the search holds only
+    /// store references, so a per-query instance would re-validate the options 2,556 times and
+    /// change nothing.
+    /// </remarks>
+    /// <param name="query">The question.</param>
+    /// <param name="ct">Cancels the embedding call and the store reads.</param>
+    /// <returns>The rendered context.</returns>
+    public async Task<string> LocalSpecContextAsync(string query, CancellationToken ct)
+    {
+        var context = await _localSpecSearch.Value.BuildLocalContextAsync(query, ct);
+        return context.Text;
     }
 
     /// <summary>

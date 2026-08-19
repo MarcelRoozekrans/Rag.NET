@@ -75,4 +75,7 @@ public sealed record LocalSearchInputs
     /// </remarks>
     public IReadOnlyDictionary<string, int> EntityDegrees { get; init; } =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The conversation this query arrives in, oldest turn first.</summary>
+    public IReadOnlyList<ConversationTurn> ConversationHistory { get; init; } = [];
 }

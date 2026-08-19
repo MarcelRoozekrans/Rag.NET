@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.DependencyInjection;
+using Rag.NET.GraphRag.LocalSearch;
 using Rag.NET.Ingestion.Behaviors;
 using Rag.NET.Retrieval.Behaviors;
 using Xunit;
@@ -72,17 +73,18 @@ public sealed class PipelinePlacementTests
     }
 
     [Fact]
-    public void UseGraphRag_WithNoPipelineDelegates_PlacesLocalSearchBeforeReranking()
+    public void UseGraphRag_WithNoPipelineDelegates_LeavesTheObsoleteLocalSearchOutOfTheChain()
     {
+        // At PageRankWeight 0 — the default since #296 — the behaviour skips the graph walk and
+        // returns its input unchanged, reproducing the candidate-set control on 2,255 of 2,255
+        // queries. So unregistering it changes nothing any default user sees; what it stops is a
+        // no-op standing where a reader expects local search to be. Local search is IGraphRagSearch,
+        // which AddGraphRag registers as a service rather than placing in the retrieval chain.
         var services = new ServiceCollection();
         services.AddRagNet(rag => rag.UseGraphRag());
 
-        var types = RetrievalChain(services);
-
-        Assert.Contains(typeof(GraphLocalSearchBehavior), types);
-        Assert.Equal(
-            types.IndexOf(typeof(RerankingBehavior)) - 1,
-            types.IndexOf(typeof(GraphLocalSearchBehavior)));
+        Assert.DoesNotContain(typeof(GraphLocalSearchBehavior), RetrievalChain(services));
+        Assert.Contains(services, d => d.ServiceType == typeof(IGraphRagSearch));
     }
 
     /// <summary>
@@ -121,7 +123,6 @@ public sealed class PipelinePlacementTests
         var types = RetrievalChain(services);
 
         Assert.Contains(typeof(GraphGlobalSearchBehavior), types);
-        Assert.Contains(typeof(GraphLocalSearchBehavior), types);
     }
 
     /// <summary>

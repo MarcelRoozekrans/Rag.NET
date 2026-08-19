@@ -4206,6 +4206,11 @@ whatever definition this phase settles, or carries a `<VerifiedByReason>` statin
 That is Milestone 6's second DoD criterion, and this phase owns it.
 
 ### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: pending — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. #239 and #200 closed 2026-08-17; #247 and #176 remain, and #247 is still the largest measured lever]
+**Plan:** `docs/plans/2026-08-19-graphrag-local-search-completion-implementation.md` — the GraphRAG
+local-search thread only (spec sub-phases 6.x.1, 6.x.6, 6.x.7), not the whole sweep. Tasks 1–5 are
+done on `feat/graphrag-local-search-completion`; Task 6, the MultiHop-RAG re-measurement, is
+outstanding and needs the provisioned corpus. Covariates (6.x.5) and every other technique in this
+phase's goal below still need plans of their own.
 **Goal:** every retrieval technique and every answer engine gets what GraphRAG got in Milestone 5:
 one real run on a real corpus with a real model, differenced against a control, pinned, and read
 honestly. **#247 first** — the shared-store policy for graph-derived chunks is the largest measured
@@ -4228,6 +4233,18 @@ test for parity. What it does not promise: that any of them are good. Measured i
 
 **Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; #247 is fixed
 and re-measured; the pipeline-parity test is in the fast tier; the guards' allowlist is empty.
+
+- **`GraphLocalSearchBehavior` and `PageRankWeight` are deprecated in `<remarks>`, not
+  `[Obsolete]`, and not deleted** (2026-08-19, Task 1 of the local-search completion plan).
+  `[Obsolete]` was rejected, not merely skipped: `Directory.Build.props` sets
+  `TreatWarningsAsErrors=true`, so CS0618 would be a build error across the 17 files in four
+  projects that deliberately still reference these members, and `PageRankWeight`'s
+  `[Must(nameof(PageRankWeightIsFinite))]` validator has source-generated code that references the
+  property and cannot be `#pragma`'d around by hand. Deleting them would make three pinned figures
+  unreproducible — the `local` answer arm at 0.2102, `BeirReproduction`'s GraphRag 0.56897, and
+  the blend ablation. They are unregistered from the default pipeline, where at the default
+  `PageRankWeight = 0` they were a no-op. → **delete once 6.x.7 publishes the replacement
+  figure**, in the same phase.
 
 ### Phase 6.2.2: Requested Features [status: complete 2026-08-16 — #252 built and exercised; the phase stays open in spirit for any further request filed before the tag]
 **Goal:** the feature requests reported against the shipped packages, built and exercised to this

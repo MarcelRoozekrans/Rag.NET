@@ -126,6 +126,66 @@ public sealed class LocalSearchContextOptions
     /// </remarks>
     public string ColumnDelimiter { get; set; } = "|";
 
+    /// <summary>Question-and-answer pairs from the conversation folded into the context. Default: 5.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>max_qa_turns</c> upstream, and it counts <b>pairs, not messages</b>: only a
+    /// <see cref="ConversationRole.User"/> turn opens a pair, and every turn after it up to the next
+    /// user turn belongs to that pair. History is assembled before the three proportions divide the
+    /// budget and its tokens come off the total first, so a long history shrinks every other section
+    /// rather than overrunning the budget.
+    /// </para>
+    /// <para>
+    /// <b>Deviation.</b> Upstream's truncation is <c>if max_qa_turns and len(qa_turns) &gt;
+    /// max_qa_turns:</c> — a Python truthiness check, so <c>max_qa_turns = 0</c> is falsy, the slice
+    /// is skipped, and <b>every</b> QA pair survives. Upstream's designed "unlimited" sentinel is
+    /// <c>None</c> (the parameter is typed <c>int | None</c>); <c>0</c> behaving the same way is an
+    /// artifact of that truthiness check, not a value any real caller passes meaning unlimited. This
+    /// property is a plain <see cref="int"/>, so <c>None</c> has no representation here, and to a C#
+    /// caller <c>ConversationHistoryMaxTurns = 0</c> reads as "no history" — supplying the entire
+    /// conversation instead would be a booby trap in exactly the case where someone is trying to turn
+    /// the feature off. So here, unlike <see cref="ConversationHistoryRecencyBias"/>, the surprising
+    /// upstream behaviour is not reproduced: <c>0</c> means no history, full stop — on both paths
+    /// that read this property, including the query-folding path in
+    /// <c>GraphRagSearch.FoldHistoryIntoQuery</c>, where upstream's own <c>get_user_turns</c> has
+    /// its own separate <c>if max_qa_turns</c> truthiness check with the identical 0-means-unlimited
+    /// quirk.
+    /// </para>
+    /// </remarks>
+    [GreaterThanOrEqualTo(0)]
+    public int ConversationHistoryMaxTurns { get; set; } = 5;
+
+    /// <summary>Whether only the user's questions render. Default: <see langword="true"/>.</summary>
+    /// <remarks>
+    /// <c>include_user_turns_only</c> upstream, default <see langword="true"/> there and at the local
+    /// search call site. So by default the assistant's replies are grouped into pairs — which is what
+    /// the cap counts — and then dropped before rendering: pairing is visible in the arithmetic and
+    /// invisible in the output.
+    /// </remarks>
+    public bool IncludeUserTurnsOnly { get; set; } = true;
+
+    /// <summary>
+    /// Whether the cap keeps the newest pairs instead of the oldest. Default: <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Upstream's docstring and its only call site disagree, and the call site wins.</b>
+    /// <c>recency_bias</c> defaults to <see langword="true"/> in <c>conversation_history.py</c> and is
+    /// passed <see langword="false"/> by <c>mixed_context.py</c>, which is the only caller. The
+    /// truncation reverses the list only when the flag is set and then takes from the front, so at the
+    /// shipped value a conversation longer than the cap contributes its <b>beginning</b> rather than
+    /// its most recent exchanges.
+    /// </para>
+    /// <para>
+    /// Reproduced rather than corrected, for the reason
+    /// <see cref="EntityOversampleScaler"/> records about its own surprise: which turns reach the
+    /// context changes what the model is asked to answer from, so silently "fixing" it would make this
+    /// a different system that resembled the specification. Set it to <see langword="true"/> for the
+    /// behaviour most readers expect the parameter to have.
+    /// </para>
+    /// </remarks>
+    public bool ConversationHistoryRecencyBias { get; set; }
+
     /// <summary>Reports whether the two proportions leave the local section a non-negative budget.</summary>
     /// <param name="value">The <see cref="TextUnitProportion"/> under validation.</param>
     /// <returns>Whether it plus <see cref="CommunityProportion"/> is at most 1.</returns>

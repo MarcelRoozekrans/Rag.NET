@@ -257,6 +257,177 @@ public sealed class LocalSearchContextBuilderTests
         Assert.Contains("TextUnitProportion", thrown.Message, StringComparison.Ordinal);
     }
 
+    /// <remarks>
+    /// Spec section 2: history is built first and its tokens are subtracted from
+    /// max_context_tokens BEFORE the three proportions divide what is left. Applying the
+    /// proportions to the full total and then prepending history overruns the budget by exactly
+    /// the history's size, which is the failure mode this pins.
+    /// </remarks>
+    [Fact]
+    public void HistoryTokensComeOffTheTotalBeforeTheProportions()
+    {
+        var options = new LocalSearchContextOptions
+        {
+            MaxContextTokens = 1_000,
+            CommunityProportion = 0.15,
+            TextUnitProportion = 0.5,
+        };
+
+        var withoutHistory = new LocalSearchContextBuilder(options).Build(FullInputs());
+        var withHistory = new LocalSearchContextBuilder(options).Build(FullInputs() with
+        {
+            ConversationHistory =
+            [
+                new ConversationTurn(ConversationRole.User, string.Join(' ', Enumerable.Repeat("spectroscopy", 100))),
+            ],
+        });
+
+        Assert.True(withHistory.History.Tokens > 0, "the history section rendered nothing");
+        Assert.True(
+            withHistory.TokenCount <= options.MaxContextTokens,
+            $"context is {withHistory.TokenCount} tokens against a {options.MaxContextTokens} budget");
+        Assert.True(
+            withHistory.Sources.Budget < withoutHistory.Sources.Budget,
+            "the source budget did not shrink, so history was not subtracted before the split");
+    }
+
+    /// <remarks>
+    /// Spec section 6: [conversation history] + [communities] + [entities, relationships,
+    /// covariates] + [text units]. Order is not cosmetic — the prompt reads the sections
+    /// positionally.
+    /// </remarks>
+    [Fact]
+    public void HistoryIsTheFirstSectionInTheContext()
+    {
+        var context = new LocalSearchContextBuilder(new LocalSearchContextOptions()).Build(
+            FullInputs() with
+            {
+                ConversationHistory = [new ConversationTurn(ConversationRole.User, "Who audited it?")],
+            });
+
+        var history = context.Text.IndexOf("-----Conversation History-----", StringComparison.Ordinal);
+        var reports = context.Text.IndexOf("-----Reports-----", StringComparison.Ordinal);
+
+        Assert.True(history >= 0, "no conversation history section was rendered");
+        Assert.True(reports < 0 || history < reports, "history did not come first");
+    }
+
+    /// <remarks>
+    /// Counter-intuitive and deliberate. See spec section 9.2: recency_bias defaults True in the
+    /// docstring and is passed False by the only caller, so a long conversation contributes its
+    /// BEGINNING, not its most recent exchanges. Reproduced rather than corrected, for the reason
+    /// EntityOversampleScaler records: which turns reach the context changes what the model sees,
+    /// so "fixing" it silently would make this a different retrieval system that resembled the
+    /// specification. Set ConversationHistoryRecencyBias = true for the intuitive behaviour.
+    /// </remarks>
+    [Fact]
+    public void TheOldestQaTurnsAreKeptBecauseUpstreamDisablesRecencyBias()
+    {
+        var turns = Enumerable.Range(1, 9)
+            .Select(i => new ConversationTurn(ConversationRole.User, $"question {i}"))
+            .ToList();
+
+        var context = new LocalSearchContextBuilder(
+                new LocalSearchContextOptions { ConversationHistoryMaxTurns = 5 })
+            .Build(FullInputs() with { ConversationHistory = turns });
+
+        Assert.Equal(5, context.History.Rendered);
+        Assert.Contains("question 1", context.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("question 9", context.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RecencyBiasReversesWhichTurnsSurvive()
+    {
+        var turns = Enumerable.Range(1, 9)
+            .Select(i => new ConversationTurn(ConversationRole.User, $"question {i}"))
+            .ToList();
+
+        var context = new LocalSearchContextBuilder(
+                new LocalSearchContextOptions
+                {
+                    ConversationHistoryMaxTurns = 5,
+                    ConversationHistoryRecencyBias = true,
+                })
+            .Build(FullInputs() with { ConversationHistory = turns });
+
+        Assert.Contains("question 9", context.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("question 1", context.Text, StringComparison.Ordinal);
+    }
+
+    /// <remarks>
+    /// Six messages, three QA pairs. Spec section 9.1: only User opens a pair, so the assistant
+    /// replies below are absorbed into the pair above them rather than counting against the cap.
+    /// </remarks>
+    [Fact]
+    public void TheCapCountsQaPairsAndOnlyUserTurnsRenderByDefault()
+    {
+        var turns = new List<ConversationTurn>
+        {
+            new(ConversationRole.User, "question 1"),
+            new(ConversationRole.Assistant, "answer 1"),
+            new(ConversationRole.User, "question 2"),
+            new(ConversationRole.Assistant, "answer 2"),
+            new(ConversationRole.User, "question 3"),
+            new(ConversationRole.Assistant, "answer 3"),
+        };
+
+        var context = new LocalSearchContextBuilder(
+                new LocalSearchContextOptions { ConversationHistoryMaxTurns = 2 })
+            .Build(FullInputs() with { ConversationHistory = turns });
+
+        // Two pairs kept (the oldest two), and only their user halves rendered.
+        Assert.Equal(2, context.History.Rendered);
+        Assert.Contains("question 1", context.Text, StringComparison.Ordinal);
+        Assert.Contains("question 2", context.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("question 3", context.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("answer 1", context.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AssistantTurnsRenderWhenUserTurnsOnlyIsOff()
+    {
+        var turns = new List<ConversationTurn>
+        {
+            new(ConversationRole.User, "question 1"),
+            new(ConversationRole.Assistant, "answer 1"),
+        };
+
+        var context = new LocalSearchContextBuilder(
+                new LocalSearchContextOptions { IncludeUserTurnsOnly = false })
+            .Build(FullInputs() with { ConversationHistory = turns });
+
+        Assert.Contains("user|question 1", context.Text, StringComparison.Ordinal);
+        Assert.Contains("assistant|answer 1", context.Text, StringComparison.Ordinal);
+    }
+
+    /// <remarks>
+    /// Deviation, deliberate — see <see cref="LocalSearchContextOptions.ConversationHistoryMaxTurns"/>.
+    /// Upstream's truncation is a Python truthiness check, so <c>max_qa_turns = 0</c> is falsy there
+    /// and every QA pair survives — <c>0</c> means "unlimited" upstream, an artifact of the sentinel
+    /// being <c>None</c> rather than a value any real caller passes. To a C# caller of a plain
+    /// <see cref="int"/> property, <c>0</c> reads as "no history", so that is what it does here:
+    /// pinned so the choice is recorded rather than left to be re-discovered as a bug.
+    /// </remarks>
+    [Fact]
+    public void ZeroMaxTurnsMeansNoHistoryNotUnlimited()
+    {
+        var turns = new List<ConversationTurn>
+        {
+            new(ConversationRole.User, "question 1"),
+            new(ConversationRole.User, "question 2"),
+        };
+
+        var context = new LocalSearchContextBuilder(
+                new LocalSearchContextOptions { ConversationHistoryMaxTurns = 0 })
+            .Build(FullInputs() with { ConversationHistory = turns });
+
+        Assert.Equal(0, context.History.Rendered);
+        Assert.DoesNotContain("-----Conversation History-----", context.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("question 1", context.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("question 2", context.Text, StringComparison.Ordinal);
+    }
+
     /// <summary>A graph with every section populated.</summary>
     /// <returns>Inputs producing all four sections.</returns>
     private static LocalSearchInputs FullInputs()

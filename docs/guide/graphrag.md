@@ -40,19 +40,22 @@ Two packages:
 
 ### Retrieval
 
-**Local Search** (default) — For specific factual questions:
+**Local Search** — For specific factual questions:
 1. Find entities matching the query via vector similarity
-2. Traverse graph neighbors (configurable depth), collecting their PageRank scores
-3. Score: blend vector similarity with PageRank importance
+2. Collect everything the graph attaches to them — relationships, community reports, source chunks
+3. Assemble a token-budgeted context window and answer from it
 
 **Global Search** — For broad thematic questions:
 1. Collect all community reports
 2. Map: LLM answers the query per batch of reports
 3. Reduce: LLM combines partial answers into a final response
 
-**Which search runs is decided by the behaviors you register**, not by a setting. `UseGraphRag` puts `GraphLocalSearchBehavior` in the pipeline for you; add `GraphGlobalSearchBehavior` yourself when you want it, or both — each runs on the chunks it recognises.
-
-Global search is left out of the default on cost, not on preference. Local search traverses the graph over results retrieval already produced; global search re-enters the pipeline to fetch community reports and runs an LLM map-reduce over them **on every query**. That is not something a bare `UseGraphRag()` should switch on.
+**Local search is not part of the retrieval pipeline; global search is, and stays opt-in.**
+`UseGraphRag` registers `IGraphRagSearch` as a service — local search is a call you make
+directly, not a behaviour that runs on every retrieval. `GraphGlobalSearchBehavior` is a
+retrieval behaviour you add yourself when you want it: it re-enters the pipeline to fetch
+community reports and runs an LLM map-reduce over them **on every query**, so that is not
+something a bare `UseGraphRag()` should switch on.
 
 ## Quick Start
 
@@ -63,15 +66,19 @@ Global search is left out of the default on cost, not on preference. Local searc
 
 services.AddRagNet(rag => rag.UseGraphRag(
     options => { options.GleaningPasses = 1; },
-    retrieval: options => { options.LocalSearchDepth = 1; },
+    localSearch: options => { options.MaxContextTokens = 12_000; },
     graph: store => store.UseSqlite("graphrag.db")));
 ```
 
-That is the whole registration. `UseGraphRag` places `GraphEntityExtractionBehavior` after `EmbeddingBehavior`, `CommunityDetectionBehavior` after that, and `GraphLocalSearchBehavior` before `RerankingBehavior`.
+That is the whole registration. `UseGraphRag` places `GraphEntityExtractionBehavior` after
+`EmbeddingBehavior` and `CommunityDetectionBehavior` after that. Neither search behaviour is
+placed in the retrieval pipeline: local search is `IGraphRagSearch`, a service you call directly
+rather than a pipeline behaviour, and `GraphGlobalSearchBehavior` is deliberately left out — it
+runs an LLM map-reduce over community reports on every query, so it stays opt-in.
 
-### Adding global search, or choosing the positions yourself
+### Adding global search, or placing local search's deprecated behaviour yourself
 
-Earlier versions of this page taught a four-delegate form, because `UseGraphRag` used to register its behaviors without placing any of them and the delegates were the only way into a pipeline. That form still works and still takes precedence — use it for global search, or to put anything somewhere other than its default:
+Earlier versions of this page taught a four-delegate form, because `UseGraphRag` used to register its behaviors without placing any of them and the delegates were the only way into a pipeline. That form still works and still takes precedence — use it for global search, or to place local search's older, deprecated `GraphLocalSearchBehavior` in the pipeline yourself:
 
 ```csharp
 services.AddRagNet(
@@ -146,7 +153,7 @@ These are validated at registration too. `LocalSearchDepth` or `LocalTopEntities
 
 `GlobalReportCandidates` exists because global search was, in practice, unreachable. It maps and reduces over chunks tagged `graph_type = community_report`, partitioned out of whatever retrieval handed it — and a corpus produces a few hundred long, general reports against tens of thousands of short, specific entity and article chunks, with nothing reserving the reports a slot. Over a sixty-article corpus not one report appeared in a dense top-500, so the map phase never ran and the behavior returned its input untouched, looking to every caller as though it had worked. It now re-enters the retrieval pipeline with a metadata filter of its own when it is handed no reports, fetching this many. Any `MetadataFilter` you set is preserved — only the graph-type key is added — and the second retrieval is skipped entirely when the first already contains reports.
 
-> **Which search runs is a registration decision, not a setting.** Add `GraphLocalSearchBehavior`, `GraphGlobalSearchBehavior`, or both to the retrieval pipeline; each runs on the chunks it recognises. There is deliberately no `Mode` property — one existed until 0.1.0, was never read by any behavior, and is described in issue #104.
+> **Which search runs is a registration decision, not a setting.** Call `IGraphRagSearch` directly for local search, add `GraphGlobalSearchBehavior` to the retrieval pipeline for global search, or place local search's older, deprecated `GraphLocalSearchBehavior` there yourself. There is deliberately no `Mode` property — one existed until 0.1.0, was never read by any behavior, and is described in issue #104.
 
 ### The graph's chunks live in their own store
 
@@ -270,7 +277,20 @@ Console.WriteLine(answer.Answer);
 // Or just the context, without paying for a completion:
 var context = await search.BuildLocalContextAsync("How is Ångström related to Kelvin?");
 Console.WriteLine(context.Text);
+
+// With prior conversation, oldest turn first — folded into entity selection AND rendered as
+// its own context section:
+var history = new List<ConversationTurn>
+{
+    new(ConversationRole.User, "Who discovered Ångström?"),
+    new(ConversationRole.Assistant, "Anders Jonas Ångström."),
+};
+var followUp = await search.LocalSearchAsync("And what unit is named after him?", history);
 ```
+
+`LocalSearchAsync` and `BuildLocalContextAsync` are each two overloads: the query alone, or the
+query plus `IReadOnlyList<ConversationTurn>` history — the single-argument overload is exactly the
+two-argument one called with an empty list.
 
 Configure it through `UseGraphRag`'s `localSearch:` delegate:
 
@@ -282,6 +302,10 @@ rag.UseGraphRag(localSearch: o =>
     o.TextUnitProportion = 0.5;    // source chunks; the rest goes to entities and relationships
     o.TopKEntities = 10;
     o.ResponseType = "multiple paragraphs";
+
+    o.ConversationHistoryMaxTurns = 5;       // question-and-answer PAIRS, not messages; 0 = no history
+    o.IncludeUserTurnsOnly = true;           // render only the user's questions, not the answers
+    o.ConversationHistoryRecencyBias = false; // false = keep the OLDEST pairs when the cap trims — see below
 });
 ```
 
@@ -292,7 +316,8 @@ budget:
 
 | Section | Budget | Contents |
 |---|---|---|
-| `Reports` | 15% | Community reports, ordered by how many selected entities each community holds |
+| `Conversation History` | off the top, before the other proportions are applied | Up to `ConversationHistoryMaxTurns` question-and-answer pairs from the conversation you passed in |
+| `Reports` | 15% of what remains | Community reports, ordered by how many selected entities each community holds |
 | `Entities` | 35%, shared | The selected entities, in similarity order |
 | `Relationships` | with entities | In-network first, uncapped; then out-of-network by `(links, rank)` |
 | `Sources` | 50% | The article chunks the selected entities were extracted from |
@@ -303,6 +328,26 @@ selects up to 20 entities for a `TopKEntities` of 10. Set the scaler to 1 for ex
 
 It ranks no documents and re-scores nothing. Everything the model sees, it sees because the graph
 put it there.
+
+#### Conversation history
+
+A `ConversationTurn` is a `Role` (`User`, `Assistant`, or `System`) and its `Content`. History
+reaches an answer through two independent paths: the last `ConversationHistoryMaxTurns` user
+turns are folded onto the query, newest first, before entity selection — a follow-up such as "and
+who signed it?" embeds to almost nothing on its own, and it is the preceding questions that make
+it match an entity — and separately, the conversation is grouped into question-and-answer pairs
+and rendered as its own `Conversation History` section, capped at the same
+`ConversationHistoryMaxTurns`.
+
+**The two paths disagree about which end of the conversation they keep, on purpose — this is
+upstream's own behaviour, reproduced rather than smoothed over.** The fold onto the query takes
+the *newest* questions first. The rendered section, at the shipped
+`ConversationHistoryRecencyBias = false`, keeps the **oldest** pairs when the conversation is
+longer than the cap — which is the surprising half: Microsoft's own `recency_bias` parameter
+defaults to `true`, but local search's only call site passes `recency_bias=False`, so the
+rendered history a model actually sees is the *beginning* of the conversation, not its most
+recent exchanges. Set `ConversationHistoryRecencyBias = true` for the newest-first behaviour most
+readers expect.
 
 #### Why it is not a retrieval behaviour
 
@@ -382,10 +427,10 @@ GraphRAG is the most expensive ingestion strategy — LLM calls per chunk:
 
 ### Retrieval Cost
 
-- **Local Search**: Zero additional LLM calls. At the default `PageRankWeight = 0` it performs *no
-  graph traversal either* — the blend is the identity, so there would be nothing to read the
-  traversal's PageRank scores. It deduplicates and returns what retrieval found. Set a non-zero
-  weight and the walk runs, one neighbour query per seed entity.
+- **Local Search** (`IGraphRagSearch`): `BuildLocalContextAsync` makes zero LLM calls — one
+  embedding call to select entities, then batched graph-store reads for their relationships,
+  community reports and source chunks. `LocalSearchAsync` adds exactly one chat completion on top,
+  to generate the answer from that context.
 - **Global Search**: one map call per batch of `GlobalBatchSize` community reports in the candidate set (5 by default), plus 1 reduce — not one per community. It is the reports that reach retrieval that cost, not the communities that exist.
 
 ### Storage

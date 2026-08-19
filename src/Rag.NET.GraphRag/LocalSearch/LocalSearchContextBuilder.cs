@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using Rag.NET.Graph;
 using Rag.NET.Models;
@@ -74,7 +75,12 @@ public sealed class LocalSearchContextBuilder
     {
         ArgumentNullException.ThrowIfNull(inputs);
 
-        var total = _options.MaxContextTokens;
+        var (historyText, history) = BuildHistory(inputs, _options.MaxContextTokens);
+
+        // Spec section 2: history is built first and comes off the total before the proportions are
+        // applied. Applying them to the full total and prepending history afterwards overruns the
+        // budget by exactly the history's size.
+        var total = Math.Max(_options.MaxContextTokens - history.Tokens, 0);
         var communityBudget = Slice(total, _options.CommunityProportion);
         var sourceBudget = Slice(total, _options.TextUnitProportion);
         var localBudget = Slice(total, 1.0 - _options.CommunityProportion - _options.TextUnitProportion);
@@ -83,7 +89,7 @@ public sealed class LocalSearchContextBuilder
         var (localText, entities, relationships) = BuildLocal(inputs, localBudget);
         var (sourceText, sources) = BuildSources(inputs, sourceBudget);
 
-        var text = Join(reportText, localText, sourceText);
+        var text = Join(historyText, reportText, localText, sourceText);
 
         return new LocalSearchContext
         {
@@ -93,6 +99,7 @@ public sealed class LocalSearchContextBuilder
             Entities = entities,
             Relationships = relationships,
             Sources = sources,
+            History = history,
         };
     }
 
@@ -125,6 +132,164 @@ public sealed class LocalSearchContextBuilder
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>Builds the conversation-history section, which precedes every other.</summary>
+    /// <remarks>
+    /// <para>
+    /// Two columns, per spec §9.3: <c>turn</c> holds the role string and <c>content</c> the text.
+    /// There is no third column and no turn index — upstream renders a two-column pandas frame whose
+    /// <c>turn</c> column <i>is</i> the role.
+    /// </para>
+    /// <para>
+    /// The cap is applied to QA pairs before the budget is consulted, and at the shipped
+    /// <see cref="LocalSearchContextOptions.ConversationHistoryRecencyBias"/> of
+    /// <see langword="false"/> it keeps the <b>oldest</b> pairs.
+    /// </para>
+    /// <para>
+    /// <b>Deviation.</b> When not even the first pair fits, upstream still emits the banner with no
+    /// rows under it. This returns an empty section instead, because <see cref="ContextTable"/>
+    /// makes that choice repository-wide and states why: a banner with nothing under it tells the
+    /// model the section exists and is empty, which is a claim about the conversation rather than
+    /// about the budget. Only the rendered text diverges — the banner and header tokens are still
+    /// charged to the budget here too, the same arithmetic upstream uses, so what changes is a
+    /// handful of tokens of prompt text, not the section's accounting.
+    /// </para>
+    /// <para>
+    /// <b>Deviation.</b> Upstream re-renders the table and re-checks the budget once per
+    /// question-and-answer <i>pair</i>, breaking on the pair as a whole — so a pair whose user row
+    /// fits but whose assistant row does not is dropped entirely there. This checks the budget per
+    /// <i>row</i>, so the same pair keeps its user row and drops only the assistant row. Only
+    /// observable when <see cref="LocalSearchContextOptions.IncludeUserTurnsOnly"/> is
+    /// <see langword="false"/>, since otherwise the assistant row is never rendered at all.
+    /// </para>
+    /// <para>
+    /// <b>Deviation.</b> Upstream renders through <c>pandas.to_csv</c>, whose default
+    /// <c>QUOTE_MINIMAL</c> wraps a cell containing the delimiter, a quote or a newline in double
+    /// quotes. Spec §9.6 could not execute pandas to confirm the exact bytes, and no other section
+    /// here quotes, so this does not either — a user turn containing <c>|</c> renders as an extra
+    /// column rather than a quoted cell, a known open difference rather than a guessed one.
+    /// </para>
+    /// </remarks>
+    /// <param name="inputs">Graph material and the conversation.</param>
+    /// <param name="budget">
+    /// Tokens this section may spend — the whole context budget, since it is taken off the top rather
+    /// than allocated a proportion.
+    /// </param>
+    /// <returns>Rendered section and its fill.</returns>
+    private (string Text, SectionFill Fill) BuildHistory(LocalSearchInputs inputs, int budget)
+    {
+        var pairs = GroupIntoQaTurns(inputs.ConversationHistory);
+        if (pairs.Count == 0 || _options.ConversationHistoryMaxTurns == 0)
+        {
+            return (string.Empty, new SectionFill(0, pairs.Count, 0, budget));
+        }
+
+        // Upstream reverses only when recency bias is on, then takes from the front either way.
+        if (_options.ConversationHistoryRecencyBias)
+        {
+            pairs.Reverse();
+        }
+
+        if (pairs.Count > _options.ConversationHistoryMaxTurns)
+        {
+            pairs.RemoveRange(
+                _options.ConversationHistoryMaxTurns,
+                pairs.Count - _options.ConversationHistoryMaxTurns);
+        }
+
+        var table = new ContextTable(
+            "Conversation History", ["turn", "content"], _options.ColumnDelimiter, budget);
+
+        foreach (ref readonly var pair in CollectionsMarshal.AsSpan(pairs))
+        {
+            if (!table.TryAdd("user", Clean(pair.Question.Content)))
+            {
+                break;
+            }
+
+            if (_options.IncludeUserTurnsOnly || pair.Answers.Count == 0)
+            {
+                continue;
+            }
+
+            if (!table.TryAdd("assistant", Clean(JoinAnswers(pair.Answers))))
+            {
+                break;
+            }
+        }
+
+        return (table.Render(), new SectionFill(table.Rendered, pairs.Count, table.Tokens, budget));
+    }
+
+    /// <summary>Newline-joins a pair's absorbed turns, matching upstream's <c>get_answer_text</c>.</summary>
+    /// <param name="answers">Turns absorbed into one QA pair.</param>
+    /// <returns>The joined text.</returns>
+    private static string JoinAnswers(List<ConversationTurn> answers)
+    {
+        var builder = new StringBuilder();
+        for (var i = 0; i < answers.Count; i++)
+        {
+            if (i > 0)
+            {
+                _ = builder.Append('\n');
+            }
+
+            _ = builder.Append(answers[i].Content);
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>Groups a flat turn list into question-and-answer pairs, oldest first.</summary>
+    /// <remarks>
+    /// Spec §9.1's <c>to_qa_turns</c>, reproduced including its edge: <b>only a
+    /// <see cref="ConversationRole.User"/> turn opens a pair</b>, and every turn until the next user
+    /// turn is appended to the open pair's answers — a <see cref="ConversationRole.System"/> turn
+    /// among them included, which therefore renders under the literal string <c>assistant</c>. Turns
+    /// preceding the first user turn belong to no pair and are dropped, as upstream drops them.
+    /// </remarks>
+    /// <param name="turns">The conversation, oldest first.</param>
+    /// <returns>The pairs, oldest first.</returns>
+    private static List<QaTurn> GroupIntoQaTurns(IReadOnlyList<ConversationTurn> turns)
+    {
+        var pairs = new List<QaTurn>();
+        QaTurn? open = null;
+
+        for (var i = 0; i < turns.Count; i++)
+        {
+            if (turns[i].Role == ConversationRole.User)
+            {
+                if (open is not null)
+                {
+                    pairs.Add(open);
+                }
+
+                open = new QaTurn(turns[i]);
+            }
+            else
+            {
+                open?.Answers.Add(turns[i]);
+            }
+        }
+
+        if (open is not null)
+        {
+            pairs.Add(open);
+        }
+
+        return pairs;
+    }
+
+    /// <summary>One user turn and the turns absorbed into its answer, before rendering.</summary>
+    /// <param name="question">The user turn that opened the pair.</param>
+    private sealed class QaTurn(ConversationTurn question)
+    {
+        /// <summary>The user turn that opened the pair.</summary>
+        internal ConversationTurn Question { get; } = question;
+
+        /// <summary>Every turn absorbed into this pair until the next user turn.</summary>
+        internal List<ConversationTurn> Answers { get; } = [];
     }
 
     /// <summary>Builds the community-report section.</summary>

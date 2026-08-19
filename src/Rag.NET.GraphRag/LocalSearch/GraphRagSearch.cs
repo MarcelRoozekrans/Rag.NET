@@ -64,25 +64,36 @@ public sealed partial class GraphRagSearch : IGraphRagSearch
     }
 
     /// <inheritdoc/>
+    public Task<LocalSearchContext> BuildLocalContextAsync(
+        string query, CancellationToken cancellationToken = default) =>
+        BuildLocalContextAsync(query, [], cancellationToken);
+
+    /// <inheritdoc/>
     public async Task<LocalSearchContext> BuildLocalContextAsync(
-        string query, CancellationToken cancellationToken = default)
+        string query, IReadOnlyList<ConversationTurn> history, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(query);
+        ArgumentNullException.ThrowIfNull(history);
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.graphrag.search");
         activity?.SetTag("graphrag.search.mode", "local");
 
-        var entities = await SelectEntitiesAsync(query, cancellationToken).ConfigureAwait(false);
+        var foldedQuery = FoldHistoryIntoQuery(query, history);
+        var entities = await SelectEntitiesAsync(foldedQuery, cancellationToken).ConfigureAwait(false);
         activity?.SetTag("graphrag.entity.count", entities.Count);
 
         if (entities.Count == 0)
         {
             LogNoEntitiesMatched(_logger, query);
-            return _builder.Build(new LocalSearchInputs { SelectedEntities = [] });
+            return _builder.Build(new LocalSearchInputs
+            {
+                SelectedEntities = [],
+                ConversationHistory = history,
+            });
         }
 
         var inputs = await CollectAsync(entities, cancellationToken).ConfigureAwait(false);
-        var context = _builder.Build(inputs);
+        var context = _builder.Build(inputs with { ConversationHistory = history });
 
         activity?.SetTag("graphrag.context.tokens", context.TokenCount);
         activity?.SetTag("graphrag.context.relationships", context.Relationships.Rendered);
@@ -91,10 +102,15 @@ public sealed partial class GraphRagSearch : IGraphRagSearch
     }
 
     /// <inheritdoc/>
+    public Task<LocalSearchAnswer> LocalSearchAsync(
+        string query, CancellationToken cancellationToken = default) =>
+        LocalSearchAsync(query, [], cancellationToken);
+
+    /// <inheritdoc/>
     public async Task<LocalSearchAnswer> LocalSearchAsync(
-        string query, CancellationToken cancellationToken = default)
+        string query, IReadOnlyList<ConversationTurn> history, CancellationToken cancellationToken = default)
     {
-        var context = await BuildLocalContextAsync(query, cancellationToken).ConfigureAwait(false);
+        var context = await BuildLocalContextAsync(query, history, cancellationToken).ConfigureAwait(false);
 
         var messages = new List<ChatMessage>
         {
@@ -107,6 +123,52 @@ public sealed partial class GraphRagSearch : IGraphRagSearch
             .ConfigureAwait(false);
 
         return new LocalSearchAnswer(response.Text ?? string.Empty, context);
+    }
+
+    /// <summary>Folds recent user questions onto the query, as upstream does before entity selection.</summary>
+    /// <remarks>
+    /// <para>
+    /// Spec §9.5. A follow-up question ("and who signed it?") embeds to almost nothing on its own; the
+    /// preceding questions are what make it match an entity. Deliberately a different path from the
+    /// rendered history section — these turns steer selection whether or not they are shown to the
+    /// model, and they are user turns even when the section renders assistant turns too.
+    /// </para>
+    /// <para>
+    /// <b>The most recent questions, newest first</b> — <c>get_user_turns</c> walks the history
+    /// reversed and appends. Note that this disagrees with the rendered section, which keeps the
+    /// <i>oldest</i> pairs because its caller passes <c>recency_bias=False</c>. Both are upstream's
+    /// behaviour in the same call; they are not made consistent here.
+    /// </para>
+    /// </remarks>
+    /// <param name="query">The user's question.</param>
+    /// <param name="history">The conversation so far, oldest turn first.</param>
+    /// <returns>
+    /// <paramref name="query"/> with up to <see cref="LocalSearchContextOptions.ConversationHistoryMaxTurns"/>
+    /// preceding user questions appended, most recent first.
+    /// </returns>
+    private string FoldHistoryIntoQuery(string query, IReadOnlyList<ConversationTurn> history)
+    {
+        if (history.Count == 0 || _options.ConversationHistoryMaxTurns == 0)
+        {
+            return query;
+        }
+
+        var questions = new List<string>();
+        for (var i = history.Count - 1; i >= 0; i--)
+        {
+            if (history[i].Role != ConversationRole.User)
+            {
+                continue;
+            }
+
+            questions.Add(history[i].Content);
+            if (questions.Count >= _options.ConversationHistoryMaxTurns)
+            {
+                break;
+            }
+        }
+
+        return questions.Count == 0 ? query : query + "\n" + string.Join("\n", questions);
     }
 
     /// <summary>Selects the entities the query maps to, most similar first.</summary>
