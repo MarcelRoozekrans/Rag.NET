@@ -4206,6 +4206,11 @@ whatever definition this phase settles, or carries a `<VerifiedByReason>` statin
 That is Milestone 6's second DoD criterion, and this phase owns it.
 
 ### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: pending — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. #239 and #200 closed 2026-08-17; #247 and #176 remain, and #247 is still the largest measured lever]
+**Plan:** `docs/plans/2026-08-19-graphrag-local-search-completion-implementation.md` — the GraphRAG
+local-search thread only (spec sub-phases 6.x.1, 6.x.6, 6.x.7), not the whole sweep. Tasks 1–5 are
+done on `feat/graphrag-local-search-completion`; Task 6, the MultiHop-RAG re-measurement, is
+outstanding and needs the provisioned corpus. Covariates (6.x.5) and every other technique in this
+phase's goal below still need plans of their own.
 **Goal:** every retrieval technique and every answer engine gets what GraphRAG got in Milestone 5:
 one real run on a real corpus with a real model, differenced against a control, pinned, and read
 honestly. **#247 first** — the shared-store policy for graph-derived chunks is the largest measured
