@@ -11,7 +11,7 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// <see cref="MultiHopRagAnswerReproduction"/> already refuses an arm with no recorded figure — but
 /// the only thing that consults it is <see cref="MultiHopRagAnswerReproduction.AssertReproduces"/>,
 /// called from inside <see cref="BeirGraphRagAnswerTests"/>. So the check fires **at the end of a
-/// full run**: 2,556 queries, six arms, 22,230 answer requests, <b>1 h 33 m</b>. That is when the
+/// full run**: 2,556 queries, five arms, 22,230 answer requests, <b>1 h 33 m</b>. That is when the
 /// <c>filtered</c> arm added in #274 was found to have no pin — after the measurement, not before
 /// it.
 /// </para>
