@@ -68,6 +68,11 @@ public sealed class GraphRagRetrievalOptions
     /// <see cref="GraphLocalSearchBehavior"/> skips the graph walk entirely at 0 rather than
     /// harvesting PageRank scores nothing will read.
     /// </para>
+    /// <para>
+    /// <b>Deprecated.</b> This option only affects <see cref="GraphLocalSearchBehavior"/>, which is
+    /// no longer placed by <c>UseGraphRag</c>; at its default of 0 it reproduced the candidate-set
+    /// control on 2,255 of 2,255 queries.
+    /// </para>
     /// </remarks>
     [InclusiveBetween(0.0, 1.0)]
     [Must(nameof(PageRankWeightIsFinite), Message = "PageRankWeight must be a finite number (not NaN or infinity).")]

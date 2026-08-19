@@ -16,23 +16,26 @@ public static class RagBuilderExtensions
     /// <summary>
     /// Enables GraphRAG — entity extraction, community detection, and graph-aware retrieval.
     /// Places <see cref="GraphEntityExtractionBehavior"/> and, after it,
-    /// <see cref="CommunityDetectionBehavior"/> into ingestion following <c>EmbeddingBehavior</c>,
-    /// and <see cref="GraphLocalSearchBehavior"/> into retrieval before <c>RerankingBehavior</c>.
+    /// <see cref="CommunityDetectionBehavior"/> into ingestion following <c>EmbeddingBehavior</c>.
+    /// Local search is registered as <see cref="LocalSearch.IGraphRagSearch"/>, a service rather
+    /// than a retrieval pipeline behaviour.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Placing them is the whole point of the call.</b> This method used to register four
-    /// behaviours and stop, and none of those types is in either default pipeline, so
+    /// <b>Placing the ingestion behaviours is the whole point of the call.</b> This method used to
+    /// register four behaviours and stop, and none of those types is in either default pipeline, so
     /// <c>UseGraphRag()</c> on its own extracted no entities, detected no communities and built no
     /// graph — while retrieval quietly stayed a plain vector search (issue #191).
     /// </para>
     /// <para>
-    /// <b><see cref="GraphGlobalSearchBehavior"/> is deliberately not placed.</b> Which search
-    /// runs is the caller's decision, as <c>docs/guide/graphrag.md</c> states: local search is a
-    /// graph traversal over results retrieval already produced, while global search re-enters the
-    /// pipeline for community reports and runs an LLM map-reduce over them on every query.
-    /// Enabling that by default would be per-query spend nobody asked for. It stays registered, so
-    /// naming it in <c>AddRagNet</c>'s <c>retrieval:</c> delegate is all it takes.
+    /// <b><see cref="GraphGlobalSearchBehavior"/> is deliberately not placed</b>, and neither is
+    /// <see cref="GraphLocalSearchBehavior"/> — which search runs is the caller's decision, as
+    /// <c>docs/guide/graphrag.md</c> states. Local search is <see cref="LocalSearch.IGraphRagSearch"/>,
+    /// a graph traversal you call directly; global search re-enters the pipeline for community
+    /// reports and runs an LLM map-reduce over them on every query, so enabling that by default
+    /// would be per-query spend nobody asked for. Both stay registered as services, so naming
+    /// <see cref="GraphGlobalSearchBehavior"/> in <c>AddRagNet</c>'s <c>retrieval:</c> delegate — or
+    /// resolving <see cref="LocalSearch.IGraphRagSearch"/> — is all it takes.
     /// </para>
     /// <para>
     /// The explicit form the guide teaches is unchanged and still wins: those delegates run before
@@ -186,8 +189,9 @@ public static class RagBuilderExtensions
     }
 
     /// <summary>
-    /// Puts the three behaviours a bare <c>UseGraphRag()</c> should run into the two pipelines,
-    /// at the positions <c>docs/guide/graphrag.md</c>'s quick start uses.
+    /// Puts the three behaviours a bare <c>UseGraphRag()</c> should run into the ingestion
+    /// pipeline, at the positions <c>docs/guide/graphrag.md</c>'s quick start uses. No behaviour
+    /// is placed into the retrieval pipeline by default — see the remarks below.
     /// </summary>
     /// <param name="services">The collection <c>AddRagNet</c> was called on.</param>
     /// <exception cref="InvalidOperationException">There is no pipeline to place them in.</exception>
@@ -205,9 +209,10 @@ public static class RagBuilderExtensions
             .Add<CommunityDetectionBehavior>(after: typeof(GraphEntityExtractionBehavior))
             .Add<GraphChunkRoutingBehavior>(after: typeof(CommunityDetectionBehavior));
 
-        // Local search only; GraphGlobalSearchBehavior is opt-in — see this method's caller.
-        services.RagRetrievalPipeline(nameof(UseGraphRag))
-            .Add<GraphLocalSearchBehavior>(before: typeof(RerankingBehavior));
+        // Neither search is placed in the retrieval pipeline by default. Local search is
+        // IGraphRagSearch, registered as a service rather than a pipeline behaviour (see
+        // RegisterRetrievalBehaviors). GraphGlobalSearchBehavior is opt-in — see this method's
+        // caller.
     }
 
     /// <summary>
