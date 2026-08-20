@@ -19,7 +19,7 @@ findings below already suggests it is only half right.
 Three defects, all found by reading rather than by running, and all still shipped. They shape the
 measurement, so they are stated first.
 
-### 1. RAPTOR builds its tree per document, not over the corpus
+### 1. RAPTOR builds its tree per document, not over the corpus — #331
 
 `RaptorIngestionBehavior` is an `IIngestionBehavior` that clusters `ctx.EmbeddedChunks`, and
 `IngestionContext` carries exactly one `Stream` and one `DocumentMetadata`. It is one document's
@@ -165,9 +165,31 @@ also what stops "Boost was a no-op" from being an assertion.
 Because the fix rewrites `TopK` once for the whole behaviour rather than per mode, **defect 3 is
 corrected by the same change**. `Filter` gets a fast-tier regression test, not a paid arm.
 
-**Defect 1, the tree scope, is not fixed here.** `raptorcorpus` prices it. The fix is filed as an
-issue and scheduled into a phase, per the roadmap's standing rule that debt is recorded with its
-origin and then scheduled or re-justified — not left as a note.
+**Defect 1, the tree scope, is not fixed here — it is #331, and its schedule has a trigger.**
+
+`raptorcorpus` prices it. The fix is not deferred on judgment but on a number: **if
+`raptorcorpus − raptor` is positive and material, `add-phase` fires for #331; if it is small, the
+v1.0 answer is a documented limitation.** That is how #239's point 2 resolved — local search
+expanding the candidate set was measured at +0.00148 Recall@100 and closed as a documented
+limitation, with `docs/guide/graphrag.md` stating plainly that the behaviour adds no candidates.
+
+**Why the fix is a phase rather than a patch**, recorded here because it is what makes deferring it
+a cost decision rather than an evasion. The `#302` pattern transfers in shape — debounce the
+whole-corpus operation on growth, plus a rebuilder for on-demand "make this current now". What does
+not transfer is where the data comes from. `CommunityDetectionBehavior` calls
+`graphStore.GetFullGraphAsync(ct)`; GraphRAG owns a store that enumerates everything it holds.
+RAPTOR has no equivalent and the vector store cannot stand in:
+
+| Obstacle | Detail |
+|---|---|
+| No enumeration on `IVectorStore` | `StoreAsync`, `SearchAsync`, `DeleteByDocumentIdAsync`. Nothing returns the corpus. |
+| `IChunkLookup` is by key | You would already need every chunk identity to ask for them. |
+| `IChunkLookup` returns `TextChunk` | RAPTOR clusters on **vectors**. The lookup cannot return embeddings at all. |
+| Not universal | `InMemoryVectorStore` and `FederatedVectorStore` only, forwarded by `ResilientVectorStore`. #318 is open because the remote stores lack it. |
+
+So the fix needs RAPTOR to own persistent state the way GraphRAG owns its graph store — leaf
+embeddings written at ingestion, corpus-wide clustering over them, debounced, with a rebuilder, and
+a migration story for existing users. Roughly #302 plus #312 combined.
 
 ## §3 — Cost, and the gate before spending
 
@@ -223,8 +245,7 @@ falsifiable rather than assumed.
 - Whether `raptorcorpus` should also be pinned as a *ranking* figure (nDCG@10) rather than answers
   only. The phase's bar for a retrieval technique is a pinned figure with a control, and answers
   satisfy it; a ranking leg would be additional evidence at additional cost.
-- Where the tree-scope fix lands once filed — 6.2.1 alongside the other techniques, or after v1.0.
-  That is a scheduling call and belongs to the roadmap, not here.
+- *(Resolved during brainstorming: the tree-scope fix is #331, scheduled on a trigger — see §2.)*
 
 ## Decisions taken during brainstorming
 
