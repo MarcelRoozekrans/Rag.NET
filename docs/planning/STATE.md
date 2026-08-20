@@ -87,6 +87,13 @@ why RAPTOR's per-document path must not be deleted before its replacement figure
 
 ## Working State
 
-**Branch:** `chore/roadmap-refresh-6-2-1`, cut from `main` at `3f5d14fb`.
-`bench/graphrag-localspec-measurement` is merged and safe to delete.
-**Tree:** the two state files above, nothing else.
+**Branch:** `chore/roadmap-refresh-6-2-1`, cut from `main` at `3f5d14fb`. Six commits, nothing
+pushed, no PR open. `bench/graphrag-localspec-measurement` is merged and safe to delete.
+
+**On the branch:** the state-file refresh; `docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md`
+(6.2.1's measurement, now queued behind 6.2.3); the #331 disposition; phase 6.2.3; the 6.1
+postponement and the decision that closed with it; and
+`docs/superpowers/specs/2026-08-20-corpus-level-raptor-design.md` (6.2.3's design).
+
+**Filed this session:** #331 (per-document tree scope) and #332 (summary chunks collide on
+`ChunkIndex` across tree levels — shipped, fires at default settings, independent of #331).
