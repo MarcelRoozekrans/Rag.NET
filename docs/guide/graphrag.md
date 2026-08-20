@@ -362,6 +362,40 @@ The trade is explicit: **local search no longer composes with hybrid search or r
 pick this or you pick the pipeline. The composition that existed before was not real — the blend
 re-scored candidates the graph had no say in choosing.
 
+#### What it measures, now that it exists
+
+Measured 2026-08-20 over the whole 609-article MultiHop-RAG corpus, 2,556 queries against
+`openai/gpt-4o-mini` at temperature 0, scored by the paper's own rule over the 2,255 judged
+queries. Every arm sees the same prompt; only the context differs.
+
+| arm | overall | inference | comparison | temporal | abstains on nulls |
+|---|---|---|---|---|---|
+| dense (article chunks only) | 0.3499 | 0.7721 | 0.1636 | 0.0326 | 48.5% |
+| the old PageRank blend | 0.2102 | 0.4620 | 0.1005 | 0.0189 | 40.5% |
+| global search | 0.5951 | 0.8444 | 0.4953 | 0.3928 | 9.3% |
+| **local search, as specified** | **0.3459** | **0.8603** | 0.0736 | 0.0257 | 34.6% |
+
+**On entity questions this is the strongest result the project has measured** — 0.8603, above
+global search and above dense. It commits on 91.4% of inference queries at precision 0.941, where
+dense commits on 82% at 0.943: the same accuracy, far more willing to answer.
+
+**Overall it is level with dense, and the reason is worth knowing before you choose it.** Read the
+yes/no columns against their base rates — comparison gold is 60% yes and temporal 46% yes, so
+answering "yes" every time scores 0.598 and 0.463. Local search scores 0.0736 and 0.0257 because
+it *abstains*, committing on only 8.8% of comparison and 4.3% of temporal questions. It also
+abstains on just 34.6% of unanswerable questions against dense's 48.5%. So it declines answerable
+comparisons while committing on unanswerable ones: the graph context makes the model confident
+about entities and unwilling about comparisons.
+
+**Choose it for entity and relationship questions. Do not choose it for yes/no comparisons** —
+global search is the better arm there, and plain dense retrieval is better than both at knowing
+when to refuse.
+
+This also revises what this guide said before. Milestone 5.2 concluded that GraphRAG did not help
+on this corpus; that conclusion was drawn from the PageRank blend described above, which is not
+Microsoft's local search. Against the blend, the specified implementation is +0.1357 overall and
++0.3983 on inference.
+
 See `docs/plans/2026-08-18-graphrag-local-search-microsoft-spec.md` for the reading of Microsoft's
 implementation this follows, and for the deviations it cannot avoid.
 
