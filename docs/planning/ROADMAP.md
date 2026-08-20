@@ -4028,9 +4028,12 @@ this milestone carries the hardening and the tag.
 > figure with a control; answer engines an accuracy through the 5.2.2 harness; vector stores must
 > reproduce the SciFact parity figure through themselves; parsers/chunkers a real file with shape
 > assertions; live services a recording or a stated reason; pipeline plumbing a parity test.
-> Two decisions the note leaves to the operator, still open: whether 6.1's recordings gate v1.0 or
-> `<VerifiedByReason>` does where no credentials exist; and whether the #247 / #239 fixes ship in
-> v1.0. The note's recommendation stands in until they are made.
+> Two decisions the note leaves to the operator. The first is **still open**: whether 6.1's
+> recordings gate v1.0 or `<VerifiedByReason>` does where no credentials exist. The second —
+> whether the #247 / #239 fixes ship in v1.0 — has been **settled by events rather than by a
+> decision**: both are on `main` as of 2026-08-18 (#311, #312 for #247; #296, #291 for #239), so
+> they ship unless someone reverts them. Recorded here because a decision nobody made is worth
+> distinguishing from one that was taken. The note's recommendation stands in on the first.
 > **"Find all bugs before going 1.0" is the intent behind this milestone, and it is deliberately
 > not its Definition of Done.** "No bugs remain" is not a claim this — or any — milestone can
 > make: nothing can check it, it can only be falsified by the next defect, so a milestone
@@ -4205,7 +4208,7 @@ phase's own first task; this entry states the question and the evidence, not the
 whatever definition this phase settles, or carries a `<VerifiedByReason>` stating why it stays.
 That is Milestone 6's second DoD criterion, and this phase owns it.
 
-### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: pending — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. #239 and #200 closed 2026-08-17; #247 and #176 remain, and #247 is still the largest measured lever]
+### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: active 2026-08-20 — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. Two of its four named debts are now closed: #239 and #200 on 2026-08-17, **#247 on 2026-08-18** — fixed twice over, #311 hiding graph chunks from retrieval by default and #312 giving them their own store, pinned at 0.3494 in #280. #176 remains and is **worse** than it was recorded: the full corpus gives 2,816 singletons of 3,573, **78.8%** against the 65% the issue carries. The local-search thread completed 2026-08-20 (#323, #326); the sweep itself has not started]
 **Plan:** `docs/plans/2026-08-19-graphrag-local-search-completion-implementation.md` — the GraphRAG
 local-search thread only (spec sub-phases 6.x.1, 6.x.6, 6.x.7), not the whole sweep. **Complete
 2026-08-20.** Tasks 1–5 merged in #323; Task 6's measurement ran the same night and is pinned as the
@@ -4230,12 +4233,18 @@ questions. Covariates (6.x.5) and every other technique in this phase's goal bel
 of their own.
 **Goal:** every retrieval technique and every answer engine gets what GraphRAG got in Milestone 5:
 one real run on a real corpus with a real model, differenced against a control, pinned, and read
-honestly. **#247 first** — the shared-store policy for graph-derived chunks is the largest measured
-cost in the programme (−0.043 nDCG, −0.21 answer accuracy) and the one fix every measurement pointed
-at; fix it, re-run the four answer arms at top-6 (everything else replays, ~$5), and *then* the
-question 5.2.2 could not answer — can local search beat dense when it is not starving the model —
-gets its number. Then, in whatever order the pilot costs suggest: RAPTOR (same store shape as
-GraphRAG, likely the same finding, and the same fix), HyDE and reranking (already have parity-corpus
+honestly. **#247 was first, and is done** (2026-08-18) — the shared-store policy for graph-derived
+chunks was the largest measured cost in the programme (−0.043 nDCG, −0.21 answer accuracy) and the
+one fix every measurement pointed at. Option (c) was measured first (#274: the `filtered` arm
+reproduced article-only accuracy to four decimals, so the whole loss was displacement), pinned at
+0.3494 (#280), then shipped as behaviour — #311 hid the graph's chunks from retrieval by default,
+#312 gave them their own store. The question 5.2.2 could not answer — can local search beat dense
+when it is not starving the model — got its number on 2026-08-20: **0.3459 overall, 0.8603 on
+inference**, level with dense overall and the strongest entity-question result measured here.
+What remains, in whatever order the pilot costs suggest: **RAPTOR first** (same store shape as
+GraphRAG, likely the same finding, and #247's fix is the template — the discriminator, the
+over-fetch-and-drop, and the separate-store option are all now built and measured once), then
+HyDE and reranking (already have parity-corpus
 cells — re-measure under the Real protocol), hybrid BM25, late chunking, SPLADE; the three answer
 engines (MapReduce, Refine, FLARE) through `BeirGraphRagAnswerTests`' harness as arms; every vector
 store through the SciFact parity leg, reproducing 0.64593 ± 0.005 through itself; and the
@@ -4248,8 +4257,18 @@ traversal are decided here (rescale, drop, or use), with the ablation numbers in
 answer arm per engine (~$3 derived each, replayed after); one container run per store; a fast-tier
 test for parity. What it does not promise: that any of them are good. Measured is the bar.
 
-**Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; #247 is fixed
-and re-measured; the pipeline-parity test is in the fast tier; the guards' allowlist is empty.
+**Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; ~~#247 is fixed
+and re-measured~~ (met 2026-08-18); the pipeline-parity test is in the fast tier; the guards'
+allowlist is empty.
+
+**Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
+closed: RAPTOR, HyDE, reranking, hybrid BM25, late chunking and SPLADE under the Real protocol; the
+three answer engines as arms; every vector store through the SciFact parity leg; the
+pipeline-parity test; **#176** at its re-measured 78.8%; **local search's yes/no abstention** — it
+commits on 8.8% of comparison and 4.3% of temporal questions where global search scores 0.4953 and
+0.3928, which nobody has explained; and the **deletion of `GraphLocalSearchBehavior` and
+`PageRankWeight`**, which the note below made conditional on 6.x.7 publishing its replacement
+figure. That figure published on 2026-08-20, so the deletion is now unblocked.
 
 - **`GraphLocalSearchBehavior` and `PageRankWeight` are deprecated in `<remarks>`, not
   `[Obsolete]`, and not deleted** (2026-08-19, Task 1 of the local-search completion plan).
