@@ -126,15 +126,41 @@ internal static class MultiHopRagAnswerReproduction
         new(
             "multihop-rag",
             AnswerArm.LocalSpec,
-            [],
-            "NOT YET MEASURED. Microsoft's local search as specified -- IGraphRagSearch, the context " +
-            "builder from #317/#320/#321 plus conversation history, at the upstream defaults " +
-            "(12,000 tokens, 0.15 community / 0.5 text-unit, top-10 entities oversampled to 20, " +
-            "covariates off). Its context replaces the top-6 rendering in the SAME PromptTemplate the " +
-            "other arms use, so the only variable against dense/control/filtered is the context. " +
-            "The figure this arm produces is what Milestone 5.2's -0.02761 conclusion should have been " +
-            "measured against: 5.2 measured a PageRank blend over dense candidates, which is not local " +
-            "search. Phase 6.x.7."),
+            [0.3459],
+            "MEASURED 2026-08-20 on Windows 11, .NET 10.0.11, CPU ONNX Runtime -- Phase 6.x.7, the " +
+            "run this whole exercise was for. Microsoft's local search as specified: IGraphRagSearch, " +
+            "the context builder from #317/#320/#321 plus conversation history, at the upstream " +
+            "defaults (12,000 tokens, 0.15 community / 0.5 text-unit, top-10 entities oversampled to " +
+            "20, covariates off). Its rendered context replaces the top-6 rendering in the SAME " +
+            "PromptTemplate every other arm uses, so the only variable against dense/control/filtered " +
+            "is the context. 2,556 queries, openai/gpt-4o-mini at temperature 0. Generation pass " +
+            "50 m 21 s; the reproduction pass replayed all 2,556 from cache, generated ZERO, and " +
+            "returned the SAME 2,556 PREDICTIONS -- checked as a multiset of (query, prediction, " +
+            "paper, raw, strict) tuples rather than as an aggregate, so this is stronger than the " +
+            "accuracies matching. On-disk row order differs between the two files because answering " +
+            "is parallel; compare the tuples, not the lines. " +
+            "**Paper-rule accuracy 0.3459 over the 2,255 judged queries** (raw 0.3140, strict " +
+            "0.3255); inference 0.8603 (n=816), comparison 0.0736 (n=856), temporal 0.0257 (n=583); " +
+            "abstains correctly on 34.6% of the 301 null queries. " +
+            "**This is what Milestone 5.2 should have measured, and it changes 5.2's verdict.** That " +
+            "phase concluded GraphRAG does not help on this corpus from the `local` arm's 0.2102 -- " +
+            "a PageRank blend over dense candidates, which is not in Microsoft's local search at all. " +
+            "Against it this arm is +0.1357 overall and **+0.3983 on inference**. " +
+            "**On entity questions it is the best arm ever measured here: 0.8603, above global's " +
+            "0.8444 and dense's 0.7721.** It commits on 91.4% of inference queries at precision " +
+            "0.941, where dense commits on 82% at 0.943 -- the same accuracy, far more willing. " +
+            "**It is nonetheless level with dense overall (-0.0040), and the shortfall is all " +
+            "unwillingness elsewhere.** Read the yes/no types against their base rates: comparison " +
+            "gold is 60% yes and temporal 46% yes, so always-yes scores 0.598 and 0.463, and this " +
+            "arm's 0.0736 and 0.0257 are far below them because it ABSTAINS -- committing on 8.8% of " +
+            "comparison (precision 0.827) and 4.3% of temporal (precision 0.600). It also abstains " +
+            "on only 34.6% of the nulls against dense's 48.5%. So it declines the answerable " +
+            "yes/no questions and commits on the unanswerable ones, both at once: the graph context " +
+            "makes the model confident about entities and unwilling about comparisons. " +
+            "**Cost, measured not estimated:** the caches this replays are 35,112 extraction calls " +
+            "(22,309,528 tokens) plus 3,573 community reports (2,026,478 tokens), generated once by " +
+            "`--stage extraction` and `--stage reports` over the full 609-article corpus; ~$9 at " +
+            "gpt-4o-mini rates, and a re-run pays none of it."),
     ];
 
     /// <summary>Asserts one arm's paper-rule accuracy reproduced what was last recorded, or records what it measured.</summary>

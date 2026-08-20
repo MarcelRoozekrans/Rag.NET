@@ -4207,10 +4207,27 @@ That is Milestone 6's second DoD criterion, and this phase owns it.
 
 ### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: pending — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. #239 and #200 closed 2026-08-17; #247 and #176 remain, and #247 is still the largest measured lever]
 **Plan:** `docs/plans/2026-08-19-graphrag-local-search-completion-implementation.md` — the GraphRAG
-local-search thread only (spec sub-phases 6.x.1, 6.x.6, 6.x.7), not the whole sweep. Tasks 1–5 are
-done on `feat/graphrag-local-search-completion`; Task 6, the MultiHop-RAG re-measurement, is
-outstanding and needs the provisioned corpus. Covariates (6.x.5) and every other technique in this
-phase's goal below still need plans of their own.
+local-search thread only (spec sub-phases 6.x.1, 6.x.6, 6.x.7), not the whole sweep. **Complete
+2026-08-20.** Tasks 1–5 merged in #323; Task 6's measurement ran the same night and is pinned as the
+`localspec` arm in `MultiHopRagAnswerReproduction`.
+
+**And it revises Milestone 5.2's published finding.** 5.2 concluded "GraphRAG does not help on this
+corpus" from the `local` arm's 0.2102 — a PageRank blend over dense candidates, which is not in
+Microsoft's local search at all. Measured properly: **0.3459 overall and 0.8603 on inference**,
++0.1357 and +0.3983 against that blend, and the **strongest entity-question result this project has
+measured** (above global's 0.8444 and dense's 0.7721). It is level with dense overall (−0.0040)
+because it abstains on yes/no questions — committing on 8.8% of comparison and 4.3% of temporal —
+while abstaining on only 34.6% of the unanswerable nulls against dense's 48.5%. Generation pass
+50 m 21 s; the reproduction replayed 2,556 answers from cache, generated zero, and agreed row for
+row. Caches cost ~$9 once: 35,112 extraction calls and 3,573 community reports over the full
+609-article corpus.
+
+Two things this run produced that are **not** this plan's business and need their own homes:
+**#176 is worse than recorded** — the full corpus gives 2,816 singleton communities of 3,573,
+**78.8%**, against the 65% #176 carries; and local search's **yes/no abstention** is a
+characterisation nobody has explained, where global search scores 0.4953 and 0.3928 on the same
+questions. Covariates (6.x.5) and every other technique in this phase's goal below still need plans
+of their own.
 **Goal:** every retrieval technique and every answer engine gets what GraphRAG got in Milestone 5:
 one real run on a real corpus with a real model, differenced against a control, pinned, and read
 honestly. **#247 first** — the shared-store policy for graph-derived chunks is the largest measured

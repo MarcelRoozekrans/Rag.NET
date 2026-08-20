@@ -9,7 +9,14 @@
          over the whole MultiHop-RAG corpus with every model call replayed — nDCG pinned in
          BeirReproduction (GraphRag 0.56897, GraphRagDepthControl 0.63967) and answer accuracy in
          MultiHopRagAnswerReproduction (dense 0.3499, control 0.1384, local 0.2102, global
-         0.5951). The runs that found eight shipping defects and #247. Milestone 6.0, 2026-08-15. -->
+         0.5951, filtered 0.3494, localspec 0.3459). The runs that found eight shipping defects
+         and #247. Milestone 6.0, 2026-08-15.
+         localspec added 2026-08-20 (Phase 6.x.7): Microsoft's local search as specified, measured
+         against the same control as the rest. 0.3459 overall and 0.8603 on inference — the
+         strongest entity-question result measured here, above global's 0.8444 — against the old
+         PageRank blend's 0.2102 / 0.4620. Milestone 5.2's "GraphRAG does not help on this corpus"
+         was a verdict on that blend, not on local search. -->
+
     <VerifiedBy>benchmark</VerifiedBy>
   </PropertyGroup>
 
