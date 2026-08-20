@@ -29,14 +29,19 @@ public sealed class RaptorIngestionBehavior(
         var currentLevel = new List<EmbeddedChunk>(ctx.EmbeddedChunks);
         var allSummaries = new List<EmbeddedChunk>();
         var level = 0;
+        // Summary indices continue past the leaves and keep counting across levels. They must not
+        // restart per level: ctx.EmbeddedChunks is not appended to until after this loop, so a
+        // per-level index made level 2's first summary collide with level 1's (#332).
+        var nextChunkIndex = ctx.EmbeddedChunks.Count;
 
         while (currentLevel.Count > 1 && (options.MaxTreeDepth is null || level < options.MaxTreeDepth))
         {
             level++;
-            var summaryChunks = await BuildLevelAsync(currentLevel, ctx, level, ct).ConfigureAwait(false);
+            var summaryChunks = await BuildLevelAsync(currentLevel, ctx, level, nextChunkIndex, ct).ConfigureAwait(false);
             if (summaryChunks is null)
                 break;
 
+            nextChunkIndex += summaryChunks.Count;
             allSummaries.AddRange(summaryChunks);
             currentLevel = summaryChunks;
         }
@@ -53,7 +58,7 @@ public sealed class RaptorIngestionBehavior(
     }
 
     private async Task<List<EmbeddedChunk>?> BuildLevelAsync(
-        List<EmbeddedChunk> currentLevel, IngestionContext ctx, int level, CancellationToken ct)
+        List<EmbeddedChunk> currentLevel, IngestionContext ctx, int level, int baseChunkIndex, CancellationToken ct)
     {
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.raptor.summarize");
         activity?.SetTag("raptor.tree.level", level);
@@ -88,7 +93,8 @@ public sealed class RaptorIngestionBehavior(
         {
             var cluster = clusters[i];
             var summaryChunk = await SummarizeClusterAsync(
-                cluster.Chunks, cluster.ClusterId, ctx, level, summaryChunks.Count, client, emb, ct).ConfigureAwait(false);
+                cluster.Chunks, cluster.ClusterId, ctx, level, baseChunkIndex + summaryChunks.Count, client, emb, ct)
+                .ConfigureAwait(false);
             summaryChunks.Add(summaryChunk);
         }
 
@@ -126,7 +132,7 @@ public sealed class RaptorIngestionBehavior(
 
     private async Task<EmbeddedChunk> SummarizeClusterAsync(
         List<EmbeddedChunk> childChunks, int clusterId, IngestionContext ctx,
-        int level, int summaryIndex, IChatClient client,
+        int level, int chunkIndex, IChatClient client,
         IEmbeddingGenerator<string, Embedding<float>> emb, CancellationToken ct)
     {
         var concatenated = ConcatenateChunkTexts(childChunks);
@@ -146,7 +152,7 @@ public sealed class RaptorIngestionBehavior(
             {
                 Text = summaryText,
                 DocumentId = ctx.Metadata.DocumentId,
-                ChunkIndex = ctx.EmbeddedChunks.Count + summaryIndex,
+                ChunkIndex = chunkIndex,
                 Metadata = new Dictionary<string, MetadataValue>(StringComparer.Ordinal)
                 {
                     ["raptor_level"] = level.ToString(System.Globalization.CultureInfo.InvariantCulture),
