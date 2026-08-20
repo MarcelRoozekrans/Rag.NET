@@ -14,13 +14,22 @@ PASS on all five criteria.
 > **This milestone was re-planned before it opened**, at the operator's request on 2026-08-15 —
 > *"make Milestone 6 about testing every available feature so we are battle-tested"* — from
 > `docs/plans/2026-08-15-milestone-6-battle-tested-replan.md`. The ROADMAP's Milestone 6 section
-> is rewritten from that note. **Two decisions in that note are the operator's. One is still
-> open**: whether 6.1's live-service recordings gate v1.0 or `<VerifiedByReason>` does where no
-> credentials exist — until it is decided, the phases below carry the note's recommendation and
-> say so. **The other was settled by events rather than by a decision**: the #247 and #239 fixes
-> are on `main` as of 2026-08-18 (#311, #312; #296, #291), so they ship in v1.0 unless someone
-> reverts them. Noted as such because a decision nobody made is worth distinguishing from one
-> that was taken.
+> is rewritten from that note. **Both of the note's operator decisions are now closed, and they
+> closed differently.**
+>
+> **The recordings question was decided on 2026-08-20, against the note's recommendation.** The
+> note proposed that `<VerifiedByReason>` carry the gap where no credentials exist, on the grounds
+> that a criterion satisfiable only by credentials that may never arrive is not falsifiable. The
+> operator decided instead that **6.1's recordings do gate v1.0**, with 6.1's *work* postponed
+> behind 6.2.3. Recorded with the trade-off attached because it was raised at the time and
+> accepted: v1.0 now waits on 18 cassettes whose blocker is accounts rather than effort, so if
+> those accounts do not arrive, the tag does not either. `<VerifiedByReason>` remains implemented
+> and enforced; it is simply no longer the answer for the connectors.
+>
+> **The #247 / #239 question was settled by events rather than by a decision**: both fixes are on
+> `main` as of 2026-08-18 (#311, #312; #296, #291), so they ship in v1.0 unless someone reverts
+> them. Noted as such because a decision nobody made is worth distinguishing from one that was
+> taken.
 
 ## Goal
 
@@ -68,7 +77,7 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 | Phase | Name | Issues | Status |
 |---|---|---|---|
 | 6.0 | The Inventory | — | **complete** 2026-08-15 — both guards on every push, failing behind a work list: 5 packages at `benchmark`, 57 at bare `unit` owned by 6.1/6.2/6.2.1; 51 Done sections, 2 exercised, 49 owned |
-| 6.1 | Recorded Responses | #283, #290 | **in progress** — the harness did not work and now does. Record mode had two defects, both silent because recording proxies to the real service and therefore passes: recordings were written to a directory replay never read, and every mapping matched on `Host: localhost:{ephemeral port}`, which cannot match twice. Fixed in #290, which also recorded the first working cassette (GitHub, unauthenticated, 17 KB). #283 carries the corrected instructions for the remaining 18 services; the blocker is accounts, not work |
+| 6.1 | Recorded Responses | #283, #290 | **postponed** 2026-08-20, **still gating v1.0** — sequenced behind 6.2.3; the gate was kept rather than handed to `<VerifiedByReason>`, so the tag waits on accounts. Previously in progress: the harness did not work and now does. Record mode had two defects, both silent because recording proxies to the real service and therefore passes: recordings were written to a directory replay never read, and every mapping matched on `Host: localhost:{ephemeral port}`, which cannot match twice. Fixed in #290, which also recorded the first working cassette (GitHub, unauthenticated, 17 KB). #283 carries the corrected instructions for the remaining 18 services; the blocker is accounts, not work |
 | 6.2 | Raise the Floor on Unit-Only Packages | #286–#292 | **substantially complete** — 57 bare `unit` down to 22. Defined per kind: parsers/chunkers via a real file, stores via the parity leg, utilities via one real run. Every package picked up produced a defect in something adjacent: `Parsers.Audio` was filed as needing a hosted model and needs none (and is broken on Linux without `libgomp1`), `Parsers.Vision` had no CI tier that could run it, `DataProviders.Web`'s crawler yielded the seed page twice (#288). Remaining 22 are 6.1's credential-blocked connectors plus `Chunking.Templates` and 6.2.1's three |
 | 6.2.1 | Retrieval & Answer Sweep | #176 | **active** 2026-08-20 — the GraphRAG method applied to the rest. **#247 closed 2026-08-18**, fixed twice over (#311 hides graph chunks from retrieval by default, #312 gives them their own store) and pinned at 0.3494 (#280); #239 and #200 closed 2026-08-17. The local-search thread completed 2026-08-20 (#323, #326). The sweep itself has not started: RAPTOR first, then HyDE, reranking, hybrid, late chunking, SPLADE, the three answer engines, the stores through the parity leg, the pipeline-parity test, #176, local search's unexplained yes/no abstention, and the now-unblocked deletion of the deprecated blend members |
 | 6.2.2 | Requested Features | #252 | **complete** 2026-08-16 — #252 built, both open design questions settled, exercised in the fast tier and over a real HTTP server |

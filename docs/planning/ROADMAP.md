@@ -4028,12 +4028,16 @@ this milestone carries the hardening and the tag.
 > figure with a control; answer engines an accuracy through the 5.2.2 harness; vector stores must
 > reproduce the SciFact parity figure through themselves; parsers/chunkers a real file with shape
 > assertions; live services a recording or a stated reason; pipeline plumbing a parity test.
-> Two decisions the note leaves to the operator. The first is **still open**: whether 6.1's
-> recordings gate v1.0 or `<VerifiedByReason>` does where no credentials exist. The second —
-> whether the #247 / #239 fixes ship in v1.0 — has been **settled by events rather than by a
-> decision**: both are on `main` as of 2026-08-18 (#311, #312 for #247; #296, #291 for #239), so
-> they ship unless someone reverts them. Recorded here because a decision nobody made is worth
-> distinguishing from one that was taken. The note's recommendation stands in on the first.
+> Two decisions the note leaves to the operator, **both now closed, and differently**.
+> **The recordings question was decided 2026-08-20, against the note's recommendation**: 6.1's
+> recordings **do** gate v1.0, with 6.1's *work* postponed behind 6.2.3. The note had argued for
+> `<VerifiedByReason>` instead, because a criterion satisfiable only by credentials that may never
+> arrive is not falsifiable; that trade-off was raised at the time and accepted, so v1.0 now waits
+> on 18 cassettes whose blocker is accounts rather than effort. `<VerifiedByReason>` stays
+> implemented and enforced — it is no longer the answer for the connectors. **The #247 / #239
+> question was settled by events rather than by a decision**: both are on `main` as of 2026-08-18
+> (#311, #312 for #247; #296, #291 for #239), so they ship unless someone reverts them. Recorded
+> because a decision nobody made is worth distinguishing from one that was taken.
 > **"Find all bugs before going 1.0" is the intent behind this milestone, and it is deliberately
 > not its Definition of Done.** "No bugs remain" is not a claim this — or any — milestone can
 > make: nothing can check it, it can only be falsified by the next defect, so a milestone
@@ -4139,7 +4143,7 @@ being a feeling.
 package is in exactly one of the three states, and the allowlist is the work list for the rest of
 the milestone. Nothing is exercised in this phase; it is where the ledger stops being a feeling.
 
-### Phase 6.1: Recorded Responses [status: in progress 2026-08-17 — the harness did not work and now does (#290): recordings were written to a directory replay never read, and every mapping matched on the ephemeral WireMock port, so nothing anyone recorded could ever replay. Both defects were silent because record mode proxies to the real service and therefore passes. First working cassette recorded the same day (GitHub, unauthenticated, 17 KB); #283 carries the corrected instructions for the remaining 18 services, where the blocker is accounts rather than work]
+### Phase 6.1: Recorded Responses [status: postponed 2026-08-20, **still gating v1.0** — sequenced behind 6.2.3 at the operator's call; the gate was kept rather than handed to `<VerifiedByReason>`, so the tag waits on the remaining 18 cassettes and their accounts. Previously: in progress 2026-08-17 — the harness did not work and now does (#290): recordings were written to a directory replay never read, and every mapping matched on the ephemeral WireMock port, so nothing anyone recorded could ever replay. Both defects were silent because record mode proxies to the real service and therefore passes. First working cassette recorded the same day (GitHub, unauthenticated, 17 KB); #283 carries the corrected instructions for the remaining 18 services, where the blocker is accounts rather than work]
 **Goal:** For each of the ~20 packages that talk to live services, either commit a scrubbed,
 dated recording of one real exchange that the tests replay, or record per package why no
 recording exists. (Moved out of Milestone 4 on 2026-08-03 with the v1.0 postponement; the phase

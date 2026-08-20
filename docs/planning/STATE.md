@@ -29,10 +29,13 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Open Decisions
 
-- **Does 6.1's live-service recording gate v1.0, or does `<VerifiedByReason>` where no credentials
-  exist?** The operator's, from the 2026-08-15 re-plan, still open. The phases carry the note's
-  recommendation (a reason suffices) until it is decided. This is the one thing standing between
-  6.1 and a closeable state, and therefore between the milestone and its tag.
+- ~~Does 6.1's live-service recording gate v1.0?~~ **Decided 2026-08-20: yes, it gates.** Against
+  the re-plan's own recommendation, which had argued for `<VerifiedByReason>` on the grounds that a
+  criterion satisfiable only by credentials that may never arrive is not falsifiable. 6.1's *work*
+  is postponed behind 6.2.3; its *gate* is kept. The trade-off was raised and accepted: **v1.0 now
+  waits on 18 cassettes whose blocker is accounts rather than effort.** Nothing in the codebase can
+  move this — if the accounts do not arrive, the tag does not either. Worth revisiting if 6.2.3
+  lands and 6.1 is still the only thing outstanding.
 - **Where local search's yes/no abstention comes from.** It commits on 8.8% of comparison and 4.3%
   of temporal questions, while global search scores 0.4953 and 0.3928 on the same ones. A
   characterisation nobody has explained; it needs a home in 6.2.1 or an explicit deferral.
@@ -43,9 +46,10 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Blockers
 
-- **6.1 is blocked on accounts, not on work.** The harness works as of #290; 1 of 19 cassettes is
-  recorded (GitHub, unauthenticated, 17 KB). #283 carries the corrected instructions for the
-  remaining 18 and is marked help-wanted. No amount of local effort moves this.
+- **6.1 is blocked on accounts, not on work — and as of 2026-08-20 it gates v1.0.** The harness
+  works as of #290; 1 of 19 cassettes is recorded (GitHub, unauthenticated, 17 KB). #283 carries
+  the corrected instructions for the remaining 18 and is marked help-wanted. No amount of local
+  effort moves this, so it is the milestone's only blocker that engineering cannot clear.
 - **The #300 follow-up measurement needs an idle machine.** Three timing runs on 2026-08-17
   disagreed by 6× on identical inputs, so no coefficient was claimed anywhere. It is still
   outstanding: the split of `BeirRunBudget`'s 22 m 18 s graph construction between LLM extraction,
