@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Rag.NET\Rag.NET.csproj" />
+    <ProjectReference Include="..\Rag.NET.Raptor.Store\Rag.NET.Raptor.Store.csproj" />
     <PackageReference Include="MathNet.Numerics" />
     <!-- The runtime library flows transitively through Rag.NET, but the generator is
          PrivateAssets="all" there and analyzers do not flow — [Validate] on this package's

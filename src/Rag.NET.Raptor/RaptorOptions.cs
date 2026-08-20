@@ -78,4 +78,27 @@ public sealed class RaptorOptions
 
     /// <summary>Optional separate embedder for summaries. Null = use DI-registered IEmbeddingGenerator.</summary>
     public IEmbeddingGenerator<string, Embedding<float>>? SummaryEmbedder { get; set; }
+
+    /// <summary>What set of chunks the tree is built over. Default: <see cref="RaptorTreeScope.PerDocument"/>.</summary>
+    public RaptorTreeScope TreeScope { get; set; } = RaptorTreeScope.PerDocument;
+
+    /// <summary>
+    /// Under <see cref="RaptorTreeScope.Corpus"/>, the fractional growth in stored leaves that
+    /// triggers a tree rebuild. Default: 0.10 — rebuild once the corpus is 10% larger than it was
+    /// at the last build. Zero or negative rebuilds on every ingest.
+    /// <para>
+    /// The same shape and default as <c>GraphRagOptions.CommunityDetectionGrowthThreshold</c>, and
+    /// for the same reason: clustering the whole corpus once per ingested document is #300's defect,
+    /// and this is the debounce that stops it recurring here.
+    /// </para>
+    /// </summary>
+    [InclusiveBetween(0.0, 100.0)]
+    [Must(nameof(CorpusGrowthThresholdIsFinite), Message =
+        "CorpusGrowthThreshold must be a finite number (not NaN or infinity).")]
+    public double CorpusGrowthThreshold { get; set; } = 0.10;
+
+    /// <summary>Reports whether <see cref="CorpusGrowthThreshold"/> is a finite number.</summary>
+    /// <param name="value">The <see cref="CorpusGrowthThreshold"/> under validation.</param>
+    /// <returns>Whether the value is neither NaN nor infinite.</returns>
+    internal bool CorpusGrowthThresholdIsFinite(double value) => double.IsFinite(value);
 }

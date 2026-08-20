@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Ingestion.Behaviors;
+using Rag.NET.Raptor.Store;
 using Rag.NET.Retrieval.Behaviors;
 
 namespace Rag.NET.Raptor;
@@ -44,12 +45,23 @@ public static class RagBuilderExtensions
     public static TBuilder UseRaptor<TBuilder>(
         this TBuilder builder,
         Action<RaptorOptions>? configure = null,
-        Action<RaptorRetrievalOptions>? retrieval = null)
+        Action<RaptorRetrievalOptions>? retrieval = null,
+        string? leafStorePath = null)
         where TBuilder : IRagBuilder
     {
         var options = new RaptorOptions();
         configure?.Invoke(options);
         ThrowIfInvalid(new RaptorOptionsValidator().Validate(options), nameof(configure), "RAPTOR ingestion");
+
+        if (options.TreeScope == RaptorTreeScope.Corpus && leafStorePath is null)
+        {
+            throw new ArgumentException(
+                "RaptorOptions.TreeScope is Corpus, which clusters over the whole corpus and therefore " +
+                "needs somewhere to keep leaf chunks between ingests. Pass leafStorePath, or set " +
+                "TreeScope to PerDocument.",
+                nameof(leafStorePath));
+        }
+
         builder.Services.AddSingleton(options);
 
         var retrievalOptions = new RaptorRetrievalOptions();
@@ -57,11 +69,22 @@ public static class RagBuilderExtensions
         ThrowIfInvalid(new RaptorRetrievalOptionsValidator().Validate(retrievalOptions), nameof(retrieval), "RAPTOR retrieval");
         builder.Services.AddSingleton(retrievalOptions);
 
+        if (leafStorePath is not null)
+        {
+            builder.Services.AddSingleton<IRaptorLeafStore>(_ =>
+            {
+                var store = new SqliteRaptorLeafStore(leafStorePath);
+                store.InitializeAsync().GetAwaiter().GetResult();
+                return store;
+            });
+        }
+
         builder.Services.AddSingleton<RaptorIngestionBehavior>(sp =>
             new RaptorIngestionBehavior(
                 options.SummaryChatClient ?? sp.GetRequiredService<IChatClient>(),
                 options.SummaryEmbedder ?? sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
-                options));
+                options,
+                sp.GetService<IRaptorLeafStore>()));
 
         builder.Services.AddSingleton<RaptorRetrievalBehavior>(sp =>
             new RaptorRetrievalBehavior(sp.GetRequiredService<RaptorRetrievalOptions>()));

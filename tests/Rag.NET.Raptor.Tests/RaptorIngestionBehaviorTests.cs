@@ -8,15 +8,14 @@ namespace Rag.NET.Raptor.Tests;
 
 public class RaptorIngestionBehaviorTests
 {
-    private readonly IChatClient _chatClient = Substitute.For<IChatClient>();
-    private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
+    private readonly RaptorTestContext _helpers = new();
 
     [Fact]
     public async Task HandleAsync_WhenDisabled_CallsNextWithoutModification()
     {
         var options = new RaptorOptions { Enabled = false };
-        var sut = new RaptorIngestionBehavior(_chatClient, _embedder, options);
-        var ctx = CreateContext(chunkCount: 10);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 10);
         var originalCount = ctx.EmbeddedChunks.Count;
         var nextCalled = false;
 
@@ -31,8 +30,8 @@ public class RaptorIngestionBehaviorTests
     public async Task HandleAsync_BelowMinChunks_SkipsRaptor()
     {
         var options = new RaptorOptions { MinChunksForRaptor = 10 };
-        var sut = new RaptorIngestionBehavior(_chatClient, _embedder, options);
-        var ctx = CreateContext(chunkCount: 5);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 5);
         var originalCount = ctx.EmbeddedChunks.Count;
 
         await sut.HandleAsync(ctx, CancellationToken.None,
@@ -45,11 +44,11 @@ public class RaptorIngestionBehaviorTests
     public async Task HandleAsync_AddsSummaryChunksWithRaptorMetadata()
     {
         var options = new RaptorOptions { MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1 };
-        var sut = new RaptorIngestionBehavior(_chatClient, _embedder, options);
-        var ctx = CreateContext(chunkCount: 6, embeddingDims: 8);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 6, embeddingDims: 8);
 
-        SetupChatClient("Summary of cluster");
-        SetupEmbedder(8);
+        _helpers.SetupChatClient("Summary of cluster");
+        _helpers.SetupEmbedder(8);
 
         await sut.HandleAsync(ctx, CancellationToken.None,
             (c, ct) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
@@ -68,11 +67,11 @@ public class RaptorIngestionBehaviorTests
     public async Task HandleAsync_StoreLeafChunksFalse_RemovesOriginals()
     {
         var options = new RaptorOptions { MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1, StoreLeafChunks = false };
-        var sut = new RaptorIngestionBehavior(_chatClient, _embedder, options);
-        var ctx = CreateContext(chunkCount: 6, embeddingDims: 8);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 6, embeddingDims: 8);
 
-        SetupChatClient("Summary");
-        SetupEmbedder(8);
+        _helpers.SetupChatClient("Summary");
+        _helpers.SetupEmbedder(8);
 
         await sut.HandleAsync(ctx, CancellationToken.None,
             (c, ct) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
@@ -84,11 +83,11 @@ public class RaptorIngestionBehaviorTests
     public async Task HandleAsync_RespectsMaxTreeDepth()
     {
         var options = new RaptorOptions { MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 2 };
-        var sut = new RaptorIngestionBehavior(_chatClient, _embedder, options);
-        var ctx = CreateContext(chunkCount: 20, embeddingDims: 8);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 20, embeddingDims: 8);
 
-        SetupChatClient("Summary");
-        SetupEmbedder(8);
+        _helpers.SetupChatClient("Summary");
+        _helpers.SetupEmbedder(8);
 
         await sut.HandleAsync(ctx, CancellationToken.None,
             (c, ct) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
@@ -107,18 +106,18 @@ public class RaptorIngestionBehaviorTests
     {
         var customClient = Substitute.For<IChatClient>();
         var options = new RaptorOptions { MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1, SummaryChatClient = customClient };
-        var sut = new RaptorIngestionBehavior(_chatClient, _embedder, options);
-        var ctx = CreateContext(chunkCount: 6, embeddingDims: 8);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 6, embeddingDims: 8);
 
         customClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, "Custom summary")]));
-        SetupEmbedder(8);
+        _helpers.SetupEmbedder(8);
 
         await sut.HandleAsync(ctx, CancellationToken.None,
             (c, ct) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
 
         await customClient.Received().GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
-        await _chatClient.DidNotReceive().GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
+        await _helpers.ChatClient.DidNotReceive().GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -132,10 +131,10 @@ public class RaptorIngestionBehaviorTests
             MaxTreeDepth = 1,
             SummaryEmbedder = customEmbedder,
         };
-        var sut = new RaptorIngestionBehavior(_chatClient, _embedder, options);
-        var ctx = CreateContext(chunkCount: 6, embeddingDims: 8);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 6, embeddingDims: 8);
 
-        SetupChatClient("Summary");
+        _helpers.SetupChatClient("Summary");
         // Setup the CUSTOM embedder, not the default one
         customEmbedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
@@ -151,15 +150,15 @@ public class RaptorIngestionBehaviorTests
             (c, ct) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
 
         await customEmbedder.Received().GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
-        await _embedder.DidNotReceive().GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
+        await _helpers.Embedder.DidNotReceive().GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task HandleAsync_WithZeroChunks_SkipsRaptor()
     {
         var options = new RaptorOptions { MinChunksForRaptor = 1 };
-        var sut = new RaptorIngestionBehavior(_chatClient, _embedder, options);
-        var ctx = CreateContext(chunkCount: 0);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 0);
 
         await sut.HandleAsync(ctx, CancellationToken.None,
             (c, ct) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = 0 }));
@@ -171,11 +170,11 @@ public class RaptorIngestionBehaviorTests
     public async Task HandleAsync_AtExactThreshold_AppliesRaptor()
     {
         var options = new RaptorOptions { MinChunksForRaptor = 6, ReducedDimensionality = 2, MaxTreeDepth = 1 };
-        var sut = new RaptorIngestionBehavior(_chatClient, _embedder, options);
-        var ctx = CreateContext(chunkCount: 6, embeddingDims: 8);
+        var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 6, embeddingDims: 8);
 
-        SetupChatClient("Summary");
-        SetupEmbedder(8);
+        _helpers.SetupChatClient("Summary");
+        _helpers.SetupEmbedder(8);
 
         await sut.HandleAsync(ctx, CancellationToken.None,
             (c, ct) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
@@ -196,11 +195,11 @@ public class RaptorIngestionBehaviorTests
         // loop (an LLM call per cluster per level) rather than a slow test. Depth 2 is exactly
         // enough to exercise #332: the collision is level 1's first summary against level 2's
         // first summary; a deeper tree proves nothing further.
-        SetupChatClient("a summary");
-        SetupEmbedder(dims: 8);
-        var ctx = CreateContext(chunkCount: 6);
+        _helpers.SetupChatClient("a summary");
+        _helpers.SetupEmbedder(dims: 8);
+        var ctx = _helpers.CreateContext(chunkCount: 6);
         var options = new RaptorOptions { MaxTreeDepth = 2 };
-        var behavior = new RaptorIngestionBehavior(_chatClient, _embedder, options);
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
 
         await behavior.HandleAsync(ctx, CancellationToken.None,
             (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
@@ -219,65 +218,5 @@ public class RaptorIngestionBehaviorTests
             .ToList();
 
         Assert.Equal(keys.Count, keys.Distinct().Count());
-    }
-
-    private static IngestionContext CreateContext(int chunkCount, int embeddingDims = 8)
-    {
-        var ctx = new IngestionContext
-        {
-            Stream = Stream.Null,
-            Metadata = new DocumentMetadata { DocumentId = new DocumentId("test-doc"), FileName = "test.txt", ContentType = "text/plain" },
-            GetNextBm25DocId = () => 0,
-        };
-
-        var rng = new Random(42);
-        for (var i = 0; i < chunkCount; i++)
-        {
-            var chunk = new TextChunk
-            {
-                Text = $"Chunk {i} content about topic {i % 3}",
-                DocumentId = new DocumentId("test-doc"),
-                ChunkIndex = i,
-            };
-            var embedding = GenerateEmbedding(rng, embeddingDims);
-            ctx.EmbeddedChunks.Add(new EmbeddedChunk { Chunk = chunk, Embedding = new ReadOnlyMemory<float>(embedding) });
-        }
-
-        return ctx;
-    }
-
-    private void SetupChatClient(string response)
-    {
-        _chatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, response)]));
-    }
-
-#pragma warning disable HLQ013 // Use foreach — need index-based assignment
-    private static float[] GenerateEmbedding(Random rng, int dims)
-    {
-        var embedding = new float[dims];
-        for (var j = 0; j < embedding.Length; j++)
-            embedding[j] = (float)rng.NextDouble();
-        return embedding;
-    }
-#pragma warning restore HLQ013
-
-    private void SetupEmbedder(int dims)
-    {
-        // rng is captured by the closure, not recreated per call: a real embedder returns
-        // different vectors for different inputs, and RAPTOR's summary embedding calls are
-        // always single-item batches, so re-seeding on every call made every summary chunk at
-        // every tree level embed to the identical vector — collapsing every level above the
-        // leaves into indistinguishable points and making a tree deeper than 1 level
-        // unreachable in tests (see #332 test coverage gap).
-        var rng = new Random(123);
-        _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
-            .Returns(callInfo =>
-            {
-                var texts = callInfo.Arg<IEnumerable<string>>()!.ToList();
-                return Task.FromResult<GeneratedEmbeddings<Embedding<float>>>(
-                    new(texts.Select(_ => new Embedding<float>(
-                        Enumerable.Range(0, dims).Select(_ => (float)rng.NextDouble()).ToArray())).ToList()));
-            });
     }
 }

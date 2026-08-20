@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using Rag.NET.Ingestion;
 using Rag.NET.Models;
 using Rag.NET.Raptor.Math;
+using Rag.NET.Raptor.Store;
 using Rag.NET.Telemetry;
 
 namespace Rag.NET.Raptor;
@@ -14,13 +15,23 @@ namespace Rag.NET.Raptor;
 public sealed class RaptorIngestionBehavior(
     IChatClient chatClient,
     IEmbeddingGenerator<string, Embedding<float>> embedder,
-    RaptorOptions options) : IIngestionBehavior
+    RaptorOptions options,
+    IRaptorLeafStore? leafStore = null) : IIngestionBehavior
 {
     public async ValueTask<IngestionResult> HandleAsync(
         IngestionContext ctx, CancellationToken ct,
         Func<IngestionContext, CancellationToken, ValueTask<IngestionResult>> next)
     {
-        if (!options.Enabled || ctx.EmbeddedChunks.Count < options.MinChunksForRaptor)
+        if (!options.Enabled)
+            return await next(ctx, ct).ConfigureAwait(false);
+
+        if (options.TreeScope == RaptorTreeScope.Corpus)
+        {
+            await PersistLeavesAsync(ctx, ct).ConfigureAwait(false);
+            return await next(ctx, ct).ConfigureAwait(false);
+        }
+
+        if (ctx.EmbeddedChunks.Count < options.MinChunksForRaptor)
             return await next(ctx, ct).ConfigureAwait(false);
 
         using var activity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.raptor.build");
@@ -55,6 +66,48 @@ public sealed class RaptorIngestionBehavior(
         ctx.EmbeddedChunks.AddRange(allSummaries);
 
         return await next(ctx, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Copies this document's leaf chunks into the leaf store, so a later corpus-wide rebuild can
+    /// read them back. <c>MinChunksForRaptor</c> is deliberately not applied: it decides whether one
+    /// document is worth a tree of its own, and under corpus scope a short document still
+    /// contributes its chunks to the corpus.
+    /// </summary>
+    private async Task PersistLeavesAsync(IngestionContext ctx, CancellationToken ct)
+    {
+        if (leafStore is null)
+        {
+            throw new InvalidOperationException(
+                "RaptorOptions.TreeScope is Corpus but no IRaptorLeafStore is registered. " +
+                "Register one with UseRaptor(..., leafStorePath: \"...\"), or set TreeScope to PerDocument.");
+        }
+
+        if (ctx.EmbeddedChunks.Count == 0)
+            return;
+
+        var leaves = BuildLeaves(ctx.EmbeddedChunks);
+        await leafStore.AddLeavesAsync(leaves, ct).ConfigureAwait(false);
+    }
+
+    // Split out of PersistLeavesAsync (rather than iterating ctx.EmbeddedChunks with
+    // CollectionsMarshal.AsSpan inline) because that method is async: a Span<T> local is not
+    // allowed to be live across an await point, and the analyzer flags one even when the actual
+    // await happens after the span goes out of scope. Kept synchronous, so the span is safe here.
+    private static List<RaptorLeaf> BuildLeaves(List<EmbeddedChunk> chunks)
+    {
+        var span = CollectionsMarshal.AsSpan(chunks);
+        var leaves = new List<RaptorLeaf>(span.Length);
+        foreach (ref readonly var chunk in span)
+        {
+            leaves.Add(new RaptorLeaf(
+                chunk.Chunk.DocumentId.Value,
+                chunk.Chunk.ChunkIndex,
+                chunk.Chunk.Text,
+                chunk.Embedding.ToArray()));
+        }
+
+        return leaves;
     }
 
     private async Task<List<EmbeddedChunk>?> BuildLevelAsync(
