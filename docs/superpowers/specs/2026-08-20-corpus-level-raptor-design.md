@@ -98,8 +98,14 @@ rebuild. This is exactly what `IVectorStore` cannot give back.
 explicitly because "written during ingestion" could otherwise be read as unconditional, and an
 unconditional write would double the storage cost for users who never build a corpus tree.
 
-**Packaging tax, named rather than discovered later.** This is the 72nd package: release-please
-configuration, package metadata, README, a `VerifiedBy` level, and a slot in the CI matrices.
+**Packaging tax, named rather than discovered later.** This is the 72nd package: an entry in
+`Rag.NET.slnx`, package metadata, a README, and a `VerifiedBy` level enforced by
+`PackageVerificationTests` — whose doc comment currently says "71 packages" and needs updating.
+
+*(Corrected 2026-08-20 while writing the plan: an earlier draft of this section also listed
+release-please configuration. It does not need one. `release-please-config.json` declares a single
+root package with `"release-type": "simple"` — one version for the whole repository — so packages
+are not enumerated there and a new one requires no entry.)*
 
 ## §3 — When clustering runs
 
