@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Rag.NET.Raptor.Store</RootNamespace>
+    <PackageId>Rag.NET.Raptor.Store</PackageId>
+    <Description>Persistent leaf-chunk storage for corpus-level RAPTOR clustering</Description>
+    <PackageTags>$(PackageTags);raptor;storage;sqlite</PackageTags>
+    <!-- integration: SqliteRaptorLeafStoreTests writes a real SQLite file, closes the store and
+         reopens it, asserting the leaves and their vectors survive the round trip. Not `unit`:
+         the thing under test is whether a real storage engine returns what was put in. -->
+    <VerifiedBy>integration</VerifiedBy>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Rag.NET.Raptor.Store.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- Lifts transitive SQLitePCLRaw.lib.e_sqlite3 above 2.1.11 (GHSA-2m69-gcr7-jv3q). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
+  </ItemGroup>
+
+</Project>

@@ -40,7 +40,7 @@ namespace Rag.NET.RepoConventions.Tests;
 public sealed class PackageVerificationTests
 {
     /// <summary>
-    /// There are 71 packages under <c>src/</c> today. A far smaller number means the scan lost
+    /// There are 72 packages under <c>src/</c> today. A far smaller number means the scan lost
     /// the working tree and is asserting over nothing — which would pass, silently, forever.
     /// </summary>
     private const int FewestPlausiblePackages = 60;
