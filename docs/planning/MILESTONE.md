@@ -36,7 +36,8 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 
 - [x] **Milestone 5 complete** — closed 2026-08-15 by audit, verdict PASS.
 - [ ] **All planned phases complete** — 6.0 Inventory, 6.1 Recorded Responses, 6.2 Raise the
-      Floor, 6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, 6.3 Release v1.0.
+      Floor, 6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, **6.2.3 Corpus-Level
+      RAPTOR** (added 2026-08-20, gates v1.0), 6.3 Release v1.0.
 - [ ] **Every `✅ Done` row in `features.md` names what exercises it** — an *Exercised by* column,
       pointing at a test or benchmark that runs the real thing, and a conventions test that fails a
       ✅ row with an empty column. Today: 56 rows, 0 pointers.
@@ -71,7 +72,8 @@ Authoritative copy in the ROADMAP's Milestone 6 section, in Phase 4.0's falsifia
 | 6.2 | Raise the Floor on Unit-Only Packages | #286–#292 | **substantially complete** — 57 bare `unit` down to 22. Defined per kind: parsers/chunkers via a real file, stores via the parity leg, utilities via one real run. Every package picked up produced a defect in something adjacent: `Parsers.Audio` was filed as needing a hosted model and needs none (and is broken on Linux without `libgomp1`), `Parsers.Vision` had no CI tier that could run it, `DataProviders.Web`'s crawler yielded the seed page twice (#288). Remaining 22 are 6.1's credential-blocked connectors plus `Chunking.Templates` and 6.2.1's three |
 | 6.2.1 | Retrieval & Answer Sweep | #176 | **active** 2026-08-20 — the GraphRAG method applied to the rest. **#247 closed 2026-08-18**, fixed twice over (#311 hides graph chunks from retrieval by default, #312 gives them their own store) and pinned at 0.3494 (#280); #239 and #200 closed 2026-08-17. The local-search thread completed 2026-08-20 (#323, #326). The sweep itself has not started: RAPTOR first, then HyDE, reranking, hybrid, late chunking, SPLADE, the three answer engines, the stores through the parity leg, the pipeline-parity test, #176, local search's unexplained yes/no abstention, and the now-unblocked deletion of the deprecated blend members |
 | 6.2.2 | Requested Features | #252 | **complete** 2026-08-16 — #252 built, both open design questions settled, exercised in the fast tier and over a real HTTP server |
-| 6.3 | Release v1.0 | — | pending — **but its first work is already done**: 71 packages live on nuget.org at 0.1.0 since 2026-08-11 (verified 2026-08-16), so the account, key and every package ID are settled. Only the v1.0 tag remains |
+| 6.2.3 | Corpus-Level RAPTOR | #331 | **pending** — added 2026-08-20, **gates v1.0**. `RaptorIngestionBehavior` clusters `ctx.EmbeddedChunks` and `IngestionContext` holds one document, so RAPTOR builds a per-document tree — #300's shape, and not the paper's mechanism. The fix needs RAPTOR to own persistent leaf-embedding state the way GraphRAG owns `IGraphStore`, because `IVectorStore` cannot enumerate and `IChunkLookup` returns `TextChunk` without vectors (#318). Roughly #302 plus #312. Both scopes stay selectable, per #323's precedent, so the 6.2.1 measurement prices old and new in one run |
+| 6.3 | Release v1.0 | — | pending — **but its first work is already done**: 71 packages live on nuget.org at 0.1.0 since 2026-08-11 (verified 2026-08-16), so the account, key and every package ID are settled. Only the v1.0 tag remains. **Now gated on 6.2.3** |
 
 ## Known debt carried into this milestone
 

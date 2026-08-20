@@ -4049,7 +4049,8 @@ and something checks it):
 - [x] Milestones 4 and 5 complete — their own DoDs, checked at their own closes, not
       re-litigated here; this box is false while either is open *(both closed by audit: 4 on 2026-08-11, 5 on 2026-08-15)*
 - [ ] All planned phases complete — 6.0 Inventory, 6.1 Recorded Responses, 6.2 Raise the Floor,
-      6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, 6.3 Release v1.0
+      6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, **6.2.3 Corpus-Level RAPTOR**
+      (added 2026-08-20; gates v1.0 — see #331), 6.3 Release v1.0
 - [ ] **Every `✅ Done` row in `features.md` names what exercises it** (Phase 6.0): an
       *Exercised by* column pointing at a test or benchmark that runs the real thing — a pinned
       figure, a container suite, a recording, a real-file test — and a conventions test that fails a
@@ -4320,7 +4321,54 @@ collide.
 **Exit condition:** every issue listed above is closed by a merged PR, each with an *Exercised by*
 pointer in `features.md`, and no new bare-`unit` entry is created.
 
-### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself]
+### Phase 6.2.3: Corpus-Level RAPTOR — implement the paper's central mechanism [status: pending — added 2026-08-20, gating v1.0]
+**Surface:** Backend
+**HelpWanted:** no
+**Issue:** #331
+
+**Goal:** Make `Rag.NET.Raptor` cluster across the corpus rather than within each document, keeping
+the per-document scope selectable so the shipped behaviour stays measurable rather than deleted.
+
+**Why this is a phase and not a note.** `RaptorIngestionBehavior` is an `IIngestionBehavior`
+clustering `ctx.EmbeddedChunks`, and `IngestionContext` carries one `Stream` and one
+`DocumentMetadata` — one document's chunks. Its own telemetry says so
+(`activity?.SetTag("document.id", …)`). The RAPTOR paper clusters across the collection; that is
+the technique's point. A per-document tree cannot produce a node spanning two documents, so on any
+multi-document question the summaries can only displace. **This is #300's shape** — a whole-corpus
+operation running once per ingested document.
+
+`docs/guide/raptor.md` is not wrong about it; it describes the per-document behaviour accurately.
+The gap is between the package's name and its mechanism.
+
+**Why it costs what it costs.** #302's debounce-plus-rebuilder pattern transfers in shape, but not
+in substance: `CommunityDetectionBehavior` can do whole-graph work because GraphRAG owns an
+`IGraphStore` that enumerates itself. RAPTOR has no equivalent and the vector store cannot stand
+in — `IVectorStore` is `StoreAsync`/`SearchAsync`/`DeleteByDocumentIdAsync` with no enumeration;
+`IChunkLookup` is by-key and returns `TextChunk`, so it cannot return the **vectors** RAPTOR
+clusters on; and it is implemented by `InMemoryVectorStore` and `FederatedVectorStore` only, which
+is what #318 is about. So this needs RAPTOR to own persistent state the way GraphRAG owns its graph
+store: leaf embeddings written at ingestion, corpus-wide clustering over them, debounced on growth,
+an on-demand rebuilder, and a migration story. Roughly **#302 plus #312 combined**.
+
+**Both scopes stay selectable, deliberately.** The per-document path is kept as an option rather
+than deleted, following #323's precedent — `GraphLocalSearchBehavior` and `PageRankWeight` were
+kept unregistered but present because deleting them would have made three pinned figures
+unreproducible. Keeping both here means the RAPTOR measurement in 6.2.1 prices the old and new
+shapes in **one** run rather than two, and nothing ships unpinned.
+
+**Ordering, and the reversal behind it.** The design at
+`docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md` originally deferred this fix on
+a measured trigger, per #247's measure-then-fix order. **Reversed by the operator on 2026-08-20** —
+*"fix it first before spending again"* — on the grounds that the defect is structural rather than
+empirical: it was established by reading `IngestionContext`, not inferred from a figure, so a paid
+sweep would buy evidence for something already known. What that gives up is a pinned figure for the
+shipped state; keeping both scopes selectable is what gives it back.
+
+**Exit condition:** RAPTOR clusters corpus-wide by default; the per-document scope is reachable by
+configuration; the debounce and the rebuilder exist and are tested; existing RAPTOR users have a
+stated migration path; #331 closes. The measurement itself belongs to 6.2.1 and runs after.
+
+### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. **Now gated on 6.2.3** (added 2026-08-20), which implements RAPTOR's corpus-level clustering]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
 The tag is the last and smallest phase in the milestone, which is the point of the 2026-08-03

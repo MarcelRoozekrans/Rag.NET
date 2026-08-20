@@ -8,7 +8,8 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.1 — Retrieval & Answer Sweep (active since 2026-08-20)
+**Phase:** 6.2.3 — Corpus-Level RAPTOR (pending, added 2026-08-20, **gates v1.0**)
+**Also active:** 6.2.1 — Retrieval & Answer Sweep, whose RAPTOR measurement is queued behind 6.2.3
 
 **Last completed:** the GraphRAG local-search thread — spec sub-phases 6.x.1, 6.x.6 and 6.x.7 of
 `docs/plans/2026-08-19-graphrag-local-search-completion-implementation.md`. Tasks 1–5 merged in
@@ -52,20 +53,33 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Recommended Next Step
 
-**RAPTOR under the Real protocol** — 6.2.1's next thread, chosen 2026-08-20.
+**Phase 6.2.3 — Corpus-Level RAPTOR (#331).** Brainstorm the fix design, then plan, then build. It
+is architectural: it needs a new persistent store for leaf embeddings, so it does not skip
+brainstorming.
 
-RAPTOR indexes synthetic summaries beside real chunks in one store, which is structurally the same
-mistake #247 measured at −0.043 nDCG and −0.21 answer accuracy in the graph path. #247's issue text
-predicted it would take the same fix, and that fix is now built and measured once: the
-discriminator, over-fetch-and-drop, and the separate-store option all exist as worked examples. The
-thread needs a design spec first — none exists — then a plan, then one real run on a real corpus
-differenced against a control.
+**How this became the next step, because the order was deliberately reversed.** The thread started
+as "RAPTOR under the Real protocol", 6.2.1's next measurement. Reading the package before spending
+anything found three shipped defects, and the largest is structural: RAPTOR builds its tree **per
+document**, not over the corpus, so it does not implement the paper's central mechanism. The design
+at `docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md` first deferred that fix on a
+measured trigger, following #247's measure-then-fix order.
+
+**The operator reversed it on 2026-08-20** — *"fix it first before spending again"* — on the
+grounds that the defect was established by reading `IngestionContext`, not inferred from a figure,
+so a paid sweep would buy evidence for something already known. The reversal costs a pinned figure
+for the shipped state, and **keeping both tree scopes selectable is what gives it back**: one later
+run prices old and new together, per #323's precedent for keeping `GraphLocalSearchBehavior` alive.
+
+**So 6.2.1's RAPTOR measurement is not cancelled — it is queued behind 6.2.3**, and its design spec
+already exists and stays valid apart from the ordering in §2.
 
 **Also now unblocked, and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`. They
 were kept alive deliberately — `[Obsolete]` would have been a build error under
 `TreatWarningsAsErrors` across 17 files, and deleting them would have made three pinned figures
 unreproducible — on the stated condition that 6.x.7 publish the replacement figure. It published on
-2026-08-20.
+2026-08-20. *(Note the tension with 6.2.3's decision to keep both RAPTOR scopes: the same
+reproducibility argument that retired these members only once their replacement figure existed is
+why RAPTOR's per-document path must not be deleted before its replacement figure exists.)*
 
 ## Working State
 
