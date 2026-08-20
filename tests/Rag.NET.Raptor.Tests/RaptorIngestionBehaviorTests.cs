@@ -227,11 +227,17 @@ public class RaptorIngestionBehaviorTests
 
     private void SetupEmbedder(int dims)
     {
+        // rng is captured by the closure, not recreated per call: a real embedder returns
+        // different vectors for different inputs, and RAPTOR's summary embedding calls are
+        // always single-item batches, so re-seeding on every call made every summary chunk at
+        // every tree level embed to the identical vector — collapsing every level above the
+        // leaves into indistinguishable points and making a tree deeper than 1 level
+        // unreachable in tests (see #332 test coverage gap).
+        var rng = new Random(123);
         _embedder.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions?>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
                 var texts = callInfo.Arg<IEnumerable<string>>()!.ToList();
-                var rng = new Random(123);
                 return Task.FromResult<GeneratedEmbeddings<Embedding<float>>>(
                     new(texts.Select(_ => new Embedding<float>(
                         Enumerable.Range(0, dims).Select(_ => (float)rng.NextDouble()).ToArray())).ToList()));
