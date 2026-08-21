@@ -56,6 +56,12 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Blockers
 
+- **#345 blocks Tasks 4-6 of the RAPTOR measurement plan — the corpus tree cannot be built at
+  `Rag.NET.Raptor`'s shipped default.** `MaxClusters = null` caps every level at
+  `SelectK(maxK: Min(count, 10))` regardless of corpus size; over MultiHop-RAG's 17,648 chunks the
+  largest level-1 cluster is at least 1,765 chunks, and `ConcatenateChunkTexts` has no length bound
+  — roughly 183k tokens against `gpt-4o-mini`'s 128k context. Filed, not fixed, and not to be
+  worked around; see `docs/guide/raptor.md`'s Known Limitations for the corrected arithmetic.
 - **6.1 is blocked on accounts, not on work — and as of 2026-08-20 it gates v1.0.** The harness
   works as of #290; 1 of 19 cassettes is recorded (GitHub, unauthenticated, 17 KB). #283 carries
   the corrected instructions for the remaining 18 and is marked help-wanted. No amount of local
@@ -71,13 +77,31 @@ singletons on the full corpus against the 65% the issue carries.
 measurement, the first this technique has ever had. Six tasks; Tasks 1-3 are code, Tasks 4-5 spend
 real money and Task 5 is an overnight run.
 
+**Tasks 1-3 are done, on `bench/raptor-measurement`: `RaptorRun`, the four RAPTOR answer arms
+(pinned empty, "NOT YET MEASURED"), and their wiring into `BeirGraphRagAnswerTests`. Tasks 4-6 are
+blocked on #345 and are not started.** `RaptorOptions.MaxClusters` defaults to `null`, so
+`SelectClusterCount` caps every level at `SelectK(maxK: Min(count, 10))` regardless of corpus size.
+Over MultiHop-RAG's 17,648 chunks the largest level-1 cluster holds at least 1,765 chunks
+(≈183k tokens, uncapped in `ConcatenateChunkTexts`) against `gpt-4o-mini`'s 128k context — the
+corpus tree cannot be built at the shipped default, so Task 4's pilot cannot run until #345 is
+fixed. See `docs/guide/raptor.md`'s Known Limitations for the corrected arithmetic.
+
 **6.2.4 completed 2026-08-21** (#344), so `raptorboost` now measures a `Boost` that works.
 
 Three things govern the run, all in the plan:
 
-1. **Ingest with the debounce suppressed, then `RebuildAsync()` once.** At the shipped
-   `CorpusGrowthThreshold = 0.10`, 609 articles trigger 48 whole-corpus rebuilds. A fast-tier test
-   asserts `TreeBuildCount == 1` so a regression fails in milliseconds rather than in dollars.
+1. **`Corpus`-scope ingestion bypasses `RaptorIngestionBehavior.HandleAsync` entirely, then
+   `RaptorTreeRebuilder.RebuildAsync()` is called exactly once.** Suppressing the growth debounce
+   and letting ingestion run normally was the first approach and it does not work for a bulk load —
+   the debounce's baseline resets to whatever the corpus held at the last build, so at the shipped
+   `CorpusGrowthThreshold = 0.10` a 609-article corpus still triggers a rebuild partway through, and
+   the trigger point depends on document order. `RaptorRun` instead writes each document's chunks
+   straight to the leaf store and the vector store during ingestion, and the single rebuild after
+   ingestion finishes is the only tree this run can produce. A fast-tier test asserts
+   `RaptorRun.CorpusRebuildCount == 1` (not `TreeBuildCount` — the member is named
+   `CorpusRebuildCount`) so a regression fails in milliseconds rather than in dollars; because that
+   counter is set to 1 beside the one `RebuildAsync` call by construction, `LeafCount` and
+   `SummariserCalls` are what actually prove nothing rebuilt along the way.
 2. **Task 4's gate is real.** If `raptorfiltered − dense` is not ≈ 0 the corpora diverged and no
    figure means anything — stop, having spent a pilot rather than a sweep.
 3. **`raptorcorpus` is RAPTOR's result, not `raptor`.** Publishing the per-document figure would
@@ -87,9 +111,11 @@ Three things govern the run, all in the plan:
 
 ## Working State
 
-**Branch:** `chore/complete-phase-6-2-3`, cut from `main` at `c461475d`. Carries only this state
-update. `phase/6.2.3-corpus-level-raptor` was merged (squash, `c461475d`) and deleted after the
-content was verified on `main`.
+**Branch:** `bench/raptor-measurement`, cut from `main` after `c461475d` — 6.2.1's RAPTOR
+measurement (Tasks 1-3 of `docs/plans/2026-08-21-raptor-real-protocol-implementation.md`; Tasks 4-6
+blocked on #345, see Recommended Next Step). The earlier `chore/complete-phase-6-2-3` branch this
+section used to name was the state-update-only branch for 6.2.3's merge and is gone; it is not
+this branch.
 
 **Issues from the 6.2.3 work:** #331, #332, #333 fixed and auto-closed on merge. **#336, #337 and
 #338 remain open by decision**, each documented in `docs/guide/raptor.md`'s Known Limitations:

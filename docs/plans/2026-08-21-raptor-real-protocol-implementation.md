@@ -336,6 +336,8 @@ git commit -m "test(benchmarks): dispatch the RAPTOR arms, two ingestions not fo
 
 **This task spends money.** Roughly 50 queries × 4 new arms, most of which will hit the existing answer cache. Its purpose is to catch setup errors before the full sweep, not to produce a figure.
 
+**Note for whoever runs this: `Umap.Fit`'s allocation profile may fail before #345's context-length error does.** `Umap.BuildKnnGraph` allocates `new (float, int)[n]` per row — at the corpus's 17,648 leaves that is 141,184 bytes per allocation (over the 85 KB large-object-heap threshold) repeated 17,648 times, roughly 2.5 GB of LOH traffic, on top of ~311M distance evaluations over 384 dimensions and 17,648 delegate-comparison `Array.Sort`s for level 1 alone. This is more likely to surface as gen2 GC thrash or an OOM on the pilot machine than as a clean "context length exceeded" response from the model — expect it, and do not read an OOM here as an unrelated environment problem. Whoever designs #345's fix should see this too: raising `k` so clusters are smaller does not make level 1's UMAP pass any cheaper — the leaf count going into `BuildKnnGraph` is unchanged either way.
+
 **Files:**
 - No source changes. This task runs the harness and records what it observed.
 - Create: `docs/plans/2026-08-21-raptor-pilot-notes.md`
@@ -376,9 +378,14 @@ Record the two numbers and their difference in the notes file.
 
 - [ ] **Step 4: Record the tree the run actually built**
 
-From `RaptorRun`'s counters, record in the notes: `LeafCount`, `SummaryCount`, `CorpusRebuildCount` (must be **1** for the corpus arms), and `SummariserCalls`. Derive the summarisation cost per full run from `SummariserCalls`.
+From `RaptorRun`'s counters, record in the notes: `LeafCount`, `SummaryCount`, `CorpusRebuildCount`, and `SummariserCalls`. Derive the summarisation cost per full run from `SummariserCalls`.
 
-**If `CorpusRebuildCount` is not 1, stop and report** — the debounce was not suppressed and the sweep would cost 48× what it should.
+**`CorpusRebuildCount` cannot be the gate here — log it, do not gate on it.** `RaptorRun` sets it to `1` beside its one `RebuildAsync` call by construction (see the property's own doc comment), and under `Corpus` scope ingestion is structurally incapable of rebuilding along the way — there is no code path left that could make it read anything but `1`. A check against it can never fire, gate or not.
+
+**Gate on the counters that can actually move instead, and stop and report if any looks wrong:**
+- **`LeafCount` must read 17,648** — the full corpus's chunk count. Anything else means some documents were skipped or double-counted.
+- **`SummariserCalls`** should be small relative to the corpus — one rebuild's worth of clustering, not one per document. Compare against the fast-tier bound `RaptorRunTests.MaxPlausibleSummariserCallsForOneRebuild` documents for the shape of what "one rebuild" looks like at small scale, and flag a count that looks like ingestion summarised along the way.
+- **`SummaryCount`** should be positive — the rebuild must have actually produced a tree.
 
 - [ ] **Step 5: Commit the notes**
 
