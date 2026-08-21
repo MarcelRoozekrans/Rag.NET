@@ -203,7 +203,18 @@ internal sealed class RaptorRun : IAsyncDisposable
     public async Task<IReadOnlyList<SearchResult>> SearchAsync(
         string query, RaptorRetrievalMode mode, int topK, CancellationToken cancellationToken)
     {
-        var behavior = new RaptorRetrievalBehavior(new RaptorRetrievalOptions { Mode = mode });
+        // CandidateMultiplier and SummaryBoostFactor are pinned here explicitly, at
+        // RaptorRetrievalOptions' own shipped defaults (3.0 and 1.2) as of this run, rather than
+        // left to fall out of the type's defaults implicitly. raptorboost's pinned figure only
+        // means what it says as long as these two values are what it was measured at; a future
+        // change to either default would otherwise silently redefine the figure without this run
+        // noticing.
+        var behavior = new RaptorRetrievalBehavior(new RaptorRetrievalOptions
+        {
+            Mode = mode,
+            CandidateMultiplier = 3.0,
+            SummaryBoostFactor = 1.2,
+        });
         var context = new RetrievalContext
         {
             Query = query,

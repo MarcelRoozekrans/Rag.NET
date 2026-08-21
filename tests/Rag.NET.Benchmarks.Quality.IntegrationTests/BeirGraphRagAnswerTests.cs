@@ -132,8 +132,8 @@ public sealed class BeirGraphRagAnswerTests
             dataset.Documents, generator, embeddings, OpenExtractions(cacheDirectory),
             OpenReports(cacheDirectory), ct);
         using var articles = await IndexArticlesAsync(dataset, generator, embeddings, ct);
-        await using var corpusRun = await BuildCorpusRaptorRunAsync(arms, dataset, generator, embeddings, answering, ct);
-        await using var perDocumentRun = await BuildPerDocumentRaptorRunAsync(arms, dataset, generator, embeddings, answering, ct);
+        await using var corpusRun = await BuildCorpusRaptorRunAsync(arms, dataset, generator, embeddings, answering, _output, ct);
+        await using var perDocumentRun = await BuildPerDocumentRaptorRunAsync(arms, dataset, generator, embeddings, answering, _output, ct);
         _output.WriteLine(FormattableString.Invariant(
             $"graph, article and RAPTOR stores built in {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s"));
         var tallies = await AnswerAllAsync(
@@ -171,22 +171,34 @@ public sealed class BeirGraphRagAnswerTests
     /// <see cref="RaptorRun.BuildAsync"/>, and nothing outside that one call ever reads it, so a
     /// file-backed store would only risk leaves accumulating across repeated runs for no benefit.
     /// </summary>
+    /// <remarks>
+    /// Logs <see cref="RaptorRun.CorpusRebuildCount"/> and the run's other counters to
+    /// <paramref name="output"/> the moment the build finishes — the only point this run's stop
+    /// condition (a paid run must see <c>CorpusRebuildCount == 1</c> before spending anything on
+    /// answers) can actually be read from a <c>dotnet test</c> transcript.
+    /// </remarks>
     private static async Task<RaptorRun?> BuildCorpusRaptorRunAsync(
         IReadOnlyList<string> arms,
         BeirDataset dataset,
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         CachedGraphRagClient answering,
+        ITestOutputHelper output,
         CancellationToken ct)
     {
         var needed = arms.Contains(AnswerArm.RaptorCorpus, StringComparer.Ordinal)
             || arms.Contains(AnswerArm.RaptorFiltered, StringComparer.Ordinal)
             || arms.Contains(AnswerArm.RaptorBoost, StringComparer.Ordinal);
 
-        return needed
-            ? await RaptorRun.BuildAsync(
-                dataset.Documents, RaptorTreeScope.Corpus, generator, embeddings, answering, ":memory:", ct)
-            : null;
+        if (!needed)
+        {
+            return null;
+        }
+
+        var run = await RaptorRun.BuildAsync(
+            dataset.Documents, RaptorTreeScope.Corpus, generator, embeddings, answering, ":memory:", ct);
+        LogRaptorRunCounters(output, "corpus (raptorcorpus / raptorfiltered / raptorboost)", run);
+        return run;
     }
 
     /// <summary>
@@ -194,21 +206,42 @@ public sealed class BeirGraphRagAnswerTests
     /// from, the retired variant kept selectable as <see cref="AnswerArm.RaptorCorpus"/>'s control —
     /// or <see langword="null"/> when that arm was not selected.
     /// </summary>
+    /// <remarks>
+    /// Both <see cref="RaptorRun"/>s are finished before this method returns — RAPTOR summarisation
+    /// happens strictly before <c>AnswerAllAsync</c> ever calls <paramref name="answering"/> for an
+    /// answer — so the token snapshot logged here, taken from the one client every summariser and
+    /// every answer call shares, is exactly the summarisation cost: nothing an answer call adds can
+    /// have landed in <paramref name="answering"/>'s counters yet.
+    /// </remarks>
     private static async Task<RaptorRun?> BuildPerDocumentRaptorRunAsync(
         IReadOnlyList<string> arms,
         BeirDataset dataset,
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         CachedGraphRagClient answering,
+        ITestOutputHelper output,
         CancellationToken ct)
     {
         var needed = arms.Contains(AnswerArm.Raptor, StringComparer.Ordinal);
-
-        return needed
+        var run = needed
             ? await RaptorRun.BuildAsync(
                 dataset.Documents, RaptorTreeScope.PerDocument, generator, embeddings, answering, ":memory:", ct)
             : null;
+
+        if (run is not null)
+        {
+            LogRaptorRunCounters(output, "per-document (raptor)", run);
+        }
+
+        output.WriteLine(FormattableString.Invariant(
+            $"RAPTOR summarisation cost so far (both trees, before any answer is generated): {answering.Calls} calls, {answering.InputTokens} input tokens, {answering.OutputTokens} output tokens"));
+        return run;
     }
+
+    /// <summary>Writes one <see cref="RaptorRun"/>'s counters to <paramref name="output"/>, labelled.</summary>
+    private static void LogRaptorRunCounters(ITestOutputHelper output, string label, RaptorRun run) =>
+        output.WriteLine(FormattableString.Invariant(
+            $"RaptorRun[{label}]: LeafCount={run.LeafCount}, SummaryCount={run.SummaryCount}, CorpusRebuildCount={run.CorpusRebuildCount}, SummariserCalls={run.SummariserCalls}"));
 
     // ── Selection and gates ───────────────────────────────────────────────
 
@@ -437,7 +470,7 @@ public sealed class BeirGraphRagAnswerTests
                             AnswerArm.Filtered => filteredContexts[query.Id],
                             _ => await RetrieveContextAsync(
                                 arm, query.Text, run, articles, corpusRun, perDocumentRun,
-                                generator, embeddings, answering, token),
+                                generator, embeddings, answering, _output, token),
                         });
 
                     var prompt = PromptTemplate
@@ -500,6 +533,7 @@ public sealed class BeirGraphRagAnswerTests
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         CachedGraphRagClient answering,
+        ITestOutputHelper output,
         CancellationToken ct)
     {
         switch (arm)
@@ -517,14 +551,40 @@ public sealed class BeirGraphRagAnswerTests
             case AnswerArm.RaptorBoost:
                 return await corpusRun!.SearchAsync(query, RaptorRetrievalMode.Boost, ContextChunks, ct);
             case AnswerArm.RaptorFiltered:
-                var pool = await corpusRun!.SearchAsync(
-                    query, RaptorRetrievalMode.Blend, ContextChunks * 4, ct);
-                return Head(
-                    pool.Where(r => !r.Chunk.Metadata.ContainsKey("raptor_level")).ToList(),
-                    ContextChunks);
+                return await RetrieveRaptorFilteredAsync(query, corpusRun!, output, ct);
             default:
                 throw new ArgumentOutOfRangeException(nameof(arm), arm, "Not an arm retrieved here.");
         }
+    }
+
+    /// <summary>
+    /// <c>raptorfiltered</c>'s retrieval: over-fetch four times the context depth from the corpus
+    /// store at <see cref="RaptorRetrievalMode.Blend"/>, drop every summary chunk, then take six —
+    /// #247's option (c) shape, reused so that dropping from an already-truncated six does not
+    /// under-fill and understate what filtering buys.
+    /// </summary>
+    /// <remarks>
+    /// <b>The guard below can never fire under today's code</b> — <see cref="Head"/> never returns
+    /// fewer results than its source has, so a truncated-below-<see cref="ContextChunks"/> result
+    /// with enough survivors to fill it is a contradiction unless something upstream broke. It
+    /// exists so a future edit to the over-fetch multiplier, the predicate, or which list gets
+    /// handed to <see cref="Head"/> fails loudly here instead of silently biasing
+    /// <c>raptorfiltered − dense</c> — the one comparison the pilot's validation gate stops on.
+    /// </remarks>
+    private static async Task<IReadOnlyList<SearchResult>> RetrieveRaptorFilteredAsync(
+        string query, RaptorRun corpusRun, ITestOutputHelper output, CancellationToken ct)
+    {
+        var pool = await corpusRun.SearchAsync(query, RaptorRetrievalMode.Blend, ContextChunks * 4, ct);
+        var survivors = pool.Where(r => !r.Chunk.Metadata.ContainsKey("raptor_level")).ToList();
+        var filtered = Head(survivors, ContextChunks);
+
+        if (filtered.Count < ContextChunks && survivors.Count >= ContextChunks)
+        {
+            output.WriteLine(FormattableString.Invariant(
+                $"WARNING: raptorfiltered under-filled for query '{query}': only {filtered.Count} of {ContextChunks} chunks came back despite {survivors.Count} non-summary candidates being available in the over-fetched pool of {pool.Count} — check the over-fetch multiplier and the Head() wiring."));
+        }
+
+        return filtered;
     }
 
 
