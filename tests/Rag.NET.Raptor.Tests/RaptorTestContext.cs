@@ -27,7 +27,7 @@ internal sealed class RaptorTestContext
             GetNextBm25DocId = () => 0,
         };
 
-        var rng = new Random(42);
+        var rng = new Random(SeedFor(documentId));
         for (var i = 0; i < chunkCount; i++)
         {
             var chunk = new TextChunk
@@ -47,6 +47,34 @@ internal sealed class RaptorTestContext
     {
         ChatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, response)]));
+    }
+
+    /// <summary>Derives this document's embedding seed from its id, stably across processes.</summary>
+    /// <remarks>
+    /// Was <c>new Random(42)</c> on every call, which gave every document in a multi-document
+    /// fixture byte-identical vectors: <c>RaptorCorpusBuildTests</c> ingested ten documents of two
+    /// chunks each and clustered twenty points that were really two, repeated ten times apiece. A
+    /// component of exact duplicates has zero variance, floors to <c>VarianceFloor</c>, and scores
+    /// as a near-perfect fit, so those tests were measuring the variance floor rather than a corpus.
+    /// Seeding per document keeps runs deterministic while letting different documents differ.
+    ///
+    /// FNV-1a rather than <see cref="string.GetHashCode()"/>: string hashing is randomised per
+    /// process in .NET, so a fixture seeded from it would not reproduce across runs.
+    /// </remarks>
+    /// <param name="documentId">The document id to derive from.</param>
+    /// <returns>A seed that depends only on <paramref name="documentId"/>.</returns>
+    private static int SeedFor(string documentId)
+    {
+        unchecked
+        {
+            var hash = 2166136261;
+            foreach (var c in documentId)
+            {
+                hash = (hash ^ c) * 16777619;
+            }
+
+            return (int)hash;
+        }
     }
 
 #pragma warning disable HLQ013 // Use foreach — need index-based assignment

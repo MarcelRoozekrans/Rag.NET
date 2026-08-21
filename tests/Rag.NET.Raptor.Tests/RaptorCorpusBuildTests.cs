@@ -58,6 +58,11 @@ public class RaptorCorpusBuildTests
         await behavior.BuildCorpusTreeNowAsync(target, TestContext.Current.CancellationToken);
 
         var indexes = target.EmbeddedChunks.Select(c => c.Chunk.ChunkIndex).ToList();
+
+        // Without this the uniqueness assertion below holds trivially on an empty list, so the
+        // test would stay green if the corpus tree stopped being built altogether — the same
+        // vacuous-pass its per-document sibling guards against.
+        Assert.True(indexes.Count > 0, "corpus build produced no summaries, so uniqueness proves nothing");
         Assert.Equal(indexes.Count, indexes.Distinct().Count());
     }
 

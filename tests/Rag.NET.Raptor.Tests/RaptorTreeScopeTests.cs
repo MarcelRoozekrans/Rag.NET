@@ -45,7 +45,10 @@ public class RaptorTreeScopeTests
         // MaxTreeDepth is back at its null default. It was capped at 2 only because
         // GaussianMixtureModel.SelectK selected k = n for genuinely distinct points (#333), so an
         // unbounded depth never terminated; with that fixed the loop ends on its own when a level
-        // stops reducing, and the cap no longer has a reason to be here.
+        // stops reducing, and the cap no longer has a reason to be here. Running uncapped means
+        // this test carries the same non-termination exposure as
+        // TreeBuilding_Terminates_AtDefaultOptionsWithNoDepthCap, so it takes the same 30-second
+        // guard: a regression should fail here, not wedge the suite.
         await using var leafStore = new SqliteRaptorLeafStore(":memory:");
         await leafStore.InitializeAsync(TestContext.Current.CancellationToken);
 
@@ -56,9 +59,11 @@ public class RaptorTreeScopeTests
         var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options, leafStore);
         var ctx = _helpers.CreateContext(chunkCount: 12);
 
-        await behavior.HandleAsync(ctx, CancellationToken.None,
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await behavior.HandleAsync(ctx, cts.Token,
             static (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
 
+        Assert.False(cts.IsCancellationRequested, "tree building did not terminate at default options");
         Assert.Equal(0, await leafStore.CountAsync(TestContext.Current.CancellationToken));
         Assert.Contains(ctx.EmbeddedChunks, c => c.Chunk.Metadata.ContainsKey("raptor_level"));
     }

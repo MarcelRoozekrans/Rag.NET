@@ -187,18 +187,18 @@ public class RaptorIngestionBehaviorTests
     public async Task SummaryChunks_HaveUniqueChunkIndexes_AcrossEveryTreeLevel()
     {
         // Used to force a depth-2 tree with chunkCount = 6 and no MaxClusters, relying on
-        // GaussianMixtureModel.SelectK's #333 bug (it selects k = n for genuinely distinct
-        // points) to turn each of 6 leaves into its own level-1 "cluster", then each of those 6
-        // summaries into its own level-2 "cluster" — a non-reducing tree that only terminated
-        // because MaxTreeDepth capped it. The non-reducing-level guard this task adds
+        // GaussianMixtureModel.SelectK's #333 bug (it selected k = n for genuinely distinct
+        // points, until the minimum-component-size rule fixed that) to turn each of 6 leaves into
+        // its own level-1 "cluster", then each of those 6 summaries into its own level-2
+        // "cluster" — a non-reducing tree that only terminated because MaxTreeDepth capped it. The non-reducing-level guard this task adds
         // (BuildLevelAsync rejects any level whose k would not shrink the count) now rejects
         // that first level outright, and that is by design: an infinite version of the same
         // shape is exactly #333's defect.
         //
         // A prior version of this test tried to route around that by leaning on
         // ReducedDimensionality's UMAP step instead of an explicit cluster count, on the
-        // (disproven) theory that GaussianMixtureModel.SelectK only ever returns k = 1 or k = n
-        // for this harness's random embeddings. It does not: HandleAsync_AtExactThreshold_
+        // (disproven) theory that GaussianMixtureModel.SelectK only ever returned k = 1 or k = n
+        // for this harness's random embeddings. It did not: HandleAsync_AtExactThreshold_
         // AppliesRaptor (6 chunks, ReducedDimensionality = 2, unmodified) only stays green
         // because SelectK returns some 2 <= k <= 5 there — k = 6 would trip the guard and k = 1
         // would trip the k <= 1 check ahead of it, and either would leave that test's
