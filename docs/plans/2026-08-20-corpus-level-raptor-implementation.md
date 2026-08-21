@@ -8,7 +8,7 @@
 
 **Tech Stack:** .NET 10, C#, xunit.v3, Microsoft.Data.Sqlite, ZeroAlloc.Validation, MathNet.Numerics.
 
-**Spec:** `docs/superpowers/specs/2026-08-20-corpus-level-raptor-design.md`
+**Spec:** `docs/plans/2026-08-20-corpus-level-raptor-design.md`
 
 **Issues:** #331 (tree scope), #332 (chunk-index collision).
 
@@ -20,7 +20,7 @@
 - **`main` is protected and requires a PR.** Work on a feature branch; do not commit to `main`.
 - **String comparisons and dictionary construction must be explicit**: `StringComparer.Ordinal` for dictionaries keyed by string, `StringComparison.Ordinal` for comparisons, `CultureInfo.InvariantCulture` for number formatting. The analyzers fail the build otherwise.
 - **New projects must be added to `Rag.NET.slnx`** — `src/` projects in the `src` block, test projects in the `tests` block.
-- **Do not delete `RaptorRetrievalMode.Boost` / `Filter` or change their behaviour.** Their defects are #331's sibling spec's business (`docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md`), not this plan's.
+- **Do not delete `RaptorRetrievalMode.Boost` / `Filter` or change their behaviour.** Their defects are #331's sibling spec's business (`docs/plans/2026-08-20-raptor-real-protocol-design.md`), not this plan's.
 
 ---
 
@@ -1654,7 +1654,7 @@ The `!` is required — `RaptorOptions.TreeScope`'s default changes observable b
 
 ## Notes for the executor
 
-**What is deliberately not in this plan.** The `Boost` and `Filter` over-fetch defects — `Boost` cannot promote a summary into the result set, `Filter` under-fills — belong to `docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md` and Phase 6.2.1. Do not fix them here, and do not "improve" `RaptorRetrievalBehavior` while passing through. Measuring them as shipped is the point.
+**What is deliberately not in this plan.** The `Boost` and `Filter` over-fetch defects — `Boost` cannot promote a summary into the result set, `Filter` under-fills — belong to `docs/plans/2026-08-20-raptor-real-protocol-design.md` and Phase 6.2.1. Do not fix them here, and do not "improve" `RaptorRetrievalBehavior` while passing through. Measuring them as shipped is the point.
 
 **`PerDocument` must keep working.** It is the control arm Phase 6.2.1 differences the corpus scope against. If a change makes per-document trees harder to construct in a test, that is a signal to stop and reconsider, not to delete the path.
 

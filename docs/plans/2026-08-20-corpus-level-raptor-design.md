@@ -44,7 +44,7 @@ So RAPTOR must own persistent state of its own. Roughly #302 plus #312 combined.
 
 ### Ordering, and the reversal behind it
 
-`docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md` originally deferred this fix on a
+`docs/plans/2026-08-20-raptor-real-protocol-design.md` originally deferred this fix on a
 measured trigger, per #247's measure-then-fix order. **Reversed by the operator on 2026-08-20** —
 *"fix it first before spending again"* — on the grounds that this defect is **structural**: it was
 established by reading `IngestionContext`, not inferred from a figure, so a paid sweep would buy
@@ -196,7 +196,7 @@ Fast tier, no model:
   arm. Settling it here would pre-empt the measurement this phase exists to make possible.
 - **The `Boost` and `Filter` over-fetch defects** — `Boost` cannot promote a summary into the result
   set, `Filter` under-fills. Both stay in
-  `docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md`.
+  `docs/plans/2026-08-20-raptor-real-protocol-design.md`.
 - **Generalising the chunk-index uniqueness guard** beyond RAPTOR. Noted in §4; a decision for the
   plan or a later phase.
 

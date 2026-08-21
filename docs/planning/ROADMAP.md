@@ -4361,7 +4361,7 @@ unreproducible. Keeping both here means the RAPTOR measurement in 6.2.1 prices t
 shapes in **one** run rather than two, and nothing ships unpinned.
 
 **Ordering, and the reversal behind it.** The design at
-`docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md` originally deferred this fix on
+`docs/plans/2026-08-20-raptor-real-protocol-design.md` originally deferred this fix on
 a measured trigger, per #247's measure-then-fix order. **Reversed by the operator on 2026-08-20** —
 *"fix it first before spending again"* — on the grounds that the defect is structural rather than
 empirical: it was established by reading `IngestionContext`, not inferred from a figure, so a paid

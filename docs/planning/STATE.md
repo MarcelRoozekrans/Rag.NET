@@ -61,7 +61,7 @@ singletons on the full corpus against the 65% the issue carries.
 before merging.** The phase is implemented and reviewed; the merge is the operator's.
 
 After the merge: **6.2.1's RAPTOR measurement**, whose design at
-`docs/superpowers/specs/2026-08-20-raptor-real-protocol-design.md` has been waiting since 2026-08-20.
+`docs/plans/2026-08-20-raptor-real-protocol-design.md` has been waiting since 2026-08-20.
 It can now price both tree scopes in one run, because 6.2.3 kept `PerDocument` selectable rather
 than deleting it.
 
