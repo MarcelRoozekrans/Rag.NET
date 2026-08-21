@@ -13,8 +13,15 @@ namespace Rag.NET.RepoConventions.Tests;
 public sealed class TestProjectTierTests
 {
     /// <summary>
-    /// There are 65 test projects today. A far smaller number means the scan lost the working tree
-    /// and is asserting over nothing — which would pass, silently, forever.
+    /// There are 76 test projects today — <c>tests/*/*.csproj</c> carrying
+    /// <c>Microsoft.NET.Test.Sdk</c>, which is exactly what <see cref="TestProject.DiscoverAll"/>
+    /// counts, so <c>Rag.NET.Testing</c> is excluded. A far smaller number means the scan lost the
+    /// working tree and is asserting over nothing — which would pass, silently, forever.
+    /// <para>
+    /// The figure was wrong for some time (64, then 65) because it was incremented by hand without
+    /// being recounted. It is stated with its method above so the next reader can check it in one
+    /// command rather than trusting it.
+    /// </para>
     /// </summary>
     private const int FewestPlausibleTestProjects = 50;
 

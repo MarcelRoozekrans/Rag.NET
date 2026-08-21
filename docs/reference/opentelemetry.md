@@ -287,8 +287,8 @@ tree. All of them are on the same shared `"Rag.NET"` `ActivitySource` described 
 | GraphRag | `ragnet.graphrag.search` | `graphrag.search.mode` (`local`\|`global`), `graphrag.entity.count` (local) or `graphrag.community.count` (global) | `ragnet.retrieve` |
 | Graph | `ragnet.graph.cluster` | `graph.node.count`, `graph.relationship.count`, `graph.community.count` | `ragnet.graphrag.communities` |
 | Graph | `ragnet.graph.pagerank` | `graph.node.count`, `graph.relationship.count` | `ragnet.graphrag.communities` |
-| Raptor | `ragnet.raptor.build` | `document.id`, `raptor.tree.depth`, `raptor.summary.count` | `ragnet.ingest` |
-| Raptor | `ragnet.raptor.summarize` | `raptor.tree.level`, `raptor.chunk.count`, `raptor.cluster.count` | `ragnet.raptor.build` (once per level) |
+| Raptor | `ragnet.raptor.build` | `document.id` (the reserved `raptor://corpus-tree` under `Corpus` scope), `raptor.tree.depth`, `raptor.summary.count` | `ragnet.ingest` — **not emitted by `RaptorTreeRebuilder.RebuildAsync`**, which builds outside ingestion; only `ragnet.raptor.summarize` appears on that path |
+| Raptor | `ragnet.raptor.summarize` | `raptor.tree.level`, `raptor.chunk.count`, `raptor.cluster.count` | `ragnet.raptor.build` (once per level) — parented by the ambient activity instead when `RaptorTreeRebuilder.RebuildAsync` drives the build |
 | Security | `ragnet.security.guard` (RBAC, regex, trust-level) | `security.guard.type`, `security.guard.action`, `security.chunks.affected` | `ragnet.retrieve` |
 | Security | `ragnet.security.sanitize` (regex/LLM/PII chunk sanitisers) | `security.sanitizer.type`, `security.matches.count` | `ragnet.ingest` |
 

@@ -112,19 +112,21 @@ services.AddRagNet(
 ### Ingestion Options
 
 ```csharp
-rag.UseRaptor(options =>
-{
-    options.Enabled = true;                  // Toggle RAPTOR on/off
-    options.MinChunksForRaptor = 5;          // Skip for small documents
-    options.ReducedDimensionality = 10;      // UMAP target dims — must be greater than 0
-    options.MaxClusters = null;              // null = BIC auto-selects; when set, must be greater than 1
-    options.MaxTreeDepth = null;             // null = recurse until a level can no longer be usefully split; when set, must be greater than 0
-    options.StoreLeafChunks = true;          // Keep originals alongside summaries
-    options.SummaryChatClient = cheapModel;  // Optional: cheaper model for summaries
-    options.SummaryEmbedder = fastEmbedder;  // Optional: separate embedder
-    options.TreeScope = RaptorTreeScope.Corpus;  // Corpus (default) or PerDocument — see Tree Scope
-    options.CorpusGrowthThreshold = 0.10;    // Corpus scope only: rebuild once the corpus is this much larger than at the last build
-});
+rag.UseRaptor(
+    options =>
+    {
+        options.Enabled = true;                  // Toggle RAPTOR on/off
+        options.MinChunksForRaptor = 5;          // Skip for small documents
+        options.ReducedDimensionality = 10;      // UMAP target dims — must be greater than 0
+        options.MaxClusters = null;              // null = BIC auto-selects; when set, must be greater than 1
+        options.MaxTreeDepth = null;             // null = recurse until a level can no longer be usefully split; when set, must be greater than 0
+        options.StoreLeafChunks = true;          // Keep originals alongside summaries — must stay true under Corpus scope
+        options.SummaryChatClient = cheapModel;  // Optional: cheaper model for summaries
+        options.SummaryEmbedder = fastEmbedder;  // Optional: separate embedder
+        options.TreeScope = RaptorTreeScope.Corpus;  // Corpus (default) or PerDocument — see Tree Scope
+        options.CorpusGrowthThreshold = 0.10;    // Corpus scope only: rebuild once the corpus is this much larger than at the last build
+    },
+    leafStorePath: "raptor-leaves.db");          // Required under Corpus scope — see Tree Scope
 ```
 
 `UseRaptor` validates the configured options at registration and throws `ArgumentException` from the configuring line. The bounds are not pedantry: `MaxClusters = 1` or `MaxTreeDepth = 0` would build no summary levels at all — RAPTOR silently disabled while `Enabled` still reads `true` — and a non-positive `ReducedDimensionality` would leave clustering nothing to work on or crash mid-ingestion.
@@ -139,9 +141,13 @@ rag.UseRaptor(
         options.SummaryBoostFactor = 1.5;    // Score multiplier for summaries — must be greater than 0, and finite
         options.MinRaptorLevel = null;       // Level filter lower bound — must not exceed MaxRaptorLevel
         options.MaxRaptorLevel = null;       // Level filter upper bound — when set, must be zero or positive
-    }
-);
+    },
+    leafStorePath: "raptor-leaves.db");      // Required under the default Corpus scope
 ```
+
+Retrieval options are independent of tree scope, but `leafStorePath` is still required here because
+`TreeScope` defaults to `Corpus`. Pass `options => options.TreeScope = RaptorTreeScope.PerDocument`
+instead if you do not want a leaf store.
 
 These are validated at registration too: `SummaryBoostFactor = 0` would bury every summary and a negative factor would invert their ranking — the opposite of what Boost mode is for — while an empty Filter window (`MinRaptorLevel > MaxRaptorLevel`, or a negative `MaxRaptorLevel`) would remove every result on every retrieval.
 

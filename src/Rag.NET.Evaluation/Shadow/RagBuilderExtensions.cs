@@ -31,7 +31,7 @@ public static class RagBuilderExtensions
     /// <see cref="IRagBuilder"/> rather than <c>RagBuilder</c> — this package depends on
     /// <c>Rag.NET.Abstractions</c> alone, and needs nothing here beyond
     /// <see cref="IRagBuilder.Services"/>. The satellites' <c>Use*</c> extensions accept any
-    /// <see cref="IRagBuilder"/>, so <c>rag.UseShadow&lt;T&gt;().UseRaptor()</c> composes.
+    /// <see cref="IRagBuilder"/>, so <c>rag.UseShadow&lt;T&gt;().UseGraphRag()</c> composes.
     /// </returns>
     /// <remarks>
     /// <para>
