@@ -86,6 +86,19 @@ public static class RagBuilderExtensions
                 options,
                 sp.GetService<IRaptorLeafStore>()));
 
+        if (leafStorePath is not null)
+        {
+            // The on-demand counterpart to the ingest-time growth threshold. Registered rather
+            // than left for callers to construct, because it must share the ONE
+            // RaptorIngestionBehavior singleton: that instance holds the debounce baseline, and a
+            // rebuild resets it so ingestion continuing afterwards debounces from the rebuilt
+            // state rather than a stale count.
+            builder.Services.AddSingleton<RaptorTreeRebuilder>(sp =>
+                new RaptorTreeRebuilder(
+                    sp.GetRequiredService<RaptorIngestionBehavior>(),
+                    sp.GetRequiredService<IVectorStore>()));
+        }
+
         builder.Services.AddSingleton<RaptorRetrievalBehavior>(sp =>
             new RaptorRetrievalBehavior(sp.GetRequiredService<RaptorRetrievalOptions>()));
 
