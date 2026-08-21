@@ -4,6 +4,22 @@
 **Phase:** 6.2.1 — Retrieval & Answer Sweep, first thread after the GraphRAG local-search work
 **Status:** design approved in brainstorming; not yet planned
 
+> ## Amended 2026-08-21, after Phase 6.2.3 shipped
+>
+> This design was written on 2026-08-20, when RAPTOR clustered **per document** and that was the
+> shipped behaviour. Phase 6.2.3 (#340, merged 2026-08-21) made **corpus** clustering the default,
+> fixed #332 and #333, and left `Boost` and `Filter` deliberately unfixed so this measurement could
+> price them as shipped.
+>
+> **Amended:** §1's arm table and labels; §3's cost section, which assumed a tree is built once;
+> §2's ordering argument, marked as overtaken.
+> **Unchanged, because 6.2.3 did not touch them:** differences-as-the-deliverable, the
+> `raptorfiltered − dense` validation gate, the `Boost` ≈ no-op prediction, §4's pinning, §5's tests.
+>
+> §"What reading the code found" below is left as written. #331 and the two defects it describes are
+> now fixed; it is the record of what was believed before the run, and retconning it would destroy
+> the thing this project keeps such records for.
+
 ## Goal
 
 Give `Rag.NET.Raptor` what the GraphRAG path got in Milestone 5: one real run on a real corpus with
@@ -83,14 +99,49 @@ model and prompt as every graph arm, so the figures land in the same table.
 | Arm | Store | Tree scope | Mode |
 |---|---|---|---|
 | `dense` *(exists, pinned)* | article-only | — | — |
-| `raptor` | leaves + summaries | per document *(shipped)* | `Blend` *(shipped default)* |
+| `raptorcorpus` | leaves + summaries | whole corpus — **the shipped default since #340** | `Blend` *(shipped default)* |
+| `raptor` | leaves + summaries | per document — **the retired variant, kept as the control** | `Blend` |
 | `raptorfiltered` | same as `raptor` | per document | `Blend`, summaries dropped before top-6 |
-| `raptorboost` | same as `raptor` | per document | `Boost` @ 1.2 *(shipped default)* |
-| `raptorcorpus` | leaves + summaries | whole corpus *(the paper's shape)* | `Blend` |
-| `raptorboostfixed` | same as `raptor` | per document | `Boost` @ 1.2, **after** the over-fetch fix |
+| `raptorboost` | leaves + summaries | whole corpus | `Boost` @ 1.2, **after 6.2.4's over-fetch fix** |
 
-One ingestion per store shape, not one per arm: `raptor`, `raptorfiltered`, `raptorboost` and
-`raptorboostfixed` all read the same per-document store and differ only in retrieval policy. This
+**The labels inverted on 2026-08-21 and that is not cosmetic.** When this was written, `raptor` was
+the shipped configuration and `raptorcorpus` was the hypothetical. #340 reversed them. So
+**`raptorcorpus` is the number that gets published as "RAPTOR's result" on this corpus**, and
+`raptor` is the control it is differenced against. Publishing the per-document figure as RAPTOR's
+would repeat 5.2's misattribution exactly — a variant's number presented as the technique's.
+
+**The broken-`Boost` arm is dropped, and the fix moves to its own phase (6.2.4).** This design
+originally measured `Boost` as shipped and only then fixed it, following #247's measure-then-fix
+order. That was wrong here, and the operator caught it on 2026-08-21.
+
+The distinction #247 turned on is whether the defect is *empirical* or *structural*. #247 was
+empirical — nobody knew how much the shared store cost until it was measured. `Boost`'s defect is
+structural and provable from two lines: `RaptorRetrievalBehavior` calls `next(ctx, ct)` with the
+context unmodified, and `VectorStoreBehavior` fetches exactly `ctx.Options.TopK`, so the behaviour
+only ever sees the truncated top-k and can reorder within it but never promote into it. **Paying for
+an answer arm to confirm arithmetic buys evidence for something already known** — the same objection
+that reversed the ordering on #331.
+
+The question reading *cannot* answer is whether a **working** `Boost` helps, and that needs the
+fixed behaviour. So `raptorboost` measures the fixed configuration against `raptorcorpus`, and the
+broken one is not an arm at all.
+
+`Filter` was never a measurement question. Asking for six results and receiving three is a contract
+violation; no number is required to justify returning what the caller asked for.
+
+**The control is preserved by configuration, not by leaving a defect in place** — the same answer
+6.2.3 used when it kept `PerDocument` selectable. 6.2.4's over-fetch candidate count reproduces
+today's behaviour exactly at 1×, so anyone who wants the broken state pinned can still reach it.
+
+`raptorcorpus` is also no longer built harness-side. §"How the corpus-level arm is built" below
+described invoking the shipped behaviour over a synthetic whole-corpus context, because no supported
+configuration produced a corpus tree. One does now: `TreeScope = RaptorTreeScope.Corpus` with a
+`leafStorePath`. The arm measures the product rather than an approximation of it, which is strictly
+better evidence and less code.
+
+One ingestion per store shape, not one per arm. `raptor` and `raptorfiltered` read the same
+per-document store and differ only in retrieval policy; `raptorcorpus` and `raptorboost` read the
+same corpus store and likewise differ only in policy. This
 is what makes their differences mean anything — same store, same depth, same embedder, same model,
 same prompt.
 
@@ -111,9 +162,13 @@ same prompt.
   gate compares two things that were never the same and will read as a setup failure when it is
   only a configuration difference. Verify the leaf sets match before spending anything on the
   full sweep.
-- **`raptorboost − raptor`** — what `Boost` does as shipped. **Predicted ≈ 0**, for the mechanical
-  reason in defect 2. Stated before the run so the run can falsify it.
-- **`raptorboostfixed − raptorboost`** — what the over-fetch fix buys.
+- **`raptorboost − raptorcorpus`** — **what a *working* `Boost` buys.** This is the question
+  reading cannot answer, and the only reason `Boost` is measured at all. Both arms read the same
+  corpus store; the only difference is whether summaries are promoted after over-fetch.
+  *(The superseded pairing was `raptorboost − raptor` against a **broken** `Boost`, predicted ≈ 0 on
+  mechanical grounds. That prediction is not withdrawn — it is simply not worth an arm, because it
+  follows from the code. 6.2.4's fix makes it unfalsifiable by construction rather than by
+  measurement, and 1× on the candidate count reproduces it for anyone who wants the number.)*
 - **`raptorcorpus − raptor`** — the price of tree scope. The number #247's "RAPTOR takes the same
   fix" assumption never had.
 
@@ -154,7 +209,17 @@ reimplementing the clustering harness-side:
 
 ## §2 — Two defects, and the order they are handled
 
-**The over-fetch defect is measured before it is fixed.** `raptorboost` pins the shipped
+> **Overtaken 2026-08-21.** This section argues measure-then-fix for the `Boost`/`Filter` over-fetch
+> defect. That ordering was reversed: the defect is structural rather than empirical, so the fix
+> moved to **Phase 6.2.4** and happens *before* this measurement runs. See the amended §1 for the
+> reasoning. The section is kept because its account of #247's resolution order is accurate and is
+> what the reversal was argued against — deleting it would remove the thing the decision was
+> weighed against.
+
+
+**~~The over-fetch defect is measured before it is fixed.~~** *(Reversed 2026-08-21 — see the
+note at the head of this section and the reasoning in §1. What follows is the superseded argument.)*
+`raptorboost` pins the shipped
 behaviour; then the fix lands, using `MmrBehavior`'s pattern — rewrite `ctx.Options.TopK` to a
 candidate count before `next`, reduce after; then `raptorboostfixed` re-measures.
 
@@ -192,6 +257,24 @@ embeddings written at ingestion, corpus-wide clustering over them, debounced, wi
 a migration story for existing users. Roughly #302 plus #312 combined.
 
 ## §3 — Cost, and the gate before spending
+
+> **Amended 2026-08-21 — a cost this design could not have anticipated.** It assumed a tree is built
+> once. Under the shipped `Corpus` scope it is not: `CorpusGrowthThreshold` defaults to `0.10`, so
+> ingesting MultiHop-RAG's 609 articles (~29 chunks each, 17,648 total) triggers **48 corpus
+> rebuilds**, each re-clustering every leaf ingested so far and summarising it. That is the debounce
+> working as designed — it is tuned for a live corpus that grows, not for a bulk load.
+>
+> **The measurement must ingest with the threshold set high enough to suppress rebuilds, then call
+> `RaptorTreeRebuilder.RebuildAsync()` once.** That is precisely what the rebuilder documents itself
+> for: *"after a bulk load, before measuring, or on a schedule."* One early build is unavoidable —
+> `_leavesAtLastBuild` starts at `-1`, so the first ingest always builds — but it is cheap, being
+> over one document's chunks.
+>
+> **Two known limitations bear on the run and neither is fixed:** #336 means corpus summaries
+> accumulate in the BM25 index on every ingest-triggered rebuild, with inflated term statistics, so
+> **any arm touching hybrid retrieval is contaminated** — the dense arms here are unaffected, and
+> the rebuilder path deletes before storing. #338 is irrelevant to a benchmark, which never deletes.
+
 
 A pilot at n=50 stratified runs first — #274's shape — to catch setup errors and establish the
 sign. The full 2,255-query sweep runs only after the pilot's `raptorfiltered − dense` gate holds.

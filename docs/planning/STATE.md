@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-21
+**Last updated:** 2026-08-21 (phase 6.2.4 added)
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -67,21 +67,29 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Recommended Next Step
 
-**6.2.1's RAPTOR measurement.** Its design has been waiting at
-`docs/plans/2026-08-20-raptor-real-protocol-design.md` since 2026-08-20, and 6.2.3 was built so this
-run can price **both** tree scopes in one pass — `PerDocument` was kept fully working rather than
-deleted, per #323's precedent that you do not remove what a pinned figure depends on.
+**Phase 6.2.4 — RAPTOR Retrieval Over-Fetch**, then 6.2.1's measurement. Added 2026-08-21; it needs
+a design and a plan. Expected small, but named as a phase because 6.2.3 also looked small and needed
+a store, a debounce, a rebuilder and a migration.
 
-Two things in that design are now stale and must be reconciled before it is executed:
+`RaptorRetrievalBehavior` calls `next(ctx, ct)` unmodified while `VectorStoreBehavior` fetches
+exactly `TopK`, so it only sees the truncated top-k: `Boost` promotes within the result set but
+never into it, and `Filter` returns fewer results than asked for. `MmrBehavior` in the same solution
+has the correct pattern and supplies the `?? TopK * 3` default. `Blend` must stay byte-identical —
+figures are pinned against it — and 1× on the candidate count must reproduce today's behaviour, so
+the control survives by configuration rather than by leaving the defect shipped.
 
-1. Its §2 argues the measure-then-fix ordering that the operator reversed on 2026-08-20. The
-   measurement still runs; the ordering argument no longer applies.
-2. It predicts `Boost` is a near-no-op because `RaptorRetrievalBehavior` only sees the truncated
-   top-k. That prediction is **untouched and still live** — 6.2.3 deliberately did not fix
-   `Boost` or `Filter` so they could be measured as shipped.
+**Then 6.2.1's RAPTOR measurement**, whose design at
+`docs/plans/2026-08-20-raptor-real-protocol-design.md` was amended on 2026-08-21 and is current.
+Two things to carry into its plan:
 
-**Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`. They were
-kept alive only until 6.x.7 published its replacement figure, which it did on 2026-08-20.
+1. **Ingest with the debounce suppressed, then `RaptorTreeRebuilder.RebuildAsync()` once.** At the
+   shipped `CorpusGrowthThreshold = 0.10`, ingesting 609 articles triggers **48 whole-corpus
+   rebuilds**. One early build is unavoidable (`_leavesAtLastBuild` starts at `-1`) but is cheap.
+2. **`raptorcorpus` is the number that gets published as RAPTOR's result**, not `raptor`. Publishing
+   the per-document figure would repeat 5.2's misattribution exactly.
+
+**Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`, kept alive
+only until 6.x.7 published its replacement figure on 2026-08-20.
 
 ## Working State
 
