@@ -69,6 +69,18 @@ public sealed class BeirGraphRagAnswerTests
     /// <summary>The paper's context depth: six chunks.</summary>
     private const int ContextChunks = 6;
 
+    /// <summary>
+    /// <c>raptorfiltered</c>'s over-fetch multiplier: pull <c>ContextChunks * 4</c> candidates from
+    /// the corpus store before dropping summaries and taking six — #247's option (c)
+    /// over-fetch-and-drop shape, reused here. This is a second, unrelated over-fetch factor from
+    /// <see cref="RaptorRun.SearchAsync"/>'s own <c>CandidateMultiplier = 3.0</c> pinned for the
+    /// <c>raptorboost</c> arm: one over-fetches to survive a drop after retrieval, the other
+    /// over-fetches so <c>Boost</c> can promote a summary into the truncated top-k. A reader
+    /// comparing the two pinned figures should not read the differing multipliers as a difference in
+    /// what was measured.
+    /// </summary>
+    private const int RaptorFilteredOverFetchMultiplier = 4;
+
     private const int ProgressEvery = 100;
 
     /// <summary>Queries in flight at once through the parallel phase — the bound #226 measured clean against OpenRouter.</summary>
@@ -119,7 +131,7 @@ public sealed class BeirGraphRagAnswerTests
             descriptor, cacheDirectory, BeirLoader.DefaultTitleTextSeparator, ct);
         var gold = MultiHopRagAnswers.Load(new BeirDatasetCache(cacheDirectory).DirectoryFor(descriptor));
         var selection = SelectQueries(dataset, gold);
-        var arms = SelectArms();
+        var arms = SelectArms(descriptor.Name, _output);
 
         using var generator = BeirHarness.CreateGenerator(modelPath, vocabPath);
         var embeddings = new EmbeddingCache(cacheDirectory, BeirHarness.ModelIdentity);
@@ -134,6 +146,8 @@ public sealed class BeirGraphRagAnswerTests
         using var articles = await IndexArticlesAsync(dataset, generator, embeddings, ct);
         await using var corpusRun = await BuildCorpusRaptorRunAsync(arms, dataset, generator, embeddings, answering, _output, ct);
         await using var perDocumentRun = await BuildPerDocumentRaptorRunAsync(arms, dataset, generator, embeddings, answering, _output, ct);
+        LogRaptorSummarisationCostSoFar(_output, answering, corpusRun, perDocumentRun);
+
         _output.WriteLine(FormattableString.Invariant(
             $"graph, article and RAPTOR stores built in {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s"));
         var tallies = await AnswerAllAsync(
@@ -141,12 +155,7 @@ public sealed class BeirGraphRagAnswerTests
         _output.WriteLine(DescribeResults(descriptor, selection, tallies, answering, Stopwatch.GetElapsedTime(startedAt)));
         _output.WriteLine("every scored answer: " + DumpAnswers(cacheDirectory, tallies, selection.IsPilot));
 
-        foreach (var (arm, tally) in tallies)
-        {
-            Assert.True(
-                tally.Answered == selection.Count,
-                $"The {arm} arm answered {tally.Answered} of {selection.Count} selected queries.");
-        }
+        AssertEveryArmAnsweredEveryQuery(tallies, selection);
 
         if (selection.IsPilot)
         {
@@ -158,6 +167,17 @@ public sealed class BeirGraphRagAnswerTests
         {
             MultiHopRagAnswerReproduction.AssertReproduces(
                 descriptor.Name, arm, tally.Accuracy(selection.JudgedCount, Rule.Paper), _output);
+        }
+    }
+
+    /// <summary>Every arm must have answered every selected query — split out of the theory (MA0051).</summary>
+    private static void AssertEveryArmAnsweredEveryQuery(Dictionary<string, ArmTally> tallies, QuerySelection selection)
+    {
+        foreach (var (arm, tally) in tallies)
+        {
+            Assert.True(
+                tally.Answered == selection.Count,
+                $"The {arm} arm answered {tally.Answered} of {selection.Count} selected queries.");
         }
     }
 
@@ -209,9 +229,11 @@ public sealed class BeirGraphRagAnswerTests
     /// <remarks>
     /// Both <see cref="RaptorRun"/>s are finished before this method returns — RAPTOR summarisation
     /// happens strictly before <c>AnswerAllAsync</c> ever calls <paramref name="answering"/> for an
-    /// answer — so the token snapshot logged here, taken from the one client every summariser and
-    /// every answer call shares, is exactly the summarisation cost: nothing an answer call adds can
-    /// have landed in <paramref name="answering"/>'s counters yet.
+    /// answer — so the caller's token snapshot, taken right after this returns from the one client
+    /// every summariser and every answer call shares, is exactly the summarisation cost: nothing an
+    /// answer call adds can have landed in <paramref name="answering"/>'s counters yet. Logged only
+    /// when a <see cref="RaptorRun"/> was actually built (either scope), so a run with no RAPTOR arm
+    /// selected does not print zeroes into the transcript.
     /// </remarks>
     private static async Task<RaptorRun?> BuildPerDocumentRaptorRunAsync(
         IReadOnlyList<string> arms,
@@ -233,8 +255,6 @@ public sealed class BeirGraphRagAnswerTests
             LogRaptorRunCounters(output, "per-document (raptor)", run);
         }
 
-        output.WriteLine(FormattableString.Invariant(
-            $"RAPTOR summarisation cost so far (both trees, before any answer is generated): {answering.Calls} calls, {answering.InputTokens} input tokens, {answering.OutputTokens} output tokens"));
         return run;
     }
 
@@ -242,6 +262,23 @@ public sealed class BeirGraphRagAnswerTests
     private static void LogRaptorRunCounters(ITestOutputHelper output, string label, RaptorRun run) =>
         output.WriteLine(FormattableString.Invariant(
             $"RaptorRun[{label}]: LeafCount={run.LeafCount}, SummaryCount={run.SummaryCount}, CorpusRebuildCount={run.CorpusRebuildCount}, SummariserCalls={run.SummariserCalls}"));
+
+    /// <summary>
+    /// Logs the cumulative RAPTOR summarisation cost, but only when at least one
+    /// <see cref="RaptorRun"/> was actually built — otherwise a run with no RAPTOR arm selected
+    /// would print zeroes into every transcript for a cost nothing paid.
+    /// </summary>
+    private static void LogRaptorSummarisationCostSoFar(
+        ITestOutputHelper output, CachedGraphRagClient answering, RaptorRun? corpusRun, RaptorRun? perDocumentRun)
+    {
+        if (corpusRun is null && perDocumentRun is null)
+        {
+            return;
+        }
+
+        output.WriteLine(FormattableString.Invariant(
+            $"RAPTOR summarisation cost so far (every tree built, before any answer is generated): {answering.Calls} calls, {answering.InputTokens} input tokens, {answering.OutputTokens} output tokens"));
+    }
 
     // ── Selection and gates ───────────────────────────────────────────────
 
@@ -284,12 +321,17 @@ public sealed class BeirGraphRagAnswerTests
         return new QuerySelection(selected, judged, max is not null);
     }
 
-    private static IReadOnlyList<string> SelectArms()
+    /// <summary>
+    /// The arms this run selects: every arm named explicitly through <see cref="ArmsVariable"/>, or
+    /// — when it is unset — <see cref="AnswerArm.All"/> filtered down to the arms
+    /// <see cref="SelectDefaultArms"/> says are actually measured.
+    /// </summary>
+    private static IReadOnlyList<string> SelectArms(string datasetName, ITestOutputHelper output)
     {
         var value = Environment.GetEnvironmentVariable(ArmsVariable);
         if (string.IsNullOrWhiteSpace(value))
         {
-            return AnswerArm.All;
+            return SelectDefaultArms(datasetName, output);
         }
 
         var arms = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -300,6 +342,48 @@ public sealed class BeirGraphRagAnswerTests
         }
 
         return arms;
+    }
+
+    /// <summary>
+    /// <see cref="AnswerArm.All"/>, minus whichever arms <see cref="MultiHopRagAnswerReproduction"/>
+    /// has never actually measured — an empty <c>Accuracy</c> array, the state the four RAPTOR arms
+    /// are in until Phase 6.2.1's sweep pins them.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only the default selection is filtered here; a name given through <see cref="ArmsVariable"/>
+    /// is never touched by this method.</b> Without this, the canonical full run
+    /// <c>docs/reference/ci.md</c> documents — no <see cref="ArmsVariable"/> set — hits
+    /// <c>BuildCorpusRaptorRunAsync</c> for an unmeasured RAPTOR arm: in replay mode the answering
+    /// client is <c>inner: null</c> with refuse-on-miss and throws on the first summarisation, before
+    /// any of the arms this run could actually check ever gets there. Gating on whether the run is
+    /// generating would only fix that half — with <see cref="GenerateVariable"/> set the same default
+    /// run would instead pay to build the corpus tree and throw on #345's context-length error. This
+    /// self-heals the moment an arm's pin stops being empty, and an operator naming the arm through
+    /// <see cref="ArmsVariable"/> — Task 4's pilot, for one — still reaches it, unmeasured or not.
+    /// </remarks>
+    private static IReadOnlyList<string> SelectDefaultArms(string datasetName, ITestOutputHelper output)
+    {
+        var selected = new List<string>(AnswerArm.All.Count);
+        var skipped = new List<string>();
+        foreach (var arm in AnswerArm.All)
+        {
+            if (MultiHopRagAnswerReproduction.HasRecordedFigure(datasetName, arm))
+            {
+                selected.Add(arm);
+            }
+            else
+            {
+                skipped.Add(arm);
+            }
+        }
+
+        if (skipped.Count > 0)
+        {
+            output.WriteLine(FormattableString.Invariant(
+                $"skipping {skipped.Count} unmeasured arm(s) from the default selection: {string.Join(", ", skipped)} -- no recorded figure yet in {nameof(MultiHopRagAnswerReproduction)}. Name an arm explicitly via {ArmsVariable} to run it anyway."));
+        }
+
+        return selected;
     }
 
     /// <summary>
@@ -318,12 +402,79 @@ public sealed class BeirGraphRagAnswerTests
             try
             {
                 Environment.SetEnvironmentVariable(ArmsVariable, arm);
-                Assert.Equal(new[] { arm }, SelectArms());
+                Assert.Equal(new[] { arm }, SelectArms("multihop-rag", _output));
             }
             finally
             {
                 Environment.SetEnvironmentVariable(ArmsVariable, previous);
             }
+        }
+    }
+
+    /// <summary>
+    /// C1's fix: the default selection (<see cref="ArmsVariable"/> unset) must skip every arm
+    /// <see cref="MultiHopRagAnswerReproduction"/> has not actually measured yet — today, the four
+    /// RAPTOR arms, each pinned with an empty figure array — while every measured arm stays in, and
+    /// the run says out loud what it skipped and why.
+    /// </summary>
+    [Fact]
+    public void SelectArms_DefaultSelection_SkipsArmsWithNoRecordedFigure()
+    {
+        var previous = Environment.GetEnvironmentVariable(ArmsVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(ArmsVariable, null);
+            var output = new CapturingTestOutputHelper();
+
+            var arms = SelectArms("multihop-rag", output);
+
+            foreach (var arm in arms)
+            {
+                Assert.True(
+                    MultiHopRagAnswerReproduction.HasRecordedFigure("multihop-rag", arm),
+                    $"the default selection included '{arm}', which has no recorded figure.");
+            }
+
+            var unmeasured = new[] { AnswerArm.RaptorCorpus, AnswerArm.Raptor, AnswerArm.RaptorFiltered, AnswerArm.RaptorBoost };
+            foreach (var raptorArm in unmeasured)
+            {
+                Assert.False(
+                    MultiHopRagAnswerReproduction.HasRecordedFigure("multihop-rag", raptorArm),
+                    $"{raptorArm} now has a recorded figure -- this test's premise is stale.");
+                Assert.DoesNotContain(raptorArm, arms, StringComparer.Ordinal);
+                Assert.Contains(output.Lines, line => line.Contains(raptorArm, StringComparison.Ordinal));
+            }
+
+            // A measured arm is never filtered out of the default.
+            Assert.Contains(AnswerArm.Dense, arms, StringComparer.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ArmsVariable, previous);
+        }
+    }
+
+    /// <summary>
+    /// C1's other half: naming an unmeasured arm explicitly through <see cref="ArmsVariable"/> must
+    /// still select it. The default filter in <see cref="SelectDefaultArms"/> must never reach an
+    /// explicit selection — this is how Task 4's pilot runs before anything is pinned.
+    /// </summary>
+    [Fact]
+    public void SelectArms_ExplicitSelection_StillRunsAnUnmeasuredArm()
+    {
+        var previous = Environment.GetEnvironmentVariable(ArmsVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(ArmsVariable, AnswerArm.RaptorCorpus);
+            var output = new CapturingTestOutputHelper();
+
+            var arms = SelectArms("multihop-rag", output);
+
+            Assert.Equal(new[] { AnswerArm.RaptorCorpus }, arms);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(ArmsVariable, previous);
         }
     }
 
@@ -575,7 +726,8 @@ public sealed class BeirGraphRagAnswerTests
     private static async Task<IReadOnlyList<SearchResult>> RetrieveRaptorFilteredAsync(
         string query, RaptorRun corpusRun, ITestOutputHelper output, CancellationToken ct)
     {
-        var pool = await corpusRun.SearchAsync(query, RaptorRetrievalMode.Blend, ContextChunks * 4, ct);
+        var pool = await corpusRun.SearchAsync(
+            query, RaptorRetrievalMode.Blend, ContextChunks * RaptorFilteredOverFetchMultiplier, ct);
         var survivors = pool.Where(r => !r.Chunk.Metadata.ContainsKey("raptor_level")).ToList();
         var filtered = Head(survivors, ContextChunks);
 

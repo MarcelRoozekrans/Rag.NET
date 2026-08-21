@@ -227,6 +227,22 @@ internal static class MultiHopRagAnswerReproduction
     /// <summary>Provokes the lookup for one pair and compares nothing.</summary>
     public static void RequireRecordedCase(string datasetName, string arm) => _ = Find(datasetName, arm);
 
+    /// <summary>
+    /// Whether an arm has at least one recorded figure for a dataset, as opposed to an entry that
+    /// exists only so <see cref="RequireRecordedCase"/> and the unpinned-arm guard pass while the
+    /// arm is wired up and unmeasured (an empty <see cref="Reproduction.Accuracy"/> array, like the
+    /// four RAPTOR arms carry until Phase 6.2.1's sweep fills them in).
+    /// </summary>
+    /// <remarks>
+    /// The default arm selection in <c>BeirGraphRagAnswerTests.SelectArms</c> calls this to skip an
+    /// unmeasured arm from the canonical full run — an operator who names the arm explicitly
+    /// through <see cref="BeirGraphRagAnswerTests.ArmsVariable"/> still gets it, empty pin or not.
+    /// </remarks>
+    /// <param name="datasetName">The dataset name.</param>
+    /// <param name="arm">The arm, one of <see cref="AnswerArm.All"/>.</param>
+    /// <returns>Whether the recorded entry carries at least one figure.</returns>
+    public static bool HasRecordedFigure(string datasetName, string arm) => Find(datasetName, arm).Accuracy.Count > 0;
+
     private static Reproduction Find(string datasetName, string arm)
     {
         foreach (var reproduction in Reproductions)
