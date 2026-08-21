@@ -10,6 +10,7 @@ using Rag.NET.Benchmarks.Quality.GraphExtractions;
 using Rag.NET.Embeddings.Onnx;
 using Rag.NET.Models;
 using Rag.NET.Models.Options;
+using Rag.NET.Raptor;
 using Rag.NET.Storage;
 using Xunit;
 
@@ -131,10 +132,12 @@ public sealed class BeirGraphRagAnswerTests
             dataset.Documents, generator, embeddings, OpenExtractions(cacheDirectory),
             OpenReports(cacheDirectory), ct);
         using var articles = await IndexArticlesAsync(dataset, generator, embeddings, ct);
+        await using var corpusRun = await BuildCorpusRaptorRunAsync(arms, dataset, generator, embeddings, answering, ct);
+        await using var perDocumentRun = await BuildPerDocumentRaptorRunAsync(arms, dataset, generator, embeddings, answering, ct);
         _output.WriteLine(FormattableString.Invariant(
-            $"graph and article store built in {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s"));
-
-        var tallies = await AnswerAllAsync(selection, arms, run, articles, generator, embeddings, answering, gold, ct);
+            $"graph, article and RAPTOR stores built in {Stopwatch.GetElapsedTime(startedAt).TotalSeconds:F1} s"));
+        var tallies = await AnswerAllAsync(
+            selection, arms, run, articles, corpusRun, perDocumentRun, generator, embeddings, answering, gold, ct);
         _output.WriteLine(DescribeResults(descriptor, selection, tallies, answering, Stopwatch.GetElapsedTime(startedAt)));
         _output.WriteLine("every scored answer: " + DumpAnswers(cacheDirectory, tallies, selection.IsPilot));
 
@@ -156,6 +159,55 @@ public sealed class BeirGraphRagAnswerTests
             MultiHopRagAnswerReproduction.AssertReproduces(
                 descriptor.Name, arm, tally.Accuracy(selection.JudgedCount, Rule.Paper), _output);
         }
+    }
+
+    /// <summary>
+    /// Builds the corpus-scope <see cref="RaptorRun"/> that <see cref="AnswerArm.RaptorCorpus"/>,
+    /// <see cref="AnswerArm.RaptorFiltered"/> and <see cref="AnswerArm.RaptorBoost"/> all read from
+    /// — one ingestion shared by three arms, not three — or <see langword="null"/> when none of
+    /// them was selected, so an unselected arm costs nothing, the same economy the local-search
+    /// pass above already gets. The leaf store is in-memory: it exists only to let
+    /// <c>RaptorTreeRebuilder</c> enumerate leaves for the single corpus-wide rebuild inside
+    /// <see cref="RaptorRun.BuildAsync"/>, and nothing outside that one call ever reads it, so a
+    /// file-backed store would only risk leaves accumulating across repeated runs for no benefit.
+    /// </summary>
+    private static async Task<RaptorRun?> BuildCorpusRaptorRunAsync(
+        IReadOnlyList<string> arms,
+        BeirDataset dataset,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings,
+        CachedGraphRagClient answering,
+        CancellationToken ct)
+    {
+        var needed = arms.Contains(AnswerArm.RaptorCorpus, StringComparer.Ordinal)
+            || arms.Contains(AnswerArm.RaptorFiltered, StringComparer.Ordinal)
+            || arms.Contains(AnswerArm.RaptorBoost, StringComparer.Ordinal);
+
+        return needed
+            ? await RaptorRun.BuildAsync(
+                dataset.Documents, RaptorTreeScope.Corpus, generator, embeddings, answering, ":memory:", ct)
+            : null;
+    }
+
+    /// <summary>
+    /// Builds the per-document-scope <see cref="RaptorRun"/> <see cref="AnswerArm.Raptor"/> reads
+    /// from, the retired variant kept selectable as <see cref="AnswerArm.RaptorCorpus"/>'s control —
+    /// or <see langword="null"/> when that arm was not selected.
+    /// </summary>
+    private static async Task<RaptorRun?> BuildPerDocumentRaptorRunAsync(
+        IReadOnlyList<string> arms,
+        BeirDataset dataset,
+        OnnxEmbeddingGenerator generator,
+        EmbeddingCache embeddings,
+        CachedGraphRagClient answering,
+        CancellationToken ct)
+    {
+        var needed = arms.Contains(AnswerArm.Raptor, StringComparer.Ordinal);
+
+        return needed
+            ? await RaptorRun.BuildAsync(
+                dataset.Documents, RaptorTreeScope.PerDocument, generator, embeddings, answering, ":memory:", ct)
+            : null;
     }
 
     // ── Selection and gates ───────────────────────────────────────────────
@@ -215,6 +267,31 @@ public sealed class BeirGraphRagAnswerTests
         }
 
         return arms;
+    }
+
+    /// <summary>
+    /// The four RAPTOR arms are selectable through <see cref="ArmsVariable"/> and are members of
+    /// <see cref="AnswerArm.All"/> — checked without a model, a corpus or an API key, so a missing
+    /// pin or a typo'd name fails here in milliseconds rather than at the end of a paid run.
+    /// </summary>
+    [Fact]
+    public void SelectArms_AcceptsEveryRaptorArmName()
+    {
+        foreach (var arm in new[] { AnswerArm.RaptorCorpus, AnswerArm.Raptor, AnswerArm.RaptorFiltered, AnswerArm.RaptorBoost })
+        {
+            Assert.Contains(arm, AnswerArm.All, StringComparer.Ordinal);
+
+            var previous = Environment.GetEnvironmentVariable(ArmsVariable);
+            try
+            {
+                Environment.SetEnvironmentVariable(ArmsVariable, arm);
+                Assert.Equal(new[] { arm }, SelectArms());
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable(ArmsVariable, previous);
+            }
+        }
     }
 
     private static int? ReadPositiveInt(string variable)
@@ -313,6 +390,8 @@ public sealed class BeirGraphRagAnswerTests
         IReadOnlyList<string> arms,
         GraphRagRun run,
         InMemoryVectorStore articles,
+        RaptorRun? corpusRun,
+        RaptorRun? perDocumentRun,
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         CachedGraphRagClient answering,
@@ -356,7 +435,9 @@ public sealed class BeirGraphRagAnswerTests
                             AnswerArm.Local => localContexts[query.Id],
                             AnswerArm.Control => controlContexts[query.Id],
                             AnswerArm.Filtered => filteredContexts[query.Id],
-                            _ => await RetrieveContextAsync(arm, query.Text, run, articles, generator, embeddings, answering, token),
+                            _ => await RetrieveContextAsync(
+                                arm, query.Text, run, articles, corpusRun, perDocumentRun,
+                                generator, embeddings, answering, token),
                         });
 
                     var prompt = PromptTemplate
@@ -396,12 +477,26 @@ public sealed class BeirGraphRagAnswerTests
         }
     }
 
-    /// <summary>The six chunks the dense and global arms hand the model, in the arm's own order.</summary>
+    /// <summary>
+    /// The six chunks the dense, global and RAPTOR arms hand the model, in the arm's own order.
+    /// </summary>
+    /// <remarks>
+    /// <c>raptorcorpus</c>, <c>raptor</c> and <c>raptorboost</c> each read straight from a
+    /// <see cref="RaptorRun"/> built once for every query that needs it — never per query. See the
+    /// <c>needsCorpus</c> / <c>needsPerDocument</c> gate and the single <see cref="RaptorRun.BuildAsync"/>
+    /// calls in <see cref="Accuracy_AgainstTheGoldAnswers_ThreeArms"/>.
+    /// <c>raptorfiltered</c> over-fetches four times the context depth from the same corpus store
+    /// and drops every summary chunk before taking six — #247's option (c) shape, reused so that
+    /// dropping from an already-truncated six does not under-fill and understate what filtering
+    /// buys.
+    /// </remarks>
     private static async Task<IReadOnlyList<SearchResult>> RetrieveContextAsync(
         string arm,
         string query,
         GraphRagRun run,
         InMemoryVectorStore articles,
+        RaptorRun? corpusRun,
+        RaptorRun? perDocumentRun,
         OnnxEmbeddingGenerator generator,
         EmbeddingCache embeddings,
         CachedGraphRagClient answering,
@@ -415,6 +510,18 @@ public sealed class BeirGraphRagAnswerTests
             case AnswerArm.Global:
                 var global = await run.GlobalSearchAsync(query, answering, ct);
                 return Head(global, ContextChunks);
+            case AnswerArm.RaptorCorpus:
+                return await corpusRun!.SearchAsync(query, RaptorRetrievalMode.Blend, ContextChunks, ct);
+            case AnswerArm.Raptor:
+                return await perDocumentRun!.SearchAsync(query, RaptorRetrievalMode.Blend, ContextChunks, ct);
+            case AnswerArm.RaptorBoost:
+                return await corpusRun!.SearchAsync(query, RaptorRetrievalMode.Boost, ContextChunks, ct);
+            case AnswerArm.RaptorFiltered:
+                var pool = await corpusRun!.SearchAsync(
+                    query, RaptorRetrievalMode.Blend, ContextChunks * 4, ct);
+                return Head(
+                    pool.Where(r => !r.Chunk.Metadata.ContainsKey("raptor_level")).ToList(),
+                    ContextChunks);
             default:
                 throw new ArgumentOutOfRangeException(nameof(arm), arm, "Not an arm retrieved here.");
         }
