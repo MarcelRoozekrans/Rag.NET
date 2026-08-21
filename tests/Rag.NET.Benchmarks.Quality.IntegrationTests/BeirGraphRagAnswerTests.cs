@@ -564,12 +564,13 @@ public sealed class BeirGraphRagAnswerTests
     /// under-fill and understate what filtering buys.
     /// </summary>
     /// <remarks>
-    /// <b>The guard below can never fire under today's code</b> — <see cref="Head"/> never returns
-    /// fewer results than its source has, so a truncated-below-<see cref="ContextChunks"/> result
-    /// with enough survivors to fill it is a contradiction unless something upstream broke. It
-    /// exists so a future edit to the over-fetch multiplier, the predicate, or which list gets
-    /// handed to <see cref="Head"/> fails loudly here instead of silently biasing
-    /// <c>raptorfiltered − dense</c> — the one comparison the pilot's validation gate stops on.
+    /// Warns loudly, but does not throw, whenever fewer than <see cref="ContextChunks"/> chunks
+    /// survive — whatever the cause: a corpus too small to hold that many non-summary candidates
+    /// at all, or an over-fetch multiplier that turns out too small once summaries crowd the top
+    /// of the ranking for a given query. The check does not also require proving more candidates
+    /// existed somewhere — that would exclude the exact under-fill case it exists to catch. Task
+    /// 4's validation gate (<c>raptorfiltered − dense</c> ≈ 0) is only trustworthy if this would
+    /// have been seen firing were it going to fire.
     /// </remarks>
     private static async Task<IReadOnlyList<SearchResult>> RetrieveRaptorFilteredAsync(
         string query, RaptorRun corpusRun, ITestOutputHelper output, CancellationToken ct)
@@ -578,15 +579,192 @@ public sealed class BeirGraphRagAnswerTests
         var survivors = pool.Where(r => !r.Chunk.Metadata.ContainsKey("raptor_level")).ToList();
         var filtered = Head(survivors, ContextChunks);
 
-        if (filtered.Count < ContextChunks && survivors.Count >= ContextChunks)
+        if (filtered.Count < ContextChunks)
         {
             output.WriteLine(FormattableString.Invariant(
-                $"WARNING: raptorfiltered under-filled for query '{query}': only {filtered.Count} of {ContextChunks} chunks came back despite {survivors.Count} non-summary candidates being available in the over-fetched pool of {pool.Count} — check the over-fetch multiplier and the Head() wiring."));
+                $"WARNING: raptorfiltered under-filled for query '{query}': only {filtered.Count} of {ContextChunks} chunks came back — {survivors.Count} non-summary candidates were available out of an over-fetched pool of {pool.Count} — check the over-fetch multiplier and the Head() wiring."));
         }
 
         return filtered;
     }
 
+    /// <summary>
+    /// Proves the guard in <see cref="RetrieveRaptorFilteredAsync"/> can actually fire, rather than
+    /// resting on the claim that it can: a one-chunk corpus cannot possibly hand back six
+    /// non-summary candidates, so the guard must warn; a sixty-leaf corpus comfortably can, so it
+    /// must stay silent. No model, no downloaded corpus — a fake chat client and a fake embedder,
+    /// the same shape <c>RaptorRunTests</c> uses.
+    /// </summary>
+    [Fact]
+    public async Task RetrieveRaptorFilteredAsync_WarnsOnUnderFill_AndStaysSilentWhenFull()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var cacheRoot = Path.Combine(Path.GetTempPath(), "ragnet-raptorfiltered-guard-" + Guid.NewGuid().ToString("N"));
+        _ = Directory.CreateDirectory(cacheRoot);
+
+        try
+        {
+            var chatClient = new EchoRaptorSummaryChatClient();
+
+            var sparseCache = new EmbeddingCache(cacheRoot, "raptorfiltered-guard-sparse@fake");
+            await using (var sparse = await RaptorRun.BuildAsync(
+                FakeRaptorFilteredCorpus(documentCount: 1, chunksPerDocument: 1),
+                RaptorTreeScope.Corpus, new RandomVectorEmbedder(new Random(Seed: 4242)), sparseCache, chatClient,
+                ":memory:", ct))
+            {
+                var loud = new CapturingTestOutputHelper();
+                var filtered = await RetrieveRaptorFilteredAsync("does the guard fire", sparse, loud, ct);
+
+                Assert.True(filtered.Count < ContextChunks, "a one-chunk corpus must under-fill by construction");
+                Assert.Contains(
+                    loud.Lines, line => line.Contains("WARNING: raptorfiltered under-filled", StringComparison.Ordinal));
+            }
+
+            var ampleCache = new EmbeddingCache(cacheRoot, "raptorfiltered-guard-ample@fake");
+            await using (var ample = await RaptorRun.BuildAsync(
+                FakeRaptorFilteredCorpus(documentCount: 15, chunksPerDocument: 4),
+                RaptorTreeScope.Corpus, new RandomVectorEmbedder(new Random(Seed: 24242)), ampleCache, chatClient,
+                ":memory:", ct))
+            {
+                var silent = new CapturingTestOutputHelper();
+                var filtered = await RetrieveRaptorFilteredAsync("does the guard stay silent", ample, silent, ct);
+
+                Assert.Equal(ContextChunks, filtered.Count);
+                Assert.Empty(silent.Lines);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(cacheRoot))
+            {
+                Directory.Delete(cacheRoot, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="documentCount"/> fake documents of <paramref name="chunksPerDocument"/>
+    /// paragraphs apiece, padded so <c>RecursiveChunkingStrategy</c> yields exactly one chunk per
+    /// paragraph — the same padding reasoning <c>RaptorRunTests.FillerLength</c> documents.
+    /// </summary>
+    private static IReadOnlyList<BeirDocument> FakeRaptorFilteredCorpus(int documentCount, int chunksPerDocument)
+    {
+        var documents = new List<BeirDocument>(documentCount);
+        for (var i = 0; i < documentCount; i++)
+        {
+            var text = BuildFakeRaptorFilteredDocumentText(i, chunksPerDocument);
+            documents.Add(new BeirDocument(
+                Id: FormattableString.Invariant($"guard-doc-{i}"), Title: string.Empty, Text: text, RetrievalText: text));
+        }
+
+        return documents;
+    }
+
+    private static string BuildFakeRaptorFilteredDocumentText(int documentIndex, int chunksPerDocument)
+    {
+        var paragraphs = new string[chunksPerDocument];
+        var filler = new string('x', 400);
+        for (var i = 0; i < chunksPerDocument; i++)
+        {
+            paragraphs[i] = FormattableString.Invariant($"guard-doc{documentIndex} paragraph{i} {filler}");
+        }
+
+        return string.Join("\n\n", paragraphs);
+    }
+
+    /// <summary>
+    /// An embedder that returns an independent random vector per text, ignoring the text itself —
+    /// sufficient here because the guard test needs only "leaves vastly outnumber summaries in the
+    /// corpus", not any real semantic structure.
+    /// </summary>
+    private sealed class RandomVectorEmbedder(Random rng) : IEmbeddingGenerator<string, Embedding<float>>
+    {
+        private const int Dimensions = 8;
+
+        public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+            IEnumerable<string> values,
+            EmbeddingGenerationOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(values);
+
+            var generated = new GeneratedEmbeddings<Embedding<float>>();
+            foreach (var unusedText in values)
+            {
+                _ = unusedText;
+                generated.Add(new Embedding<float>(RandomVector(rng)));
+            }
+
+            return Task.FromResult(generated);
+        }
+
+        /// <summary>A fresh independent random vector, ignoring the text it stands in for.</summary>
+        private static float[] RandomVector(Random rng) =>
+            Enumerable.Range(0, Dimensions).Select(_ => (float)rng.NextDouble()).ToArray();
+
+        public object? GetService(Type serviceType, object? serviceKey = null)
+        {
+            ArgumentNullException.ThrowIfNull(serviceType);
+            return serviceType.IsInstanceOfType(this) ? this : null;
+        }
+
+        public void Dispose()
+        {
+            // Nothing to release.
+        }
+    }
+
+    /// <summary>A chat client that echoes its prompt back as the RAPTOR cluster "summary".</summary>
+    private sealed class EchoRaptorSummaryChatClient : IChatClient
+    {
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(messages);
+
+            var text = string.Join(" ", messages.Select(m => m.Text));
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, text)));
+        }
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException("RaptorIngestionBehavior does not stream summaries.");
+
+        public object? GetService(Type serviceType, object? serviceKey = null)
+        {
+            ArgumentNullException.ThrowIfNull(serviceType);
+            return serviceType.IsInstanceOfType(this) ? this : null;
+        }
+
+        public void Dispose()
+        {
+            // Nothing to release.
+        }
+    }
+
+    /// <summary>Captures every line written to it, so a test can assert on what a guard logged.</summary>
+    private sealed class CapturingTestOutputHelper : ITestOutputHelper
+    {
+        private readonly List<string> _lines = [];
+
+        public IReadOnlyList<string> Lines => _lines;
+
+        public string Output => string.Join(Environment.NewLine, _lines);
+
+        public void Write(string message) => _lines.Add(message);
+
+        public void Write(string format, params object[] args) =>
+            _lines.Add(string.Format(CultureInfo.InvariantCulture, format, args));
+
+        public void WriteLine(string message) => _lines.Add(message);
+
+        public void WriteLine(string format, params object[] args) =>
+            _lines.Add(string.Format(CultureInfo.InvariantCulture, format, args));
+    }
 
     /// <summary>The first <paramref name="count"/> results, or all of them when there are fewer.</summary>
     /// <summary>
