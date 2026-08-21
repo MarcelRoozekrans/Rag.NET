@@ -38,13 +38,18 @@ public sealed class RaptorIngestionBehavior(
                 var leaves = await leafStore.GetAllLeavesAsync(ct).ConfigureAwait(false);
                 if (leaves.Count > 1)
                 {
-                    await BuildTreeAsync(
+                    using var corpusActivity = RagTelemetrySource.ActivitySource.StartActivity("ragnet.raptor.build");
+                    corpusActivity?.SetTag("document.id", RaptorCorpusDocumentId.Value);
+
+                    var corpusSummaryCount = await BuildTreeAsync(
                         ctx,
                         ToEmbeddedChunks(leaves),
                         new DocumentId(RaptorCorpusDocumentId.Value),
                         firstChunkIndex: 0,
-                        activity: null,
+                        corpusActivity,
                         ct).ConfigureAwait(false);
+
+                    corpusActivity?.SetTag("raptor.summary.count", corpusSummaryCount);
                 }
             }
 
@@ -160,7 +165,9 @@ public sealed class RaptorIngestionBehavior(
     /// <param name="firstChunkIndex">The index the first summary takes; it counts up from there across every level (#332).</param>
     /// <param name="activity">
     /// The caller's <c>ragnet.raptor.build</c> span, tagged with the depth reached once the loop
-    /// ends. Null for the corpus path, which builds outside any such span.
+    /// ends. The per-document path and the ingest-triggered corpus build both open one; only
+    /// <see cref="BuildCorpusTreeNowAsync"/> — <see cref="RaptorTreeRebuilder"/>'s on-demand path —
+    /// still passes null, so <c>raptor.tree.depth</c> is not tagged for an explicit rebuild.
     /// </param>
     /// <param name="ct">Cancellation.</param>
     /// <returns>How many summaries were appended.</returns>
@@ -183,6 +190,8 @@ public sealed class RaptorIngestionBehavior(
 
         while (currentLevel.Count > 1 && (options.MaxTreeDepth is null || level < options.MaxTreeDepth))
         {
+            ct.ThrowIfCancellationRequested();
+
             level++;
             var summaryChunks = await BuildLevelAsync(currentLevel, summaryDocumentId, level, nextChunkIndex, ct).ConfigureAwait(false);
             if (summaryChunks is null)
@@ -344,7 +353,11 @@ public sealed class RaptorIngestionBehavior(
         // log-density then dwarfs the BIC penalty. This guard is deliberately written against the
         // symptom rather than that cause, so a future clustering regression of the same shape is
         // bounded too. The MaxClusters branch above can no longer trigger this: Min(..., count - 1)
-        // keeps its k strictly below count, so only auto-selected k reaches here.
+        // keeps its k strictly below count, so only auto-selected k reaches here — and today even
+        // that path cannot: GaussianMixtureModel.SelectK's own IsDegenerateFit rejects a k = n fit
+        // before returning, so this guard is unreachable by construction as of #333's fix. Kept
+        // anyway, deliberately, as insurance against a future regression in that rejection rather
+        // than as a check expected to fire.
         if (k >= count)
         {
             activity?.SetTag("raptor.cluster.degenerate", true);

@@ -52,15 +52,7 @@ public static class RagBuilderExtensions
         var options = new RaptorOptions();
         configure?.Invoke(options);
         ThrowIfInvalid(new RaptorOptionsValidator().Validate(options), nameof(configure), "RAPTOR ingestion");
-
-        if (options.TreeScope == RaptorTreeScope.Corpus && leafStorePath is null)
-        {
-            throw new ArgumentException(
-                "RaptorOptions.TreeScope is Corpus, which clusters over the whole corpus and therefore " +
-                "needs somewhere to keep leaf chunks between ingests. Pass leafStorePath, or set " +
-                "TreeScope to PerDocument.",
-                nameof(leafStorePath));
-        }
+        ThrowIfCorpusScopeMisconfigured(options, leafStorePath, nameof(configure));
 
         builder.Services.AddSingleton(options);
 
@@ -108,6 +100,43 @@ public static class RagBuilderExtensions
             .Add<RaptorRetrievalBehavior>(before: typeof(RerankingBehavior));
 
         return builder;
+    }
+
+    /// <summary>
+    /// Rejects two <see cref="RaptorTreeScope.Corpus"/> misconfigurations that would otherwise fail
+    /// silently rather than loudly: no leaf store to persist leaves between ingests, and
+    /// <see cref="RaptorOptions.StoreLeafChunks"/> set to a value that has nothing to act on.
+    /// </summary>
+    /// <param name="options">The configured ingestion options.</param>
+    /// <param name="leafStorePath">The leaf store path passed to <see cref="UseRaptor{TBuilder}"/>, or null.</param>
+    /// <param name="configureParamName"><c>nameof(configure)</c> from the caller, for <see cref="ArgumentException.ParamName"/>.</param>
+    /// <exception cref="ArgumentException">Either misconfiguration is present.</exception>
+    private static void ThrowIfCorpusScopeMisconfigured(
+        RaptorOptions options, string? leafStorePath, string configureParamName)
+    {
+        if (options.TreeScope != RaptorTreeScope.Corpus)
+        {
+            return;
+        }
+
+        if (leafStorePath is null)
+        {
+            throw new ArgumentException(
+                "RaptorOptions.TreeScope is Corpus, which clusters over the whole corpus and therefore " +
+                "needs somewhere to keep leaf chunks between ingests. Pass leafStorePath, or set " +
+                "TreeScope to PerDocument.",
+                nameof(leafStorePath));
+        }
+
+        if (!options.StoreLeafChunks)
+        {
+            throw new ArgumentException(
+                "RaptorOptions.TreeScope is Corpus and RaptorOptions.StoreLeafChunks is false. Under " +
+                "Corpus scope, leaf chunks live in the leaf store, not in the ingestion context, so " +
+                "StoreLeafChunks has nothing to act on and would be silently ignored. Set " +
+                "StoreLeafChunks to true, or set TreeScope to PerDocument.",
+                configureParamName);
+        }
     }
 
     /// <summary>
