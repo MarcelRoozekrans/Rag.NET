@@ -153,9 +153,12 @@ public sealed class RagBuilderExtensionsTests
         services.AddRagNet();
         services.AddSingleton<IRagPipeline>(Primary());
 
+        // TreeScope = PerDocument: unrelated to what this test checks (the chain compiles and
+        // stays on one Services collection), but the default is now Corpus, which requires
+        // leafStorePath and would otherwise fail this UseRaptor call (#331).
         var chained = NewBuilder(services)
             .UseShadow<ScriptedRagPipeline>()
-            .UseRaptor();
+            .UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument);
 
         // Same builder throughout — a chain that silently swapped instances would register the
         // later calls into a different collection than the earlier ones.

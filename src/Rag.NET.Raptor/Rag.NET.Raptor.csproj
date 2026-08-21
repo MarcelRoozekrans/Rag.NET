@@ -5,7 +5,12 @@
     <PackageId>Rag.NET.Raptor</PackageId>
     <Description>RAPTOR — Recursive Abstractive Processing for Tree-Organized Retrieval for Rag.NET</Description>
     <PackageTags>$(PackageTags);raptor;hierarchical-summarization</PackageTags>
-    <VerifiedBy>unit</VerifiedBy>
+    <!-- integration, not unit: RaptorTreeScopeTests and RaptorCorpusBuildTests exercise the
+         Corpus-scope build over a real SqliteRaptorLeafStore, including surviving a reopen
+         (Rag.NET.Raptor.Store.Tests' SqliteRaptorLeafStoreTests). Not benchmark — that level
+         means a measured run on a real corpus pinned in a reproduction table, which is Phase
+         6.2.1's RAPTOR thread, not this one. -->
+    <VerifiedBy>integration</VerifiedBy>
   </PropertyGroup>
 
   <ItemGroup>

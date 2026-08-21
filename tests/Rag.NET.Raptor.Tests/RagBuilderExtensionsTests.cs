@@ -4,6 +4,12 @@ using Xunit;
 
 namespace Rag.NET.Raptor.Tests;
 
+/// <summary>
+/// These tests are about <c>UseRaptor</c>'s registration mechanics, not <c>TreeScope</c>, so every
+/// call here sets <c>TreeScope = PerDocument</c> explicitly — the default is now <c>Corpus</c>,
+/// which requires <c>leafStorePath</c> and would otherwise fail every one of these at the
+/// <c>UseRaptor</c> line before it got anywhere near what each test actually checks (#331).
+/// </summary>
 public class RagBuilderExtensionsTests
 {
     [Fact]
@@ -12,7 +18,7 @@ public class RagBuilderExtensionsTests
         var builder = ConfiguredRagBuilder.Create();
         var services = builder.Services;
 
-        builder.UseRaptor();
+        builder.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument);
 
         Assert.Contains(services, d => d.ServiceType == typeof(RaptorOptions));
         Assert.Contains(services, d => d.ServiceType == typeof(RaptorRetrievalOptions));
@@ -24,7 +30,11 @@ public class RagBuilderExtensionsTests
         var builder = ConfiguredRagBuilder.Create();
         var services = builder.Services;
 
-        builder.UseRaptor(o => o.MinChunksForRaptor = 42);
+        builder.UseRaptor(o =>
+        {
+            o.TreeScope = RaptorTreeScope.PerDocument;
+            o.MinChunksForRaptor = 42;
+        });
 
         var sp = services.BuildServiceProvider();
         var opts = sp.GetRequiredService<RaptorOptions>();
@@ -37,7 +47,9 @@ public class RagBuilderExtensionsTests
         var builder = ConfiguredRagBuilder.Create();
         var services = builder.Services;
 
-        builder.UseRaptor(retrieval: o => o.Mode = RaptorRetrievalMode.Boost);
+        builder.UseRaptor(
+            o => o.TreeScope = RaptorTreeScope.PerDocument,
+            retrieval: o => o.Mode = RaptorRetrievalMode.Boost);
 
         var sp = services.BuildServiceProvider();
         var opts = sp.GetRequiredService<RaptorRetrievalOptions>();
@@ -50,7 +62,7 @@ public class RagBuilderExtensionsTests
         var builder = ConfiguredRagBuilder.Create();
         var services = builder.Services;
 
-        builder.UseRaptor();
+        builder.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument);
 
         Assert.Contains(services, d => d.ServiceType == typeof(RaptorIngestionBehavior));
     }
@@ -60,7 +72,7 @@ public class RagBuilderExtensionsTests
     {
         var builder = ConfiguredRagBuilder.Create();
 
-        var result = builder.UseRaptor();
+        var result = builder.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument);
 
         Assert.Same(builder, result);
     }
@@ -71,7 +83,7 @@ public class RagBuilderExtensionsTests
         var builder = ConfiguredRagBuilder.Create();
         var services = builder.Services;
 
-        builder.UseRaptor();
+        builder.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument);
 
         Assert.Contains(services, d => d.ServiceType == typeof(RaptorRetrievalBehavior));
     }

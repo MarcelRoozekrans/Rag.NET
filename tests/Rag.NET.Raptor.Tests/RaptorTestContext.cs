@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
 using NSubstitute;
 using Rag.NET.Ingestion;
@@ -47,6 +49,31 @@ internal sealed class RaptorTestContext
     {
         ChatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
             .Returns(new ChatResponse([new ChatMessage(ChatRole.Assistant, response)]));
+    }
+
+    /// <summary>
+    /// Configures the chat client to echo its prompt back as the "summary", instead of returning
+    /// one fixed string for every cluster.
+    /// </summary>
+    /// <remarks>
+    /// Every other caller of <see cref="SetupChatClient"/> returns the same literal text for every
+    /// cluster, which is fine when a test only checks summary <em>mechanics</em> — but it erases
+    /// each cluster's content, so a level-2 clustering sees identical text for every level-1
+    /// summary and can find no real structure to cluster on. The prompt <c>SummarizeClusterAsync</c>
+    /// sends contains the concatenated child chunk texts (<c>"Chunk N content about topic T"</c>,
+    /// see <see cref="CreateContext"/>), so echoing it forward — rather than paraphrasing, which a
+    /// canned string effectively does — keeps each "topic T" marker visible however many levels
+    /// deep the tree goes. <see cref="BuildSummaryEmbedding"/> reads those markers back out.
+    /// </remarks>
+    internal void SetupChatClientToEchoPrompt()
+    {
+        ChatClient.GetResponseAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<ChatOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                var messages = callInfo.Arg<IEnumerable<ChatMessage>>()!.ToList();
+                var text = string.Join(" ", messages.Select(m => m.Text));
+                return new ChatResponse([new ChatMessage(ChatRole.Assistant, text)]);
+            });
     }
 
     /// <summary>Derives this document's embedding seed from its id, stably across processes.</summary>
@@ -107,8 +134,54 @@ internal sealed class RaptorTestContext
             {
                 var texts = callInfo.Arg<IEnumerable<string>>()!.ToList();
                 return Task.FromResult<GeneratedEmbeddings<Embedding<float>>>(
-                    new(texts.Select(_ => new Embedding<float>(
-                        Enumerable.Range(0, dims).Select(_ => (float)rng.NextDouble()).ToArray())).ToList()));
+                    new(texts.Select(text => new Embedding<float>(BuildSummaryEmbedding(text, dims, rng))).ToList()));
             });
     }
+
+    /// <summary>Matches the "topic T" markers <see cref="CreateContext"/>'s leaf chunk text carries.</summary>
+    private static readonly Regex TopicMarker =
+        new(@"topic (?<topic>\d+)", RegexOptions.ExplicitCapture, TimeSpan.FromSeconds(2));
+
+    /// <summary>
+    /// Gives a summary embedding the same treatment <see cref="CreateContext"/>'s leaf embeddings
+    /// already get — real structure to cluster on — whenever the summary text carries a "topic T"
+    /// marker (i.e. the chat client was set up with <see cref="SetupChatClientToEchoPrompt"/>).
+    /// Every other caller's fixed summary text (<c>"a summary"</c>, <c>"Summary of cluster"</c>, …)
+    /// contains no such marker, so this falls back to the original unstructured noise — this
+    /// method changes nothing for any test that does not opt in.
+    /// </summary>
+    /// <remarks>
+    /// Was pure noise regardless of input, which is why no test could reach depth 2 through
+    /// BIC-selected <c>k</c> rather than an explicit <c>MaxClusters</c>: a level-2 clustering
+    /// always saw unstructured noise for its input and correctly collapsed to one cluster. Topics
+    /// 0 and 1 are placed close together and topic 2 far away — deliberately asymmetric — so that
+    /// clustering the three level-1 summaries a well-separated <c>i % 3</c> leaf split produces
+    /// finds a genuine two-tier hierarchy: {0, 1} merge into one supercluster, {2} stays alone,
+    /// giving a real (non-degenerate) k = 2 at level 2. See
+    /// <c>TreeReachesDepthTwo_WithBicSelectedK_NoMaxClustersSet</c>.
+    /// </remarks>
+    private static float[] BuildSummaryEmbedding(string text, int dims, Random rng)
+    {
+        var matches = TopicMarker.Matches(text);
+        if (matches.Count == 0)
+        {
+            return Enumerable.Range(0, dims).Select(_ => (float)rng.NextDouble()).ToArray();
+        }
+
+        var positions = matches
+            .Select(m => PositionForTopic(int.Parse(m.Groups["topic"].Value, CultureInfo.InvariantCulture)))
+            .Distinct()
+            .ToList();
+        var center = positions.Average();
+
+        return Enumerable.Range(0, dims).Select(_ => (float)(center + rng.NextDouble() * 0.05)).ToArray();
+    }
+
+    /// <summary>Topics 0 and 1 sit close together; topic 2 sits far away — see <see cref="BuildSummaryEmbedding"/>.</summary>
+    private static double PositionForTopic(int topic) => topic switch
+    {
+        0 => 0.0,
+        1 => 0.3,
+        _ => 10.0,
+    };
 }

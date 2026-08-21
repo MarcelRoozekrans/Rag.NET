@@ -29,7 +29,7 @@ public class RaptorIngestionBehaviorTests
     [Fact]
     public async Task HandleAsync_BelowMinChunks_SkipsRaptor()
     {
-        var options = new RaptorOptions { MinChunksForRaptor = 10 };
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, MinChunksForRaptor = 10 };
         var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
         var ctx = _helpers.CreateContext(chunkCount: 5);
         var originalCount = ctx.EmbeddedChunks.Count;
@@ -43,7 +43,7 @@ public class RaptorIngestionBehaviorTests
     [Fact]
     public async Task HandleAsync_AddsSummaryChunksWithRaptorMetadata()
     {
-        var options = new RaptorOptions { MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1 };
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1 };
         var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
         var ctx = _helpers.CreateContext(chunkCount: 6, embeddingDims: 8);
 
@@ -66,7 +66,7 @@ public class RaptorIngestionBehaviorTests
     [Fact]
     public async Task HandleAsync_StoreLeafChunksFalse_RemovesOriginals()
     {
-        var options = new RaptorOptions { MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1, StoreLeafChunks = false };
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1, StoreLeafChunks = false };
         var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
         var ctx = _helpers.CreateContext(chunkCount: 6, embeddingDims: 8);
 
@@ -82,7 +82,7 @@ public class RaptorIngestionBehaviorTests
     [Fact]
     public async Task HandleAsync_RespectsMaxTreeDepth()
     {
-        var options = new RaptorOptions { MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 2 };
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 2 };
         var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
         var ctx = _helpers.CreateContext(chunkCount: 20, embeddingDims: 8);
 
@@ -105,7 +105,7 @@ public class RaptorIngestionBehaviorTests
     public async Task HandleAsync_UsesSummaryChatClientWhenProvided()
     {
         var customClient = Substitute.For<IChatClient>();
-        var options = new RaptorOptions { MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1, SummaryChatClient = customClient };
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1, SummaryChatClient = customClient };
         var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
         var ctx = _helpers.CreateContext(chunkCount: 6, embeddingDims: 8);
 
@@ -126,6 +126,7 @@ public class RaptorIngestionBehaviorTests
         var customEmbedder = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
         var options = new RaptorOptions
         {
+            TreeScope = RaptorTreeScope.PerDocument,
             MinChunksForRaptor = 2,
             ReducedDimensionality = 2,
             MaxTreeDepth = 1,
@@ -156,7 +157,7 @@ public class RaptorIngestionBehaviorTests
     [Fact]
     public async Task HandleAsync_WithZeroChunks_SkipsRaptor()
     {
-        var options = new RaptorOptions { MinChunksForRaptor = 1 };
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, MinChunksForRaptor = 1 };
         var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
         var ctx = _helpers.CreateContext(chunkCount: 0);
 
@@ -169,7 +170,7 @@ public class RaptorIngestionBehaviorTests
     [Fact]
     public async Task HandleAsync_AtExactThreshold_AppliesRaptor()
     {
-        var options = new RaptorOptions { MinChunksForRaptor = 6, ReducedDimensionality = 2, MaxTreeDepth = 1 };
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, MinChunksForRaptor = 6, ReducedDimensionality = 2, MaxTreeDepth = 1 };
         var sut = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
         var ctx = _helpers.CreateContext(chunkCount: 6, embeddingDims: 8);
 
@@ -215,7 +216,7 @@ public class RaptorIngestionBehaviorTests
         _helpers.SetupChatClient("a summary");
         _helpers.SetupEmbedder(dims: 8);
         var ctx = _helpers.CreateContext(chunkCount: 6);
-        var options = new RaptorOptions { MaxClusters = 3, MaxTreeDepth = 2 };
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, MaxClusters = 3, MaxTreeDepth = 2 };
         var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
 
         await behavior.HandleAsync(ctx, CancellationToken.None,
@@ -246,12 +247,47 @@ public class RaptorIngestionBehaviorTests
         _helpers.SetupChatClient("a summary");
         _helpers.SetupEmbedder(dims: 8);
         var ctx = _helpers.CreateContext(chunkCount: 24);
-        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, new RaptorOptions());
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument });
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await behavior.HandleAsync(ctx, cts.Token, static (_, _) => ValueTask.FromResult(
             new IngestionResult { DocumentId = new DocumentId("test-doc"), ChunksStored = 0 }));
 
         Assert.False(cts.IsCancellationRequested, "tree building did not terminate at default options");
+    }
+
+    [Fact]
+    public async Task TreeReachesDepthTwo_WithBicSelectedK_NoMaxClustersSet()
+    {
+        // Coverage hole flagged across two reviews: SummaryChunks_HaveUniqueChunkIndexes_
+        // AcrossEveryTreeLevel above only reaches depth 2 via an explicit MaxClusters, because
+        // SetupEmbedder used to return pure noise for summary embeddings — a level-2 clustering
+        // always saw unstructured noise and correctly collapsed to k = 1. Since corpus-level RAPTOR
+        // is now the shipped default (#331), that hole matters: this exercises BIC-selected k, at
+        // every level, reaching depth 2 for real.
+        //
+        // SetupChatClientToEchoPrompt keeps each cluster's "topic T" markers visible in its summary
+        // text at every level, and SetupEmbedder now reads them back: topics 0 and 1 are placed
+        // close together, topic 2 far away. The well-separated i % 3 leaf split (see CreateContext)
+        // reliably gives level 1 three summaries, one per topic; clustering those three finds the
+        // same two-tier structure (k = 2: {topic 0, topic 1} merge, {topic 2} stays alone) rather
+        // than three equidistant points, so level 2 is a real, non-degenerate reduction and not a
+        // forced one.
+        _helpers.SetupChatClientToEchoPrompt();
+        _helpers.SetupEmbedder(dims: 8);
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument };
+        var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options);
+        var ctx = _helpers.CreateContext(chunkCount: 24, embeddingDims: 8);
+
+        await behavior.HandleAsync(ctx, CancellationToken.None,
+            (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
+
+        var levels = ctx.EmbeddedChunks
+            .Where(c => c.Chunk.Metadata.ContainsKey("raptor_level"))
+            .Select(c => int.Parse(c.Chunk.Metadata["raptor_level"].ToString(), System.Globalization.CultureInfo.InvariantCulture))
+            .ToList();
+
+        Assert.NotEmpty(levels);
+        Assert.Contains(2, levels);
     }
 }

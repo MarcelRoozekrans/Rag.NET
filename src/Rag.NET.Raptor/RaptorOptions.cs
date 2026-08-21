@@ -79,8 +79,14 @@ public sealed class RaptorOptions
     /// <summary>Optional separate embedder for summaries. Null = use DI-registered IEmbeddingGenerator.</summary>
     public IEmbeddingGenerator<string, Embedding<float>>? SummaryEmbedder { get; set; }
 
-    /// <summary>What set of chunks the tree is built over. Default: <see cref="RaptorTreeScope.PerDocument"/>.</summary>
-    public RaptorTreeScope TreeScope { get; set; } = RaptorTreeScope.PerDocument;
+    /// <summary>What set of chunks the tree is built over. Default: <see cref="RaptorTreeScope.Corpus"/>.</summary>
+    /// <remarks>
+    /// <b>The default changed in v1.0 and this is a breaking change.</b> It was
+    /// <see cref="RaptorTreeScope.PerDocument"/>, which cannot produce a summary spanning two
+    /// documents and therefore is not the mechanism the RAPTOR paper describes (#331).
+    /// <see cref="RaptorTreeScope.PerDocument"/> remains fully supported.
+    /// </remarks>
+    public RaptorTreeScope TreeScope { get; set; } = RaptorTreeScope.Corpus;
 
     /// <summary>
     /// Under <see cref="RaptorTreeScope.Corpus"/>, the fractional growth in stored leaves that

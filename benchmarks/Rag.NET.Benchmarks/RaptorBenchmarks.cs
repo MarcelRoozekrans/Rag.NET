@@ -111,9 +111,14 @@ public class RaptorBenchmarks
 
     private static RaptorIngestionBehavior BuildIngestionBehavior()
     {
+        // TreeScope = PerDocument: this benchmark isolates per-document ingestion cost (the
+        // algorithmic UMAP/GMM/summarize cost, per the class summary above), and no leaf store is
+        // constructed here — Corpus scope, the default since #331, requires one and would null-ref
+        // in HandleAsync without it.
         var options = new RaptorOptions
         {
             Enabled = true,
+            TreeScope = RaptorTreeScope.PerDocument,
             MinChunksForRaptor = 3,
             MaxTreeDepth = 2,
         };

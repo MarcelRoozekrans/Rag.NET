@@ -236,9 +236,11 @@ Combine results from multiple retrievers (e.g., BM25 + dense vector) using Recip
 **Status:** ✅ Done
 **Package:** `Rag.NET.Raptor`
 
-Embed chunks, dimensionality-reduce with UMAP, soft-cluster with a Gaussian Mixture Model (BIC selects optimal cluster count), then LLM-summarize each cluster into a new higher-level chunk. Recurse until one cluster remains, building a full summary tree. Store all intermediate summary chunks alongside originals; all levels participate in retrieval simultaneously.
+Embed chunks, dimensionality-reduce with UMAP, soft-cluster with a Gaussian Mixture Model (BIC selects optimal cluster count), then LLM-summarize each cluster into a new higher-level chunk. Recurse until one cluster remains, building a full summary tree. Store all intermediate summary chunks alongside originals; all levels participate in retrieval simultaneously. Default `TreeScope` is `Corpus` — the tree is built over every ingested document, not one at a time (#331) — debounced on growth via `CorpusGrowthThreshold` and rebuildable on demand via `RaptorTreeRebuilder`; `PerDocument` remains available and is the control arm Phase 6.2.1 differences the corpus scope against.
 
 **Why:** Enables retrieval at multiple granularities — high-level theme queries match cluster summaries, fine-grained questions match leaf chunks. Essential for long documents (books, reports, legal corpora) where a flat chunk pool is insufficient.
+
+**Exercised by:** test — `RaptorTreeScopeTests` and `RaptorCorpusBuildTests` build the corpus tree over a real `SqliteRaptorLeafStore`; `SqliteRaptorLeafStoreTests` proves it survives a reopen. Not yet `benchmark`: a measured run on a real corpus pinned in a reproduction table, with a control, is Phase 6.2.1's RAPTOR thread (#247) — the same store-shape defect GraphRAG found is still an open question here.
 
 ---
 

@@ -26,7 +26,7 @@ public class RaptorTelemetryTests
         ActivitySource.AddActivityListener(listener);
         using var parent = new Activity("test-parent").Start();
 
-        var options = new RaptorOptions { MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1 };
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, MinChunksForRaptor = 2, ReducedDimensionality = 2, MaxTreeDepth = 1 };
         var sut = new RaptorIngestionBehavior(_chatClient, _embedder, options);
         var ctx = CreateContext(chunkCount: 6, embeddingDims: 8);
 

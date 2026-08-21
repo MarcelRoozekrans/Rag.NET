@@ -10,6 +10,17 @@ public class RaptorTreeScopeTests
     private readonly RaptorTestContext _helpers = new();
 
     [Fact]
+    public void TreeScope_DefaultsToCorpus()
+    {
+        // The default changed in v1.0 (#331) — it was PerDocument, which cannot produce a
+        // summary spanning two documents and therefore is not the mechanism the RAPTOR paper
+        // describes. This is the breaking-change test: every caller who does not set TreeScope
+        // explicitly now clusters over the corpus, and UseRaptor now requires leafStorePath for
+        // them (RagBuilderExtensionsTests, RaptorOptionsValidationTests, PipelinePlacementTests).
+        Assert.Equal(RaptorTreeScope.Corpus, new RaptorOptions().TreeScope);
+    }
+
+    [Fact]
     public async Task CorpusScope_WritesLeavesToTheLeafStore_AndFilesAnyTreeUnderTheCorpusIdNotTheDocument()
     {
         // Renamed from "...AndBuildsNoPerDocumentTree" (Task 3): that assertion predated tree

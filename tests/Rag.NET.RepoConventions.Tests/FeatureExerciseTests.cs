@@ -64,7 +64,6 @@ public sealed partial class FeatureExerciseTests
         ["Time-Weighted Retrieval"] = "6.2.1 — a dated corpus, or declared",
         ["BM25 Synonym Expansion"] = "6.2.1 — the +BM25 cell with and without expansion",
         ["Ensemble / Reciprocal Rank Fusion (RRF)"] = "6.2.1 — the +BM25 hybrid cell composes RRF by hand today; the library's RrfMerger under the same cell",
-        ["RAPTOR — Recursive Abstractive Tree Summarization"] = "6.2.1 — the GraphRAG method: a corpus run, pinned, with a control; the same store shape and likely the same fix (#247)",
         ["Deep Research Loop (Sufficiency-Gated Sub-Query Decomposition)"] = "6.2.1 — an answer-harness arm",
         ["Map-Reduce Synthesis"] = "6.2.1 — an arm of BeirGraphRagAnswerTests against MultiHop-RAG's gold answers",
         ["Refine (Iterative Synthesis)"] = "6.2.1 — an arm of BeirGraphRagAnswerTests",
