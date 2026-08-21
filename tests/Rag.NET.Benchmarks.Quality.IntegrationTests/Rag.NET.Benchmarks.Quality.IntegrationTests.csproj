@@ -35,17 +35,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- RaptorRun's fast-tier test (RaptorRunTests, in Rag.NET.Benchmarks.Quality.Tests) needs to
-         construct the internal RaptorRun type directly, so it can assert the corpus-tree debounce
-         is suppressed without a model or a corpus — the same reason GraphRagRun's own tests stay
-         inside this project is not available to RaptorRun, since its test must not require the
-         secrets this project's RequiresSecrets exists for. -->
-    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>Rag.NET.Benchmarks.Quality.Tests</_Parameter1>
-    </AssemblyAttribute>
-  </ItemGroup>
-
-  <ItemGroup>
     <!-- The GraphRAG extraction generation tool, referenced for its ingestion driver rather than
          for its entry point. The extraction cache is keyed on the rendered prompt, so if this
          guard chunked or prompted even slightly differently from the run that filled the cache,

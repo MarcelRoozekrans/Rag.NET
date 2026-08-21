@@ -15,21 +15,46 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// One end-to-end pass of <c>Rag.NET.Raptor</c> over a list of MultiHop-RAG articles: ingest, then
 /// build the RAPTOR tree — the RAPTOR equivalent of <see cref="GraphRagRun"/>.
 /// <para>
-/// <b>The critical behaviour is not ingesting normally.</b> At the shipped
-/// <see cref="RaptorOptions.CorpusGrowthThreshold"/> of 0.10, ingesting 609 articles triggers 48
-/// whole-corpus rebuilds, each re-clustering every leaf so far and summarising it. This class
-/// suppresses that debounce during ingestion (<see cref="CorpusGrowthThreshold"/>) and instead
-/// calls <see cref="RaptorTreeRebuilder.RebuildAsync"/> exactly once, after every document is in.
+/// <b>Under <see cref="RaptorTreeScope.Corpus"/>, ingestion never goes through
+/// <see cref="RaptorIngestionBehavior.HandleAsync"/> at all.</b> The obvious fix — leave the
+/// behaviour's growth-threshold debounce suppressed via
+/// <see cref="RaptorOptions.CorpusGrowthThreshold"/> — does not actually suppress it for a bulk
+/// load. The debounce's baseline resets to whatever the corpus held at the last build, so after
+/// document 0 (roughly 29 chunks) the next build fires once the corpus reaches roughly 101 x 29
+/// &#8776; 2,929 leaves — around article 101 of 609, not "never". Worse, that trigger point is
+/// <i>order dependent</i>: MultiHop-RAG has an article with 201 chunks, and if it happens to land
+/// first, 101 x 201 already exceeds the whole corpus and no second build ever fires. A measurement
+/// harness cannot have a hidden variable of that shape — the tree it measures would depend on
+/// document order.
+/// </para>
+/// <para>
+/// So this class does not tune the debounce; it bypasses the path that reads it. Under
+/// <see cref="RaptorTreeScope.Corpus"/>, each document's chunks are embedded, written straight to
+/// the leaf store (<see cref="Store.IRaptorLeafStore.AddLeavesAsync"/>) and the vector store, and
+/// nothing else — <see cref="RaptorIngestionBehavior"/> is never asked to ingest. This loses no
+/// fidelity: every summary <see cref="RaptorIngestionBehavior.HandleAsync"/> could have produced
+/// mid-ingestion is filed under <see cref="RaptorCorpusDocumentId.Value"/>, and
+/// <see cref="RaptorTreeRebuilder.RebuildAsync"/> opens by deleting exactly that id before writing
+/// the tree it built — so any such summary would have been discarded before anything measured it.
+/// The single call to <see cref="RaptorTreeRebuilder.RebuildAsync"/>, made once ingestion finishes,
+/// is the only tree this class ever produces under <see cref="RaptorTreeScope.Corpus"/>, and it is
+/// now the only one <i>possible</i> — not merely the only one intended.
+/// </para>
+/// <para>
+/// <b>Under <see cref="RaptorTreeScope.PerDocument"/>, ingestion goes through
+/// <see cref="RaptorIngestionBehavior.HandleAsync"/> unchanged.</b> There the ingestion path is
+/// what builds the tree — each document's own chunks are clustered into their own tree as that
+/// document is ingested — so bypassing it would leave nothing to measure.
 /// </para>
 /// <para>
 /// <b>The embedder is an interface, not the concrete <c>OnnxEmbeddingGenerator</c> the design
 /// sketched.</b> <c>OnnxEmbeddingGenerator</c>'s public constructor loads a real ONNX model and
 /// vocabulary file from disk, and <see cref="GraphRagRun"/>'s own equivalent is exercised only by
-/// tests that already require those files. This class's ingestion behaviour needs the debounce
-/// covered by a fast-tier test with no model and no corpus — so the parameter is
-/// <see cref="IEmbeddingGenerator{TInput,TEmbedding}"/>, which the real <c>OnnxEmbeddingGenerator</c>
-/// implements just as well as a fake does. Nothing about the shape callers see changes: the real
-/// harness still hands this an <c>OnnxEmbeddingGenerator</c> instance.
+/// tests that already require those files. This class's behaviour needs covering by a test with no
+/// model and no corpus — so the parameter is <see cref="IEmbeddingGenerator{TInput,TEmbedding}"/>,
+/// which the real <c>OnnxEmbeddingGenerator</c> implements just as well as a fake does. Nothing
+/// about the shape callers see changes: the real harness still hands this an
+/// <c>OnnxEmbeddingGenerator</c> instance.
 /// </para>
 /// <para>
 /// <b>Chunking is shared with the dense arm and with <see cref="GraphRagRun"/>, not reimplemented.</b>
@@ -43,20 +68,6 @@ namespace Rag.NET.Benchmarks.Quality.IntegrationTests;
 /// </summary>
 internal sealed class RaptorRun : IAsyncDisposable
 {
-    /// <summary>
-    /// The growth threshold ingestion runs under: the validated maximum, not the shipped default.
-    /// </summary>
-    /// <remarks>
-    /// The default of 0.10 rebuilds whenever the corpus grows 10%, which is right for a live corpus
-    /// and ruinous for a bulk load: 609 articles trigger 48 whole-corpus rebuilds, each
-    /// re-clustering everything so far and summarising it. One early build still happens — the
-    /// debounce's baseline starts at -1, so the first document ingested always builds — but it is
-    /// over one document's chunks and costs almost nothing, and its output is discarded when
-    /// <see cref="RaptorTreeRebuilder.RebuildAsync"/> deletes and replaces the corpus tree. The tree
-    /// that is measured comes from that single call, made once ingestion finishes.
-    /// </remarks>
-    private const double CorpusGrowthThreshold = 100.0;
-
     private readonly RaptorTreeScope _scope;
     private readonly CachingEmbedder _embedder;
     private readonly CountingChatClient _summariser;
@@ -77,11 +88,12 @@ internal sealed class RaptorRun : IAsyncDisposable
         _embedder = new CachingEmbedder(generator, embeddings);
         _summariser = new CountingChatClient(summariser);
 
-        var options = new RaptorOptions
-        {
-            TreeScope = scope,
-            CorpusGrowthThreshold = CorpusGrowthThreshold,
-        };
+        // CorpusGrowthThreshold is left at RaptorOptions' shipped default deliberately: under
+        // Corpus scope IngestAsync below never calls RaptorIngestionBehavior.HandleAsync, which is
+        // the only code path that ever reads it (ShouldBuild), so no value here changes this run's
+        // behaviour. Under PerDocument scope it is equally unread — it only governs the Corpus
+        // branch of HandleAsync. Setting it would document an intent this class no longer acts on.
+        var options = new RaptorOptions { TreeScope = scope };
 
         _leafStore = scope == RaptorTreeScope.Corpus ? new SqliteRaptorLeafStore(leafStorePath) : null;
         _behavior = new RaptorIngestionBehavior(_summariser, _embedder, options, _leafStore);
@@ -107,6 +119,13 @@ internal sealed class RaptorRun : IAsyncDisposable
     /// </param>
     /// <param name="cancellationToken">Cancels the run.</param>
     /// <returns>The finished run, ready to search.</returns>
+    /// <remarks>
+    /// A failure partway through — a bad document, a cancelled token — must not leave the run's
+    /// SQLite leaf store open: a file-backed store left locked would fail every later attempt to
+    /// reopen the same path, for a reason invisible at that later call site. So construction happens
+    /// outside the <see langword="try"/>, and everything that can throw after it is disposed on the
+    /// way out.
+    /// </remarks>
     public static async Task<RaptorRun> BuildAsync(
         IReadOnlyList<BeirDocument> documents,
         RaptorTreeScope scope,
@@ -118,21 +137,29 @@ internal sealed class RaptorRun : IAsyncDisposable
     {
         var run = new RaptorRun(scope, generator, embeddings, summariser, leafStorePath);
 
-        if (run._leafStore is not null)
+        try
         {
-            await run._leafStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            if (run._leafStore is not null)
+            {
+                await run._leafStore.InitializeAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await run.IngestAsync(documents, cancellationToken).ConfigureAwait(false);
+
+            if (scope == RaptorTreeScope.Corpus)
+            {
+                var produced = await run._rebuilder!.RebuildAsync(cancellationToken).ConfigureAwait(false);
+                run._corpusRebuildCount = 1;
+                run.SummaryCount = produced;
+            }
+
+            return run;
         }
-
-        await run.IngestAsync(documents, cancellationToken).ConfigureAwait(false);
-
-        if (scope == RaptorTreeScope.Corpus)
+        catch
         {
-            var produced = await run._rebuilder!.RebuildAsync(cancellationToken).ConfigureAwait(false);
-            run._corpusRebuildCount = 1;
-            run.SummaryCount = produced;
+            await run.DisposeAsync().ConfigureAwait(false);
+            throw;
         }
-
-        return run;
     }
 
     /// <summary>Gets how many level-0 (leaf) chunks the corpus was cut into and embedded.</summary>
@@ -146,10 +173,9 @@ internal sealed class RaptorRun : IAsyncDisposable
     /// <summary>Gets how many RAPTOR summary chunks the finished tree holds.</summary>
     /// <remarks>
     /// Under <see cref="RaptorTreeScope.Corpus"/> this is the single
-    /// <see cref="RaptorTreeRebuilder.RebuildAsync"/> call's return value — not an accumulation
-    /// across ingestion, because that call deletes and replaces whatever the debounce's one cheap
-    /// early build produced. Under <see cref="RaptorTreeScope.PerDocument"/> there is no rebuild, so
-    /// this accumulates the summaries each document's own ingestion produced.
+    /// <see cref="RaptorTreeRebuilder.RebuildAsync"/> call's return value. Under
+    /// <see cref="RaptorTreeScope.PerDocument"/> there is no rebuild, so this accumulates the
+    /// summaries each document's own ingestion produced.
     /// </remarks>
     public int SummaryCount { get; private set; }
 
@@ -157,14 +183,11 @@ internal sealed class RaptorRun : IAsyncDisposable
     /// Gets how many times this run called <see cref="RaptorTreeRebuilder.RebuildAsync"/>.
     /// </summary>
     /// <remarks>
-    /// <b>Not a count of every tree build this run performed.</b> The first document ingested under
-    /// <see cref="RaptorTreeScope.Corpus"/> always triggers one cheap build over its own chunks —
-    /// the debounce's baseline starts at -1, so <c>RaptorIngestionBehavior.ShouldBuild</c> is always
-    /// true the first time it is asked — and that build is real but is not what this counts. A
-    /// benchmark's cost is the corpus-wide rebuild, made exactly once after ingestion finishes; a
-    /// property named for "every tree build" would read <c>1</c> here for the wrong reason and hide
-    /// that a second, trivial build happened first. Always <c>0</c> under
-    /// <see cref="RaptorTreeScope.PerDocument"/>, which builds during ingestion and never rebuilds.
+    /// Under <see cref="RaptorTreeScope.Corpus"/> this is always <c>1</c>: ingestion writes leaves
+    /// directly and never calls <see cref="RaptorIngestionBehavior.HandleAsync"/> (see the type
+    /// remarks), so the one explicit rebuild after ingestion is the only tree build this run can
+    /// possibly perform. Always <c>0</c> under <see cref="RaptorTreeScope.PerDocument"/>, which
+    /// builds during ingestion and never rebuilds.
     /// </remarks>
     public int CorpusRebuildCount => _corpusRebuildCount;
 
@@ -203,7 +226,12 @@ internal sealed class RaptorRun : IAsyncDisposable
         }
     }
 
-    /// <summary>Chunks, embeds and indexes every article, running RAPTOR ingestion over each.</summary>
+    /// <summary>
+    /// Chunks and embeds every article, then indexes it: directly, under
+    /// <see cref="RaptorTreeScope.Corpus"/> (see the type remarks for why), or through
+    /// <see cref="RaptorIngestionBehavior"/> under <see cref="RaptorTreeScope.PerDocument"/>, which
+    /// is what builds that scope's per-document trees.
+    /// </summary>
     private async Task IngestAsync(IReadOnlyList<BeirDocument> documents, CancellationToken cancellationToken)
     {
         for (var i = 0; i < documents.Count; i++)
@@ -224,35 +252,73 @@ internal sealed class RaptorRun : IAsyncDisposable
             var vectors = await _embedder.GenerateAsync(texts, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
-            var ctx = new IngestionContext
-            {
-                Stream = Stream.Null,
-                Metadata = new DocumentMetadata
-                {
-                    DocumentId = new DocumentId(documents[i].Id),
-                    FileName = documents[i].Id,
-                },
-                GetNextBm25DocId = static () => 0,
-            };
-
+            var embedded = new EmbeddedChunk[chunks.Count];
             for (var j = 0; j < chunks.Count; j++)
             {
-                ctx.EmbeddedChunks.Add(new EmbeddedChunk { Chunk = chunks[j], Embedding = vectors[j].Vector });
+                embedded[j] = new EmbeddedChunk { Chunk = chunks[j], Embedding = vectors[j].Vector };
             }
 
             LeafCount += chunks.Count;
 
-            _ = await _behavior.HandleAsync(ctx, cancellationToken, static (c, _) => ValueTask.FromResult(
-                new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }))
-                .ConfigureAwait(false);
-
-            if (_scope == RaptorTreeScope.PerDocument)
+            if (_scope == RaptorTreeScope.Corpus)
             {
-                SummaryCount += ctx.EmbeddedChunks.Count - chunks.Count;
+                await IngestLeavesDirectlyAsync(embedded, cancellationToken).ConfigureAwait(false);
             }
-
-            await _store.StoreAsync(ctx.EmbeddedChunks, cancellationToken).ConfigureAwait(false);
+            else
+            {
+                await IngestThroughBehaviorAsync(documents[i].Id, embedded, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
+    }
+
+    /// <summary>
+    /// The <see cref="RaptorTreeScope.Corpus"/> path: writes this document's chunks to the leaf
+    /// store and the vector store, and nothing else. See the type remarks for why going through
+    /// <see cref="RaptorIngestionBehavior.HandleAsync"/> instead would be both wasteful and
+    /// order-dependent, and why skipping it loses no fidelity.
+    /// </summary>
+    private async Task IngestLeavesDirectlyAsync(
+        IReadOnlyList<EmbeddedChunk> embedded, CancellationToken cancellationToken)
+    {
+        var leaves = new RaptorLeaf[embedded.Count];
+        for (var i = 0; i < embedded.Count; i++)
+        {
+            leaves[i] = new RaptorLeaf(
+                embedded[i].Chunk.DocumentId.Value,
+                embedded[i].Chunk.ChunkIndex,
+                embedded[i].Chunk.Text,
+                embedded[i].Embedding.ToArray());
+        }
+
+        await _leafStore!.AddLeavesAsync(leaves, cancellationToken).ConfigureAwait(false);
+        await _store.StoreAsync(embedded, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The <see cref="RaptorTreeScope.PerDocument"/> path: runs this document's chunks through
+    /// <see cref="RaptorIngestionBehavior"/>, which is what builds that scope's tree, then indexes
+    /// whatever it produced (leaves and, once there are enough of them, that document's own
+    /// summaries).
+    /// </summary>
+    private async Task IngestThroughBehaviorAsync(
+        string documentId, IReadOnlyList<EmbeddedChunk> embedded, CancellationToken cancellationToken)
+    {
+        var ctx = new IngestionContext
+        {
+            Stream = Stream.Null,
+            Metadata = new DocumentMetadata { DocumentId = new DocumentId(documentId), FileName = documentId },
+            GetNextBm25DocId = static () => 0,
+        };
+        ctx.EmbeddedChunks.AddRange(embedded);
+
+        _ = await _behavior.HandleAsync(ctx, cancellationToken, static (c, _) => ValueTask.FromResult(
+            new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }))
+            .ConfigureAwait(false);
+
+        SummaryCount += ctx.EmbeddedChunks.Count - embedded.Count;
+
+        await _store.StoreAsync(ctx.EmbeddedChunks, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The dense retrieval RAPTOR's retrieval behavior sits in front of.</summary>
@@ -272,7 +338,7 @@ internal sealed class RaptorRun : IAsyncDisposable
     /// <see cref="IEmbeddingGenerator{TInput,TEmbedding}"/> behind <see cref="EmbeddingCache"/>, in
     /// the shape RAPTOR's behaviors take an embedder in — the same adapter role
     /// <see cref="CachingEmbeddingGenerator"/> plays for <see cref="GraphRagRun"/>, generalised to
-    /// an interface so a fast-tier test can hand it a fake.
+    /// an interface so a test can hand it a fake.
     /// </summary>
     private sealed class CachingEmbedder(
         IEmbeddingGenerator<string, Embedding<float>> inner, EmbeddingCache cache)

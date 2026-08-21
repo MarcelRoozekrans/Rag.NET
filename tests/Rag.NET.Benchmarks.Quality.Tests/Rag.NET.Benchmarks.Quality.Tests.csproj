@@ -12,19 +12,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Rag.NET.Benchmarks.Quality\Rag.NET.Benchmarks.Quality.csproj" />
-    <!-- RaptorRunTests exercises RaptorRun, which is internal to
-         Rag.NET.Benchmarks.Quality.IntegrationTests (which grants this project access via
-         InternalsVisibleTo). That project references Rag.NET.Raptor and Rag.NET.Raptor.Store
-         transitively, but this project also names RaptorTreeScope, RaptorRetrievalMode and
-         SqliteRaptorLeafStore directly in its own test code, so it references both explicitly
-         rather than relying on what happens to flow through. Referencing a heavier, RequiresSecrets
-         project like this stays safe for the fast tier because `dotnet test` only discovers tests
-         declared in the assembly it targets — nothing here executes IntegrationTests's own tests. -->
-    <ProjectReference Include="..\Rag.NET.Benchmarks.Quality.IntegrationTests\Rag.NET.Benchmarks.Quality.IntegrationTests.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Raptor\Rag.NET.Raptor.csproj" />
-    <ProjectReference Include="..\..\src\Rag.NET.Raptor.Store\Rag.NET.Raptor.Store.csproj" />
-    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
-    <PackageReference Include="NSubstitute" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">

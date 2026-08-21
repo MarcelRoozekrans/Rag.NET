@@ -37,7 +37,7 @@ The harness needs a RAPTOR equivalent of `GraphRagRun`. The critical behaviour i
   - `internal sealed class RaptorRun : IAsyncDisposable`
   - `static Task<RaptorRun> BuildAsync(IReadOnlyList<BeirDocument> documents, RaptorTreeScope scope, OnnxEmbeddingGenerator generator, EmbeddingCache embeddings, IChatClient summariser, string leafStorePath, CancellationToken ct)`
   - `Task<IReadOnlyList<SearchResult>> SearchAsync(string query, RaptorRetrievalMode mode, int topK, CancellationToken ct)`
-  - `int LeafCount { get; }`, `int SummaryCount { get; }`, `int TreeBuildCount { get; }`, `long SummariserCalls { get; }`
+  - `int LeafCount { get; }`, `int SummaryCount { get; }`, `int CorpusRebuildCount { get; }` (counts `RaptorTreeRebuilder.RebuildAsync` invocations), `long SummariserCalls { get; }`
 
 - [ ] **Step 1: Read the template before writing anything**
 
@@ -59,7 +59,7 @@ public async Task BuildAsync_BuildsTheTreeOnce_NotOncePerGrowthThreshold()
 
     await using var run = await BuildRunAsync(documents, RaptorTreeScope.Corpus);
 
-    Assert.Equal(1, run.TreeBuildCount);
+    Assert.Equal(1, run.CorpusRebuildCount);
     Assert.True(run.SummaryCount > 0, "the rebuild must actually produce a tree");
 }
 ```
@@ -119,13 +119,13 @@ internal sealed class RaptorRun : IAsyncDisposable
     }
 
     /// <summary>How many corpus tree builds this run performed. A benchmark expects exactly one.</summary>
-    public int TreeBuildCount => _treeBuildCount;
+    public int CorpusRebuildCount => _treeBuildCount;
 }
 ```
 
 Set `CorpusGrowthThreshold = 100.0` (the validated maximum) on the `RaptorOptions` you construct, so ingestion does not rebuild. Construct `RaptorIngestionBehavior` and `RaptorTreeRebuilder` directly rather than through DI — `GraphRagRun` constructs its behaviours directly for the same reason, and the harness is not exercising registration.
 
-Under `RaptorTreeScope.PerDocument`, do **not** call the rebuilder — per-document trees are built during ingestion. Leave `TreeBuildCount` at 0 for that scope and say so in the property's doc comment.
+Under `RaptorTreeScope.PerDocument`, do **not** call the rebuilder — per-document trees are built during ingestion. Leave `CorpusRebuildCount` at 0 for that scope and say so in the property's doc comment.
 
 - [ ] **Step 5: Run the test to verify it passes**
 
@@ -145,7 +145,7 @@ public async Task BuildAsync_PerDocumentScope_BuildsDuringIngestionAndNeverRebui
 
     await using var run = await BuildRunAsync(documents, RaptorTreeScope.PerDocument);
 
-    Assert.Equal(0, run.TreeBuildCount);
+    Assert.Equal(0, run.CorpusRebuildCount);
     Assert.True(run.SummaryCount > 0, "per-document trees are built during ingestion");
 }
 ```
@@ -376,9 +376,9 @@ Record the two numbers and their difference in the notes file.
 
 - [ ] **Step 4: Record the tree the run actually built**
 
-From `RaptorRun`'s counters, record in the notes: `LeafCount`, `SummaryCount`, `TreeBuildCount` (must be **1** for the corpus arms), and `SummariserCalls`. Derive the summarisation cost per full run from `SummariserCalls`.
+From `RaptorRun`'s counters, record in the notes: `LeafCount`, `SummaryCount`, `CorpusRebuildCount` (must be **1** for the corpus arms), and `SummariserCalls`. Derive the summarisation cost per full run from `SummariserCalls`.
 
-**If `TreeBuildCount` is not 1, stop and report** — the debounce was not suppressed and the sweep would cost 48× what it should.
+**If `CorpusRebuildCount` is not 1, stop and report** — the debounce was not suppressed and the sweep would cost 48× what it should.
 
 - [ ] **Step 5: Commit the notes**
 
