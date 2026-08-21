@@ -4377,6 +4377,54 @@ shipped state; keeping both scopes selectable is what gives it back.
 configuration; the debounce and the rebuilder exist and are tested; existing RAPTOR users have a
 stated migration path; #331 closes. The measurement itself belongs to 6.2.1 and runs after.
 
+### Phase 6.2.4: RAPTOR Retrieval Over-Fetch — make `Boost` and `Filter` do what they document [status: pending — added 2026-08-21, ahead of 6.2.1's RAPTOR measurement]
+**Surface:** Backend
+**HelpWanted:** no
+
+**Goal:** `RaptorRetrievalBehavior` over-fetches candidates before applying its mode, so `Boost` can
+promote a summary *into* the result set and `Filter` returns the number of results the caller asked
+for. Keep today's behaviour reachable by configuration.
+
+**The defect.** `HandleAsync` calls `next(ctx, ct)` with the context **unmodified**, and
+`VectorStoreBehavior` fetches exactly `ctx.Options.TopK`. So the behaviour only ever sees the
+already-truncated top-k:
+
+- **`Boost` cannot do what it documents.** `ApplyBoost` multiplies summary scores *within* the k
+  already returned, so a summary ranked 7th that would beat 6th at 1.2× can never appear. It
+  promotes within the set, never into it — the opposite of the mode's stated purpose. #239's shape:
+  an option whose default behaviour undoes what it says, invisible because every test passes.
+- **`Filter` under-fills.** Ask for 6, get 6, drop 3 summaries, return 3. A contract violation, not
+  a tuning question.
+
+**The fix is small and its pattern is already in the solution.** `MmrBehavior` does exactly this:
+`var candidateCount = ctx.Options.MmrCandidateCount ?? ctx.Options.TopK * 3;` then
+`next(ctx with { Options = ctx.Options with { TopK = candidateCount } })`, reducing after. RAPTOR
+gains the same shape and the same `?? TopK * 3` default, so the multiplier is precedent rather than
+invention.
+
+**`Blend` must stay byte-identical.** It is the default and figures are pinned against it; it
+returns exactly `TopK` and must not start over-fetching.
+
+**Why this is a phase rather than a line in 6.2.1.** Because 6.2.3 also looked like a small fix and
+turned out to need a store, a debounce, a rebuilder and a migration. Naming it means the roadmap
+sees its cost if it grows again. It is genuinely expected to be small.
+
+**Why it lands before the measurement, reversing this design's original order.** The measurement
+spec at `docs/plans/2026-08-20-raptor-real-protocol-design.md` originally measured `Boost` as
+shipped and fixed it after, following #247. That was wrong: #247's defect was *empirical* — nobody
+knew what the shared store cost until it was measured — while this one is **structural and provable
+from two lines**. Paying for an answer arm to confirm arithmetic buys evidence for something already
+known, which is the objection that reversed #331's ordering on 2026-08-20. The question reading
+cannot answer is whether a *working* `Boost` helps, and that needs the fix first.
+
+**The control survives by configuration, not by leaving the defect in place** — 6.2.3's own answer,
+where `PerDocument` stayed selectable. Setting the candidate count to `TopK` (1×) reproduces today's
+behaviour exactly, so anyone wanting the broken state pinned can still reach it.
+
+**Exit condition:** `Boost` can promote a summary into the result set that ranked below the cut
+without it; `Filter` returns `TopK` results when enough non-summary candidates exist; `Blend` is
+unchanged; 1× reproduces the old behaviour; all three have tests that fail against today's code.
+
 ### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
