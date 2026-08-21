@@ -161,6 +161,34 @@ internal static class MultiHopRagAnswerReproduction
             "(22,309,528 tokens) plus 3,573 community reports (2,026,478 tokens), generated once by " +
             "`--stage extraction` and `--stage reports` over the full 609-article corpus; ~$9 at " +
             "gpt-4o-mini rates, and a re-run pays none of it."),
+        new(
+            "multihop-rag",
+            AnswerArm.RaptorCorpus,
+            [],
+            "NOT YET MEASURED. Phase 6.2.1's RAPTOR sweep fills this. The entry exists so the " +
+            "unpinned-arm guard passes while the arm is wired up and before it is run; a figure " +
+            "without a run behind it would be worse than an empty array."),
+        new(
+            "multihop-rag",
+            AnswerArm.Raptor,
+            [],
+            "NOT YET MEASURED. Phase 6.2.1's RAPTOR sweep fills this. The entry exists so the " +
+            "unpinned-arm guard passes while the arm is wired up and before it is run; a figure " +
+            "without a run behind it would be worse than an empty array."),
+        new(
+            "multihop-rag",
+            AnswerArm.RaptorFiltered,
+            [],
+            "NOT YET MEASURED. Phase 6.2.1's RAPTOR sweep fills this. The entry exists so the " +
+            "unpinned-arm guard passes while the arm is wired up and before it is run; a figure " +
+            "without a run behind it would be worse than an empty array."),
+        new(
+            "multihop-rag",
+            AnswerArm.RaptorBoost,
+            [],
+            "NOT YET MEASURED. Phase 6.2.1's RAPTOR sweep fills this. The entry exists so the " +
+            "unpinned-arm guard passes while the arm is wired up and before it is run; a figure " +
+            "without a run behind it would be worse than an empty array."),
     ];
 
     /// <summary>Asserts one arm's paper-rule accuracy reproduced what was last recorded, or records what it measured.</summary>
