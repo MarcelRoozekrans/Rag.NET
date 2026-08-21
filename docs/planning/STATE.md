@@ -1,6 +1,6 @@
 # Session State
 
-**Last updated:** 2026-08-20
+**Last updated:** 2026-08-21
 **Written by:** `project-orchestration` — first `STATE.md` this project has had. Milestones 1–5 ran
 without one, which is why every session so far re-derived its position from `ROADMAP.md` and
 `MILESTONE.md` and twice acted on a debt that had already closed.
@@ -8,23 +8,33 @@ without one, which is why every session so far re-derived its position from `ROA
 ## Current Position
 
 **Milestone:** 6 — Hardening & v1.0 — Battle-Tested (active since 2026-08-15)
-**Phase:** 6.2.3 — Corpus-Level RAPTOR (pending, added 2026-08-20, **gates v1.0**)
-**Also active:** 6.2.1 — Retrieval & Answer Sweep, whose RAPTOR measurement is queued behind 6.2.3
+**Phase:** 6.2.1 — Retrieval & Answer Sweep (active). **6.2.3 completed 2026-08-21**, merged in
+#340 and verified on `main` by content rather than by the PR's MERGED label.
 
-**Last completed:** the GraphRAG local-search thread — spec sub-phases 6.x.1, 6.x.6 and 6.x.7 of
-`docs/plans/2026-08-19-graphrag-local-search-completion-implementation.md`. Tasks 1–5 merged in
-#323; Task 6's measurement ran overnight and merged in #326 (merge commit `2067f7f6` on `main`,
-verified by content, not by the PR's MERGED label).
+**Last completed:** **Phase 6.2.3 — Corpus-Level RAPTOR**, merged 2026-08-21 in #340 (squash
+`c461475d`). Seven tasks, each independently reviewed, plus a whole-branch review and one fix wave.
 
-That measurement **revised a published Milestone 5 finding**. 5.2 concluded "GraphRAG does not help
-on this corpus" from a `local` arm scoring 0.2102 — a PageRank blend that is not in Microsoft's
-local search at all. Measured properly: **0.3459 overall, 0.8603 on inference** — the strongest
-entity-question result this project has recorded, above global's 0.8444 and dense's 0.7721. Level
-with dense overall (−0.0040) only because it abstains on yes/no questions.
+`Rag.NET.Raptor` built its tree **per document**, which is not the RAPTOR paper's mechanism — a
+per-document tree cannot contain a node spanning two documents. It now clusters over the corpus by
+default (`RaptorTreeScope`, a breaking change), backed by a new `Rag.NET.Raptor.Store` package
+holding leaf chunks *with their vectors*, debounced on growth with an on-demand `RaptorTreeRebuilder`
+— #302's shape, for #302's reason.
 
-**Phase state:** 6.2.1's four named debts are down to one. #239 and #200 closed 2026-08-17, **#247
-closed 2026-08-18** (fixed twice over — #311 hid graph chunks from retrieval by default, #312 gave
-them their own store; pinned at 0.3494 in #280). **#176 remains, and is worse than filed**: 78.8%
+**Two further defects were found by reading the package, and neither had ever been reachable by a
+test:** #332, summary chunks colliding on `ChunkIndex` across levels; and #333, `SelectK` returning
+k=n so a level never reduced and the tree loop **never terminated**, at one LLM call per cluster per
+level — an unbounded spend at shipped defaults, in a published package.
+
+**Why the suite was green throughout is the finding worth keeping.** A mock embedder constructed
+`new Random(123)` *inside* its callback, so every summary embedding was byte-identical; identical
+points collapse to k=1 and the loop exits after one level. **No test had ever built a RAPTOR tree
+deeper than one level**, and both defects need depth ≥ 2. Two more fixtures of the same shape were
+found while fixing it. The review loop also caught a first attempt at #333's fix that would have let
+**one stray chunk switch clustering off for an entire corpus**, and a #332 regression test that had
+become provably vacuous — it passed against the unfixed code.
+
+**Phase state:** 6.2.1's four named debts are down to one. #239 and #200 closed 2026-08-17, #247
+closed 2026-08-18 (pinned at 0.3494 in #280). **#176 remains, and is worse than filed**: 78.8%
 singletons on the full corpus against the 65% the issue carries.
 
 ## Open Decisions
@@ -57,39 +67,41 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Recommended Next Step
 
-**Open the PR for `phase/6.2.3-corpus-level-raptor`, and read the three parked residuals below
-before merging.** The phase is implemented and reviewed; the merge is the operator's.
+**6.2.1's RAPTOR measurement.** Its design has been waiting at
+`docs/plans/2026-08-20-raptor-real-protocol-design.md` since 2026-08-20, and 6.2.3 was built so this
+run can price **both** tree scopes in one pass — `PerDocument` was kept fully working rather than
+deleted, per #323's precedent that you do not remove what a pinned figure depends on.
 
-After the merge: **6.2.1's RAPTOR measurement**, whose design at
-`docs/plans/2026-08-20-raptor-real-protocol-design.md` has been waiting since 2026-08-20.
-It can now price both tree scopes in one run, because 6.2.3 kept `PerDocument` selectable rather
-than deleting it.
+Two things in that design are now stale and must be reconciled before it is executed:
 
-**Also still unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`. They
-were kept alive until 6.x.7 published its replacement figure, which it did on 2026-08-20.
+1. Its §2 argues the measure-then-fix ordering that the operator reversed on 2026-08-20. The
+   measurement still runs; the ordering argument no longer applies.
+2. It predicts `Boost` is a near-no-op because `RaptorRetrievalBehavior` only sees the truncated
+   top-k. That prediction is **untouched and still live** — 6.2.3 deliberately did not fix
+   `Boost` or `Filter` so they could be measured as shipped.
+
+**Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`. They were
+kept alive only until 6.x.7 published its replacement figure, which it did on 2026-08-20.
 
 ## Working State
 
-**Branch:** `phase/6.2.3-corpus-level-raptor`, cut from `main` at `3f5d14fb`. **22 commits, nothing
-pushed, no PR open.** `bench/graphrag-localspec-measurement` is merged and safe to delete.
+**Branch:** `chore/complete-phase-6-2-3`, cut from `main` at `c461475d`. Carries only this state
+update. `phase/6.2.3-corpus-level-raptor` was merged (squash, `c461475d`) and deleted after the
+content was verified on `main`.
 
-**Phase 6.2.3 is implemented and reviewed but NOT merged.** ROADMAP and MILESTONE still show it
-`pending` deliberately — it is promoted to `complete` after the merge, not before. Do not mark it
-complete from this file.
+**Issues from the 6.2.3 work:** #331, #332, #333 fixed and auto-closed on merge. **#336, #337 and
+#338 remain open by decision**, each documented in `docs/guide/raptor.md`'s Known Limitations:
 
-**What the branch carries:** the state-file refresh; two design specs (6.2.1's measurement, 6.2.3's
-fix); the implementation plan; and seven implemented tasks — the #332 collision fix, the
-`Rag.NET.Raptor.Store` package, `TreeScope`, corpus clustering with a growth debounce,
-`RaptorTreeRebuilder`, the #333 `SelectK` fix, and the breaking default flip.
+- **#338 is the one that matters most.** `DeleteAsync` does not touch the leaf store, so a deleted
+  document's text can be read back, summarised, and stored as searchable content under
+  `raptor://corpus-tree` — untraceable and undeletable. Live on the default path. A real fix needs
+  an abstraction in core.
+- **#336** — corpus summaries accumulate in the BM25 index on every ingest-triggered rebuild, and
+  `RebuildAsync` bypasses BM25 entirely.
+- **#337** — the variance floor is an absolute `1e-6`, so near-duplicate vectors still score as a
+  near-perfect fit.
 
-**Issues filed this session:** #331 and #332 (both fixed here), #333 (fixed here), #336, #337, #338
-(all three filed, documented as known limitations, deliberately not fixed).
-
-**Three residuals parked for the human reviewer**, none affecting correctness:
-1. `TestProjectTierTests.cs:16` says "65 test projects"; the true count is 76. It was already wrong
-   at 64 and the fix applied a literal increment. A corrected comment that is still untrue.
-2. `docs/guide/raptor.md`'s Ingestion-Options and Retrieval-Options samples still call `UseRaptor`
-   without `leafStorePath` under `Corpus` scope, so copying them throws. Every nuget-shipping README
-   is clean; these two guide blocks are not.
-3. `docs/reference/opentelemetry.md` lists `ragnet.raptor.build` unconditionally, but
-   `RaptorTreeRebuilder`'s path emits no span.
+**Carry this into 6.1 and 6.2's remaining `unit` packages.** 6.2.3 found three separate test-fixture
+defects, each of which made a real failure unreachable while the suite stayed green. `VerifiedBy=unit`
+did not mean *untested*; it meant *the fakes could not produce inputs that fail*. Two shipped
+defects and one unbounded-spend infinite loop survived in a published package because of it.

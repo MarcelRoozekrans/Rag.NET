@@ -4325,10 +4325,15 @@ collide.
 **Exit condition:** every issue listed above is closed by a merged PR, each with an *Exercised by*
 pointer in `features.md`, and no new bare-`unit` entry is created.
 
-### Phase 6.2.3: Corpus-Level RAPTOR — implement the paper's central mechanism [status: pending — added 2026-08-20, gating v1.0]
+### Phase 6.2.3: Corpus-Level RAPTOR — implement the paper's central mechanism [status: complete 2026-08-21 — added 2026-08-20, built and merged in #340. Three defects fixed (#331 tree scope, #332 `ChunkIndex` collision across levels, #333 `SelectK` returning k=n so a level never reduced and the loop never terminated); three more found, filed and documented rather than fixed (#336, #337, #338)]
+**Completed:** 2026-08-21
 **Surface:** Backend
 **HelpWanted:** no
 **Issue:** #331
+
+*This phase never carried `status: active`. It was added and executed in the same session, so the
+`pending → active → complete` transition collapsed. Recorded rather than back-filled, because a
+status the roadmap never actually held would be a fiction.*
 
 **Goal:** Make `Rag.NET.Raptor` cluster across the corpus rather than within each document, keeping
 the per-document scope selectable so the shipped behaviour stays measurable rather than deleted.
@@ -4372,7 +4377,7 @@ shipped state; keeping both scopes selectable is what gives it back.
 configuration; the debounce and the rebuilder exist and are tested; existing RAPTOR users have a
 stated migration path; #331 closes. The measurement itself belongs to 6.2.1 and runs after.
 
-### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. **Now gated on 6.2.3** (added 2026-08-20), which implements RAPTOR's corpus-level clustering]
+### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
 The tag is the last and smallest phase in the milestone, which is the point of the 2026-08-03
