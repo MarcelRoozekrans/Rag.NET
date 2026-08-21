@@ -82,6 +82,11 @@ public class RaptorCorpusBuildTests
         await behavior.HandleAsync(first, CancellationToken.None, static (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
         var callsAfterFirst = _helpers.ChatClient.ReceivedCalls().Count();
 
+        // ShouldBuild always builds on the first call regardless of the threshold, so this must
+        // be positive — otherwise the "no further calls happened" assertion below holds vacuously
+        // on 0 == 0, which would stay green even if the first build silently stopped happening.
+        Assert.True(callsAfterFirst > 0, "the first ingest must trigger a build, or this test proves nothing");
+
         // One more chunk is 5% growth, well under the 50% threshold.
         var second = _helpers.CreateContext(chunkCount: 1, documentId: "doc-1");
         await behavior.HandleAsync(second, CancellationToken.None, static (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));

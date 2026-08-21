@@ -242,8 +242,10 @@ public class RaptorIngestionBehaviorTests
     public async Task TreeBuilding_Terminates_AtDefaultOptionsWithNoDepthCap()
     {
         // MaxTreeDepth deliberately left at its default null. Before the non-reducing-level guard
-        // this hung forever (#333). The timeout is the assertion: a regression reintroducing
-        // non-termination fails here rather than wedging the suite.
+        // this hung forever (#333). The 30-second CancellationTokenSource only fails the test
+        // rather than wedging the suite because BuildTreeAsync's level loop calls
+        // ct.ThrowIfCancellationRequested() every iteration: a regression reintroducing
+        // non-termination surfaces as OperationCanceledException here, not a hang.
         _helpers.SetupChatClient("a summary");
         _helpers.SetupEmbedder(dims: 8);
         var ctx = _helpers.CreateContext(chunkCount: 24);

@@ -44,6 +44,14 @@ public class RaptorTreeScopeTests
             static (c, _) => ValueTask.FromResult(new IngestionResult { DocumentId = c.Metadata.DocumentId, ChunksStored = c.EmbeddedChunks.Count }));
 
         Assert.Equal(12, await leafStore.CountAsync(TestContext.Current.CancellationToken));
+
+        // Positive first: without this, the DoesNotContain below holds vacuously if the corpus
+        // build silently stopped producing summaries at all, which is exactly the regression this
+        // test exists to catch.
+        Assert.Contains(
+            ctx.EmbeddedChunks,
+            c => c.Chunk.Metadata.ContainsKey("raptor_level")
+                && string.Equals(c.Chunk.DocumentId.Value, RaptorCorpusDocumentId.Value, StringComparison.Ordinal));
         Assert.DoesNotContain(
             ctx.EmbeddedChunks,
             c => c.Chunk.Metadata.ContainsKey("raptor_level")
@@ -59,7 +67,9 @@ public class RaptorTreeScopeTests
         // stops reducing, and the cap no longer has a reason to be here. Running uncapped means
         // this test carries the same non-termination exposure as
         // TreeBuilding_Terminates_AtDefaultOptionsWithNoDepthCap, so it takes the same 30-second
-        // guard: a regression should fail here, not wedge the suite.
+        // CancellationTokenSource: BuildTreeAsync's level loop calls ct.ThrowIfCancellationRequested()
+        // every iteration, so a regression fails here with OperationCanceledException rather than
+        // wedging the suite.
         await using var leafStore = new SqliteRaptorLeafStore(":memory:");
         await leafStore.InitializeAsync(TestContext.Current.CancellationToken);
 

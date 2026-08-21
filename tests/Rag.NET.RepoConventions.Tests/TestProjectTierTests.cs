@@ -13,7 +13,7 @@ namespace Rag.NET.RepoConventions.Tests;
 public sealed class TestProjectTierTests
 {
     /// <summary>
-    /// There are 64 test projects today. A far smaller number means the scan lost the working tree
+    /// There are 65 test projects today. A far smaller number means the scan lost the working tree
     /// and is asserting over nothing — which would pass, silently, forever.
     /// </summary>
     private const int FewestPlausibleTestProjects = 50;
