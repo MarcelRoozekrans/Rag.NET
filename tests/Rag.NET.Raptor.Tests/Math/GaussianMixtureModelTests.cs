@@ -1,8 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
 using Rag.NET.Raptor.Math;
 using Xunit;
 
 namespace Rag.NET.Raptor.Tests.Math;
 
+[SuppressMessage("Performance", "HLQ013:Use foreach loop", Justification = "Index-based access required to populate jagged test fixtures")]
 public class GaussianMixtureModelTests
 {
     [Fact]
@@ -56,6 +58,51 @@ public class GaussianMixtureModelTests
         var optimalK = GaussianMixtureModel.SelectK(data, maxK: 6);
 
         Assert.InRange(optimalK, 2, 4);
+    }
+
+    [Fact]
+    public void SelectK_DoesNotIsolateEveryPoint_OnDistinctData()
+    {
+        // #333: a singleton cluster's variance floors to VarianceFloor (1e-6), so its Gaussian
+        // log-density at its own mean is -0.5*d*ln(2*pi*1e-6) ~ +47.9 nats at d=8. Through
+        // -2*logLikelihood that is ~95.8 of BIC gain per isolated point, against a penalty of only
+        // 17*ln(n) ~ 39.1 at n=10. Splitting always won, so SelectK returned k = n for every n
+        // from 2 to 10, and the tree loop could never reduce its level count.
+        var rng = new Random(Seed: 7);
+        for (var n = 2; n <= 10; n++)
+        {
+            var data = new float[n][];
+            for (var i = 0; i < n; i++)
+            {
+                data[i] = new float[8];
+                for (var d = 0; d < 8; d++)
+                    data[i][d] = (float)rng.NextDouble();
+            }
+
+            var k = GaussianMixtureModel.SelectK(data, maxK: System.Math.Min(n, 10));
+
+            Assert.True(k < n, $"n={n}: SelectK returned k={k}; k must be below n or no tree level can ever reduce");
+        }
+    }
+
+    [Fact]
+    public void SelectK_StillSeparates_WellSeparatedClusters()
+    {
+        // The fix must not buy termination by making SelectK useless. Two tight, far-apart blobs
+        // must still be found as two clusters.
+        var rng = new Random(Seed: 11);
+        var data = new float[20][];
+        for (var i = 0; i < 20; i++)
+        {
+            data[i] = new float[8];
+            var offset = i < 10 ? 0.0f : 10.0f;
+            for (var d = 0; d < 8; d++)
+                data[i][d] = offset + (float)(rng.NextDouble() * 0.01);
+        }
+
+        var k = GaussianMixtureModel.SelectK(data, maxK: 10);
+
+        Assert.True(k >= 2, $"SelectK returned k={k}; two well-separated blobs must yield at least 2 clusters");
     }
 
     [Fact]

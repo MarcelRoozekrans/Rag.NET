@@ -8,6 +8,11 @@ internal static class GaussianMixtureModel
     private const double VarianceFloor = 1e-6;
     private const double EmptyClusterThreshold = 1e-10;
 
+    // A component owning fewer than two points is degenerate: its variance collapses to the floor,
+    // which BIC reads as a near-perfect fit rather than as the absence of a fit. Such a k is not a
+    // real candidate, so it is never scored (#333).
+    private const int MinimumComponentPoints = 2;
+
     internal static GmmResult Fit(float[][] data, int k, int maxIterations = 100, double tolerance = 1e-6)
     {
         int n = data.Length;
@@ -33,6 +38,12 @@ internal static class GaussianMixtureModel
         for (int k = 1; k <= maxK; k++)
         {
             var result = Fit(data, k, maxIterations);
+
+            if (HasUnderpopulatedComponent(result, k))
+            {
+                continue;
+            }
+
             double logLikelihood = ComputeLogLikelihood(data, result, k, d);
             int numParams = k * (2 * d + 1) - 1;
             double bic = -2.0 * logLikelihood + numParams * System.Math.Log(n);
@@ -45,6 +56,40 @@ internal static class GaussianMixtureModel
         }
 
         return bestK;
+    }
+
+    /// <summary>
+    /// Reports whether any component of <paramref name="gmmResult"/> owns fewer than two points.
+    /// </summary>
+    /// <remarks>
+    /// Counts hard assignments rather than summing responsibilities. Two reasons. It is exact: a
+    /// component that genuinely owns exactly two points sums its responsibilities to slightly under
+    /// two (measured: 1.9988) because the other components keep a sliver of the mass, so a
+    /// threshold on the soft count rejects real clusters unless it carries an epsilon nobody can
+    /// justify. And it matches what happens downstream: <c>RaptorIngestionBehavior</c> groups by
+    /// <see cref="GmmResult.Assignments"/>, so the hard counts are the sizes of the clusters that
+    /// actually get summarised.
+    /// </remarks>
+    /// <param name="gmmResult">The fit to inspect.</param>
+    /// <param name="k">The component count the fit used.</param>
+    /// <returns>Whether at least one component is too small to be a real cluster.</returns>
+    private static bool HasUnderpopulatedComponent(in GmmResult gmmResult, int k)
+    {
+        int[] counts = new int[k];
+        foreach (int assignment in gmmResult.Assignments)
+        {
+            counts[assignment]++;
+        }
+
+        for (int j = 0; j < k; j++)
+        {
+            if (counts[j] < MinimumComponentPoints)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static double[][] InitializeVariances(int k, int d)

@@ -42,16 +42,17 @@ public class RaptorTreeScopeTests
     [Fact]
     public async Task PerDocumentScope_WritesNothingToTheLeafStore()
     {
-        // MaxTreeDepth is capped at 2 rather than left at its null default: GaussianMixtureModel
-        // .SelectK always selects k = n for genuinely distinct points (#333), so with an
-        // unbounded depth the tree-building loop never terminates. Not this task's defect to fix.
+        // MaxTreeDepth is back at its null default. It was capped at 2 only because
+        // GaussianMixtureModel.SelectK selected k = n for genuinely distinct points (#333), so an
+        // unbounded depth never terminated; with that fixed the loop ends on its own when a level
+        // stops reducing, and the cap no longer has a reason to be here.
         await using var leafStore = new SqliteRaptorLeafStore(":memory:");
         await leafStore.InitializeAsync(TestContext.Current.CancellationToken);
 
         _helpers.SetupChatClient("Summary");
         _helpers.SetupEmbedder(8);
 
-        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument, MaxTreeDepth = 2 };
+        var options = new RaptorOptions { TreeScope = RaptorTreeScope.PerDocument };
         var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, options, leafStore);
         var ctx = _helpers.CreateContext(chunkCount: 12);
 

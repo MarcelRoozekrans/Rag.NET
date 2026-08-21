@@ -79,6 +79,11 @@ public class RaptorTreeRebuilderTests
     }
 
 #pragma warning disable HLQ013 // Use foreach — need index-based assignment
+    // Four tight, well-separated blobs rather than twenty uniform random vectors. Uniform noise
+    // has no cluster structure, so once SelectK stopped isolating every point into its own
+    // component (#333) BIC read all twenty as a single Gaussian and the rebuild produced no
+    // summaries at all — the count > 0 precondition below then failed before the ordering
+    // assertion it exists to protect could ever run.
     private static IReadOnlyList<RaptorLeaf> TwentyLeaves()
     {
         var rng = new Random(Seed: 42);
@@ -87,7 +92,7 @@ public class RaptorTreeRebuilderTests
         {
             var vector = new float[8];
             for (var d = 0; d < vector.Length; d++)
-                vector[d] = (float)rng.NextDouble();
+                vector[d] = (i / 5) + (float)(rng.NextDouble() * 0.1);
 
             leaves.Add(new RaptorLeaf($"doc-{i / 4}", i % 4, $"leaf text {i}", vector));
         }

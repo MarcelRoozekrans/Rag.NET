@@ -36,7 +36,7 @@ internal sealed class RaptorTestContext
                 DocumentId = new DocumentId(documentId),
                 ChunkIndex = i,
             };
-            var embedding = GenerateEmbedding(rng, embeddingDims);
+            var embedding = GenerateEmbedding(rng, embeddingDims, topic: i % 3);
             ctx.EmbeddedChunks.Add(new EmbeddedChunk { Chunk = chunk, Embedding = new ReadOnlyMemory<float>(embedding) });
         }
 
@@ -50,11 +50,17 @@ internal sealed class RaptorTestContext
     }
 
 #pragma warning disable HLQ013 // Use foreach — need index-based assignment
-    private static float[] GenerateEmbedding(Random rng, int dims)
+    // Offset per topic rather than uniform over [0,1): the chunk text already claims to be
+    // "about topic {i % 3}", and an embedding that ignores the topic contradicts the text it is
+    // supposed to embed. It also carries no cluster structure whatsoever, so once SelectK stopped
+    // isolating every point into its own component (#333) BIC read a whole context as a single
+    // Gaussian — correctly — and no tree level could form. Three tight, well-separated blobs make
+    // the vectors agree with the text, so clustering has something real to find.
+    private static float[] GenerateEmbedding(Random rng, int dims, int topic)
     {
         var embedding = new float[dims];
         for (var j = 0; j < embedding.Length; j++)
-            embedding[j] = (float)rng.NextDouble();
+            embedding[j] = topic + (float)(rng.NextDouble() * 0.1);
         return embedding;
     }
 #pragma warning restore HLQ013
