@@ -44,7 +44,16 @@ public sealed class RaptorOptions
     internal bool MaxClustersIsSet() => MaxClusters is not null;
 
     /// <summary>
-    /// Cap recursion depth. Null = recurse until 1 cluster remains. Default: null.
+    /// Cap recursion depth. Null = recurse until a level can no longer be usefully split. Default:
+    /// null.
+    /// <para>
+    /// Not literally "until one cluster remains": <c>Min(MaxClusters, count - 1)</c> forces a
+    /// strict decrease every level, and the non-reducing-level guard rejects any level whose
+    /// cluster count would not shrink the count, so the smallest level that can still be built is
+    /// two nodes clustering to one — which is itself rejected (<c>k &lt;= 1</c> stops the tree). The
+    /// top level therefore always has at least two nodes; recursion stops one level short of a
+    /// single cluster, not at one.
+    /// </para>
     /// <para>
     /// When set, must be greater than 0 — enforced by the validation attribute
     /// (<see langword="null"/> passes). <c>RaptorIngestionBehavior</c> gates level building on
@@ -78,4 +87,33 @@ public sealed class RaptorOptions
 
     /// <summary>Optional separate embedder for summaries. Null = use DI-registered IEmbeddingGenerator.</summary>
     public IEmbeddingGenerator<string, Embedding<float>>? SummaryEmbedder { get; set; }
+
+    /// <summary>What set of chunks the tree is built over. Default: <see cref="RaptorTreeScope.Corpus"/>.</summary>
+    /// <remarks>
+    /// <b>The default changed in v1.0 and this is a breaking change.</b> It was
+    /// <see cref="RaptorTreeScope.PerDocument"/>, which cannot produce a summary spanning two
+    /// documents and therefore is not the mechanism the RAPTOR paper describes (#331).
+    /// <see cref="RaptorTreeScope.PerDocument"/> remains fully supported.
+    /// </remarks>
+    public RaptorTreeScope TreeScope { get; set; } = RaptorTreeScope.Corpus;
+
+    /// <summary>
+    /// Under <see cref="RaptorTreeScope.Corpus"/>, the fractional growth in stored leaves that
+    /// triggers a tree rebuild. Default: 0.10 — rebuild once the corpus is 10% larger than it was
+    /// at the last build. Zero or negative rebuilds on every ingest.
+    /// <para>
+    /// The same shape and default as <c>GraphRagOptions.CommunityDetectionGrowthThreshold</c>, and
+    /// for the same reason: clustering the whole corpus once per ingested document is #300's defect,
+    /// and this is the debounce that stops it recurring here.
+    /// </para>
+    /// </summary>
+    [InclusiveBetween(0.0, 100.0)]
+    [Must(nameof(CorpusGrowthThresholdIsFinite), Message =
+        "CorpusGrowthThreshold must be a finite number (not NaN or infinity).")]
+    public double CorpusGrowthThreshold { get; set; } = 0.10;
+
+    /// <summary>Reports whether <see cref="CorpusGrowthThreshold"/> is a finite number.</summary>
+    /// <param name="value">The <see cref="CorpusGrowthThreshold"/> under validation.</param>
+    /// <returns>Whether the value is neither NaN nor infinite.</returns>
+    internal bool CorpusGrowthThresholdIsFinite(double value) => double.IsFinite(value);
 }

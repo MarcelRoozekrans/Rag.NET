@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Rag.NET.Abstractions;
 using Rag.NET.DependencyInjection;
 using Rag.NET.Ingestion.Behaviors;
+using Rag.NET.Raptor.Store;
 using Rag.NET.Retrieval.Behaviors;
 
 namespace Rag.NET.Raptor;
@@ -44,12 +45,15 @@ public static class RagBuilderExtensions
     public static TBuilder UseRaptor<TBuilder>(
         this TBuilder builder,
         Action<RaptorOptions>? configure = null,
-        Action<RaptorRetrievalOptions>? retrieval = null)
+        Action<RaptorRetrievalOptions>? retrieval = null,
+        string? leafStorePath = null)
         where TBuilder : IRagBuilder
     {
         var options = new RaptorOptions();
         configure?.Invoke(options);
         ThrowIfInvalid(new RaptorOptionsValidator().Validate(options), nameof(configure), "RAPTOR ingestion");
+        ThrowIfCorpusScopeMisconfigured(options, leafStorePath, nameof(configure));
+
         builder.Services.AddSingleton(options);
 
         var retrievalOptions = new RaptorRetrievalOptions();
@@ -57,11 +61,35 @@ public static class RagBuilderExtensions
         ThrowIfInvalid(new RaptorRetrievalOptionsValidator().Validate(retrievalOptions), nameof(retrieval), "RAPTOR retrieval");
         builder.Services.AddSingleton(retrievalOptions);
 
+        if (leafStorePath is not null)
+        {
+            builder.Services.AddSingleton<IRaptorLeafStore>(_ =>
+            {
+                var store = new SqliteRaptorLeafStore(leafStorePath);
+                store.InitializeAsync().GetAwaiter().GetResult();
+                return store;
+            });
+        }
+
         builder.Services.AddSingleton<RaptorIngestionBehavior>(sp =>
             new RaptorIngestionBehavior(
                 options.SummaryChatClient ?? sp.GetRequiredService<IChatClient>(),
                 options.SummaryEmbedder ?? sp.GetRequiredService<IEmbeddingGenerator<string, Embedding<float>>>(),
-                options));
+                options,
+                sp.GetService<IRaptorLeafStore>()));
+
+        if (leafStorePath is not null)
+        {
+            // The on-demand counterpart to the ingest-time growth threshold. Registered rather
+            // than left for callers to construct, because it must share the ONE
+            // RaptorIngestionBehavior singleton: that instance holds the debounce baseline, and a
+            // rebuild resets it so ingestion continuing afterwards debounces from the rebuilt
+            // state rather than a stale count.
+            builder.Services.AddSingleton<RaptorTreeRebuilder>(sp =>
+                new RaptorTreeRebuilder(
+                    sp.GetRequiredService<RaptorIngestionBehavior>(),
+                    sp.GetRequiredService<IVectorStore>()));
+        }
 
         builder.Services.AddSingleton<RaptorRetrievalBehavior>(sp =>
             new RaptorRetrievalBehavior(sp.GetRequiredService<RaptorRetrievalOptions>()));
@@ -72,6 +100,43 @@ public static class RagBuilderExtensions
             .Add<RaptorRetrievalBehavior>(before: typeof(RerankingBehavior));
 
         return builder;
+    }
+
+    /// <summary>
+    /// Rejects two <see cref="RaptorTreeScope.Corpus"/> misconfigurations that would otherwise fail
+    /// silently rather than loudly: no leaf store to persist leaves between ingests, and
+    /// <see cref="RaptorOptions.StoreLeafChunks"/> set to a value that has nothing to act on.
+    /// </summary>
+    /// <param name="options">The configured ingestion options.</param>
+    /// <param name="leafStorePath">The leaf store path passed to <see cref="UseRaptor{TBuilder}"/>, or null.</param>
+    /// <param name="configureParamName"><c>nameof(configure)</c> from the caller, for <see cref="ArgumentException.ParamName"/>.</param>
+    /// <exception cref="ArgumentException">Either misconfiguration is present.</exception>
+    private static void ThrowIfCorpusScopeMisconfigured(
+        RaptorOptions options, string? leafStorePath, string configureParamName)
+    {
+        if (options.TreeScope != RaptorTreeScope.Corpus)
+        {
+            return;
+        }
+
+        if (leafStorePath is null)
+        {
+            throw new ArgumentException(
+                "RaptorOptions.TreeScope is Corpus, which clusters over the whole corpus and therefore " +
+                "needs somewhere to keep leaf chunks between ingests. Pass leafStorePath, or set " +
+                "TreeScope to PerDocument.",
+                nameof(leafStorePath));
+        }
+
+        if (!options.StoreLeafChunks)
+        {
+            throw new ArgumentException(
+                "RaptorOptions.TreeScope is Corpus and RaptorOptions.StoreLeafChunks is false. Under " +
+                "Corpus scope, leaf chunks live in the leaf store, not in the ingestion context, so " +
+                "StoreLeafChunks has nothing to act on and would be silently ignored. Set " +
+                "StoreLeafChunks to true, or set TreeScope to PerDocument.",
+                configureParamName);
+        }
     }
 
     /// <summary>

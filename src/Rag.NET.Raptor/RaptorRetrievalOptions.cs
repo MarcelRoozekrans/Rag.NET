@@ -10,6 +10,43 @@ public sealed class RaptorRetrievalOptions
     public RaptorRetrievalMode Mode { get; set; } = RaptorRetrievalMode.Blend;
 
     /// <summary>
+    /// How many candidates <see cref="RaptorRetrievalMode.Boost"/> and
+    /// <see cref="RaptorRetrievalMode.Filter"/> fetch before applying the mode, as a multiple of
+    /// the query's <c>TopK</c>. Default: 3.0. <see cref="RaptorRetrievalMode.Blend"/> never
+    /// over-fetches.
+    /// <para>
+    /// <b>Without this, neither mode could do what it documents.</b> The behaviour used to call
+    /// the next stage with the context unmodified, and the vector store fetches exactly
+    /// <c>TopK</c> — so both modes only ever saw the already-truncated top-k. <c>Boost</c> could
+    /// reorder summaries <i>within</i> that set but never promote one <i>into</i> it, however
+    /// large the boost; and <c>Filter</c> dropped summaries out of it and returned fewer results
+    /// than the caller asked for.
+    /// </para>
+    /// <para>
+    /// <b>A multiplier rather than the absolute count <c>MmrBehavior</c> uses</b>
+    /// (<c>MmrCandidateCount ?? TopK * 3</c>), and deliberately: <b>1.0 reproduces the behaviour
+    /// from before this option existed, exactly, at any <c>TopK</c></b>. An absolute count would
+    /// only reproduce it when set to whatever <c>TopK</c> happened to be. That property is
+    /// load-bearing — it is what lets the pre-fix behaviour stay measurable as a control instead
+    /// of being kept alive as a shipped defect, the same answer Phase 6.2.3 used when it kept
+    /// <c>RaptorTreeScope.PerDocument</c> selectable.
+    /// </para>
+    /// <para>
+    /// Must be at least 1.0, and finite. Below 1.0 the behaviour would fetch fewer candidates
+    /// than the caller asked for and could not fill <c>TopK</c> at all — the under-fill this
+    /// option exists to remove.
+    /// </para>
+    /// </summary>
+    [GreaterThanOrEqualTo(1.0)]
+    [Must(nameof(CandidateMultiplierIsFinite), Message = "CandidateMultiplier must be a finite number (not NaN or infinity).")]
+    public double CandidateMultiplier { get; set; } = 3.0;
+
+    /// <summary>Reports whether <see cref="CandidateMultiplier"/> is a finite number.</summary>
+    /// <param name="value">The <see cref="CandidateMultiplier"/> value under validation.</param>
+    /// <returns>Whether the value is neither NaN nor infinite.</returns>
+    internal bool CandidateMultiplierIsFinite(double value) => double.IsFinite(value);
+
+    /// <summary>
     /// Score multiplier for summary chunks in Boost mode. Default: 1.2.
     /// <para>
     /// Must be greater than 0, and finite — enforced by the validation attributes, which

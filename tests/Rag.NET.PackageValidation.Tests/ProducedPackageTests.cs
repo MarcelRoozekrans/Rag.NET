@@ -49,7 +49,7 @@ public sealed class ProducedPackageTests
     /// and benchmark projects inflated the count before Task 1b. Adding or removing a package is
     /// a deliberate act; update this constant in the same commit.
     /// </summary>
-    private const int ExpectedPackageCount = 70;
+    private const int ExpectedPackageCount = 71;
 
     /// <summary>
     /// What NuGet ships when a project declares no <c>Description</c>. Not a warning, not an

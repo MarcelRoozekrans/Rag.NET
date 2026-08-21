@@ -4028,9 +4028,16 @@ this milestone carries the hardening and the tag.
 > figure with a control; answer engines an accuracy through the 5.2.2 harness; vector stores must
 > reproduce the SciFact parity figure through themselves; parsers/chunkers a real file with shape
 > assertions; live services a recording or a stated reason; pipeline plumbing a parity test.
-> Two decisions the note leaves to the operator, still open: whether 6.1's recordings gate v1.0 or
-> `<VerifiedByReason>` does where no credentials exist; and whether the #247 / #239 fixes ship in
-> v1.0. The note's recommendation stands in until they are made.
+> Two decisions the note leaves to the operator, **both now closed, and differently**.
+> **The recordings question was decided 2026-08-20, against the note's recommendation**: 6.1's
+> recordings **do** gate v1.0, with 6.1's *work* postponed behind 6.2.3. The note had argued for
+> `<VerifiedByReason>` instead, because a criterion satisfiable only by credentials that may never
+> arrive is not falsifiable; that trade-off was raised at the time and accepted, so v1.0 now waits
+> on 18 cassettes whose blocker is accounts rather than effort. `<VerifiedByReason>` stays
+> implemented and enforced — it is no longer the answer for the connectors. **The #247 / #239
+> question was settled by events rather than by a decision**: both are on `main` as of 2026-08-18
+> (#311, #312 for #247; #296, #291 for #239), so they ship unless someone reverts them. Recorded
+> because a decision nobody made is worth distinguishing from one that was taken.
 > **"Find all bugs before going 1.0" is the intent behind this milestone, and it is deliberately
 > not its Definition of Done.** "No bugs remain" is not a claim this — or any — milestone can
 > make: nothing can check it, it can only be falsified by the next defect, so a milestone
@@ -4046,7 +4053,8 @@ and something checks it):
 - [x] Milestones 4 and 5 complete — their own DoDs, checked at their own closes, not
       re-litigated here; this box is false while either is open *(both closed by audit: 4 on 2026-08-11, 5 on 2026-08-15)*
 - [ ] All planned phases complete — 6.0 Inventory, 6.1 Recorded Responses, 6.2 Raise the Floor,
-      6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, 6.3 Release v1.0
+      6.2.1 Retrieval & Answer Sweep, 6.2.2 Requested Features, **6.2.3 Corpus-Level RAPTOR**
+      (added 2026-08-20; gates v1.0 — see #331), 6.3 Release v1.0
 - [ ] **Every `✅ Done` row in `features.md` names what exercises it** (Phase 6.0): an
       *Exercised by* column pointing at a test or benchmark that runs the real thing — a pinned
       figure, a container suite, a recording, a real-file test — and a conventions test that fails a
@@ -4135,7 +4143,7 @@ being a feeling.
 package is in exactly one of the three states, and the allowlist is the work list for the rest of
 the milestone. Nothing is exercised in this phase; it is where the ledger stops being a feeling.
 
-### Phase 6.1: Recorded Responses [status: in progress 2026-08-17 — the harness did not work and now does (#290): recordings were written to a directory replay never read, and every mapping matched on the ephemeral WireMock port, so nothing anyone recorded could ever replay. Both defects were silent because record mode proxies to the real service and therefore passes. First working cassette recorded the same day (GitHub, unauthenticated, 17 KB); #283 carries the corrected instructions for the remaining 18 services, where the blocker is accounts rather than work]
+### Phase 6.1: Recorded Responses [status: postponed 2026-08-20, **still gating v1.0** — sequenced behind 6.2.3 at the operator's call; the gate was kept rather than handed to `<VerifiedByReason>`, so the tag waits on the remaining 18 cassettes and their accounts. Previously: in progress 2026-08-17 — the harness did not work and now does (#290): recordings were written to a directory replay never read, and every mapping matched on the ephemeral WireMock port, so nothing anyone recorded could ever replay. Both defects were silent because record mode proxies to the real service and therefore passes. First working cassette recorded the same day (GitHub, unauthenticated, 17 KB); #283 carries the corrected instructions for the remaining 18 services, where the blocker is accounts rather than work]
 **Goal:** For each of the ~20 packages that talk to live services, either commit a scrubbed,
 dated recording of one real exchange that the tests replay, or record per package why no
 recording exists. (Moved out of Milestone 4 on 2026-08-03 with the v1.0 postponement; the phase
@@ -4205,7 +4213,7 @@ phase's own first task; this entry states the question and the evidence, not the
 whatever definition this phase settles, or carries a `<VerifiedByReason>` stating why it stays.
 That is Milestone 6's second DoD criterion, and this phase owns it.
 
-### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: pending — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. #239 and #200 closed 2026-08-17; #247 and #176 remain, and #247 is still the largest measured lever]
+### Phase 6.2.1: Retrieval & Answer Sweep — the GraphRAG method, applied to the rest [status: active 2026-08-20 — added 2026-08-15 by the re-plan; a sub-phase so 6.3 keeps the number every release note already points at. Two of its four named debts are now closed: #239 and #200 on 2026-08-17, **#247 on 2026-08-18** — fixed twice over, #311 hiding graph chunks from retrieval by default and #312 giving them their own store, pinned at 0.3494 in #280. #176 remains and is **worse** than it was recorded: the full corpus gives 2,816 singletons of 3,573, **78.8%** against the 65% the issue carries. The local-search thread completed 2026-08-20 (#323, #326); the sweep itself has not started]
 **Plan:** `docs/plans/2026-08-19-graphrag-local-search-completion-implementation.md` — the GraphRAG
 local-search thread only (spec sub-phases 6.x.1, 6.x.6, 6.x.7), not the whole sweep. **Complete
 2026-08-20.** Tasks 1–5 merged in #323; Task 6's measurement ran the same night and is pinned as the
@@ -4230,12 +4238,18 @@ questions. Covariates (6.x.5) and every other technique in this phase's goal bel
 of their own.
 **Goal:** every retrieval technique and every answer engine gets what GraphRAG got in Milestone 5:
 one real run on a real corpus with a real model, differenced against a control, pinned, and read
-honestly. **#247 first** — the shared-store policy for graph-derived chunks is the largest measured
-cost in the programme (−0.043 nDCG, −0.21 answer accuracy) and the one fix every measurement pointed
-at; fix it, re-run the four answer arms at top-6 (everything else replays, ~$5), and *then* the
-question 5.2.2 could not answer — can local search beat dense when it is not starving the model —
-gets its number. Then, in whatever order the pilot costs suggest: RAPTOR (same store shape as
-GraphRAG, likely the same finding, and the same fix), HyDE and reranking (already have parity-corpus
+honestly. **#247 was first, and is done** (2026-08-18) — the shared-store policy for graph-derived
+chunks was the largest measured cost in the programme (−0.043 nDCG, −0.21 answer accuracy) and the
+one fix every measurement pointed at. Option (c) was measured first (#274: the `filtered` arm
+reproduced article-only accuracy to four decimals, so the whole loss was displacement), pinned at
+0.3494 (#280), then shipped as behaviour — #311 hid the graph's chunks from retrieval by default,
+#312 gave them their own store. The question 5.2.2 could not answer — can local search beat dense
+when it is not starving the model — got its number on 2026-08-20: **0.3459 overall, 0.8603 on
+inference**, level with dense overall and the strongest entity-question result measured here.
+What remains, in whatever order the pilot costs suggest: **RAPTOR first** (same store shape as
+GraphRAG, likely the same finding, and #247's fix is the template — the discriminator, the
+over-fetch-and-drop, and the separate-store option are all now built and measured once), then
+HyDE and reranking (already have parity-corpus
 cells — re-measure under the Real protocol), hybrid BM25, late chunking, SPLADE; the three answer
 engines (MapReduce, Refine, FLARE) through `BeirGraphRagAnswerTests`' harness as arms; every vector
 store through the SciFact parity leg, reproducing 0.64593 ± 0.005 through itself; and the
@@ -4248,8 +4262,18 @@ traversal are decided here (rescale, drop, or use), with the ablation numbers in
 answer arm per engine (~$3 derived each, replayed after); one container run per store; a fast-tier
 test for parity. What it does not promise: that any of them are good. Measured is the bar.
 
-**Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; #247 is fixed
-and re-measured; the pipeline-parity test is in the fast tier; the guards' allowlist is empty.
+**Exit condition:** every row 6.0 classified as *plan* has its pointer and its pin; ~~#247 is fixed
+and re-measured~~ (met 2026-08-18); the pipeline-parity test is in the fast tier; the guards'
+allowlist is empty.
+
+**Open threads, 2026-08-20** — what is actually left, now that #247 and the local-search work have
+closed: RAPTOR, HyDE, reranking, hybrid BM25, late chunking and SPLADE under the Real protocol; the
+three answer engines as arms; every vector store through the SciFact parity leg; the
+pipeline-parity test; **#176** at its re-measured 78.8%; **local search's yes/no abstention** — it
+commits on 8.8% of comparison and 4.3% of temporal questions where global search scores 0.4953 and
+0.3928, which nobody has explained; and the **deletion of `GraphLocalSearchBehavior` and
+`PageRankWeight`**, which the note below made conditional on 6.x.7 publishing its replacement
+figure. That figure published on 2026-08-20, so the deletion is now unblocked.
 
 - **`GraphLocalSearchBehavior` and `PageRankWeight` are deprecated in `<remarks>`, not
   `[Obsolete]`, and not deleted** (2026-08-19, Task 1 of the local-search completion plan).
@@ -4301,7 +4325,107 @@ collide.
 **Exit condition:** every issue listed above is closed by a merged PR, each with an *Exercised by*
 pointer in `features.md`, and no new bare-`unit` entry is created.
 
-### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself]
+### Phase 6.2.3: Corpus-Level RAPTOR — implement the paper's central mechanism [status: complete 2026-08-21 — added 2026-08-20, built and merged in #340. Three defects fixed (#331 tree scope, #332 `ChunkIndex` collision across levels, #333 `SelectK` returning k=n so a level never reduced and the loop never terminated); three more found, filed and documented rather than fixed (#336, #337, #338)]
+**Completed:** 2026-08-21
+**Surface:** Backend
+**HelpWanted:** no
+**Issue:** #331
+
+*This phase never carried `status: active`. It was added and executed in the same session, so the
+`pending → active → complete` transition collapsed. Recorded rather than back-filled, because a
+status the roadmap never actually held would be a fiction.*
+
+**Goal:** Make `Rag.NET.Raptor` cluster across the corpus rather than within each document, keeping
+the per-document scope selectable so the shipped behaviour stays measurable rather than deleted.
+
+**Why this is a phase and not a note.** `RaptorIngestionBehavior` is an `IIngestionBehavior`
+clustering `ctx.EmbeddedChunks`, and `IngestionContext` carries one `Stream` and one
+`DocumentMetadata` — one document's chunks. Its own telemetry says so
+(`activity?.SetTag("document.id", …)`). The RAPTOR paper clusters across the collection; that is
+the technique's point. A per-document tree cannot produce a node spanning two documents, so on any
+multi-document question the summaries can only displace. **This is #300's shape** — a whole-corpus
+operation running once per ingested document.
+
+`docs/guide/raptor.md` is not wrong about it; it describes the per-document behaviour accurately.
+The gap is between the package's name and its mechanism.
+
+**Why it costs what it costs.** #302's debounce-plus-rebuilder pattern transfers in shape, but not
+in substance: `CommunityDetectionBehavior` can do whole-graph work because GraphRAG owns an
+`IGraphStore` that enumerates itself. RAPTOR has no equivalent and the vector store cannot stand
+in — `IVectorStore` is `StoreAsync`/`SearchAsync`/`DeleteByDocumentIdAsync` with no enumeration;
+`IChunkLookup` is by-key and returns `TextChunk`, so it cannot return the **vectors** RAPTOR
+clusters on; and it is implemented by `InMemoryVectorStore` and `FederatedVectorStore` only, which
+is what #318 is about. So this needs RAPTOR to own persistent state the way GraphRAG owns its graph
+store: leaf embeddings written at ingestion, corpus-wide clustering over them, debounced on growth,
+an on-demand rebuilder, and a migration story. Roughly **#302 plus #312 combined**.
+
+**Both scopes stay selectable, deliberately.** The per-document path is kept as an option rather
+than deleted, following #323's precedent — `GraphLocalSearchBehavior` and `PageRankWeight` were
+kept unregistered but present because deleting them would have made three pinned figures
+unreproducible. Keeping both here means the RAPTOR measurement in 6.2.1 prices the old and new
+shapes in **one** run rather than two, and nothing ships unpinned.
+
+**Ordering, and the reversal behind it.** The design at
+`docs/plans/2026-08-20-raptor-real-protocol-design.md` originally deferred this fix on
+a measured trigger, per #247's measure-then-fix order. **Reversed by the operator on 2026-08-20** —
+*"fix it first before spending again"* — on the grounds that the defect is structural rather than
+empirical: it was established by reading `IngestionContext`, not inferred from a figure, so a paid
+sweep would buy evidence for something already known. What that gives up is a pinned figure for the
+shipped state; keeping both scopes selectable is what gives it back.
+
+**Exit condition:** RAPTOR clusters corpus-wide by default; the per-document scope is reachable by
+configuration; the debounce and the rebuilder exist and are tested; existing RAPTOR users have a
+stated migration path; #331 closes. The measurement itself belongs to 6.2.1 and runs after.
+
+### Phase 6.2.4: RAPTOR Retrieval Over-Fetch — make `Boost` and `Filter` do what they document [status: pending — added 2026-08-21, ahead of 6.2.1's RAPTOR measurement]
+**Surface:** Backend
+**HelpWanted:** no
+
+**Goal:** `RaptorRetrievalBehavior` over-fetches candidates before applying its mode, so `Boost` can
+promote a summary *into* the result set and `Filter` returns the number of results the caller asked
+for. Keep today's behaviour reachable by configuration.
+
+**The defect.** `HandleAsync` calls `next(ctx, ct)` with the context **unmodified**, and
+`VectorStoreBehavior` fetches exactly `ctx.Options.TopK`. So the behaviour only ever sees the
+already-truncated top-k:
+
+- **`Boost` cannot do what it documents.** `ApplyBoost` multiplies summary scores *within* the k
+  already returned, so a summary ranked 7th that would beat 6th at 1.2× can never appear. It
+  promotes within the set, never into it — the opposite of the mode's stated purpose. #239's shape:
+  an option whose default behaviour undoes what it says, invisible because every test passes.
+- **`Filter` under-fills.** Ask for 6, get 6, drop 3 summaries, return 3. A contract violation, not
+  a tuning question.
+
+**The fix is small and its pattern is already in the solution.** `MmrBehavior` does exactly this:
+`var candidateCount = ctx.Options.MmrCandidateCount ?? ctx.Options.TopK * 3;` then
+`next(ctx with { Options = ctx.Options with { TopK = candidateCount } })`, reducing after. RAPTOR
+gains the same shape and the same `?? TopK * 3` default, so the multiplier is precedent rather than
+invention.
+
+**`Blend` must stay byte-identical.** It is the default and figures are pinned against it; it
+returns exactly `TopK` and must not start over-fetching.
+
+**Why this is a phase rather than a line in 6.2.1.** Because 6.2.3 also looked like a small fix and
+turned out to need a store, a debounce, a rebuilder and a migration. Naming it means the roadmap
+sees its cost if it grows again. It is genuinely expected to be small.
+
+**Why it lands before the measurement, reversing this design's original order.** The measurement
+spec at `docs/plans/2026-08-20-raptor-real-protocol-design.md` originally measured `Boost` as
+shipped and fixed it after, following #247. That was wrong: #247's defect was *empirical* — nobody
+knew what the shared store cost until it was measured — while this one is **structural and provable
+from two lines**. Paying for an answer arm to confirm arithmetic buys evidence for something already
+known, which is the objection that reversed #331's ordering on 2026-08-20. The question reading
+cannot answer is whether a *working* `Boost` helps, and that needs the fix first.
+
+**The control survives by configuration, not by leaving the defect in place** — 6.2.3's own answer,
+where `PerDocument` stayed selectable. Setting the candidate count to `TopK` (1×) reproduces today's
+behaviour exactly, so anyone wanting the broken state pinned can still reach it.
+
+**Exit condition:** `Boost` can promote a summary into the result set that ranked below the cut
+without it; `Filter` returns `TopK` results when enough non-summary candidates exist; `Blend` is
+unchanged; 1× reproduces the old behaviour; all three have tests that fail against today's code.
+
+### Phase 6.3: Release v1.0 [status: pending — but its first work is DONE and was done before this milestone opened: 71 packages are live on nuget.org at 0.1.0 since 2026-08-11, so the account, the key and every package ID are settled. What remains is the v1.0 tag itself. ~~Now gated on 6.2.3~~ — **that gate cleared 2026-08-21** when #340 merged. What still gates the tag is 6.1's recordings, kept as a gate by the operator's 2026-08-20 decision, and 6.2.1's sweep]
 **Goal:** Tag v1.0, plus whatever release mechanics Phase 4.1's packaging pass leaves to
 release time — the release-please run, release notes, the published packages' final metadata.
 The tag is the last and smallest phase in the milestone, which is the point of the 2026-08-03

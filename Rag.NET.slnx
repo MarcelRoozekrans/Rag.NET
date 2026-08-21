@@ -53,6 +53,7 @@
     <Project Path="src/Rag.NET.DataProviders.GitLab/Rag.NET.DataProviders.GitLab.csproj" />
     <Project Path="src/Rag.NET.DataProviders.Airtable/Rag.NET.DataProviders.Airtable.csproj" />
     <Project Path="src/Rag.NET.Raptor/Rag.NET.Raptor.csproj" />
+    <Project Path="src/Rag.NET.Raptor.Store/Rag.NET.Raptor.Store.csproj" />
     <Project Path="src/Rag.NET.Graph/Rag.NET.Graph.csproj" />
     <Project Path="src/Rag.NET.GraphRag/Rag.NET.GraphRag.csproj" />
     <Project Path="src/Rag.NET.Chunking/Rag.NET.Chunking.csproj" />
@@ -135,6 +136,7 @@
     <Project Path="tests/Rag.NET.Chunking.Templates.Tests/Rag.NET.Chunking.Templates.Tests.csproj" />
     <Project Path="tests/Rag.NET.DataProviders.Airtable.Tests/Rag.NET.DataProviders.Airtable.Tests.csproj" />
     <Project Path="tests/Rag.NET.Raptor.Tests/Rag.NET.Raptor.Tests.csproj" />
+    <Project Path="tests/Rag.NET.Raptor.Store.Tests/Rag.NET.Raptor.Store.Tests.csproj" />
     <Project Path="tests/Rag.NET.Graph.Tests/Rag.NET.Graph.Tests.csproj" />
     <Project Path="tests/Rag.NET.GraphRag.Tests/Rag.NET.GraphRag.Tests.csproj" />
     <Project Path="tests/Rag.NET.Parsers.Vision.Tests/Rag.NET.Parsers.Vision.Tests.csproj" />

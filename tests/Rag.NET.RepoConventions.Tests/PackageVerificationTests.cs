@@ -40,7 +40,7 @@ namespace Rag.NET.RepoConventions.Tests;
 public sealed class PackageVerificationTests
 {
     /// <summary>
-    /// There are 71 packages under <c>src/</c> today. A far smaller number means the scan lost
+    /// There are 72 packages under <c>src/</c> today. A far smaller number means the scan lost
     /// the working tree and is asserting over nothing — which would pass, silently, forever.
     /// </summary>
     private const int FewestPlausiblePackages = 60;
@@ -166,7 +166,6 @@ public sealed class PackageVerificationTests
         // ── 6.2.1 Retrieval & Answer Sweep: a pinned figure with a control ───────────────────
         ["Rag.NET.AnswerEngines"] = "6.2.1 — MapReduce, Refine and FLARE as arms of the 5.2.2 answer harness",
         ["Rag.NET.QueryTechniques"] = "6.2.1 — HyDE's cell uses only its options today; the behaviour itself under the Real protocol",
-        ["Rag.NET.Raptor"] = "6.2.1 — the same store shape as GraphRAG, likely the same finding and the same fix (#247)",
     };
 
     private readonly ITestOutputHelper _output;
