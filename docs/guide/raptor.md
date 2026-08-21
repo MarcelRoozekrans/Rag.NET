@@ -209,6 +209,22 @@ options.SummaryBoostFactor = 1.5; // 50% boost for summaries
 
 Use when your query workload skews toward overview/theme questions.
 
+`Boost` and `Filter` **over-fetch before they apply**, controlled by `CandidateMultiplier`
+(default `3.0`, a multiple of the query's `TopK`):
+
+```csharp
+options.CandidateMultiplier = 3.0;  // fetch 3x TopK, then boost, then take TopK
+```
+
+Without it neither mode could do what it says. The behaviour used to receive the already-truncated
+top-k, so `Boost` could reorder summaries *within* that set but never promote one *into* it however
+large the boost, and `Filter` returned fewer results than you asked for. `Blend` never over-fetches
+— it is the default and returns exactly `TopK`.
+
+**Setting `CandidateMultiplier = 1.0` reproduces the pre-over-fetch behaviour exactly**, at any
+`TopK`. That exists so the old behaviour stays measurable as a control rather than being kept alive
+as a defect; you would not normally set it.
+
 ### Filter
 
 Restricts results to specific tree levels:
