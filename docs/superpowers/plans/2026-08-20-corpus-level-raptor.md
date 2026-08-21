@@ -1148,13 +1148,67 @@ Then, in `HandleAsync`'s `Corpus` branch, after `PersistLeavesAsync`:
 
 **Both paths file summaries under the reserved id, and that is the point of threading `summaryDocumentId` explicitly.** Reading it from `ctx` instead would have filed corpus summaries under whichever document happened to trigger the build — a corpus-level summary attributed to one arbitrary article, which is exactly what `GraphProjectionRebuilder`'s remarks record as the pre-#302 behaviour for community reports. The reserved id is also what makes Task 5's delete-then-store work: it addresses the whole tree and nothing else.
 
+- [ ] **Step 4b: Add the non-reducing-level guard**
+
+`SelectK` returns `k = n` for distinct points (#333), so a level can produce exactly as many
+summaries as it consumed. The loop then never terminates, at one LLM call per cluster per level.
+The guard goes in `BuildLevelAsync` immediately after `k` is computed — **before** any clustering or
+summarisation, so a degenerate level costs nothing rather than being detected after it has been
+paid for:
+
+```csharp
+        if (k <= 1)
+        {
+            activity?.SetTag("raptor.cluster.count", 0);
+            return null;
+        }
+
+        // A level that would produce as many summaries as it consumed cannot terminate the tree
+        // loop: the next level clusters the same count into the same count, forever, at one LLM
+        // call per cluster per level. Detected here, before any summarisation, so a degenerate
+        // level costs nothing. #333 is this exact case — GaussianMixtureModel.SelectK returns
+        // k = n for distinct points because a singleton cluster's variance floors to 1e-6 and its
+        // log-density then dwarfs the BIC penalty. This guard is deliberately written against the
+        // symptom rather than that cause, so a future clustering regression of the same shape is
+        // bounded too.
+        if (k >= currentLevel.Count)
+        {
+            activity?.SetTag("raptor.cluster.degenerate", true);
+            return null;
+        }
+```
+
+`HandleAsync` already breaks when `BuildLevelAsync` returns null, so no change is needed there.
+
+- [ ] **Step 4c: Write the termination test**
+
+```csharp
+[Fact]
+public async Task TreeBuilding_Terminates_AtDefaultOptionsWithNoDepthCap()
+{
+    // MaxTreeDepth deliberately left at its default null. Before the non-reducing-level guard
+    // this hung forever (#333). The timeout is the assertion: a regression reintroducing
+    // non-termination fails here rather than wedging the suite.
+    _helpers.SetupChatClient("a summary");
+    _helpers.SetupEmbedder(dims: 8);
+    var ctx = _helpers.CreateContext(chunkCount: 24);
+    var behavior = new RaptorIngestionBehavior(_helpers.ChatClient, _helpers.Embedder, new RaptorOptions());
+
+    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    await behavior.HandleAsync(ctx, cts.Token, static (_, _) => ValueTask.FromResult(
+        new IngestionResult { DocumentId = new DocumentId("test-doc"), ChunksStored = 0 }));
+
+    Assert.False(cts.IsCancellationRequested, "tree building did not terminate at default options");
+}
+```
+
 - [ ] **Step 5: Run the tests to verify they pass**
 
 ```
 dotnet test tests/Rag.NET.Raptor.Tests
 ```
 
-Expected: all PASS.
+Expected: all PASS, including the termination test.
 
 - [ ] **Step 6: Add the debounce test**
 
@@ -1383,7 +1437,134 @@ git commit -m "feat(raptor): add RaptorTreeRebuilder for on-demand corpus rebuil
 
 ---
 
-### Task 6: Flip the default, document the migration, close the issues
+### Task 6: Fix #333 — `SelectK` returns k=n, so clustering never reduces
+
+Task 4's guard stops the loop; it does not make clustering work. At small counts `SelectK` still
+isolates every point into its own component, so the tree is one level of near-duplicates rather
+than a hierarchy. This task fixes the cause, before Task 7 makes `Corpus` the shipped default.
+
+**Files:**
+- Modify: `src/Rag.NET.Raptor/Math/GaussianMixtureModel.cs`
+- Test: `tests/Rag.NET.Raptor.Tests/Math/GaussianMixtureModelTests.cs`
+
+**Interfaces:**
+- Consumes: nothing from earlier tasks. `SelectK` and `Fit` are `internal`, visible to the test project.
+- Produces: no signature change. `SelectK(float[][] data, int maxK, int maxIterations = 100)` keeps its shape; only what it returns changes.
+
+- [ ] **Step 1: Write the failing test**
+
+Add to `tests/Rag.NET.Raptor.Tests/Math/GaussianMixtureModelTests.cs`, following the existing file's style:
+
+```csharp
+[Fact]
+public void SelectK_DoesNotIsolateEveryPoint_OnDistinctData()
+{
+    // #333: a singleton cluster's variance floors to VarianceFloor (1e-6), so its Gaussian
+    // log-density at its own mean is -0.5*d*ln(2*pi*1e-6) ~ +47.9 nats at d=8. Through
+    // -2*logLikelihood that is ~95.8 of BIC gain per isolated point, against a penalty of only
+    // 17*ln(n) ~ 39.1 at n=10. Splitting always won, so SelectK returned k = n for every n
+    // from 2 to 10, and the tree loop could never reduce its level count.
+    var rng = new Random(Seed: 7);
+    for (var n = 2; n <= 10; n++)
+    {
+        var data = new float[n][];
+        for (var i = 0; i < n; i++)
+        {
+            data[i] = new float[8];
+            for (var d = 0; d < 8; d++)
+                data[i][d] = (float)rng.NextDouble();
+        }
+
+        var k = GaussianMixtureModel.SelectK(data, maxK: System.Math.Min(n, 10));
+
+        Assert.True(k < n, $"n={n}: SelectK returned k={k}; k must be below n or no tree level can ever reduce");
+    }
+}
+
+[Fact]
+public void SelectK_StillSeparates_WellSeparatedClusters()
+{
+    // The fix must not buy termination by making SelectK useless. Two tight, far-apart blobs
+    // must still be found as two clusters.
+    var rng = new Random(Seed: 11);
+    var data = new float[20][];
+    for (var i = 0; i < 20; i++)
+    {
+        data[i] = new float[8];
+        var offset = i < 10 ? 0.0f : 10.0f;
+        for (var d = 0; d < 8; d++)
+            data[i][d] = offset + (float)(rng.NextDouble() * 0.01);
+    }
+
+    var k = GaussianMixtureModel.SelectK(data, maxK: 10);
+
+    Assert.True(k >= 2, $"SelectK returned k={k}; two well-separated blobs must yield at least 2 clusters");
+}
+```
+
+- [ ] **Step 2: Run them to verify the first fails and the second passes**
+
+```
+dotnet test tests/Rag.NET.Raptor.Tests --filter "FullyQualifiedName~SelectK_"
+```
+
+Expected: `SelectK_DoesNotIsolateEveryPoint_OnDistinctData` FAILS at n=2 (`k=2`).
+`SelectK_StillSeparates_WellSeparatedClusters` should PASS both before and after your change — it
+is the guard against a fix that trivially returns 1.
+
+If the second test fails *before* your change, stop and report: the defect is wider than #333
+describes and the fix needs re-scoping.
+
+- [ ] **Step 3: Fix the cause**
+
+The bug is that a degenerate component is scored as an excellent one. Two changes, both in
+`GaussianMixtureModel.cs`:
+
+**(a) Raise the variance floor to something physically meaningful.** `VarianceFloor = 1e-6` on
+unit-scale embedding data means a standard deviation of 0.001 — far tighter than any real cluster,
+so an isolated point always wins. Scale the floor to the data instead of hard-coding it: compute the
+mean per-dimension variance of the whole dataset once in `Fit`, and floor each component's variance
+at a small fraction of it (start with 1/100th) rather than at an absolute constant.
+
+**(b) Refuse to score components that own fewer than two points.** In `SelectK`, skip any `k` whose
+fitted result leaves a component with `nk < 2` — such a `k` is not a real candidate, and BIC has no
+way to express that. Determine `nk` from the responsibilities the fit returns.
+
+Implement (b) first and re-run: it alone may be sufficient, and it is the smaller change. Only add
+(a) if the test still fails. **Report which of the two you needed** — that answer matters more than
+the code, because it tells us whether the floor is the cause or merely an amplifier.
+
+- [ ] **Step 4: Run both tests to verify they pass**
+
+```
+dotnet test tests/Rag.NET.Raptor.Tests --filter "FullyQualifiedName~SelectK_"
+```
+
+Expected: both PASS.
+
+- [ ] **Step 5: Run the full suite**
+
+```
+dotnet build Rag.NET.slnx
+dotnet test tests/Rag.NET.Raptor.Tests
+```
+
+Expected: all PASS. **Task 1's `SummaryChunks_HaveUniqueChunkIndexes_AcrossEveryTreeLevel` and
+Task 4's tests depend on the tree reaching specific depths, so a clustering change can move them.**
+If one fails because the tree now has a different shape, that is the fix working — adjust the leaf
+count or the depth guard to restore a ≥2-level tree, and say exactly what moved in your report. Do
+NOT weaken an assertion to make it pass.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/Rag.NET.Raptor/Math/GaussianMixtureModel.cs tests/Rag.NET.Raptor.Tests/Math/GaussianMixtureModelTests.cs
+git commit -m "fix(raptor): SelectK no longer isolates every point into its own cluster (#333)"
+```
+
+---
+
+### Task 7: Flip the default, document the migration, close the issues
 
 The breaking change lands last, once everything it depends on works.
 
