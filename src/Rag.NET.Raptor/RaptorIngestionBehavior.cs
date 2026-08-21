@@ -171,6 +171,11 @@ public sealed class RaptorIngestionBehavior(
         var currentLevel = seed;
         var allSummaries = new List<EmbeddedChunk>();
         var level = 0;
+        // Tracked separately from level: level counts the attempt about to run (it labels
+        // BuildLevelAsync's telemetry and each summary's raptor_level), but an attempt that
+        // returns null produced no summaries at that level number, so it must not count toward
+        // the depth the tree actually reached.
+        var depthReached = 0;
         // Summary indices continue past the seed and keep counting across levels. They must not
         // restart per level: ctx.EmbeddedChunks is not appended to until after this loop, so a
         // per-level index made level 2's first summary collide with level 1's (#332).
@@ -183,12 +188,13 @@ public sealed class RaptorIngestionBehavior(
             if (summaryChunks is null)
                 break;
 
+            depthReached = level;
             nextChunkIndex += summaryChunks.Count;
             allSummaries.AddRange(summaryChunks);
             currentLevel = summaryChunks;
         }
 
-        activity?.SetTag("raptor.tree.depth", level);
+        activity?.SetTag("raptor.tree.depth", depthReached);
         ctx.EmbeddedChunks.AddRange(allSummaries);
         return allSummaries.Count;
     }
@@ -276,31 +282,11 @@ public sealed class RaptorIngestionBehavior(
             ? Umap.Fit(embeddings, targetDims)
             : embeddings;
 
-        var k = options.MaxClusters.HasValue
-            ? System.Math.Min(options.MaxClusters.Value, currentLevel.Count)
-            : GaussianMixtureModel.SelectK(reduced, maxK: System.Math.Min(currentLevel.Count, 10));
-
-        if (k <= 1)
-        {
-            activity?.SetTag("raptor.cluster.count", 0);
+        var k = SelectClusterCount(reduced, currentLevel.Count, activity);
+        if (k is null)
             return null;
-        }
 
-        // A level that would produce as many summaries as it consumed cannot terminate the tree
-        // loop: the next level clusters the same count into the same count, forever, at one LLM
-        // call per cluster per level. Detected here, before any summarisation, so a degenerate
-        // level costs nothing. #333 is this exact case — GaussianMixtureModel.SelectK returns
-        // k = n for distinct points because a singleton cluster's variance floors to 1e-6 and its
-        // log-density then dwarfs the BIC penalty. This guard is deliberately written against the
-        // symptom rather than that cause, so a future clustering regression of the same shape is
-        // bounded too.
-        if (k >= currentLevel.Count)
-        {
-            activity?.SetTag("raptor.cluster.degenerate", true);
-            return null;
-        }
-
-        var gmm = GaussianMixtureModel.Fit(reduced, k);
+        var gmm = GaussianMixtureModel.Fit(reduced, k.Value);
         var clusters = GroupByClusters(currentLevel, gmm.Assignments);
         activity?.SetTag("raptor.cluster.count", clusters.Count);
 
@@ -318,6 +304,55 @@ public sealed class RaptorIngestionBehavior(
         }
 
         return summaryChunks;
+    }
+
+    /// <summary>
+    /// Picks the cluster count for a level, or reports that the level should not be built at all.
+    /// </summary>
+    /// <remarks>
+    /// Split out of <see cref="BuildLevelAsync"/> (MA0051) rather than only for its own sake: the
+    /// two rejection cases below both belong together — one level, one decision — regardless of
+    /// which arm of the <c>k</c> assignment produced the candidate.
+    /// </remarks>
+    /// <param name="reduced">The level's (possibly UMAP-reduced) embeddings, for auto-selected k.</param>
+    /// <param name="count">The level's chunk count.</param>
+    /// <param name="activity">The level's summarize span, tagged with why a rejection happened.</param>
+    /// <returns>The cluster count to fit with, or null when the level should not be built.</returns>
+    private int? SelectClusterCount(float[][] reduced, int count, System.Diagnostics.Activity? activity)
+    {
+        // Min(MaxClusters, count) alone caps every level at exactly MaxClusters once the tree has
+        // shrunk to that size, and a level whose k equals its own count is what the second check
+        // below rejects — so a fixed MaxClusters would build depth 1 and never recurse again,
+        // forever, regardless of #333. Min(..., count - 1) forces a strict decrease every level
+        // instead, which is what actually guarantees the loop can still terminate (count shrinks
+        // by at least one per level) without ever tripping the degenerate check.
+        var k = options.MaxClusters.HasValue
+            ? System.Math.Min(options.MaxClusters.Value, count - 1)
+            : GaussianMixtureModel.SelectK(reduced, maxK: System.Math.Min(count, 10));
+
+        if (k <= 1)
+        {
+            activity?.SetTag("raptor.cluster.count", 0);
+            return null;
+        }
+
+        // A level that would produce as many summaries as it consumed cannot terminate the tree
+        // loop: the next level clusters the same count into the same count, forever, at one LLM
+        // call per cluster per level. Detected here, before any summarisation, so a degenerate
+        // level costs nothing. #333 is this exact case — GaussianMixtureModel.SelectK returns
+        // k = n for distinct points because a singleton cluster's variance floors to 1e-6 and its
+        // log-density then dwarfs the BIC penalty. This guard is deliberately written against the
+        // symptom rather than that cause, so a future clustering regression of the same shape is
+        // bounded too. The MaxClusters branch above can no longer trigger this: Min(..., count - 1)
+        // keeps its k strictly below count, so only auto-selected k reaches here.
+        if (k >= count)
+        {
+            activity?.SetTag("raptor.cluster.degenerate", true);
+            activity?.SetTag("raptor.cluster.count", 0);
+            return null;
+        }
+
+        return k;
     }
 
     private static float[][] ExtractEmbeddings(List<EmbeddedChunk> chunks)
