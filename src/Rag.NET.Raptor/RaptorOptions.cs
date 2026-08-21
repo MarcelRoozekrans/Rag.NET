@@ -44,7 +44,16 @@ public sealed class RaptorOptions
     internal bool MaxClustersIsSet() => MaxClusters is not null;
 
     /// <summary>
-    /// Cap recursion depth. Null = recurse until 1 cluster remains. Default: null.
+    /// Cap recursion depth. Null = recurse until a level can no longer be usefully split. Default:
+    /// null.
+    /// <para>
+    /// Not literally "until one cluster remains": <c>Min(MaxClusters, count - 1)</c> forces a
+    /// strict decrease every level, and the non-reducing-level guard rejects any level whose
+    /// cluster count would not shrink the count, so the smallest level that can still be built is
+    /// two nodes clustering to one — which is itself rejected (<c>k &lt;= 1</c> stops the tree). The
+    /// top level therefore always has at least two nodes; recursion stops one level short of a
+    /// single cluster, not at one.
+    /// </para>
     /// <para>
     /// When set, must be greater than 0 — enforced by the validation attribute
     /// (<see langword="null"/> passes). <c>RaptorIngestionBehavior</c> gates level building on

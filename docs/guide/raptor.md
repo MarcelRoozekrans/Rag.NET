@@ -19,7 +19,7 @@ Avoid RAPTOR for short documents (< 5 chunks) or when latency at ingestion time 
 3. **GMM clustering** — soft-cluster chunks using Gaussian Mixture Models; BIC selects optimal cluster count
 4. **Summarize each cluster** — concatenate chunk texts, call LLM to produce a summary
 5. **Embed summaries** — generate embeddings for each summary
-6. **Recurse** — repeat steps 2-5 on the summaries until one cluster remains (or MaxTreeDepth reached)
+6. **Recurse** — repeat steps 2-5 on the summaries until a level can no longer be usefully split (or MaxTreeDepth reached). The top level always keeps at least two nodes — a level whose cluster count would not shrink the level below it is rejected rather than collapsed to a single cluster.
 7. **Store everything** — leaf chunks + all summary levels go to the vector store
 
 Each summary chunk carries metadata:
@@ -46,15 +46,18 @@ Three modes control how RAPTOR chunks participate in search:
 | **`Corpus`** (default) | Cluster across every leaf chunk ingested so far, corpus-wide — the mechanism the RAPTOR paper describes. A summary can span two documents that turn out to share a theme, which `PerDocument` can never produce. Requires an `IRaptorLeafStore`, because the vector store cannot enumerate what it holds. |
 | **`PerDocument`** | Cluster within one document's chunks, at ingestion time. The library's original behaviour, kept fully supported — it is the control arm Phase 6.2.1 differences the corpus scope against. No leaf store required. |
 
-**`Corpus` requires `Rag.NET.Raptor.Store`.** Pass `leafStorePath` to `UseRaptor` to register a `SqliteRaptorLeafStore` and enable it — this is what the Quick Start example above does. `UseRaptor` throws `ArgumentException` at registration if `TreeScope` is `Corpus` and no `leafStorePath` is given: there is nowhere to persist leaves between ingests otherwise.
+**`Corpus` requires a leaf store.** Pass `leafStorePath` to `UseRaptor` to register a `SqliteRaptorLeafStore` and enable it — this is what the Quick Start example above does. `UseRaptor` throws `ArgumentException` at registration if `TreeScope` is `Corpus` and no `leafStorePath` is given: there is nowhere to persist leaves between ingests otherwise. `Rag.NET.Raptor.Store` — the assembly `SqliteRaptorLeafStore` lives in — is not something you opt into: `Rag.NET.Raptor` references it unconditionally (`IRaptorLeafStore` appears in `RaptorIngestionBehavior`'s public constructor), so it arrives transitively with `Rag.NET.Raptor` regardless of `TreeScope`. `leafStorePath` decides whether it is *used*, not whether it ships.
 
 **Ingesting one document no longer produces a tree immediately.** Under `Corpus` scope, a single ingest appends that document's leaves to the leaf store and nothing more. A tree is (re)built only once the corpus has grown by `CorpusGrowthThreshold` (default 0.10, i.e. 10%) since the last build — the same debounce shape as `GraphRagOptions.CommunityDetectionGrowthThreshold`, and for the same reason: clustering the whole corpus on every single ingest is expensive and grows worse as the corpus grows. Call `RaptorTreeRebuilder.RebuildAsync` to force a rebuild on demand — after a bulk load, before measuring, or on a schedule; it is registered whenever `leafStorePath` is supplied. Corpus summaries are filed under the reserved id `RaptorCorpusDocumentId.Value` (`raptor://corpus-tree`), never under a real document's id — a corpus-wide summary attributed to whichever document happened to trigger the build would misattribute it to one arbitrary article.
+
+**The debounce baseline is process-local, not persisted.** `RaptorIngestionBehavior` tracks "leaves at last build" in memory. It does not read the leaf store's actual growth since some earlier process's last build — every process starts with no baseline, so the first ingest after any restart always triggers a build regardless of `CorpusGrowthThreshold`, at a full LLM spend proportional to however large the corpus already is. A process that restarts often (redeploys, a serverless host that recycles instances, a CLI invoked once per document) pays that cost far more often than the threshold alone would suggest.
 
 ### When to choose `PerDocument`
 
 - You need isolated per-document trees on purpose — for example multi-tenant document sets, where a cross-document summary would leak content between tenants.
-- You cannot add a leaf store (`Rag.NET.Raptor.Store` or your own `IRaptorLeafStore`) to the deployment.
 - You are differencing against `Corpus` scope, the way Phase 6.2.1 does.
+
+Not a reason: avoiding the `Rag.NET.Raptor.Store` dependency. `Rag.NET.Raptor.csproj` references it unconditionally — `IRaptorLeafStore` appears in `RaptorIngestionBehavior`'s public constructor — so the assembly (and its `Microsoft.Data.Sqlite` dependency) arrives regardless of `TreeScope`. What `PerDocument` avoids is *using* a leaf store, not shipping one.
 
 Set it explicitly — an explicit value is clearer than code that depends silently on whichever way the default happens to point:
 
@@ -66,19 +69,20 @@ services.AddRagNet(rag => rag.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDo
 
 Before v1.0, `TreeScope` defaulted to `PerDocument`. Upgrading without changing anything now throws: `UseRaptor()` — or any call that does not set `TreeScope` explicitly — hits the `Corpus`-requires-`leafStorePath` check above and fails at registration with `ArgumentException`. Fix that first, one of two ways:
 
-- Pass `leafStorePath` and add a reference to `Rag.NET.Raptor.Store` to opt into the new `Corpus` default, or
+- Pass `leafStorePath` to opt into the new `Corpus` default (no separate package install needed — `Rag.NET.Raptor.Store` already arrives transitively with `Rag.NET.Raptor`; see [Tree Scope](#tree-scope)), or
 - Set `o.TreeScope = RaptorTreeScope.PerDocument` explicitly to keep the previous behaviour unchanged.
 
 If you do move to `Corpus` scope, the summary chunks a previous `PerDocument` ingest already wrote are now stale: they are filed per document rather than under the corpus id, they overlap with nothing the corpus tree produces, and at retrieval time they compete for rank against real corpus summaries on an equal footing. **There is no automatic cleanup**, and deliberately so: old summary chunks carry a real `raptor_level` and a real `DocumentId`, so a heuristic guessing which chunks were RAPTOR's from those fields alone would occasionally guess wrong on someone else's data and delete it — worse than leaving stale summaries in place. The migration is manual:
 
-1. Delete every chunk carrying `raptor_level` metadata from the vector store (leaf chunks have no such metadata and are unaffected).
+1. `IVectorStore` has no enumeration and no metadata-predicate delete, so "delete every chunk carrying `raptor_level`" is not an operation the API supports. Instead, call `DeleteByDocumentIdAsync` (or your ingestor's document-level delete) for every document that previously produced `PerDocument` summaries — this removes that document's stale summary chunks and its leaf chunks together, since both were filed under the same document id. Note that a shorter re-ingest of the same document strands any tail leaves the earlier, longer version produced (a general limitation of the leaf store's upsert-by-index behaviour, not specific to this migration).
 2. Re-ingest your documents so their leaves land in the leaf store, or — if the leaves are already there — call `RaptorTreeRebuilder.RebuildAsync` once to build the corpus tree fresh.
 
 ## Quick Start
 
 ```csharp
 // Install: dotnet add package Rag.NET.Raptor
-//          dotnet add package Rag.NET.Raptor.Store   — Corpus scope (the default) needs a leaf store
+// Rag.NET.Raptor.Store — where SqliteRaptorLeafStore lives — arrives transitively; no separate
+// install needed to reference its types.
 
 services.AddRagNet(rag => rag.UseRaptor(leafStorePath: "raptor-leaves.db"));
 ```
@@ -114,7 +118,7 @@ rag.UseRaptor(options =>
     options.MinChunksForRaptor = 5;          // Skip for small documents
     options.ReducedDimensionality = 10;      // UMAP target dims — must be greater than 0
     options.MaxClusters = null;              // null = BIC auto-selects; when set, must be greater than 1
-    options.MaxTreeDepth = null;             // null = recurse until 1 cluster; when set, must be greater than 0
+    options.MaxTreeDepth = null;             // null = recurse until a level can no longer be usefully split; when set, must be greater than 0
     options.StoreLeafChunks = true;          // Keep originals alongside summaries
     options.SummaryChatClient = cheapModel;  // Optional: cheaper model for summaries
     options.SummaryEmbedder = fastEmbedder;  // Optional: separate embedder
@@ -216,6 +220,63 @@ options.MinRaptorLevel = 2;
 options.Mode = RaptorRetrievalMode.Filter;
 options.MaxRaptorLevel = 0;
 ```
+
+## Known Limitations
+
+These apply under `Corpus` scope. Both are open issues, not this guide's suggestion for how to
+work around them — there is currently no workaround short of the fixes tracked in the issues
+below.
+
+### Deleting a document does not delete its RAPTOR leaves (#338)
+
+`PipelineIngestor.DeleteAsync` clears the vector store, BM25 index, parent store, data manager and
+version store for a document — but it never calls `IRaptorLeafStore.RemoveDocumentAsync`. That
+method exists on the interface; nothing in the product calls it.
+
+Concretely: ingest a document under `Corpus` scope, then delete it. It disappears from search
+immediately, as expected. But its chunks are still sitting in the leaf store, and the next corpus
+build (debounced or forced via `RaptorTreeRebuilder.RebuildAsync`) reads that leaf text back out,
+sends it to the LLM, and stores a fresh summary under `raptor://corpus-tree`. The deleted document's
+content becomes searchable again — through a summary chunk with no document id to trace it back to,
+and no delete operation that removes it, because the summary is filed under the corpus id, not the
+document's.
+
+A second, related gap: `OverwriteBehavior` deletes a document's vector-store entries before
+re-ingesting it, but the leaf store only *upserts* leaves by `(document_id, chunk_index)`. If the
+new version of a document is shorter than the old one, the old version's tail leaves (indices past
+the new chunk count) are never overwritten and never deleted — they strand in the leaf store and
+keep contributing to future corpus builds.
+
+Neither of these can be fixed by adding a call to `RemoveDocumentAsync` from core: core cannot
+reference `Rag.NET.Raptor.Store` (the dependency direction runs the other way), so a real fix needs
+a new abstraction core can depend on. That is out of scope for this phase; #338 tracks it.
+
+### #336 is on by default now that `Corpus` is the default scope
+
+Corpus summaries are filed under the single reserved id `raptor://corpus-tree`.
+`StorageBehavior`'s `RemovePreviousAppendOnlyEntries` only removes BM25 postings for
+`ctx.Metadata.DocumentId` — the *ingesting* document's id, never the corpus id a summary is
+actually filed under — so every ingest-triggered corpus build appends a full extra copy of the
+tree's BM25 postings rather than replacing the previous copy. At the default
+`CorpusGrowthThreshold = 0.10`, a corpus growing from 100 to 10,000 leaves triggers roughly 48
+builds — up to 48 duplicate copies of the tree's postings, each inflating IDF for every term the
+summaries contain.
+
+Two more facets of the same root cause:
+
+- **Vector-store orphans accumulate on the ingest path.** Clustering is not stable across runs, so
+  a later build can produce fewer summaries than an earlier one. `RaptorTreeRebuilder.RebuildAsync`
+  deletes the previous corpus tree before storing the new one for exactly this reason (see its own
+  remarks) — but the ingest-triggered build path does not delete first, so any surplus from a
+  shrinking tree survives as orphaned chunks that retrieval can still return.
+- **`RaptorTreeRebuilder.RebuildAsync` bypasses BM25 entirely.** It writes the rebuilt tree through
+  `IVectorStore` directly, with no corresponding BM25 update. A rebuilt tree is therefore invisible
+  to keyword and hybrid search, while the stale, duplicated copies the ingest path wrote to BM25
+  remain searchable. Earlier in this guide, `RebuildAsync` is offered as the way to force a tree
+  current — that remedy carries this caveat: it fixes the vector store's copy of the tree and not
+  BM25's.
+
+Not fixed in this phase; #336 tracks it.
 
 ## Troubleshooting
 

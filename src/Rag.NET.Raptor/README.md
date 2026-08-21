@@ -13,13 +13,16 @@ dotnet add package Rag.NET.Raptor
 
 ## Setup
 
-RAPTOR adds one behavior to each pipeline, and `UseRaptor` places both:
+RAPTOR adds one behavior to each pipeline, and `UseRaptor` places both. `TreeScope` defaults to
+`Corpus` — clustering over the whole corpus, not one document at a time — which needs somewhere to
+keep leaf chunks between ingests, so `leafStorePath` is required unless you opt back into
+`PerDocument`:
 
 ```csharp
 using Rag.NET.DependencyInjection;
 using Rag.NET.Raptor;
 
-services.AddRagNet(rag => rag.UseRaptor());
+services.AddRagNet(rag => rag.UseRaptor(leafStorePath: "raptor-leaves.db"));
 ```
 
 `RaptorIngestionBehavior` lands directly after `EmbeddingBehavior` (it needs the embeddings) and
@@ -34,11 +37,17 @@ using Rag.NET.Raptor;
 using Rag.NET.Retrieval.Behaviors;
 
 services.AddRagNet(
-    configure: rag => rag.UseRaptor(),
+    configure: rag => rag.UseRaptor(leafStorePath: "raptor-leaves.db"),
     ingestion: pipeline => pipeline
         .Add<RaptorIngestionBehavior>(after: typeof(EmbeddingBehavior)),
     retrieval: pipeline => pipeline
         .Add<RaptorRetrievalBehavior>(before: typeof(RerankingBehavior)));
+```
+
+Prefer isolated per-document trees instead — no cross-document summaries, no leaf store required:
+
+```csharp
+services.AddRagNet(rag => rag.UseRaptor(o => o.TreeScope = RaptorTreeScope.PerDocument));
 ```
 
 ## Example
@@ -56,7 +65,8 @@ rag.UseRaptor(
     {
         options.Mode               = RaptorRetrievalMode.Boost;
         options.SummaryBoostFactor = 1.5;    // score multiplier for summaries
-    });
+    },
+    leafStorePath: "raptor-leaves.db");
 ```
 
 `RaptorRetrievalMode.Filter` with `MinRaptorLevel`/`MaxRaptorLevel` restricts results to

@@ -9,10 +9,17 @@ enumerate what it holds, and `IChunkLookup` returns chunks without the embedding
 clustering runs on. `IRaptorLeafStore` and its SQLite implementation,
 `SqliteRaptorLeafStore`, fill that gap.
 
-This package is only needed when `RaptorOptions.TreeScope` is `Corpus`. Under
-`PerDocument`, the default, nothing is written here and nothing is paid for.
+This package is only *used* when `RaptorOptions.TreeScope` is `Corpus` — the default as of
+v1.0. Under `PerDocument`, nothing is written here and nothing is paid for at runtime, but
+the assembly still arrives: `Rag.NET.Raptor` references it unconditionally (`IRaptorLeafStore`
+appears in `RaptorIngestionBehavior`'s public constructor), so installing `Rag.NET.Raptor`
+alone already brings this package and its `Microsoft.Data.Sqlite` dependency in transitively.
 
 ## Install
+
+Installing `Rag.NET.Raptor` is enough — this package arrives as its transitive dependency. A
+direct `dotnet add package Rag.NET.Raptor.Store` reference is only needed if you implement
+`IRaptorLeafStore` yourself or want the dependency pinned explicitly:
 
 ```bash
 dotnet add package Rag.NET.Raptor.Store
