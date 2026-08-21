@@ -4377,7 +4377,8 @@ shipped state; keeping both scopes selectable is what gives it back.
 configuration; the debounce and the rebuilder exist and are tested; existing RAPTOR users have a
 stated migration path; #331 closes. The measurement itself belongs to 6.2.1 and runs after.
 
-### Phase 6.2.4: RAPTOR Retrieval Over-Fetch — make `Boost` and `Filter` do what they document [status: pending — added 2026-08-21, ahead of 6.2.1's RAPTOR measurement]
+### Phase 6.2.4: RAPTOR Retrieval Over-Fetch — make `Boost` and `Filter` do what they document [status: complete 2026-08-21 — added and merged the same day in #344. Small, as expected: `Boost` and `Filter` now fetch `CandidateMultiplier` × `TopK` candidates and reduce afterwards, so `Boost` can promote a summary into the result set and `Filter` returns what the caller asked for. `Blend` is byte-identical. 1× reproduces the pre-fix behaviour exactly, so the control survives by configuration rather than as a shipped defect]
+**Completed:** 2026-08-21
 **Surface:** Backend
 **HelpWanted:** no
 

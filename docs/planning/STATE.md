@@ -67,29 +67,23 @@ singletons on the full corpus against the 65% the issue carries.
 
 ## Recommended Next Step
 
-**Phase 6.2.4 — RAPTOR Retrieval Over-Fetch**, then 6.2.1's measurement. Added 2026-08-21; it needs
-a design and a plan. Expected small, but named as a phase because 6.2.3 also looked small and needed
-a store, a debounce, a rebuilder and a migration.
+**Execute `docs/plans/2026-08-21-raptor-real-protocol-implementation.md`** — 6.2.1's RAPTOR
+measurement, the first this technique has ever had. Six tasks; Tasks 1-3 are code, Tasks 4-5 spend
+real money and Task 5 is an overnight run.
 
-`RaptorRetrievalBehavior` calls `next(ctx, ct)` unmodified while `VectorStoreBehavior` fetches
-exactly `TopK`, so it only sees the truncated top-k: `Boost` promotes within the result set but
-never into it, and `Filter` returns fewer results than asked for. `MmrBehavior` in the same solution
-has the correct pattern and supplies the `?? TopK * 3` default. `Blend` must stay byte-identical —
-figures are pinned against it — and 1× on the candidate count must reproduce today's behaviour, so
-the control survives by configuration rather than by leaving the defect shipped.
+**6.2.4 completed 2026-08-21** (#344), so `raptorboost` now measures a `Boost` that works.
 
-**Then 6.2.1's RAPTOR measurement**, whose design at
-`docs/plans/2026-08-20-raptor-real-protocol-design.md` was amended on 2026-08-21 and is current.
-Two things to carry into its plan:
+Three things govern the run, all in the plan:
 
-1. **Ingest with the debounce suppressed, then `RaptorTreeRebuilder.RebuildAsync()` once.** At the
-   shipped `CorpusGrowthThreshold = 0.10`, ingesting 609 articles triggers **48 whole-corpus
-   rebuilds**. One early build is unavoidable (`_leavesAtLastBuild` starts at `-1`) but is cheap.
-2. **`raptorcorpus` is the number that gets published as RAPTOR's result**, not `raptor`. Publishing
-   the per-document figure would repeat 5.2's misattribution exactly.
+1. **Ingest with the debounce suppressed, then `RebuildAsync()` once.** At the shipped
+   `CorpusGrowthThreshold = 0.10`, 609 articles trigger 48 whole-corpus rebuilds. A fast-tier test
+   asserts `TreeBuildCount == 1` so a regression fails in milliseconds rather than in dollars.
+2. **Task 4's gate is real.** If `raptorfiltered − dense` is not ≈ 0 the corpora diverged and no
+   figure means anything — stop, having spent a pilot rather than a sweep.
+3. **`raptorcorpus` is RAPTOR's result, not `raptor`.** Publishing the per-document figure would
+   repeat 5.2's misattribution, which cost three weeks and a revised published finding.
 
-**Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`, kept alive
-only until 6.x.7 published its replacement figure on 2026-08-20.
+**Also unblocked and cheap:** deleting `GraphLocalSearchBehavior` and `PageRankWeight`.
 
 ## Working State
 
